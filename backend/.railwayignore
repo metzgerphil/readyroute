@@ -1,0 +1,23 @@
+# dependencies
+node_modules/
+
+# environment files
+.env
+.env.*
+
+# logs
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# tests and coverage artifacts
+coverage/
+.nyc_output/
+
+# OS/editor clutter
+.DS_Store
+.vscode/
+.idea/

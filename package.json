@@ -1,0 +1,10 @@
+{
+  "name": "readyroute",
+  "private": true,
+  "scripts": {
+    "release:backend": "zsh ./scripts/release-backend.sh",
+    "release:portal": "zsh ./scripts/release-portal.sh",
+    "release:smoke": "zsh ./scripts/release-smoke.sh",
+    "release:app:prep": "cd driver-app && npm run release:prep"
+  }
+}

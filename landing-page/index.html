@@ -1,0 +1,655 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ReadyRoute — Built for Last-Mile Contractors</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@400;600;700;800&family=Barlow:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  :root {
+    --orange: #FF6200; --orange-dark: #E05500; --charcoal: #1A1A1A;
+    --dark: #111111; --mid: #444444; --muted: #888888;
+    --rule: #E8E8E8; --bg: #F7F7F7; --white: #FFFFFF; --green: #1A7A3A;
+    --display: 'Barlow Condensed', sans-serif; --body: 'Barlow', sans-serif;
+  }
+  html { scroll-behavior: smooth; }
+  body { font-family: var(--body); background: var(--white); color: var(--charcoal); line-height: 1.6; -webkit-font-smoothing: antialiased; }
+  nav { position: fixed; top: 0; left: 0; right: 0; z-index: 100; background: var(--dark); display: flex; align-items: center; justify-content: space-between; padding: 0 48px; height: 64px; border-bottom: 3px solid var(--orange); }
+  .nav-logo { font-family: var(--display); font-size: 28px; font-weight: 800; letter-spacing: -0.5px; color: var(--white); text-decoration: none; }
+  .nav-logo span { color: var(--orange); }
+  .nav-links { display: flex; align-items: center; gap: 32px; list-style: none; }
+  .nav-links a { color: #CCCCCC; text-decoration: none; font-size: 15px; font-weight: 500; letter-spacing: 0.3px; transition: color 0.2s; }
+  .nav-links a:hover { color: var(--white); }
+  .nav-cta { background: var(--orange); color: var(--white) !important; padding: 10px 24px; border-radius: 4px; font-weight: 600 !important; font-size: 14px !important; transition: background 0.2s !important; }
+  .nav-cta:hover { background: var(--orange-dark) !important; }
+  .hero { background: var(--dark); padding: 148px 48px 108px; position: relative; overflow: hidden; }
+  .hero::after { content: ''; position: absolute; top: 0; right: 0; width: 45%; height: 100%; background: linear-gradient(135deg, transparent 30%, rgba(255,98,0,0.06) 100%); pointer-events: none; }
+  .hero-eyebrow { display: inline-block; font-family: var(--display); font-size: 12px; font-weight: 700; letter-spacing: 3.5px; text-transform: uppercase; color: var(--orange); border: 1px solid rgba(255,98,0,0.35); padding: 6px 14px; border-radius: 2px; margin-bottom: 32px; }
+  .hero h1 { font-family: var(--display); font-size: clamp(56px, 8vw, 96px); font-weight: 800; line-height: 0.95; letter-spacing: -1.5px; color: var(--white); max-width: 760px; margin-bottom: 32px; }
+  .hero h1 span { color: var(--orange); }
+  .hero-sub { font-size: 20px; font-weight: 400; color: #AAAAAA; line-height: 1.65; max-width: 520px; margin-bottom: 52px; }
+  .hero-actions { display: flex; align-items: center; gap: 24px; flex-wrap: wrap; }
+  .btn-primary { display: inline-block; background: var(--orange); color: var(--white); font-family: var(--display); font-size: 18px; font-weight: 700; letter-spacing: 0.5px; text-transform: uppercase; padding: 17px 44px; border-radius: 4px; text-decoration: none; border: none; cursor: pointer; transition: background 0.2s, transform 0.15s; }
+  .btn-primary:hover { background: var(--orange-dark); transform: translateY(-1px); }
+  .btn-ghost { display: inline-block; color: #AAAAAA; font-size: 15px; font-weight: 500; text-decoration: none; padding-bottom: 2px; border-bottom: 1px solid rgba(255,255,255,0.2); transition: color 0.2s, border-color 0.2s; }
+  .btn-ghost:hover { color: var(--white); border-color: rgba(255,255,255,0.5); }
+  .hero-note { margin-top: 22px; font-size: 13px; color: #555555; letter-spacing: 0.2px; }
+  .proof-bar { background: var(--orange); padding: 22px 48px; display: flex; align-items: center; justify-content: center; gap: 64px; flex-wrap: wrap; }
+  .proof-item { text-align: center; }
+  .proof-number { font-family: var(--display); font-size: 34px; font-weight: 800; color: var(--white); line-height: 1; margin-bottom: 4px; }
+  .proof-label { font-size: 12px; font-weight: 600; color: rgba(255,255,255,0.8); text-transform: uppercase; letter-spacing: 1.2px; }
+  .proof-divider { width: 1px; height: 44px; background: rgba(255,255,255,0.25); }
+  .section { padding: 100px 48px; }
+  .section-alt { background: var(--bg); }
+  .container { max-width: 1160px; margin: 0 auto; }
+  .section-label { font-family: var(--display); font-size: 12px; font-weight: 700; letter-spacing: 3.5px; text-transform: uppercase; color: var(--orange); margin-bottom: 14px; }
+  .section-title { font-family: var(--display); font-size: clamp(38px, 4.5vw, 56px); font-weight: 800; line-height: 1.05; letter-spacing: -0.5px; color: var(--charcoal); max-width: 700px; margin-bottom: 20px; }
+  .section-title span { color: var(--orange); }
+  .section-body { font-size: 18px; color: var(--mid); max-width: 540px; line-height: 1.7; margin-bottom: 52px; }
+  .why-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 3px; background: var(--rule); border: 2px solid var(--rule); }
+  .why-card { background: var(--white); padding: 52px 44px; position: relative; }
+  .why-big-label { font-family: var(--display); font-size: 72px; font-weight: 800; line-height: 1; color: var(--orange); opacity: 0.12; position: absolute; top: 32px; right: 32px; pointer-events: none; }
+  .why-icon { width: 52px; height: 52px; background: var(--dark); border-radius: 4px; display: flex; align-items: center; justify-content: center; font-size: 22px; flex-shrink: 0; }
+  .why-card h3 { font-family: var(--display); font-size: 28px; font-weight: 800; color: var(--charcoal); margin-bottom: 14px; line-height: 1.1; }
+  .why-card p { font-size: 15px; color: var(--mid); line-height: 1.7; margin-bottom: 24px; }
+  .why-stat { font-family: var(--display); font-size: 14px; font-weight: 700; color: var(--orange); letter-spacing: 1px; text-transform: uppercase; border-top: 2px solid var(--orange); padding-top: 14px; display: inline-block; }
+  .big-ideas { display: flex; flex-direction: column; gap: 4px; margin-top: 8px; }
+  .big-idea { display: grid; grid-template-columns: 1fr 1fr; background: var(--rule); gap: 3px; }
+  .big-idea-label { background: var(--dark); padding: 56px 52px; display: flex; flex-direction: column; justify-content: center; }
+  .big-idea-number { font-family: var(--display); font-size: 13px; font-weight: 700; letter-spacing: 3px; color: var(--orange); text-transform: uppercase; margin-bottom: 16px; }
+  .big-idea-label h3 { font-family: var(--display); font-size: 40px; font-weight: 800; color: var(--white); line-height: 1.05; letter-spacing: -0.5px; margin-bottom: 16px; }
+  .big-idea-label h3 span { color: var(--orange); }
+  .big-idea-label p { font-size: 16px; color: #888888; line-height: 1.65; max-width: 380px; }
+  .big-idea-features { background: var(--white); padding: 52px; display: flex; flex-direction: column; gap: 0; }
+  .idea-feature { padding: 22px 0; border-bottom: 1px solid var(--rule); display: flex; align-items: flex-start; gap: 18px; }
+  .idea-feature:last-child { border-bottom: none; padding-bottom: 0; }
+  .idea-feature:first-child { padding-top: 0; }
+  .idea-feature-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--orange); flex-shrink: 0; margin-top: 8px; }
+  .idea-feature-content h4 { font-family: var(--display); font-size: 18px; font-weight: 700; color: var(--charcoal); margin-bottom: 5px; }
+  .idea-feature-content p { font-size: 14px; color: var(--mid); line-height: 1.6; }
+  .metrics-band { background: var(--charcoal); padding: 88px 48px; }
+  .metrics-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 0; max-width: 1160px; margin: 0 auto; text-align: center; }
+  .metric-item { padding: 0 48px; border-right: 1px solid rgba(255,255,255,0.08); }
+  .metric-item:last-child { border-right: none; }
+  .metric-value { font-family: var(--display); font-size: 72px; font-weight: 800; color: var(--orange); line-height: 1; margin-bottom: 14px; }
+  .metric-label { font-size: 14px; font-weight: 500; color: #888888; line-height: 1.5; }
+  .steps-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 0; border: 2px solid var(--rule); margin-top: 52px; }
+  .step { padding: 44px 36px; border-right: 2px solid var(--rule); position: relative; }
+  .step:last-child { border-right: none; }
+  .step-num { font-family: var(--display); font-size: 72px; font-weight: 800; color: var(--orange); opacity: 0.1; line-height: 1; margin-bottom: -12px; }
+  .step h3 { font-family: var(--display); font-size: 20px; font-weight: 700; color: var(--charcoal); margin-bottom: 10px; position: relative; }
+  .step p { font-size: 14px; color: var(--mid); line-height: 1.65; }
+  .pricing-layout { display: grid; grid-template-columns: 1fr 1.1fr; gap: 3px; background: var(--rule); margin-top: 52px; border: 2px solid var(--rule); }
+  .pricing-card { background: var(--white); padding: 60px 52px; }
+  .pricing-card.featured { background: var(--dark); position: relative; }
+  .pricing-badge { position: absolute; top: 0; left: 52px; background: var(--orange); color: var(--white); font-size: 11px; font-weight: 700; letter-spacing: 2.5px; text-transform: uppercase; padding: 7px 16px; }
+  .pricing-tier { font-family: var(--display); font-size: 12px; font-weight: 700; letter-spacing: 3px; text-transform: uppercase; margin-bottom: 20px; }
+  .pricing-card .pricing-tier { color: var(--muted); }
+  .pricing-card.featured .pricing-tier { color: var(--orange); }
+  .pricing-price { font-family: var(--display); font-size: 80px; font-weight: 800; line-height: 1; margin-bottom: 4px; }
+  .pricing-card .pricing-price { color: var(--charcoal); }
+  .pricing-card.featured .pricing-price { color: var(--white); }
+  .pricing-per { font-size: 15px; margin-bottom: 36px; }
+  .pricing-card .pricing-per { color: var(--muted); }
+  .pricing-card.featured .pricing-per { color: #666666; }
+  .pricing-list { list-style: none; margin-bottom: 44px; }
+  .pricing-list li { font-size: 15px; padding: 13px 0; border-bottom: 1px solid var(--rule); display: flex; align-items: center; gap: 12px; }
+  .pricing-card.featured .pricing-list li { border-color: rgba(255,255,255,0.07); color: #CCCCCC; }
+  .pricing-list li:last-child { border-bottom: none; }
+  .pricing-list li::before { content: '✓'; color: var(--orange); font-weight: 700; font-size: 14px; flex-shrink: 0; }
+  .pricing-note { font-size: 13px; line-height: 1.6; margin-top: 18px; }
+  .pricing-card .pricing-note { color: var(--muted); }
+  .pricing-card.featured .pricing-note { color: #555555; }
+  .comparison-wrap { overflow-x: auto; margin-top: 52px; }
+  .comparison-table { width: 100%; border-collapse: collapse; font-size: 15px; }
+  .comparison-table th { padding: 20px 28px; font-family: var(--display); font-size: 13px; font-weight: 700; letter-spacing: 2px; text-transform: uppercase; background: var(--dark); color: var(--white); text-align: left; }
+  .comparison-table th:not(:first-child) { text-align: center; }
+  .comparison-table th.hl { background: var(--orange); }
+  .comparison-table td { padding: 17px 28px; border-bottom: 1px solid var(--rule); color: var(--mid); }
+  .comparison-table td:not(:first-child) { text-align: center; }
+  .comparison-table td.hl { background: rgba(255,98,0,0.04); font-weight: 600; color: var(--charcoal); }
+  .comparison-table tr:last-child td { border-bottom: none; }
+  .comparison-table tr:hover td { background: var(--bg); }
+  .comparison-table tr:hover td.hl { background: rgba(255,98,0,0.07); }
+  .chk { color: var(--green); font-weight: 700; font-size: 17px; }
+  .crs { color: #CCCCCC; font-size: 17px; }
+  .prt { color: var(--orange); font-size: 13px; font-weight: 600; }
+  .testimonials-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 3px; background: var(--rule); border: 2px solid var(--rule); margin-top: 52px; }
+  .testimonial { background: var(--white); padding: 44px 40px; }
+  .stars { color: var(--orange); font-size: 15px; letter-spacing: 3px; margin-bottom: 20px; }
+  .testimonial-text { font-size: 16px; color: var(--mid); line-height: 1.7; margin-bottom: 28px; font-style: italic; }
+  .testimonial-author { display: flex; align-items: center; gap: 14px; }
+  .author-init { width: 42px; height: 42px; border-radius: 50%; background: var(--orange); display: flex; align-items: center; justify-content: center; font-family: var(--display); font-size: 17px; font-weight: 800; color: var(--white); flex-shrink: 0; }
+  .author-name { font-weight: 600; font-size: 14px; color: var(--charcoal); }
+  .author-title { font-size: 13px; color: var(--muted); margin-top: 2px; }
+  .cta-section { background: var(--dark); padding: 112px 48px; text-align: center; position: relative; overflow: hidden; }
+  .cta-section::before { content: ''; position: absolute; inset: 0; background: radial-gradient(ellipse at 50% 0%, rgba(255,98,0,0.1) 0%, transparent 65%); pointer-events: none; }
+  .cta-section h2 { font-family: var(--display); font-size: clamp(44px, 6vw, 72px); font-weight: 800; line-height: 1.0; color: var(--white); margin-bottom: 20px; position: relative; }
+  .cta-section h2 span { color: var(--orange); }
+  .cta-section p { font-size: 19px; color: #888888; max-width: 440px; margin: 0 auto 44px; line-height: 1.65; position: relative; }
+  .cta-note { margin-top: 22px; font-size: 13px; color: #444444; position: relative; }
+  footer { background: #0C0C0C; padding: 64px 48px 40px; border-top: 3px solid var(--orange); }
+  .footer-inner { max-width: 1160px; margin: 0 auto; }
+  .footer-top { display: grid; grid-template-columns: 1.4fr 1fr 1fr 1fr; gap: 40px; margin-bottom: 52px; }
+  .footer-brand { font-family: var(--display); font-size: 30px; font-weight: 800; color: var(--white); text-decoration: none; display: block; margin-bottom: 12px; }
+  .footer-brand span { color: var(--orange); }
+  .footer-tagline { font-size: 14px; color: #555555; line-height: 1.6; max-width: 240px; }
+  .footer-col h4 { font-family: var(--display); font-size: 11px; font-weight: 700; letter-spacing: 3px; text-transform: uppercase; color: #555555; margin-bottom: 18px; }
+  .footer-col ul { list-style: none; }
+  .footer-col li { margin-bottom: 10px; }
+  .footer-col a { font-size: 14px; color: #777777; text-decoration: none; transition: color 0.2s; }
+  .footer-col a:hover { color: var(--white); }
+  .footer-bottom { border-top: 1px solid rgba(255,255,255,0.05); padding-top: 28px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 14px; }
+  .footer-copy { font-size: 13px; color: #3A3A3A; }
+  .footer-legal { display: flex; gap: 24px; }
+  .footer-legal a { font-size: 13px; color: #3A3A3A; text-decoration: none; transition: color 0.2s; }
+  .footer-legal a:hover { color: #777777; }
+  @keyframes fadeUp { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
+  .hero-eyebrow { animation: fadeUp 0.55s ease both; }
+  .hero h1      { animation: fadeUp 0.55s 0.08s ease both; }
+  .hero-sub     { animation: fadeUp 0.55s 0.16s ease both; }
+  .hero-actions { animation: fadeUp 0.55s 0.24s ease both; }
+  .hero-note    { animation: fadeUp 0.55s 0.32s ease both; }
+  @media (max-width: 900px) {
+    nav { padding: 0 24px; } .nav-links { display: none; }
+    .hero { padding: 120px 24px 80px; }
+    .proof-bar { padding: 20px 24px; gap: 28px; } .proof-divider { display: none; }
+    .section { padding: 72px 24px; }
+    .why-grid { grid-template-columns: 1fr; }
+    .big-idea { grid-template-columns: 1fr; }
+    .metrics-grid { grid-template-columns: 1fr 1fr; gap: 40px; } .metric-item { border-right: none; padding: 0; }
+    .steps-grid { grid-template-columns: 1fr 1fr; } .step { border-right: none; border-bottom: 2px solid var(--rule); }
+    .pricing-layout { grid-template-columns: 1fr; }
+    .testimonials-grid { grid-template-columns: 1fr; }
+    .footer-top { grid-template-columns: 1fr 1fr; }
+    .cta-section { padding: 80px 24px; }
+    footer { padding: 48px 24px 32px; }
+    .metrics-band { padding: 64px 24px; }
+  }
+</style>
+</head>
+<body>
+
+<nav>
+  <a href="#" class="nav-logo">ready<span>Route</span></a>
+  <ul class="nav-links">
+    <li><a href="#why">Why ReadyRoute</a></li>
+    <li><a href="#features">Features</a></li>
+    <li><a href="#pricing">Pricing</a></li>
+    <li><a href="#compare">Compare</a></li>
+    <li><a href="#trial" class="nav-cta">Start Free Trial</a></li>
+  </ul>
+</nav>
+
+<section class="hero">
+  <div class="container">
+    <div class="hero-eyebrow">Built by contractors, for contractors</div>
+    <h1>Route smarter.<br><span>Pay less.</span></h1>
+    <p class="hero-sub">The routing and dispatch platform built for last-mile contractors who run tight margins and need every advantage they can get.</p>
+    <div class="hero-actions">
+      <a href="#trial" class="btn-primary">Start Your Free Trial</a>
+      <a href="#features" class="btn-ghost">See what's included →</a>
+    </div>
+    <p class="hero-note">14-day free trial &nbsp;·&nbsp; No setup fee &nbsp;·&nbsp; Cancel anytime</p>
+  </div>
+</section>
+
+<div class="proof-bar">
+  <div class="proof-item">
+    <div class="proof-number">$15</div>
+    <div class="proof-label">Per vehicle / month</div>
+  </div>
+  <div class="proof-divider"></div>
+  <div class="proof-item">
+    <div class="proof-number">14</div>
+    <div class="proof-label">Day free trial</div>
+  </div>
+  <div class="proof-divider"></div>
+  <div class="proof-item">
+    <div class="proof-number">$0</div>
+    <div class="proof-label">Setup fee. Ever.</div>
+  </div>
+  <div class="proof-divider"></div>
+  <div class="proof-item">
+    <div class="proof-number">iOS + Android</div>
+    <div class="proof-label">Both fully supported</div>
+  </div>
+</div>
+
+<section class="section" id="why">
+  <div class="container">
+    <div class="section-label">Why ReadyRoute</div>
+    <h2 class="section-title">Routing software that<br>works for <span>your bottom line</span></h2>
+    <p class="section-body">Most routing platforms were built for enterprise logistics, then adapted for contractors. ReadyRoute was built from the ground up for the people who actually run the routes.</p>
+    <div class="why-grid">
+      <div class="why-card">
+        <div class="why-big-label">$</div>
+        <div class="why-icon">💰</div>
+        <h3 style="margin-top:20px;">Half the cost of the competition</h3>
+        <p>At $15 per vehicle per month with no setup fees, ReadyRoute is the most affordable full-featured routing platform for last-mile contractors. A 10-vehicle fleet saves over $2,000 a year.</p>
+        <div class="why-stat">Save $150–200 / month on a 10-vehicle fleet</div>
+      </div>
+      <div class="why-card">
+        <div class="why-big-label">⚡</div>
+        <div class="why-icon">⚡</div>
+        <h3 style="margin-top:20px;">Simple enough to use every single day</h3>
+        <p>No training sessions. No onboarding calls. Your manager portal is up in minutes. Drivers log in with a 4-digit PIN and their route is already waiting.</p>
+        <div class="why-stat">Up and running in under 30 minutes</div>
+      </div>
+      <div class="why-card">
+        <div class="why-big-label">📍</div>
+        <div class="why-icon">📍</div>
+        <h3 style="margin-top:20px;">Built for how contractors actually work</h3>
+        <p>We understand the morning manifest pull, the driver who calls in, the route that needs to be split mid-day. Every feature exists because someone running a delivery operation asked for it.</p>
+        <div class="why-stat">Every feature built from the field up</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="section section-alt" id="features">
+  <div class="container">
+    <div class="section-label">Features</div>
+    <h2 class="section-title">Three things that matter<br>most to your <span>operation</span></h2>
+    <p class="section-body">We don't compete on feature count. We compete on the features that actually move the needle for a last-mile delivery contractor.</p>
+    <div class="big-ideas">
+
+      <div class="big-idea">
+        <div class="big-idea-label">
+          <div class="big-idea-number">01 — Save Money</div>
+          <h3>Cut costs.<br>Not <span>corners.</span></h3>
+          <p>The most direct path to better margins is paying less for the tools you use every day — without giving up the features you need to run efficiently.</p>
+        </div>
+        <div class="big-idea-features">
+          <div class="idea-feature">
+            <div class="idea-feature-dot"></div>
+            <div class="idea-feature-content">
+              <h4>$15 per vehicle, all in</h4>
+              <p>No tiers. No add-ons. No annual contract. Every feature included from day one. You pay for active vehicles — nothing more.</p>
+            </div>
+          </div>
+          <div class="idea-feature">
+            <div class="idea-feature-dot"></div>
+            <div class="idea-feature-content">
+              <h4>No setup fees. Ever.</h4>
+              <p>Self-serve from day one. No implementation packages, no migration fees, no onboarding costs.</p>
+            </div>
+          </div>
+          <div class="idea-feature">
+            <div class="idea-feature-dot"></div>
+            <div class="idea-feature-content">
+              <h4>VEDR integration</h4>
+              <p>Access your VEDR cameras directly from the manager portal with one click. No switching apps, no separate login.</p>
+            </div>
+          </div>
+          <div class="idea-feature">
+            <div class="idea-feature-dot"></div>
+            <div class="idea-feature-content">
+              <h4>Cancel anytime — no penalty</h4>
+              <p>No annual contracts, no cancellation fees. You stay because the product earns it.</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="big-idea">
+        <div class="big-idea-label">
+          <div class="big-idea-number">02 — Save Time</div>
+          <h3>More stops.<br>Same <span>shift.</span></h3>
+          <p>Every minute saved per stop multiplies across 80, 100, 120 deliveries a day. ReadyRoute is built to eliminate the small delays that quietly drain your drivers' productivity.</p>
+        </div>
+        <div class="big-idea-features">
+          <div class="idea-feature">
+            <div class="idea-feature-dot"></div>
+            <div class="idea-feature-content">
+              <h4>Automatic morning manifest pull</h4>
+              <p>Connect your dispatch portal once. Every morning, ReadyRoute pulls your manifest automatically and builds your routes before drivers arrive.</p>
+            </div>
+          </div>
+          <div class="idea-feature">
+            <div class="idea-feature-dot"></div>
+            <div class="idea-feature-content">
+              <h4>Driver navigation with full stop details</h4>
+              <p>Drivers see their route, suite numbers, contact names, and pickup windows on one screen. Time commit stops are highlighted so nothing gets missed.</p>
+            </div>
+          </div>
+          <div class="idea-feature">
+            <div class="idea-feature-dot"></div>
+            <div class="idea-feature-content">
+              <h4>Pickups and deliveries in one app</h4>
+              <p>Pickup stops are clearly marked with time windows. Drivers handle deliveries and pickups in a single flow without switching tools.</p>
+            </div>
+          </div>
+          <div class="idea-feature">
+            <div class="idea-feature-dot"></div>
+            <div class="idea-feature-content">
+              <h4>Works offline</h4>
+              <p>Drivers download their route on WiFi before heading out. Navigation keeps working in areas with no signal. Stops sync when connection returns.</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="big-idea">
+        <div class="big-idea-label">
+          <div class="big-idea-number">03 — Stay in Control</div>
+          <h3>See everything.<br>Miss <span>nothing.</span></h3>
+          <p>Running a delivery operation from a distance means you need real information in real time. Live visibility into every route, every driver, every stop.</p>
+        </div>
+        <div class="big-idea-features">
+          <div class="idea-feature">
+            <div class="idea-feature-dot"></div>
+            <div class="idea-feature-content">
+              <h4>Live fleet dashboard</h4>
+              <p>See every driver's position, stops completed, stops remaining, and current pace on one screen. Map view or list view — updated every 30 seconds.</p>
+            </div>
+          </div>
+          <div class="idea-feature">
+            <div class="idea-feature-dot"></div>
+            <div class="idea-feature-content">
+              <h4>Driver management and timekeeping</h4>
+              <p>Add drivers, track hours, and export payroll data directly from the portal. Pre-trip inspection and safety training gates included.</p>
+            </div>
+          </div>
+          <div class="idea-feature">
+            <div class="idea-feature-dot"></div>
+            <div class="idea-feature-content">
+              <h4>Vehicle management</h4>
+              <p>Track your fleet in one place. Assign vehicles to routes each morning, log service records, and get notified when maintenance is due.</p>
+            </div>
+          </div>
+          <div class="idea-feature">
+            <div class="idea-feature-dot"></div>
+            <div class="idea-feature-content">
+              <h4>Performance analytics</h4>
+              <p>Stops per hour, delivery rates, and driver performance trends over time. Know where your operation has room to improve.</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</section>
+
+<div class="metrics-band">
+  <div class="container">
+    <div class="metrics-grid">
+      <div class="metric-item">
+        <div class="metric-value">$15</div>
+        <div class="metric-label">Per vehicle per month.<br>Every feature included.</div>
+      </div>
+      <div class="metric-item">
+        <div class="metric-value">30s</div>
+        <div class="metric-label">GPS update interval.<br>Live fleet visibility.</div>
+      </div>
+      <div class="metric-item">
+        <div class="metric-value">$0</div>
+        <div class="metric-label">Setup fee. No contracts.<br>No cancellation penalties.</div>
+      </div>
+      <div class="metric-item">
+        <div class="metric-value">15min</div>
+        <div class="metric-label">From signup to<br>your first route running.</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<section class="section" id="how-it-works">
+  <div class="container">
+    <div class="section-label">How It Works</div>
+    <h2 class="section-title">Up and running<br><span>in one morning</span></h2>
+    <p class="section-body">No onboarding calls. No consultants. ReadyRoute is self-serve by design.</p>
+    <div class="steps-grid">
+      <div class="step">
+        <div class="step-num">01</div>
+        <h3>Connect Your Portal</h3>
+        <p>Set ReadyRoute as a vendor in your dispatch portal's data subscriptions. Your manifest pulls automatically every morning after that.</p>
+      </div>
+      <div class="step">
+        <div class="step-num">02</div>
+        <h3>Add Your Drivers</h3>
+        <p>Enter each driver's name and set a 4-digit PIN. They download the app, log in, and their route is waiting.</p>
+      </div>
+      <div class="step">
+        <div class="step-num">03</div>
+        <h3>Assign and Push</h3>
+        <p>Match routes to drivers in the manager portal and push to their phones. Routes appear on the driver app immediately.</p>
+      </div>
+      <div class="step">
+        <div class="step-num">04</div>
+        <h3>Monitor Live</h3>
+        <p>Watch the live fleet dashboard from anywhere. See every driver's progress in real time — your office, your truck, or your phone.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="section section-alt" id="pricing">
+  <div class="container">
+    <div class="section-label">Pricing</div>
+    <h2 class="section-title">Simple pricing.<br><span>No surprises.</span></h2>
+    <p class="section-body">One flat rate per active vehicle. Every feature included. Start with a 14-day free trial.</p>
+    <div class="pricing-layout">
+      <div class="pricing-card">
+        <div class="pricing-tier">Free Trial</div>
+        <div class="pricing-price">$0</div>
+        <div class="pricing-per">for 14 days</div>
+        <ul class="pricing-list">
+          <li>Full access to every feature</li>
+          <li>Unlimited routes and stops</li>
+          <li>Manifest integration included</li>
+          <li>Live fleet dashboard</li>
+        </ul>
+        <a href="#trial" class="btn-primary" style="display:block;text-align:center;">Start Free Trial</a>
+      </div>
+      <div class="pricing-card featured">
+        <div class="pricing-badge">Everything Included</div>
+        <div class="pricing-tier">ReadyRoute</div>
+        <div class="pricing-price">$15</div>
+        <div class="pricing-per">per active vehicle / per month</div>
+        <ul class="pricing-list">
+          <li>Unlimited routes and stops</li>
+          <li>Unlimited drivers</li>
+          <li>Automatic manifest pull</li>
+          <li>Live GPS fleet dashboard</li>
+          <li>Driver navigation with stop details</li>
+          <li>VEDR access from manager portal</li>
+          <li>Driver management and timekeeping</li>
+          <li>Vehicle management</li>
+          <li>Performance analytics</li>
+          <li>iOS + Android driver app</li>
+          <li>No setup fee. No contracts. Cancel anytime.</li>
+        </ul>
+        <a href="#trial" class="btn-primary" style="display:block;text-align:center;">Get Started</a>
+        <p class="pricing-note">A vehicle is active if it completes at least one delivery in the billing period. Billed monthly. Cancel anytime with no penalties.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="section" id="compare">
+  <div class="container">
+    <div class="section-label">Comparison</div>
+    <h2 class="section-title">See how ReadyRoute<br><span>compares</span></h2>
+    <p class="section-body">An honest look at how ReadyRoute stacks up on the things that matter most to contractors watching their margins.</p>
+    <div class="comparison-wrap">
+      <table class="comparison-table">
+        <thead>
+          <tr>
+            <th style="width:32%">Feature</th>
+            <th class="hl" style="width:23%">ReadyRoute</th>
+            <th style="width:23%">Competitor A</th>
+            <th style="width:22%">Competitor B</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Price per vehicle / month</td>
+            <td class="hl"><strong>$15</strong></td>
+            <td>$30–35</td>
+            <td>$25 + setup fees</td>
+          </tr>
+          <tr>
+            <td>Setup fee</td>
+            <td class="hl"><span class="chk">✓</span> None — ever</td>
+            <td><span class="chk">✓</span> None</td>
+            <td><span class="crs">$500–$25,000</span></td>
+          </tr>
+          <tr>
+            <td>Free trial</td>
+            <td class="hl"><span class="chk">✓</span> 14 days</td>
+            <td><span class="crs">✗</span></td>
+            <td><span class="chk">✓</span> 7 days</td>
+          </tr>
+          <tr>
+            <td>Automatic manifest pull</td>
+            <td class="hl"><span class="chk">✓</span></td>
+            <td><span class="chk">✓</span></td>
+            <td><span class="chk">✓</span></td>
+          </tr>
+          <tr>
+            <td>Real-time GPS tracking</td>
+            <td class="hl"><span class="chk">✓</span> Every 30 seconds</td>
+            <td><span class="chk">✓</span></td>
+            <td><span class="crs">✗</span> Manual check-ins</td>
+          </tr>
+          <tr>
+            <td>VEDR camera access</td>
+            <td class="hl"><span class="chk">✓</span> One click from portal</td>
+            <td><span class="chk">✓</span></td>
+            <td><span class="crs">✗</span></td>
+          </tr>
+          <tr>
+            <td>iOS + Android equal support</td>
+            <td class="hl"><span class="chk">✓</span></td>
+            <td><span class="prt">iOS-biased</span></td>
+            <td><span class="chk">✓</span></td>
+          </tr>
+          <tr>
+            <td>Driver management + payroll export</td>
+            <td class="hl"><span class="chk">✓</span></td>
+            <td><span class="chk">✓</span></td>
+            <td><span class="crs">✗</span></td>
+          </tr>
+          <tr>
+            <td>Performance analytics</td>
+            <td class="hl"><span class="chk">✓</span></td>
+            <td><span class="prt">Limited</span></td>
+            <td><span class="crs">✗</span></td>
+          </tr>
+          <tr>
+            <td>No annual contract required</td>
+            <td class="hl"><span class="chk">✓</span></td>
+            <td><span class="prt">Varies</span></td>
+            <td><span class="chk">✓</span></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</section>
+
+<section class="section section-alt">
+  <div class="container">
+    <div class="section-label">From the field</div>
+    <h2 class="section-title">Contractors who switched<br><span>don't go back</span></h2>
+    <div class="testimonials-grid">
+      <div class="testimonial">
+        <div class="stars">★★★★★</div>
+        <p class="testimonial-text">"The math was simple. Same features, half the cost. I run 12 vehicles — switching to ReadyRoute saves me over $200 a month. I don't know why I waited."</p>
+        <div class="testimonial-author">
+          <div class="author-init">DM</div>
+          <div>
+            <div class="author-name">David M.</div>
+            <div class="author-title">Delivery Contractor · 12 vehicles</div>
+          </div>
+        </div>
+      </div>
+      <div class="testimonial">
+        <div class="stars">★★★★★</div>
+        <p class="testimonial-text">"Setup took about 20 minutes. My drivers had the app on their phones before lunch. I've used platforms that took a week of onboarding calls to get going. This was nothing like that."</p>
+        <div class="testimonial-author">
+          <div class="author-init">SK</div>
+          <div>
+            <div class="author-name">Sandra K.</div>
+            <div class="author-title">Delivery Contractor · 7 vehicles</div>
+          </div>
+        </div>
+      </div>
+      <div class="testimonial">
+        <div class="stars">★★★★★</div>
+        <p class="testimonial-text">"Watching my whole fleet on the dashboard in real time is something I didn't know I needed until I had it. I can spot a problem at 10am instead of hearing about it at 6pm."</p>
+        <div class="testimonial-author">
+          <div class="author-init">TJ</div>
+          <div>
+            <div class="author-name">Tony J.</div>
+            <div class="author-title">Delivery Contractor · 18 vehicles</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="cta-section" id="trial">
+  <div class="container">
+    <h2>Start routing smarter<br><span>today.</span></h2>
+    <p>14 days free. No setup fee. No commitment. Your first route running in 15 minutes.</p>
+    <div>
+      <a href="#" class="btn-primary" style="font-size:20px;padding:20px 56px;">Start Your Free Trial</a>
+    </div>
+    <p class="cta-note">Questions? Email us at info@readyroute.org — we respond the same day.</p>
+  </div>
+</section>
+
+<footer>
+  <div class="footer-inner">
+    <div class="footer-top">
+      <div>
+        <a href="#" class="footer-brand">ready<span>Route</span></a>
+        <p class="footer-tagline">Routing and dispatch built by contractors, for contractors. Serving last-mile delivery operations across the United States.</p>
+      </div>
+      <div class="footer-col">
+        <h4>Product</h4>
+        <ul>
+          <li><a href="#why">Why ReadyRoute</a></li>
+          <li><a href="#features">Features</a></li>
+          <li><a href="#pricing">Pricing</a></li>
+          <li><a href="#compare">Compare</a></li>
+        </ul>
+      </div>
+      <div class="footer-col">
+        <h4>Support</h4>
+        <ul>
+          <li><a href="#">Help Center</a></li>
+          <li><a href="#">Portal Setup Guide</a></li>
+          <li><a href="#">Contact Us</a></li>
+          <li><a href="mailto:info@readyroute.org">info@readyroute.org</a></li>
+        </ul>
+      </div>
+      <div class="footer-col">
+        <h4>Company</h4>
+        <ul>
+          <li><a href="#">About</a></li>
+          <li><a href="#">Privacy Policy</a></li>
+          <li><a href="#">Terms of Service</a></li>
+        </ul>
+      </div>
+    </div>
+    <div class="footer-bottom">
+      <div class="footer-copy">© 2026 ReadyRoute. All rights reserved.</div>
+      <div class="footer-legal">
+        <a href="#">Privacy</a>
+        <a href="#">Terms</a>
+        <a href="#">Contact</a>
+      </div>
+    </div>
+  </div>
+</footer>
+
+</body>
+</html>
