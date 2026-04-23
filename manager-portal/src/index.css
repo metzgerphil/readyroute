@@ -382,6 +382,69 @@ input {
   text-align: center;
 }
 
+.driver-directory-list {
+  display: grid;
+  gap: 14px;
+}
+
+.driver-directory-card {
+  border: 1px solid #e6dfd4;
+  border-radius: 22px;
+  background: #fffdfa;
+  overflow: hidden;
+}
+
+.driver-directory-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 18px 20px;
+  align-items: center;
+}
+
+.driver-directory-identity {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.driver-directory-identity strong {
+  font-size: 1.05rem;
+  color: #173042;
+}
+
+.driver-directory-identity span {
+  color: #66737c;
+  word-break: break-word;
+}
+
+.driver-directory-meta {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.driver-directory-rate {
+  font-weight: 800;
+  color: #173042;
+}
+
+.driver-directory-expansion {
+  border-top: 1px solid #efe7db;
+  padding: 18px 20px 20px;
+  display: grid;
+  gap: 16px;
+  background: #fff;
+}
+
+.driver-directory-actions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
 .card,
 .login-card,
 .stat-card {
