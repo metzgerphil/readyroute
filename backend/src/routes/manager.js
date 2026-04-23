@@ -317,6 +317,19 @@ function toManagerAccessRecord(managerUser, primaryManagerEmail) {
   };
 }
 
+function isManagerUsersGlobalEmailConstraintError(error) {
+  if (!error) {
+    return false;
+  }
+
+  const combined = String(error.message || error.details || error.hint || error.code || '').toLowerCase();
+
+  return (
+    error.code === '23505' &&
+    (combined.includes('manager_users_email') || combined.includes('manager_users_email_key'))
+  );
+}
+
 async function getAccountManagerContext(supabase, accountId) {
   const { data: account, error } = await supabase
     .from('accounts')
@@ -703,6 +716,7 @@ function createManagerRouter(options = {}) {
       const existingManagerUserQuery = await supabase
         .from('manager_users')
         .select('id, account_id, email, full_name, password_hash, is_active, invited_at, accepted_at')
+        .eq('account_id', req.account.account_id)
         .eq('email', email)
         .maybeSingle();
 
@@ -716,15 +730,32 @@ function createManagerRouter(options = {}) {
 
       let managerUser = existingManagerUserQuery.data || null;
 
-      if (managerUser && managerUser.account_id !== req.account.account_id) {
-        return res.status(409).json({ error: 'That email is already assigned to another ReadyRoute account' });
-      }
-
       if (managerUser && managerUser.password_hash) {
         return res.status(409).json({ error: 'That manager already has active access. Use password reset if they need a new password.' });
       }
 
       const invitedAt = nowProvider().toISOString();
+      let sharedManagerIdentity = null;
+
+      if (!managerUser) {
+        const existingManagerIdentityQuery = await supabase
+          .from('manager_users')
+          .select('id, account_id, email, full_name, password_hash, is_active, invited_at, accepted_at, created_at')
+          .eq('email', email)
+          .limit(25);
+
+        if (existingManagerIdentityQuery.error) {
+          if (isMissingManagerUsersTable(existingManagerIdentityQuery.error)) {
+            return res.status(500).json({ error: 'Manager user invites are not available until the latest database migration is run' });
+          }
+
+          throw existingManagerIdentityQuery.error;
+        }
+
+        sharedManagerIdentity = (existingManagerIdentityQuery.data || []).find((row) =>
+          row.account_id !== req.account.account_id && row.password_hash
+        ) || null;
+      }
 
       if (managerUser) {
         const { data: updatedManagerUser, error: updateError } = await supabase
@@ -750,50 +781,85 @@ function createManagerRouter(options = {}) {
           .insert({
             account_id: req.account.account_id,
             email,
-            full_name: fullName,
-            password_hash: null,
+            full_name: fullName || sharedManagerIdentity?.full_name || null,
+            password_hash: sharedManagerIdentity?.password_hash || null,
             is_active: true,
             invited_at: invitedAt,
-            accepted_at: null
+            accepted_at: sharedManagerIdentity?.password_hash ? invitedAt : null
           })
           .select('id, account_id, email, full_name, password_hash, is_active, invited_at, accepted_at')
           .maybeSingle();
 
         if (insertError) {
+          if (isManagerUsersGlobalEmailConstraintError(insertError)) {
+            return res.status(409).json({
+              error: 'This manager email already exists in another CSA, but the database is still using the older single-CSA manager constraint. Run the latest database migration, then try again.'
+            });
+          }
+
           throw insertError;
         }
 
         managerUser = insertedManagerUser;
       }
 
-      const inviteToken = jwt.sign(
-        {
-          account_id: req.account.account_id,
-          manager_user_id: managerUser.id,
-          email: managerUser.email,
-          purpose: 'manager_invite'
-        },
-        jwtSecret,
-        { expiresIn: '7d' }
-      );
+      let emailResult = {
+        delivered: false,
+        skipped: true,
+        reason: 'Email service is not configured'
+      };
+      let inviteUrl = null;
 
-      const inviteUrl = buildManagerInviteUrl(inviteToken);
-      const emailResult = await sendManagerInviteEmail({
-        to: managerUser.email,
-        fullName: managerUser.full_name,
-        inviteUrl,
-        companyName: account.company_name,
-        inviterName: req.account.manager_name || req.account.manager_email || 'A ReadyRoute admin'
-      });
+      if (!managerUser.password_hash) {
+        const inviteToken = jwt.sign(
+          {
+            account_id: req.account.account_id,
+            manager_user_id: managerUser.id,
+            email: managerUser.email,
+            purpose: 'manager_invite'
+          },
+          jwtSecret,
+          { expiresIn: '7d' }
+        );
+
+        inviteUrl = buildManagerInviteUrl(inviteToken);
+
+        try {
+          emailResult = await sendManagerInviteEmail({
+            to: managerUser.email,
+            fullName: managerUser.full_name,
+            inviteUrl,
+            companyName: account.company_name,
+            inviterName: req.account.manager_name || req.account.manager_email || 'A ReadyRoute admin'
+          });
+        } catch (emailError) {
+          console.error('Manager invite email delivery failed:', emailError);
+          emailResult = {
+            delivered: false,
+            skipped: false,
+            reason: 'Email delivery failed'
+          };
+        }
+      } else {
+        emailResult = {
+          delivered: false,
+          skipped: true,
+          reason: 'Existing manager access linked'
+        };
+      }
 
       console.log(`Manager invite link for ${managerUser.email}: ${inviteUrl}`);
 
       return res.status(200).json({
-        message: emailResult.delivered
-          ? `Invite email sent to ${managerUser.email}.`
-          : 'Invite link ready. Email delivery is not configured yet, so share the link securely.',
-        invite_url: emailResult.delivered ? null : inviteUrl,
-        email_delivery: emailResult.delivered ? 'sent' : 'not_configured',
+        message: managerUser.password_hash
+          ? `${managerUser.email} already has ReadyRoute access, so they were linked to this CSA immediately.`
+          : emailResult.delivered
+            ? `Invite email sent to ${managerUser.email}.`
+            : emailResult.skipped
+              ? 'Invite link ready. Email delivery is not configured yet, so share the link securely.'
+              : 'Invite link ready. Email delivery failed, so share the link securely.',
+        invite_url: managerUser.password_hash || emailResult.delivered ? null : inviteUrl,
+        email_delivery: managerUser.password_hash ? 'linked_existing_manager' : emailResult.delivered ? 'sent' : emailResult.skipped ? 'not_configured' : 'failed',
         manager_user: toManagerAccessRecord(managerUser, account.manager_email)
       });
     } catch (error) {

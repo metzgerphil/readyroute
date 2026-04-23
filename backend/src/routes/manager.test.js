@@ -1687,3 +1687,109 @@ test('POST /manager/manager-users/invite returns a self-serve invite link', asyn
     await server.close();
   }
 });
+
+test('POST /manager/manager-users/invite links an existing manager from another CSA immediately', async () => {
+  let insertedManagerUser = null;
+  const supabase = new MockSupabase((query) => {
+    if (query.table === 'accounts' && query.operation === 'select') {
+      return {
+        data: {
+          id: 'acct-2',
+          company_name: 'PVD Delivery Inc',
+          manager_email: 'owner@pvd.com'
+        },
+        error: null
+      };
+    }
+
+    if (query.table === 'manager_users' && query.operation === 'select') {
+      const accountFilter = query.filters.find((filter) => filter.column === 'account_id');
+      const emailFilter = query.filters.find((filter) => filter.column === 'email');
+
+      if (accountFilter?.value === 'acct-2') {
+        return {
+          data: null,
+          error: null
+        };
+      }
+
+      if (emailFilter?.value === 'ignacioservin94@yahoo.com') {
+        return {
+          data: [
+            {
+              id: 'manager-bridge',
+              account_id: 'acct-1',
+              email: 'ignacioservin94@yahoo.com',
+              full_name: 'Ignacio Servin',
+              password_hash: '$2b$10$sharedhash',
+              is_active: true,
+              invited_at: '2026-04-20T10:00:00.000Z',
+              accepted_at: '2026-04-20T10:05:00.000Z',
+              created_at: '2026-04-20T10:00:00.000Z'
+            }
+          ],
+          error: null
+        };
+      }
+
+      return {
+        data: null,
+        error: null
+      };
+    }
+
+    if (query.table === 'manager_users' && query.operation === 'insert') {
+      insertedManagerUser = {
+        id: 'manager-pvd',
+        account_id: 'acct-2',
+        email: 'ignacioservin94@yahoo.com',
+        full_name: 'Ignacio Servin',
+        password_hash: '$2b$10$sharedhash',
+        is_active: true,
+        invited_at: '2026-04-23T15:00:00.000Z',
+        accepted_at: '2026-04-23T15:00:00.000Z'
+      };
+
+      assert.equal(query.payload.password_hash, '$2b$10$sharedhash');
+      assert.equal(query.payload.accepted_at, '2026-04-23T15:00:00.000Z');
+
+      return {
+        data: insertedManagerUser,
+        error: null
+      };
+    }
+
+    throw new Error(`Unexpected query ${query.table}:${query.operation}`);
+  });
+
+  const server = await startTestServer({
+    supabase,
+    now: () => new Date('2026-04-23T15:00:00.000Z'),
+    sendManagerInviteEmail: async () => {
+      throw new Error('Should not send invite email when linking an existing manager');
+    }
+  });
+
+  try {
+    const response = await fetch(`${server.baseUrl}/manager/manager-users/invite`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${signManagerToken({ account_id: 'acct-2' })}`
+      },
+      body: JSON.stringify({
+        email: 'ignacioservin94@yahoo.com',
+        full_name: 'Ignacio Servin'
+      })
+    });
+
+    assert.equal(response.status, 200);
+    const body = await response.json();
+    assert.equal(body.email_delivery, 'linked_existing_manager');
+    assert.equal(body.invite_url, null);
+    assert.equal(body.manager_user.status, 'active');
+    assert.equal(insertedManagerUser.email, 'ignacioservin94@yahoo.com');
+  } finally {
+    await server.close();
+  }
+});
