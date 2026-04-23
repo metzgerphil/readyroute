@@ -50,10 +50,5 @@ jobs:
           JWT_SECRET: test-secret
         run: npm run test:unit
 
-      - name: Run backend e2e tests
-        if: ${{ secrets.SUPABASE_URL != '' && secrets.SUPABASE_SERVICE_KEY != '' && secrets.JWT_SECRET != '' }}
-        env:
-          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
-          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
-          JWT_SECRET: ${{ secrets.JWT_SECRET }}
-        run: npm run test:e2e -- --runInBand
+      - name: Skip backend e2e in GitHub CI for now
+        run: echo "Backend e2e remains a local/release check until GitHub test secrets are configured."
