@@ -574,6 +574,56 @@ export default function DriversPage() {
       <div className="card">
         <div className="section-title-row">
           <div>
+            <div className="card-title">Driver Directory</div>
+            <div className="driver-meta">
+              Every driver added to this CSA appears here, even before they have any labor activity.
+            </div>
+          </div>
+          <div className="driver-meta">
+            {drivers.length} driver{drivers.length === 1 ? '' : 's'}
+          </div>
+        </div>
+
+        {driversQuery.isLoading ? (
+          <div className="driver-meta">Loading drivers...</div>
+        ) : driversQuery.isError ? (
+          <div className="error-banner">Unable to load drivers.</div>
+        ) : drivers.length ? (
+          <div className="driver-directory-list">
+            {drivers.map((driver) => (
+              <div className="driver-directory-card" key={driver.id}>
+                <div className="driver-directory-row">
+                  <div className="driver-directory-identity">
+                    <strong>{driver.name}</strong>
+                    <span>{driver.email}</span>
+                  </div>
+                  <div className="driver-directory-meta">
+                    <span>{formatPhoneDisplay(driver.phone)}</span>
+                    <span>{driver.is_active ? 'Active' : 'Inactive'}</span>
+                  </div>
+                  <div className="driver-directory-rate">
+                    {formatCurrency(driver.hourly_rate || 0)}/hr
+                  </div>
+                </div>
+                <div className="driver-directory-actions">
+                  <button className="secondary-inline-button" onClick={() => openEditModal(driver)} type="button">
+                    Edit Driver
+                  </button>
+                  <button className="secondary-inline-button" onClick={() => handleStatusToggle(driver)} type="button">
+                    {driver.is_active ? 'Deactivate Driver' : 'Activate Driver'}
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div className="labor-empty-state">No drivers have been added to this CSA yet.</div>
+        )}
+      </div>
+
+      <div className="card">
+        <div className="section-title-row">
+          <div>
             <div className="card-title">Finalized Day</div>
             <div className="driver-meta">
               {dailyLaborQuery.data?.snapshot
