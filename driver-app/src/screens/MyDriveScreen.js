@@ -1,10 +1,15 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { ActivityIndicator, Alert, Animated, Linking, Pressable, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Alert, Linking, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 import * as Location from 'expo-location';
-import MapView, { Callout, Marker, PROVIDER_GOOGLE } from 'react-native-maps';
+import MapView, { Marker, PROVIDER_GOOGLE } from 'react-native-maps';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import api from '../services/api';
+import { getPinColorMode, removeClockInTime, saveClockInTime, subscribePinColorMode } from '../services/auth';
+import { getSidBucketTheme } from '../utils/sidBuckets';
+
+const googleMapsApiKey = process.env.EXPO_PUBLIC_GOOGLE_MAPS_API_KEY || '';
+const shouldUseGoogleProvider = Platform.OS !== 'ios' || Boolean(String(googleMapsApiKey).trim());
 
 export function getPendingStops(stops) {
   return (stops || []).filter((stop) => stop.status === 'pending');
@@ -20,6 +25,69 @@ export function getStopsPerHourLabel(value) {
   }
 
   return `${value} stops/hr`;
+}
+
+export function formatBreakLabel(breakType) {
+  switch (breakType) {
+    case 'lunch':
+      return 'Lunch';
+    case 'other':
+      return 'Break';
+    case 'rest':
+    default:
+      return 'Break';
+  }
+}
+
+export function getBreakAutoEndTimestamp(activeBreak) {
+  if (!activeBreak?.started_at) {
+    return null;
+  }
+
+  if (activeBreak?.scheduled_end_at) {
+    return activeBreak.scheduled_end_at;
+  }
+
+  const startedAtMs = new Date(activeBreak.started_at).getTime();
+
+  if (!Number.isFinite(startedAtMs)) {
+    return null;
+  }
+
+  const durationMinutes = activeBreak.break_type === 'lunch' ? 30 : 15;
+  return new Date(startedAtMs + durationMinutes * 60 * 1000).toISOString();
+}
+
+export function formatLaborTime(timestamp) {
+  if (!timestamp) {
+    return '—';
+  }
+
+  const date = new Date(timestamp);
+
+  if (Number.isNaN(date.getTime())) {
+    return '—';
+  }
+
+  return date.toLocaleTimeString([], {
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false
+  });
+}
+
+export function getMarkerRenderKey({ itemId, isCurrentStop, refreshVersion }) {
+  return `${itemId}:${isCurrentStop ? 'selected' : 'idle'}:${refreshVersion}`;
+}
+
+export function getDriverHeading(location) {
+  const heading = Number(location?.coords?.heading);
+
+  if (!Number.isFinite(heading) || heading < 0) {
+    return 0;
+  }
+
+  return heading;
 }
 
 export function toCoordinate(stop) {
@@ -74,7 +142,7 @@ export function getFocusCoordinates({ currentLocation, selectedStop }) {
   return coordinates;
 }
 
-export function getMapRegion({ currentStop, currentLocation }) {
+export function getMapRegion({ currentStop, currentLocation, mappableStops = [] }) {
   const stopCoordinate = toCoordinate(currentStop);
 
   if (stopCoordinate) {
@@ -83,6 +151,26 @@ export function getMapRegion({ currentStop, currentLocation }) {
       latitudeDelta: 0.035,
       longitudeDelta: 0.035
     };
+  }
+
+  if (mappableStops.length) {
+    const coordinates = mappableStops.map((stop) => toCoordinate(stop)).filter(Boolean);
+
+    if (coordinates.length) {
+      const latitudes = coordinates.map((coordinate) => coordinate.latitude);
+      const longitudes = coordinates.map((coordinate) => coordinate.longitude);
+      const minLatitude = Math.min(...latitudes);
+      const maxLatitude = Math.max(...latitudes);
+      const minLongitude = Math.min(...longitudes);
+      const maxLongitude = Math.max(...longitudes);
+
+      return {
+        latitude: (minLatitude + maxLatitude) / 2,
+        longitude: (minLongitude + maxLongitude) / 2,
+        latitudeDelta: Math.max((maxLatitude - minLatitude) * 1.4, 0.04),
+        longitudeDelta: Math.max((maxLongitude - minLongitude) * 1.4, 0.04)
+      };
+    }
   }
 
   if (currentLocation?.coords) {
@@ -186,21 +274,9 @@ export function getTimeCommitUrgency(stop, now = new Date()) {
   };
 }
 
-export function getStopStatusColors(status, isCurrentStop, stopType, stop) {
+export function getStopStatusColors(status, isCurrentStop, stopType, stop, pinColorMode = 'sid') {
   if (isCurrentStop) {
     return { fill: '#1a2332', border: '#101826', text: '#ffffff' };
-  }
-
-  if (stopType === 'pickup' || stop?.has_time_commit) {
-    return { fill: '#2980b9', border: '#1f618d', text: '#ffffff' };
-  }
-
-  if (stop?.is_business) {
-    return { fill: '#ffffff', border: '#4d148c', text: '#111111' };
-  }
-
-  if (stop?.is_apartment_unit || stop?.apartment_intelligence) {
-    return { fill: '#ffffff', border: '#ff6200', text: '#111111' };
   }
 
   switch (status) {
@@ -214,6 +290,14 @@ export function getStopStatusColors(status, isCurrentStop, stopType, stop) {
       return { fill: '#e74c3c', border: '#cb4335', text: '#ffffff' };
     case 'pending':
     default:
+      if (pinColorMode === 'sid') {
+        const sidTheme = getSidBucketTheme(stop?.sid);
+
+        if (sidTheme) {
+          return { fill: '#ffffff', border: sidTheme.border, text: sidTheme.border };
+        }
+      }
+
       return { fill: '#ffffff', border: '#111111', text: '#111111' };
   }
 }
@@ -261,6 +345,24 @@ export function getBannerBadges(stop) {
 
 export function getVisibleBannerBadges(stop) {
   return getBannerBadges(stop).slice(0, 3);
+}
+
+function getSidBadgeStyle(sid, pinColorMode = 'sid') {
+  if (pinColorMode !== 'sid') {
+    return null;
+  }
+
+  const theme = getSidBucketTheme(sid);
+
+  if (!theme) {
+    return null;
+  }
+
+  return {
+    backgroundColor: theme.fill,
+    borderColor: theme.border,
+    textColor: theme.text
+  };
 }
 
 export function formatWarningFlag(flag) {
@@ -467,52 +569,164 @@ function getTimeCommitAlertBadge(stop, now = new Date()) {
   };
 }
 
-function MapPin({ isCurrentStop, now, stop }) {
-  const stopType = getStopType(stop);
-  const colors = getStopStatusColors(stop.status, isCurrentStop, stopType, stop);
-  const hasTimeCommit = Boolean(stop.has_time_commit);
-  const hasNote = Boolean(stop.has_note);
-  const isApartment = Boolean(stop.is_apartment_unit || stop.apartment_intelligence);
-  const pinSize = isCurrentStop ? 36 : 30;
-  const ringSize = isCurrentStop ? 44 : 38;
-  const mainLabel = stopType === 'pickup' || hasTimeCommit ? '+' : String(stop.sequence_order);
-  const urgency = hasTimeCommit ? getTimeCommitUrgency(stop, now) : null;
-  const urgencyStyles = getUrgencyStyles(urgency?.level);
-  const pulseValue = useRef(new Animated.Value(1)).current;
+function getStopGroupKey(stop) {
+  const normalizedAddress = String(stop?.property_intel?.normalized_address || '').trim();
+  const groupedCount = Number(stop?.property_intel?.grouped_stop_count || 0);
+  const isApartmentGroup = Boolean(
+    stop?.is_apartment_unit ||
+      stop?.apartment_intelligence ||
+      stop?.property_intel?.location_type === 'apartment'
+  );
 
-  useEffect(() => {
-    if (!hasTimeCommit || !urgency || (urgency.level !== 'urgent' && urgency.level !== 'overdue')) {
-      pulseValue.stopAnimation();
-      pulseValue.setValue(1);
-      return undefined;
+  if (!normalizedAddress || groupedCount <= 1 || !isApartmentGroup) {
+    return null;
+  }
+
+  return normalizedAddress;
+}
+
+function getStopPrimaryAddress(stop) {
+  const fullAddress = String(stop?.address || '').trim();
+  const secondary = String(stop?.address_line2 || '').trim();
+
+  if (!fullAddress) {
+    return '';
+  }
+
+  const parts = fullAddress.split(',').map((part) => part.trim()).filter(Boolean);
+
+  if (secondary && parts.length > 1 && parts[1] === secondary) {
+    return parts[0];
+  }
+
+  return parts[0] || fullAddress;
+}
+
+function getStopLocalityLine(stop) {
+  const fullAddress = String(stop?.address || '').trim();
+  const secondary = String(stop?.address_line2 || '').trim();
+
+  if (!fullAddress) {
+    return '';
+  }
+
+  const parts = fullAddress.split(',').map((part) => part.trim()).filter(Boolean);
+
+  if (secondary && parts.length > 1 && parts[1] === secondary) {
+    return parts.slice(2).join(', ');
+  }
+
+  return parts.slice(1).join(', ');
+}
+
+function getGroupedStopUnitLabel(stop) {
+  const unitNumber = stop?.apartment_intelligence?.unit_number || stop?.property_intel?.unit;
+
+  if (unitNumber) {
+    return `Unit ${unitNumber}`;
+  }
+
+  if (stop?.address_line2) {
+    return stop.address_line2;
+  }
+
+  return getStopPrimaryAddress(stop);
+}
+
+function buildMapItems(stops) {
+  const sortedStops = [...(stops || [])].sort((a, b) => Number(a.sequence_order || 0) - Number(b.sequence_order || 0));
+  const groupedItems = new Map();
+  const items = [];
+
+  for (const stop of sortedStops) {
+    const coordinate = toCoordinate(stop);
+
+    if (!coordinate) {
+      continue;
     }
 
-    const loop = Animated.loop(
-      Animated.sequence([
-        Animated.timing(pulseValue, {
-          toValue: 1.12,
-          duration: 650,
-          useNativeDriver: true
-        }),
-        Animated.timing(pulseValue, {
-          toValue: 1,
-          duration: 650,
-          useNativeDriver: true
-        })
-      ])
-    );
+    const groupKey = getStopGroupKey(stop);
 
-    loop.start();
+    if (!groupKey) {
+      items.push({
+        type: 'stop',
+        id: `stop:${stop.id}`,
+        coordinate,
+        stop
+      });
+      continue;
+    }
 
-    return () => {
-      loop.stop();
-      pulseValue.setValue(1);
+    let group = groupedItems.get(groupKey);
+
+    if (!group) {
+      group = {
+        type: 'group',
+        id: `group:${groupKey}`,
+        groupKey,
+        stops: [],
+        coordinates: []
+      };
+      groupedItems.set(groupKey, group);
+      items.push(group);
+    }
+
+    group.stops.push(stop);
+    group.coordinates.push(coordinate);
+  }
+
+  return items.map((item) => {
+    if (item.type !== 'group') {
+      return item;
+    }
+
+    const stopsInGroup = [...item.stops].sort((a, b) => Number(a.sequence_order || 0) - Number(b.sequence_order || 0));
+    const representativeStop = stopsInGroup.find((stop) => stop.status === 'pending') || stopsInGroup[0];
+    const coordinates = item.coordinates.length ? item.coordinates : stopsInGroup.map((stop) => toCoordinate(stop)).filter(Boolean);
+    const latitude = coordinates.reduce((sum, coordinate) => sum + coordinate.latitude, 0) / coordinates.length;
+    const longitude = coordinates.reduce((sum, coordinate) => sum + coordinate.longitude, 0) / coordinates.length;
+
+    return {
+      type: 'group',
+      id: item.id,
+      groupKey: item.groupKey,
+      coordinate: { latitude, longitude },
+      stops: stopsInGroup,
+      representativeStop,
+      primaryAddress: getStopPrimaryAddress(representativeStop),
+      localityLine: getStopLocalityLine(representativeStop),
+      packageCount: stopsInGroup.reduce(
+        (sum, stop) => sum + Number(stop?.packages?.length || stop?.package_count || stop?.pkg_count || 0),
+        0
+      ),
+      label: String(representativeStop?.sequence_order || stopsInGroup[0]?.sequence_order || ''),
+      groupCount: stopsInGroup.length
     };
-  }, [hasTimeCommit, pulseValue, urgency?.level]);
+  });
+}
+
+function MapPin({ isCurrentStop, now, stop, labelOverride = null, groupCount = 0, pinColorMode = 'sid' }) {
+  const stopType = getStopType(stop);
+  const colors = getStopStatusColors(stop.status, isCurrentStop, stopType, stop, pinColorMode);
+  const hasTimeCommit = Boolean(stop.has_time_commit);
+  const isApartment = Boolean(stop.is_apartment_unit || stop.apartment_intelligence);
+  const hasPickupWork = stopType === 'pickup' || stopType === 'combined';
+  const pinSize = isCurrentStop ? 34 : 28;
+  const ringSize = isCurrentStop ? 44 : 36;
+  const mainLabel = labelOverride || String(stop.sequence_order);
+  const urgency = hasTimeCommit ? getTimeCommitUrgency(stop, now) : null;
+  const urgencyStyles = getUrgencyStyles(urgency?.level);
 
   return (
-    <Animated.View style={[styles.markerWrap, urgency && { transform: [{ scale: pulseValue }] }]}>
-      <View style={[styles.markerRing, hasTimeCommit && urgencyStyles.ringStyle, { height: ringSize, width: ringSize }]}>
+    <View style={styles.markerWrap}>
+      <View
+        style={[
+          styles.markerRing,
+          hasTimeCommit && urgencyStyles.ringStyle,
+          isCurrentStop && styles.currentMarkerRing,
+          { height: ringSize, width: ringSize }
+        ]}
+      >
         <View
           style={[
             styles.markerCore,
@@ -526,7 +740,7 @@ function MapPin({ isCurrentStop, now, stop }) {
             isCurrentStop && styles.currentMarkerCore
           ]}
         >
-          <Text style={[styles.markerLabel, { color: colors.text }, stopType === 'pickup' && styles.markerPickupLabel]}>
+          <Text style={[styles.markerLabel, { color: colors.text }, isCurrentStop && styles.currentMarkerLabel]}>
             {mainLabel}
           </Text>
 
@@ -538,7 +752,7 @@ function MapPin({ isCurrentStop, now, stop }) {
 
           {hasTimeCommit ? (
             <View style={[styles.timeCommitBadge, urgencyStyles.badgeStyle]}>
-              <Text style={[styles.timeCommitBadgeText, urgencyStyles.badgeTextStyle]}>+</Text>
+              <Text style={[styles.timeCommitBadgeText, urgencyStyles.badgeTextStyle]}>TC</Text>
             </View>
           ) : null}
 
@@ -548,20 +762,34 @@ function MapPin({ isCurrentStop, now, stop }) {
             </View>
           ) : null}
 
-          {stopType === 'combined' ? (
-            <View style={styles.combinedBadge}>
-              <Text style={styles.combinedBadgeText}>+</Text>
+          {hasPickupWork ? (
+            <View style={styles.pickupBadge}>
+              <Text style={styles.pickupBadgeText}>+</Text>
             </View>
           ) : null}
 
-          {hasNote ? (
-            <View style={styles.noteBadge}>
-              <Text style={styles.noteBadgeText}>✏</Text>
+          {groupCount > 1 ? (
+            <View style={styles.groupCountBadge}>
+              <Text style={styles.groupCountBadgeText}>{groupCount}</Text>
             </View>
           ) : null}
         </View>
       </View>
-    </Animated.View>
+    </View>
+  );
+}
+
+function DriverLocationMarker({ heading = 0 }) {
+  return (
+    <View style={styles.driverMarkerWrap}>
+      <View style={styles.driverMarkerShadow}>
+        <View style={styles.driverMarkerHalo} />
+        <View style={[styles.driverMarkerArrow, { transform: [{ rotate: `${heading}deg` }] }]}>
+          <View style={styles.driverMarkerArrowHead} />
+          <View style={styles.driverMarkerArrowTail} />
+        </View>
+      </View>
+    </View>
   );
 }
 
@@ -606,11 +834,17 @@ function MapLegend({ expanded, onToggle }) {
             <Text style={styles.legendRowText}>Apartment / unit stop</Text>
           </View>
           <View style={styles.legendRow}>
-            <View style={[styles.legendDot, styles.legendDotPickup]}><Text style={styles.legendPickupText}>+</Text></View>
+            <View style={[styles.legendDot, styles.legendDotPending]}>
+              <Text style={styles.legendDotText}>1</Text>
+              <View style={styles.legendMiniPickup}><Text style={styles.legendMiniText}>P</Text></View>
+            </View>
             <Text style={styles.legendRowText}>Pickup stop</Text>
           </View>
           <View style={styles.legendRow}>
-            <View style={[styles.legendDot, styles.legendDotPickup]}><Text style={styles.legendPickupText}>+</Text></View>
+            <View style={[styles.legendDot, styles.legendDotPending]}>
+              <Text style={styles.legendDotText}>1</Text>
+              <View style={styles.legendMiniTimeCommit}><Text style={styles.legendMiniTimeCommitText}>TC</Text></View>
+            </View>
             <Text style={styles.legendRowText}>Time commit window</Text>
           </View>
           <View style={styles.legendRow}>
@@ -623,7 +857,7 @@ function MapLegend({ expanded, onToggle }) {
           <View style={styles.legendRow}>
             <View style={[styles.legendDot, styles.legendDotPending]}>
               <Text style={styles.legendDotText}>1</Text>
-              <View style={styles.legendMiniPickup}><Text style={styles.legendMiniText}>+</Text></View>
+              <View style={styles.legendMiniPickup}><Text style={styles.legendMiniText}>P</Text></View>
             </View>
             <Text style={styles.legendRowText}>Combined delivery + pickup</Text>
           </View>
@@ -638,53 +872,76 @@ function MapLegend({ expanded, onToggle }) {
 
 export default function MyDriveScreen({ navigation, route: screenRoute }) {
   const mapRef = useRef(null);
-  const lastAutoCenteredStopIdRef = useRef(null);
+  const lastFittedRouteIdRef = useRef(null);
+  const activeBreakTimerRef = useRef(null);
+  const markerRefreshTimerRef = useRef(null);
   const [route, setRoute] = useState(null);
   const [stops, setStops] = useState([]);
   const [currentLocation, setCurrentLocation] = useState(null);
+  const [clockedInAt, setClockedInAt] = useState(null);
+  const [activeBreak, setActiveBreak] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isRetryingLoad, setIsRetryingLoad] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isUpdatingClock, setIsUpdatingClock] = useState(false);
+  const [isUpdatingBreak, setIsUpdatingBreak] = useState(false);
   const [legendExpanded, setLegendExpanded] = useState(false);
-  const [selectedStopId, setSelectedStopId] = useState(null);
+  const [selectedMapItemId, setSelectedMapItemId] = useState(null);
   const [currentTime, setCurrentTime] = useState(() => new Date());
   const [loadError, setLoadError] = useState(null);
+  const [markersNeedRefresh, setMarkersNeedRefresh] = useState(true);
+  const [markerRefreshVersion, setMarkerRefreshVersion] = useState(0);
+  const [pinColorMode, setPinColorMode] = useState('sid');
 
-  const pendingStops = useMemo(() => getPendingStops(stops), [stops]);
   const mappableStops = useMemo(() => getMappableStops(stops), [stops]);
-  const nextPendingStop = pendingStops[0] || null;
+  const mapItems = useMemo(() => buildMapItems(mappableStops), [mappableStops]);
+  const selectedMapItem = useMemo(
+    () => mapItems.find((item) => item.id === selectedMapItemId) || null,
+    [mapItems, selectedMapItemId]
+  );
   const selectedStop = useMemo(
-    () => stops.find((stop) => stop.id === selectedStopId) || nextPendingStop || null,
-    [nextPendingStop, selectedStopId, stops]
+    () => (selectedMapItem?.type === 'stop' ? selectedMapItem.stop : null),
+    [selectedMapItem]
+  );
+  const selectedStopGroup = useMemo(
+    () => (selectedMapItem?.type === 'group' ? selectedMapItem : null),
+    [selectedMapItem]
   );
   const stopsPerHourLabel = getStopsPerHourLabel(route?.stops_per_hour);
-  const bannerBadges = getVisibleBannerBadges(selectedStop);
-  const timeCommitAlertBadge = useMemo(() => getTimeCommitAlertBadge(selectedStop, currentTime), [currentTime, selectedStop]);
-  const quickIntel = getQuickIntel(selectedStop);
-  const stopTools = getCompactStopTools(selectedStop);
-  const initialRegion = useMemo(
-    () => getMapRegion({ currentStop: selectedStop, currentLocation }),
-    [currentLocation, selectedStop]
+  const deliveredStopCount = useMemo(
+    () => stops.filter((stop) => stop.status === 'delivered' || stop.status === 'pickup_complete').length,
+    [stops]
   );
-
-  useEffect(() => {
-    if (!selectedStopId && nextPendingStop?.id) {
-      setSelectedStopId(nextPendingStop.id);
-    }
-  }, [nextPendingStop?.id, selectedStopId]);
+  const totalStopCount = route?.total_stops || stops.length || 0;
+  const completionSummaryLabel = `${deliveredStopCount}/${totalStopCount}`;
+  const selectedStopBadges = getVisibleBannerBadges(selectedStop);
+  const selectedTimeCommitAlertBadge = useMemo(() => getTimeCommitAlertBadge(selectedStop, currentTime), [currentTime, selectedStop]);
+  const selectedQuickIntel = getQuickIntel(selectedStop);
+  const selectedTimeCommitCallout = getTimeCommitCallout(selectedStop);
+  const selectedTimeCommitUrgency = getTimeCommitUrgency(selectedStop, currentTime);
+  const selectedUrgencyStyles = getUrgencyStyles(selectedTimeCommitUrgency?.level);
+  const selectedPackageCount = selectedStop?.packages?.length || 0;
+  const selectedGroupPackageCount = selectedStopGroup?.packageCount || 0;
+  const driverHeading = getDriverHeading(currentLocation);
+  const laborButtonLabel = clockedInAt ? 'Clock Out' : 'Clock In';
+  const initialRegion = useMemo(
+    () => getMapRegion({ currentStop: selectedStop || selectedStopGroup?.representativeStop || null, currentLocation, mappableStops }),
+    [currentLocation, mappableStops, selectedStop, selectedStopGroup]
+  );
 
   useEffect(() => {
     const incomingSelectedStopId = screenRoute?.params?.selectedStopId;
 
     if (incomingSelectedStopId) {
-      setSelectedStopId(incomingSelectedStopId);
+      const matchingItem = mapItems.find((item) =>
+        item.type === 'group'
+          ? item.stops.some((stop) => stop.id === incomingSelectedStopId)
+          : item.stop.id === incomingSelectedStopId
+      );
+      setSelectedMapItemId(matchingItem ? matchingItem.id : `stop:${incomingSelectedStopId}`);
       navigation.setParams({ selectedStopId: undefined });
     }
-  }, [navigation, screenRoute?.params?.selectedStopId]);
-
-  useEffect(() => {
-    lastAutoCenteredStopIdRef.current = null;
-  }, [selectedStop?.id]);
+  }, [mapItems, navigation, screenRoute?.params?.selectedStopId]);
 
   useLayoutEffect(() => {
     if (!navigation) {
@@ -707,6 +964,86 @@ export default function MyDriveScreen({ navigation, route: screenRoute }) {
 
     return () => clearInterval(timer);
   }, []);
+
+  useEffect(() => {
+    let isMounted = true;
+
+    async function loadPinColorPreference() {
+      const storedMode = await getPinColorMode().catch(() => null);
+
+      if (isMounted && (storedMode === 'sid' || storedMode === 'black')) {
+        setPinColorMode(storedMode);
+      }
+    }
+
+    loadPinColorPreference();
+    const unsubscribe = navigation.addListener?.('focus', loadPinColorPreference);
+
+    return () => {
+      isMounted = false;
+      unsubscribe?.();
+    };
+  }, [navigation]);
+
+  useEffect(() => {
+    return subscribePinColorMode((nextMode) => {
+      if (nextMode === 'sid' || nextMode === 'black') {
+        setPinColorMode(nextMode);
+      }
+    });
+  }, []);
+
+  useEffect(() => {
+    setMarkersNeedRefresh(true);
+    setMarkerRefreshVersion((current) => current + 1);
+
+    if (markerRefreshTimerRef.current) {
+      clearTimeout(markerRefreshTimerRef.current);
+    }
+
+    markerRefreshTimerRef.current = setTimeout(() => {
+      setMarkersNeedRefresh(false);
+      markerRefreshTimerRef.current = null;
+    }, 250);
+
+    return () => {
+      if (markerRefreshTimerRef.current) {
+        clearTimeout(markerRefreshTimerRef.current);
+        markerRefreshTimerRef.current = null;
+      }
+    };
+  }, [pinColorMode, selectedMapItemId, stops]);
+
+  useEffect(() => {
+    const autoEndAt = getBreakAutoEndTimestamp(activeBreak);
+
+    if (activeBreakTimerRef.current) {
+      clearTimeout(activeBreakTimerRef.current);
+      activeBreakTimerRef.current = null;
+    }
+
+    if (!autoEndAt) {
+      return undefined;
+    }
+
+    const remainingMs = new Date(autoEndAt).getTime() - Date.now();
+
+    if (!Number.isFinite(remainingMs) || remainingMs <= 0) {
+      refreshRoute({ allowStateUpdate: true, showAlert: false });
+      return undefined;
+    }
+
+    activeBreakTimerRef.current = setTimeout(() => {
+      refreshRoute({ allowStateUpdate: true, showAlert: false });
+    }, remainingMs + 250);
+
+    return () => {
+      if (activeBreakTimerRef.current) {
+        clearTimeout(activeBreakTimerRef.current);
+        activeBreakTimerRef.current = null;
+      }
+    };
+  }, [activeBreak]);
 
   useEffect(() => {
     let isMounted = true;
@@ -762,24 +1099,33 @@ export default function MyDriveScreen({ navigation, route: screenRoute }) {
 
   useEffect(() => {
     const map = mapRef.current;
-    const currentStopCoordinate = toCoordinate(selectedStop);
 
-    if (!map || !currentStopCoordinate) {
+    if (!map || !route?.id || !mappableStops.length || selectedMapItem) {
       return;
     }
 
-    if (lastAutoCenteredStopIdRef.current === selectedStop.id) {
+    if (lastFittedRouteIdRef.current === route.id) {
       return;
     }
 
-    map.animateCamera(
-      {
-        center: currentStopCoordinate
-      },
-      { duration: 500 }
-    );
-    lastAutoCenteredStopIdRef.current = selectedStop.id;
-  }, [selectedStop?.id]);
+    const coordinates = mappableStops.map((stop) => toCoordinate(stop)).filter(Boolean);
+
+    if (!coordinates.length) {
+      return;
+    }
+
+    map.fitToCoordinates(coordinates, {
+      animated: false,
+      edgePadding: {
+        top: 110,
+        right: 40,
+        bottom: 220,
+        left: 40
+      }
+    });
+
+    lastFittedRouteIdRef.current = route.id;
+  }, [mappableStops, route?.id, selectedMapItem]);
 
   async function refreshRoute({ allowStateUpdate = true, showAlert = true, isRetry = false } = {}) {
     if (allowStateUpdate && isRetry) {
@@ -787,8 +1133,14 @@ export default function MyDriveScreen({ navigation, route: screenRoute }) {
     }
 
     try {
-      const response = await api.get('/routes/today');
-      const nextRoute = response.data?.route || null;
+      const [routeResponse, timecardStatusResponse] = await Promise.all([
+        api.get('/routes/today'),
+        api.get('/timecards/status')
+      ]);
+      const nextRoute = routeResponse.data?.route || null;
+      const activeBreakState = timecardStatusResponse.data?.active_break || null;
+      const serverClockInAt =
+        timecardStatusResponse.data?.active_timecard?.clock_in || timecardStatusResponse.data?.clock_in_at || null;
 
       if (!allowStateUpdate) {
         return;
@@ -796,7 +1148,15 @@ export default function MyDriveScreen({ navigation, route: screenRoute }) {
 
       setRoute(nextRoute);
       setStops(nextRoute?.stops || []);
+      setClockedInAt(serverClockInAt);
+      setActiveBreak(activeBreakState);
       setLoadError(null);
+
+      if (serverClockInAt) {
+        Promise.resolve(saveClockInTime(serverClockInAt)).catch(() => {});
+      } else {
+        Promise.resolve(removeClockInTime()).catch(() => {});
+      }
     } catch (error) {
       if (allowStateUpdate) {
         const message = error.response?.data?.error || 'Unable to load route details.';
@@ -835,12 +1195,116 @@ export default function MyDriveScreen({ navigation, route: screenRoute }) {
     }
   }
 
-  async function handleOpenNavigation() {
-    if (!selectedStop?.address) {
+  async function handleClockToggle() {
+    if (!route && !clockedInAt) {
+      Alert.alert('No route assigned', 'You need a route assigned today before clocking in.');
       return;
     }
 
-    const { nativeGoogleMapsUrl, webGoogleMapsUrl } = buildGoogleNavigationUrls(selectedStop.address);
+    setIsUpdatingClock(true);
+
+    try {
+      if (clockedInAt) {
+        await api.post('/timecards/clock-out');
+        await removeClockInTime();
+        setClockedInAt(null);
+        setActiveBreak(null);
+      } else {
+        const response = await api.post('/timecards/clock-in', {
+          route_id: route?.id
+        });
+        const timestamp = response.data?.clock_in_at || new Date().toISOString();
+        await saveClockInTime(timestamp);
+        setClockedInAt(timestamp);
+      }
+    } catch (error) {
+      const message = error.response?.data?.error || 'Unable to update clock status right now.';
+      Alert.alert('Clock update failed', message);
+    } finally {
+      setIsUpdatingClock(false);
+    }
+  }
+
+  function handleLaborAction() {
+    if (!clockedInAt) {
+      handleClockToggle();
+      return;
+    }
+
+    if (activeBreak) {
+      Alert.alert('Manage labor', 'Choose what you want to do next.', [
+        {
+          text: `End ${formatBreakLabel(activeBreak.break_type)}`,
+          onPress: () => endActiveBreak()
+        },
+        {
+          text: 'Clock Out',
+          onPress: () => handleClockToggle()
+        },
+        {
+          text: 'Cancel',
+          style: 'cancel'
+        }
+      ]);
+      return;
+    }
+
+    Alert.alert('Manage labor', 'Choose what you want to do next.', [
+      {
+        text: 'Break',
+        onPress: () => startBreak('rest')
+      },
+      {
+        text: 'Lunch',
+        onPress: () => startBreak('lunch')
+      },
+      {
+        text: 'Clock Out',
+        onPress: () => handleClockToggle()
+      },
+      {
+        text: 'Cancel',
+        style: 'cancel'
+      }
+    ]);
+  }
+
+  async function startBreak(breakType) {
+    setIsUpdatingBreak(true);
+
+    try {
+      const response = await api.post('/timecards/breaks/start', {
+        break_type: breakType
+      });
+      setActiveBreak(response.data?.active_break || null);
+    } catch (error) {
+      const message = error.response?.data?.error || 'Unable to start break right now.';
+      Alert.alert('Break update failed', message);
+    } finally {
+      setIsUpdatingBreak(false);
+    }
+  }
+
+  async function endActiveBreak() {
+    setIsUpdatingBreak(true);
+
+    try {
+      await api.post('/timecards/breaks/end');
+      setActiveBreak(null);
+    } catch (error) {
+      const message = error.response?.data?.error || 'Unable to end break right now.';
+      Alert.alert('Break update failed', message);
+    } finally {
+      setIsUpdatingBreak(false);
+    }
+  }
+
+  async function handleOpenNavigationForStop(stop) {
+    if (!stop?.address) {
+      return;
+    }
+
+    const { nativeGoogleMapsUrl, webGoogleMapsUrl } = buildGoogleNavigationUrls(stop.address);
 
     try {
       const canOpenNative = await Linking.canOpenURL(nativeGoogleMapsUrl);
@@ -858,15 +1322,66 @@ export default function MyDriveScreen({ navigation, route: screenRoute }) {
     navigation.navigate('StopDetail', { stopId });
   }
 
-  function handleSelectStop(stopId) {
-    setSelectedStopId(stopId);
+  function handleSelectMapItem(itemId) {
+    setSelectedMapItemId((current) => (current === itemId ? null : itemId));
   }
 
   function handleRecenter() {
     const map = mapRef.current;
+
+    if (!map) {
+      return;
+    }
+
+    if (!selectedMapItem) {
+      const coordinates = [];
+
+      if (currentLocation?.coords) {
+        coordinates.push({
+          latitude: currentLocation.coords.latitude,
+          longitude: currentLocation.coords.longitude
+        });
+      }
+
+      coordinates.push(...mappableStops.map((stop) => toCoordinate(stop)).filter(Boolean));
+
+      if (coordinates.length > 1) {
+        map.fitToCoordinates(coordinates, {
+          animated: true,
+          edgePadding: {
+            top: 120,
+            right: 40,
+            bottom: 120,
+            left: 40
+          }
+        });
+      }
+
+      return;
+    }
+
+    if (selectedStopGroup) {
+      const coordinates = selectedStopGroup.stops.map((stop) => toCoordinate(stop)).filter(Boolean);
+
+      if (!coordinates.length) {
+        return;
+      }
+
+      map.fitToCoordinates(coordinates, {
+        animated: true,
+        edgePadding: {
+          top: 140,
+          right: 40,
+          bottom: 220,
+          left: 40
+        }
+      });
+      return;
+    }
+
     const currentStopCoordinate = toCoordinate(selectedStop);
 
-    if (!map || !currentStopCoordinate) {
+    if (!currentStopCoordinate || !selectedStop) {
       return;
     }
 
@@ -930,6 +1445,7 @@ export default function MyDriveScreen({ navigation, route: screenRoute }) {
             }
           : previousRoute
       );
+      setSelectedMapItemId(null);
 
       await refreshRoute({ allowStateUpdate: true, showAlert: true });
     } catch (error) {
@@ -972,7 +1488,7 @@ export default function MyDriveScreen({ navigation, route: screenRoute }) {
     );
   }
 
-  if (!route || !selectedStop) {
+  if (!route) {
     return (
       <SafeAreaView style={styles.safeArea}>
         <View style={styles.centeredState}>
@@ -989,11 +1505,10 @@ export default function MyDriveScreen({ navigation, route: screenRoute }) {
         <MapView
           // Let the driver use the map like a normal phone map.
           initialRegion={initialRegion}
-          provider={PROVIDER_GOOGLE}
+          provider={shouldUseGoogleProvider ? PROVIDER_GOOGLE : undefined}
           ref={mapRef}
           rotateEnabled
           scrollEnabled
-          showsUserLocation
           zoomEnabled
           style={styles.map}
         >
@@ -1003,110 +1518,47 @@ export default function MyDriveScreen({ navigation, route: screenRoute }) {
                 latitude: currentLocation.coords.latitude,
                 longitude: currentLocation.coords.longitude
               }}
-              pinColor="#2563eb"
+              anchor={{ x: 0.5, y: 0.5 }}
+              flat
               title="Current location"
-            />
+              tracksViewChanges={false}
+            >
+              <DriverLocationMarker heading={driverHeading} />
+            </Marker>
           ) : null}
 
-          {mappableStops.map((stop) => {
-            const coordinate = toCoordinate(stop);
-
-            if (!coordinate) {
-              return null;
-            }
-
-            const isCurrentStop = stop.id === selectedStop.id;
-            const timeCommitCallout = getTimeCommitCallout(stop);
-            const timeCommitUrgency = getTimeCommitUrgency(stop, currentTime);
-            const urgencyStyles = getUrgencyStyles(timeCommitUrgency?.level);
-            const packageCount = stop.packages?.length || 0;
+          {mapItems.map((item) => {
+            const stop = item.type === 'group' ? item.representativeStop : item.stop;
+            const coordinate = item.coordinate;
+            const isCurrentStop = selectedMapItem?.id === item.id;
+            const markerKey = getMarkerRenderKey({
+              itemId: item.id,
+              isCurrentStop,
+              refreshVersion: markerRefreshVersion
+            });
 
             return (
-              <Marker coordinate={coordinate} key={stop.id} onPress={() => handleSelectStop(stop.id)} testID={`stop-marker-${stop.id}`}>
-                <MapPin isCurrentStop={isCurrentStop} now={currentTime} stop={stop} />
-                <Callout onPress={() => handleOpenStopDetail(stop.id)} tooltip={false}>
-                  <View style={styles.calloutCard}>
-                    <Text style={styles.calloutTitle}>ST#{stop.sequence_order}</Text>
-                    <Text numberOfLines={2} style={styles.calloutAddress}>
-                      {stop.address}
-                    </Text>
-                    {timeCommitCallout ? (
-                      <>
-                        <Text style={[styles.calloutWindowTitle, urgencyStyles.calloutStyle]}>{timeCommitCallout.title}</Text>
-                        {timeCommitCallout.subtitle ? (
-                          <Text style={[styles.calloutWindowSubtitle, urgencyStyles.calloutTextStyle]}>{timeCommitCallout.subtitle}</Text>
-                        ) : null}
-                      </>
-                    ) : (
-                      <Text style={styles.calloutWindowSubtitle}>Tap to open stop details</Text>
-                    )}
-                    <Text style={styles.calloutPackages}>
-                      {packageCount} {packageCount === 1 ? 'package' : 'packages'}
-                    </Text>
-                  </View>
-                </Callout>
+              <Marker
+                anchor={{ x: 0.5, y: 0.5 }}
+                coordinate={coordinate}
+                key={markerKey}
+                onPress={() => handleSelectMapItem(item.id)}
+                testID={`stop-marker-${item.id}`}
+                tracksViewChanges={markersNeedRefresh || isCurrentStop}
+                zIndex={isCurrentStop ? 1000 : item.type === 'group' ? 500 : 1}
+              >
+                <MapPin
+                  groupCount={item.type === 'group' ? item.groupCount : 0}
+                  isCurrentStop={isCurrentStop}
+                  labelOverride={item.type === 'group' ? item.label : null}
+                  now={currentTime}
+                  pinColorMode={pinColorMode}
+                  stop={stop}
+                />
               </Marker>
             );
           })}
         </MapView>
-
-        <View pointerEvents="box-none" style={styles.topOverlay}>
-          <View style={styles.banner}>
-            <View style={styles.bannerMetaRow}>
-              <View style={styles.bannerMetaPill}>
-                <Text style={styles.bannerMetaPillText}>Selected ST#{selectedStop.sequence_order}</Text>
-              </View>
-              {nextPendingStop?.sequence_order && nextPendingStop.sequence_order !== selectedStop.sequence_order ? (
-                <View style={[styles.bannerMetaPill, styles.bannerMetaPillMuted]}>
-                  <Text style={[styles.bannerMetaPillText, styles.bannerMetaPillTextMuted]}>
-                    Next ST#{nextPendingStop.sequence_order}
-                  </Text>
-                </View>
-              ) : null}
-            </View>
-            <View style={styles.bannerAddressRow}>
-              <Pressable onPress={() => handleOpenStopDetail(selectedStop.id)} style={styles.bannerContentButton}>
-                <Text numberOfLines={2} style={styles.bannerAddress}>
-                  {selectedStop.address}
-                </Text>
-              </Pressable>
-              <Pressable onPress={handleOpenNavigation} style={styles.navigateButton}>
-                <Text style={styles.navigateButtonText}>Nav</Text>
-              </Pressable>
-            </View>
-            <Pressable onPress={() => handleOpenStopDetail(selectedStop.id)} style={styles.bannerDetailsPressable}>
-              {selectedStop.contact_name ? <Text style={styles.bannerContact}>Attn: {selectedStop.contact_name}</Text> : null}
-              {bannerBadges.length || timeCommitAlertBadge ? (
-                <View style={styles.bannerBadgeRow}>
-                  {bannerBadges.map((badge) => (
-                    <View key={`${badge.type}-${badge.label}`} style={[styles.bannerPill, styles[`bannerPill_${badge.type}`]]}>
-                      <Text style={[styles.bannerPillText, styles[`bannerPillText_${badge.type}`]]}>{badge.label}</Text>
-                    </View>
-                  ))}
-                  {timeCommitAlertBadge ? (
-                    <View style={[styles.bannerPill, styles[`bannerPill_${timeCommitAlertBadge.type}`]]}>
-                      <Text style={[styles.bannerPillText, styles[`bannerPillText_${timeCommitAlertBadge.type}`]]}>
-                        {timeCommitAlertBadge.label}
-                      </Text>
-                    </View>
-                  ) : null}
-                </View>
-              ) : null}
-              <Text style={styles.bannerPackages}>
-                {selectedStop.packages?.length || 0} {(selectedStop.packages?.length || 0) === 1 ? 'package' : 'packages'}
-              </Text>
-            </Pressable>
-            {quickIntel.length ? (
-              <View style={styles.quickIntelRow}>
-                {quickIntel.map((item) => (
-                  <View key={item.key} style={[styles.quickIntelChip, styles[`quickIntelChip_${item.tone}`]]}>
-                    <Text style={[styles.quickIntelChipText, styles[`quickIntelChipText_${item.tone}`]]}>{item.label}</Text>
-                  </View>
-                ))}
-              </View>
-            ) : null}
-          </View>
-        </View>
 
         <MapLegend expanded={legendExpanded} onToggle={() => setLegendExpanded((current) => !current)} />
 
@@ -1114,33 +1566,175 @@ export default function MyDriveScreen({ navigation, route: screenRoute }) {
           <Pressable onPress={handleRecenter} style={styles.mapControlButton}>
             <Text style={styles.mapControlButtonText}>Center</Text>
           </Pressable>
-          <Pressable onPress={() => handleOpenStopDetail(selectedStop.id)} style={styles.mapControlButton}>
-            <Text style={styles.mapControlButtonText}>Intel</Text>
-          </Pressable>
+          {selectedStop ? (
+            <Pressable onPress={() => handleOpenStopDetail(selectedStop.id)} style={styles.mapControlButton}>
+              <Text style={styles.mapControlButtonText}>Intel</Text>
+            </Pressable>
+          ) : null}
         </View>
 
         <View pointerEvents="box-none" style={styles.bottomOverlay}>
-          <View style={styles.toolsPanel}>
-            <View style={styles.toolsChipRow}>
-              {stopTools.map((tool) => (
-                <Pressable
-                  key={tool.key}
-                  onPress={() => handleOpenStopDetail(selectedStop.id)}
-                  style={[styles.toolsChip, styles[`toolsChip_${tool.tone}`]]}
-                >
-                  <Text style={[styles.toolsChipText, styles[`toolsChipText_${tool.tone}`]]}>{tool.label}</Text>
+          {selectedStopGroup ? (
+            <View style={styles.selectedStopCard}>
+              <View style={styles.calloutHeaderRow}>
+                <View style={styles.groupedCardHeading}>
+                  <Text style={styles.groupedCardTitle}>{selectedStopGroup.primaryAddress}</Text>
+                  {selectedStopGroup.localityLine ? (
+                    <Text style={styles.groupedCardSubtitle}>{selectedStopGroup.localityLine}</Text>
+                  ) : null}
+                </View>
+                <Pressable onPress={() => handleOpenNavigationForStop(selectedStopGroup.representativeStop)} style={styles.calloutNavButton}>
+                  <Text style={styles.calloutNavButtonText}>Nav</Text>
                 </Pressable>
-              ))}
-              <Pressable onPress={() => handleOpenStopDetail(selectedStop.id)} style={[styles.toolsChip, styles.toolsChip_note]}>
-                <Text style={[styles.toolsChipText, styles.toolsChipText_note]}>Open details</Text>
+              </View>
+              <Text style={styles.groupedCardCount}>
+                {selectedStopGroup.stops.length} apartment deliveries
+                {selectedGroupPackageCount ? ` · ${selectedGroupPackageCount} ${selectedGroupPackageCount === 1 ? 'package' : 'packages'}` : ''}
+              </Text>
+              <View style={styles.groupedStopTable}>
+                {selectedStopGroup.stops.map((stop) => {
+                  const sidBadgeStyle = getSidBadgeStyle(stop.sid, pinColorMode);
+
+                  return (
+                    <Pressable
+                      key={stop.id}
+                      onPress={() => handleOpenStopDetail(stop.id)}
+                      style={styles.groupedStopRow}
+                    >
+                      <View
+                        style={[
+                          styles.groupedStopSequenceBadge,
+                          sidBadgeStyle
+                            ? {
+                                backgroundColor: sidBadgeStyle.backgroundColor,
+                                borderColor: sidBadgeStyle.borderColor
+                              }
+                            : null
+                        ]}
+                      >
+                        <Text
+                          style={[
+                            styles.groupedStopSequenceBadgeText,
+                            sidBadgeStyle ? { color: sidBadgeStyle.textColor } : null
+                          ]}
+                        >
+                          {stop.sid || stop.sequence_order}
+                        </Text>
+                      </View>
+                      <View style={styles.groupedStopMain}>
+                        <Text style={styles.groupedStopUnitLabel}>{getGroupedStopUnitLabel(stop)}</Text>
+                        <Text style={styles.groupedStopMeta}>
+                          {stop.contact_name ? stop.contact_name : 'No contact name'}
+                          {(stop.packages?.length || stop.package_count || stop.pkg_count) ? ` · ${Number(stop.packages?.length || stop.package_count || stop.pkg_count)} pkg` : ''}
+                        </Text>
+                      </View>
+                      <View style={[styles.groupedStopStatusPill, styles[`groupedStopStatusPill_${stop.status}`]]}>
+                        <Text style={[styles.groupedStopStatusText, styles[`groupedStopStatusText_${stop.status}`]]}>
+                          {stop.status === 'pickup_complete'
+                            ? 'Done'
+                            : stop.status === 'delivered'
+                              ? 'Done'
+                              : stop.status === 'attempted'
+                                ? 'Attempted'
+                                : stop.status === 'incomplete'
+                                  ? 'Issue'
+                                  : 'Pending'}
+                        </Text>
+                      </View>
+                    </Pressable>
+                  );
+                })}
+              </View>
+            </View>
+          ) : selectedStop ? (
+            <View style={styles.selectedStopCard}>
+              <View style={styles.calloutHeaderRow}>
+                <View
+                  style={[
+                    styles.calloutTitleBadge,
+                    pinColorMode === 'sid' && getSidBucketTheme(selectedStop.sid)
+                      ? {
+                          backgroundColor: getSidBucketTheme(selectedStop.sid).fill,
+                          borderColor: getSidBucketTheme(selectedStop.sid).border
+                        }
+                      : null
+                  ]}
+                >
+                  <Text
+                    style={[
+                      styles.calloutTitle,
+                      pinColorMode === 'sid' && getSidBucketTheme(selectedStop.sid)
+                        ? { color: getSidBucketTheme(selectedStop.sid).text }
+                        : null
+                    ]}
+                  >
+                    {selectedStop.sid ? `SID ${selectedStop.sid}` : `Stop ${selectedStop.sequence_order}`}
+                  </Text>
+                </View>
+                <Pressable onPress={() => handleOpenNavigationForStop(selectedStop)} style={styles.calloutNavButton}>
+                  <Text style={styles.calloutNavButtonText}>Nav</Text>
+                </Pressable>
+              </View>
+              <Pressable onPress={() => handleOpenStopDetail(selectedStop.id)} style={styles.selectedStopCardPressable}>
+                <Text numberOfLines={2} style={styles.calloutAddress}>
+                  {selectedStop.address}
+                </Text>
+                {selectedStop.contact_name ? <Text style={styles.calloutContact}>Attn: {selectedStop.contact_name}</Text> : null}
+                {selectedStopBadges.length || selectedTimeCommitAlertBadge ? (
+                  <View style={styles.calloutBadgeRow}>
+                    {selectedStopBadges.map((badge) => (
+                      <View key={`${selectedStop.id}-${badge.type}-${badge.label}`} style={[styles.calloutBadge, styles[`bannerPill_${badge.type}`]]}>
+                        <Text style={[styles.calloutBadgeText, styles[`bannerPillText_${badge.type}`]]}>{badge.label}</Text>
+                      </View>
+                    ))}
+                    {selectedTimeCommitAlertBadge ? (
+                      <View style={[styles.calloutBadge, styles[`bannerPill_${selectedTimeCommitAlertBadge.type}`]]}>
+                        <Text style={[styles.calloutBadgeText, styles[`bannerPillText_${selectedTimeCommitAlertBadge.type}`]]}>
+                          {selectedTimeCommitAlertBadge.label}
+                        </Text>
+                      </View>
+                    ) : null}
+                  </View>
+                ) : null}
+                {selectedQuickIntel.length ? (
+                  <View style={styles.calloutIntelRow}>
+                    {selectedQuickIntel.map((item) => (
+                      <View key={`${selectedStop.id}-${item.key}`} style={[styles.calloutIntelChip, styles[`quickIntelChip_${item.tone}`]]}>
+                        <Text style={[styles.calloutIntelChipText, styles[`quickIntelChipText_${item.tone}`]]}>{item.label}</Text>
+                      </View>
+                    ))}
+                  </View>
+                ) : null}
+                {selectedTimeCommitCallout ? (
+                  <>
+                    <Text style={[styles.calloutWindowTitle, selectedUrgencyStyles.calloutStyle]}>{selectedTimeCommitCallout.title}</Text>
+                    {selectedTimeCommitCallout.subtitle ? (
+                      <Text style={[styles.calloutWindowSubtitle, selectedUrgencyStyles.calloutTextStyle]}>{selectedTimeCommitCallout.subtitle}</Text>
+                    ) : null}
+                  </>
+                ) : (
+                  <Text style={styles.calloutWindowSubtitle}>Tap to open stop details</Text>
+                )}
+                <Text style={styles.calloutPackages}>
+                  {selectedPackageCount} {selectedPackageCount === 1 ? 'package' : 'packages'}
+                </Text>
               </Pressable>
             </View>
-          </View>
+          ) : null}
 
           <View style={styles.bottomBar}>
-            <Text style={styles.stopsPerHour}>{stopsPerHourLabel}</Text>
+            <View style={styles.bottomStatsRow}>
+              <View style={styles.bottomStatColumn}>
+                <Text style={styles.bottomStatLabel}>Stops/hr</Text>
+                <Text style={styles.bottomStatValue}>{stopsPerHourLabel}</Text>
+              </View>
+              <View style={styles.bottomStatColumn}>
+                <Text style={styles.bottomStatLabel}>Delivered</Text>
+                <Text style={styles.bottomStatValue}>{completionSummaryLabel}</Text>
+              </View>
+            </View>
             <Pressable
-              disabled={isSubmitting}
+              disabled={isSubmitting || !selectedStop}
               onPress={handleCompleteStop}
               style={[styles.completeButton, isSubmitting && styles.buttonDisabled]}
             >
@@ -1151,6 +1745,25 @@ export default function MyDriveScreen({ navigation, route: screenRoute }) {
               )}
             </Pressable>
           </View>
+
+          <View style={styles.laborActionRow}>
+            <Pressable
+              disabled={isUpdatingClock || isUpdatingBreak || (!route && !clockedInAt)}
+              onPress={handleLaborAction}
+              style={[
+                styles.laborActionButton,
+                styles.clockButton,
+                (isUpdatingClock || isUpdatingBreak || (!route && !clockedInAt)) && styles.buttonDisabled
+              ]}
+            >
+              {isUpdatingClock || isUpdatingBreak ? (
+                <ActivityIndicator color="#ffffff" />
+              ) : (
+                <Text style={styles.laborActionButtonText}>{laborButtonLabel}</Text>
+              )}
+            </Pressable>
+          </View>
+
         </View>
       </View>
     </SafeAreaView>
@@ -1177,6 +1790,7 @@ const styles = StyleSheet.create({
   bottomOverlay: {
     bottom: 0,
     left: 0,
+    paddingBottom: 10,
     paddingHorizontal: 12,
     position: 'absolute',
     right: 0,
@@ -1278,10 +1892,38 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     gap: 10
   },
+  bannerActions: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: 8
+  },
   bannerPackages: {
     color: '#65727d',
     fontSize: 15,
     marginTop: 2
+  },
+  bannerCollapsedHint: {
+    alignSelf: 'flex-start',
+    backgroundColor: 'rgba(255,255,255,0.94)',
+    borderColor: '#e7e2da',
+    borderRadius: 16,
+    borderWidth: 1,
+    maxWidth: '86%',
+    paddingHorizontal: 12,
+    paddingVertical: 9,
+    shadowColor: '#0f172a',
+    shadowOffset: {
+      width: 0,
+      height: 6
+    },
+    shadowOpacity: 0.08,
+    shadowRadius: 12,
+    elevation: 4
+  },
+  bannerCollapsedHintText: {
+    color: '#51606b',
+    fontSize: 12,
+    fontWeight: '700'
   },
   quickIntelRow: {
     flexDirection: 'row',
@@ -1401,67 +2043,91 @@ const styles = StyleSheet.create({
     minHeight: 34,
     paddingHorizontal: 11
   },
+  bannerDismissButton: {
+    alignItems: 'center',
+    alignSelf: 'flex-start',
+    backgroundColor: '#f8fafc',
+    borderColor: '#d7e0e8',
+    borderRadius: 12,
+    borderWidth: 1,
+    justifyContent: 'center',
+    minHeight: 34,
+    paddingHorizontal: 11
+  },
+  bannerDismissButtonText: {
+    color: '#415466',
+    fontSize: 13,
+    fontWeight: '800'
+  },
   navigateButtonText: {
     color: '#ffffff',
     fontSize: 13,
     fontWeight: '800'
   },
-  toolsPanel: {
-    backgroundColor: 'rgba(255,255,255,0.96)',
-    borderColor: '#e7e2da',
-    borderRadius: 18,
-    borderWidth: 1,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
+  map: {
+    flex: 1
+  },
+  driverMarkerWrap: {
+    alignItems: 'center',
+    height: 48,
+    justifyContent: 'center',
+    width: 48
+  },
+  driverMarkerShadow: {
+    alignItems: 'center',
+    height: 40,
+    justifyContent: 'center',
     shadowColor: '#0f172a',
     shadowOffset: {
       width: 0,
       height: 6
     },
-    shadowOpacity: 0.12,
-    shadowRadius: 16,
+    shadowOpacity: 0.18,
+    shadowRadius: 10,
+    width: 40,
     elevation: 6
   },
-  toolsChipRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8
+  driverMarkerHalo: {
+    backgroundColor: '#ffffff',
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: '#dbe7ff',
+    height: 36,
+    position: 'absolute',
+    width: 36
   },
-  toolsChip: {
-    borderRadius: 999,
-    paddingHorizontal: 12,
-    paddingVertical: 8
+  driverMarkerArrow: {
+    alignItems: 'center',
+    height: 28,
+    justifyContent: 'center',
+    width: 28
   },
-  toolsChip_apartment: {
-    backgroundColor: '#f5f3ff'
+  driverMarkerArrowHead: {
+    backgroundColor: 'transparent',
+    borderBottomColor: 'transparent',
+    borderBottomWidth: 0,
+    borderLeftColor: 'transparent',
+    borderLeftWidth: 8,
+    borderRightColor: 'transparent',
+    borderRightWidth: 8,
+    borderTopColor: '#2563eb',
+    borderTopWidth: 18,
+    height: 0,
+    width: 0
   },
-  toolsChip_location: {
-    backgroundColor: '#ecfeff'
-  },
-  toolsChip_note: {
-    backgroundColor: '#fff3e8'
-  },
-  toolsChipText: {
-    fontSize: 12,
-    fontWeight: '800'
-  },
-  toolsChipText_apartment: {
-    color: '#6d28d9'
-  },
-  toolsChipText_location: {
-    color: '#0f766e'
-  },
-  toolsChipText_note: {
-    color: '#c45100'
-  },
-  map: {
-    flex: 1
+  driverMarkerArrowTail: {
+    backgroundColor: '#2563eb',
+    borderBottomLeftRadius: 3,
+    borderBottomRightRadius: 3,
+    height: 8,
+    marginTop: -1,
+    width: 4
   },
   mapControlStack: {
     gap: 10,
     position: 'absolute',
     right: 12,
-    top: 184,
+    top: 112,
     zIndex: 9
   },
   mapControlButton: {
@@ -1490,7 +2156,9 @@ const styles = StyleSheet.create({
   },
   markerWrap: {
     alignItems: 'center',
-    justifyContent: 'center'
+    height: 60,
+    justifyContent: 'center',
+    width: 60
   },
   markerRing: {
     alignItems: 'center',
@@ -1530,23 +2198,28 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.24,
     shadowRadius: 4
   },
+  currentMarkerRing: {
+    borderColor: '#111111',
+    borderWidth: 3
+  },
   markerLabel: {
-    fontSize: 13,
+    fontSize: 12,
     fontWeight: '800'
   },
-  markerPickupLabel: {
-    fontSize: 18,
-    marginTop: -1
+  currentMarkerLabel: {
+    fontSize: 13
   },
   businessBadge: {
     alignItems: 'center',
     backgroundColor: '#4d148c',
     borderRadius: 7,
-    bottom: -1,
+    borderColor: '#ffffff',
+    borderWidth: 1,
+    bottom: -4,
     height: 14,
     justifyContent: 'center',
     position: 'absolute',
-    right: -1,
+    right: -4,
     width: 14
   },
   businessBadgeText: {
@@ -1558,19 +2231,20 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     backgroundColor: '#2980b9',
     borderColor: '#ffffff',
-    borderRadius: 7,
+    borderRadius: 8,
     borderWidth: 1,
-    height: 14,
+    height: 16,
     justifyContent: 'center',
     left: '50%',
-    marginLeft: -7,
+    marginLeft: -9,
     position: 'absolute',
-    top: -7,
-    width: 14
+    paddingHorizontal: 3,
+    top: -8,
+    minWidth: 18
   },
   timeCommitBadgeText: {
     color: '#ffffff',
-    fontSize: 10,
+    fontSize: 7,
     fontWeight: '900'
   },
   timeCommitBadgeWarning: {
@@ -1593,9 +2267,9 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     height: 14,
     justifyContent: 'center',
-    left: -1,
+    left: -4,
     position: 'absolute',
-    top: -1,
+    top: -4,
     width: 14
   },
   apartmentBadgeText: {
@@ -1603,7 +2277,7 @@ const styles = StyleSheet.create({
     fontSize: 8,
     fontWeight: '800'
   },
-  combinedBadge: {
+  pickupBadge: {
     alignItems: 'center',
     backgroundColor: '#2980b9',
     borderColor: '#ffffff',
@@ -1616,44 +2290,115 @@ const styles = StyleSheet.create({
     top: -1,
     width: 14
   },
-  combinedBadgeText: {
-    color: '#ffffff',
-    fontSize: 9,
-    fontWeight: '900'
-  },
-  noteBadge: {
-    alignItems: 'center',
-    backgroundColor: '#ff6200',
-    borderRadius: 7,
-    bottom: -1,
-    height: 14,
-    justifyContent: 'center',
-    left: -1,
-    position: 'absolute',
-    width: 14
-  },
-  noteBadgeText: {
+  pickupBadgeText: {
     color: '#ffffff',
     fontSize: 8,
-    fontWeight: '800'
+    fontWeight: '900'
+  },
+  groupCountBadge: {
+    alignItems: 'center',
+    backgroundColor: '#173042',
+    borderColor: '#ffffff',
+    borderRadius: 7,
+    borderWidth: 1,
+    bottom: -4,
+    height: 14,
+    justifyContent: 'center',
+    minWidth: 14,
+    paddingHorizontal: 0,
+    position: 'absolute',
+    right: -4,
+    width: 14
+  },
+  groupCountBadgeText: {
+    color: '#ffffff',
+    fontSize: 8,
+    fontWeight: '900'
   },
   calloutCard: {
     backgroundColor: '#ffffff',
     borderRadius: 14,
-    maxWidth: 220,
-    minWidth: 180,
+    maxWidth: 250,
+    minWidth: 210,
     paddingHorizontal: 12,
     paddingVertical: 10
+  },
+  calloutHeaderRow: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    gap: 10
   },
   calloutTitle: {
     color: '#173042',
     fontSize: 13,
     fontWeight: '800'
   },
+  calloutTitleBadge: {
+    alignItems: 'center',
+    backgroundColor: '#f8fafc',
+    borderColor: '#d7e0e8',
+    borderRadius: 999,
+    borderWidth: 1,
+    justifyContent: 'center',
+    minHeight: 30,
+    paddingHorizontal: 10
+  },
+  calloutNavButton: {
+    alignItems: 'center',
+    backgroundColor: '#FF6200',
+    borderRadius: 10,
+    justifyContent: 'center',
+    minHeight: 30,
+    minWidth: 54,
+    paddingHorizontal: 10
+  },
+  calloutNavButtonText: {
+    color: '#ffffff',
+    fontSize: 12,
+    fontWeight: '800'
+  },
   calloutAddress: {
     color: '#5f6b76',
     fontSize: 12,
     marginTop: 3
+  },
+  calloutContact: {
+    color: '#7a848d',
+    fontSize: 11,
+    marginTop: 4
+  },
+  calloutBadgeRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 6,
+    marginTop: 8
+  },
+  calloutBadge: {
+    alignItems: 'center',
+    borderRadius: 999,
+    justifyContent: 'center',
+    minHeight: 22,
+    paddingHorizontal: 9
+  },
+  calloutBadgeText: {
+    fontSize: 10,
+    fontWeight: '800'
+  },
+  calloutIntelRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 6,
+    marginTop: 8
+  },
+  calloutIntelChip: {
+    borderRadius: 999,
+    paddingHorizontal: 9,
+    paddingVertical: 6
+  },
+  calloutIntelChipText: {
+    fontSize: 10,
+    fontWeight: '800'
   },
   calloutWindowTitle: {
     color: '#8a4b08',
@@ -1691,6 +2436,132 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontWeight: '700',
     marginTop: 8
+  },
+  selectedStopCard: {
+    backgroundColor: 'rgba(255,255,255,0.97)',
+    borderColor: '#e7e2da',
+    borderRadius: 18,
+    borderWidth: 1,
+    marginBottom: 8,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    shadowColor: '#0f172a',
+    shadowOffset: {
+      width: 0,
+      height: 8
+    },
+    shadowOpacity: 0.14,
+    shadowRadius: 18,
+    elevation: 8
+  },
+  selectedStopCardPressable: {
+    marginTop: 8
+  },
+  groupedCardHeading: {
+    flex: 1,
+    gap: 2
+  },
+  groupedCardTitle: {
+    color: '#173042',
+    fontSize: 18,
+    fontWeight: '800'
+  },
+  groupedCardSubtitle: {
+    color: '#6b7782',
+    fontSize: 13,
+    fontWeight: '600'
+  },
+  groupedCardCount: {
+    color: '#65727d',
+    fontSize: 13,
+    fontWeight: '700',
+    marginTop: 10
+  },
+  groupedStopTable: {
+    gap: 8,
+    marginTop: 10
+  },
+  groupedStopRow: {
+    alignItems: 'center',
+    backgroundColor: '#f8fafc',
+    borderColor: '#e2e8f0',
+    borderRadius: 14,
+    borderWidth: 1,
+    flexDirection: 'row',
+    gap: 10,
+    paddingHorizontal: 10,
+    paddingVertical: 10
+  },
+  groupedStopSequenceBadge: {
+    alignItems: 'center',
+    backgroundColor: '#e0f2fe',
+    borderColor: '#e0f2fe',
+    borderRadius: 10,
+    borderWidth: 1,
+    justifyContent: 'center',
+    minHeight: 34,
+    minWidth: 56,
+    paddingHorizontal: 8
+  },
+  groupedStopSequenceBadgeText: {
+    color: '#0f4c81',
+    fontSize: 12,
+    fontWeight: '800'
+  },
+  groupedStopMain: {
+    flex: 1,
+    gap: 3
+  },
+  groupedStopUnitLabel: {
+    color: '#173042',
+    fontSize: 15,
+    fontWeight: '800'
+  },
+  groupedStopMeta: {
+    color: '#6b7782',
+    fontSize: 12,
+    fontWeight: '600'
+  },
+  groupedStopStatusPill: {
+    alignItems: 'center',
+    borderRadius: 999,
+    justifyContent: 'center',
+    minHeight: 26,
+    paddingHorizontal: 10
+  },
+  groupedStopStatusPill_pending: {
+    backgroundColor: '#eef2f7'
+  },
+  groupedStopStatusPill_delivered: {
+    backgroundColor: '#dcfce7'
+  },
+  groupedStopStatusPill_pickup_complete: {
+    backgroundColor: '#dcfce7'
+  },
+  groupedStopStatusPill_attempted: {
+    backgroundColor: '#fef3c7'
+  },
+  groupedStopStatusPill_incomplete: {
+    backgroundColor: '#fee2e2'
+  },
+  groupedStopStatusText: {
+    fontSize: 11,
+    fontWeight: '800'
+  },
+  groupedStopStatusText_pending: {
+    color: '#475569'
+  },
+  groupedStopStatusText_delivered: {
+    color: '#166534'
+  },
+  groupedStopStatusText_pickup_complete: {
+    color: '#166534'
+  },
+  groupedStopStatusText_attempted: {
+    color: '#92400e'
+  },
+  groupedStopStatusText_incomplete: {
+    color: '#b91c1c'
   },
   legendContainer: {
     alignItems: 'flex-end',
@@ -1837,17 +2708,17 @@ const styles = StyleSheet.create({
   },
   legendMiniTimeCommit: {
     alignItems: 'center',
-    backgroundColor: '#FF6200',
+    backgroundColor: '#2980b9',
     borderColor: '#ffffff',
     borderRadius: 7,
     borderWidth: 1,
     height: 14,
     justifyContent: 'center',
     left: '50%',
-    marginLeft: -7,
+    marginLeft: -9,
     position: 'absolute',
     top: -3,
-    width: 14
+    width: 18
   },
   legendMiniNote: {
     alignItems: 'center',
@@ -1863,6 +2734,11 @@ const styles = StyleSheet.create({
   legendMiniText: {
     color: '#ffffff',
     fontSize: 8,
+    fontWeight: '900'
+  },
+  legendMiniTimeCommitText: {
+    color: '#ffffff',
+    fontSize: 7,
     fontWeight: '900'
   },
   legendButton: {
@@ -1883,10 +2759,10 @@ const styles = StyleSheet.create({
   bottomBar: {
     backgroundColor: 'rgba(255,255,255,0.96)',
     borderRadius: 20,
-    marginTop: 10,
-    paddingBottom: 16,
+    marginTop: 8,
+    paddingBottom: 12,
     paddingHorizontal: 12,
-    paddingTop: 10,
+    paddingTop: 8,
     shadowColor: '#0f172a',
     shadowOffset: {
       width: 0,
@@ -1896,20 +2772,57 @@ const styles = StyleSheet.create({
     shadowRadius: 18,
     elevation: 8
   },
-  stopsPerHour: {
+  laborActionRow: {
+    alignItems: 'center',
+    marginTop: 10
+  },
+  laborActionButton: {
+    alignItems: 'center',
+    borderRadius: 18,
+    justifyContent: 'center',
+    minHeight: 52,
+    paddingHorizontal: 18,
+    width: '68%'
+  },
+  laborActionButtonText: {
+    color: '#ffffff',
+    fontSize: 18,
+    fontWeight: '800'
+  },
+  clockButton: {
+    backgroundColor: '#2f2f2f'
+  },
+  bottomStatsRow: {
+    flexDirection: 'row',
+    gap: 12,
+    marginBottom: 8
+  },
+  bottomStatColumn: {
+    alignItems: 'center',
+    flex: 1,
+    justifyContent: 'center'
+  },
+  bottomStatLabel: {
+    color: '#7a8792',
+    fontSize: 12,
+    fontWeight: '700',
+    marginBottom: 4,
+    textTransform: 'uppercase'
+  },
+  bottomStatValue: {
     color: '#173042',
     fontSize: 16,
     fontWeight: '700',
-    marginBottom: 8,
     textAlign: 'center'
   },
   completeButton: {
     alignItems: 'center',
+    alignSelf: 'center',
     backgroundColor: '#27AE60',
     borderRadius: 16,
     justifyContent: 'center',
     minHeight: 54,
-    width: '100%'
+    width: '68%'
   },
   completeButtonText: {
     color: '#ffffff',
