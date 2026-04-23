@@ -44,7 +44,16 @@ jobs:
         run: npm ci
 
       - name: Run backend unit tests
+        env:
+          SUPABASE_URL: https://example.supabase.co
+          SUPABASE_SERVICE_KEY: test-service-role-key
+          JWT_SECRET: test-secret
         run: npm run test:unit
 
       - name: Run backend e2e tests
+        if: ${{ secrets.SUPABASE_URL != '' && secrets.SUPABASE_SERVICE_KEY != '' && secrets.JWT_SECRET != '' }}
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+          JWT_SECRET: ${{ secrets.JWT_SECRET }}
         run: npm run test:e2e -- --runInBand
