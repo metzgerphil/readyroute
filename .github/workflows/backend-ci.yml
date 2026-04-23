@@ -43,5 +43,8 @@ jobs:
       - name: Install backend dependencies
         run: npm ci
 
-      - name: Run backend test suite
-        run: npm test -- --runInBand
+      - name: Run backend unit tests
+        run: npm run test:unit
+
+      - name: Run backend e2e tests
+        run: npm run test:e2e -- --runInBand
