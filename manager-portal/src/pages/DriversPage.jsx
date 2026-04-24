@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
 import api from '../services/api';
+import { getTodayString, loadStoredOperationsDate, saveStoredOperationsDate } from '../utils/operationsDate';
 
 const CODE_CATEGORY_GROUPS = [
   {
@@ -286,14 +287,6 @@ function formatShiftWindow(clockIn, clockOut) {
   return `${start} → ${end}`;
 }
 
-function getTodayDateString() {
-  return new Intl.DateTimeFormat('en-CA', {
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit'
-  }).format(new Date());
-}
-
 function groupExceptionBreakdown(breakdown) {
   return CODE_CATEGORY_GROUPS.map((group) => ({
     ...group,
@@ -309,7 +302,7 @@ function groupExceptionBreakdown(breakdown) {
 
 export default function DriversPage() {
   const queryClient = useQueryClient();
-  const [selectedWeekDate, setSelectedWeekDate] = useState(getTodayDateString());
+  const [selectedWeekDate, setSelectedWeekDate] = useState(loadStoredOperationsDate() || getTodayString());
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [modalMode, setModalMode] = useState('add');
   const [form, setForm] = useState(emptyForm);
@@ -754,7 +747,10 @@ export default function DriversPage() {
             <span className="field-label">Week Of</span>
             <input
               className="date-field"
-              onChange={(event) => setSelectedWeekDate(event.target.value)}
+              onChange={(event) => {
+                setSelectedWeekDate(event.target.value);
+                saveStoredOperationsDate(event.target.value);
+              }}
               type="date"
               value={selectedWeekDate}
             />

@@ -6,7 +6,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import DriverRow from '../components/DriverRow';
 import OverviewRoutesSection from '../components/OverviewRoutesSection';
 import api from '../services/api';
-import { getTodayString, saveStoredOperationsDate } from '../utils/operationsDate';
+import { getTodayString, loadStoredOperationsDate, saveStoredOperationsDate } from '../utils/operationsDate';
 
 const GOOGLE_MAPS_KEY = import.meta.env.VITE_GOOGLE_MAPS_KEY;
 const GOOGLE_MAPS_SRC = GOOGLE_MAPS_KEY
@@ -697,7 +697,7 @@ export default function DashboardPage() {
   const [viewMode, setViewMode] = useState('map');
   const [isCompactBanner, setIsCompactBanner] = useState(false);
   const [vehiclePickerRouteId, setVehiclePickerRouteId] = useState(null);
-  const dashboardDate = searchParams.get('date') || getTodayString();
+  const dashboardDate = searchParams.get('date') || loadStoredOperationsDate() || getTodayString();
   const isSelectedDateToday = dashboardDate === getTodayString();
 
   useEffect(() => {
@@ -708,9 +708,13 @@ export default function DashboardPage() {
   }, [dashboardDate, searchParams, setSearchParams]);
 
   const dashboardQuery = useQuery({
-    queryKey: ['manager-dashboard'],
+    queryKey: ['manager-dashboard', dashboardDate],
     queryFn: async () => {
-      const response = await api.get('/manager/dashboard');
+      const response = await api.get('/manager/dashboard', {
+        params: {
+          date: dashboardDate
+        }
+      });
       return response.data;
     },
     refetchInterval: 30000
@@ -766,7 +770,7 @@ export default function DashboardPage() {
     },
     onSuccess: ({ routeId, vehicleId }) => {
       const vehicle = (vehiclesQuery.data || []).find((entry) => entry.id === vehicleId) || null;
-      queryClient.setQueryData(['manager-dashboard'], (current) => {
+      queryClient.setQueryData(['manager-dashboard', dashboardDate], (current) => {
         if (!current) {
           return current;
         }

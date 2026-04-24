@@ -2,14 +2,7 @@ import { useQuery } from '@tanstack/react-query';
 import { useMemo, useState } from 'react';
 
 import api from '../services/api';
-
-function getTodayDateString() {
-  return new Intl.DateTimeFormat('en-CA', {
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit'
-  }).format(new Date());
-}
+import { getTodayString, loadStoredOperationsDate, saveStoredOperationsDate } from '../utils/operationsDate';
 
 function formatHours(value) {
   return `${Number(value || 0).toFixed(2)} hrs`;
@@ -45,7 +38,12 @@ function formatDateTime(value) {
 }
 
 export default function RecordsPage() {
-  const [selectedDate, setSelectedDate] = useState(getTodayDateString());
+  const [selectedDate, setSelectedDate] = useState(loadStoredOperationsDate() || getTodayString());
+
+  function handleDateChange(nextDate) {
+    setSelectedDate(nextDate);
+    saveStoredOperationsDate(nextDate);
+  }
 
   const recordsQuery = useQuery({
     queryKey: ['manager-records', selectedDate],
@@ -75,9 +73,9 @@ export default function RecordsPage() {
           <span className="field-label">Selected Day</span>
           <input
             className="date-field"
-            max={getTodayDateString()}
+            max={getTodayString()}
             min={recordsQuery.data?.range_start || ''}
-            onChange={(event) => setSelectedDate(event.target.value)}
+            onChange={(event) => handleDateChange(event.target.value)}
             type="date"
             value={selectedDate}
           />
@@ -92,7 +90,7 @@ export default function RecordsPage() {
               <button
                 className={`records-day-button${selectedDate === day.date ? ' active' : ''}`}
                 key={day.date}
-                onClick={() => setSelectedDate(day.date)}
+                onClick={() => handleDateChange(day.date)}
                 type="button"
               >
                 <strong>{day.date}</strong>

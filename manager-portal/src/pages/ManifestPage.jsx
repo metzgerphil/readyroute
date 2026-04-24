@@ -5,7 +5,7 @@ import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 
 import api from '../services/api';
 import MapView from '../components/MapView';
-import { getTodayString, saveStoredOperationsDate } from '../utils/operationsDate';
+import { getTodayString, loadStoredOperationsDate, saveStoredOperationsDate } from '../utils/operationsDate';
 
 const MANIFEST_UPLOAD_STORAGE_KEY = 'readyroute:manifest-latest-upload';
 
@@ -259,7 +259,7 @@ export default function ManifestPage() {
   const routeCardRefs = useRef(new Map());
   const routeFieldRefs = useRef(new Map());
   const [searchParams, setSearchParams] = useSearchParams();
-  const initialDate = searchParams.get('date') || getTodayString();
+  const initialDate = searchParams.get('date') || loadStoredOperationsDate() || getTodayString();
   const [date, setDate] = useState(initialDate);
   const [activeTab, setActiveTab] = useState('auto');
   const [selectedFile, setSelectedFile] = useState(null);
@@ -515,7 +515,7 @@ export default function ManifestPage() {
         vehicle_id: nextVehicleId || null
       });
       await queryClient.invalidateQueries({ queryKey: ['manager-routes', date] });
-      await queryClient.invalidateQueries({ queryKey: ['manager-dashboard'] });
+      await queryClient.invalidateQueries({ queryKey: ['manager-dashboard', date] });
     } finally {
       setSavingRouteIds((current) => {
         const next = new Set(current);

@@ -1329,7 +1329,8 @@ function createManagerRouter(options = {}) {
   });
 
   router.get('/dashboard', requireManager, async (req, res) => {
-    const today = getCurrentDateString(nowProvider());
+    const requestedDate = parseDateParam(req.query?.date, nowProvider);
+    const operationsDate = requestedDate || getCurrentDateString(nowProvider());
 
     try {
       const { data: drivers, error: driversError } = await supabase
@@ -1348,7 +1349,7 @@ function createManagerRouter(options = {}) {
         .from('routes')
         .select('id, driver_id, vehicle_id, date, status, total_stops, completed_stops, work_area_name, created_at, archived_at')
         .eq('account_id', req.account.account_id)
-        .eq('date', today)
+        .eq('date', operationsDate)
         .is('archived_at', null)
         .order('id');
 
@@ -1512,7 +1513,7 @@ function createManagerRouter(options = {}) {
       });
 
       return res.status(200).json({
-        date: today,
+        date: operationsDate,
         total_stops: totalStops,
         completed_stops: completedStops,
         time_commits_total: timeCommitTotals.total,

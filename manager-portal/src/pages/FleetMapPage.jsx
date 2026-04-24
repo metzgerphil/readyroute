@@ -5,7 +5,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 
 import api from '../services/api';
 import { createDriverPositionMarker } from '../utils/stopMarkers';
-import { getTodayString, saveStoredOperationsDate } from '../utils/operationsDate';
+import { getTodayString, loadStoredOperationsDate, saveStoredOperationsDate } from '../utils/operationsDate';
 import './FleetMapPage.css';
 
 const GOOGLE_MAPS_KEY = import.meta.env.VITE_GOOGLE_MAPS_KEY;
@@ -130,7 +130,7 @@ export default function FleetMapPage() {
   const stopMarkersRef = useRef([]);
   const driverMarkersRef = useRef(new Map());
   const routeLinesRef = useRef([]);
-  const initialDate = searchParams.get('date') || getTodayString();
+  const initialDate = searchParams.get('date') || loadStoredOperationsDate() || getTodayString();
   const [date, setDate] = useState(initialDate);
   const [mapError, setMapError] = useState('');
   const [mapReady, setMapReady] = useState(false);
