@@ -186,7 +186,8 @@ function createAuthRouter(options = {}) {
           manager_email: email,
           manager_password_hash: passwordHash,
           vehicle_count: vehicleCount,
-          plan: 'starter'
+          plan: 'starter',
+          driver_starter_pin: '1234'
         })
         .select('id, company_name, manager_email, stripe_customer_id, vehicle_count')
         .single();

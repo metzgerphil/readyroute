@@ -1,5 +1,7 @@
 const { isUsableCoordinate } = require('./coordinates');
 
+const INVALID_SID_VALUES = new Set(['', '0', 'NULL', 'UNDEFINED', 'N/A', 'NA']);
+
 function normalizeAddressKey(value) {
   return String(value || '')
     .toUpperCase()
@@ -19,7 +21,12 @@ function normalizeAddressKey(value) {
 
 function getStopSid(stop) {
   const sid = String(stop?.sid || '').trim();
-  return sid ? sid : null;
+  if (!sid) {
+    return null;
+  }
+
+  const normalizedSid = sid.toUpperCase();
+  return INVALID_SID_VALUES.has(normalizedSid) ? null : sid;
 }
 
 function getStopAddressKey(stop) {
@@ -74,8 +81,9 @@ function mergeManifestStops(primaryStops = [], gpxStops = []) {
       gpxBySequence.set(stop.sequence, stop);
     }
 
-    if (String(stop?.sid || '').trim()) {
-      gpxBySid.set(String(stop.sid).trim(), stop);
+    const sid = getStopSid(stop);
+    if (sid) {
+      gpxBySid.set(sid, stop);
     }
 
     const normalizedAddress = normalizeAddressKey(stop?.address_line1 || stop?.address || '');
@@ -102,8 +110,13 @@ function mergeManifestStops(primaryStops = [], gpxStops = []) {
 
     const hasMergedCoordinates = isUsableCoordinate(match.lat, match.lng);
 
+    const hasMatchedSequence = Number.isInteger(match?.sequence) && match.sequence > 0;
+
     return {
       ...stop,
+      sequence: hasMatchedSequence ? match.sequence : stop.sequence,
+      stop_number: hasMatchedSequence ? match.sequence : stop.stop_number,
+      uses_synthetic_sequence: hasMatchedSequence ? false : Boolean(stop?.uses_synthetic_sequence),
       lat: hasMergedCoordinates ? match.lat : stop.lat ?? null,
       lng: hasMergedCoordinates ? match.lng : stop.lng ?? null,
       geocode_source: hasMergedCoordinates ? (match.geocode_source || 'manifest') : (stop.geocode_source || null),
@@ -131,7 +144,29 @@ function mergeManifestMeta(primaryMeta = null, gpxMeta = null) {
   };
 }
 
+function normalizeMergedStopSequences(stops = []) {
+  return (stops || [])
+    .map((stop, index) => ({ stop, index }))
+    .sort((left, right) => {
+      const leftSequence = Number.isInteger(left.stop?.sequence) ? left.stop.sequence : Number.MAX_SAFE_INTEGER;
+      const rightSequence = Number.isInteger(right.stop?.sequence) ? right.stop.sequence : Number.MAX_SAFE_INTEGER;
+
+      if (leftSequence !== rightSequence) {
+        return leftSequence - rightSequence;
+      }
+
+      return left.index - right.index;
+    })
+    .map(({ stop }, index) => ({
+      ...stop,
+      sequence: index + 1,
+      stop_number: index + 1,
+      uses_synthetic_sequence: false
+    }));
+}
+
 module.exports = {
   mergeManifestMeta,
-  mergeManifestStops
+  mergeManifestStops,
+  normalizeMergedStopSequences
 };

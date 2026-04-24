@@ -1,7 +1,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 
-const { mergeManifestStops } = require('./manifestMerge');
+const { mergeManifestStops, normalizeMergedStopSequences } = require('./manifestMerge');
 
 test('mergeManifestStops merges by SID and address without requiring sequence alignment', () => {
   const merged = mergeManifestStops(
@@ -103,4 +103,107 @@ test('mergeManifestStops does not force sequence-based merges when GPX and XLS a
   assert.equal(merged[1].lat, null);
   assert.equal(merged[1].lng, null);
   assert.equal(merged[0].contact_name, 'NIURKA ULLOA');
+});
+
+test('mergeManifestStops replaces synthetic XLS sequence values with GPX sequence when matched', () => {
+  const merged = mergeManifestStops(
+    [
+      {
+        sequence: 100001,
+        stop_number: 100001,
+        uses_synthetic_sequence: true,
+        sid: 'SID123',
+        address_line1: '123 Main St',
+        address: '123 Main St, San Diego, CA 92029',
+        lat: null,
+        lng: null
+      }
+    ],
+    [
+      {
+        sequence: 27,
+        sid: 'SID123',
+        address_line1: '123 Main St',
+        address: '123 Main St',
+        lat: 33.1,
+        lng: -117.2,
+        geocode_source: 'manifest',
+        geocode_accuracy: 'manifest'
+      }
+    ]
+  );
+
+  assert.equal(merged[0].sequence, 27);
+  assert.equal(merged[0].stop_number, 27);
+  assert.equal(merged[0].uses_synthetic_sequence, false);
+  assert.equal(merged[0].lat, 33.1);
+  assert.equal(merged[0].lng, -117.2);
+});
+
+test('mergeManifestStops ignores placeholder SID values and falls back to address matching', () => {
+  const merged = mergeManifestStops(
+    [
+      {
+        sequence: 2,
+        sid: '0',
+        address_line1: '2015 ALDERGROVE AVE',
+        address: '2015 ALDERGROVE AVE, ESCONDIDO, CA 92029-1902',
+        lat: null,
+        lng: null
+      },
+      {
+        sequence: 3,
+        sid: '0',
+        address_line1: '2425 AUTO PARK WAY',
+        address: '2425 AUTO PARK WAY, ESCONDIDO, CA 92029-1222',
+        lat: null,
+        lng: null
+      }
+    ],
+    [
+      {
+        sequence: null,
+        sid: '0',
+        address_line1: '2015 ALDERGROVE AVE',
+        address: '2015 ALDERGROVE AVE',
+        lat: 33.116729,
+        lng: -117.112454,
+        geocode_source: 'manifest',
+        geocode_accuracy: 'manifest'
+      },
+      {
+        sequence: null,
+        sid: '0',
+        address_line1: '2425 AUTO PARK WAY',
+        address: '2425 AUTO PARK WAY',
+        lat: 33.124775,
+        lng: -117.120303,
+        geocode_source: 'manifest',
+        geocode_accuracy: 'manifest'
+      }
+    ]
+  );
+
+  assert.equal(merged[0].lat, 33.116729);
+  assert.equal(merged[0].lng, -117.112454);
+  assert.equal(merged[1].lat, 33.124775);
+  assert.equal(merged[1].lng, -117.120303);
+});
+
+test('normalizeMergedStopSequences produces a clean contiguous stop order', () => {
+  const normalized = normalizeMergedStopSequences([
+    { sequence: 1, stop_number: 1, sid: 'A' },
+    { sequence: 1, stop_number: 1, sid: 'B' },
+    { sequence: 6, stop_number: 6, sid: 'C' },
+    { sequence: 9, stop_number: 9, sid: 'D' }
+  ]);
+
+  assert.deepEqual(
+    normalized.map((stop) => stop.sequence),
+    [1, 2, 3, 4]
+  );
+  assert.deepEqual(
+    normalized.map((stop) => stop.stop_number),
+    [1, 2, 3, 4]
+  );
 });

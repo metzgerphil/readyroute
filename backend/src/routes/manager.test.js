@@ -485,6 +485,18 @@ test('GET /manager/drivers returns the driver list for the manager account', asy
 
 test('POST /manager/drivers creates a driver with a hashed PIN', async () => {
   const supabase = new MockSupabase((query) => {
+    if (query.table === 'accounts' && query.operation === 'select') {
+      return {
+        data: {
+          id: 'acct-1',
+          company_name: 'ReadyRoute Test',
+          manager_email: 'manager@example.com',
+          driver_starter_pin: '1234'
+        },
+        error: null
+      };
+    }
+
     if (query.table === 'drivers' && query.operation === 'select') {
       return {
         data: null,
@@ -528,7 +540,7 @@ test('POST /manager/drivers creates a driver with a hashed PIN', async () => {
     });
 
     assert.equal(response.status, 201);
-    assert.deepEqual(await response.json(), { driver_id: 'driver-99' });
+    assert.deepEqual(await response.json(), { driver_id: 'driver-99', starter_pin_applied: false });
 
     const insertCall = supabase.calls.find((call) => call.table === 'drivers' && call.operation === 'insert');
     assert.ok(insertCall);
@@ -540,6 +552,18 @@ test('POST /manager/drivers creates a driver with a hashed PIN', async () => {
 
 test('POST /manager/drivers returns 409 when the email already exists', async () => {
   const supabase = new MockSupabase((query) => {
+    if (query.table === 'accounts' && query.operation === 'select') {
+      return {
+        data: {
+          id: 'acct-1',
+          company_name: 'ReadyRoute Test',
+          manager_email: 'manager@example.com',
+          driver_starter_pin: '1234'
+        },
+        error: null
+      };
+    }
+
     if (query.table === 'drivers' && query.operation === 'select') {
       return {
         data: { id: 'driver-existing' },
@@ -571,6 +595,221 @@ test('POST /manager/drivers returns 409 when the email already exists', async ()
     assert.equal(response.status, 409);
     const body = await response.json();
     assert.equal(body.error, 'A driver with that email already exists');
+  } finally {
+    await server.close();
+  }
+});
+
+test('GET /manager/driver-access returns the account starter PIN', async () => {
+  const supabase = new MockSupabase((query) => {
+    if (query.table === 'accounts' && query.operation === 'select') {
+      return {
+        data: {
+          id: 'acct-1',
+          company_name: 'ReadyRoute Test',
+          manager_email: 'manager@example.com',
+          driver_starter_pin: '1234'
+        },
+        error: null
+      };
+    }
+
+    throw new Error(`Unexpected query ${query.table}:${query.operation}`);
+  });
+
+  const server = await startTestServer({ supabase });
+
+  try {
+    const response = await fetch(`${server.baseUrl}/manager/driver-access`, {
+      headers: {
+        Authorization: `Bearer ${signManagerToken()}`
+      }
+    });
+
+    assert.equal(response.status, 200);
+    assert.deepEqual(await response.json(), { starter_pin: '1234' });
+  } finally {
+    await server.close();
+  }
+});
+
+test('GET /manager/driver-access falls back to 1234 when no starter PIN is saved yet', async () => {
+  const supabase = new MockSupabase((query) => {
+    if (query.table === 'accounts' && query.operation === 'select') {
+      return {
+        data: {
+          id: 'acct-1',
+          company_name: 'Bridge Transportation Inc',
+          manager_email: 'owner@example.com',
+          driver_starter_pin: null
+        },
+        error: null
+      };
+    }
+
+    throw new Error(`Unexpected query ${query.table}:${query.operation}`);
+  });
+
+  const server = await startTestServer({ supabase });
+
+  try {
+    const response = await fetch(`${server.baseUrl}/manager/driver-access`, {
+      headers: {
+        Authorization: `Bearer ${signManagerToken()}`
+      }
+    });
+
+    assert.equal(response.status, 200);
+    assert.deepEqual(await response.json(), { starter_pin: '1234' });
+  } finally {
+    await server.close();
+  }
+});
+
+test('PATCH /manager/driver-access updates the account starter PIN', async () => {
+  const supabase = new MockSupabase((query) => {
+    if (query.table === 'accounts' && query.operation === 'update') {
+      assert.equal(query.payload.driver_starter_pin, '1234');
+      return { data: null, error: null };
+    }
+
+    throw new Error(`Unexpected query ${query.table}:${query.operation}`);
+  });
+
+  const server = await startTestServer({ supabase });
+
+  try {
+    const response = await fetch(`${server.baseUrl}/manager/driver-access`, {
+      method: 'PATCH',
+      headers: {
+        Authorization: `Bearer ${signManagerToken()}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        starter_pin: '1234'
+      })
+    });
+
+    assert.equal(response.status, 200);
+    assert.deepEqual(await response.json(), { ok: true, starter_pin: '1234' });
+  } finally {
+    await server.close();
+  }
+});
+
+test('POST /manager/drivers uses the CSA starter PIN when no driver PIN is provided', async () => {
+  const supabase = new MockSupabase((query) => {
+    if (query.table === 'accounts' && query.operation === 'select') {
+      return {
+        data: {
+          id: 'acct-1',
+          company_name: 'ReadyRoute Test',
+          manager_email: 'manager@example.com',
+          driver_starter_pin: '1234'
+        },
+        error: null
+      };
+    }
+
+    if (query.table === 'drivers' && query.operation === 'select') {
+      return {
+        data: null,
+        error: null
+      };
+    }
+
+    if (query.table === 'drivers' && query.operation === 'insert') {
+      return {
+        data: { id: 'driver-100' },
+        error: null
+      };
+    }
+
+    throw new Error(`Unexpected query ${query.table}:${query.operation}`);
+  });
+
+  const server = await startTestServer({ supabase });
+
+  try {
+    const response = await fetch(`${server.baseUrl}/manager/drivers`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${signManagerToken()}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        name: 'Alex Driver',
+        email: 'Alex@Example.com',
+        phone: '555-1234',
+        hourly_rate: 22.5
+      })
+    });
+
+    assert.equal(response.status, 201);
+    assert.deepEqual(await response.json(), { driver_id: 'driver-100', starter_pin_applied: true });
+
+    const insertCall = supabase.calls.find((call) => call.table === 'drivers' && call.operation === 'insert');
+    assert.ok(insertCall);
+    assert.equal(await bcrypt.compare('1234', insertCall.payload.pin), true);
+  } finally {
+    await server.close();
+  }
+});
+
+test('POST /manager/drivers falls back to 1234 when the CSA starter PIN is still blank', async () => {
+  const supabase = new MockSupabase((query) => {
+    if (query.table === 'accounts' && query.operation === 'select') {
+      return {
+        data: {
+          id: 'acct-1',
+          company_name: 'ReadyRoute Test',
+          manager_email: 'manager@example.com',
+          driver_starter_pin: null
+        },
+        error: null
+      };
+    }
+
+    if (query.table === 'drivers' && query.operation === 'select') {
+      return {
+        data: null,
+        error: null
+      };
+    }
+
+    if (query.table === 'drivers' && query.operation === 'insert') {
+      return {
+        data: { id: 'driver-101' },
+        error: null
+      };
+    }
+
+    throw new Error(`Unexpected query ${query.table}:${query.operation}`);
+  });
+
+  const server = await startTestServer({ supabase });
+
+  try {
+    const response = await fetch(`${server.baseUrl}/manager/drivers`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${signManagerToken()}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        name: 'Taylor Driver',
+        email: 'Taylor@Example.com',
+        phone: '555-2222',
+        hourly_rate: 23
+      })
+    });
+
+    assert.equal(response.status, 201);
+    assert.deepEqual(await response.json(), { driver_id: 'driver-101', starter_pin_applied: true });
+
+    const insertCall = supabase.calls.find((call) => call.table === 'drivers' && call.operation === 'insert');
+    assert.ok(insertCall);
+    assert.equal(await bcrypt.compare('1234', insertCall.payload.pin), true);
   } finally {
     await server.close();
   }

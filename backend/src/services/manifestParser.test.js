@@ -200,6 +200,40 @@ test('parseXLSManifest skips nonpositive ST numbers and malformed shifted rows',
   assert.equal(manifest.stops[1].has_time_commit, true);
 });
 
+test('parseXLSManifest normalizes suspicious 02:00-04:00 business delivery windows to 14:00-16:00', () => {
+  const workbook = XLSX.utils.book_new();
+
+  XLSX.utils.book_append_sheet(
+    workbook,
+    XLSX.utils.aoa_to_sheet([
+      ['Page', 'Combined Manifest'],
+      ['Date', '04/23/2026'],
+      ['SA#', '306902'],
+      ['WA#', '0810']
+    ]),
+    'Header'
+  );
+
+  XLSX.utils.book_append_sheet(
+    workbook,
+    XLSX.utils.aoa_to_sheet([
+      ['ST#', 'Delivery/Pickup', 'Contact Name', 'Address Line 1', 'Address Line 2', 'City', 'State', 'Postal Code', '# Pkgs', 'SID', 'Ready', 'Close'],
+      [56, 'Delivery', 'BEARCOM', '2229 ENTERPRISE ST', '', 'Escondido', 'CA', '92029-2073', 1, '3061', '02:00', '04:00'],
+      [57, 'Delivery', 'Jane Smith', '123 Main St', 'APT A', 'Escondido', 'CA', '92029', 1, '3062', '02:00', '04:00']
+    ]),
+    'Stop Details'
+  );
+
+  const manifest = parseXLSManifest(XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' }));
+  const businessStop = manifest.stops.find((stop) => stop.stop_number === 56);
+  const residentialStop = manifest.stops.find((stop) => stop.stop_number === 57);
+
+  assert.equal(businessStop.ready_time, '14:00');
+  assert.equal(businessStop.close_time, '16:00');
+  assert.equal(residentialStop.ready_time, '02:00');
+  assert.equal(residentialStop.close_time, '04:00');
+});
+
 test('detectApartmentUnitStop flags residential units without turning suites into apartments', () => {
   assert.equal(
     detectApartmentUnitStop({

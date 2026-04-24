@@ -7,6 +7,23 @@ function toCoordinateNumber(value) {
   return Number.isFinite(parsed) ? parsed : null;
 }
 
+function normalizeAddressKey(value) {
+  return String(value || '')
+    .toUpperCase()
+    .replace(/\bAVENUE\b/g, 'AVE')
+    .replace(/\bSTREET\b/g, 'ST')
+    .replace(/\bROAD\b/g, 'RD')
+    .replace(/\bDRIVE\b/g, 'DR')
+    .replace(/\bPLACE\b/g, 'PL')
+    .replace(/\bLANE\b/g, 'LN')
+    .replace(/\bCOURT\b/g, 'CT')
+    .replace(/\bBOULEVARD\b/g, 'BLVD')
+    .replace(/\bPARKWAY\b/g, 'PKWY')
+    .replace(/[^A-Z0-9]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
 function isOriginCoordinate(lat, lng) {
   const parsedLat = toCoordinateNumber(lat);
   const parsedLng = toCoordinateNumber(lng);
@@ -103,7 +120,57 @@ function summarizeCoordinateHealth(stops = []) {
   return summary;
 }
 
+function detectSuspiciousCoordinateClusters(stops = []) {
+  const clusters = new Map();
+
+  for (const stop of stops || []) {
+    if (!isUsableCoordinate(stop?.lat, stop?.lng)) {
+      continue;
+    }
+
+    const key = `${Number(stop.lat).toFixed(6)},${Number(stop.lng).toFixed(6)}`;
+    const current = clusters.get(key) || {
+      coordinate_key: key,
+      lat: Number(stop.lat),
+      lng: Number(stop.lng),
+      stop_count: 0,
+      address_keys: new Set(),
+      sample_addresses: []
+    };
+
+    current.stop_count += 1;
+
+    const addressKey = normalizeAddressKey(stop?.address_line1 || stop?.address || '');
+    if (addressKey) {
+      current.address_keys.add(addressKey);
+      if (current.sample_addresses.length < 5 && !current.sample_addresses.includes(stop.address || stop.address_line1)) {
+        current.sample_addresses.push(stop.address || stop.address_line1);
+      }
+    }
+
+    clusters.set(key, current);
+  }
+
+  const suspiciousClusters = [...clusters.values()]
+    .map((cluster) => ({
+      coordinate_key: cluster.coordinate_key,
+      lat: cluster.lat,
+      lng: cluster.lng,
+      stop_count: cluster.stop_count,
+      distinct_address_count: cluster.address_keys.size,
+      sample_addresses: cluster.sample_addresses
+    }))
+    .filter((cluster) => cluster.stop_count >= 8 && cluster.distinct_address_count >= 6)
+    .sort((left, right) => right.stop_count - left.stop_count);
+
+  return {
+    suspicious_cluster_count: suspiciousClusters.length,
+    suspicious_clusters: suspiciousClusters
+  };
+}
+
 module.exports = {
+  detectSuspiciousCoordinateClusters,
   getMapStatus,
   isOriginCoordinate,
   isUsableCoordinate,
