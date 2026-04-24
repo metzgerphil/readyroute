@@ -1,9 +1,11 @@
 const express = require('express');
 const bcrypt = require('bcrypt');
+const crypto = require('crypto');
 const jwt = require('jsonwebtoken');
 
 const defaultSupabase = require('../lib/supabase');
 const { requireManager } = require('../middleware/auth');
+const { createBillingService } = require('../services/billing');
 const { attachApartmentIntelligenceToStops } = require('../services/apartmentIntelligence');
 const { isUsableCoordinate, summarizeCoordinateHealth } = require('../services/coordinates');
 const { attachPropertyIntelToStops, savePropertyIntel } = require('../services/propertyIntel');
@@ -28,6 +30,8 @@ function getCurrentDateString(now = new Date(), timeZone = process.env.APP_TIME_
     day: '2-digit'
   }).format(now);
 }
+
+const DEFAULT_DRIVER_STARTER_PIN = '1234';
 
 function parseIsoDateToUtcMidday(value) {
   const [year, month, day] = String(value).split('-').map(Number);
@@ -69,6 +73,50 @@ function getBreakMinutes(startedAt, endedAt, now = new Date()) {
   }
 
   return Math.round((end - start) / (1000 * 60));
+}
+
+function getBreakLimitMinutes(breakType) {
+  switch (breakType) {
+    case 'lunch':
+      return 30;
+    case 'rest':
+    case 'other':
+    default:
+      return 15;
+  }
+}
+
+function getScheduledBreakEnd(startedAt, breakType) {
+  if (!startedAt) {
+    return null;
+  }
+
+  const startedAtMs = new Date(startedAt).getTime();
+
+  if (!Number.isFinite(startedAtMs)) {
+    return null;
+  }
+
+  return new Date(startedAtMs + getBreakLimitMinutes(breakType) * 60 * 1000).toISOString();
+}
+
+function buildBreakDetail(breakRow, now = new Date()) {
+  const scheduledEndAt = getScheduledBreakEnd(breakRow?.started_at, breakRow?.break_type);
+  const scheduledEndMs = scheduledEndAt ? new Date(scheduledEndAt).getTime() : null;
+  const currentMs = now.getTime();
+  const isAutoEnded = !breakRow?.ended_at && Number.isFinite(scheduledEndMs) && currentMs >= scheduledEndMs;
+  const effectiveEndedAt = breakRow?.ended_at || (isAutoEnded ? scheduledEndAt : null);
+
+  return {
+    id: breakRow.id,
+    break_type: breakRow.break_type,
+    started_at: breakRow.started_at,
+    ended_at: effectiveEndedAt,
+    scheduled_end_at: scheduledEndAt,
+    is_active: !effectiveEndedAt,
+    auto_ended: isAutoEnded,
+    minutes: getBreakMinutes(breakRow.started_at, effectiveEndedAt, now)
+  };
 }
 
 function getWorkedHours(clockIn, clockOut, storedHoursWorked, now = new Date()) {
@@ -115,12 +163,10 @@ function getComplianceFlags({ clockOut, breaks = [], workedHours = 0, lunchMinut
 }
 
 function buildTimecardDetail(timecard, timecardBreaks = [], routeById = new Map(), now = new Date()) {
+  const normalizedBreaks = (timecardBreaks || []).map((breakRow) => buildBreakDetail(breakRow, now));
   const workedHours = getWorkedHours(timecard.clock_in, timecard.clock_out, timecard.hours_worked, now);
-  const breakMinutes = (timecardBreaks || []).reduce(
-    (sum, breakRow) => sum + getBreakMinutes(breakRow.started_at, breakRow.ended_at, now),
-    0
-  );
-  const lunchMinutes = getLunchMinutes(timecardBreaks, now);
+  const breakMinutes = normalizedBreaks.reduce((sum, breakRow) => sum + Number(breakRow.minutes || 0), 0);
+  const lunchMinutes = getLunchMinutes(normalizedBreaks, now);
   const payableHours = Math.max(0, Number((workedHours - lunchMinutes / 60).toFixed(2)));
   const route = routeById.get(timecard.route_id) || null;
 
@@ -134,19 +180,368 @@ function buildTimecardDetail(timecard, timecardBreaks = [], routeById = new Map(
     payable_hours: payableHours,
     break_minutes: breakMinutes,
     lunch_minutes: lunchMinutes,
-    breaks: (timecardBreaks || []).map((breakRow) => ({
-      id: breakRow.id,
-      break_type: breakRow.break_type,
-      started_at: breakRow.started_at,
-      ended_at: breakRow.ended_at,
-      minutes: getBreakMinutes(breakRow.started_at, breakRow.ended_at, now)
-    })),
+    breaks: normalizedBreaks,
     compliance_flags: getComplianceFlags({
       clockOut: timecard.clock_out,
-      breaks: timecardBreaks,
+      breaks: normalizedBreaks,
       workedHours,
       lunchMinutes
     })
+  };
+}
+
+function getLiveDriverStatus(latestTimecard) {
+  if (!latestTimecard) {
+    return {
+      code: 'not_clocked_in',
+      label: 'Not clocked in'
+    };
+  }
+
+  if (latestTimecard.clock_out) {
+    return {
+      code: 'clocked_out',
+      label: 'Clocked out'
+    };
+  }
+
+  const activeBreak = (latestTimecard.breaks || []).find((breakRow) => breakRow.is_active) || null;
+
+  if (activeBreak?.break_type === 'lunch') {
+    return {
+      code: 'on_lunch',
+      label: 'On lunch'
+    };
+  }
+
+  if (activeBreak) {
+    return {
+      code: 'on_break',
+      label: 'On break'
+    };
+  }
+
+  return {
+    code: 'working',
+    label: 'Working'
+  };
+}
+
+function normalizeLaborMinutes(value) {
+  const parsedValue = Number.parseInt(String(value ?? 0), 10);
+
+  if (!Number.isFinite(parsedValue) || parsedValue < 0) {
+    return 0;
+  }
+
+  return parsedValue;
+}
+
+function buildSyntheticBreakRows({
+  accountId,
+  driverId,
+  routeId,
+  timecardId,
+  clockIn,
+  clockOut,
+  breakMinutes,
+  lunchMinutes
+}) {
+  const segments = [];
+  const clockInMs = new Date(clockIn).getTime();
+  const clockOutMs = clockOut
+    ? new Date(clockOut).getTime()
+    : clockInMs + Math.max((breakMinutes + lunchMinutes + 60), 8 * 60) * 60 * 1000;
+  const shiftMinutes = Math.max(1, Math.round((clockOutMs - clockInMs) / (1000 * 60)));
+
+  if (breakMinutes > 0) {
+    segments.push({ break_type: 'rest', minutes: breakMinutes, anchor: 0.28 });
+  }
+
+  if (lunchMinutes > 0) {
+    segments.push({ break_type: 'lunch', minutes: lunchMinutes, anchor: 0.58 });
+  }
+
+  let lastEndOffset = 0;
+
+  return segments.map((segment) => {
+    const maxStart = Math.max(0, shiftMinutes - segment.minutes);
+    let startOffset = Math.round(shiftMinutes * segment.anchor - segment.minutes / 2);
+    startOffset = Math.max(0, Math.min(maxStart, startOffset));
+
+    if (startOffset < lastEndOffset) {
+      startOffset = Math.min(maxStart, lastEndOffset);
+    }
+
+    const endOffset = Math.min(shiftMinutes, startOffset + segment.minutes);
+    lastEndOffset = endOffset;
+
+    return {
+      account_id: accountId,
+      driver_id: driverId,
+      route_id: routeId,
+      timecard_id: timecardId,
+      break_type: segment.break_type,
+      started_at: new Date(clockInMs + startOffset * 60 * 1000).toISOString(),
+      ended_at: new Date(clockInMs + endOffset * 60 * 1000).toISOString()
+    };
+  });
+}
+
+function buildLaborAdjustmentSummary(row) {
+  return {
+    id: row.id,
+    manager_user_id: row.manager_user_id || null,
+    work_date: row.work_date,
+    adjustment_reason: row.adjustment_reason,
+    before_state: row.before_state || {},
+    after_state: row.after_state || {},
+    created_at: row.created_at
+  };
+}
+
+async function syncDailyLaborSnapshotForDate({ supabase, accountId, workDate, now = new Date() }) {
+  const { data: routes, error: routesError } = await supabase
+    .from('routes')
+    .select('id')
+    .eq('account_id', accountId)
+    .eq('date', workDate);
+
+  if (routesError) {
+    return { error: routesError };
+  }
+
+  const routeIds = (routes || []).map((route) => route.id);
+
+  if (!routeIds.length) {
+    return { finalized: false, snapshot_id: null };
+  }
+
+  const { data: openTimecards, error: openTimecardsError } = await supabase
+    .from('timecards')
+    .select('id')
+    .in('route_id', routeIds)
+    .is('clock_out', null);
+
+  if (openTimecardsError) {
+    return { error: openTimecardsError };
+  }
+
+  if ((openTimecards || []).length > 0) {
+    return { finalized: false, snapshot_id: null };
+  }
+
+  const { data: drivers, error: driversError } = await supabase
+    .from('drivers')
+    .select('id, name, email, hourly_rate, is_active')
+    .eq('account_id', accountId)
+    .order('name');
+
+  if (driversError) {
+    return { error: driversError };
+  }
+
+  const { data: timecards, error: timecardsError } = await supabase
+    .from('timecards')
+    .select('id, driver_id, route_id, clock_in, clock_out, hours_worked')
+    .in('route_id', routeIds);
+
+  if (timecardsError) {
+    return { error: timecardsError };
+  }
+
+  const timecardIds = (timecards || []).map((timecard) => timecard.id);
+  const { data: breaks, error: breaksError } = timecardIds.length
+    ? await supabase
+        .from('timecard_breaks')
+        .select('id, timecard_id, break_type, started_at, ended_at')
+        .in('timecard_id', timecardIds)
+    : { data: [], error: null };
+
+  if (breaksError) {
+    return { error: breaksError };
+  }
+
+  const breaksByTimecardId = (breaks || []).reduce((map, breakRow) => {
+    const current = map.get(breakRow.timecard_id) || [];
+    current.push(breakRow);
+    map.set(breakRow.timecard_id, current);
+    return map;
+  }, new Map());
+
+  const driverSummaries = (drivers || [])
+    .map((driver) => {
+      const driverTimecards = (timecards || []).filter((timecard) => timecard.driver_id === driver.id);
+
+      if (!driverTimecards.length) {
+        return null;
+      }
+
+      const summary = driverTimecards.reduce(
+        (current, timecard) => {
+          const timecardBreaks = breaksByTimecardId.get(timecard.id) || [];
+          const workedHours = getWorkedHours(timecard.clock_in, timecard.clock_out, timecard.hours_worked, now);
+          const totalBreakMinutes = timecardBreaks.reduce(
+            (sum, breakRow) => sum + getBreakMinutes(breakRow.started_at, breakRow.ended_at, now),
+            0
+          );
+          const lunchMinutes = timecardBreaks
+            .filter((breakRow) => breakRow.break_type === 'lunch')
+            .reduce((sum, breakRow) => sum + getBreakMinutes(breakRow.started_at, breakRow.ended_at, now), 0);
+          const payableHours = Math.max(0, Number((workedHours - lunchMinutes / 60).toFixed(2)));
+
+          current.shift_count += 1;
+          current.worked_hours += workedHours;
+          current.break_minutes += totalBreakMinutes;
+          current.lunch_minutes += lunchMinutes;
+          current.payable_hours += payableHours;
+          return current;
+        },
+        { shift_count: 0, worked_hours: 0, break_minutes: 0, lunch_minutes: 0, payable_hours: 0 }
+      );
+
+      return {
+        driver_id: driver.id,
+        hourly_rate: Number(driver.hourly_rate || 0),
+        shift_count: summary.shift_count,
+        worked_hours: Number(summary.worked_hours.toFixed(2)),
+        break_minutes: summary.break_minutes,
+        lunch_minutes: summary.lunch_minutes,
+        payable_hours: Number(summary.payable_hours.toFixed(2)),
+        estimated_pay: Number((summary.payable_hours * Number(driver.hourly_rate || 0)).toFixed(2))
+      };
+    })
+    .filter(Boolean);
+
+  const totals = driverSummaries.reduce(
+    (summary, row) => {
+      summary.driver_count += 1;
+      summary.shift_count += row.shift_count;
+      summary.worked_hours += row.worked_hours;
+      summary.payable_hours += row.payable_hours;
+      summary.break_minutes += row.break_minutes;
+      summary.lunch_minutes += row.lunch_minutes;
+      summary.estimated_pay += row.estimated_pay;
+      return summary;
+    },
+    { driver_count: 0, shift_count: 0, worked_hours: 0, payable_hours: 0, break_minutes: 0, lunch_minutes: 0, estimated_pay: 0 }
+  );
+
+  const finalizedAt = now.toISOString();
+  const { data: existingSnapshot, error: existingSnapshotError } = await supabase
+    .from('daily_labor_snapshots')
+    .select('id')
+    .eq('account_id', accountId)
+    .eq('work_date', workDate)
+    .maybeSingle();
+
+  if (existingSnapshotError) {
+    return { error: existingSnapshotError };
+  }
+
+  let snapshotId = existingSnapshot?.id || null;
+
+  if (snapshotId) {
+    const { error: updateSnapshotError } = await supabase
+      .from('daily_labor_snapshots')
+      .update({
+        finalized_at: finalizedAt,
+        driver_count: totals.driver_count,
+        shift_count: totals.shift_count,
+        total_worked_hours: Number(totals.worked_hours.toFixed(2)),
+        total_payable_hours: Number(totals.payable_hours.toFixed(2)),
+        total_break_minutes: totals.break_minutes,
+        total_lunch_minutes: totals.lunch_minutes,
+        estimated_payroll: Number(totals.estimated_pay.toFixed(2))
+      })
+      .eq('id', snapshotId);
+
+    if (updateSnapshotError) {
+      return { error: updateSnapshotError };
+    }
+  } else {
+    const { data: insertedSnapshot, error: insertSnapshotError } = await supabase
+      .from('daily_labor_snapshots')
+      .insert({
+        account_id: accountId,
+        work_date: workDate,
+        finalized_at: finalizedAt,
+        finalized_by_system: false,
+        driver_count: totals.driver_count,
+        shift_count: totals.shift_count,
+        total_worked_hours: Number(totals.worked_hours.toFixed(2)),
+        total_payable_hours: Number(totals.payable_hours.toFixed(2)),
+        total_break_minutes: totals.break_minutes,
+        total_lunch_minutes: totals.lunch_minutes,
+        estimated_payroll: Number(totals.estimated_pay.toFixed(2))
+      })
+      .select('id')
+      .maybeSingle();
+
+    if (insertSnapshotError) {
+      return { error: insertSnapshotError };
+    }
+
+    snapshotId = insertedSnapshot?.id || null;
+  }
+
+  const { data: existingDriverRows, error: existingDriverRowsError } = await supabase
+    .from('daily_driver_labor')
+    .select('id, driver_id')
+    .eq('batch_id', snapshotId);
+
+  if (existingDriverRowsError) {
+    return { error: existingDriverRowsError };
+  }
+
+  const existingRowsByDriverId = new Map((existingDriverRows || []).map((row) => [row.driver_id, row]));
+
+  for (const row of driverSummaries) {
+    const existingRow = existingRowsByDriverId.get(row.driver_id);
+
+    if (existingRow?.id) {
+      const { error: updateRowError } = await supabase
+        .from('daily_driver_labor')
+        .update({
+          hourly_rate: row.hourly_rate,
+          shift_count: row.shift_count,
+          worked_hours: row.worked_hours,
+          payable_hours: row.payable_hours,
+          break_minutes: row.break_minutes,
+          lunch_minutes: row.lunch_minutes,
+          estimated_pay: row.estimated_pay
+        })
+        .eq('id', existingRow.id);
+
+      if (updateRowError) {
+        return { error: updateRowError };
+      }
+    } else {
+      const { error: insertRowError } = await supabase
+        .from('daily_driver_labor')
+        .insert({
+          batch_id: snapshotId,
+          account_id: accountId,
+          driver_id: row.driver_id,
+          work_date: workDate,
+          hourly_rate: row.hourly_rate,
+          shift_count: row.shift_count,
+          worked_hours: row.worked_hours,
+          payable_hours: row.payable_hours,
+          break_minutes: row.break_minutes,
+          lunch_minutes: row.lunch_minutes,
+          estimated_pay: row.estimated_pay
+        });
+
+      if (insertRowError) {
+        return { error: insertRowError };
+      }
+    }
+  }
+
+  return {
+    finalized: true,
+    snapshot_id: snapshotId
   };
 }
 
@@ -291,6 +686,185 @@ function isMissingManagerUsersTable(error) {
   return ['PGRST116', 'PGRST205', '42P01'].includes(error?.code);
 }
 
+function isMissingDriverStarterPinColumn(error) {
+  const message = String(error?.message || error?.details || error?.hint || '');
+  return /driver_starter_pin/i.test(message) && /column|schema cache|could not find/i.test(message);
+}
+
+function isMissingFedexAccountsTable(error) {
+  const message = String(error?.message || error?.details || error?.hint || '');
+  return ['PGRST116', 'PGRST205', '42P01'].includes(error?.code) || /fedex_accounts/i.test(message);
+}
+
+function normalizeFedexAccountNumber(value) {
+  return String(value || '').trim().replace(/\s+/g, '');
+}
+
+function maskFedexAccountNumber(value) {
+  const normalized = normalizeFedexAccountNumber(value);
+
+  if (!normalized) {
+    return '••••';
+  }
+
+  const suffix = normalized.slice(-4);
+  return `••••${suffix}`;
+}
+
+function toFedexAccountRecord(row) {
+  return {
+    id: row.id,
+    account_id: row.account_id,
+    nickname: row.nickname,
+    account_number: row.account_number,
+    account_number_masked: maskFedexAccountNumber(row.account_number),
+    billing_contact_name: row.billing_contact_name || null,
+    billing_company_name: row.billing_company_name || null,
+    billing_address_line1: row.billing_address_line1,
+    billing_address_line2: row.billing_address_line2 || null,
+    billing_city: row.billing_city,
+    billing_state_or_province: row.billing_state_or_province,
+    billing_postal_code: row.billing_postal_code,
+    billing_country_code: row.billing_country_code || 'US',
+    connection_status: row.connection_status || 'not_started',
+    connection_reference: row.connection_reference || null,
+    last_verified_at: row.last_verified_at || null,
+    is_default: row.is_default === true,
+    created_by_manager_user_id: row.created_by_manager_user_id || null,
+    created_at: row.created_at || null,
+    updated_at: row.updated_at || null,
+    disconnected_at: row.disconnected_at || null
+  };
+}
+
+async function listFedexAccountsForAccount(supabase, accountId) {
+  const fedexAccountsQuery = await supabase
+    .from('fedex_accounts')
+    .select(
+      'id, account_id, nickname, account_number, billing_contact_name, billing_company_name, billing_address_line1, billing_address_line2, billing_city, billing_state_or_province, billing_postal_code, billing_country_code, connection_status, connection_reference, last_verified_at, is_default, created_by_manager_user_id, created_at, updated_at, disconnected_at'
+    )
+    .eq('account_id', accountId)
+    .order('is_default', { ascending: false })
+    .order('created_at', { ascending: false });
+
+  if (fedexAccountsQuery.error) {
+    if (isMissingFedexAccountsTable(fedexAccountsQuery.error)) {
+      return {
+        migrationRequired: true,
+        accounts: []
+      };
+    }
+
+    throw fedexAccountsQuery.error;
+  }
+
+  return {
+    migrationRequired: false,
+    accounts: (fedexAccountsQuery.data || []).map(toFedexAccountRecord)
+  };
+}
+
+function summarizeFedexAccounts(accounts = [], fallbackTerminalLabel = null) {
+  const activeAccounts = (accounts || []).filter((account) => !account.disconnected_at);
+  const connectedAccounts = activeAccounts.filter((account) => account.connection_status === 'connected');
+  const defaultAccount = activeAccounts.find((account) => account.is_default) || null;
+  const connectedDefaultAccount = (defaultAccount && defaultAccount.connection_status === 'connected'
+    ? defaultAccount
+    : connectedAccounts[0]) || null;
+
+  if (connectedDefaultAccount) {
+    return {
+      is_connected: true,
+      terminal_label: connectedDefaultAccount.account_number_masked,
+      default_account_id: connectedDefaultAccount.id,
+      default_account_label: `${connectedDefaultAccount.nickname} (${connectedDefaultAccount.account_number_masked})`,
+      connected_accounts_count: connectedAccounts.length
+    };
+  }
+
+  return {
+    is_connected: Boolean(fallbackTerminalLabel),
+    terminal_label: fallbackTerminalLabel || null,
+    default_account_id: defaultAccount?.id || null,
+    default_account_label: defaultAccount
+      ? `${defaultAccount.nickname} (${defaultAccount.account_number_masked})`
+      : null,
+    connected_accounts_count: connectedAccounts.length
+  };
+}
+
+async function getFedexAccountForManager(supabase, accountId, fedexAccountId) {
+  const fedexAccountQuery = await supabase
+    .from('fedex_accounts')
+    .select(
+      'id, account_id, nickname, account_number, billing_contact_name, billing_company_name, billing_address_line1, billing_address_line2, billing_city, billing_state_or_province, billing_postal_code, billing_country_code, connection_status, connection_reference, last_verified_at, is_default, created_by_manager_user_id, created_at, updated_at, disconnected_at'
+    )
+    .eq('account_id', accountId)
+    .eq('id', fedexAccountId)
+    .maybeSingle();
+
+  if (fedexAccountQuery.error) {
+    if (isMissingFedexAccountsTable(fedexAccountQuery.error)) {
+      return {
+        migrationRequired: true,
+        account: null
+      };
+    }
+
+    throw fedexAccountQuery.error;
+  }
+
+  return {
+    migrationRequired: false,
+    account: fedexAccountQuery.data ? toFedexAccountRecord(fedexAccountQuery.data) : null
+  };
+}
+
+function parseFedexAccountInput(body = {}) {
+  return {
+    nickname: String(body.nickname || '').trim(),
+    account_number: normalizeFedexAccountNumber(body.account_number),
+    billing_contact_name: String(body.billing_contact_name || '').trim(),
+    billing_company_name: String(body.billing_company_name || '').trim(),
+    billing_address_line1: String(body.billing_address_line1 || '').trim(),
+    billing_address_line2: String(body.billing_address_line2 || '').trim(),
+    billing_city: String(body.billing_city || '').trim(),
+    billing_state_or_province: String(body.billing_state_or_province || '').trim(),
+    billing_postal_code: String(body.billing_postal_code || '').trim(),
+    billing_country_code: String(body.billing_country_code || 'US').trim().toUpperCase(),
+    connection_status: String(body.connection_status || 'not_started').trim().toLowerCase(),
+    connection_reference: String(body.connection_reference || '').trim()
+  };
+}
+
+function validateFedexAccountInput(input) {
+  if (!input.nickname) {
+    return 'nickname is required';
+  }
+
+  if (input.nickname.length > 80) {
+    return 'nickname must be 80 characters or fewer';
+  }
+
+  if (!input.account_number || input.account_number.length < 5) {
+    return 'account_number must be at least 5 characters';
+  }
+
+  if (!input.billing_address_line1 || !input.billing_city || !input.billing_state_or_province || !input.billing_postal_code) {
+    return 'Billing address line 1, city, state/province, and postal code are required';
+  }
+
+  if (!input.billing_country_code || input.billing_country_code.length < 2) {
+    return 'billing_country_code is required';
+  }
+
+  if (!['not_started', 'pending_mfa', 'connected', 'failed'].includes(input.connection_status)) {
+    return 'connection_status must be not_started, pending_mfa, connected, or failed';
+  }
+
+  return null;
+}
+
 function normalizeEmail(value) {
   return String(value || '').trim().toLowerCase();
 }
@@ -317,31 +891,37 @@ function toManagerAccessRecord(managerUser, primaryManagerEmail) {
   };
 }
 
-function isManagerUsersGlobalEmailConstraintError(error) {
-  if (!error) {
-    return false;
-  }
-
-  const combined = String(error.message || error.details || error.hint || error.code || '').toLowerCase();
-
-  return (
-    error.code === '23505' &&
-    (combined.includes('manager_users_email') || combined.includes('manager_users_email_key'))
-  );
-}
-
 async function getAccountManagerContext(supabase, accountId) {
-  const { data: account, error } = await supabase
+  const accountQuery = await supabase
     .from('accounts')
-    .select('id, company_name, manager_email')
+    .select('id, company_name, manager_email, driver_starter_pin')
     .eq('id', accountId)
     .maybeSingle();
 
-  if (error) {
-    throw error;
+  if (accountQuery.error) {
+    if (!isMissingDriverStarterPinColumn(accountQuery.error)) {
+      throw accountQuery.error;
+    }
+
+    const fallbackQuery = await supabase
+      .from('accounts')
+      .select('id, company_name, manager_email')
+      .eq('id', accountId)
+      .maybeSingle();
+
+    if (fallbackQuery.error) {
+      throw fallbackQuery.error;
+    }
+
+    return fallbackQuery.data
+      ? {
+          ...fallbackQuery.data,
+          driver_starter_pin: null
+        }
+      : null;
   }
 
-  return account || null;
+  return accountQuery.data || null;
 }
 
 async function listManagerUsersForAccount(supabase, accountId, primaryManagerEmail = null) {
@@ -377,8 +957,298 @@ async function listManagerUsersForAccount(supabase, accountId, primaryManagerEma
   return records;
 }
 
+function buildManagerAuthTokenPayload(identity) {
+  return {
+    account_id: identity.account_id,
+    manager_user_id: identity.source === 'manager_user' ? identity.id : null,
+    manager_email: identity.email,
+    manager_name: identity.full_name,
+    role: 'manager'
+  };
+}
+
+function isManagerUsersGlobalEmailConstraintError(error) {
+  if (!error) {
+    return false;
+  }
+
+  const combined = String(error.message || error.details || error.hint || error.code || '').toLowerCase();
+
+  return (
+    error.code === '23505' &&
+    (combined.includes('manager_users_email') || combined.includes('manager_users_email_key'))
+  );
+}
+
+function buildCsaLinkCode() {
+  const alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+  const bytes = crypto.randomBytes(8);
+  let code = 'CSA-';
+
+  for (let index = 0; index < 8; index += 1) {
+    code += alphabet[bytes[index] % alphabet.length];
+  }
+
+  return code;
+}
+
+async function findManagerIdentityForAccount(supabase, accountId, email) {
+  const normalizedEmail = normalizeEmail(email);
+
+  const managerUserQuery = await supabase
+    .from('manager_users')
+    .select('id, account_id, email, full_name, password_hash, is_active')
+    .eq('account_id', accountId)
+    .eq('email', normalizedEmail)
+    .maybeSingle();
+
+  if (managerUserQuery.error && !isMissingManagerUsersTable(managerUserQuery.error)) {
+    throw managerUserQuery.error;
+  }
+
+  if (managerUserQuery.data) {
+    return {
+      id: managerUserQuery.data.id,
+      account_id: managerUserQuery.data.account_id,
+      email: managerUserQuery.data.email,
+      password_hash: managerUserQuery.data.password_hash,
+      full_name: managerUserQuery.data.full_name,
+      is_active: managerUserQuery.data.is_active,
+      source: 'manager_user'
+    };
+  }
+
+  const accountQuery = await supabase
+    .from('accounts')
+    .select('id, company_name, manager_email, manager_password_hash')
+    .eq('id', accountId)
+    .maybeSingle();
+
+  if (accountQuery.error) {
+    throw accountQuery.error;
+  }
+
+  if (!accountQuery.data || normalizeEmail(accountQuery.data.manager_email) !== normalizedEmail) {
+    return null;
+  }
+
+  return {
+    id: accountQuery.data.id,
+    account_id: accountQuery.data.id,
+    email: accountQuery.data.manager_email,
+    password_hash: accountQuery.data.manager_password_hash,
+    full_name: null,
+    is_active: true,
+    source: 'legacy_account'
+  };
+}
+
+async function listAccessibleCsasForManager(supabase, managerEmail, currentAccountId = null, today = getCurrentDateString()) {
+  const normalizedEmail = normalizeEmail(managerEmail);
+  const accessibleIds = new Set();
+
+  const managerUsersQuery = await supabase
+    .from('manager_users')
+    .select('account_id')
+    .eq('email', normalizedEmail);
+
+  if (managerUsersQuery.error && !isMissingManagerUsersTable(managerUsersQuery.error)) {
+    throw managerUsersQuery.error;
+  }
+
+  for (const row of managerUsersQuery.data || []) {
+    if (row.account_id) {
+      accessibleIds.add(row.account_id);
+    }
+  }
+
+  const legacyAccountsQuery = await supabase
+    .from('accounts')
+    .select('id')
+    .eq('manager_email', normalizedEmail);
+
+  if (legacyAccountsQuery.error) {
+    throw legacyAccountsQuery.error;
+  }
+
+  for (const row of legacyAccountsQuery.data || []) {
+    if (row.id) {
+      accessibleIds.add(row.id);
+    }
+  }
+
+  if (!accessibleIds.size) {
+    return [];
+  }
+
+  const accountIds = [...accessibleIds];
+  const accountsQuery = await supabase
+    .from('accounts')
+    .select('id, company_name, manager_email, created_at')
+    .in('id', accountIds)
+    .order('company_name');
+
+  if (accountsQuery.error) {
+    throw accountsQuery.error;
+  }
+
+  const activeManagerRowsQuery = await supabase
+    .from('manager_users')
+    .select('account_id, id, is_active, email')
+    .in('account_id', accountIds);
+
+  if (activeManagerRowsQuery.error && !isMissingManagerUsersTable(activeManagerRowsQuery.error)) {
+    throw activeManagerRowsQuery.error;
+  }
+
+  const driversQuery = await supabase
+    .from('drivers')
+    .select('id, account_id')
+    .in('account_id', accountIds);
+
+  if (driversQuery.error) {
+    throw driversQuery.error;
+  }
+
+  const vehiclesQuery = await supabase
+    .from('vehicles')
+    .select('id, account_id')
+    .in('account_id', accountIds);
+
+  if (vehiclesQuery.error) {
+    throw vehiclesQuery.error;
+  }
+
+  const routesQuery = await supabase
+    .from('routes')
+    .select('id, account_id, archived_at, date')
+    .in('account_id', accountIds)
+    .eq('date', today);
+
+  if (routesQuery.error) {
+    throw routesQuery.error;
+  }
+
+  const managersByAccount = new Map();
+  const primaryManagerEmailByAccount = new Map();
+  for (const row of activeManagerRowsQuery.data || []) {
+    const current = managersByAccount.get(row.account_id) || 0;
+    managersByAccount.set(row.account_id, current + (row.is_active === false ? 0 : 1));
+    if (!primaryManagerEmailByAccount.has(row.account_id) && row.email) {
+      primaryManagerEmailByAccount.set(row.account_id, normalizeEmail(row.email));
+    }
+  }
+
+  const driversByAccount = new Map();
+  for (const row of driversQuery.data || []) {
+    driversByAccount.set(row.account_id, (driversByAccount.get(row.account_id) || 0) + 1);
+  }
+
+  const vehiclesByAccount = new Map();
+  for (const row of vehiclesQuery.data || []) {
+    vehiclesByAccount.set(row.account_id, (vehiclesByAccount.get(row.account_id) || 0) + 1);
+  }
+
+  const routesByAccount = new Map();
+  for (const row of routesQuery.data || []) {
+    if (row.archived_at) {
+      continue;
+    }
+
+    routesByAccount.set(row.account_id, (routesByAccount.get(row.account_id) || 0) + 1);
+  }
+
+  return (accountsQuery.data || []).map((account) => ({
+    id: account.id,
+    company_name: account.company_name,
+    manager_email: account.manager_email || primaryManagerEmailByAccount.get(account.id) || null,
+    created_at: account.created_at || null,
+    is_current: account.id === currentAccountId,
+    manager_count: managersByAccount.get(account.id) || 0,
+    driver_count: driversByAccount.get(account.id) || 0,
+    vehicle_count: vehiclesByAccount.get(account.id) || 0,
+    routes_today: routesByAccount.get(account.id) || 0
+  }));
+}
+
+async function ensureLinkedManagerAccess(supabase, accountId, managerIdentity, nowIso) {
+  const existingManagerUserQuery = await supabase
+    .from('manager_users')
+    .select('id, account_id, email, full_name, password_hash, is_active, invited_at, accepted_at')
+    .eq('account_id', accountId)
+    .eq('email', normalizeEmail(managerIdentity.email))
+    .maybeSingle();
+
+  if (existingManagerUserQuery.error && !isMissingManagerUsersTable(existingManagerUserQuery.error)) {
+    throw existingManagerUserQuery.error;
+  }
+
+  if (existingManagerUserQuery.data) {
+    const existing = existingManagerUserQuery.data;
+    const updates = {
+      full_name: managerIdentity.full_name || existing.full_name || null,
+      is_active: true,
+      invited_at: existing.invited_at || nowIso,
+      accepted_at: existing.accepted_at || nowIso
+    };
+
+    if (managerIdentity.password_hash) {
+      updates.password_hash = managerIdentity.password_hash;
+    }
+
+    const { data, error } = await supabase
+      .from('manager_users')
+      .update(updates)
+      .eq('id', existing.id)
+      .select('id, account_id, email, full_name, password_hash, is_active')
+      .maybeSingle();
+
+    if (error) {
+      throw error;
+    }
+
+    return {
+      id: data.id,
+      account_id: data.account_id,
+      email: data.email,
+      password_hash: data.password_hash,
+      full_name: data.full_name,
+      is_active: data.is_active,
+      source: 'manager_user'
+    };
+  }
+
+  const { data, error } = await supabase
+    .from('manager_users')
+    .insert({
+      account_id: accountId,
+      email: normalizeEmail(managerIdentity.email),
+      full_name: managerIdentity.full_name || null,
+      password_hash: managerIdentity.password_hash || null,
+      is_active: true,
+      invited_at: nowIso,
+      accepted_at: nowIso
+    })
+    .select('id, account_id, email, full_name, password_hash, is_active')
+    .maybeSingle();
+
+  if (error) {
+    throw error;
+  }
+
+  return {
+    id: data.id,
+    account_id: data.account_id,
+    email: data.email,
+    password_hash: data.password_hash,
+    full_name: data.full_name,
+    is_active: data.is_active,
+    source: 'manager_user'
+  };
+}
+
 function isDisplayableManagerRoute(route) {
-  return Boolean(String(route?.work_area_name || '').trim());
+  return !route?.archived_at && Boolean(String(route?.work_area_name || '').trim());
 }
 
 function getTimeCommitCounts(stops = []) {
@@ -452,6 +1322,12 @@ function createManagerRouter(options = {}) {
   const nowProvider = options.now || (() => new Date());
   const jwtSecret = options.jwtSecret || process.env.JWT_SECRET;
   const sendManagerInviteEmail = options.sendManagerInviteEmail || defaultSendManagerInviteEmail;
+  const billingService = options.billingService || createBillingService({
+    supabase,
+    stripeClient: options.stripeClient,
+    stripePriceId: options.stripePriceId,
+    trialDays: options.trialDays
+  });
 
   router.get('/dashboard', requireManager, async (req, res) => {
     const today = getCurrentDateString(nowProvider());
@@ -471,9 +1347,10 @@ function createManagerRouter(options = {}) {
 
       const { data: routes, error: routesError } = await supabase
         .from('routes')
-        .select('id, driver_id, vehicle_id, date, status, total_stops, completed_stops, work_area_name, created_at')
+        .select('id, driver_id, vehicle_id, date, status, total_stops, completed_stops, work_area_name, created_at, archived_at')
         .eq('account_id', req.account.account_id)
         .eq('date', today)
+        .is('archived_at', null)
         .order('id');
 
       if (routesError) {
@@ -487,6 +1364,7 @@ function createManagerRouter(options = {}) {
         .from('routes')
         .select('created_at')
         .eq('account_id', req.account.account_id)
+        .is('archived_at', null)
         .order('created_at', { ascending: false })
         .limit(1)
         .maybeSingle();
@@ -690,6 +1568,626 @@ function createManagerRouter(options = {}) {
     }
   });
 
+  router.get('/csas', requireManager, async (req, res) => {
+    try {
+      const accessibleCsas = await listAccessibleCsasForManager(
+        supabase,
+        req.account.manager_email,
+        req.account.account_id,
+        getCurrentDateString(nowProvider())
+      );
+      const currentCsa = accessibleCsas.find((entry) => entry.is_current) || null;
+
+      return res.status(200).json({
+        current_csa: currentCsa,
+        csas: accessibleCsas
+      });
+    } catch (error) {
+      console.error('CSA listing failed:', error);
+      return res.status(500).json({ error: 'Failed to load CSA access' });
+    }
+  });
+
+  router.post('/account/cancel', requireManager, async (req, res) => {
+    const confirmCompanyName = String(req.body?.confirm_company_name || '').trim();
+
+    if (!confirmCompanyName) {
+      return res.status(400).json({ error: 'confirm_company_name is required' });
+    }
+
+    try {
+      const account = await getAccountManagerContext(supabase, req.account.account_id);
+
+      if (!account) {
+        return res.status(404).json({ error: 'Account not found' });
+      }
+
+      if (normalizeEmail(req.account.manager_email) !== normalizeEmail(account.manager_email)) {
+        return res.status(403).json({ error: 'Only the workspace owner can cancel ReadyRoute.' });
+      }
+
+      if (confirmCompanyName.toLowerCase() !== String(account.company_name || '').trim().toLowerCase()) {
+        return res.status(400).json({ error: 'Type the exact company name to close this workspace.' });
+      }
+
+      await billingService.closeAccount(account.id, { deleteCustomer: true });
+
+      const { error: deleteError } = await supabase
+        .from('accounts')
+        .delete()
+        .eq('id', account.id);
+
+      if (deleteError) {
+        throw deleteError;
+      }
+
+      return res.status(200).json({
+        success: true,
+        company_name: account.company_name
+      });
+    } catch (error) {
+      console.error('Manager account cancel failed:', error);
+      return res.status(500).json({ error: 'Could not cancel ReadyRoute right now.' });
+    }
+  });
+
+  router.post('/csas', requireManager, async (req, res) => {
+    const companyName = String(req.body?.company_name || '').trim();
+    const vehicleCount = Math.max(0, Number(req.body?.vehicle_count || 0));
+
+    if (!companyName) {
+      return res.status(400).json({ error: 'company_name is required' });
+    }
+
+    if (!Number.isFinite(vehicleCount) || vehicleCount < 0) {
+      return res.status(400).json({ error: 'vehicle_count must be 0 or greater' });
+    }
+
+    if (!jwtSecret) {
+      return res.status(500).json({ error: 'Missing JWT_SECRET environment variable' });
+    }
+
+    try {
+      const managerIdentity = await findManagerIdentityForAccount(
+        supabase,
+        req.account.account_id,
+        req.account.manager_email
+      );
+
+      if (!managerIdentity || !managerIdentity.password_hash) {
+        return res.status(403).json({ error: 'Current manager identity could not be reused for CSA creation' });
+      }
+
+      const nowIso = nowProvider().toISOString();
+      const { data: account, error: accountError } = await supabase
+        .from('accounts')
+        .insert({
+          company_name: companyName,
+          // Linked CSA access now lives in manager_users so one manager can own multiple CSAs.
+          manager_email: null,
+          manager_password_hash: managerIdentity.password_hash,
+          vehicle_count: Math.round(vehicleCount),
+          plan: 'starter'
+        })
+        .select('id, company_name, manager_email, created_at')
+        .single();
+
+      if (accountError || !account) {
+        throw accountError || new Error('Failed to create CSA account');
+      }
+
+      const linkedIdentity = await ensureLinkedManagerAccess(supabase, account.id, managerIdentity, nowIso);
+      const token = jwt.sign(buildManagerAuthTokenPayload(linkedIdentity), jwtSecret, { expiresIn: '24h' });
+
+      return res.status(201).json({
+        token,
+        csa: {
+          id: account.id,
+          company_name: account.company_name,
+          manager_email: account.manager_email || normalizeEmail(linkedIdentity.email),
+          created_at: account.created_at,
+          is_current: true,
+          manager_count: 1,
+          driver_count: 0,
+          vehicle_count: 0,
+          routes_today: 0
+        }
+      });
+    } catch (error) {
+      console.error('CSA creation failed:', error);
+      return res.status(500).json({ error: 'Failed to create CSA' });
+    }
+  });
+
+  router.post('/csas/switch', requireManager, async (req, res) => {
+    const targetAccountId = String(req.body?.account_id || '').trim();
+
+    if (!targetAccountId) {
+      return res.status(400).json({ error: 'account_id is required' });
+    }
+
+    if (!jwtSecret) {
+      return res.status(500).json({ error: 'Missing JWT_SECRET environment variable' });
+    }
+
+    try {
+      const targetIdentity = await findManagerIdentityForAccount(
+        supabase,
+        targetAccountId,
+        req.account.manager_email
+      );
+
+      if (!targetIdentity || targetIdentity.is_active === false) {
+        return res.status(403).json({ error: 'You do not have access to that CSA' });
+      }
+
+      const token = jwt.sign(buildManagerAuthTokenPayload(targetIdentity), jwtSecret, { expiresIn: '24h' });
+
+      return res.status(200).json({
+        token,
+        account_id: targetIdentity.account_id
+      });
+    } catch (error) {
+      console.error('CSA switch failed:', error);
+      return res.status(500).json({ error: 'Failed to switch CSA' });
+    }
+  });
+
+  router.post('/csas/link-code', requireManager, async (req, res) => {
+    const expiresInHours = 24;
+
+    try {
+      const code = buildCsaLinkCode();
+      const createdAt = nowProvider();
+      const expiresAt = new Date(createdAt.getTime() + expiresInHours * 60 * 60 * 1000).toISOString();
+
+      const { data, error } = await supabase
+        .from('account_link_codes')
+        .insert({
+          account_id: req.account.account_id,
+          code,
+          created_by_manager_user_id: req.account.manager_user_id || null,
+          expires_at: expiresAt
+        })
+        .select('id, account_id, code, expires_at, created_at')
+        .single();
+
+      if (error || !data) {
+        throw error || new Error('Failed to create CSA link code');
+      }
+
+      return res.status(201).json({
+        link_code: data.code,
+        expires_at: data.expires_at,
+        created_at: data.created_at
+      });
+    } catch (error) {
+      console.error('CSA link code generation failed:', error);
+      return res.status(500).json({ error: 'Failed to generate CSA link code' });
+    }
+  });
+
+  router.post('/csas/link-existing', requireManager, async (req, res) => {
+    const code = String(req.body?.code || '').trim().toUpperCase();
+
+    if (!code) {
+      return res.status(400).json({ error: 'code is required' });
+    }
+
+    try {
+      const managerIdentity = await findManagerIdentityForAccount(
+        supabase,
+        req.account.account_id,
+        req.account.manager_email
+      );
+
+      if (!managerIdentity || !managerIdentity.password_hash) {
+        return res.status(403).json({ error: 'Current manager identity could not be reused for CSA linking' });
+      }
+
+      const linkCodeQuery = await supabase
+        .from('account_link_codes')
+        .select('id, account_id, code, expires_at, used_at')
+        .eq('code', code)
+        .maybeSingle();
+
+      if (linkCodeQuery.error) {
+        throw linkCodeQuery.error;
+      }
+
+      const linkCode = linkCodeQuery.data;
+
+      if (!linkCode) {
+        return res.status(404).json({ error: 'CSA link code not found' });
+      }
+
+      if (linkCode.used_at) {
+        return res.status(409).json({ error: 'That CSA link code has already been used' });
+      }
+
+      if (new Date(linkCode.expires_at).getTime() < nowProvider().getTime()) {
+        return res.status(410).json({ error: 'That CSA link code has expired' });
+      }
+
+      if (linkCode.account_id === req.account.account_id) {
+        return res.status(409).json({ error: 'That code belongs to the current CSA already' });
+      }
+
+      await ensureLinkedManagerAccess(supabase, linkCode.account_id, managerIdentity, nowProvider().toISOString());
+
+      const { error: updateError } = await supabase
+        .from('account_link_codes')
+        .update({
+          used_at: nowProvider().toISOString(),
+          used_by_account_id: req.account.account_id
+        })
+        .eq('id', linkCode.id);
+
+      if (updateError) {
+        throw updateError;
+      }
+
+      const accessibleCsas = await listAccessibleCsasForManager(
+        supabase,
+        req.account.manager_email,
+        req.account.account_id,
+        getCurrentDateString(nowProvider())
+      );
+
+      return res.status(200).json({
+        message: 'CSA linked successfully.',
+        csas: accessibleCsas
+      });
+    } catch (error) {
+      console.error('CSA link claim failed:', error);
+      return res.status(500).json({ error: 'Failed to link CSA' });
+    }
+  });
+
+  router.get('/driver-access', requireManager, async (req, res) => {
+    try {
+      const account = await getAccountManagerContext(supabase, req.account.account_id);
+
+      if (!account) {
+        return res.status(404).json({ error: 'Account not found' });
+      }
+
+      return res.status(200).json({
+        starter_pin: account.driver_starter_pin || DEFAULT_DRIVER_STARTER_PIN
+      });
+    } catch (error) {
+      console.error('Driver access settings lookup failed:', error);
+      return res.status(500).json({ error: 'Failed to load driver access settings' });
+    }
+  });
+
+  router.patch('/driver-access', requireManager, async (req, res) => {
+    const starterPin = String(req.body?.starter_pin || '').trim();
+
+    if (!/^\d{4}$/.test(starterPin)) {
+      return res.status(400).json({ error: 'Starter PIN must be a 4-digit code' });
+    }
+
+    try {
+      const { error } = await supabase
+        .from('accounts')
+        .update({
+          driver_starter_pin: starterPin
+        })
+        .eq('id', req.account.account_id);
+
+      if (error) {
+        if (isMissingDriverStarterPinColumn(error)) {
+          return res.status(500).json({ error: 'Run the latest account driver starter PIN migration in Supabase before saving this setting.' });
+        }
+        console.error('Driver access settings update failed:', error);
+        return res.status(500).json({ error: 'Failed to update driver access settings' });
+      }
+
+      return res.status(200).json({ ok: true, starter_pin: starterPin });
+    } catch (error) {
+      console.error('Driver access settings patch endpoint failed:', error);
+      return res.status(500).json({ error: 'Failed to update driver access settings' });
+    }
+  });
+
+  router.get('/fedex-accounts', requireManager, async (req, res) => {
+    try {
+      const fedexAccounts = await listFedexAccountsForAccount(supabase, req.account.account_id);
+      const summary = summarizeFedexAccounts(fedexAccounts.accounts);
+
+      return res.status(200).json({
+        migration_required: fedexAccounts.migrationRequired,
+        default_account_id: summary.default_account_id,
+        default_account_label: summary.default_account_label,
+        connected_accounts_count: summary.connected_accounts_count,
+        accounts: fedexAccounts.accounts
+      });
+    } catch (error) {
+      console.error('FedEx accounts lookup failed:', error);
+      return res.status(500).json({ error: 'Failed to load FedEx accounts' });
+    }
+  });
+
+  router.post('/fedex-accounts', requireManager, async (req, res) => {
+    const input = parseFedexAccountInput(req.body);
+    const validationError = validateFedexAccountInput(input);
+
+    if (validationError) {
+      return res.status(400).json({ error: validationError });
+    }
+
+    try {
+      const existingAccounts = await listFedexAccountsForAccount(supabase, req.account.account_id);
+
+      if (existingAccounts.migrationRequired) {
+        return res.status(500).json({ error: 'Run the latest FedEx accounts migration in Supabase before adding CSA FedEx accounts.' });
+      }
+
+      const shouldBeDefault = Boolean(req.body?.is_default) || existingAccounts.accounts.filter((account) => !account.disconnected_at).length === 0;
+      const timestamp = nowProvider().toISOString();
+
+      if (shouldBeDefault) {
+        const { error: clearDefaultError } = await supabase
+          .from('fedex_accounts')
+          .update({
+            is_default: false,
+            updated_at: timestamp
+          })
+          .eq('account_id', req.account.account_id)
+          .eq('is_default', true)
+          .is('disconnected_at', null);
+
+        if (clearDefaultError && !isMissingFedexAccountsTable(clearDefaultError)) {
+          throw clearDefaultError;
+        }
+      }
+
+      const { data: createdAccount, error: insertError } = await supabase
+        .from('fedex_accounts')
+        .insert({
+          account_id: req.account.account_id,
+          nickname: input.nickname,
+          account_number: input.account_number,
+          billing_contact_name: input.billing_contact_name || null,
+          billing_company_name: input.billing_company_name || null,
+          billing_address_line1: input.billing_address_line1,
+          billing_address_line2: input.billing_address_line2 || null,
+          billing_city: input.billing_city,
+          billing_state_or_province: input.billing_state_or_province,
+          billing_postal_code: input.billing_postal_code,
+          billing_country_code: input.billing_country_code,
+          connection_status: input.connection_status,
+          connection_reference: input.connection_reference || null,
+          last_verified_at: input.connection_status === 'connected' ? timestamp : null,
+          is_default: shouldBeDefault,
+          created_by_manager_user_id: req.account.manager_user_id || null,
+          updated_at: timestamp
+        })
+        .select(
+          'id, account_id, nickname, account_number, billing_contact_name, billing_company_name, billing_address_line1, billing_address_line2, billing_city, billing_state_or_province, billing_postal_code, billing_country_code, connection_status, connection_reference, last_verified_at, is_default, created_by_manager_user_id, created_at, updated_at, disconnected_at'
+        )
+        .single();
+
+      if (insertError || !createdAccount) {
+        const message = String(insertError?.message || insertError?.details || '');
+
+        if (/fedex_accounts_account_number_uidx/i.test(message) || /duplicate key/i.test(message)) {
+          return res.status(409).json({ error: 'That FedEx account number is already linked to this CSA.' });
+        }
+
+        throw insertError || new Error('Failed to add FedEx account');
+      }
+
+      return res.status(201).json({
+        account: toFedexAccountRecord(createdAccount)
+      });
+    } catch (error) {
+      console.error('FedEx account creation failed:', error);
+      return res.status(500).json({ error: 'Failed to add FedEx account' });
+    }
+  });
+
+  router.patch('/fedex-accounts/:fedexAccountId', requireManager, async (req, res) => {
+    const fedexAccountId = String(req.params.fedexAccountId || '').trim();
+    const input = parseFedexAccountInput(req.body);
+    const validationError = validateFedexAccountInput(input);
+
+    if (!fedexAccountId) {
+      return res.status(400).json({ error: 'fedexAccountId is required' });
+    }
+
+    if (validationError) {
+      return res.status(400).json({ error: validationError });
+    }
+
+    try {
+      const existingFedexAccount = await getFedexAccountForManager(supabase, req.account.account_id, fedexAccountId);
+
+      if (existingFedexAccount.migrationRequired) {
+        return res.status(500).json({ error: 'Run the latest FedEx accounts migration in Supabase before updating CSA FedEx accounts.' });
+      }
+
+      if (!existingFedexAccount.account) {
+        return res.status(404).json({ error: 'FedEx account not found' });
+      }
+
+      const timestamp = nowProvider().toISOString();
+      const { data: updatedAccount, error: updateError } = await supabase
+        .from('fedex_accounts')
+        .update({
+          nickname: input.nickname,
+          account_number: input.account_number,
+          billing_contact_name: input.billing_contact_name || null,
+          billing_company_name: input.billing_company_name || null,
+          billing_address_line1: input.billing_address_line1,
+          billing_address_line2: input.billing_address_line2 || null,
+          billing_city: input.billing_city,
+          billing_state_or_province: input.billing_state_or_province,
+          billing_postal_code: input.billing_postal_code,
+          billing_country_code: input.billing_country_code,
+          connection_status: input.connection_status,
+          connection_reference: input.connection_reference || null,
+          last_verified_at: input.connection_status === 'connected'
+            ? (existingFedexAccount.account.last_verified_at || timestamp)
+            : null,
+          disconnected_at: null,
+          updated_at: timestamp
+        })
+        .eq('account_id', req.account.account_id)
+        .eq('id', fedexAccountId)
+        .select(
+          'id, account_id, nickname, account_number, billing_contact_name, billing_company_name, billing_address_line1, billing_address_line2, billing_city, billing_state_or_province, billing_postal_code, billing_country_code, connection_status, connection_reference, last_verified_at, is_default, created_by_manager_user_id, created_at, updated_at, disconnected_at'
+        )
+        .single();
+
+      if (updateError || !updatedAccount) {
+        const message = String(updateError?.message || updateError?.details || '');
+
+        if (/fedex_accounts_account_number_uidx/i.test(message) || /duplicate key/i.test(message)) {
+          return res.status(409).json({ error: 'That FedEx account number is already linked to this CSA.' });
+        }
+
+        throw updateError || new Error('Failed to update FedEx account');
+      }
+
+      return res.status(200).json({
+        account: toFedexAccountRecord(updatedAccount)
+      });
+    } catch (error) {
+      console.error('FedEx account update failed:', error);
+      return res.status(500).json({ error: 'Failed to update FedEx account' });
+    }
+  });
+
+  router.post('/fedex-accounts/:fedexAccountId/default', requireManager, async (req, res) => {
+    const fedexAccountId = String(req.params.fedexAccountId || '').trim();
+
+    if (!fedexAccountId) {
+      return res.status(400).json({ error: 'fedexAccountId is required' });
+    }
+
+    try {
+      const existingFedexAccount = await getFedexAccountForManager(supabase, req.account.account_id, fedexAccountId);
+
+      if (existingFedexAccount.migrationRequired) {
+        return res.status(500).json({ error: 'Run the latest FedEx accounts migration in Supabase before setting a default account.' });
+      }
+
+      if (!existingFedexAccount.account) {
+        return res.status(404).json({ error: 'FedEx account not found' });
+      }
+
+      if (existingFedexAccount.account.disconnected_at) {
+        return res.status(400).json({ error: 'Reconnect this FedEx account before setting it as default.' });
+      }
+
+      const timestamp = nowProvider().toISOString();
+      const { error: clearDefaultError } = await supabase
+        .from('fedex_accounts')
+        .update({
+          is_default: false,
+          updated_at: timestamp
+        })
+        .eq('account_id', req.account.account_id)
+        .eq('is_default', true)
+        .is('disconnected_at', null);
+
+      if (clearDefaultError) {
+        throw clearDefaultError;
+      }
+
+      const { data: updatedAccount, error: setDefaultError } = await supabase
+        .from('fedex_accounts')
+        .update({
+          is_default: true,
+          updated_at: timestamp
+        })
+        .eq('account_id', req.account.account_id)
+        .eq('id', fedexAccountId)
+        .select(
+          'id, account_id, nickname, account_number, billing_contact_name, billing_company_name, billing_address_line1, billing_address_line2, billing_city, billing_state_or_province, billing_postal_code, billing_country_code, connection_status, connection_reference, last_verified_at, is_default, created_by_manager_user_id, created_at, updated_at, disconnected_at'
+        )
+        .single();
+
+      if (setDefaultError || !updatedAccount) {
+        throw setDefaultError || new Error('Failed to set default FedEx account');
+      }
+
+      return res.status(200).json({
+        account: toFedexAccountRecord(updatedAccount)
+      });
+    } catch (error) {
+      console.error('FedEx account default update failed:', error);
+      return res.status(500).json({ error: 'Failed to set default FedEx account' });
+    }
+  });
+
+  router.post('/fedex-accounts/:fedexAccountId/disconnect', requireManager, async (req, res) => {
+    const fedexAccountId = String(req.params.fedexAccountId || '').trim();
+
+    if (!fedexAccountId) {
+      return res.status(400).json({ error: 'fedexAccountId is required' });
+    }
+
+    try {
+      const existingFedexAccount = await getFedexAccountForManager(supabase, req.account.account_id, fedexAccountId);
+
+      if (existingFedexAccount.migrationRequired) {
+        return res.status(500).json({ error: 'Run the latest FedEx accounts migration in Supabase before disconnecting CSA FedEx accounts.' });
+      }
+
+      if (!existingFedexAccount.account) {
+        return res.status(404).json({ error: 'FedEx account not found' });
+      }
+
+      const timestamp = nowProvider().toISOString();
+      const { data: updatedAccount, error: disconnectError } = await supabase
+        .from('fedex_accounts')
+        .update({
+          connection_status: 'disconnected',
+          disconnected_at: timestamp,
+          is_default: false,
+          updated_at: timestamp
+        })
+        .eq('account_id', req.account.account_id)
+        .eq('id', fedexAccountId)
+        .select(
+          'id, account_id, nickname, account_number, billing_contact_name, billing_company_name, billing_address_line1, billing_address_line2, billing_city, billing_state_or_province, billing_postal_code, billing_country_code, connection_status, connection_reference, last_verified_at, is_default, created_by_manager_user_id, created_at, updated_at, disconnected_at'
+        )
+        .single();
+
+      if (disconnectError || !updatedAccount) {
+        throw disconnectError || new Error('Failed to disconnect FedEx account');
+      }
+
+      const remainingAccounts = await listFedexAccountsForAccount(supabase, req.account.account_id);
+      const nextDefaultAccount = remainingAccounts.accounts.find((account) => !account.disconnected_at) || null;
+
+      if (nextDefaultAccount && !remainingAccounts.accounts.some((account) => account.is_default && !account.disconnected_at)) {
+        const { error: promoteError } = await supabase
+          .from('fedex_accounts')
+          .update({
+            is_default: true,
+            updated_at: timestamp
+          })
+          .eq('account_id', req.account.account_id)
+          .eq('id', nextDefaultAccount.id);
+
+        if (promoteError) {
+          throw promoteError;
+        }
+      }
+
+      return res.status(200).json({
+        account: toFedexAccountRecord(updatedAccount)
+      });
+    } catch (error) {
+      console.error('FedEx account disconnect failed:', error);
+      return res.status(500).json({ error: 'Failed to disconnect FedEx account' });
+    }
+  });
+
   router.post('/manager-users/invite', requireManager, async (req, res) => {
     const email = normalizeEmail(req.body?.email);
     const fullName = String(req.body?.full_name || '').trim() || null;
@@ -729,6 +2227,10 @@ function createManagerRouter(options = {}) {
       }
 
       let managerUser = existingManagerUserQuery.data || null;
+
+      if (managerUser && managerUser.account_id !== req.account.account_id) {
+        return res.status(409).json({ error: 'That email is already assigned to another ReadyRoute account' });
+      }
 
       if (managerUser && managerUser.password_hash) {
         return res.status(409).json({ error: 'That manager already has active access. Use password reset if they need a new password.' });
@@ -927,22 +2429,39 @@ function createManagerRouter(options = {}) {
       );
 
       const inviteUrl = buildManagerInviteUrl(inviteToken);
-      const emailResult = await sendManagerInviteEmail({
-        to: updatedManagerUser.email,
-        fullName: updatedManagerUser.full_name,
-        inviteUrl,
-        companyName: account?.company_name,
-        inviterName: req.account.manager_name || req.account.manager_email || 'A ReadyRoute admin'
-      });
+      let emailResult = {
+        delivered: false,
+        skipped: true,
+        reason: 'Email service is not configured'
+      };
+
+      try {
+        emailResult = await sendManagerInviteEmail({
+          to: updatedManagerUser.email,
+          fullName: updatedManagerUser.full_name,
+          inviteUrl,
+          companyName: account?.company_name,
+          inviterName: req.account.manager_name || req.account.manager_email || 'A ReadyRoute admin'
+        });
+      } catch (emailError) {
+        console.error('Manager invite refresh email delivery failed:', emailError);
+        emailResult = {
+          delivered: false,
+          skipped: false,
+          reason: 'Email delivery failed'
+        };
+      }
 
       console.log(`Manager invite link for ${updatedManagerUser.email}: ${inviteUrl}`);
 
       return res.status(200).json({
         message: emailResult.delivered
           ? `Invite email sent to ${updatedManagerUser.email}.`
-          : 'Invite link refreshed. Email delivery is not configured yet, so share the link securely.',
+          : emailResult.skipped
+            ? 'Invite link refreshed. Email delivery is not configured yet, so share the link securely.'
+            : 'Invite link refreshed. Email delivery failed, so share the link securely.',
         invite_url: emailResult.delivered ? null : inviteUrl,
-        email_delivery: emailResult.delivered ? 'sent' : 'not_configured',
+        email_delivery: emailResult.delivered ? 'sent' : emailResult.skipped ? 'not_configured' : 'failed',
         manager_user: toManagerAccessRecord(updatedManagerUser, account?.manager_email || null)
       });
     } catch (error) {
@@ -975,15 +2494,23 @@ function createManagerRouter(options = {}) {
     const { name, email, phone, hourly_rate: hourlyRate, pin } = req.body || {};
     const parsedHourlyRate = Number(hourlyRate);
 
-    if (!name || !email || !phone || !pin || !Number.isFinite(parsedHourlyRate)) {
-      return res.status(400).json({ error: 'name, email, phone, hourly_rate, and pin are required' });
-    }
-
-    if (!/^\d{4}$/.test(String(pin))) {
-      return res.status(400).json({ error: 'PIN must be a 4-digit code' });
+    if (!name || !email || !phone || !Number.isFinite(parsedHourlyRate)) {
+      return res.status(400).json({ error: 'name, email, phone, and hourly_rate are required' });
     }
 
     try {
+      const account = await getAccountManagerContext(supabase, req.account.account_id);
+
+      if (!account) {
+        return res.status(404).json({ error: 'Account not found' });
+      }
+
+      const resolvedPin = String(pin || account.driver_starter_pin || DEFAULT_DRIVER_STARTER_PIN).trim();
+
+      if (!/^\d{4}$/.test(resolvedPin)) {
+        return res.status(400).json({ error: 'PIN must be a 4-digit code, or set a CSA starter PIN first' });
+      }
+
       const normalizedEmail = String(email).trim().toLowerCase();
       const { data: existingDriver, error: existingDriverError } = await supabase
         .from('drivers')
@@ -1001,7 +2528,7 @@ function createManagerRouter(options = {}) {
         return res.status(409).json({ error: 'A driver with that email already exists' });
       }
 
-      const pinHash = await bcrypt.hash(String(pin), 10);
+      const pinHash = await bcrypt.hash(resolvedPin, 10);
 
       const { data: driver, error } = await supabase
         .from('drivers')
@@ -1022,7 +2549,7 @@ function createManagerRouter(options = {}) {
         return res.status(500).json({ error: 'Failed to create driver' });
       }
 
-      return res.status(201).json({ driver_id: driver.id });
+      return res.status(201).json({ driver_id: driver.id, starter_pin_applied: !pin });
     } catch (error) {
       console.error('Manager create driver endpoint failed:', error);
       return res.status(500).json({ error: 'Failed to create driver' });
@@ -1031,11 +2558,15 @@ function createManagerRouter(options = {}) {
 
   router.put('/drivers/:driver_id', requireManager, async (req, res) => {
     const driverId = req.params.driver_id;
-    const { name, phone, hourly_rate: hourlyRate } = req.body || {};
+    const { name, phone, hourly_rate: hourlyRate, pin } = req.body || {};
     const parsedHourlyRate = Number(hourlyRate);
 
     if (!name || !phone || !Number.isFinite(parsedHourlyRate)) {
       return res.status(400).json({ error: 'name, phone, and hourly_rate are required' });
+    }
+
+    if (pin && !/^\d{4}$/.test(String(pin))) {
+      return res.status(400).json({ error: 'PIN must be a 4-digit code' });
     }
 
     try {
@@ -1055,13 +2586,19 @@ function createManagerRouter(options = {}) {
         return res.status(404).json({ error: 'Driver not found' });
       }
 
+      const updatePayload = {
+        name: String(name).trim(),
+        phone: String(phone).trim(),
+        hourly_rate: parsedHourlyRate
+      };
+
+      if (pin) {
+        updatePayload.pin = await bcrypt.hash(String(pin), 10);
+      }
+
       const { error: updateError } = await supabase
         .from('drivers')
-        .update({
-          name: String(name).trim(),
-          phone: String(phone).trim(),
-          hourly_rate: parsedHourlyRate
-        })
+        .update(updatePayload)
         .eq('id', driverId);
 
       if (updateError) {
@@ -1383,6 +2920,456 @@ function createManagerRouter(options = {}) {
     }
   });
 
+  router.get('/timecards/live', requireManager, async (req, res) => {
+    const requestedDate = parseDateParam(req.query?.date, nowProvider);
+
+    if (!requestedDate) {
+      return res.status(400).json({ error: 'date must be in YYYY-MM-DD format' });
+    }
+
+    try {
+      const { data: drivers, error: driversError } = await supabase
+        .from('drivers')
+        .select('id, name, email, phone, hourly_rate, is_active')
+        .eq('account_id', req.account.account_id)
+        .order('name');
+
+      if (driversError) {
+        console.error('Live timecards driver lookup failed:', driversError);
+        return res.status(500).json({ error: 'Failed to load live labor status' });
+      }
+
+      const driverIds = (drivers || []).map((driver) => driver.id);
+
+      if (!driverIds.length) {
+        return res.status(200).json({
+          date: requestedDate,
+          totals: {
+            drivers: 0,
+            working: 0,
+            on_break: 0,
+            on_lunch: 0,
+            clocked_out: 0,
+            not_clocked_in: 0,
+            worked_hours: 0,
+            break_minutes: 0,
+            lunch_minutes: 0
+          },
+          drivers: []
+        });
+      }
+
+      const startIso = `${requestedDate}T00:00:00.000Z`;
+      const nextDayExclusive = new Date(`${requestedDate}T00:00:00.000Z`);
+      nextDayExclusive.setUTCDate(nextDayExclusive.getUTCDate() + 1);
+      const endExclusiveIso = nextDayExclusive.toISOString();
+      const { data: timecards, error: timecardsError } = await supabase
+        .from('timecards')
+        .select('id, driver_id, route_id, clock_in, clock_out, hours_worked, manager_adjusted')
+        .in('driver_id', driverIds)
+        .gte('clock_in', startIso)
+        .lt('clock_in', endExclusiveIso)
+        .order('clock_in', { ascending: false });
+
+      if (timecardsError) {
+        console.error('Live timecards lookup failed:', timecardsError);
+        return res.status(500).json({ error: 'Failed to load live labor status' });
+      }
+
+      const timecardIds = (timecards || []).map((timecard) => timecard.id);
+      const routeIds = [...new Set((timecards || []).map((timecard) => timecard.route_id).filter(Boolean))];
+      const { data: breakRows, error: breaksError } = timecardIds.length
+        ? await supabase
+            .from('timecard_breaks')
+            .select('id, timecard_id, break_type, started_at, ended_at')
+            .in('timecard_id', timecardIds)
+            .order('started_at', { ascending: false })
+        : { data: [], error: null };
+
+      if (breaksError) {
+        console.error('Live timecard breaks lookup failed:', breaksError);
+        return res.status(500).json({ error: 'Failed to load live labor status' });
+      }
+
+      const { data: routeRows, error: routeRowsError } = routeIds.length
+        ? await supabase
+            .from('routes')
+            .select('id, work_area_name')
+            .eq('account_id', req.account.account_id)
+            .in('id', routeIds)
+        : { data: [], error: null };
+
+      if (routeRowsError) {
+        console.error('Live timecard route lookup failed:', routeRowsError);
+        return res.status(500).json({ error: 'Failed to load live labor status' });
+      }
+
+      const { data: adjustmentRows, error: adjustmentRowsError } = driverIds.length
+        ? await supabase
+            .from('labor_adjustments')
+            .select('id, manager_user_id, driver_id, route_id, timecard_id, work_date, adjustment_reason, before_state, after_state, created_at')
+            .eq('account_id', req.account.account_id)
+            .eq('work_date', requestedDate)
+            .in('driver_id', driverIds)
+            .order('created_at', { ascending: false })
+        : { data: [], error: null };
+
+      if (adjustmentRowsError) {
+        console.error('Live labor adjustments lookup failed:', adjustmentRowsError);
+        return res.status(500).json({ error: 'Failed to load live labor status' });
+      }
+
+      const breaksByTimecardId = (breakRows || []).reduce((map, breakRow) => {
+        const current = map.get(breakRow.timecard_id) || [];
+        current.push(breakRow);
+        map.set(breakRow.timecard_id, current);
+        return map;
+      }, new Map());
+      const adjustmentsByDriverId = (adjustmentRows || []).reduce((map, adjustment) => {
+        const current = map.get(adjustment.driver_id) || [];
+        current.push(buildLaborAdjustmentSummary(adjustment));
+        map.set(adjustment.driver_id, current);
+        return map;
+      }, new Map());
+      const routeById = new Map((routeRows || []).map((route) => [route.id, route]));
+      const currentTime = nowProvider();
+
+      const rows = (drivers || []).map((driver) => {
+        const driverTimecards = (timecards || []).filter((timecard) => timecard.driver_id === driver.id);
+        const detailedTimecards = driverTimecards.map((timecard) =>
+          buildTimecardDetail(timecard, breaksByTimecardId.get(timecard.id) || [], routeById, currentTime)
+        );
+        const latestTimecard = detailedTimecards[0] || null;
+        const status = getLiveDriverStatus(latestTimecard);
+        const activeBreak = latestTimecard?.breaks?.find((breakRow) => breakRow.is_active) || null;
+        const totals = detailedTimecards.reduce(
+          (summary, timecard) => {
+            summary.worked_hours += Number(timecard.worked_hours || 0);
+            summary.break_minutes += Number(timecard.break_minutes || 0);
+            summary.lunch_minutes += Number(timecard.lunch_minutes || 0);
+            summary.payable_hours += Number(timecard.payable_hours || 0);
+            return summary;
+          },
+          { worked_hours: 0, payable_hours: 0, break_minutes: 0, lunch_minutes: 0 }
+        );
+
+        return {
+          driver_id: driver.id,
+          driver_name: driver.name,
+          email: driver.email,
+          phone: driver.phone || null,
+          hourly_rate: Number(driver.hourly_rate || 0),
+          is_active: Boolean(driver.is_active),
+          shift_count: detailedTimecards.length,
+          worked_hours: Number(totals.worked_hours.toFixed(2)),
+          payable_hours: Number(totals.payable_hours.toFixed(2)),
+          break_minutes: Math.round(totals.break_minutes),
+          lunch_minutes: Math.round(totals.lunch_minutes),
+          status,
+          active_break: activeBreak,
+          latest_timecard: latestTimecard
+            ? {
+                id: latestTimecard.id,
+                route_id: latestTimecard.route_id,
+                route_name: latestTimecard.route_name,
+                clock_in: latestTimecard.clock_in,
+                clock_out: latestTimecard.clock_out,
+                manager_adjusted: Boolean(
+                  driverTimecards.find((timecard) => timecard.id === latestTimecard.id)?.manager_adjusted
+                ),
+                compliance_flags: latestTimecard.compliance_flags || []
+              }
+            : null,
+          adjustments: adjustmentsByDriverId.get(driver.id) || [],
+          timecards: detailedTimecards
+        };
+      });
+
+      const totals = rows.reduce(
+        (summary, row) => {
+          summary.drivers += 1;
+          summary[row.status.code] += 1;
+          summary.worked_hours += row.worked_hours;
+          summary.break_minutes += row.break_minutes;
+          summary.lunch_minutes += row.lunch_minutes;
+          return summary;
+        },
+        {
+          drivers: 0,
+          working: 0,
+          on_break: 0,
+          on_lunch: 0,
+          clocked_out: 0,
+          not_clocked_in: 0,
+          worked_hours: 0,
+          break_minutes: 0,
+          lunch_minutes: 0
+        }
+      );
+
+      return res.status(200).json({
+        date: requestedDate,
+        totals: {
+          ...totals,
+          worked_hours: Number(totals.worked_hours.toFixed(2))
+        },
+        drivers: rows
+      });
+    } catch (error) {
+      console.error('Manager live timecards endpoint failed:', error);
+      return res.status(500).json({ error: 'Failed to load live labor status' });
+    }
+  });
+
+  router.put('/timecards/live', requireManager, async (req, res) => {
+    const requestedDate = parseDateParam(req.body?.date, nowProvider);
+    const driverId = String(req.body?.driver_id || '').trim();
+    const adjustmentReason = String(req.body?.adjustment_reason || '').trim();
+    const breakMinutes = normalizeLaborMinutes(req.body?.break_minutes);
+    const lunchMinutes = normalizeLaborMinutes(req.body?.lunch_minutes);
+    const clockIn = req.body?.clock_in ? new Date(req.body.clock_in).toISOString() : null;
+    const clockOut = req.body?.clock_out ? new Date(req.body.clock_out).toISOString() : null;
+
+    if (!requestedDate) {
+      return res.status(400).json({ error: 'date must be in YYYY-MM-DD format' });
+    }
+
+    if (!driverId) {
+      return res.status(400).json({ error: 'driver_id is required' });
+    }
+
+    if (!adjustmentReason) {
+      return res.status(400).json({ error: 'adjustment_reason is required' });
+    }
+
+    if (!clockIn) {
+      return res.status(400).json({ error: 'clock_in is required' });
+    }
+
+    if (Number.isNaN(new Date(clockIn).getTime())) {
+      return res.status(400).json({ error: 'clock_in must be a valid datetime' });
+    }
+
+    if (clockOut && Number.isNaN(new Date(clockOut).getTime())) {
+      return res.status(400).json({ error: 'clock_out must be a valid datetime' });
+    }
+
+    if (clockOut && new Date(clockOut).getTime() <= new Date(clockIn).getTime()) {
+      return res.status(400).json({ error: 'clock_out must be later than clock_in' });
+    }
+
+    try {
+      const { data: driver, error: driverError } = await supabase
+        .from('drivers')
+        .select('id, name')
+        .eq('account_id', req.account.account_id)
+        .eq('id', driverId)
+        .maybeSingle();
+
+      if (driverError) {
+        console.error('Live labor edit driver lookup failed:', driverError);
+        return res.status(500).json({ error: 'Failed to update labor record' });
+      }
+
+      if (!driver) {
+        return res.status(404).json({ error: 'Driver not found' });
+      }
+
+      const { data: matchingRoutes, error: routesError } = await supabase
+        .from('routes')
+        .select('id, work_area_name')
+        .eq('account_id', req.account.account_id)
+        .eq('driver_id', driverId)
+        .eq('date', requestedDate)
+        .order('created_at', { ascending: true });
+
+      if (routesError) {
+        console.error('Live labor edit route lookup failed:', routesError);
+        return res.status(500).json({ error: 'Failed to update labor record' });
+      }
+
+      const dateStart = `${requestedDate}T00:00:00.000Z`;
+      const dateEndExclusive = new Date(`${requestedDate}T00:00:00.000Z`);
+      dateEndExclusive.setUTCDate(dateEndExclusive.getUTCDate() + 1);
+      const dateEndExclusiveIso = dateEndExclusive.toISOString();
+      const { data: existingTimecards, error: timecardsError } = await supabase
+        .from('timecards')
+        .select('id, driver_id, route_id, clock_in, clock_out, hours_worked, manager_adjusted')
+        .eq('driver_id', driverId)
+        .gte('clock_in', dateStart)
+        .lt('clock_in', dateEndExclusiveIso)
+        .order('clock_in', { ascending: false });
+
+      if (timecardsError) {
+        console.error('Live labor edit timecard lookup failed:', timecardsError);
+        return res.status(500).json({ error: 'Failed to update labor record' });
+      }
+
+      if ((existingTimecards || []).length > 1) {
+        return res.status(409).json({
+          error: 'This driver has multiple shifts on that date. Multi-shift editing is not supported yet.'
+        });
+      }
+
+      const editableTimecard = existingTimecards?.[0] || null;
+      const routeId = editableTimecard?.route_id || matchingRoutes?.[0]?.id || null;
+
+      const { data: existingBreakRows, error: existingBreakRowsError } = editableTimecard?.id
+        ? await supabase
+            .from('timecard_breaks')
+            .select('id, break_type, started_at, ended_at')
+            .eq('timecard_id', editableTimecard.id)
+            .order('started_at', { ascending: false })
+        : { data: [], error: null };
+
+      if (existingBreakRowsError) {
+        console.error('Live labor edit existing break lookup failed:', existingBreakRowsError);
+        return res.status(500).json({ error: 'Failed to update labor record' });
+      }
+
+      if (!routeId) {
+        return res.status(400).json({
+          error: 'No route assignment was found for this driver on that date, so ReadyRoute cannot create the labor record yet.'
+        });
+      }
+
+      const workedHours = clockOut ? getWorkedHours(clockIn, clockOut, null, nowProvider()) : null;
+      let timecardId = editableTimecard?.id || null;
+      const beforeState = {
+        timecard: editableTimecard,
+        breaks: existingBreakRows || []
+      };
+
+      if (timecardId) {
+        const { error: updateTimecardError } = await supabase
+          .from('timecards')
+          .update({
+            route_id: routeId,
+            clock_in: clockIn,
+            clock_out: clockOut,
+            hours_worked: workedHours,
+            manager_adjusted: true
+          })
+          .eq('id', timecardId);
+
+        if (updateTimecardError) {
+          console.error('Live labor edit timecard update failed:', updateTimecardError);
+          return res.status(500).json({ error: 'Failed to update labor record' });
+        }
+      } else {
+        const { data: insertedTimecard, error: insertTimecardError } = await supabase
+          .from('timecards')
+          .insert({
+            driver_id: driverId,
+            route_id: routeId,
+            clock_in: clockIn,
+            clock_out: clockOut,
+            hours_worked: workedHours,
+            manager_adjusted: true
+          })
+          .select('id')
+          .maybeSingle();
+
+        if (insertTimecardError) {
+          console.error('Live labor edit timecard insert failed:', insertTimecardError);
+          return res.status(500).json({ error: 'Failed to update labor record' });
+        }
+
+        timecardId = insertedTimecard?.id || null;
+      }
+
+      const { error: deleteBreaksError } = await supabase
+        .from('timecard_breaks')
+        .delete()
+        .eq('timecard_id', timecardId);
+
+      if (deleteBreaksError) {
+        console.error('Live labor edit break reset failed:', deleteBreaksError);
+        return res.status(500).json({ error: 'Failed to update labor record' });
+      }
+
+      const syntheticBreakRows = buildSyntheticBreakRows({
+        accountId: req.account.account_id,
+        driverId,
+        routeId,
+        timecardId,
+        clockIn,
+        clockOut,
+        breakMinutes,
+        lunchMinutes
+      });
+
+      if (syntheticBreakRows.length) {
+        const { error: insertBreaksError } = await supabase
+          .from('timecard_breaks')
+          .insert(syntheticBreakRows);
+
+        if (insertBreaksError) {
+          console.error('Live labor edit break insert failed:', insertBreaksError);
+          return res.status(500).json({ error: 'Failed to update labor record' });
+        }
+      }
+
+      const afterState = {
+        timecard: {
+          id: timecardId,
+          driver_id: driverId,
+          route_id: routeId,
+          clock_in: clockIn,
+          clock_out: clockOut,
+          hours_worked: workedHours,
+          manager_adjusted: true
+        },
+        breaks: syntheticBreakRows
+      };
+
+      const { error: insertAdjustmentError } = await supabase
+        .from('labor_adjustments')
+        .insert({
+          account_id: req.account.account_id,
+          manager_user_id: req.account.manager_user_id,
+          driver_id: driverId,
+          route_id: routeId,
+          timecard_id: timecardId,
+          work_date: requestedDate,
+          adjustment_reason: adjustmentReason,
+          before_state: beforeState,
+          after_state: afterState
+        });
+
+      if (insertAdjustmentError) {
+        console.error('Live labor edit audit insert failed:', insertAdjustmentError);
+        return res.status(500).json({ error: 'Failed to save labor audit trail' });
+      }
+
+      const snapshotResult = await syncDailyLaborSnapshotForDate({
+        supabase,
+        accountId: req.account.account_id,
+        workDate: requestedDate,
+        now: nowProvider()
+      });
+
+      if (snapshotResult.error) {
+        console.error('Live labor edit snapshot sync failed:', snapshotResult.error);
+        return res.status(500).json({ error: 'Failed to update labor snapshot' });
+      }
+
+      return res.status(200).json({
+        ok: true,
+        timecard_id: timecardId,
+        date: requestedDate,
+        driver_id: driverId,
+        route_id: routeId,
+        adjustment_reason: adjustmentReason,
+        snapshot_updated: Boolean(snapshotResult.finalized),
+        message: `Labor updated for ${driver.name} on ${requestedDate}.`
+      });
+    } catch (error) {
+      console.error('Manager live labor edit endpoint failed:', error);
+      return res.status(500).json({ error: 'Failed to update labor record' });
+    }
+  });
+
   router.get('/timecards/daily', requireManager, async (req, res) => {
     const requestedDate = parseDateParam(req.query?.date, nowProvider);
 
@@ -1448,6 +3435,21 @@ function createManagerRouter(options = {}) {
         return res.status(500).json({ error: 'Failed to load daily labor snapshot' });
       }
 
+      const { data: adjustmentRows, error: adjustmentRowsError } = driverIds.length
+        ? await supabase
+            .from('labor_adjustments')
+            .select('id, manager_user_id, driver_id, route_id, timecard_id, work_date, adjustment_reason, before_state, after_state, created_at')
+            .eq('account_id', req.account.account_id)
+            .eq('work_date', requestedDate)
+            .in('driver_id', driverIds)
+            .order('created_at', { ascending: false })
+        : { data: [], error: null };
+
+      if (adjustmentRowsError) {
+        console.error('Daily labor adjustments lookup failed:', adjustmentRowsError);
+        return res.status(500).json({ error: 'Failed to load daily labor snapshot' });
+      }
+
       const { data: routeRows, error: routeRowsError } = routeIds.length
         ? await supabase
             .from('routes')
@@ -1481,12 +3483,19 @@ function createManagerRouter(options = {}) {
         map.set(breakRow.timecard_id, current);
         return map;
       }, new Map());
+      const adjustmentsByDriverId = (adjustmentRows || []).reduce((map, adjustment) => {
+        const current = map.get(adjustment.driver_id) || [];
+        current.push(buildLaborAdjustmentSummary(adjustment));
+        map.set(adjustment.driver_id, current);
+        return map;
+      }, new Map());
       const routeById = new Map((routeRows || []).map((route) => [route.id, route]));
       const currentTime = nowProvider();
       const rows = (driverRows || []).map((row) => ({
         ...row,
         driver_name: driverById.get(row.driver_id)?.name || 'Driver',
         email: driverById.get(row.driver_id)?.email || null,
+        adjustments: adjustmentsByDriverId.get(row.driver_id) || [],
         timecards: (timecards || [])
           .filter((timecard) => timecard.driver_id === row.driver_id)
           .map((timecard) => buildTimecardDetail(timecard, breaksByTimecardId.get(timecard.id) || [], routeById, currentTime)),
@@ -1509,6 +3518,206 @@ function createManagerRouter(options = {}) {
     }
   });
 
+  router.get('/records', requireManager, async (req, res) => {
+    const requestedDate = parseDateParam(req.query?.date, nowProvider);
+
+    if (!requestedDate) {
+      return res.status(400).json({ error: 'date must be in YYYY-MM-DD format' });
+    }
+
+    try {
+      const currentTime = nowProvider();
+      const rangeEnd = getCurrentDateString(currentTime);
+      const rangeStart = getCurrentDateString(getDateDaysAgo(currentTime, 29));
+
+      const { data: recentRoutes, error: recentRoutesError } = await supabase
+        .from('routes')
+        .select('id, date, archived_at')
+        .eq('account_id', req.account.account_id)
+        .gte('date', rangeStart)
+        .lte('date', rangeEnd);
+
+      if (recentRoutesError) {
+        console.error('Manager records recent routes lookup failed:', recentRoutesError);
+        return res.status(500).json({ error: 'Failed to load records' });
+      }
+
+      const { data: recentSnapshots, error: recentSnapshotsError } = await supabase
+        .from('daily_labor_snapshots')
+        .select('id, work_date, driver_count, total_worked_hours, estimated_payroll')
+        .eq('account_id', req.account.account_id)
+        .gte('work_date', rangeStart)
+        .lte('work_date', rangeEnd);
+
+      if (recentSnapshotsError) {
+        console.error('Manager records recent snapshots lookup failed:', recentSnapshotsError);
+        return res.status(500).json({ error: 'Failed to load records' });
+      }
+
+      const { data: recentAdjustments, error: recentAdjustmentsError } = await supabase
+        .from('labor_adjustments')
+        .select('id, work_date')
+        .eq('account_id', req.account.account_id)
+        .gte('work_date', rangeStart)
+        .lte('work_date', rangeEnd);
+
+      if (recentAdjustmentsError) {
+        console.error('Manager records recent adjustments lookup failed:', recentAdjustmentsError);
+        return res.status(500).json({ error: 'Failed to load records' });
+      }
+
+      const { data: routes, error: routesError } = await supabase
+        .from('routes')
+        .select('id, driver_id, vehicle_id, work_area_name, date, source, total_stops, completed_stops, status, sa_number, contractor_name, created_at, completed_at, archived_at')
+        .eq('account_id', req.account.account_id)
+        .eq('date', requestedDate)
+        .order('created_at', { ascending: true });
+
+      if (routesError) {
+        console.error('Manager records routes lookup failed:', routesError);
+        return res.status(500).json({ error: 'Failed to load records' });
+      }
+
+      const driverIds = [...new Set((routes || []).map((route) => route.driver_id).filter(Boolean))];
+      const vehicleIds = [...new Set((routes || []).map((route) => route.vehicle_id).filter(Boolean))];
+
+      const { data: drivers, error: driversError } = driverIds.length
+        ? await supabase
+            .from('drivers')
+            .select('id, name, email')
+            .eq('account_id', req.account.account_id)
+            .in('id', driverIds)
+        : { data: [], error: null };
+
+      if (driversError) {
+        console.error('Manager records drivers lookup failed:', driversError);
+        return res.status(500).json({ error: 'Failed to load records' });
+      }
+
+      const { data: vehicles, error: vehiclesError } = vehicleIds.length
+        ? await supabase
+            .from('vehicles')
+            .select('id, name')
+            .eq('account_id', req.account.account_id)
+            .in('id', vehicleIds)
+        : { data: [], error: null };
+
+      if (vehiclesError) {
+        console.error('Manager records vehicles lookup failed:', vehiclesError);
+        return res.status(500).json({ error: 'Failed to load records' });
+      }
+
+      const { data: snapshot, error: snapshotError } = await supabase
+        .from('daily_labor_snapshots')
+        .select('id, work_date, finalized_at, finalized_by_system, driver_count, shift_count, total_worked_hours, total_payable_hours, total_break_minutes, total_lunch_minutes, estimated_payroll')
+        .eq('account_id', req.account.account_id)
+        .eq('work_date', requestedDate)
+        .maybeSingle();
+
+      if (snapshotError) {
+        console.error('Manager records daily snapshot lookup failed:', snapshotError);
+        return res.status(500).json({ error: 'Failed to load records' });
+      }
+
+      const { data: adjustmentRows, error: adjustmentRowsError } = await supabase
+        .from('labor_adjustments')
+        .select('id, manager_user_id, driver_id, route_id, timecard_id, work_date, adjustment_reason, before_state, after_state, created_at')
+        .eq('account_id', req.account.account_id)
+        .eq('work_date', requestedDate)
+        .order('created_at', { ascending: false });
+
+      if (adjustmentRowsError) {
+        console.error('Manager records adjustment lookup failed:', adjustmentRowsError);
+        return res.status(500).json({ error: 'Failed to load records' });
+      }
+
+      const adjustmentDriverIds = [...new Set((adjustmentRows || []).map((row) => row.driver_id).filter(Boolean))];
+      const { data: adjustmentDrivers, error: adjustmentDriversError } = adjustmentDriverIds.length
+        ? await supabase
+            .from('drivers')
+            .select('id, name, email')
+            .eq('account_id', req.account.account_id)
+            .in('id', adjustmentDriverIds)
+        : { data: [], error: null };
+
+      if (adjustmentDriversError) {
+        console.error('Manager records adjustment driver lookup failed:', adjustmentDriversError);
+        return res.status(500).json({ error: 'Failed to load records' });
+      }
+
+      const driverById = new Map([...(drivers || []), ...(adjustmentDrivers || [])].map((driver) => [driver.id, driver]));
+      const vehicleById = new Map((vehicles || []).map((vehicle) => [vehicle.id, vehicle]));
+
+      const recentByDate = new Map();
+      for (let offset = 0; offset < 30; offset += 1) {
+        const date = getCurrentDateString(getDateDaysAgo(currentTime, offset));
+        recentByDate.set(date, {
+          date,
+          route_count: 0,
+          archived_route_count: 0,
+          adjustment_count: 0,
+          driver_count: 0,
+          worked_hours: 0,
+          estimated_payroll: 0
+        });
+      }
+
+      (recentRoutes || []).forEach((route) => {
+        const entry = recentByDate.get(route.date);
+        if (!entry) {
+          return;
+        }
+
+        entry.route_count += 1;
+        if (route.archived_at) {
+          entry.archived_route_count += 1;
+        }
+      });
+
+      (recentSnapshots || []).forEach((snapshotRow) => {
+        const entry = recentByDate.get(snapshotRow.work_date);
+        if (!entry) {
+          return;
+        }
+
+        entry.driver_count = Number(snapshotRow.driver_count || 0);
+        entry.worked_hours = Number(snapshotRow.total_worked_hours || 0);
+        entry.estimated_payroll = Number(snapshotRow.estimated_payroll || 0);
+      });
+
+      (recentAdjustments || []).forEach((adjustment) => {
+        const entry = recentByDate.get(adjustment.work_date);
+        if (!entry) {
+          return;
+        }
+
+        entry.adjustment_count += 1;
+      });
+
+      return res.status(200).json({
+        range_start: rangeStart,
+        range_end: rangeEnd,
+        selected_date: requestedDate,
+        recent_days: [...recentByDate.values()].sort((a, b) => b.date.localeCompare(a.date)),
+        snapshot: snapshot || null,
+        routes: (routes || []).map((route) => ({
+          ...route,
+          driver_name: driverById.get(route.driver_id)?.name || null,
+          driver_email: driverById.get(route.driver_id)?.email || null,
+          vehicle_name: vehicleById.get(route.vehicle_id)?.name || null
+        })),
+        adjustments: (adjustmentRows || []).map((row) => ({
+          ...buildLaborAdjustmentSummary(row),
+          driver_name: driverById.get(row.driver_id)?.name || 'Driver',
+          driver_email: driverById.get(row.driver_id)?.email || null
+        }))
+      });
+    } catch (error) {
+      console.error('Manager records endpoint failed:', error);
+      return res.status(500).json({ error: 'Failed to load records' });
+    }
+  });
+
   router.patch('/routes/:route_id/assign', requireManager, async (req, res) => {
     const routeId = req.params.route_id;
     const { driver_id: driverId, vehicle_id: vehicleId } = req.body || {};
@@ -1520,7 +3729,7 @@ function createManagerRouter(options = {}) {
     try {
       const { data: route, error: routeError } = await supabase
         .from('routes')
-        .select('id, account_id')
+        .select('id, account_id, work_area_name, archived_at')
         .eq('id', routeId)
         .eq('account_id', req.account.account_id)
         .maybeSingle();
@@ -1530,7 +3739,7 @@ function createManagerRouter(options = {}) {
         return res.status(500).json({ error: 'Failed to load route for assignment' });
       }
 
-      if (!route) {
+      if (!route || !isDisplayableManagerRoute(route)) {
         return res.status(404).json({ error: 'Route not found' });
       }
 
@@ -1600,6 +3809,67 @@ function createManagerRouter(options = {}) {
     }
   });
 
+  router.post('/routes/archive-date', requireManager, async (req, res) => {
+    const requestedDate = parseDateParam(req.body?.date, nowProvider);
+
+    if (!requestedDate) {
+      return res.status(400).json({ error: 'date must be in YYYY-MM-DD format' });
+    }
+
+    const today = getCurrentDateString(nowProvider());
+
+    if (requestedDate >= today) {
+      return res.status(400).json({
+        error: 'Only past dates can be archived from Morning Setup. Today stays active so dispatch data is not hidden by accident.'
+      });
+    }
+
+    try {
+      const { data: routes, error: routesError } = await supabase
+        .from('routes')
+        .select('id, work_area_name, archived_at')
+        .eq('account_id', req.account.account_id)
+        .eq('date', requestedDate)
+        .is('archived_at', null);
+
+      if (routesError) {
+        console.error('Archive routes lookup failed:', routesError);
+        return res.status(500).json({ error: 'Failed to load routes for archive' });
+      }
+
+      const routeIds = (routes || []).map((route) => route.id);
+
+      if (!routeIds.length) {
+        return res.status(200).json({ archived_count: 0, archived_work_areas: [] });
+      }
+
+      const archivedAt = nowProvider().toISOString();
+      const { data: archivedRoutes, error: archiveError } = await supabase
+        .from('routes')
+        .update({
+          archived_at: archivedAt,
+          archived_reason: 'manager_archived_date'
+        })
+        .in('id', routeIds)
+        .eq('account_id', req.account.account_id)
+        .select('id, work_area_name');
+
+      if (archiveError) {
+        console.error('Archive routes update failed:', archiveError);
+        return res.status(500).json({ error: 'Failed to archive routes for this date' });
+      }
+
+      return res.status(200).json({
+        archived_count: (archivedRoutes || []).length,
+        archived_work_areas: (archivedRoutes || []).map((route) => route.work_area_name).filter(Boolean),
+        archived_at: archivedAt
+      });
+    } catch (error) {
+      console.error('Archive routes by date endpoint failed:', error);
+      return res.status(500).json({ error: 'Failed to archive routes for this date' });
+    }
+  });
+
   router.get('/stops/:stop_id/signature', requireManager, async (req, res) => {
     const stopId = req.params.stop_id;
 
@@ -1649,7 +3919,7 @@ function createManagerRouter(options = {}) {
     try {
       const { data: route, error: routeError } = await supabase
         .from('routes')
-        .select('id, account_id, driver_id, vehicle_id, work_area_name, date, total_stops, completed_stops, status, sa_number, contractor_name')
+        .select('id, account_id, driver_id, vehicle_id, work_area_name, date, total_stops, completed_stops, status, sa_number, contractor_name, archived_at')
         .eq('id', routeId)
         .eq('account_id', req.account.account_id)
         .eq('date', date)
@@ -1821,7 +4091,7 @@ function createManagerRouter(options = {}) {
     try {
       const { data: route, error: routeError } = await supabase
         .from('routes')
-        .select('id, account_id, driver_id, work_area_name, date')
+        .select('id, account_id, driver_id, work_area_name, date, archived_at')
         .eq('id', routeId)
         .eq('account_id', req.account.account_id)
         .eq('date', today)
@@ -1974,7 +4244,7 @@ function createManagerRouter(options = {}) {
     try {
       const { data: route, error: routeError } = await supabase
         .from('routes')
-        .select('id, account_id, work_area_name, date')
+        .select('id, account_id, work_area_name, date, archived_at')
         .eq('id', routeId)
         .eq('account_id', req.account.account_id)
         .eq('date', date)
@@ -2091,11 +4361,15 @@ function createManagerRouter(options = {}) {
         return res.status(500).json({ error: 'Failed to load route sync settings' });
       }
 
+      const fedexAccounts = await listFedexAccountsForAccount(supabase, req.account.account_id);
+      const fedexConnectionSummary = summarizeFedexAccounts(fedexAccounts.accounts, account?.fedex_csp_id || null);
+
       const { data: routes, error: routesError } = await supabase
         .from('routes')
-        .select('id, account_id, driver_id, vehicle_id, work_area_name, date, source, total_stops, completed_stops, status, created_at, completed_at')
+        .select('id, account_id, driver_id, vehicle_id, work_area_name, date, source, total_stops, completed_stops, status, created_at, completed_at, archived_at')
         .eq('account_id', req.account.account_id)
         .eq('date', date)
+        .is('archived_at', null)
         .order('id');
 
       if (routesError) {
@@ -2170,10 +4444,7 @@ function createManagerRouter(options = {}) {
           routes_assigned: visibleRoutes.filter((route) => Boolean(route.driver_id)).length,
           last_sync_at: latestSyncAt
         },
-        fedex_connection: {
-          is_connected: Boolean(account?.fedex_csp_id),
-          terminal_label: account?.fedex_csp_id || null
-        },
+        fedex_connection: fedexConnectionSummary,
         routes: visibleRoutes.map((route) => ({
           ...summarizeCoordinateHealth(stopsByRouteId.get(route.id) || []),
           ...route,

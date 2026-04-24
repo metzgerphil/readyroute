@@ -160,8 +160,9 @@ function formatTimestamp(timestamp) {
   }
 
   return new Intl.DateTimeFormat('en-US', {
-    hour: 'numeric',
-    minute: '2-digit'
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false
   }).format(date);
 }
 

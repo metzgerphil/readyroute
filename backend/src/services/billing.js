@@ -113,7 +113,7 @@ function createBillingService(options = {}) {
         stripe_subscription_id: subscription.id,
         subscription_status: subscription.status,
         vehicle_count: vehicleCount,
-        plan: subscription.status === 'active' ? 'active' : 'starter'
+        plan: subscription.status === 'active' ? 'pro' : 'starter'
       })
       .eq('id', accountId);
 
@@ -239,12 +239,51 @@ function createBillingService(options = {}) {
     };
   }
 
+  async function closeAccount(accountId, { deleteCustomer = false } = {}) {
+    const { data: account, error: accountError } = await loadAccount(supabase, accountId);
+
+    if (accountError) {
+      throw accountError;
+    }
+
+    if (!account) {
+      throw new Error('Account not found');
+    }
+
+    if (account.stripe_subscription_id) {
+      try {
+        await getStripe().subscriptions.cancel(account.stripe_subscription_id);
+      } catch (error) {
+        if (error?.code !== 'resource_missing') {
+          throw error;
+        }
+      }
+    }
+
+    if (deleteCustomer && account.stripe_customer_id) {
+      try {
+        await getStripe().customers.del(account.stripe_customer_id);
+      } catch (error) {
+        if (error?.code !== 'resource_missing') {
+          throw error;
+        }
+      }
+    }
+
+    return {
+      account_id: account.id,
+      canceled_subscription_id: account.stripe_subscription_id || null,
+      deleted_customer_id: deleteCustomer ? account.stripe_customer_id || null : null
+    };
+  }
+
   return {
     createCustomer,
     createSubscription,
     createTrialCheckoutSession,
     updateSubscriptionQuantity,
-    getSubscriptionStatus
+    getSubscriptionStatus,
+    closeAccount
   };
 }
 

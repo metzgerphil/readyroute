@@ -51,7 +51,11 @@ function createApp(options = {}) {
         supabase: options.supabase,
         now: options.now,
         jwtSecret: options.jwtSecret,
-        sendManagerInviteEmail: options.sendManagerInviteEmail
+        sendManagerInviteEmail: options.sendManagerInviteEmail,
+        stripeClient: options.stripeClient,
+        stripePriceId: options.stripePriceId,
+        trialDays: options.trialDays,
+        billingService: options.billingService
       })
     : managerRoutes;
   const timecardsRouter = options.supabase
