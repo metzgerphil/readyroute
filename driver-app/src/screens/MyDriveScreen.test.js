@@ -7,6 +7,14 @@ jest.mock('../services/api', () => ({
   }
 }));
 
+jest.mock('../services/auth', () => ({
+  getPinColorMode: jest.fn(),
+  getClockInTime: jest.fn(),
+  removeClockInTime: jest.fn(),
+  saveClockInTime: jest.fn(),
+  subscribePinColorMode: jest.fn(() => jest.fn())
+}));
+
 jest.mock('expo-location', () => ({
   requestForegroundPermissionsAsync: jest.fn(),
   getCurrentPositionAsync: jest.fn()
@@ -32,11 +40,13 @@ jest.mock('react-native-maps', () => {
 import {
   buildGoogleNavigationUrls,
   formatTimeCommitLine,
+  getMarkerRenderKey,
   getBannerBadges,
   getCompactStopTools,
   getFocusCoordinates,
   getMapRegion,
   getQuickIntel,
+  getStopStatusColors,
   getStopTools,
   getStopsPerHourLabel,
   getTimeCommitCallout,
@@ -145,6 +155,42 @@ describe('MyDriveScreen helpers', () => {
     expect(urls).toEqual({
       nativeGoogleMapsUrl: 'comgooglemaps://?daddr=200%20Oak%20St%2C%20Escondido%2C%20CA&directionsmode=driving',
       webGoogleMapsUrl: 'https://www.google.com/maps/dir/?api=1&destination=200%20Oak%20St%2C%20Escondido%2C%20CA&travelmode=driving'
+    });
+  });
+
+  it('builds stable marker render keys that refresh when selection state changes', () => {
+    expect(
+      getMarkerRenderKey({
+        itemId: 'stop:81',
+        isCurrentStop: false,
+        refreshVersion: 2
+      })
+    ).toBe('stop:81:idle:2');
+
+    expect(
+      getMarkerRenderKey({
+        itemId: 'stop:81',
+        isCurrentStop: true,
+        refreshVersion: 3
+      })
+    ).toBe('stop:81:selected:3');
+  });
+
+  it('uses SID bucket colors for pending pins and lets black mode stay monochrome', () => {
+    expect(
+      getStopStatusColors('pending', false, 'delivery', { sid: '3061', is_business: true }, 'sid')
+    ).toMatchObject({
+      fill: '#ffffff',
+      border: '#16a34a',
+      text: '#16a34a'
+    });
+
+    expect(
+      getStopStatusColors('pending', false, 'delivery', { sid: '3061', is_business: true }, 'black')
+    ).toMatchObject({
+      fill: '#ffffff',
+      border: '#111111',
+      text: '#111111'
     });
   });
 });

@@ -9,8 +9,11 @@ import {
   View
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import Svg, { Path } from 'react-native-svg';
 
 import api from '../services/api';
+import { getPinColorMode, savePinColorMode, subscribePinColorMode } from '../services/auth';
+import { getSidBucketTheme } from '../utils/sidBuckets';
 
 export function getStatusConfig(status) {
   switch (status) {
@@ -37,10 +40,70 @@ export function isHazmatStop(stop) {
   return (stop.packages || []).some((pkg) => pkg.hazmat);
 }
 
+export function getPinColorModeLabel(mode) {
+  return mode === 'black' ? 'Black' : 'SID Colors';
+}
+
+function getListPinTheme(stop, pinColorMode) {
+  if (pinColorMode !== 'sid') {
+    return {
+      fill: '#ffffff',
+      border: '#111111',
+      text: '#111111'
+    };
+  }
+
+  const sidTheme = getSidBucketTheme(stop?.sid);
+
+  if (!sidTheme) {
+    return {
+      fill: '#ffffff',
+      border: '#111111',
+      text: '#111111'
+    };
+  }
+
+  return {
+    fill: sidTheme.fill,
+    border: sidTheme.border,
+    text: sidTheme.border
+  };
+}
+
+function OpenBoxIcon({ color = '#6f7d87' }) {
+  return (
+    <Svg height={16} viewBox="0 0 24 24" width={16}>
+      <Path
+        d="M12 9.5L7 12.5V19L12 21.5L17 19V12.5L12 9.5Z"
+        fill="none"
+        stroke={color}
+        strokeLinejoin="round"
+        strokeWidth={1.8}
+      />
+      <Path
+        d="M12 9.5L6.8 7.2L3.8 9.8L9 12M12 9.5L17.2 7.2L20.2 9.8L15 12"
+        fill="none"
+        stroke={color}
+        strokeLinejoin="round"
+        strokeWidth={1.8}
+      />
+      <Path
+        d="M9 12L12 9.5L15 12"
+        fill="none"
+        stroke={color}
+        strokeLinejoin="round"
+        strokeWidth={1.8}
+      />
+      <Path d="M12 9.5V21.5" fill="none" stroke={color} strokeWidth={1.8} />
+    </Svg>
+  );
+}
+
 export default function ManifestScreen({ navigation, route }) {
   const [routeData, setRouteData] = useState(null);
   const [search, setSearch] = useState('');
   const [isLoading, setIsLoading] = useState(true);
+  const [pinColorMode, setPinColorMode] = useState('sid');
   const selectedStopId = route?.params?.selectedStopId;
 
   useLayoutEffect(() => {
@@ -73,6 +136,34 @@ export default function ManifestScreen({ navigation, route }) {
     };
   }, []);
 
+  useEffect(() => {
+    let isMounted = true;
+
+    async function loadPinColorPreference() {
+      const storedMode = await getPinColorMode().catch(() => null);
+
+      if (isMounted && (storedMode === 'sid' || storedMode === 'black')) {
+        setPinColorMode(storedMode);
+      }
+    }
+
+    loadPinColorPreference();
+    const unsubscribe = navigation.addListener?.('focus', loadPinColorPreference);
+
+    return () => {
+      isMounted = false;
+      unsubscribe?.();
+    };
+  }, [navigation]);
+
+  useEffect(() => {
+    return subscribePinColorMode((nextMode) => {
+      if (nextMode === 'sid' || nextMode === 'black') {
+        setPinColorMode(nextMode);
+      }
+    });
+  }, []);
+
   const filteredStops = useMemo(() => {
     const normalizedSearch = search.trim().toLowerCase();
     const stops = routeData?.stops || [];
@@ -89,16 +180,38 @@ export default function ManifestScreen({ navigation, route }) {
   const deliveryStops = filteredStops.filter((stop) => !isPickupStop(stop));
   const pickupStops = filteredStops.filter((stop) => isPickupStop(stop));
 
+  async function handlePinColorModeChange(nextMode) {
+    setPinColorMode(nextMode);
+    await savePinColorMode(nextMode).catch(() => {});
+  }
+
   function renderStopRow({ item }) {
     const statusConfig = getStatusConfig(item.status);
+    const pinTheme = getListPinTheme(item, pinColorMode);
+    const packageCount = (item.packages || []).length;
 
     return (
       <Pressable
-        onPress={() => navigation.navigate('MyDrive', { selectedStopId: item.id })}
+        onPress={() => navigation.navigate('StopDetail', { stopId: item.id })}
         style={[styles.row, isPriorityStop(item) ? styles.priorityRow : null, selectedStopId === item.id ? styles.selectedRow : null]}
       >
         <View style={styles.rowTop}>
-          <Text style={styles.stopNumber}>ST#{item.sequence_order}</Text>
+          <View style={styles.rowIdentityWrap}>
+            <View
+              style={[
+                styles.stopCircle,
+                {
+                  backgroundColor: pinTheme.fill,
+                  borderColor: pinTheme.border
+                }
+              ]}
+            >
+              <Text style={[styles.stopCircleText, { color: pinTheme.text }]}>{item.sequence_order}</Text>
+            </View>
+            <Text style={[styles.sidLabel, { color: pinTheme.text }]}>
+              {item.sid ? `SID ${item.sid}` : 'No SID'}
+            </Text>
+          </View>
           <View style={styles.statusWrap}>
             {isHazmatStop(item) ? (
               <View style={styles.hazmatBadge}>
@@ -127,9 +240,10 @@ export default function ManifestScreen({ navigation, route }) {
             </View>
           ) : null}
         </View>
-        <Text style={styles.packageCount}>
-          {(item.packages || []).length} {(item.packages || []).length === 1 ? 'package' : 'packages'}
-        </Text>
+        <View style={styles.packageMetaRow}>
+          <OpenBoxIcon />
+          <Text style={styles.packageMetaText}>{packageCount}</Text>
+        </View>
       </Pressable>
     );
   }
@@ -137,7 +251,32 @@ export default function ManifestScreen({ navigation, route }) {
   return (
     <SafeAreaView style={styles.safeArea}>
       <View style={styles.container}>
-        <Text style={styles.title}>Today&apos;s Route</Text>
+        <View style={styles.titleRow}>
+          <Text style={styles.title}>Today&apos;s Route</Text>
+          <View style={styles.pinColorControl}>
+            <Text style={styles.pinColorLabel}>Pin Colors</Text>
+            <View style={styles.pinColorPillRow}>
+              <Pressable
+                onPress={() => handlePinColorModeChange('sid')}
+                style={[styles.pinColorPill, pinColorMode === 'sid' ? styles.pinColorPillActive : null]}
+                testID="pin-color-mode-sid"
+              >
+                <Text style={[styles.pinColorPillText, pinColorMode === 'sid' ? styles.pinColorPillTextActive : null]}>
+                  {getPinColorModeLabel('sid')}
+                </Text>
+              </Pressable>
+              <Pressable
+                onPress={() => handlePinColorModeChange('black')}
+                style={[styles.pinColorPill, pinColorMode === 'black' ? styles.pinColorPillActive : null]}
+                testID="pin-color-mode-black"
+              >
+                <Text style={[styles.pinColorPillText, pinColorMode === 'black' ? styles.pinColorPillTextActive : null]}>
+                  {getPinColorModeLabel('black')}
+                </Text>
+              </Pressable>
+            </View>
+          </View>
+        </View>
         <TextInput
           autoCapitalize="none"
           onChangeText={setSearch}
@@ -189,7 +328,48 @@ const styles = StyleSheet.create({
     color: '#173042',
     fontSize: 28,
     fontWeight: '800',
+    marginBottom: 0
+  },
+  titleRow: {
+    alignItems: 'flex-start',
+    flexDirection: 'row',
+    justifyContent: 'space-between',
     marginBottom: 14
+  },
+  pinColorControl: {
+    alignItems: 'flex-end',
+    gap: 6
+  },
+  pinColorLabel: {
+    color: '#6f7d87',
+    fontSize: 11,
+    fontWeight: '700',
+    letterSpacing: 0.6,
+    textTransform: 'uppercase'
+  },
+  pinColorPillRow: {
+    backgroundColor: '#ffffff',
+    borderColor: '#dfdfdf',
+    borderRadius: 999,
+    borderWidth: 1,
+    flexDirection: 'row',
+    padding: 4
+  },
+  pinColorPill: {
+    borderRadius: 999,
+    paddingHorizontal: 10,
+    paddingVertical: 6
+  },
+  pinColorPillActive: {
+    backgroundColor: '#173042'
+  },
+  pinColorPillText: {
+    color: '#51606d',
+    fontSize: 13,
+    fontWeight: '700'
+  },
+  pinColorPillTextActive: {
+    color: '#ffffff'
   },
   searchInput: {
     backgroundColor: '#ffffff',
@@ -230,15 +410,32 @@ const styles = StyleSheet.create({
     borderLeftWidth: 5
   },
   rowTop: {
-    alignItems: 'center',
+    alignItems: 'flex-start',
     flexDirection: 'row',
     justifyContent: 'space-between',
     marginBottom: 8
   },
-  stopNumber: {
-    color: '#6f7d87',
+  rowIdentityWrap: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: 10
+  },
+  stopCircle: {
+    alignItems: 'center',
+    borderRadius: 18,
+    borderWidth: 2,
+    height: 36,
+    justifyContent: 'center',
+    width: 36
+  },
+  stopCircleText: {
     fontSize: 16,
-    fontWeight: '700'
+    fontWeight: '800'
+  },
+  sidLabel: {
+    fontSize: 16,
+    fontWeight: '800',
+    letterSpacing: 0.2
   },
   statusWrap: {
     alignItems: 'center',
@@ -309,9 +506,15 @@ const styles = StyleSheet.create({
   metaBadgeTextNote: {
     color: '#FF6200'
   },
-  packageCount: {
+  packageMetaRow: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: 6
+  },
+  packageMetaText: {
     color: '#6f7d87',
-    fontSize: 16
+    fontSize: 16,
+    fontWeight: '700'
   },
   hazmatBadge: {
     backgroundColor: '#c92a2a',

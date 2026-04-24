@@ -8,7 +8,7 @@ import ManifestScreen from '../screens/ManifestScreen';
 import MyDriveScreen from '../screens/MyDriveScreen';
 import StopDetailScreen from '../screens/StopDetailScreen';
 import { setUnauthorizedHandler } from '../services/api';
-import { getToken, removeToken } from '../services/auth';
+import { getToken, removeClockInTime, removeToken } from '../services/auth';
 
 const Stack = createStackNavigator();
 
@@ -54,6 +54,7 @@ export default function AppNavigator() {
 
   useEffect(() => {
     setUnauthorizedHandler(async () => {
+      await removeClockInTime();
       await removeToken();
       setToken(null);
     });

@@ -15,6 +15,7 @@ import * as Location from 'expo-location';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import api from '../services/api';
+import { getSidBucketTheme } from '../utils/sidBuckets';
 
 const FLAG_OPTIONS = ['Impassable', 'Seasonal', 'Low clearance', 'Private/no access'];
 
@@ -131,6 +132,21 @@ export function formatSecondaryAddressDetails(stop) {
   return parts.join(' · ');
 }
 
+function getSidBadgeStyle(sid) {
+  const theme = getSidBucketTheme(sid);
+
+  if (!theme) {
+    return null;
+  }
+
+  return {
+    backgroundColor: theme.fill,
+    borderColor: theme.border,
+    textColor: theme.text,
+    softText: theme.softText
+  };
+}
+
 export function buildGoogleNavigationUrls(address) {
   const destination = encodeURIComponent(address || '');
 
@@ -138,6 +154,22 @@ export function buildGoogleNavigationUrls(address) {
     nativeGoogleMapsUrl: `comgooglemaps://?daddr=${destination}&directionsmode=driving`,
     webGoogleMapsUrl: `https://www.google.com/maps/dir/?api=1&destination=${destination}&travelmode=driving`
   };
+}
+
+function getGroupedStopUnitLabel(stop) {
+  if (stop?.apartment_intelligence?.unit_number) {
+    return `Unit ${stop.apartment_intelligence.unit_number}`;
+  }
+
+  if (stop?.property_intel?.unit) {
+    return `Unit ${stop.property_intel.unit}`;
+  }
+
+  if (stop?.address_line2) {
+    return String(stop.address_line2).trim();
+  }
+
+  return getPrimaryAddressLine(stop) || 'Unit details unavailable';
 }
 
 export default function StopDetailScreen({ navigation, route }) {
@@ -189,9 +221,9 @@ export default function StopDetailScreen({ navigation, route }) {
 
   useLayoutEffect(() => {
     navigation.setOptions({
-      title: stop?.sequence_order ? `ST#${stop.sequence_order}` : 'Stop Detail'
+      title: stop?.sid ? `SID ${stop.sid}` : stop?.sequence_order ? `Stop ${stop.sequence_order}` : 'Stop Detail'
     });
-  }, [navigation, stop?.sequence_order]);
+  }, [navigation, stop?.sequence_order, stop?.sid]);
 
   async function refreshStop({ silent = false } = {}) {
     try {
@@ -383,6 +415,22 @@ export default function StopDetailScreen({ navigation, route }) {
   const isFloorDraftValid = Number.isInteger(Number(floorDraft)) && Number(floorDraft) > 0;
   const hasNoteDraft = Boolean(noteDraft.trim());
   const groupedStops = propertyIntel?.grouped_stops || [];
+  const allGroupedStops = [
+    {
+      id: stop.id,
+      sequence_order: stop.sequence_order,
+      address: stop.address,
+      unit: apartmentIntel?.unit_number || propertyIntel?.unit || null,
+      status: stop.status,
+      sid: stop.sid,
+      contact_name: stop.contact_name,
+      package_count: stop.packages?.length || 0,
+      address_line2: stop.address_line2,
+      apartment_intelligence: apartmentIntel,
+      property_intel: propertyIntel
+    },
+    ...groupedStops
+  ].sort((a, b) => Number(a.sequence_order || 0) - Number(b.sequence_order || 0));
   const warningFlags = propertyIntel?.warning_flags || [];
   const hasPropertyIntel = Boolean(
     propertyIntel?.location_type ||
@@ -390,16 +438,33 @@ export default function StopDetailScreen({ navigation, route }) {
       propertyIntel?.access_note ||
       propertyIntel?.parking_note ||
       warningFlags.length ||
-      groupedStops.length
+      allGroupedStops.length > 1
   );
 
   return (
     <SafeAreaView style={styles.safeArea}>
       <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
         <View style={styles.headerRow}>
-          {stop.sequence_order ? (
-            <View style={styles.stopNumberBadge}>
-              <Text style={styles.stopNumberBadgeText}>ST#{stop.sequence_order}</Text>
+          {stop.sid || stop.sequence_order ? (
+            <View
+              style={[
+                styles.stopNumberBadge,
+                getSidBadgeStyle(stop.sid)
+                  ? {
+                      backgroundColor: getSidBadgeStyle(stop.sid).backgroundColor,
+                      borderColor: getSidBadgeStyle(stop.sid).borderColor
+                    }
+                  : null
+              ]}
+            >
+              <Text
+                style={[
+                  styles.stopNumberBadgeText,
+                  getSidBadgeStyle(stop.sid) ? { color: getSidBadgeStyle(stop.sid).textColor } : null
+                ]}
+              >
+                {stop.sid ? `SID ${stop.sid}` : `Stop ${stop.sequence_order}`}
+              </Text>
             </View>
           ) : null}
           <Text style={styles.title}>{primaryAddressLine || stop.address}</Text>
@@ -547,17 +612,55 @@ export default function StopDetailScreen({ navigation, route }) {
                 </View>
               ) : null}
 
-              {groupedStops.length ? (
+              {allGroupedStops.length > 1 ? (
                 <View style={styles.intelRow}>
-                  <Text style={styles.intelLabel}>Grouped stops</Text>
-                  <View style={styles.groupedStopList}>
-                    {groupedStops.map((groupedStop) => (
-                      <View key={groupedStop.id} style={styles.groupedStopChip}>
-                        <Text style={styles.groupedStopChipText}>
-                          {`ST#${groupedStop.sequence_order}${groupedStop.unit ? ` · Unit ${groupedStop.unit}` : ''}`}
-                        </Text>
-                      </View>
-                    ))}
+                  <Text style={styles.intelLabel}>Building deliveries</Text>
+                  <View style={styles.groupedStopTable}>
+                    {allGroupedStops.map((groupedStop) => {
+                      const isCurrentUnit = groupedStop.id === stop.id;
+                      const groupedPackageCount = Number(groupedStop.package_count || 0);
+
+                      return (
+                        <View key={groupedStop.id} style={[styles.groupedStopRow, isCurrentUnit ? styles.groupedStopRowCurrent : null]}>
+                          <View
+                            style={[
+                              styles.groupedStopSidBadge,
+                              isCurrentUnit ? styles.groupedStopSidBadgeCurrent : null,
+                              getSidBadgeStyle(groupedStop.sid)
+                                ? {
+                                    backgroundColor: getSidBadgeStyle(groupedStop.sid).backgroundColor,
+                                    borderColor: getSidBadgeStyle(groupedStop.sid).borderColor
+                                  }
+                                : null
+                            ]}
+                          >
+                            <Text
+                              style={[
+                                styles.groupedStopSidBadgeText,
+                                isCurrentUnit ? styles.groupedStopSidBadgeTextCurrent : null,
+                                getSidBadgeStyle(groupedStop.sid)
+                                  ? { color: getSidBadgeStyle(groupedStop.sid).textColor }
+                                  : null
+                              ]}
+                            >
+                              {groupedStop.sid ? `SID ${groupedStop.sid}` : `Stop ${groupedStop.sequence_order}`}
+                            </Text>
+                          </View>
+                          <View style={styles.groupedStopMain}>
+                            <Text style={styles.groupedStopPrimaryText}>{getGroupedStopUnitLabel(groupedStop)}</Text>
+                            <Text style={styles.groupedStopSecondaryText}>
+                              {groupedStop.contact_name || 'No contact name'}
+                              {groupedPackageCount ? ` · ${groupedPackageCount} ${groupedPackageCount === 1 ? 'package' : 'packages'}` : ''}
+                            </Text>
+                          </View>
+                          {isCurrentUnit ? (
+                            <View style={styles.groupedStopCurrentPill}>
+                              <Text style={styles.groupedStopCurrentPillText}>Current</Text>
+                            </View>
+                          ) : null}
+                        </View>
+                      );
+                    })}
                   </View>
                 </View>
               ) : null}
@@ -591,10 +694,10 @@ export default function StopDetailScreen({ navigation, route }) {
               </View>
             ) : null}
           </View>
-          {(stop.packages || []).map((pkg) => (
+          {(stop.packages || []).map((pkg, index) => (
             <View key={pkg.id} style={styles.packageRow}>
               <View>
-                <Text style={styles.packageTracking}>{pkg.tracking_number}</Text>
+                <Text style={styles.packageTracking}>Package {index + 1}</Text>
                 <Text style={styles.packageMeta}>
                   {pkg.requires_signature ? 'Signature required' : 'Standard delivery'}
                 </Text>
@@ -666,7 +769,9 @@ export default function StopDetailScreen({ navigation, route }) {
         </View>
 
         {stop.sid !== null && stop.sid !== undefined && String(stop.sid).trim() !== '' ? (
-          <Text style={styles.sidText}>SID: {stop.sid}</Text>
+          <Text style={[styles.sidText, getSidBadgeStyle(stop.sid) ? { color: getSidBadgeStyle(stop.sid).softText } : null]}>
+            SID: {stop.sid}
+          </Text>
         ) : null}
 
       </ScrollView>
@@ -714,7 +819,9 @@ const styles = StyleSheet.create({
   stopNumberBadge: {
     alignSelf: 'flex-start',
     backgroundColor: '#173042',
+    borderColor: '#173042',
     borderRadius: 999,
+    borderWidth: 1,
     marginBottom: 10,
     paddingHorizontal: 12,
     paddingVertical: 7
@@ -902,20 +1009,69 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     lineHeight: 21
   },
-  groupedStopList: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8
+  groupedStopTable: {
+    gap: 10
   },
-  groupedStopChip: {
+  groupedStopRow: {
+    alignItems: 'center',
+    backgroundColor: '#f8fafc',
+    borderColor: '#e2e8f0',
+    borderRadius: 14,
+    borderWidth: 1,
+    flexDirection: 'row',
+    gap: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 10
+  },
+  groupedStopRowCurrent: {
+    borderColor: '#bfdbfe',
+    backgroundColor: '#eff6ff'
+  },
+  groupedStopSidBadge: {
+    alignItems: 'center',
     backgroundColor: '#e0f2fe',
+    borderColor: '#e0f2fe',
+    borderRadius: 10,
+    borderWidth: 1,
+    justifyContent: 'center',
+    minHeight: 34,
+    minWidth: 64,
+    paddingHorizontal: 8
+  },
+  groupedStopSidBadgeCurrent: {
+    backgroundColor: '#dbeafe'
+  },
+  groupedStopSidBadgeText: {
+    color: '#0f4c81',
+    fontSize: 11,
+    fontWeight: '800'
+  },
+  groupedStopSidBadgeTextCurrent: {
+    color: '#1d4ed8'
+  },
+  groupedStopMain: {
+    flex: 1,
+    gap: 3
+  },
+  groupedStopPrimaryText: {
+    color: '#173042',
+    fontSize: 14,
+    fontWeight: '800'
+  },
+  groupedStopSecondaryText: {
+    color: '#61717d',
+    fontSize: 12,
+    fontWeight: '600'
+  },
+  groupedStopCurrentPill: {
+    backgroundColor: '#dbeafe',
     borderRadius: 999,
     paddingHorizontal: 10,
     paddingVertical: 6
   },
-  groupedStopChipText: {
-    color: '#0f4c81',
-    fontSize: 12,
+  groupedStopCurrentPillText: {
+    color: '#1d4ed8',
+    fontSize: 11,
     fontWeight: '800'
   },
   floorInput: {

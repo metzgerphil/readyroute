@@ -3,7 +3,7 @@ import { Text } from 'react-native';
 import renderer, { act } from 'react-test-renderer';
 
 import AppNavigator from './AppNavigator';
-import { getToken, removeToken } from '../services/auth';
+import { getToken, removeClockInTime, removeToken } from '../services/auth';
 import { setUnauthorizedHandler } from '../services/api';
 
 jest.setTimeout(30000);
@@ -27,6 +27,7 @@ jest.mock('@react-navigation/stack', () => ({
 
 jest.mock('../services/auth', () => ({
   getToken: jest.fn(),
+  removeClockInTime: jest.fn(),
   removeToken: jest.fn()
 }));
 
@@ -135,6 +136,7 @@ describe('AppNavigator', () => {
       await unauthorizedCallback();
     });
 
+    expect(removeClockInTime).toHaveBeenCalled();
     expect(removeToken).toHaveBeenCalled();
     const screenLabels = tree.root.findAllByType(Text).map((node) => node.props.children);
     expect(screenLabels).toContain('LoginScreen');

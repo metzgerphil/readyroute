@@ -77,6 +77,9 @@ export default function LoginScreen({ onAuthenticated }) {
               <Text style={styles.subtitle}>Last-mile routing</Text>
 
               <View style={styles.form}>
+                <Text style={styles.helperText}>
+                  Sign in with your ReadyRoute driver email and the 4-digit PIN from dispatch.
+                </Text>
                 <TextInput
                   autoCapitalize="none"
                   autoCorrect={false}
@@ -174,6 +177,12 @@ const styles = StyleSheet.create({
   },
   form: {
     gap: 14
+  },
+  helperText: {
+    color: '#5f6f7c',
+    fontSize: 16,
+    lineHeight: 22,
+    marginBottom: 2
   },
   input: {
     backgroundColor: '#ffffff',
