@@ -38,6 +38,13 @@ class MockQueryBuilder {
     return this;
   }
 
+  upsert(payload, options = {}) {
+    this.operation = 'upsert';
+    this.state.payload = payload;
+    this.state.upsertOptions = options;
+    return this;
+  }
+
   update(payload) {
     this.operation = 'update';
     this.state.payload = payload;
@@ -150,10 +157,13 @@ test('GET /vehicles returns vehicles with latest maintenance, today assignment, 
             id: 'vehicle-1',
             account_id: 'acct-1',
             name: 'Truck 12',
+            truck_type: 'P1000',
+            custom_truck_type: null,
             make: 'Ford',
             model: 'Transit',
             year: 2023,
             plate: 'ABC123',
+            registration_expiration: '2026-05-10',
             current_mileage: 19500,
             next_service_mileage: 20000,
             notes: null,
@@ -163,10 +173,13 @@ test('GET /vehicles returns vehicles with latest maintenance, today assignment, 
             id: 'vehicle-2',
             account_id: 'acct-1',
             name: 'Truck 19',
+            truck_type: 'Other',
+            custom_truck_type: 'Box Truck P700',
             make: 'Ram',
             model: 'ProMaster',
             year: 2022,
             plate: 'XYZ789',
+            registration_expiration: null,
             current_mileage: 14000,
             next_service_mileage: 20000,
             notes: null,
@@ -242,8 +255,10 @@ test('GET /vehicles returns vehicles with latest maintenance, today assignment, 
     assert.equal(body.vehicles[0].today_assignment.driver_name, 'Luis Jimenez');
     assert.equal(body.vehicles[0].latest_maintenance.description, 'Tires');
     assert.equal(body.vehicles[0].service_due, true);
+    assert.equal(body.vehicles[0].truck_type, 'P1000');
     assert.equal(body.vehicles[1].today_assignment, null);
     assert.equal(body.vehicles[1].service_due, false);
+    assert.equal(body.vehicles[1].custom_truck_type, 'Box Truck P700');
   } finally {
     await server.close();
   }
@@ -254,6 +269,9 @@ test('POST /vehicles creates a vehicle for the authenticated account', async () 
     if (query.table === 'vehicles' && query.operation === 'insert') {
       assert.equal(query.payload.account_id, 'acct-1');
       assert.equal(query.payload.name, 'Truck 24');
+      assert.equal(query.payload.truck_type, 'Other');
+      assert.equal(query.payload.custom_truck_type, 'P900 Reefer');
+      assert.equal(query.payload.registration_expiration, '2026-09-30');
       assert.equal(query.payload.current_mileage, 0);
       return {
         data: { id: 'vehicle-new' },
@@ -275,6 +293,80 @@ test('POST /vehicles creates a vehicle for the authenticated account', async () 
       },
       body: JSON.stringify({
         name: 'Truck 24',
+        truck_type: 'Other',
+        custom_truck_type: 'P900 Reefer',
+        make: 'Ford',
+        model: 'Transit',
+        year: 2024,
+        plate: 'NEW123',
+        registration_expiration: '2026-09-30'
+      })
+    });
+
+    assert.equal(response.status, 201);
+    assert.deepEqual(await response.json(), { vehicle_id: 'vehicle-new' });
+  } finally {
+    await server.close();
+  }
+});
+
+test('POST /vehicles accepts P1100 as a supported truck type', async () => {
+  const supabase = new MockSupabase((query) => {
+    if (query.table === 'vehicles' && query.operation === 'insert') {
+      assert.equal(query.payload.truck_type, 'P1100');
+      assert.equal(query.payload.custom_truck_type, null);
+      return {
+        data: { id: 'vehicle-p1100' },
+        error: null
+      };
+    }
+
+    throw new Error(`Unexpected query ${query.table}:${query.operation}:${query.mode}`);
+  });
+
+  const server = await startTestServer(supabase);
+
+  try {
+    const response = await fetch(`${server.baseUrl}/vehicles`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${signManagerToken()}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        name: 'Truck 1100',
+        truck_type: 'P1100',
+        make: 'Freightliner',
+        model: 'Step Van',
+        year: 2024,
+        plate: 'P1100'
+      })
+    });
+
+    assert.equal(response.status, 201);
+    assert.deepEqual(await response.json(), { vehicle_id: 'vehicle-p1100' });
+  } finally {
+    await server.close();
+  }
+});
+
+test('POST /vehicles validates custom truck type when Other is selected', async () => {
+  const supabase = new MockSupabase(() => {
+    throw new Error('Should not hit supabase');
+  });
+
+  const server = await startTestServer(supabase);
+
+  try {
+    const response = await fetch(`${server.baseUrl}/vehicles`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${signManagerToken()}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        name: 'Truck 24',
+        truck_type: 'Other',
         make: 'Ford',
         model: 'Transit',
         year: 2024,
@@ -282,8 +374,8 @@ test('POST /vehicles creates a vehicle for the authenticated account', async () 
       })
     });
 
-    assert.equal(response.status, 201);
-    assert.deepEqual(await response.json(), { vehicle_id: 'vehicle-new' });
+    assert.equal(response.status, 400);
+    assert.deepEqual(await response.json(), { error: 'custom_truck_type is required when truck_type is Other' });
   } finally {
     await server.close();
   }
@@ -336,9 +428,12 @@ test('POST /vehicles/:id/maintenance saves maintenance and updates the vehicle m
     if (query.table === 'vehicle_maintenance' && query.operation === 'insert') {
       assert.equal(query.payload.vehicle_id, 'vehicle-1');
       assert.equal(query.payload.account_id, 'acct-1');
+      assert.equal(query.payload.service_type, 'Oil Change');
       assert.equal(query.payload.description, 'Oil change');
+      assert.equal(query.payload.condition_notes, 'Clean oil, 3,000 miles remaining on pads');
       assert.equal(query.payload.mileage_at_service, 18550);
       assert.equal(query.payload.next_service_mileage, 23500);
+      assert.equal(query.payload.next_service_date, '2026-07-10');
       return {
         data: { id: 'maint-new' },
         error: null
@@ -368,10 +463,13 @@ test('POST /vehicles/:id/maintenance saves maintenance and updates the vehicle m
       },
       body: JSON.stringify({
         service_date: '2026-04-10',
+        service_type: 'Oil Change',
         description: 'Oil change',
+        condition_notes: 'Clean oil, 3,000 miles remaining on pads',
         cost: 149.99,
         mileage_at_service: 18550,
-        next_service_mileage: 23500
+        next_service_mileage: 23500,
+        next_service_date: '2026-07-10'
       })
     });
 
@@ -396,8 +494,8 @@ test('GET /vehicles/:id/maintenance returns newest-first history for owned vehic
       assert.deepEqual(query.orders, [{ column: 'service_date', options: { ascending: false } }]);
       return {
         data: [
-          { id: 'maint-2', service_date: '2026-04-10', description: 'Tires' },
-          { id: 'maint-1', service_date: '2026-03-10', description: 'Oil change' }
+          { id: 'maint-2', service_date: '2026-04-10', service_type: 'Brake Pads', description: 'Tires', condition_notes: '2,000 miles left' },
+          { id: 'maint-1', service_date: '2026-03-10', service_type: 'Oil Change', description: 'Oil change', condition_notes: null }
         ],
         error: null
       };
@@ -419,6 +517,7 @@ test('GET /vehicles/:id/maintenance returns newest-first history for owned vehic
     const body = await response.json();
     assert.equal(body.maintenance.length, 2);
     assert.equal(body.maintenance[0].description, 'Tires');
+    assert.equal(body.maintenance[0].service_type, 'Brake Pads');
   } finally {
     await server.close();
   }
@@ -458,6 +557,82 @@ test('GET /vehicles/due-soon returns only service-due vehicles', async () => {
   }
 });
 
+test('GET /vehicles/settings/maintenance returns defaults when no account settings exist', async () => {
+  const supabase = new MockSupabase((query) => {
+    if (query.table === 'vehicle_maintenance_settings' && query.operation === 'select') {
+      return { data: [], error: null };
+    }
+
+    throw new Error(`Unexpected query ${query.table}:${query.operation}:${query.mode}`);
+  });
+
+  const server = await startTestServer(supabase);
+
+  try {
+    const response = await fetch(`${server.baseUrl}/vehicles/settings/maintenance`, {
+      headers: {
+        Authorization: `Bearer ${signManagerToken()}`
+      }
+    });
+
+    assert.equal(response.status, 200);
+    const body = await response.json();
+    assert.equal(body.settings.length, 6);
+    assert.equal(body.settings[1].service_type, 'Oil Change');
+    assert.equal(body.settings[1].default_interval_miles, 5000);
+  } finally {
+    await server.close();
+  }
+});
+
+test('PUT /vehicles/settings/maintenance upserts account maintenance settings', async () => {
+  const supabase = new MockSupabase((query) => {
+    if (query.table === 'vehicle_maintenance_settings' && query.operation === 'update') {
+      throw new Error('Unexpected update');
+    }
+
+    if (query.table === 'vehicle_maintenance_settings' && query.operation === 'insert') {
+      throw new Error('Unexpected insert');
+    }
+
+    if (query.table === 'vehicle_maintenance_settings' && query.operation === 'upsert') {
+      assert.equal(query.payload.length, 2);
+      assert.equal(query.payload[0].account_id, 'acct-1');
+      assert.equal(query.payload[0].service_type, 'Oil Change');
+      assert.equal(query.payload[0].default_interval_miles, 6000);
+      assert.equal(query.payload[1].service_type, 'Brake Pads');
+      assert.equal(query.payload[1].default_interval_days, 120);
+      return { data: null, error: null };
+    }
+
+    throw new Error(`Unexpected query ${query.table}:${query.operation}:${query.mode}`);
+  });
+
+  const server = await startTestServer(supabase);
+
+  try {
+    const response = await fetch(`${server.baseUrl}/vehicles/settings/maintenance`, {
+      method: 'PUT',
+      headers: {
+        Authorization: `Bearer ${signManagerToken()}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        settings: [
+          { service_type: 'Oil Change', is_enabled: true, default_interval_miles: 6000, default_interval_days: 180 },
+          { service_type: 'Brake Pads', is_enabled: true, default_interval_miles: null, default_interval_days: 120 }
+        ]
+      })
+    });
+
+    assert.equal(response.status, 200);
+    const body = await response.json();
+    assert.equal(body.settings.length, 2);
+  } finally {
+    await server.close();
+  }
+});
+
 test('POST /vehicles/:id/maintenance returns 403 when vehicle belongs to a different account', async () => {
   const supabase = new MockSupabase((query) => {
     if (query.table === 'vehicles' && query.operation === 'select') {
@@ -478,11 +653,53 @@ test('POST /vehicles/:id/maintenance returns 403 when vehicle belongs to a diffe
       },
       body: JSON.stringify({
         service_date: '2026-04-10',
+        service_type: 'Oil Change',
         description: 'Oil change'
       })
     });
 
     assert.equal(response.status, 403);
+  } finally {
+    await server.close();
+  }
+});
+
+test('POST /vehicles/:id/maintenance validates service type', async () => {
+  const supabase = new MockSupabase((query) => {
+    if (query.table === 'vehicles' && query.operation === 'select') {
+      return {
+        data: {
+          id: 'vehicle-1',
+          account_id: 'acct-1',
+          current_mileage: 18000,
+          last_service_mileage: 17000,
+          next_service_mileage: 22000
+        },
+        error: null
+      };
+    }
+
+    throw new Error(`Unexpected query ${query.table}:${query.operation}:${query.mode}`);
+  });
+
+  const server = await startTestServer(supabase);
+
+  try {
+    const response = await fetch(`${server.baseUrl}/vehicles/vehicle-1/maintenance`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${signManagerToken()}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        service_date: '2026-04-10',
+        service_type: 'Unsupported',
+        description: 'Oil change'
+      })
+    });
+
+    assert.equal(response.status, 400);
+    assert.deepEqual(await response.json(), { error: 'service_type is not supported' });
   } finally {
     await server.close();
   }

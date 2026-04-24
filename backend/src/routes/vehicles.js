@@ -3,6 +3,70 @@ const express = require('express');
 const defaultSupabase = require('../lib/supabase');
 const { requireManager } = require('../middleware/auth');
 
+const ALLOWED_TRUCK_TYPES = new Set([
+  'P700',
+  'P1000',
+  'P1100',
+  'P1200',
+  'Box Truck',
+  'Step Van',
+  'Transit',
+  'Cargo Van',
+  'Cutaway',
+  'Other'
+]);
+
+const ALLOWED_SERVICE_TYPES = new Set([
+  'Inspection',
+  'Oil Change',
+  'Air Filter',
+  'Brake Pads',
+  'General Repair',
+  'Other'
+]);
+
+function createDefaultMaintenanceSettings() {
+  return [
+    { service_type: 'Inspection', is_enabled: true, default_interval_miles: null, default_interval_days: 365 },
+    { service_type: 'Oil Change', is_enabled: true, default_interval_miles: 5000, default_interval_days: 180 },
+    { service_type: 'Air Filter', is_enabled: true, default_interval_miles: 10000, default_interval_days: 365 },
+    { service_type: 'Brake Pads', is_enabled: true, default_interval_miles: null, default_interval_days: 180 },
+    { service_type: 'General Repair', is_enabled: true, default_interval_miles: null, default_interval_days: null },
+    { service_type: 'Other', is_enabled: false, default_interval_miles: null, default_interval_days: null }
+  ];
+}
+
+function normalizeMaintenanceSetting(setting = {}) {
+  const serviceType = String(setting.service_type || '').trim();
+
+  if (!ALLOWED_SERVICE_TYPES.has(serviceType)) {
+    return { error: `Unsupported service type: ${serviceType || 'missing'}` };
+  }
+
+  const isEnabled = typeof setting.is_enabled === 'boolean' ? setting.is_enabled : true;
+  const intervalMiles = setting.default_interval_miles === '' || setting.default_interval_miles === undefined || setting.default_interval_miles === null
+    ? null
+    : toInteger(setting.default_interval_miles);
+  const intervalDays = setting.default_interval_days === '' || setting.default_interval_days === undefined || setting.default_interval_days === null
+    ? null
+    : toInteger(setting.default_interval_days);
+
+  if (setting.default_interval_miles !== undefined && setting.default_interval_miles !== null && setting.default_interval_miles !== '' && intervalMiles === null) {
+    return { error: `default_interval_miles must be an integer for ${serviceType}` };
+  }
+
+  if (setting.default_interval_days !== undefined && setting.default_interval_days !== null && setting.default_interval_days !== '' && intervalDays === null) {
+    return { error: `default_interval_days must be an integer for ${serviceType}` };
+  }
+
+  return {
+    service_type: serviceType,
+    is_enabled: isEnabled,
+    default_interval_miles: intervalMiles,
+    default_interval_days: intervalDays
+  };
+}
+
 function getCurrentDateString(now = new Date(), timeZone = process.env.APP_TIME_ZONE || 'America/Los_Angeles') {
   return new Intl.DateTimeFormat('en-CA', {
     timeZone,
@@ -28,6 +92,42 @@ function toNumeric(value) {
 
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : null;
+}
+
+function normalizeTruckType({ truckType, customTruckType }) {
+  const normalizedTruckType = truckType === null || truckType === undefined || truckType === ''
+    ? null
+    : String(truckType).trim();
+  const normalizedCustomTruckType = customTruckType === null || customTruckType === undefined || customTruckType === ''
+    ? null
+    : String(customTruckType).trim();
+
+  if (normalizedTruckType === null) {
+    return {
+      truck_type: null,
+      custom_truck_type: null
+    };
+  }
+
+  if (!ALLOWED_TRUCK_TYPES.has(normalizedTruckType)) {
+    return { error: 'truck_type is not supported' };
+  }
+
+  if (normalizedTruckType === 'Other') {
+    if (!normalizedCustomTruckType) {
+      return { error: 'custom_truck_type is required when truck_type is Other' };
+    }
+
+    return {
+      truck_type: normalizedTruckType,
+      custom_truck_type: normalizedCustomTruckType
+    };
+  }
+
+  return {
+    truck_type: normalizedTruckType,
+    custom_truck_type: null
+  };
 }
 
 function mapLatestMaintenance(records) {
@@ -191,21 +291,92 @@ function createVehiclesRouter(options = {}) {
     }
   });
 
+  router.get('/settings/maintenance', requireManager, async (req, res) => {
+    try {
+      const { data, error } = await supabase
+        .from('vehicle_maintenance_settings')
+        .select('*')
+        .eq('account_id', req.account.account_id)
+        .order('service_type');
+
+      if (error) {
+        console.error('Vehicle maintenance settings lookup failed:', error);
+        return res.status(500).json({ error: 'Failed to load maintenance settings' });
+      }
+
+      if (!data?.length) {
+        return res.status(200).json({ settings: createDefaultMaintenanceSettings() });
+      }
+
+      return res.status(200).json({ settings: data });
+    } catch (error) {
+      console.error('Vehicle maintenance settings endpoint failed:', error);
+      return res.status(500).json({ error: 'Failed to load maintenance settings' });
+    }
+  });
+
+  router.put('/settings/maintenance', requireManager, async (req, res) => {
+    const settings = Array.isArray(req.body?.settings) ? req.body.settings : null;
+
+    if (!settings?.length) {
+      return res.status(400).json({ error: 'settings array is required' });
+    }
+
+    const normalized = [];
+
+    for (const setting of settings) {
+      const parsed = normalizeMaintenanceSetting(setting);
+      if (parsed.error) {
+        return res.status(400).json({ error: parsed.error });
+      }
+
+      normalized.push({
+        account_id: req.account.account_id,
+        ...parsed,
+        updated_at: nowProvider().toISOString()
+      });
+    }
+
+    try {
+      const { error } = await supabase
+        .from('vehicle_maintenance_settings')
+        .upsert(normalized, { onConflict: 'account_id,service_type' });
+
+      if (error) {
+        console.error('Vehicle maintenance settings upsert failed:', error);
+        return res.status(500).json({ error: 'Failed to save maintenance settings' });
+      }
+
+      return res.status(200).json({ settings: normalized });
+    } catch (error) {
+      console.error('Vehicle maintenance settings save failed:', error);
+      return res.status(500).json({ error: 'Failed to save maintenance settings' });
+    }
+  });
+
   router.post('/', requireManager, async (req, res) => {
     const {
       name,
+      truck_type: truckType,
+      custom_truck_type: customTruckType,
       make,
       model,
       year,
       plate,
+      registration_expiration: registrationExpiration,
       current_mileage: currentMileage
     } = req.body || {};
 
     const parsedYear = toInteger(year);
     const parsedCurrentMileage = currentMileage === undefined ? 0 : toInteger(currentMileage);
+    const normalizedTruckType = normalizeTruckType({ truckType, customTruckType });
 
     if (!name || !make || !model || parsedYear === null || !plate || parsedCurrentMileage === null) {
       return res.status(400).json({ error: 'name, make, model, year, and plate are required' });
+    }
+
+    if (normalizedTruckType.error) {
+      return res.status(400).json({ error: normalizedTruckType.error });
     }
 
     try {
@@ -214,10 +385,13 @@ function createVehiclesRouter(options = {}) {
         .insert({
           account_id: req.account.account_id,
           name: String(name).trim(),
+          truck_type: normalizedTruckType.truck_type,
+          custom_truck_type: normalizedTruckType.custom_truck_type,
           make: String(make).trim(),
           model: String(model).trim(),
           year: parsedYear,
           plate: String(plate).trim(),
+          registration_expiration: registrationExpiration || null,
           current_mileage: parsedCurrentMileage
         })
         .select('id')
@@ -237,7 +411,19 @@ function createVehiclesRouter(options = {}) {
 
   router.put('/:id', requireManager, async (req, res) => {
     const vehicleId = req.params.id;
-    const allowedFields = ['name', 'make', 'model', 'year', 'plate', 'current_mileage', 'notes', 'is_active'];
+    const allowedFields = [
+      'name',
+      'truck_type',
+      'custom_truck_type',
+      'make',
+      'model',
+      'year',
+      'plate',
+      'registration_expiration',
+      'current_mileage',
+      'notes',
+      'is_active'
+    ];
     const payload = {};
 
     for (const field of allowedFields) {
@@ -264,6 +450,11 @@ function createVehiclesRouter(options = {}) {
         continue;
       }
 
+      if (field === 'registration_expiration') {
+        payload[field] = req.body[field] || null;
+        continue;
+      }
+
       payload[field] = req.body[field] === null ? null : String(req.body[field]).trim();
     }
 
@@ -284,6 +475,20 @@ function createVehiclesRouter(options = {}) {
 
       if (!vehicle) {
         return res.status(403).json({ error: 'Vehicle does not belong to this account' });
+      }
+
+      if ('truck_type' in payload || 'custom_truck_type' in payload) {
+        const normalizedTruckType = normalizeTruckType({
+          truckType: 'truck_type' in payload ? payload.truck_type : vehicle.truck_type,
+          customTruckType: 'custom_truck_type' in payload ? payload.custom_truck_type : vehicle.custom_truck_type
+        });
+
+        if (normalizedTruckType.error) {
+          return res.status(400).json({ error: normalizedTruckType.error });
+        }
+
+        payload.truck_type = normalizedTruckType.truck_type;
+        payload.custom_truck_type = normalizedTruckType.custom_truck_type;
       }
 
       const { error: updateError } = await supabase
@@ -307,10 +512,13 @@ function createVehiclesRouter(options = {}) {
     const vehicleId = req.params.id;
     const {
       service_date: serviceDate,
+      service_type: serviceType,
       description,
+      condition_notes: conditionNotes,
       cost,
       mileage_at_service: mileageAtService,
-      next_service_mileage: nextServiceMileage
+      next_service_mileage: nextServiceMileage,
+      next_service_date: nextServiceDate
     } = req.body || {};
 
     const parsedCost = cost === undefined ? null : toNumeric(cost);
@@ -319,8 +527,12 @@ function createVehiclesRouter(options = {}) {
       ? null
       : toInteger(nextServiceMileage);
 
-    if (!serviceDate || !description) {
-      return res.status(400).json({ error: 'service_date and description are required' });
+    if (!serviceDate || !serviceType || !description) {
+      return res.status(400).json({ error: 'service_date, service_type, and description are required' });
+    }
+
+    if (!ALLOWED_SERVICE_TYPES.has(String(serviceType).trim())) {
+      return res.status(400).json({ error: 'service_type is not supported' });
     }
 
     if (cost !== undefined && parsedCost === null) {
@@ -354,10 +566,13 @@ function createVehiclesRouter(options = {}) {
         vehicle_id: vehicleId,
         account_id: req.account.account_id,
         service_date: serviceDate,
+        service_type: String(serviceType).trim(),
         description: String(description).trim(),
+        condition_notes: conditionNotes ? String(conditionNotes).trim() : null,
         cost: parsedCost,
         mileage_at_service: parsedMileageAtService,
-        next_service_mileage: parsedNextServiceMileage
+        next_service_mileage: parsedNextServiceMileage,
+        next_service_date: nextServiceDate || null
       };
 
       const { data: maintenance, error: maintenanceError } = await supabase
