@@ -15,7 +15,7 @@ const {
   parseGPXManifest,
   parseXLSManifest
 } = require('../services/manifestParser');
-const { mergeManifestMeta, mergeManifestStops } = require('../services/manifestMerge');
+const { mergeManifestMeta, mergeManifestStops, normalizeMergedStopSequences } = require('../services/manifestMerge');
 const {
   attachApartmentIntelligence,
   attachApartmentIntelligenceToStops,
@@ -30,7 +30,12 @@ const {
 } = require('../services/locationCorrections');
 const { enrichManifestStopsWithGeocoding } = require('../services/manifestGeocoding');
 const { attachStopNotesToStops, loadStopNote, saveStopNote } = require('../services/stopNotes');
-const { isUsableCoordinate, normalizeCoordinatePair, summarizeCoordinateHealth } = require('../services/coordinates');
+const {
+  detectSuspiciousCoordinateClusters,
+  isUsableCoordinate,
+  normalizeCoordinatePair,
+  summarizeCoordinateHealth
+} = require('../services/coordinates');
 
 function parseMultipartForm(req, res, next) {
   const contentType = req.headers['content-type'] || '';
@@ -408,7 +413,7 @@ async function loadAuthorizedStop(supabase, { stopId, driverId, accountId }) {
 async function loadExistingManifestRoute(supabase, { accountId, date, workAreaName }) {
   const { data, error } = await supabase
     .from('routes')
-    .select('id, status, completed_stops, completed_at')
+    .select('id, status, completed_stops, completed_at, driver_id, vehicle_id')
     .eq('account_id', accountId)
     .eq('date', date)
     .eq('work_area_name', workAreaName)
@@ -423,9 +428,80 @@ function canReplaceExistingManifestRoute(route) {
   }
 
   const completedStops = Number(route.completed_stops || 0);
-  const activeStatuses = new Set(['in_progress', 'complete']);
 
-  return completedStops === 0 && !route.completed_at && !activeStatuses.has(route.status);
+  // Allow manifest refreshes until the route has actual worked-stop history.
+  // Dispatch may mark a route in progress before any stops are completed.
+  return completedStops === 0 && !route.completed_at && route.status !== 'complete';
+}
+
+function buildPendingManifestStopKey(stop, fallbackKey) {
+  const sid = String(stop?.sid || '').trim();
+
+  if (sid && sid !== '0') {
+    return `sid:${sid}`;
+  }
+
+  const normalizedAddress = normalizeComparisonValue(
+    [stop?.address || stop?.address_line1 || '', stop?.address_line2 || '', stop?.type || stop?.stop_type || 'delivery']
+      .filter(Boolean)
+      .join(' ')
+  );
+
+  if (normalizedAddress) {
+    return `address:${normalizedAddress}`;
+  }
+
+  return fallbackKey;
+}
+
+function toManifestStopFromExistingRouteStop(stop, packageCount = 1) {
+  const sequence = Number(stop?.sequence_order || stop?.sequence || 0) || 1;
+  const stopType = stop?.stop_type || (stop?.is_pickup ? 'pickup' : 'delivery');
+  const hasPickup = Boolean(stop?.has_pickup || stop?.is_pickup || stopType === 'pickup' || stopType === 'combined');
+  const hasDelivery = stop?.has_delivery === false ? false : stopType !== 'pickup';
+
+  return {
+    id: stop?.id || null,
+    sequence,
+    stop_number: sequence,
+    address: stop?.address || '',
+    address_line2: stop?.address_line2 || null,
+    contact_name: stop?.contact_name || null,
+    lat: toNumber(stop?.lat),
+    lng: toNumber(stop?.lng),
+    is_pickup: Boolean(stop?.is_pickup),
+    is_business: Boolean(stop?.is_business),
+    sid: stop?.sid || null,
+    ready_time: stop?.ready_time || null,
+    close_time: stop?.close_time || null,
+    has_time_commit: Boolean(stop?.has_time_commit),
+    type: stopType,
+    has_pickup: hasPickup,
+    has_delivery: hasDelivery,
+    geocode_source: stop?.geocode_source || 'manifest',
+    geocode_accuracy: stop?.geocode_accuracy || 'manifest',
+    package_count: Math.max(1, Number(packageCount || 1))
+  };
+}
+
+function mergePendingManifestStops(existingStops = [], incomingStops = []) {
+  const mergedStops = new Map();
+
+  existingStops.forEach((stop, index) => {
+    mergedStops.set(
+      buildPendingManifestStopKey(stop, `existing:${stop?.id || stop?.sequence || index}`),
+      stop
+    );
+  });
+
+  incomingStops.forEach((stop, index) => {
+    mergedStops.set(
+      buildPendingManifestStopKey(stop, `incoming:${stop?.sequence || index}`),
+      stop
+    );
+  });
+
+  return normalizeMergedStopSequences(Array.from(mergedStops.values()));
 }
 
 function createRoutesRouter(options = {}) {
@@ -561,7 +637,7 @@ function createRoutesRouter(options = {}) {
         req.account.account_id,
         correctedStops
       );
-      const routeStops = geocodedManifest.stops;
+      let routeStops = normalizeMergedStopSequences(geocodedManifest.stops);
 
       const { data: existingRoute, error: existingRouteError } = await loadExistingManifestRoute(supabase, {
         accountId: req.account.account_id,
@@ -574,6 +650,9 @@ function createRoutesRouter(options = {}) {
         return res.status(500).json({ error: 'Failed to check for an existing route before upload' });
       }
 
+      let routeId = null;
+      let mergedIntoExistingRoute = false;
+
       if (existingRoute) {
         if (!canReplaceExistingManifestRoute(existingRoute)) {
           return res.status(409).json({
@@ -581,49 +660,126 @@ function createRoutesRouter(options = {}) {
           });
         }
 
-        const { error: deleteExistingRouteError } = await supabase
-          .from('routes')
-          .delete()
-          .eq('id', existingRoute.id)
-          .eq('account_id', req.account.account_id);
+        const { data: existingStops, error: existingStopsError } = await supabase
+          .from('stops')
+          .select(
+            'id, sequence_order, address, address_line2, contact_name, lat, lng, is_pickup, is_business, sid, ready_time, close_time, has_time_commit, stop_type, has_pickup, has_delivery, geocode_source, geocode_accuracy'
+          )
+          .eq('route_id', existingRoute.id)
+          .order('sequence_order');
 
-        if (deleteExistingRouteError) {
-          console.error('Existing route replacement failed during manifest upload:', deleteExistingRouteError);
-          return res.status(500).json({ error: 'Failed to replace the existing route with the newly uploaded manifest' });
+        if (existingStopsError) {
+          console.error('Existing route stop lookup failed during manifest upload:', existingStopsError);
+          return res.status(500).json({ error: 'Failed to load the existing route before applying the new manifest' });
         }
-      }
+        const existingStopIds = (existingStops || []).map((stop) => stop.id);
+        const packageCountByStopId = new Map();
 
-      const { data: routeRecord, error: routeError } = await supabase
-        .from('routes')
-        .insert({
-          account_id: req.account.account_id,
-          driver_id: resolvedDriverId,
-          vehicle_id: resolvedVehicleId,
-          work_area_name: resolvedWorkAreaName,
-          date: resolvedDate,
-          sa_number: manifestMeta.sa_number || null,
-          contractor_name: manifestMeta.contractor_name || null,
-          source: 'manifest_upload',
-          total_stops: routeStops.length,
-          completed_stops: 0,
-          status: 'pending'
-        })
-        .select('id')
-        .single();
+        if (existingStopIds.length) {
+          const { data: existingPackages, error: existingPackagesError } = await supabase
+            .from('packages')
+            .select('id, stop_id')
+            .in('stop_id', existingStopIds);
 
-      if (routeError) {
-        console.error('Route creation failed:', routeError);
-        const friendlyError = getManifestUploadError(routeError, {
-          workAreaName: resolvedWorkAreaName,
-          date: resolvedDate
-        });
-        return res.status(routeError?.code === '23505' ? 409 : 500).json({
-          error: friendlyError || 'Failed to create route from manifest'
-        });
+          if (existingPackagesError) {
+            console.error('Existing route package lookup failed during manifest upload:', existingPackagesError);
+            return res.status(500).json({ error: 'Failed to load the existing route packages before applying the new manifest' });
+          }
+
+          for (const pkg of existingPackages || []) {
+            packageCountByStopId.set(pkg.stop_id, (packageCountByStopId.get(pkg.stop_id) || 0) + 1);
+          }
+        }
+
+        const existingManifestStops = (existingStops || []).map((stop) =>
+          toManifestStopFromExistingRouteStop(stop, packageCountByStopId.get(stop.id) || 1)
+        );
+
+        routeStops = mergePendingManifestStops(existingManifestStops, routeStops);
+        resolvedDriverId = resolvedDriverId || existingRoute.driver_id || null;
+        resolvedVehicleId = resolvedVehicleId || existingRoute.vehicle_id || null;
+
+        if (existingStopIds.length) {
+          const { error: deletePackagesError } = await supabase
+            .from('packages')
+            .delete()
+            .in('stop_id', existingStopIds);
+
+          if (deletePackagesError) {
+            console.error('Existing route package cleanup failed during manifest upload:', deletePackagesError);
+            return res.status(500).json({ error: 'Failed to clear the old package placeholders before applying the new manifest' });
+          }
+        }
+
+        const { error: deleteStopsError } = await supabase
+          .from('stops')
+          .delete()
+          .eq('route_id', existingRoute.id);
+
+        if (deleteStopsError) {
+          console.error('Existing route stop cleanup failed during manifest upload:', deleteStopsError);
+          return res.status(500).json({ error: 'Failed to clear the old route stops before applying the new manifest' });
+        }
+
+        const { data: updatedRoute, error: updateRouteError } = await supabase
+          .from('routes')
+          .update({
+            driver_id: resolvedDriverId,
+            vehicle_id: resolvedVehicleId,
+            sa_number: manifestMeta.sa_number || null,
+            contractor_name: manifestMeta.contractor_name || null,
+            source: 'manifest_upload',
+            total_stops: routeStops.length,
+            completed_stops: 0,
+            status: 'pending'
+          })
+          .eq('id', existingRoute.id)
+          .eq('account_id', req.account.account_id)
+          .select('id')
+          .single();
+
+        if (updateRouteError) {
+          console.error('Existing route update failed during manifest upload:', updateRouteError);
+          return res.status(500).json({ error: 'Failed to update the existing route with the new manifest data' });
+        }
+
+        routeId = updatedRoute.id;
+        mergedIntoExistingRoute = true;
+      } else {
+        const { data: routeRecord, error: routeError } = await supabase
+          .from('routes')
+          .insert({
+            account_id: req.account.account_id,
+            driver_id: resolvedDriverId,
+            vehicle_id: resolvedVehicleId,
+            work_area_name: resolvedWorkAreaName,
+            date: resolvedDate,
+            sa_number: manifestMeta.sa_number || null,
+            contractor_name: manifestMeta.contractor_name || null,
+            source: 'manifest_upload',
+            total_stops: routeStops.length,
+            completed_stops: 0,
+            status: 'pending'
+          })
+          .select('id')
+          .single();
+
+        if (routeError) {
+          console.error('Route creation failed:', routeError);
+          const friendlyError = getManifestUploadError(routeError, {
+            workAreaName: resolvedWorkAreaName,
+            date: resolvedDate
+          });
+          return res.status(routeError?.code === '23505' ? 409 : 500).json({
+            error: friendlyError || 'Failed to create route from manifest'
+          });
+        }
+
+        routeId = routeRecord.id;
       }
 
       const stopInsertPayload = routeStops.map((stop) => ({
-        route_id: routeRecord.id,
+        route_id: routeId,
         sequence_order: stop.sequence,
         address: stop.address,
         address_line2: stop.address_line2 || null,
@@ -653,7 +809,9 @@ function createRoutesRouter(options = {}) {
 
       if (stopsError) {
         console.error('Stop insertion failed:', stopsError);
-        await supabase.from('routes').delete().eq('id', routeRecord.id);
+        if (!mergedIntoExistingRoute) {
+          await supabase.from('routes').delete().eq('id', routeId);
+        }
         return res.status(500).json({
           error: getManifestSchemaError(stopsError) || 'Failed to save stops from manifest',
           ...(process.env.NODE_ENV !== 'production'
@@ -675,8 +833,8 @@ function createRoutesRouter(options = {}) {
         const packageCount = Math.max(1, Number(stop.package_count || 1));
         const stopId = stopIdBySequence.get(stop.sequence);
         const packageKeyBase = stop.sid && stop.sid !== '0'
-          ? `RR-${routeRecord.id.slice(0, 8)}-STOPID-${stopId}-SID-${stop.sid}`
-          : `RR-${routeRecord.id.slice(0, 8)}-STOPID-${stopId}`;
+          ? `RR-${routeId.slice(0, 8)}-STOPID-${stopId}-SID-${stop.sid}`
+          : `RR-${routeId.slice(0, 8)}-STOPID-${stopId}`;
 
         return Array.from({ length: packageCount }, (_, index) => ({
           stop_id: stopId,
@@ -692,7 +850,9 @@ function createRoutesRouter(options = {}) {
 
       if (packagesError) {
         console.error('Package insertion failed:', packagesError);
-        await supabase.from('routes').delete().eq('id', routeRecord.id);
+        if (!mergedIntoExistingRoute) {
+          await supabase.from('routes').delete().eq('id', routeId);
+        }
         return res.status(500).json({ error: 'Failed to save package placeholders' });
       }
 
@@ -701,6 +861,27 @@ function createRoutesRouter(options = {}) {
       const combinedCount = routeStops.filter((stop) => stop.type === 'combined').length;
       const timeCommitCount = routeStops.filter((stop) => stop.has_time_commit).length;
       const coordinateHealth = summarizeCoordinateHealth(routeStops);
+      const coordinateIntegrity = detectSuspiciousCoordinateClusters(routeStops);
+
+      if (coordinateIntegrity.suspicious_cluster_count > 0) {
+        console.error('Manifest upload rejected due to suspicious coordinate collapse:', {
+          account_id: req.account.account_id,
+          work_area_name: resolvedWorkAreaName,
+          date: resolvedDate,
+          suspicious_clusters: coordinateIntegrity.suspicious_clusters
+        });
+
+        if (!mergedIntoExistingRoute) {
+          await supabase.from('routes').delete().eq('id', routeId);
+        }
+
+        return res.status(422).json({
+          error: 'Manifest upload was blocked because too many different stop addresses collapsed onto the same map pin. Please re-check the manifest/GPX pair before dispatch.',
+          route_health: coordinateHealth,
+          coordinate_integrity: coordinateIntegrity
+        });
+      }
+
       const insertedStopsForEnrichment = routeStops.map((stop) => ({
         ...stop,
         id: stopIdBySequence.get(stop.sequence)
@@ -713,7 +894,7 @@ function createRoutesRouter(options = {}) {
       }
 
       return res.status(201).json({
-        route_id: routeRecord.id,
+        route_id: routeId,
         total_stops: routeStops.length,
         delivery_count: deliveryCount,
         pickup_count: pickupCount,
@@ -730,6 +911,7 @@ function createRoutesRouter(options = {}) {
           geocoded: geocodedManifest.summary.geocoded,
           failed: geocodedManifest.summary.failed
         },
+        merged_into_existing_route: mergedIntoExistingRoute,
         route_health: coordinateHealth,
         address_warnings: addressWarnings
       });

@@ -20,6 +20,8 @@ const {
 } = require('../services/manifestParser');
 const { attachStopNotesToStops, saveStopNote } = require('../services/stopNotes');
 
+const DEFAULT_DRIVER_STARTER_PIN = '1234';
+
 function getCurrentDateString(now = new Date(), timeZone = process.env.APP_TIME_ZONE || 'America/Los_Angeles') {
   return new Intl.DateTimeFormat('en-CA', {
     timeZone,
@@ -291,6 +293,11 @@ function isMissingManagerUsersTable(error) {
   return ['PGRST116', 'PGRST205', '42P01'].includes(error?.code);
 }
 
+function isMissingDriverStarterPinColumn(error) {
+  const message = String(error?.message || error?.details || error?.hint || '');
+  return /driver_starter_pin/i.test(message) && /column|schema cache|could not find/i.test(message);
+}
+
 function normalizeEmail(value) {
   return String(value || '').trim().toLowerCase();
 }
@@ -331,17 +338,36 @@ function isManagerUsersGlobalEmailConstraintError(error) {
 }
 
 async function getAccountManagerContext(supabase, accountId) {
-  const { data: account, error } = await supabase
+  const accountQuery = await supabase
     .from('accounts')
-    .select('id, company_name, manager_email')
+    .select('id, company_name, manager_email, driver_starter_pin')
     .eq('id', accountId)
     .maybeSingle();
 
-  if (error) {
-    throw error;
+  if (accountQuery.error) {
+    if (!isMissingDriverStarterPinColumn(accountQuery.error)) {
+      throw accountQuery.error;
+    }
+
+    const fallbackQuery = await supabase
+      .from('accounts')
+      .select('id, company_name, manager_email')
+      .eq('id', accountId)
+      .maybeSingle();
+
+    if (fallbackQuery.error) {
+      throw fallbackQuery.error;
+    }
+
+    return fallbackQuery.data
+      ? {
+          ...fallbackQuery.data,
+          driver_starter_pin: null
+        }
+      : null;
   }
 
-  return account || null;
+  return accountQuery.data || null;
 }
 
 async function listManagerUsersForAccount(supabase, accountId, primaryManagerEmail = null) {
@@ -951,6 +977,53 @@ function createManagerRouter(options = {}) {
     }
   });
 
+  router.get('/driver-access', requireManager, async (req, res) => {
+    try {
+      const account = await getAccountManagerContext(supabase, req.account.account_id);
+
+      if (!account) {
+        return res.status(404).json({ error: 'Account not found' });
+      }
+
+      return res.status(200).json({
+        starter_pin: account.driver_starter_pin || DEFAULT_DRIVER_STARTER_PIN
+      });
+    } catch (error) {
+      console.error('Driver access settings lookup failed:', error);
+      return res.status(500).json({ error: 'Failed to load driver access settings' });
+    }
+  });
+
+  router.patch('/driver-access', requireManager, async (req, res) => {
+    const starterPin = String(req.body?.starter_pin || '').trim();
+
+    if (!/^\d{4}$/.test(starterPin)) {
+      return res.status(400).json({ error: 'Starter PIN must be a 4-digit code' });
+    }
+
+    try {
+      const { error } = await supabase
+        .from('accounts')
+        .update({
+          driver_starter_pin: starterPin
+        })
+        .eq('id', req.account.account_id);
+
+      if (error) {
+        if (isMissingDriverStarterPinColumn(error)) {
+          return res.status(500).json({ error: 'Run the latest account driver starter PIN migration in Supabase before saving this setting.' });
+        }
+        console.error('Driver access settings update failed:', error);
+        return res.status(500).json({ error: 'Failed to update driver access settings' });
+      }
+
+      return res.status(200).json({ ok: true, starter_pin: starterPin });
+    } catch (error) {
+      console.error('Driver access settings patch endpoint failed:', error);
+      return res.status(500).json({ error: 'Failed to update driver access settings' });
+    }
+  });
+
   router.get('/vehicles', requireManager, async (req, res) => {
     try {
       const { data: vehicles, error } = await supabase
@@ -975,15 +1048,23 @@ function createManagerRouter(options = {}) {
     const { name, email, phone, hourly_rate: hourlyRate, pin } = req.body || {};
     const parsedHourlyRate = Number(hourlyRate);
 
-    if (!name || !email || !phone || !pin || !Number.isFinite(parsedHourlyRate)) {
-      return res.status(400).json({ error: 'name, email, phone, hourly_rate, and pin are required' });
-    }
-
-    if (!/^\d{4}$/.test(String(pin))) {
-      return res.status(400).json({ error: 'PIN must be a 4-digit code' });
+    if (!name || !email || !phone || !Number.isFinite(parsedHourlyRate)) {
+      return res.status(400).json({ error: 'name, email, phone, and hourly_rate are required' });
     }
 
     try {
+      const account = await getAccountManagerContext(supabase, req.account.account_id);
+
+      if (!account) {
+        return res.status(404).json({ error: 'Account not found' });
+      }
+
+      const resolvedPin = String(pin || account.driver_starter_pin || DEFAULT_DRIVER_STARTER_PIN).trim();
+
+      if (!/^\d{4}$/.test(resolvedPin)) {
+        return res.status(400).json({ error: 'PIN must be a 4-digit code, or set a CSA starter PIN first' });
+      }
+
       const normalizedEmail = String(email).trim().toLowerCase();
       const { data: existingDriver, error: existingDriverError } = await supabase
         .from('drivers')
@@ -1001,7 +1082,7 @@ function createManagerRouter(options = {}) {
         return res.status(409).json({ error: 'A driver with that email already exists' });
       }
 
-      const pinHash = await bcrypt.hash(String(pin), 10);
+      const pinHash = await bcrypt.hash(resolvedPin, 10);
 
       const { data: driver, error } = await supabase
         .from('drivers')
@@ -1022,7 +1103,7 @@ function createManagerRouter(options = {}) {
         return res.status(500).json({ error: 'Failed to create driver' });
       }
 
-      return res.status(201).json({ driver_id: driver.id });
+      return res.status(201).json({ driver_id: driver.id, starter_pin_applied: !pin });
     } catch (error) {
       console.error('Manager create driver endpoint failed:', error);
       return res.status(500).json({ error: 'Failed to create driver' });

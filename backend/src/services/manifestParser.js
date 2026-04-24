@@ -114,6 +114,28 @@ function formatTimeValue(value) {
   return normalized === '00:00' ? null : normalized;
 }
 
+function normalizeSuspiciousBusinessDeliveryWindow({ type, contact_name, address_line2, ready_time, close_time }) {
+  if (type !== 'delivery') {
+    return { ready_time, close_time };
+  }
+
+  if (!detectBusinessContact(contact_name, address_line2, type)) {
+    return { ready_time, close_time };
+  }
+
+  // FedEx business-delivery rows in some uploaded manifests have been arriving
+  // with a repeated 02:00-04:00 window for afternoon commercial commits.
+  // Keep the correction narrowly scoped to the exact bad pattern we observed.
+  if (ready_time === '02:00' && close_time === '04:00') {
+    return {
+      ready_time: '14:00',
+      close_time: '16:00'
+    };
+  }
+
+  return { ready_time, close_time };
+}
+
 function buildAddress(addressLine1, addressLine2, city, state, postalCode) {
   const parts = [];
   const streetLine = [String(addressLine1 || '').trim(), String(addressLine2 || '').trim()].filter(Boolean).join(', ');
@@ -860,6 +882,10 @@ function parseXLSManifest(fileBuffer) {
       ready_time: formatTimeValue(record.Ready),
       close_time: formatTimeValue(record.Close)
     };
+
+    const normalizedTimeWindow = normalizeSuspiciousBusinessDeliveryWindow(parsedRow);
+    parsedRow.ready_time = normalizedTimeWindow.ready_time;
+    parsedRow.close_time = normalizedTimeWindow.close_time;
 
     parsedRow.full_address = buildAddress(
       parsedRow.address_line1,
