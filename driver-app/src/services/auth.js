@@ -4,6 +4,8 @@ import { Buffer } from 'buffer';
 const TOKEN_KEY = 'readyroute_driver_token';
 const CLOCKED_IN_AT_KEY = 'readyroute_clocked_in_at';
 const SECURITY_DISMISSED_DATE_KEY = 'readyroute_security_dismissed_date';
+const PIN_COLOR_MODE_KEY_PREFIX = 'readyroute_pin_color_mode';
+const pinColorModeListeners = new Set();
 
 function decodeBase64Url(value) {
   const normalized = value.replace(/-/g, '+').replace(/_/g, '/');
@@ -43,6 +45,37 @@ export async function getSecurityDismissedDate() {
   return AsyncStorage.getItem(SECURITY_DISMISSED_DATE_KEY);
 }
 
+async function getPinColorModeStorageKey() {
+  const token = await getToken();
+  const driver = getDriverFromToken(token);
+  const driverId = driver?.sub || driver?.driver_id || driver?.id || 'default';
+  return `${PIN_COLOR_MODE_KEY_PREFIX}:${driverId}`;
+}
+
+export async function savePinColorMode(mode) {
+  const storageKey = await getPinColorModeStorageKey();
+  await AsyncStorage.setItem(storageKey, mode);
+  pinColorModeListeners.forEach((listener) => {
+    try {
+      listener(mode);
+    } catch (_error) {
+      // Preference listeners should never block the app.
+    }
+  });
+}
+
+export async function getPinColorMode() {
+  const storageKey = await getPinColorModeStorageKey();
+  return AsyncStorage.getItem(storageKey);
+}
+
+export function subscribePinColorMode(listener) {
+  pinColorModeListeners.add(listener);
+  return () => {
+    pinColorModeListeners.delete(listener);
+  };
+}
+
 export function getDriverFromToken(token) {
   if (!token) {
     return null;
@@ -61,4 +94,4 @@ export function getDriverFromToken(token) {
   }
 }
 
-export { CLOCKED_IN_AT_KEY, SECURITY_DISMISSED_DATE_KEY, TOKEN_KEY };
+export { CLOCKED_IN_AT_KEY, PIN_COLOR_MODE_KEY_PREFIX, SECURITY_DISMISSED_DATE_KEY, TOKEN_KEY };

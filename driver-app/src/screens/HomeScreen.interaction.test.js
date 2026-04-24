@@ -2,17 +2,15 @@ import React from 'react';
 import { Alert, Animated } from 'react-native';
 import { act, fireEvent, render, waitFor } from '@testing-library/react-native';
 
-import HomeScreen, { getTodayStorageDate } from './HomeScreen';
+import HomeScreen, { getDailySafetyReminder } from './HomeScreen';
 import api from '../services/api';
 import {
   getClockInTime,
   getDriverFromToken,
-  getSecurityDismissedDate,
   getToken,
   removeClockInTime,
   removeToken,
-  saveClockInTime,
-  saveSecurityDismissedDate
+  saveClockInTime
 } from '../services/auth';
 import { loadStatusCodes } from '../services/statusCodes';
 
@@ -28,12 +26,10 @@ jest.mock('../services/api', () => ({
 jest.mock('../services/auth', () => ({
   getClockInTime: jest.fn(),
   getDriverFromToken: jest.fn(),
-  getSecurityDismissedDate: jest.fn(),
   getToken: jest.fn(),
   removeClockInTime: jest.fn(),
   removeToken: jest.fn(),
-  saveClockInTime: jest.fn(),
-  saveSecurityDismissedDate: jest.fn()
+  saveClockInTime: jest.fn()
 }));
 
 jest.mock('../services/statusCodes', () => ({
@@ -45,9 +41,13 @@ describe('HomeScreen interactions', () => {
   const onLogout = jest.fn();
   let animatedTimingSpy;
   let animatedParallelSpy;
+  let activeBreakStartedAt;
+  let activeBreakScheduledEndAt;
 
   beforeEach(() => {
     jest.clearAllMocks();
+    activeBreakStartedAt = new Date(Date.now() - 5 * 60 * 1000).toISOString();
+    activeBreakScheduledEndAt = new Date(Date.now() + 25 * 60 * 1000).toISOString();
     animatedTimingSpy = jest.spyOn(Animated, 'timing').mockReturnValue({
       start: (callback) => callback?.(),
       stop: jest.fn()
@@ -62,7 +62,6 @@ describe('HomeScreen interactions', () => {
 
     getToken.mockResolvedValue('driver-token');
     getClockInTime.mockResolvedValue(null);
-    getSecurityDismissedDate.mockResolvedValue(getTodayStorageDate());
     getDriverFromToken.mockReturnValue({ name: 'Phil' });
     loadStatusCodes.mockResolvedValue(undefined);
 
@@ -111,10 +110,11 @@ describe('HomeScreen interactions', () => {
     const screen = await renderAndFlush();
 
     await waitFor(() => {
-      expect(screen.getByText('Start Route')).toBeTruthy();
+      expect(screen.getByText("Today's safety focus")).toBeTruthy();
+      expect(screen.getByText('Acknowledge')).toBeTruthy();
     });
 
-    const startButton = screen.getByText('Start Route');
+    const startButton = screen.getByText('Acknowledge');
     fireEvent.press(startButton);
 
     await waitFor(() => {
@@ -143,7 +143,8 @@ describe('HomeScreen interactions', () => {
           data: {
             active_break: {
               break_type: 'lunch',
-              started_at: '2026-04-15T15:30:00.000Z'
+              started_at: activeBreakStartedAt,
+              scheduled_end_at: activeBreakScheduledEndAt
             }
           }
         });
@@ -168,6 +169,7 @@ describe('HomeScreen interactions', () => {
     });
 
     expect(saveClockInTime).toHaveBeenCalledWith('2026-04-15T15:00:00.000Z');
+    expect(await screen.findByText('Clock Out')).toBeTruthy();
 
     const breakButton = await screen.findByText('Break');
     fireEvent.press(breakButton);
@@ -222,7 +224,8 @@ describe('HomeScreen interactions', () => {
             },
             active_break: {
               break_type: 'lunch',
-              started_at: '2026-04-15T15:30:00.000Z'
+              started_at: activeBreakStartedAt,
+              scheduled_end_at: activeBreakScheduledEndAt
             }
           }
         });
@@ -268,20 +271,28 @@ describe('HomeScreen interactions', () => {
     expect(removeClockInTime).toHaveBeenCalled();
   });
 
-  it('dismisses the daily security banner and saves the dismissal date', async () => {
-    getSecurityDismissedDate.mockResolvedValue('2026-04-14');
+  it('clears stale local clock-in state when the backend reports no active timecard', async () => {
+    getClockInTime.mockResolvedValue('2026-04-15T15:00:00.000Z');
 
     const screen = await renderAndFlush();
 
     await waitFor(() => {
-      expect(screen.getByText('Daily Security Reminder')).toBeTruthy();
+      expect(screen.getByText('Clock In')).toBeTruthy();
     });
 
-    fireEvent.press(screen.getByText('Got it'));
+    expect(screen.queryByText('Clock Out')).toBeNull();
+    expect(removeClockInTime).toHaveBeenCalled();
+    expect(saveClockInTime).not.toHaveBeenCalledWith('2026-04-15T15:00:00.000Z');
+  });
+
+  it('shows the rotating safety briefing on the morning screen', async () => {
+    const screen = await renderAndFlush();
+    const reminder = getDailySafetyReminder(new Date());
 
     await waitFor(() => {
-      expect(saveSecurityDismissedDate).toHaveBeenCalledWith(getTodayStorageDate());
+      expect(screen.getByText("Today's safety focus")).toBeTruthy();
     });
+    expect(screen.getByText(reminder.source)).toBeTruthy();
   });
 
   it('shows a retry state when home data fails to load, then recovers', async () => {
@@ -332,9 +343,33 @@ describe('HomeScreen interactions', () => {
     fireEvent.press(screen.getByText('Retry'));
 
     await waitFor(() => {
-      expect(screen.getByText("Today's Route")).toBeTruthy();
+      expect(screen.getByText("Today's safety focus")).toBeTruthy();
     });
 
+    alertSpy.mockRestore();
+  });
+
+  it('silently logs out when the saved token is invalid or expired', async () => {
+    const alertSpy = jest.spyOn(Alert, 'alert').mockImplementation(() => {});
+
+    api.get.mockRejectedValue({
+      response: {
+        status: 401,
+        data: {
+          error: 'Invalid or expired token'
+        }
+      }
+    });
+
+    await renderAndFlush();
+
+    await waitFor(() => {
+      expect(removeClockInTime).toHaveBeenCalled();
+      expect(removeToken).toHaveBeenCalled();
+      expect(onLogout).toHaveBeenCalled();
+    });
+
+    expect(alertSpy).not.toHaveBeenCalled();
     alertSpy.mockRestore();
   });
 

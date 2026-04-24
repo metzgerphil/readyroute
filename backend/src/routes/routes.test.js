@@ -1718,9 +1718,11 @@ test('POST /routes/upload-manifest returns a clear duplicate-route error when th
   }
 });
 
-test('POST /routes/upload-manifest replaces an existing not-yet-run route for the same work area and date', async () => {
-  let deletedRouteId = null;
-  let insertedRoutePayload;
+test('POST /routes/upload-manifest merges into an existing not-yet-run route for the same work area and date', async () => {
+  let updatedRoutePayload;
+  let deletedStopRouteId = null;
+  let deletedPackageStopIds = null;
+  let insertedStopsPayload;
 
   const supabase = new MockSupabase((query) => {
     if (query.table === 'drivers' && query.operation === 'select') {
@@ -1748,31 +1750,77 @@ test('POST /routes/upload-manifest replaces an existing not-yet-run route for th
       return {
         data: {
           id: 'route-stale',
-          status: 'pending',
+          status: 'in_progress',
           completed_stops: 0,
-          completed_at: null
+          completed_at: null,
+          driver_id: 'driver-existing',
+          vehicle_id: 'vehicle-existing'
         },
         error: null
       };
     }
 
-    if (query.table === 'routes' && query.operation === 'delete') {
-      deletedRouteId = query.filters.find((filter) => filter.column === 'id')?.value || null;
+    if (query.table === 'stops' && query.operation === 'select' && query.mode === 'all') {
+      return {
+        data: [
+          {
+            id: 'stop-old-1',
+            sequence_order: 1,
+            address: '999 Legacy Ln, Escondido, CA 92026',
+            address_line2: null,
+            contact_name: 'Legacy Stop',
+            lat: 33.3,
+            lng: -117.4,
+            is_pickup: false,
+            is_business: false,
+            sid: 'OLD123',
+            ready_time: null,
+            close_time: null,
+            has_time_commit: false,
+            stop_type: 'delivery',
+            has_pickup: false,
+            has_delivery: true,
+            geocode_source: 'manifest',
+            geocode_accuracy: 'manifest'
+          }
+        ],
+        error: null
+      };
+    }
+
+    if (query.table === 'packages' && query.operation === 'select' && query.mode === 'all') {
+      return {
+        data: [{ id: 'pkg-old-1', stop_id: 'stop-old-1' }],
+        error: null
+      };
+    }
+
+    if (query.table === 'packages' && query.operation === 'delete') {
+      deletedPackageStopIds = query.filters.find((filter) => filter.column === 'stop_id')?.value || null;
       return {
         data: null,
         error: null
       };
     }
 
-    if (query.table === 'routes' && query.operation === 'insert') {
-      insertedRoutePayload = query.payload;
+    if (query.table === 'stops' && query.operation === 'delete') {
+      deletedStopRouteId = query.filters.find((filter) => filter.column === 'route_id')?.value || null;
       return {
-        data: { id: 'route-fresh' },
+        data: null,
+        error: null
+      };
+    }
+
+    if (query.table === 'routes' && query.operation === 'update') {
+      updatedRoutePayload = query.payload;
+      return {
+        data: { id: 'route-stale' },
         error: null
       };
     }
 
     if (query.table === 'stops' && query.operation === 'insert') {
+      insertedStopsPayload = query.payload;
       return {
         data: query.payload.map((stop, index) => ({
           id: `stop-${index + 1}`,
@@ -1821,9 +1869,18 @@ test('POST /routes/upload-manifest replaces an existing not-yet-run route for th
     });
 
     assert.equal(response.status, 201);
-    assert.equal(deletedRouteId, 'route-stale');
-    assert.equal(insertedRoutePayload.work_area_name, '810');
-    assert.equal(insertedRoutePayload.total_stops, 2);
+    const payload = await response.json();
+    assert.equal(payload.route_id, 'route-stale');
+    assert.equal(payload.merged_into_existing_route, true);
+    assert.equal(deletedStopRouteId, 'route-stale');
+    assert.deepEqual(deletedPackageStopIds, ['stop-old-1']);
+    assert.equal(updatedRoutePayload.driver_id, 'driver-1');
+    assert.equal(updatedRoutePayload.vehicle_id, 'vehicle-1');
+    assert.equal(updatedRoutePayload.total_stops, 3);
+    assert.equal(insertedStopsPayload.length, 3);
+    assert.equal(insertedStopsPayload[0].address, '999 Legacy Ln, Escondido, CA 92026');
+    assert.equal(insertedStopsPayload[1].sid, 'SID123');
+    assert.equal(insertedStopsPayload[2].sid, '0');
   } finally {
     await server.close();
   }

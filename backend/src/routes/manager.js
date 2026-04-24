@@ -22,6 +22,8 @@ const {
 } = require('../services/manifestParser');
 const { attachStopNotesToStops, saveStopNote } = require('../services/stopNotes');
 
+const DEFAULT_DRIVER_STARTER_PIN = '1234';
+
 function getCurrentDateString(now = new Date(), timeZone = process.env.APP_TIME_ZONE || 'America/Los_Angeles') {
   return new Intl.DateTimeFormat('en-CA', {
     timeZone,
@@ -30,8 +32,6 @@ function getCurrentDateString(now = new Date(), timeZone = process.env.APP_TIME_
     day: '2-digit'
   }).format(now);
 }
-
-const DEFAULT_DRIVER_STARTER_PIN = '1234';
 
 function parseIsoDateToUtcMidday(value) {
   const [year, month, day] = String(value).split('-').map(Number);
@@ -864,7 +864,6 @@ function validateFedexAccountInput(input) {
 
   return null;
 }
-
 function normalizeEmail(value) {
   return String(value || '').trim().toLowerCase();
 }
@@ -2467,6 +2466,53 @@ function createManagerRouter(options = {}) {
     } catch (error) {
       console.error('Manager invite refresh failed:', error);
       return res.status(500).json({ error: 'Failed to refresh manager invite' });
+    }
+  });
+
+  router.get('/driver-access', requireManager, async (req, res) => {
+    try {
+      const account = await getAccountManagerContext(supabase, req.account.account_id);
+
+      if (!account) {
+        return res.status(404).json({ error: 'Account not found' });
+      }
+
+      return res.status(200).json({
+        starter_pin: account.driver_starter_pin || DEFAULT_DRIVER_STARTER_PIN
+      });
+    } catch (error) {
+      console.error('Driver access settings lookup failed:', error);
+      return res.status(500).json({ error: 'Failed to load driver access settings' });
+    }
+  });
+
+  router.patch('/driver-access', requireManager, async (req, res) => {
+    const starterPin = String(req.body?.starter_pin || '').trim();
+
+    if (!/^\d{4}$/.test(starterPin)) {
+      return res.status(400).json({ error: 'Starter PIN must be a 4-digit code' });
+    }
+
+    try {
+      const { error } = await supabase
+        .from('accounts')
+        .update({
+          driver_starter_pin: starterPin
+        })
+        .eq('id', req.account.account_id);
+
+      if (error) {
+        if (isMissingDriverStarterPinColumn(error)) {
+          return res.status(500).json({ error: 'Run the latest account driver starter PIN migration in Supabase before saving this setting.' });
+        }
+        console.error('Driver access settings update failed:', error);
+        return res.status(500).json({ error: 'Failed to update driver access settings' });
+      }
+
+      return res.status(200).json({ ok: true, starter_pin: starterPin });
+    } catch (error) {
+      console.error('Driver access settings patch endpoint failed:', error);
+      return res.status(500).json({ error: 'Failed to update driver access settings' });
     }
   });
 

@@ -173,8 +173,29 @@ async function enrichManifestStopsWithGeocoding(supabase, accountId, stops) {
   }
 
   const geocodedByKey = new Map();
+  let googleAttemptCount = 0;
   const geocodedResults = await mapWithConcurrency(uniqueStops, 8, async ({ stop, dedupeKey }) => {
     try {
+      const existingCorrection = await loadLocationCorrection(supabase, accountId, stop);
+      const existingCoordinates = normalizeCoordinatePair(
+        existingCorrection?.corrected_lat,
+        existingCorrection?.corrected_lng
+      );
+
+      if (existingCorrection && existingCoordinates) {
+        return {
+          dedupeKey,
+          stop,
+          geocoded: {
+            lat: existingCoordinates.lat,
+            lng: existingCoordinates.lng,
+            geocode_accuracy: 'point',
+            formatted_address: stop.address || null
+          }
+        };
+      }
+
+      googleAttemptCount += 1;
       const geocoded = await geocodeAddress(stop.address);
 
       if (!geocoded) {
@@ -230,7 +251,7 @@ async function enrichManifestStopsWithGeocoding(supabase, accountId, stops) {
     stops: enrichedStops,
     summary: {
       status: geocodedCount ? 'completed' : 'missed',
-      attempted: uniqueStops.length,
+      attempted: googleAttemptCount,
       geocoded: geocodedCount,
       failed: failedCount
     }

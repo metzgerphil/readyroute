@@ -974,7 +974,6 @@ test('POST /manager/account/cancel rejects non-owner managers', async () => {
     await server.close();
   }
 });
-
 test('GET /manager/driver-access returns the account starter PIN', async () => {
   const supabase = new MockSupabase((query) => {
     if (query.table === 'accounts' && query.operation === 'select') {
@@ -1298,7 +1297,6 @@ test('POST /manager/fedex-accounts/:id/default promotes the selected account', a
     await server.close();
   }
 });
-
 test('POST /manager/drivers uses the CSA starter PIN when no driver PIN is provided', async () => {
   const supabase = new MockSupabase((query) => {
     if (query.table === 'accounts' && query.operation === 'select') {

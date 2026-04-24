@@ -14,6 +14,9 @@ jest.mock('../services/api', () => ({
 }));
 
 import {
+  DAILY_SAFETY_REMINDERS,
+  getDailySafetyReminder,
+  getDayOfYear,
   formatBreakLabel,
   getGreetingByTime,
   getRoutePresentation,
@@ -42,7 +45,7 @@ describe('HomeScreen helpers', () => {
     expect(formatBreakLabel('rest')).toBe('Break');
     expect(formatBreakLabel('other')).toBe('Break');
 
-    expect(getRoutePresentation('pending').actionLabel).toBe('Start Route');
+    expect(getRoutePresentation('pending').actionLabel).toBe('Acknowledge');
     expect(getRoutePresentation('in_progress').actionLabel).toBe('Continue Route');
     expect(getRoutePresentation('complete').actionLabel).toBeNull();
   });
@@ -50,6 +53,14 @@ describe('HomeScreen helpers', () => {
   it('builds the storage date in stable YYYY-MM-DD format', () => {
     jest.useFakeTimers().setSystemTime(new Date('2026-04-15T09:30:00-07:00'));
     expect(getTodayStorageDate()).toBe('2026-04-15');
+  });
+
+  it('rotates a concrete safety reminder based on the calendar day', () => {
+    const reminderDate = new Date('2026-04-15T09:30:00-07:00');
+    const expectedIndex = (getDayOfYear(reminderDate) - 1) % DAILY_SAFETY_REMINDERS.length;
+
+    expect(getDailySafetyReminder(reminderDate)).toEqual(DAILY_SAFETY_REMINDERS[expectedIndex]);
+    expect(getDailySafetyReminder(reminderDate).bullets.length).toBeGreaterThan(2);
   });
 
   it('builds a compact route summary for the home card', () => {

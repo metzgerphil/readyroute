@@ -125,3 +125,63 @@ test('enrichManifestStopsWithGeocoding geocodes stops when lat/lng are null', as
     process.env.GOOGLE_MAPS_API_KEY = originalKey;
   }
 });
+
+test('enrichManifestStopsWithGeocoding reuses saved corrections before calling Google', async () => {
+  const originalKey = process.env.GOOGLE_MAPS_API_KEY;
+  const originalGet = axios.get;
+  process.env.GOOGLE_MAPS_API_KEY = 'test-key';
+
+  const supabase = createSupabase(async (query) => {
+    if (query.table !== 'location_corrections') {
+      throw new Error(`Unexpected table ${query.table}`);
+    }
+
+    if (query.operation === 'select') {
+      return {
+        data: [
+          {
+            id: 'corr-1',
+            normalized_address: '123 main st escondido ca 92025',
+            unit_number: null,
+            corrected_lat: 33.11,
+            corrected_lng: -117.21,
+            source: 'driver_verified',
+            label: 'Saved correction',
+            updated_at: '2026-04-19T01:00:00.000Z'
+          }
+        ],
+        error: null
+      };
+    }
+
+    throw new Error(`Unexpected operation ${query.operation}`);
+  });
+
+  let googleCalled = false;
+  axios.get = async () => {
+    googleCalled = true;
+    throw new Error('Google should not be called when a saved correction exists');
+  };
+
+  try {
+    const result = await enrichManifestStopsWithGeocoding(supabase, 'acct-1', [
+      {
+        address: '123 Main St, Escondido, CA 92025',
+        address_line2: null,
+        lat: null,
+        lng: null
+      }
+    ]);
+
+    assert.equal(googleCalled, false);
+    assert.equal(result.summary.attempted, 0);
+    assert.equal(result.summary.geocoded, 1);
+    assert.equal(result.stops[0].lat, 33.11);
+    assert.equal(result.stops[0].lng, -117.21);
+    assert.equal(result.stops[0].geocode_source, 'manifest_geocoded');
+    assert.equal(result.stops[0].geocode_accuracy, 'point');
+  } finally {
+    axios.get = originalGet;
+    process.env.GOOGLE_MAPS_API_KEY = originalKey;
+  }
+});
