@@ -5,10 +5,12 @@ import Layout from './components/Layout';
 import { getManagerToken } from './services/auth';
 
 const DashboardPage = lazy(() => import('./pages/DashboardPage'));
+const CsaPage = lazy(() => import('./pages/CsaPage'));
 const DriversPage = lazy(() => import('./pages/DriversPage'));
 const FleetMapPage = lazy(() => import('./pages/FleetMapPage'));
 const LoginPage = lazy(() => import('./pages/LoginPage'));
 const ManifestPage = lazy(() => import('./pages/ManifestPage'));
+const RecordsPage = lazy(() => import('./pages/RecordsPage'));
 const ResetPasswordPage = lazy(() => import('./pages/ResetPasswordPage'));
 const RoutePage = lazy(() => import('./pages/RoutePage'));
 const SetupPage = lazy(() => import('./pages/SetupPage'));
@@ -42,7 +44,9 @@ function ProtectedApp() {
       <Suspense fallback={<RouteLoadingFallback />}>
         <Routes>
           <Route element={<DashboardPage />} path="/" />
+          <Route element={<CsaPage />} path="/csa" />
           <Route element={<ManifestPage />} path="/manifest" />
+          <Route element={<RecordsPage />} path="/records" />
           <Route element={<DriversPage />} path="/drivers" />
           <Route element={<VehiclesPage />} path="/vehicles" />
           <Route element={<VedrPage />} path="/vedr" />

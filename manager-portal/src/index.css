@@ -82,6 +82,11 @@ input {
   letter-spacing: -0.04em;
 }
 
+.sidebar-brand-link {
+  color: inherit;
+  text-decoration: none;
+}
+
 .brand-ready {
   color: #173042;
 }
@@ -374,14 +379,6 @@ input {
   color: #66737c;
 }
 
-.page-loading-card {
-  margin: 28px;
-  color: #66737c;
-  font-size: 1rem;
-  font-weight: 800;
-  text-align: center;
-}
-
 .driver-directory-list {
   display: grid;
   gap: 14px;
@@ -443,6 +440,14 @@ input {
   display: flex;
   gap: 10px;
   flex-wrap: wrap;
+}
+
+.page-loading-card {
+  margin: 28px;
+  color: #66737c;
+  font-size: 1rem;
+  font-weight: 800;
+  text-align: center;
 }
 
 .card,
@@ -1030,6 +1035,92 @@ input {
   font-weight: 700;
 }
 
+.setup-next-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  padding: 22px 24px;
+  border-radius: 24px;
+  border: 1px solid #e2e8f0;
+  background: linear-gradient(135deg, #fff8ef 0%, #ffffff 100%);
+}
+
+.setup-next-card.ready {
+  border-color: #bfdbfe;
+  background: linear-gradient(135deg, #eff6ff 0%, #ffffff 100%);
+}
+
+.setup-next-card.blocked,
+.setup-next-card.needs-attention {
+  border-color: #fdba74;
+}
+
+.setup-next-eyebrow {
+  margin-bottom: 6px;
+  color: #c2410c;
+  font-size: 0.76rem;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.setup-next-card h2 {
+  margin: 0 0 6px;
+  color: #173042;
+  font-size: 1.3rem;
+  line-height: 1.1;
+}
+
+.setup-next-card p {
+  margin: 0;
+  color: #66737c;
+  line-height: 1.65;
+}
+
+.setup-next-action {
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.setup-continue-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  padding: 22px 24px;
+  border-radius: 24px;
+  border: 1px solid #e2e8f0;
+  background: linear-gradient(135deg, #fff8ef 0%, #ffffff 100%);
+}
+
+.setup-continue-banner.done {
+  border-color: #bbf7d0;
+  background: linear-gradient(135deg, #f0fdf4 0%, #ffffff 100%);
+}
+
+.setup-continue-banner.active {
+  border-color: #fdba74;
+}
+
+.setup-continue-banner.blocked {
+  border-color: #fca5a5;
+  background: linear-gradient(135deg, #fff7ed 0%, #ffffff 100%);
+}
+
+.setup-continue-banner h2 {
+  margin: 0 0 6px;
+  color: #173042;
+  font-size: 1.3rem;
+  line-height: 1.1;
+}
+
+.setup-continue-banner p {
+  margin: 0;
+  color: #66737c;
+  line-height: 1.65;
+}
+
 .setup-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -1055,11 +1146,25 @@ input {
   border-color: #fdba74;
 }
 
+.setup-step-card.blocked {
+  border-color: #fcd34d;
+  background: linear-gradient(180deg, #ffffff 0%, #fffdf4 100%);
+}
+
 .setup-step-head {
   display: flex;
   gap: 12px;
   justify-content: space-between;
   align-items: flex-start;
+}
+
+.setup-step-order {
+  margin-bottom: 8px;
+  color: #8b5e34;
+  font-size: 0.74rem;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
 }
 
 .setup-step-title {
@@ -1103,6 +1208,11 @@ input {
   color: #c2410c;
 }
 
+.setup-step-pill.blocked {
+  background: #fef3c7;
+  color: #92400e;
+}
+
 .setup-step-action {
   justify-self: start;
   text-decoration: none;
@@ -1132,6 +1242,11 @@ input {
 
   .setup-grid {
     grid-template-columns: 1fr;
+  }
+
+  .setup-next-card {
+    flex-direction: column;
+    align-items: flex-start;
   }
 }
 
@@ -1236,10 +1351,10 @@ input {
 .weekly-timecard-header,
 .weekly-timecard-row {
   display: grid;
-  grid-template-columns: 1.45fr 0.8fr 0.6fr 0.8fr 0.8fr 0.8fr 0.8fr 0.9fr 0.72fr;
-  gap: 12px;
+  grid-template-columns: minmax(240px, 1.8fr) 0.72fr 0.82fr 0.82fr 0.82fr minmax(96px, 0.72fr);
+  gap: 16px;
   align-items: center;
-  padding: 14px 16px;
+  padding: 16px 18px;
 }
 
 .weekly-timecard-header {
@@ -1258,20 +1373,83 @@ input {
   color: #173042;
 }
 
-.weekly-timecard-row span {
+.weekly-timecard-row span,
+.weekly-timecard-row > div {
   min-width: 0;
 }
 
 .weekly-timecard-row strong {
   display: block;
-  font-size: 0.98rem;
+  font-size: 1.02rem;
+  line-height: 1.15;
 }
 
 .weekly-timecard-row small {
   display: block;
-  margin-top: 3px;
   color: #66737c;
   font-size: 0.82rem;
+}
+
+.live-status-cell {
+  display: grid;
+  gap: 6px;
+}
+
+.live-status-chip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 30px;
+  width: fit-content;
+  padding: 0 10px;
+  border-radius: 999px;
+  font-size: 0.82rem;
+  font-weight: 900;
+}
+
+.live-status-chip-working {
+  background: #e8f8ef;
+  border: 1px solid #b9ebcb;
+  color: #17613f;
+}
+
+.live-status-chip-lunch {
+  background: #fff4e5;
+  border: 1px solid #ffd5a1;
+  color: #b45309;
+}
+
+.live-status-chip-break {
+  background: #e7f7f4;
+  border: 1px solid #b6e7df;
+  color: #0f766e;
+}
+
+.live-status-chip-off {
+  background: #eef2f6;
+  border: 1px solid #d5dde6;
+  color: #475569;
+}
+
+.live-status-chip-idle {
+  background: #f8fafc;
+  border: 1px solid #e2e8ef;
+  color: #64748b;
+}
+
+.driver-cell-stack {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+
+.driver-cell-meta {
+  display: grid;
+  gap: 3px;
+}
+
+.driver-cell-phone {
+  font-weight: 700;
 }
 
 .weekly-timecard-group + .weekly-timecard-group .weekly-timecard-row {
@@ -1291,6 +1469,28 @@ input {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
+}
+
+.labor-audit-list {
+  display: grid;
+  gap: 8px;
+}
+
+.labor-audit-card {
+  display: grid;
+  gap: 4px;
+  padding: 10px 12px;
+  border-radius: 14px;
+  background: #fff8f2;
+  border: 1px solid #f0dcc7;
+  color: #6f4d2f;
+  font-size: 0.86rem;
+  font-weight: 700;
+}
+
+.labor-audit-card strong {
+  color: #173042;
+  font-size: 0.84rem;
 }
 
 .labor-flag-chip,
@@ -1352,6 +1552,310 @@ input {
   color: #66737c;
   font-size: 0.92rem;
   font-weight: 700;
+}
+
+.records-layout {
+  display: grid;
+  grid-template-columns: minmax(220px, 260px) minmax(0, 1fr);
+  gap: 20px;
+}
+
+.records-sidebar {
+  align-self: start;
+}
+
+.records-day-list {
+  display: grid;
+  gap: 10px;
+  margin-top: 16px;
+}
+
+.records-day-button {
+  display: grid;
+  gap: 4px;
+  width: 100%;
+  text-align: left;
+  padding: 12px 14px;
+  border-radius: 16px;
+  border: 1px solid #e6ddd3;
+  background: #ffffff;
+  color: #173042;
+}
+
+.records-day-button.active {
+  border-color: #ff6200;
+  background: #fff4ec;
+}
+
+.records-day-button span {
+  color: #66737c;
+  font-size: 0.82rem;
+  font-weight: 700;
+}
+
+.records-main {
+  display: grid;
+  gap: 20px;
+}
+
+.records-route-list {
+  display: grid;
+  gap: 12px;
+}
+
+.records-route-card {
+  display: grid;
+  gap: 8px;
+  padding: 14px 16px;
+  border-radius: 18px;
+  background: #ffffff;
+  border: 1px solid #e6ddd3;
+}
+
+.records-route-topline {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  color: #173042;
+  font-size: 0.95rem;
+}
+
+.records-route-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  color: #66737c;
+  font-size: 0.86rem;
+  font-weight: 700;
+}
+
+.sidebar-csa-card {
+  margin-top: 18px;
+  padding: 14px;
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+}
+
+.sidebar-csa-label {
+  color: rgba(255, 255, 255, 0.72);
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.sidebar-csa-name {
+  margin-top: 6px;
+  color: #ffffff;
+  font-size: 0.96rem;
+  font-weight: 800;
+  line-height: 1.35;
+}
+
+.sidebar-csa-select {
+  width: 100%;
+  margin-top: 10px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  background: rgba(8, 18, 28, 0.55);
+  color: #ffffff;
+}
+
+.sidebar-csa-hint {
+  margin-top: 10px;
+  color: rgba(255, 255, 255, 0.72);
+  font-size: 0.84rem;
+  line-height: 1.45;
+}
+
+.csa-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 24px;
+  align-items: start;
+}
+
+.csa-list {
+  display: grid;
+  gap: 16px;
+}
+
+.csa-card {
+  display: grid;
+  gap: 12px;
+  border: 1px solid #e7edf4;
+  border-radius: 20px;
+  padding: 18px;
+  background: #fffaf4;
+}
+
+.csa-card.current {
+  border-color: rgba(244, 114, 36, 0.28);
+  box-shadow: 0 14px 28px rgba(244, 114, 36, 0.08);
+}
+
+.csa-card-topline {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.csa-card-topline span {
+  border-radius: 999px;
+  background: #fff0e4;
+  color: #c85f12;
+  padding: 6px 10px;
+  font-size: 0.8rem;
+  font-weight: 800;
+}
+
+.csa-form,
+.csa-link-actions {
+  display: grid;
+  gap: 14px;
+  margin-top: 16px;
+}
+
+.csa-fedex-summary {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  margin-top: 18px;
+}
+
+.csa-fedex-summary > div {
+  display: grid;
+  gap: 4px;
+  padding: 14px 16px;
+  border: 1px solid #e7edf4;
+  border-radius: 16px;
+  background: #f8fafc;
+}
+
+.csa-fedex-summary strong {
+  font-size: 1rem;
+  color: #12324a;
+}
+
+.csa-fedex-summary span {
+  font-size: 0.85rem;
+  color: #64748b;
+}
+
+.csa-fedex-list {
+  display: grid;
+  gap: 14px;
+  margin-top: 18px;
+}
+
+.csa-fedex-card {
+  display: grid;
+  gap: 12px;
+  border: 1px solid #e7edf4;
+  border-radius: 20px;
+  padding: 18px;
+  background: #ffffff;
+}
+
+.csa-fedex-card.default {
+  border-color: rgba(59, 130, 246, 0.3);
+  box-shadow: 0 14px 28px rgba(59, 130, 246, 0.08);
+}
+
+.csa-fedex-card-topline {
+  display: flex;
+  justify-content: space-between;
+  gap: 14px;
+  align-items: flex-start;
+}
+
+.csa-fedex-chip-row {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.csa-fedex-chip {
+  border-radius: 999px;
+  padding: 6px 10px;
+  font-size: 0.78rem;
+  font-weight: 800;
+}
+
+.csa-fedex-chip.default {
+  background: #dbeafe;
+  color: #1d4ed8;
+}
+
+.csa-fedex-chip.status {
+  background: #f1f5f9;
+  color: #475569;
+}
+
+.csa-fedex-chip.status.connected {
+  background: #dcfce7;
+  color: #166534;
+}
+
+.csa-fedex-chip.status.pending_mfa {
+  background: #fff7ed;
+  color: #c2410c;
+}
+
+.csa-fedex-chip.status.failed {
+  background: #fef2f2;
+  color: #b91c1c;
+}
+
+.csa-fedex-chip.status.disconnected {
+  background: #e2e8f0;
+  color: #334155;
+}
+
+.csa-fedex-actions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.csa-fedex-form-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  margin-top: 10px;
+}
+
+.csa-danger-card {
+  border: 1px solid #fecaca;
+  background: linear-gradient(180deg, #fff8f8 0%, #ffffff 100%);
+}
+
+.csa-danger-button {
+  min-height: 48px;
+  border-radius: 14px;
+  border: 1px solid #ef4444;
+  padding: 0 18px;
+  background: #b91c1c;
+  color: #ffffff;
+  font-weight: 800;
+  cursor: pointer;
+  box-shadow: 0 14px 28px rgba(185, 28, 28, 0.18);
+}
+
+.csa-danger-button:hover:not(:disabled) {
+  background: #991b1b;
+}
+
+.csa-danger-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.7;
+  box-shadow: none;
 }
 
 .driver-table-header {
@@ -2124,6 +2628,18 @@ button.manifest-attention-chip {
   gap: 20px;
 }
 
+.driver-access-card {
+  display: grid;
+  gap: 16px;
+}
+
+.driver-access-inline-form {
+  display: flex;
+  align-items: end;
+  gap: 14px;
+  flex-wrap: wrap;
+}
+
 .manager-access-form,
 .manager-access-list {
   display: grid;
@@ -2143,6 +2659,253 @@ button.manifest-attention-chip {
   border-radius: 18px;
   border: 1px solid #d9e1e7;
   background: #f9fbfc;
+}
+
+.vehicle-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  gap: 16px;
+}
+
+.vehicle-card {
+  display: grid;
+  gap: 14px;
+  align-content: start;
+}
+
+.vehicle-card-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.vehicle-card-title-wrap {
+  display: grid;
+  gap: 8px;
+}
+
+.vehicle-card-title {
+  color: #173042;
+  font-size: 1.45rem;
+  font-weight: 900;
+  letter-spacing: -0.04em;
+  line-height: 1;
+}
+
+.vehicle-type-pill {
+  display: inline-flex;
+  align-items: center;
+  width: fit-content;
+  min-height: 30px;
+  padding: 0 12px;
+  border-radius: 999px;
+  background: #eff6ff;
+  border: 1px solid #cfe0f8;
+  color: #21485e;
+  font-size: 0.8rem;
+  font-weight: 900;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.vehicle-status-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 32px;
+  padding: 0 12px;
+  border-radius: 999px;
+  font-size: 0.8rem;
+  font-weight: 900;
+}
+
+.vehicle-status-badge.available {
+  background: #ecfdf3;
+  color: #166534;
+}
+
+.vehicle-status-badge.assigned {
+  background: #eff6ff;
+  color: #1d4ed8;
+}
+
+.vehicle-status-badge.on-road {
+  background: #fff7ed;
+  color: #c2410c;
+}
+
+.vehicle-status-badge.service-due {
+  background: #fef2f2;
+  color: #b91c1c;
+}
+
+.vehicle-assignment-row,
+.vehicle-details-row,
+.vehicle-mileage-row,
+.vehicle-service-row,
+.vehicle-card-actions {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.vehicle-assignment-row,
+.vehicle-details-row {
+  color: #5f6b76;
+  font-size: 0.92rem;
+  font-weight: 800;
+}
+
+.vehicle-plate {
+  display: inline-flex;
+  align-items: center;
+  min-height: 30px;
+  padding: 0 10px;
+  border-radius: 999px;
+  background: #f8fafc;
+  border: 1px solid #e3e9ef;
+  color: #173042;
+}
+
+.vehicle-mileage-value {
+  color: #173042;
+  font-size: 0.96rem;
+  font-weight: 900;
+}
+
+.service-progress-wrap {
+  display: grid;
+  gap: 8px;
+  min-width: min(240px, 100%);
+  flex: 1;
+}
+
+.service-progress-bar {
+  width: 100%;
+  height: 10px;
+  border-radius: 999px;
+  overflow: hidden;
+  background: #edf2f7;
+}
+
+.service-progress-fill {
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(135deg, #ff7a1a 0%, #ff6200 100%);
+}
+
+.service-remaining,
+.vehicle-last-service-description {
+  color: #66737c;
+  font-size: 0.9rem;
+  font-weight: 700;
+}
+
+.service-overdue {
+  color: #b91c1c;
+  font-size: 0.9rem;
+  font-weight: 800;
+}
+
+.vehicle-registration-row {
+  display: grid;
+  gap: 4px;
+  padding: 12px 14px;
+  border-radius: 18px;
+  background: #f8fafc;
+  border: 1px solid #e3e9ef;
+}
+
+.vehicle-registration-row.warning {
+  background: #fff7ed;
+  border-color: #fdba74;
+}
+
+.vehicle-registration-row.expired {
+  background: #fef2f2;
+  border-color: #fca5a5;
+}
+
+.vehicle-registration-row.missing {
+  background: #f8fafc;
+  border-style: dashed;
+}
+
+.vehicle-meta-label {
+  color: #6b7280;
+  font-size: 0.76rem;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.vehicle-meta-value {
+  color: #173042;
+  font-size: 0.94rem;
+  font-weight: 800;
+}
+
+.registration-due-banner {
+  background: linear-gradient(135deg, #fff7ed 0%, #ffe3c4 100%);
+  border: 1px solid #fdba74;
+}
+
+.maintenance-settings-card {
+  display: grid;
+  gap: 16px;
+}
+
+.maintenance-settings-card-collapsed {
+  gap: 12px;
+}
+
+.maintenance-settings-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.maintenance-settings-list {
+  display: grid;
+  gap: 12px;
+}
+
+.maintenance-settings-summary {
+  color: #516575;
+  font-weight: 700;
+  line-height: 1.5;
+}
+
+.maintenance-settings-row {
+  display: grid;
+  grid-template-columns: minmax(180px, 1fr) 120px 120px;
+  gap: 12px;
+  align-items: center;
+  padding: 14px 16px;
+  border-radius: 18px;
+  background: #f8fafc;
+  border: 1px solid #e3e9ef;
+}
+
+.maintenance-settings-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  color: #173042;
+  font-weight: 800;
+}
+
+.maintenance-settings-toggle input {
+  width: 18px;
+  height: 18px;
+}
+
+.maintenance-settings-input {
+  min-height: 42px;
 }
 
 .manager-access-status-group,
@@ -2212,6 +2975,27 @@ button.manifest-attention-chip {
 
   .weekly-timecard-header {
     display: none;
+  }
+
+  .records-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .csa-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .csa-fedex-summary,
+  .csa-fedex-form-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .csa-fedex-card-topline {
+    flex-direction: column;
+  }
+
+  .csa-fedex-chip-row {
+    justify-content: flex-start;
   }
 
   .weekly-timecard-row {

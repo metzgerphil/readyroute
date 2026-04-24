@@ -1,11 +1,12 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { format, isValid, parseISO } from 'date-fns';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 
 import DriverRow from '../components/DriverRow';
 import OverviewRoutesSection from '../components/OverviewRoutesSection';
 import api from '../services/api';
+import { getTodayString, saveStoredOperationsDate } from '../utils/operationsDate';
 
 const GOOGLE_MAPS_KEY = import.meta.env.VITE_GOOGLE_MAPS_KEY;
 const GOOGLE_MAPS_SRC = GOOGLE_MAPS_KEY
@@ -691,11 +692,20 @@ function SkeletonCard() {
 
 export default function DashboardPage() {
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const queryClient = useQueryClient();
   const [viewMode, setViewMode] = useState('map');
   const [isCompactBanner, setIsCompactBanner] = useState(false);
   const [vehiclePickerRouteId, setVehiclePickerRouteId] = useState(null);
-  const dashboardDate = format(new Date(), 'yyyy-MM-dd');
+  const dashboardDate = searchParams.get('date') || getTodayString();
+  const isSelectedDateToday = dashboardDate === getTodayString();
+
+  useEffect(() => {
+    saveStoredOperationsDate(dashboardDate);
+    const nextParams = new URLSearchParams(searchParams);
+    nextParams.set('date', dashboardDate);
+    setSearchParams(nextParams, { replace: true });
+  }, [dashboardDate, searchParams, setSearchParams]);
 
   const dashboardQuery = useQuery({
     queryKey: ['manager-dashboard'],
@@ -788,7 +798,7 @@ export default function DashboardPage() {
     () => getDispatchHealthSummary(overviewRoutes),
     [overviewRoutes]
   );
-  const activeDashboard = dashboard || (overviewRoutes.length > 0 ? fallbackDashboard : null);
+  const activeDashboard = isSelectedDateToday ? (dashboard || fallbackDashboard) : fallbackDashboard;
   const routeRows = activeDashboard?.drivers || [];
   const syncStatus = activeDashboard?.sync_status;
   const bannerState =
@@ -936,11 +946,11 @@ export default function DashboardPage() {
   );
 
   function handleSyncRoutes() {
-    navigate('/manifest?action=sync');
+    navigate(`/manifest?date=${dashboardDate}&action=sync`);
   }
 
   function handleAssignDrivers() {
-    navigate('/manifest');
+    navigate(`/manifest?date=${dashboardDate}`);
   }
 
   return (
@@ -1036,7 +1046,7 @@ export default function DashboardPage() {
             <button className="primary-cta" onClick={handleSyncRoutes} type="button">
               Open Route Sync
             </button>
-            <button className="secondary-button" onClick={() => navigate('/fleet-map')} type="button">
+            <button className="secondary-button" onClick={() => navigate(`/fleet-map?date=${dashboardDate}`)} type="button">
               View Fleet Map
             </button>
           </div>
@@ -1102,7 +1112,7 @@ export default function DashboardPage() {
                   <button
                     className="dispatch-health-chip assignment"
                     key={`assignment-${route.id}`}
-                    onClick={() => navigate('/manifest')}
+                    onClick={() => navigate(`/manifest?date=${dashboardDate}`)}
                     type="button"
                   >
                     {route.work_area_name}: assign driver
@@ -1112,7 +1122,7 @@ export default function DashboardPage() {
                   <button
                     className="dispatch-health-chip vehicle"
                     key={`vehicle-${route.id}`}
-                    onClick={() => navigate('/manifest')}
+                    onClick={() => navigate(`/manifest?date=${dashboardDate}`)}
                     type="button"
                   >
                     {route.work_area_name}: assign vehicle

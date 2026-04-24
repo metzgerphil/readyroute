@@ -1,14 +1,13 @@
 import { format } from 'date-fns';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 
 import api from '../services/api';
 import MapView from '../components/MapView';
+import { getTodayString, saveStoredOperationsDate } from '../utils/operationsDate';
 
-function getTodayString() {
-  return format(new Date(), 'yyyy-MM-dd');
-}
+const MANIFEST_UPLOAD_STORAGE_KEY = 'readyroute:manifest-latest-upload';
 
 function formatMorningDate(dateValue) {
   return format(new Date(`${dateValue}T12:00:00`), 'EEEE, MMMM d');
@@ -153,6 +152,48 @@ function getUploadModeLabel(uploadMode) {
   }
 }
 
+function loadStoredManifestUpload(dateValue) {
+  if (typeof window === 'undefined') {
+    return null;
+  }
+
+  try {
+    const raw = window.sessionStorage.getItem(MANIFEST_UPLOAD_STORAGE_KEY);
+    if (!raw) {
+      return null;
+    }
+
+    const parsed = JSON.parse(raw);
+    if (!parsed || parsed.date !== dateValue || !parsed.latestUpload) {
+      return null;
+    }
+
+    return parsed.latestUpload;
+  } catch (_error) {
+    return null;
+  }
+}
+
+function saveStoredManifestUpload(dateValue, latestUpload) {
+  if (typeof window === 'undefined') {
+    return;
+  }
+
+  try {
+    if (!latestUpload) {
+      window.sessionStorage.removeItem(MANIFEST_UPLOAD_STORAGE_KEY);
+      return;
+    }
+
+    window.sessionStorage.setItem(
+      MANIFEST_UPLOAD_STORAGE_KEY,
+      JSON.stringify({ date: dateValue, latestUpload })
+    );
+  } catch (_error) {
+    // Ignore session storage write failures in the browser.
+  }
+}
+
 function getRouteAttentionItems(route) {
   const items = [];
 
@@ -215,15 +256,18 @@ export default function ManifestPage() {
   const queryClient = useQueryClient();
   const fileInputRef = useRef(null);
   const gpxInputRef = useRef(null);
-  const [searchParams] = useSearchParams();
-  const [date, setDate] = useState(getTodayString());
+  const routeCardRefs = useRef(new Map());
+  const routeFieldRefs = useRef(new Map());
+  const [searchParams, setSearchParams] = useSearchParams();
+  const initialDate = searchParams.get('date') || getTodayString();
+  const [date, setDate] = useState(initialDate);
   const [activeTab, setActiveTab] = useState('auto');
   const [selectedFile, setSelectedFile] = useState(null);
   const [selectedGpxFile, setSelectedGpxFile] = useState(null);
   const [workAreaName, setWorkAreaName] = useState('');
   const [driverId, setDriverId] = useState('');
   const [vehicleId, setVehicleId] = useState('');
-  const [latestUpload, setLatestUpload] = useState(null);
+  const [latestUpload, setLatestUpload] = useState(() => loadStoredManifestUpload(initialDate));
   const [syncPanelExpanded, setSyncPanelExpanded] = useState(true);
   const [warningsExpanded, setWarningsExpanded] = useState(true);
   const [editedWarnings, setEditedWarnings] = useState({});
@@ -275,12 +319,36 @@ export default function ManifestPage() {
   const needsGpxUploadFields = hasSelectedFile && !isSpreadsheetUpload && (!workAreaName.trim() || !driverId || !vehicleId);
   const latestUploadRoute = latestUpload ? routeSummaries.find((route) => route.id === latestUpload.route_id) : null;
   const hasRoutesToday = routeSummaries.length > 0;
+  const canModifyExistingRoutes = hasRoutesToday;
   const allRoutesHaveDrivers = hasRoutesToday && routeSummaries.every((route) => Boolean(route.driver_id));
   const routesNeedingDrivers = routeSummaries.filter((route) => !route.driver_id);
   const routesNeedingVehicles = routeSummaries.filter((route) => !route.vehicle_id);
   const routesNeedingPins = routeSummaries.filter((route) => route.map_status === 'needs_pins');
   const partiallyMappedRoutes = routeSummaries.filter((route) => route.map_status === 'partially_mapped');
   const routesWithWarnings = routeSummaries.filter((route) => (route.stops || []).some((stop) => Boolean(stop.notes)));
+  const isSetupFlow = searchParams.get('source') === 'setup';
+  const setupFocus = searchParams.get('focus') || '';
+  const setupBanner = useMemo(() => {
+    if (!isSetupFlow || setupFocus !== 'routes') {
+      return null;
+    }
+
+    if (hasRoutesToday) {
+      return {
+        tone: 'done',
+        title: 'First routes are in ReadyRoute',
+        body: `${routeSummaries.length} route${routeSummaries.length === 1 ? '' : 's'} loaded for ${formatMorningDate(date)}. You can assign, review, and dispatch from here.`,
+        actionTo: '/dashboard',
+        actionLabel: 'Open Dashboard'
+      };
+    }
+
+    return {
+      tone: 'active',
+      title: 'Import the first manifest',
+      body: 'Pull from FedEx or upload the manifest here. Once a route lands, onboarding can hand off into live dispatch.'
+    };
+  }, [date, hasRoutesToday, isSetupFlow, routeSummaries.length, setupFocus]);
 
   useEffect(() => {
     if (forceSyncOpen || !hasRoutesToday) {
@@ -292,8 +360,40 @@ export default function ManifestPage() {
   }, [forceSyncOpen, hasRoutesToday, date]);
 
   useEffect(() => {
-    setLatestUpload(null);
+    setLatestUpload(loadStoredManifestUpload(date));
   }, [date]);
+
+  useEffect(() => {
+    saveStoredManifestUpload(date, latestUpload);
+  }, [date, latestUpload]);
+
+  useEffect(() => {
+    saveStoredOperationsDate(date);
+    const nextParams = new URLSearchParams(searchParams);
+    nextParams.set('date', date);
+    setSearchParams(nextParams, { replace: true });
+  }, [date, searchParams, setSearchParams]);
+
+  function jumpToRouteField(routeId, field = null) {
+    const routeCard = routeCardRefs.current.get(routeId);
+    if (routeCard) {
+      routeCard.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+
+    if (!field) {
+      return;
+    }
+
+    window.setTimeout(() => {
+      const fieldRef = routeFieldRefs.current.get(`${routeId}:${field}`);
+      if (fieldRef) {
+        fieldRef.focus();
+        if (typeof fieldRef.showPicker === 'function') {
+          fieldRef.showPicker();
+        }
+      }
+    }, 220);
+  }
 
   const pullManifestMutation = useMutation({
     mutationFn: async () => {
@@ -312,6 +412,23 @@ export default function ManifestPage() {
       if ((refreshed?.routes || []).length > 0) {
         setSyncPanelExpanded(false);
       }
+    }
+  });
+
+  const archiveRoutesMutation = useMutation({
+    mutationFn: async () => {
+      const response = await api.post('/manager/routes/archive-date', { date });
+      return response.data;
+    },
+    onSuccess: async () => {
+      setLatestUpload(null);
+      saveStoredManifestUpload(date, null);
+      setSyncPanelExpanded(true);
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['manager-routes', date] }),
+        queryClient.invalidateQueries({ queryKey: ['fleet-map-routes', date] }),
+        queryClient.invalidateQueries({ queryKey: ['dashboard-overview-routes', date] })
+      ]);
     }
   });
 
@@ -408,6 +525,22 @@ export default function ManifestPage() {
     }
   }
 
+  function handleArchiveRoutesForDate() {
+    if (!isPastDate || !hasRoutesToday || archiveRoutesMutation.isPending) {
+      return;
+    }
+
+    const confirmed = window.confirm(
+      `Archive all manifests for ${formatMorningDate(date)}? This hides them from Morning Setup, Fleet Map, and Dashboard while keeping timecards, breaks, and other backend history intact.`
+    );
+
+    if (!confirmed) {
+      return;
+    }
+
+    archiveRoutesMutation.mutate();
+  }
+
   function handleFileSelection(fileInput) {
     const files = Array.from(fileInput instanceof FileList ? fileInput : Array.isArray(fileInput) ? fileInput : fileInput ? [fileInput] : []);
 
@@ -465,6 +598,10 @@ export default function ManifestPage() {
       `${latestUpload.total_stops} stops loaded — ${latestUpload.delivery_count} deliveries, ${latestUpload.pickup_count} pickups`
     ];
 
+    if (latestUpload.merged_into_existing_route) {
+      lines.unshift('Existing pending route updated in place with the new manifest upload');
+    }
+
     if (latestUpload.combined_count > 0) {
       lines.push(`${latestUpload.combined_count} stops have both a delivery and pickup`);
     }
@@ -498,6 +635,9 @@ export default function ManifestPage() {
         label: getUploadModeLabel(latestUpload.upload_mode),
         tone: 'neutral'
       },
+      latestUpload.merged_into_existing_route
+        ? { key: 'merge', label: 'Updated existing route', tone: 'success' }
+        : null,
       latestUpload.route_health?.map_status === 'mapped'
         ? { key: 'map', label: 'Dispatch-ready map', tone: 'success' }
         : latestUpload.route_health?.map_status === 'partially_mapped'
@@ -523,22 +663,55 @@ export default function ManifestPage() {
       <div className="page-header">
         <div>
           <h1>Morning Setup — {formatMorningDate(date)}</h1>
-          <p>Pull or upload routes, confirm work areas, assign drivers, and get the day ready to run.</p>
+          <p>
+            {isPastDate
+              ? 'You are viewing historical manifests for this date. Sync and upload are locked, but assignments and review stay available until you archive them.'
+              : 'Pull or upload routes, confirm work areas, assign drivers, and get the day ready to run.'}
+          </p>
         </div>
-        <input
-          className="date-field"
-          onChange={(event) => setDate(event.target.value)}
-          type="date"
-          value={date}
-        />
+        <div className="page-header-actions">
+          <input
+            className="date-field"
+            onChange={(event) => setDate(event.target.value)}
+            type="date"
+            value={date}
+          />
+          {isPastDate && hasRoutesToday ? (
+            <button
+              className="secondary-button"
+              disabled={archiveRoutesMutation.isPending}
+              onClick={handleArchiveRoutesForDate}
+              type="button"
+            >
+              {archiveRoutesMutation.isPending ? 'Archiving...' : 'Archive Routes For This Date'}
+            </button>
+          ) : null}
+        </div>
       </div>
+
+      {setupBanner ? (
+        <div className={`card setup-continue-banner ${setupBanner.tone}`}>
+          <div>
+            <div className="setup-next-eyebrow">Onboarding</div>
+            <h2>{setupBanner.title}</h2>
+            <p>{setupBanner.body}</p>
+          </div>
+          {setupBanner.actionTo ? (
+            <Link className="primary-cta setup-next-action" to={setupBanner.actionTo}>
+              {setupBanner.actionLabel}
+            </Link>
+          ) : null}
+        </div>
+      ) : null}
 
       <div className="card manifest-step-card">
         <div className="manifest-step-header">
           <div>
             <div className="card-title">Step 1 — Sync Panel</div>
             <div className="manifest-step-subtitle">
-              {hasRoutesToday ? 'Routes are loaded. You can collapse this once morning setup is complete.' : 'No routes loaded for this day yet.'}
+              {hasRoutesToday
+                ? `Routes are loaded for ${formatMorningDate(date)}. You can collapse this once setup is complete.`
+                : 'No routes loaded for this day yet.'}
             </div>
           </div>
           {hasRoutesToday ? (
@@ -578,12 +751,12 @@ export default function ManifestPage() {
                   <div>
                     <strong>
                       {fedexConnection.is_connected
-                        ? `FedEx Connected — Terminal ${fedexConnection.terminal_label || '--'}`
+                        ? `FedEx Connected — ${fedexConnection.default_account_label || fedexConnection.terminal_label || '--'}`
                         : 'Not connected'}
                     </strong>
                     {!fedexConnection.is_connected ? (
                       <div>
-                        <a className="configure-link" href="https://www.fedex.com/" rel="noreferrer" target="_blank">
+                        <a className="configure-link" href="/csa?focus=fedex">
                           Configure
                         </a>
                       </div>
@@ -599,7 +772,7 @@ export default function ManifestPage() {
                   onClick={() => pullManifestMutation.mutate()}
                   type="button"
                 >
-                  {pullManifestMutation.isPending ? 'Pulling routes from FedEx...' : 'Sync Routes Now'}
+                  {pullManifestMutation.isPending ? 'Pulling routes from FedEx...' : `Sync Routes For ${format(new Date(`${date}T12:00:00`), 'MMM d')}`}
                 </button>
 
                 {pullManifestMutation.isPending ? <div className="progress-bar"><div className="progress-bar-fill indeterminate" /></div> : null}
@@ -812,7 +985,21 @@ export default function ManifestPage() {
                 {routesQuery.error?.response?.data?.error || 'Unable to load routes for this date right now.'}
               </div>
             ) : null}
-            {isPastDate ? <div className="manifest-note">Past dates are read-only. Select today to sync, upload, or assign.</div> : null}
+            {isPastDate ? (
+              <div className="info-banner">
+                Historical date mode: sync and upload are disabled for {formatMorningDate(date)}. Existing manifests can still be reviewed and assigned, or archived to clear them from operational views while preserving timecards and breaks.
+              </div>
+            ) : null}
+            {archiveRoutesMutation.isError ? (
+              <div className="error-banner">
+                {archiveRoutesMutation.error?.response?.data?.error || 'Failed to archive routes for this date.'}
+              </div>
+            ) : null}
+            {archiveRoutesMutation.data?.archived_count ? (
+              <div className="success-banner">
+                Archived {archiveRoutesMutation.data.archived_count} route{archiveRoutesMutation.data.archived_count === 1 ? '' : 's'} for {formatMorningDate(date)}. Labor history and breaks were kept.
+              </div>
+            ) : null}
           </div>
         ) : null}
       </div>
@@ -821,7 +1008,7 @@ export default function ManifestPage() {
         <div className="card manifest-step-card">
           <div className="manifest-step-header">
             <div>
-              <div className="card-title">{routeSummaries.length} routes loaded for today</div>
+              <div className="card-title">{routeSummaries.length} routes loaded for {formatMorningDate(date)}</div>
               <div className="manifest-step-subtitle">Assign drivers and vehicles, then review routes before drivers head out.</div>
             </div>
             <div className="manifest-note">{allRoutesHaveDrivers ? 'All visible routes have drivers assigned.' : 'Some routes still need driver assignment.'}</div>
@@ -856,7 +1043,7 @@ export default function ManifestPage() {
                 <button
                   className="manifest-attention-chip urgent"
                   key={`${route.id}-driver`}
-                  onClick={() => navigate('/manifest')}
+                  onClick={() => jumpToRouteField(route.id, 'driver_id')}
                   type="button"
                 >
                   {route.work_area_name}: assign driver
@@ -866,7 +1053,7 @@ export default function ManifestPage() {
                 <button
                   className="manifest-attention-chip warning"
                   key={`${route.id}-vehicle`}
-                  onClick={() => navigate('/manifest')}
+                  onClick={() => jumpToRouteField(route.id, 'vehicle_id')}
                   type="button"
                 >
                   {route.work_area_name}: assign vehicle
@@ -905,30 +1092,6 @@ export default function ManifestPage() {
             </div>
           ) : null}
 
-          <div className="manifest-map-shell">
-            <div className="manifest-map-header">
-              <div>
-                <div className="card-title">Route Map</div>
-                <div className="manifest-step-subtitle">
-                  All visible routes plotted together so you can spot work-area spread before drivers head out.
-                </div>
-              </div>
-              <div className="manifest-route-key">
-                {routeSummaries.map((route) => (
-                  <div className="manifest-route-key-item" key={route.id}>
-                    <span
-                      className="manifest-route-key-dot"
-                      style={{ background: routeColorMap.get(route.work_area_name) || '#ff6200' }}
-                    />
-                    <span>{route.work_area_name}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            <MapView center={manifestCenter} markers={manifestMarkers} />
-          </div>
-
           <div className="manifest-route-grid">
             {routeSummaries.map((route) => {
               const routeStatus = getRouteStatus(route);
@@ -940,7 +1103,17 @@ export default function ManifestPage() {
               const attentionItems = getRouteAttentionItems(route);
 
               return (
-                <article className="manifest-route-card" key={route.id}>
+                <article
+                  className="manifest-route-card"
+                  key={route.id}
+                  ref={(node) => {
+                    if (node) {
+                      routeCardRefs.current.set(route.id, node);
+                    } else {
+                      routeCardRefs.current.delete(route.id);
+                    }
+                  }}
+                >
                   <div className="manifest-route-card-header">
                     <div>
                       <div className="manifest-route-card-title">{route.work_area_name || '--'}</div>
@@ -987,8 +1160,15 @@ export default function ManifestPage() {
                       <span className="field-label">Driver</span>
                       <select
                         className={`text-field compact manifest-inline-select${!route.driver_id ? ' unassigned' : ''}`}
-                        disabled={isSaving || isPastDate}
+                        disabled={isSaving || (!canModifyExistingRoutes && isPastDate)}
                         onChange={(event) => handleAssignmentChange(route, 'driver_id', event.target.value)}
+                        ref={(node) => {
+                          if (node) {
+                            routeFieldRefs.current.set(`${route.id}:driver_id`, node);
+                          } else {
+                            routeFieldRefs.current.delete(`${route.id}:driver_id`);
+                          }
+                        }}
                         value={route.driver_id || ''}
                       >
                         <option value="">Select driver...</option>
@@ -1002,8 +1182,15 @@ export default function ManifestPage() {
                       <span className="field-label">Vehicle</span>
                       <select
                         className="text-field compact manifest-inline-select"
-                        disabled={isSaving || isPastDate}
+                        disabled={isSaving || (!canModifyExistingRoutes && isPastDate)}
                         onChange={(event) => handleAssignmentChange(route, 'vehicle_id', event.target.value)}
+                        ref={(node) => {
+                          if (node) {
+                            routeFieldRefs.current.set(`${route.id}:vehicle_id`, node);
+                          } else {
+                            routeFieldRefs.current.delete(`${route.id}:vehicle_id`);
+                          }
+                        }}
                         value={route.vehicle_id || ''}
                       >
                         <option value="">Select vehicle...</option>
@@ -1045,6 +1232,30 @@ export default function ManifestPage() {
             })}
           </div>
 
+          <div className="manifest-map-shell">
+            <div className="manifest-map-header">
+              <div>
+                <div className="card-title">Route Map</div>
+                <div className="manifest-step-subtitle">
+                  All visible routes plotted together so you can spot work-area spread before drivers head out.
+                </div>
+              </div>
+              <div className="manifest-route-key">
+                {routeSummaries.map((route) => (
+                  <div className="manifest-route-key-item" key={route.id}>
+                    <span
+                      className="manifest-route-key-dot"
+                      style={{ background: routeColorMap.get(route.work_area_name) || '#ff6200' }}
+                    />
+                    <span>{route.work_area_name}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <MapView center={manifestCenter} markers={manifestMarkers} />
+          </div>
+
           <div className="manifest-route-table">
             <div className="manifest-route-header">
               <span>Work Area</span>
@@ -1067,7 +1278,7 @@ export default function ManifestPage() {
                     <span>
                       <select
                         className={`text-field compact manifest-inline-select${!route.driver_id ? ' unassigned' : ''}`}
-                        disabled={isSaving || isPastDate}
+                        disabled={isSaving || (!canModifyExistingRoutes && isPastDate)}
                         onChange={(event) => handleAssignmentChange(route, 'driver_id', event.target.value)}
                         value={route.driver_id || ''}
                       >
@@ -1080,7 +1291,7 @@ export default function ManifestPage() {
                     <span>
                       <select
                         className="text-field compact manifest-inline-select"
-                        disabled={isSaving || isPastDate}
+                        disabled={isSaving || (!canModifyExistingRoutes && isPastDate)}
                         onChange={(event) => handleAssignmentChange(route, 'vehicle_id', event.target.value)}
                         value={route.vehicle_id || ''}
                       >

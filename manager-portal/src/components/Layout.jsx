@@ -3,12 +3,14 @@ import { useState } from 'react';
 import { NavLink, useNavigate } from 'react-router-dom';
 
 import { VEDR_CONNECTION_STATUSES } from '../config/constants';
-import { clearManagerToken } from '../services/auth';
+import { clearManagerToken, saveManagerToken } from '../services/auth';
 import api from '../services/api';
 
 const links = [
   { to: '/', label: 'Dashboard', end: true, icon: 'dashboard' },
   { to: '/manifest', label: 'Manifest', icon: 'manifest' },
+  { to: '/csa', label: 'CSA', icon: 'csa' },
+  { to: '/records', label: 'Records', icon: 'records' },
   { to: '/drivers', label: 'Drivers', icon: 'drivers' },
   { to: '/vehicles', label: 'Vehicles', icon: 'vehicles' },
   { to: '/vedr', label: 'VEDR', icon: 'vedr', showsSetupBadge: true },
@@ -34,6 +36,19 @@ function SidebarIcon({ type }) {
       return (
         <svg aria-hidden="true" className="sidebar-link-icon-svg" viewBox="0 0 24 24">
           <path d="M16 19a4 4 0 0 0-8 0M12 13a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7zm7 6a3.5 3.5 0 0 0-3-3.46M17 6.5a3 3 0 0 1 0 6" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+      );
+    case 'csa':
+      return (
+        <svg aria-hidden="true" className="sidebar-link-icon-svg" viewBox="0 0 24 24">
+          <path d="M4 19V8.5L12 4l8 4.5V19M8 19v-4h8v4M9 10h.01M15 10h.01" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+      );
+    case 'records':
+      return (
+        <svg aria-hidden="true" className="sidebar-link-icon-svg" viewBox="0 0 24 24">
+          <path d="M6 4h9l3 3v13H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2zm8 1.5V8h2.5" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+          <path d="M8 11h8M8 15h8M8 19h5" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
         </svg>
       );
     case 'vehicles':
@@ -63,6 +78,7 @@ function SidebarIcon({ type }) {
 export default function Layout({ children }) {
   const navigate = useNavigate();
   const [isSidebarHidden, setIsSidebarHidden] = useState(false);
+  const [isSwitchingCsa, setIsSwitchingCsa] = useState(false);
   const vedrSettingsQuery = useQuery({
     queryKey: ['vedr-settings'],
     queryFn: async () => {
@@ -70,10 +86,39 @@ export default function Layout({ children }) {
       return response.data || { provider: null, connection_status: VEDR_CONNECTION_STATUSES.NOT_STARTED, setup_completed_at: null };
     }
   });
+  const csaQuery = useQuery({
+    queryKey: ['sidebar-csas'],
+    queryFn: async () => {
+      const response = await api.get('/manager/csas');
+      return response.data || { current_csa: null, csas: [] };
+    }
+  });
 
   const showVedrSetupBadge = !vedrSettingsQuery.isLoading
     && !vedrSettingsQuery.isError
     && vedrSettingsQuery.data?.connection_status !== VEDR_CONNECTION_STATUSES.CONNECTED;
+
+  async function handleCsaSwitch(event) {
+    const nextAccountId = event.target.value;
+
+    if (!nextAccountId || nextAccountId === csaQuery.data?.current_csa?.id) {
+      return;
+    }
+
+    setIsSwitchingCsa(true);
+
+    try {
+      const response = await api.post('/manager/csas/switch', {
+        account_id: nextAccountId
+      });
+      saveManagerToken(response.data?.token || '');
+      window.location.assign('/setup');
+    } catch (_error) {
+      window.alert('CSA switch could not be completed right now.');
+    } finally {
+      setIsSwitchingCsa(false);
+    }
+  }
 
   function handleLogout() {
     clearManagerToken();
@@ -84,11 +129,37 @@ export default function Layout({ children }) {
     <div className={`portal-shell ${isSidebarHidden ? 'sidebar-hidden' : ''}`}>
       <aside className={`sidebar ${isSidebarHidden ? 'hidden' : ''}`}>
         <div className="sidebar-top">
-          <div className="brand">
+          <a className="brand sidebar-brand-link" href="https://readyroute.org">
             <span className="brand-ready">ready</span>
             <span className="brand-route">Route</span>
-          </div>
+          </a>
           <div className="brand-subtitle">Last-mile routing</div>
+          <div className="sidebar-csa-card">
+            <div className="sidebar-csa-label">Current CSA</div>
+            <div className="sidebar-csa-name">
+              {csaQuery.isLoading
+                ? 'Loading...'
+                : csaQuery.data?.current_csa?.company_name || 'No CSA selected'}
+            </div>
+            {(csaQuery.data?.csas || []).length > 1 ? (
+              <select
+                className="sidebar-csa-select"
+                disabled={isSwitchingCsa}
+                onChange={handleCsaSwitch}
+                value={csaQuery.data?.current_csa?.id || ''}
+              >
+                {(csaQuery.data?.csas || []).map((csa) => (
+                  <option key={csa.id} value={csa.id}>
+                    {csa.company_name}
+                  </option>
+                ))}
+              </select>
+            ) : (
+              <div className="sidebar-csa-hint">
+                Link another CSA here, or open ReadyRoute to start a separate workspace.
+              </div>
+            )}
+          </div>
         </div>
 
         <nav className="sidebar-nav">

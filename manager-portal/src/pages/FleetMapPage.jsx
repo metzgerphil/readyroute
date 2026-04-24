@@ -1,10 +1,11 @@
 import { format } from 'date-fns';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 
 import api from '../services/api';
 import { createDriverPositionMarker } from '../utils/stopMarkers';
+import { getTodayString, saveStoredOperationsDate } from '../utils/operationsDate';
 import './FleetMapPage.css';
 
 const GOOGLE_MAPS_KEY = import.meta.env.VITE_GOOGLE_MAPS_KEY;
@@ -68,10 +69,6 @@ function loadGoogleMapsScript() {
   return googleMapsScriptPromise;
 }
 
-function getTodayString() {
-  return format(new Date(), 'yyyy-MM-dd');
-}
-
 function getFriendlyDate(dateValue) {
   return format(new Date(`${dateValue}T12:00:00`), 'MMMM d, yyyy');
 }
@@ -126,16 +123,25 @@ function getRouteColor(route, index) {
 
 export default function FleetMapPage() {
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const mapContainerRef = useRef(null);
   const mapInstanceRef = useRef(null);
   const infoWindowRef = useRef(null);
   const stopMarkersRef = useRef([]);
   const driverMarkersRef = useRef(new Map());
   const routeLinesRef = useRef([]);
-  const [date, setDate] = useState(getTodayString());
+  const initialDate = searchParams.get('date') || getTodayString();
+  const [date, setDate] = useState(initialDate);
   const [mapError, setMapError] = useState('');
   const [mapReady, setMapReady] = useState(false);
   const [selectedRouteId, setSelectedRouteId] = useState(null);
+
+  useEffect(() => {
+    saveStoredOperationsDate(date);
+    const nextParams = new URLSearchParams(searchParams);
+    nextParams.set('date', date);
+    setSearchParams(nextParams, { replace: true });
+  }, [date, searchParams, setSearchParams]);
 
   const routesQuery = useQuery({
     queryKey: ['fleet-map-routes', date],
@@ -405,10 +411,10 @@ export default function FleetMapPage() {
                 the Manifest page.
               </p>
               <div className="fleet-map-empty-state-actions">
-                <button className="primary-cta" onClick={() => navigate('/manifest?action=sync')} type="button">
+                <button className="primary-cta" onClick={() => navigate(`/manifest?date=${date}&action=sync`)} type="button">
                   Open Route Sync
                 </button>
-                <button className="secondary-button" onClick={() => navigate('/manifest')} type="button">
+                <button className="secondary-button" onClick={() => navigate(`/manifest?date=${date}`)} type="button">
                   Open Manifest
                 </button>
               </div>
