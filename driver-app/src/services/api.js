@@ -2,13 +2,11 @@ import axios from 'axios';
 
 import { getToken, removeToken } from './auth';
 
-const LOCAL_API_URL =
-  process.env.EXPO_PUBLIC_API_URL_LOCAL ||
-  process.env.EXPO_PUBLIC_API_URL ||
-  'http://127.0.0.1:3001';
-const PRODUCTION_API_URL = process.env.EXPO_PUBLIC_API_URL || 'https://api.readyroute.app';
+const LOCAL_API_URL = process.env.EXPO_PUBLIC_API_URL_LOCAL || 'http://127.0.0.1:3001';
+const PRODUCTION_API_URL = process.env.EXPO_PUBLIC_API_URL || 'https://readyroute-backend-production.up.railway.app';
+const USE_LOCAL_API = String(process.env.EXPO_PUBLIC_USE_LOCAL_API || '').trim().toLowerCase() === 'true';
 
-export const API_URL = __DEV__ ? LOCAL_API_URL : PRODUCTION_API_URL;
+export const API_URL = __DEV__ && USE_LOCAL_API ? LOCAL_API_URL : PRODUCTION_API_URL;
 
 let unauthorizedHandler = null;
 

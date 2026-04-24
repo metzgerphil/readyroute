@@ -5,6 +5,7 @@ import { act, fireEvent, render, waitFor } from '@testing-library/react-native';
 import MyDriveScreen from './MyDriveScreen';
 import api from '../services/api';
 import * as Location from 'expo-location';
+import * as auth from '../services/auth';
 
 const mockMapMethods = {
   animateCamera: jest.fn(),
@@ -19,6 +20,14 @@ jest.mock('../services/api', () => ({
     post: jest.fn(),
     patch: jest.fn()
   }
+}));
+
+jest.mock('../services/auth', () => ({
+  getPinColorMode: jest.fn(),
+  getClockInTime: jest.fn(),
+  removeClockInTime: jest.fn(),
+  saveClockInTime: jest.fn(),
+  subscribePinColorMode: jest.fn(() => jest.fn())
 }));
 
 jest.mock('expo-location', () => ({
@@ -76,6 +85,10 @@ describe('MyDriveScreen interactions', () => {
         longitude: -117.21
       }
     });
+    auth.getClockInTime.mockResolvedValue(null);
+    auth.getPinColorMode.mockResolvedValue('sid');
+    auth.removeClockInTime.mockResolvedValue();
+    auth.saveClockInTime.mockResolvedValue();
 
     api.get.mockImplementation((url) => {
       if (url === '/routes/today') {
@@ -112,6 +125,15 @@ describe('MyDriveScreen interactions', () => {
         });
       }
 
+      if (url === '/timecards/status') {
+        return Promise.resolve({
+          data: {
+            clock_in_at: null,
+            active_break: null
+          }
+        });
+      }
+
       return Promise.reject(new Error(`Unexpected GET ${url}`));
     });
 
@@ -126,43 +148,35 @@ describe('MyDriveScreen interactions', () => {
     return screen;
   }
 
-  it('keeps zoom but recenters on the newly selected stop and opens details', async () => {
+  it('keeps zoom steady when selecting a stop and opens details', async () => {
     const screen = await renderAndFlush();
 
     await waitFor(() => {
-      expect(mockMapMethods.animateCamera).toHaveBeenCalledWith(
-        {
-          center: {
-            latitude: 33.1,
-            longitude: -117.2
-          }
-        },
-        { duration: 500 }
+      expect(mockMapMethods.fitToCoordinates).toHaveBeenCalledWith(
+        [
+          { latitude: 33.1, longitude: -117.2 },
+          { latitude: 33.2, longitude: -117.3 }
+        ],
+        expect.objectContaining({
+          animated: false
+        })
       );
     });
+    const initialFitCallCount = mockMapMethods.fitToCoordinates.mock.calls.length;
 
-    fireEvent.press(screen.getByTestId('stop-marker-stop-2'));
+    fireEvent.press(screen.getByTestId('stop-marker-stop:stop-2'));
 
     await screen.findByText(/Alex Driver/);
 
-    await waitFor(() => {
-      expect(mockMapMethods.animateCamera).toHaveBeenLastCalledWith(
-        {
-          center: {
-            latitude: 33.2,
-            longitude: -117.3
-          }
-        },
-        { duration: 500 }
-      );
-    });
+    expect(mockMapMethods.animateCamera).not.toHaveBeenCalled();
+    expect(mockMapMethods.animateToRegion).not.toHaveBeenCalled();
 
-    fireEvent.press(screen.getByText('Open details'));
+    fireEvent.press(screen.getByText('Tap to open stop details'));
 
     expect(navigation.navigate).toHaveBeenCalledWith('StopDetail', {
       stopId: 'stop-2'
     });
-    expect(mockMapMethods.fitToCoordinates).not.toHaveBeenCalled();
+    expect(mockMapMethods.fitToCoordinates).toHaveBeenCalledTimes(initialFitCallCount);
   });
 
   it('hands off navigation to Google Maps and completes the selected stop', async () => {
@@ -173,19 +187,8 @@ describe('MyDriveScreen interactions', () => {
 
     const screen = await renderAndFlush();
 
-    fireEvent.press(screen.getByTestId('stop-marker-stop-2'));
-
-    await waitFor(() => {
-      expect(mockMapMethods.animateCamera).toHaveBeenLastCalledWith(
-        {
-          center: {
-            latitude: 33.2,
-            longitude: -117.3
-          }
-        },
-        { duration: 500 }
-      );
-    });
+    fireEvent.press(screen.getByTestId('stop-marker-stop:stop-2'));
+    await screen.findByText('Nav');
 
     fireEvent.press(screen.getByText('Nav'));
 
@@ -213,6 +216,9 @@ describe('MyDriveScreen interactions', () => {
 
   it('recenters using fitToCoordinates when the driver is near the selected stop', async () => {
     const screen = await renderAndFlush();
+
+    fireEvent.press(screen.getByTestId('stop-marker-stop:stop-1'));
+    await screen.findByText('Nav');
 
     fireEvent.press(screen.getByText('Center'));
 
@@ -254,6 +260,15 @@ describe('MyDriveScreen interactions', () => {
         });
       }
 
+      if (url === '/timecards/status') {
+        return Promise.resolve({
+          data: {
+            clock_in_at: null,
+            active_break: null
+          }
+        });
+      }
+
       return Promise.reject(new Error(`Unexpected GET ${url}`));
     });
 
@@ -261,6 +276,7 @@ describe('MyDriveScreen interactions', () => {
 
     const screen = await renderAndFlush();
 
+    fireEvent.press(screen.getByTestId('stop-marker-stop:stop-1'));
     await waitFor(() => {
       expect(screen.getByText('Complete')).toBeTruthy();
     });
@@ -280,6 +296,8 @@ describe('MyDriveScreen interactions', () => {
 
     const screen = await renderAndFlush();
 
+    fireEvent.press(screen.getByTestId('stop-marker-stop:stop-1'));
+    await screen.findByText('Nav');
     fireEvent.press(screen.getByText('Nav'));
 
     await waitFor(() => {
@@ -304,6 +322,8 @@ describe('MyDriveScreen interactions', () => {
 
     const screen = await renderAndFlush();
 
+    fireEvent.press(screen.getByTestId('stop-marker-stop:stop-1'));
+    await screen.findByText('Complete');
     fireEvent.press(screen.getByText('Complete'));
 
     await waitFor(() => {
@@ -348,6 +368,15 @@ describe('MyDriveScreen interactions', () => {
           });
         }
 
+        if (url === '/timecards/status') {
+          return Promise.resolve({
+            data: {
+              clock_in_at: null,
+              active_break: null
+            }
+          });
+        }
+
         return Promise.reject(new Error(`Unexpected GET ${url}`));
       });
 
@@ -367,5 +396,113 @@ describe('MyDriveScreen interactions', () => {
     });
 
     alertSpy.mockRestore();
+  });
+
+  it('shows clock and break controls on My Drive and clocks in', async () => {
+    api.post.mockImplementation((url) => {
+      if (url === '/timecards/clock-in') {
+        return Promise.resolve({
+          data: {
+            clock_in_at: '2026-04-23T15:58:00.000Z'
+          }
+        });
+      }
+
+      if (url === '/routes/position') {
+        return Promise.resolve({ data: {} });
+      }
+
+      return Promise.resolve({ data: {} });
+    });
+
+    const screen = await renderAndFlush();
+
+    await waitFor(() => {
+      expect(screen.getByText('Clock In')).toBeTruthy();
+    });
+
+    fireEvent.press(screen.getByText('Clock In'));
+
+    await waitFor(() => {
+      expect(api.post).toHaveBeenCalledWith('/timecards/clock-in', {
+        route_id: 'route-1'
+      });
+    });
+
+    expect(await screen.findByText('Clock Out')).toBeTruthy();
+  });
+
+  it('offers break, lunch, or clock out from the single labor button after clock-in', async () => {
+    const alertSpy = jest.spyOn(Alert, 'alert').mockImplementation(() => {});
+    api.post.mockImplementation((url) => {
+      if (url === '/timecards/clock-in') {
+        return Promise.resolve({
+          data: {
+            clock_in_at: '2026-04-23T15:58:00.000Z'
+          }
+        });
+      }
+
+      if (url === '/timecards/breaks/start') {
+        return Promise.resolve({
+          data: {
+            active_break: {
+              id: 'break-1',
+              break_type: 'rest',
+              started_at: '2026-04-23T16:10:00.000Z'
+            }
+          }
+        });
+      }
+
+      return Promise.resolve({ data: {} });
+    });
+
+    const screen = await renderAndFlush();
+
+    fireEvent.press(screen.getByText('Clock In'));
+    await screen.findByText('Clock Out');
+
+    fireEvent.press(screen.getByText('Clock Out'));
+
+    await waitFor(() => {
+      expect(alertSpy).toHaveBeenCalledWith(
+        'Manage labor',
+        'Choose what you want to do next.',
+        expect.arrayContaining([
+          expect.objectContaining({ text: 'Break' }),
+          expect.objectContaining({ text: 'Lunch' }),
+          expect.objectContaining({ text: 'Clock Out' })
+        ])
+      );
+    });
+
+    const options = alertSpy.mock.calls.at(-1)[2];
+    const breakOption = options.find((option) => option.text === 'Break');
+    await act(async () => {
+      breakOption.onPress();
+    });
+
+    await waitFor(() => {
+      expect(api.post).toHaveBeenCalledWith('/timecards/breaks/start', {
+        break_type: 'rest'
+      });
+    });
+
+    alertSpy.mockRestore();
+  });
+
+  it('clears stale local clock-in state when My Drive reloads without an active timecard', async () => {
+    auth.getClockInTime.mockResolvedValue('2026-04-23T15:58:00.000Z');
+
+    const screen = await renderAndFlush();
+
+    await waitFor(() => {
+      expect(screen.getByText('Clock In')).toBeTruthy();
+    });
+
+    expect(screen.queryByText('Clock Out')).toBeNull();
+    expect(auth.removeClockInTime).toHaveBeenCalled();
+    expect(auth.saveClockInTime).not.toHaveBeenCalledWith('2026-04-23T15:58:00.000Z');
   });
 });
