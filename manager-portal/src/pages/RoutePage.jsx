@@ -100,8 +100,30 @@ function getPackageCount(stop) {
   return Array.isArray(stop.packages) ? stop.packages.length : 0;
 }
 
-function getStopMapLabel(stop) {
+function getStopMarkerLabel(stop) {
+  return `ST#${stop?.sequence_order || '—'}`;
+}
+
+function getStopPopupTitle(stop) {
   return stop?.sid && String(stop.sid) !== '0' ? `SID ${stop.sid}` : `ST#${stop.sequence_order || '—'}`;
+}
+
+function formatCompletionTime(stop) {
+  const timestamp = stop?.completed_at || stop?.scanned_at;
+  if (!timestamp || stop?.status !== 'delivered') {
+    return null;
+  }
+
+  const date = new Date(timestamp);
+  if (Number.isNaN(date.getTime())) {
+    return null;
+  }
+
+  return new Intl.DateTimeFormat('en-US', {
+    hour: 'numeric',
+    minute: '2-digit',
+    hour12: true
+  }).format(date);
 }
 
 function formatTimeCommit(stop) {
@@ -303,6 +325,7 @@ function getRouteCentroid(stops = []) {
 
 function buildInfoWindow(stop) {
   const packageCount = getPackageCount(stop);
+  const completionTime = formatCompletionTime(stop);
   const stopType = getStopType(stop);
   const timeCommitLine = formatTimeCommit(stop);
   const timeCommitCopy = timeCommitLine
@@ -339,7 +362,7 @@ function buildInfoWindow(stop) {
   return `
     <div style="min-width:320px; max-width:430px; color:#173042; padding:10px 8px 8px;">
       <div style="display:flex; align-items:center; justify-content:space-between; gap:14px;">
-        <div style="font-size:22px; line-height:1; font-weight:950; letter-spacing:-0.02em;">${escapeHtml(getStopMapLabel(stop))}</div>
+        <div style="font-size:22px; line-height:1; font-weight:950; letter-spacing:-0.02em;">${escapeHtml(getStopPopupTitle(stop))}</div>
         <div style="display:inline-flex; align-items:center; gap:8px; padding:8px 12px; border-radius:999px; background:#f1f5f9; color:#173042; font-size:18px; font-weight:950;" aria-label="${packageCount} packages">
           <svg aria-hidden="true" width="22" height="22" viewBox="0 0 24 24" style="display:block;">
             <path d="M4 8.5 12 4l8 4.5v7L12 20l-8-4.5v-7Z" fill="#ff6200" opacity="0.16" stroke="#ff6200" stroke-width="1.8" />
@@ -391,6 +414,14 @@ function buildInfoWindow(stop) {
         <span style="width:8px; height:8px; border-radius:50%; background:${locationAccuracy.color}; display:inline-block;"></span>
         <span>${locationAccuracy.label}</span>
       </div>
+      ${
+        completionTime
+          ? `<div style="margin-top:12px; display:inline-flex; align-items:center; gap:8px; padding:8px 12px; border-radius:999px; background:#16a34a; color:#ffffff; font-size:18px; font-weight:950;">
+              <span style="font-size:22px; line-height:1;">✓</span>
+              <span>${escapeHtml(completionTime)}</span>
+            </div>`
+          : ''
+      }
       ${
         timeCommitCopy
           ? `<div style="margin-top:10px; padding:8px 10px; border-radius:12px; background:#fff3cd; color:#8a5200; font-size:12px; font-weight:800;">
@@ -446,6 +477,7 @@ export default function RoutePage() {
   const mapContainerRef = useRef(null);
   const mapInstanceRef = useRef(null);
   const infoWindowRef = useRef(null);
+  const selectedStopIdRef = useRef(null);
   const stopMarkersRef = useRef(new Map());
   const driverMarkerRef = useRef(null);
   const routePolylineRef = useRef(null);
@@ -604,6 +636,47 @@ export default function RoutePage() {
   const propertyEditorStop = allStops.find((stop) => stop.id === propertyEditorStopId) || null;
 
   useEffect(() => {
+    selectedStopIdRef.current = selectedStopId;
+  }, [selectedStopId]);
+
+  function getInfoWindowPixelOffset(marker) {
+    const google = window.google;
+    const map = mapInstanceRef.current;
+    const position = marker?.getPosition?.();
+    const projection = map?.getProjection?.();
+    const center = map?.getCenter?.();
+    const div = map?.getDiv?.();
+
+    if (!google?.maps || !position || !projection || !center || !div) {
+      return google?.maps ? new google.maps.Size(0, -8) : null;
+    }
+
+    const markerPoint = projection.fromLatLngToPoint(position);
+    const centerPoint = projection.fromLatLngToPoint(center);
+    const scale = 2 ** (map.getZoom() || 0);
+    const markerY = (markerPoint.y - centerPoint.y) * scale + div.clientHeight / 2;
+    const topSafeZone = 250;
+
+    return new google.maps.Size(0, markerY < topSafeZone ? topSafeZone - markerY : -8);
+  }
+
+  function openStopInfoWindow(stop, marker) {
+    const infoWindow = infoWindowRef.current;
+    const map = mapInstanceRef.current;
+
+    if (!infoWindow || !map || !marker) {
+      return;
+    }
+
+    const pixelOffset = getInfoWindowPixelOffset(marker);
+    if (pixelOffset) {
+      infoWindow.setOptions({ pixelOffset });
+    }
+    infoWindow.setContent(buildInfoWindow(stop));
+    infoWindow.open({ anchor: marker, map, shouldFocus: false });
+  }
+
+  useEffect(() => {
     if (!actionMessage) {
       return undefined;
     }
@@ -720,7 +793,7 @@ export default function RoutePage() {
             zoomControl: true
           });
           infoWindowRef.current = new google.maps.InfoWindow({
-            disableAutoPan: false,
+            disableAutoPan: true,
             maxWidth: 460,
             pixelOffset: new google.maps.Size(0, -8)
           });
@@ -850,25 +923,23 @@ export default function RoutePage() {
       const marker = new google.maps.Marker({
         map,
         position: { lat: Number(stop.lat), lng: Number(stop.lng) },
-        title: getStopMapLabel(stop),
+        title: getStopMarkerLabel(stop),
         icon: createStopMarkerSVG(stop, stop.id === selectedStopId),
         zIndex: getMarkerZIndex(stop, stop.id === selectedStopId)
       });
 
       marker.addListener('click', () => {
+        selectedStopIdRef.current = stop.id;
         setSelectedStopId(stop.id);
-        map.panTo(marker.getPosition());
-        infoWindow.setContent(buildInfoWindow(stop));
-        infoWindow.open({ anchor: marker, map, shouldFocus: false });
+        openStopInfoWindow(stop, marker);
       });
 
       marker.addListener('mouseover', () => {
-        infoWindow.setContent(buildInfoWindow(stop));
-        infoWindow.open({ anchor: marker, map, shouldFocus: false });
+        openStopInfoWindow(stop, marker);
       });
 
       marker.addListener('mouseout', () => {
-        if (selectedStopId !== stop.id) {
+        if (selectedStopIdRef.current !== stop.id) {
           infoWindow.close();
         }
       });
@@ -969,7 +1040,6 @@ export default function RoutePage() {
   useEffect(() => {
     const google = window.google;
     const map = mapInstanceRef.current;
-    const infoWindow = infoWindowRef.current;
 
     if (!google?.maps || !map || !selectedStopId) {
       return;
@@ -989,9 +1059,7 @@ export default function RoutePage() {
     const selectedStop = orderedStops.find((stop) => stop.id === selectedStopId);
 
     if (selectedMarker && selectedStop) {
-      map.panTo(selectedMarker.getPosition());
-      infoWindow.setContent(buildInfoWindow(selectedStop));
-      infoWindow.open({ anchor: selectedMarker, map, shouldFocus: false });
+      openStopInfoWindow(selectedStop, selectedMarker);
     }
   }, [orderedStops, selectedStopId]);
 
