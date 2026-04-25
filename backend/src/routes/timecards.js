@@ -40,6 +40,31 @@ function getPayableHours(workedHours, lunchMinutes) {
   return Math.max(0, Number((Number(workedHours || 0) - Number(lunchMinutes || 0) / 60).toFixed(2)));
 }
 
+function getBreakLimitMinutes(breakType) {
+  switch (breakType) {
+    case 'lunch':
+      return 30;
+    case 'rest':
+    case 'other':
+    default:
+      return 15;
+  }
+}
+
+function getScheduledBreakEnd(startedAt, breakType) {
+  if (!startedAt) {
+    return null;
+  }
+
+  const startedAtMs = new Date(startedAt).getTime();
+
+  if (!Number.isFinite(startedAtMs)) {
+    return null;
+  }
+
+  return new Date(startedAtMs + getBreakLimitMinutes(breakType) * 60 * 1000).toISOString();
+}
+
 async function findOpenTimecard(supabase, driverId) {
   const { data, error } = await supabase
     .from('timecards')
@@ -64,6 +89,67 @@ async function findActiveBreak(supabase, timecardId) {
     .maybeSingle();
 
   return { data, error };
+}
+
+async function closeBreakRecord(supabase, breakRecord, endedAt) {
+  if (!breakRecord?.id || !endedAt) {
+    return { error: null };
+  }
+
+  const { error } = await supabase
+    .from('timecard_breaks')
+    .update({ ended_at: endedAt })
+    .eq('id', breakRecord.id);
+
+  return { error };
+}
+
+async function resolveActiveBreakState(supabase, timecardId, now = new Date()) {
+  const { data: activeBreak, error } = await findActiveBreak(supabase, timecardId);
+
+  if (error || !activeBreak) {
+    return {
+      data: activeBreak || null,
+      expired_break: null,
+      error
+    };
+  }
+
+  const scheduledEndAt = getScheduledBreakEnd(activeBreak.started_at, activeBreak.break_type);
+  const scheduledEndMs = scheduledEndAt ? new Date(scheduledEndAt).getTime() : null;
+  const nowMs = now.getTime();
+
+  if (Number.isFinite(scheduledEndMs) && nowMs >= scheduledEndMs) {
+    const { error: closeError } = await closeBreakRecord(supabase, activeBreak, scheduledEndAt);
+
+    if (closeError) {
+      return {
+        data: null,
+        expired_break: null,
+        error: closeError
+      };
+    }
+
+    return {
+      data: null,
+      expired_break: {
+        ...activeBreak,
+        ended_at: scheduledEndAt,
+        scheduled_end_at: scheduledEndAt,
+        auto_ended: true
+      },
+      error: null
+    };
+  }
+
+  return {
+    data: {
+      ...activeBreak,
+      scheduled_end_at: scheduledEndAt
+    },
+    expired_break: null,
+    error: null
+  };
 }
 
 async function findRouteForDriver(supabase, { routeId, driverId, accountId }) {
@@ -359,9 +445,13 @@ function createTimecardsRouter(options = {}) {
       }
 
       let activeBreak = null;
+      let expiredBreak = null;
 
       if (activeTimecard?.id) {
-        const { data: foundBreak, error: breakError } = await findActiveBreak(supabase, activeTimecard.id);
+        const { data: foundBreak, expired_break: autoEndedBreak, error: breakError } = await resolveActiveBreakState(
+          supabase,
+          activeTimecard.id
+        );
 
         if (breakError) {
           console.error('Break status lookup failed:', breakError);
@@ -369,12 +459,14 @@ function createTimecardsRouter(options = {}) {
         }
 
         activeBreak = foundBreak || null;
+        expiredBreak = autoEndedBreak || null;
       }
 
       return res.status(200).json({
         ok: true,
         active_timecard: activeTimecard || null,
-        active_break: activeBreak
+        active_break: activeBreak,
+        expired_break: expiredBreak
       });
     } catch (error) {
       console.error('Timecard status endpoint failed:', error);
@@ -462,7 +554,7 @@ function createTimecardsRouter(options = {}) {
       }
 
       const clockedOutAt = getUtcTimestamp();
-      const { data: activeBreak, error: activeBreakError } = await findActiveBreak(supabase, activeTimecard.id);
+      const { data: activeBreak, error: activeBreakError } = await resolveActiveBreakState(supabase, activeTimecard.id);
 
       if (activeBreakError) {
         console.error('Clock-out active break lookup failed:', activeBreakError);
@@ -470,10 +562,7 @@ function createTimecardsRouter(options = {}) {
       }
 
       if (activeBreak?.id) {
-        const { error: closeBreakError } = await supabase
-          .from('timecard_breaks')
-          .update({ ended_at: clockedOutAt })
-          .eq('id', activeBreak.id);
+        const { error: closeBreakError } = await closeBreakRecord(supabase, activeBreak, clockedOutAt);
 
         if (closeBreakError) {
           console.error('Clock-out break close failed:', closeBreakError);
@@ -535,7 +624,7 @@ function createTimecardsRouter(options = {}) {
         return res.status(400).json({ error: 'Clock in before starting a break' });
       }
 
-      const { data: activeBreak, error: activeBreakError } = await findActiveBreak(supabase, activeTimecard.id);
+      const { data: activeBreak, error: activeBreakError } = await resolveActiveBreakState(supabase, activeTimecard.id);
 
       if (activeBreakError) {
         console.error('Break start active break lookup failed:', activeBreakError);
@@ -565,12 +654,17 @@ function createTimecardsRouter(options = {}) {
         return res.status(500).json({ error: 'Failed to start break' });
       }
 
+      const scheduledEndAt = getScheduledBreakEnd(insertedBreak?.started_at || startedAt, breakType);
+
       return res.status(201).json({
         ok: true,
-        active_break: insertedBreak || {
-          id: null,
-          break_type: breakType,
-          started_at: startedAt
+        active_break: {
+          ...(insertedBreak || {
+            id: null,
+            break_type: breakType,
+            started_at: startedAt
+          }),
+          scheduled_end_at: scheduledEndAt
         }
       });
     } catch (error) {
@@ -592,7 +686,7 @@ function createTimecardsRouter(options = {}) {
         return res.status(400).json({ error: 'No active shift found' });
       }
 
-      const { data: activeBreak, error: activeBreakError } = await findActiveBreak(supabase, activeTimecard.id);
+      const { data: activeBreak, error: activeBreakError } = await resolveActiveBreakState(supabase, activeTimecard.id);
 
       if (activeBreakError) {
         console.error('Break end active break lookup failed:', activeBreakError);
@@ -604,10 +698,7 @@ function createTimecardsRouter(options = {}) {
       }
 
       const endedAt = getUtcTimestamp();
-      const { error: updateError } = await supabase
-        .from('timecard_breaks')
-        .update({ ended_at: endedAt })
-        .eq('id', activeBreak.id);
+      const { error: updateError } = await closeBreakRecord(supabase, activeBreak, endedAt);
 
       if (updateError) {
         console.error('Break end update failed:', updateError);

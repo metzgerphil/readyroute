@@ -152,8 +152,8 @@ function signDriverToken(overrides = {}) {
   );
 }
 
-async function startTestServer(supabase) {
-  const app = createApp({ supabase, jwtSecret: process.env.JWT_SECRET });
+async function startTestServer(supabase, appOptions = {}) {
+  const app = createApp({ supabase, jwtSecret: process.env.JWT_SECRET, ...appOptions });
   const server = await new Promise((resolve) => {
     const listeningServer = app.listen(0, () => resolve(listeningServer));
   });
@@ -256,11 +256,13 @@ function buildGpxManifestBuffer() {
 test('GET /routes/today returns the driver route with stops and nested packages', async () => {
   const supabase = new MockSupabase((query) => {
     if (query.table === 'routes' && query.operation === 'select') {
+      assert.equal(query.filters.find((filter) => filter.column === 'dispatch_state')?.value, 'dispatched');
       return {
         data: {
           id: 'route-1',
           date: '2026-04-08',
           status: 'active',
+          dispatch_state: 'dispatched',
           total_stops: 2,
           completed_stops: 0,
           completed_at: null
@@ -432,6 +434,170 @@ test('GET /routes/today returns the driver route with stops and nested packages'
     assert.equal(body.route.stops[0].has_note, false);
     assert.equal(body.route.stops[0].ready_time, '09:00');
     assert.equal(body.route.stops[1].stop_type, 'combined');
+  } finally {
+    await server.close();
+  }
+});
+
+test('GET /routes/today returns null when the route has not been dispatched yet', async () => {
+  let routeSelectCount = 0;
+  const supabase = new MockSupabase((query) => {
+    if (query.table === 'routes' && query.operation === 'select') {
+      routeSelectCount += 1;
+
+      if (routeSelectCount === 1) {
+        assert.equal(query.filters.find((filter) => filter.column === 'dispatch_state')?.value, 'dispatched');
+      }
+
+      return {
+        data: null,
+        error: null
+      };
+    }
+
+    throw new Error(`Unexpected query ${query.table}:${query.operation}`);
+  });
+
+  const server = await startTestServer(supabase);
+
+  try {
+    const response = await fetch(`${server.baseUrl}/routes/today`, {
+      headers: {
+        Authorization: `Bearer ${signDriverToken()}`
+      }
+    });
+
+    assert.equal(response.status, 200);
+    const body = await response.json();
+    assert.equal(body.route, null);
+    assert.equal(body.driver_day.status, 'unassigned');
+  } finally {
+    await server.close();
+  }
+});
+
+test('GET /routes/today reports awaiting dispatch when a staged route is assigned', async () => {
+  let routeSelectCount = 0;
+  const supabase = new MockSupabase((query) => {
+    if (query.table === 'routes' && query.operation === 'select') {
+      routeSelectCount += 1;
+
+      if (routeSelectCount === 1) {
+        assert.equal(query.filters.find((filter) => filter.column === 'dispatch_state')?.value, 'dispatched');
+        return {
+          data: null,
+          error: null
+        };
+      }
+
+      assert.equal(query.filters.find((filter) => filter.column === 'date')?.value, new Intl.DateTimeFormat('en-CA', {
+        timeZone: process.env.APP_TIME_ZONE || 'America/Los_Angeles',
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit'
+      }).format(new Date()));
+      return {
+        data: {
+          id: 'route-staged',
+          date: '2026-04-24',
+          work_area_name: '810',
+          status: 'pending',
+          dispatch_state: 'staged',
+          sync_state: 'staged_stable',
+          last_manifest_sync_at: '2026-04-24T13:45:00.000Z',
+          last_manifest_change_at: '2026-04-24T13:45:00.000Z',
+          total_stops: 104,
+          completed_stops: 0
+        },
+        error: null
+      };
+    }
+
+    throw new Error(`Unexpected query ${query.table}:${query.operation}`);
+  });
+
+  const server = await startTestServer(supabase);
+
+  try {
+    const response = await fetch(`${server.baseUrl}/routes/today`, {
+      headers: {
+        Authorization: `Bearer ${signDriverToken()}`
+      }
+    });
+
+    assert.equal(response.status, 200);
+    const body = await response.json();
+    assert.equal(body.route, null);
+    assert.equal(body.driver_day.status, 'awaiting_dispatch');
+    assert.equal(body.driver_day.route_preview.work_area_name, '810');
+    assert.equal(body.driver_day.route_preview.total_stops, 104);
+    assert.equal(body.driver_day.route_preview.dispatch_state, 'staged');
+  } finally {
+    await server.close();
+  }
+});
+
+test('GET /routes/today flags post-dispatch changes that require manager review once work has started', async () => {
+  const supabase = new MockSupabase((query) => {
+    if (query.table === 'routes' && query.operation === 'select') {
+      return {
+        data: {
+          id: 'route-1',
+          date: '2026-04-24',
+          work_area_name: '810',
+          status: 'in_progress',
+          dispatch_state: 'dispatched',
+          dispatched_at: '2026-04-24T14:00:00.000Z',
+          sync_state: 'staged_stable',
+          last_manifest_change_at: '2026-04-24T14:25:00.000Z',
+          total_stops: 10,
+          completed_stops: 2,
+          completed_at: null
+        },
+        error: null
+      };
+    }
+
+    if (query.table === 'stops' && query.operation === 'select') {
+      return {
+        data: [],
+        error: null
+      };
+    }
+
+    if (query.table === 'location_corrections' && query.operation === 'select') {
+      return { data: [], error: null };
+    }
+
+    if (query.table === 'apartment_units' && query.operation === 'select') {
+      return { data: [], error: null };
+    }
+
+    if (query.table === 'property_intel' && query.operation === 'select') {
+      return { data: [], error: null };
+    }
+
+    if (query.table === 'stop_notes' && query.operation === 'select') {
+      return { data: [], error: null };
+    }
+
+    throw new Error(`Unexpected query ${query.table}:${query.operation}`);
+  });
+
+  const server = await startTestServer(supabase);
+
+  try {
+    const response = await fetch(`${server.baseUrl}/routes/today`, {
+      headers: {
+        Authorization: `Bearer ${signDriverToken()}`
+      }
+    });
+
+    assert.equal(response.status, 200);
+    const body = await response.json();
+    assert.equal(body.route.manifest_changed_after_dispatch, true);
+    assert.equal(body.route.post_dispatch_change_policy.code, 'manager_review_required');
+    assert.equal(body.driver_day.post_dispatch_change_policy.code, 'manager_review_required');
   } finally {
     await server.close();
   }
@@ -1056,12 +1222,29 @@ test('driver cannot update a stop assigned to a different driver', async () => {
   }
 });
 
-test('POST /routes/pull-fedex returns the integration placeholder message', async () => {
+test('POST /routes/pull-fedex triggers the FedEx sync service', async () => {
   const supabase = new MockSupabase(() => {
     throw new Error('No database queries expected');
   });
+  const fedexSyncService = {
+    async triggerManualSync({ accountId, managerUserId, workDate }) {
+      assert.equal(accountId, 'acct-1');
+      assert.equal(managerUserId, null);
+      assert.equal(workDate, null);
+      return {
+        message: 'FedEx sync worker is ready, but the FCC adapter is not configured yet.',
+        background_sync_enabled: false,
+        sync_engine_status: 'skipped',
+        trigger: 'manual',
+        run: {
+          id: 'run-1',
+          run_status: 'skipped'
+        }
+      };
+    }
+  };
 
-  const server = await startTestServer(supabase);
+  const server = await startTestServer(supabase, { fedexSyncService });
 
   try {
     const managerToken = jwt.sign(
@@ -1077,9 +1260,177 @@ test('POST /routes/pull-fedex returns the integration placeholder message', asyn
       }
     });
 
-    assert.equal(response.status, 200);
+    assert.equal(response.status, 202);
     const body = await response.json();
-    assert.equal(body.message, 'FedEx Integrator approval pending');
+    assert.equal(body.message, 'FedEx sync worker is ready, but the FCC adapter is not configured yet.');
+    assert.equal(body.background_sync_enabled, false);
+    assert.equal(body.sync_engine_status, 'skipped');
+    assert.equal(body.trigger, 'manual');
+    assert.equal(body.run.id, 'run-1');
+  } finally {
+    await server.close();
+  }
+});
+
+test('POST /routes/pull-fedex-progress triggers the FCC progress sync service', async () => {
+  const supabase = new MockSupabase(() => {
+    throw new Error('No database queries expected');
+  });
+  const fedexSyncService = {
+    async syncRouteProgress({ accountId, managerUserId, workDate }) {
+      assert.equal(accountId, 'acct-1');
+      assert.equal(managerUserId, null);
+      assert.equal(workDate, null);
+      return {
+        message: 'Synced FCC progress for 1 work area.',
+        background_sync_enabled: true,
+        sync_engine_status: 'completed_with_changes',
+        trigger: 'progress_sync',
+        run: {
+          id: 'run-progress-1',
+          run_status: 'completed_with_changes'
+        }
+      };
+    }
+  };
+
+  const server = await startTestServer(supabase, { fedexSyncService });
+
+  try {
+    const managerToken = jwt.sign(
+      { account_id: 'acct-1', role: 'manager' },
+      process.env.JWT_SECRET,
+      { expiresIn: '1h' }
+    );
+
+    const response = await fetch(`${server.baseUrl}/routes/pull-fedex-progress`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${managerToken}`
+      }
+    });
+
+    assert.equal(response.status, 202);
+    const body = await response.json();
+    assert.equal(body.message, 'Synced FCC progress for 1 work area.');
+    assert.equal(body.background_sync_enabled, true);
+    assert.equal(body.sync_engine_status, 'completed_with_changes');
+    assert.equal(body.trigger, 'progress_sync');
+    assert.equal(body.run.id, 'run-progress-1');
+  } finally {
+    await server.close();
+  }
+});
+
+test('POST /routes/receive-fedex-manifest rejects requests with the wrong ingest secret', async () => {
+  const supabase = new MockSupabase(() => {
+    throw new Error('No database queries expected');
+  });
+
+  const server = await startTestServer(supabase, {
+    inboundIngestSecret: 'shared-secret'
+  });
+  const boundary = '----readyroute-fedex-receiver';
+
+  try {
+    const response = await fetch(`${server.baseUrl}/routes/receive-fedex-manifest`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': `multipart/form-data; boundary=${boundary}`,
+        'x-readyroute-ingest-secret': 'wrong-secret'
+      },
+      body: buildMultipartBody({
+        boundary,
+        fields: {
+          connection_reference: 'bridge-fcc'
+        },
+        file: {
+          filename: 'manifest.xls',
+          contentType: 'application/vnd.ms-excel',
+          buffer: buildFedExManifestBuffer()
+        }
+      })
+    });
+
+    assert.equal(response.status, 403);
+    assert.deepEqual(await response.json(), { error: 'Invalid inbound ingest secret.' });
+  } finally {
+    await server.close();
+  }
+});
+
+test('POST /routes/receive-fedex-manifest hands inbound artifacts to the FedEx sync service', async () => {
+  const supabase = new MockSupabase(() => {
+    throw new Error('No database queries expected');
+  });
+  const boundary = '----readyroute-fedex-receiver';
+  const fedexSyncService = {
+    async receiveInboundManifestDelivery(input) {
+      assert.equal(input.connectionReference, 'bridge-fcc');
+      assert.equal(input.accountNumber, '123456789');
+      assert.equal(input.workDate, '2026-04-24');
+      assert.equal(input.workAreaName, '810');
+      assert.equal(input.manifestFile.originalname, 'manifest.xls');
+      assert.equal(input.companionGpxFile.originalname, 'manifest.gpx');
+      return {
+        message: 'Inbound manifest received and staged.',
+        background_sync_enabled: true,
+        sync_engine_status: 'completed_with_changes',
+        trigger: 'inbound_delivery',
+        run: {
+          id: 'run-1',
+          run_status: 'completed_with_changes'
+        },
+        ingest_result: {
+          route_id: 'route-1',
+          total_stops: 101
+        }
+      };
+    }
+  };
+
+  const server = await startTestServer(supabase, {
+    inboundIngestSecret: 'shared-secret',
+    fedexSyncService
+  });
+
+  try {
+    const response = await fetch(`${server.baseUrl}/routes/receive-fedex-manifest`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': `multipart/form-data; boundary=${boundary}`,
+        'x-readyroute-ingest-secret': 'shared-secret'
+      },
+      body: buildMultipartBody({
+        boundary,
+        fields: {
+          connection_reference: 'bridge-fcc',
+          account_number: '123456789',
+          date: '2026-04-24',
+          work_area_name: '810'
+        },
+        file: {
+          filename: 'manifest.xls',
+          contentType: 'application/vnd.ms-excel',
+          buffer: buildFedExManifestBuffer()
+        },
+        files: [
+          {
+            fieldName: 'gpx_file',
+            filename: 'manifest.gpx',
+            contentType: 'application/gpx+xml',
+            buffer: buildGpxManifestBuffer()
+          }
+        ]
+      })
+    });
+
+    assert.equal(response.status, 202);
+    const body = await response.json();
+    assert.equal(body.message, 'Inbound manifest received and staged.');
+    assert.equal(body.sync_engine_status, 'completed_with_changes');
+    assert.equal(body.trigger, 'inbound_delivery');
+    assert.equal(body.ingest_result.route_id, 'route-1');
   } finally {
     await server.close();
   }
@@ -1294,6 +1645,13 @@ test('POST /routes/upload-manifest accepts XLSX manifests and auto-matches drive
       };
     }
 
+    if (query.table === 'route_sync_events' && query.operation === 'insert') {
+      return {
+        data: null,
+        error: null
+      };
+    }
+
     if (query.table === 'location_corrections' && query.operation === 'select') {
       return {
         data: [],
@@ -1449,6 +1807,13 @@ test('POST /routes/upload-manifest geocodes unknown addresses once and saves map
       };
     }
 
+    if (query.table === 'route_sync_events' && query.operation === 'insert') {
+      return {
+        data: null,
+        error: null
+      };
+    }
+
     throw new Error(`Unexpected query ${query.table}:${query.operation}`);
   });
 
@@ -1574,6 +1939,13 @@ test('POST /routes/upload-manifest optionally merges GPX coordinates into spread
     }
 
     if (query.table === 'packages' && query.operation === 'insert') {
+      return {
+        data: null,
+        error: null
+      };
+    }
+
+    if (query.table === 'route_sync_events' && query.operation === 'insert') {
       return {
         data: null,
         error: null
@@ -1837,6 +2209,13 @@ test('POST /routes/upload-manifest merges into an existing not-yet-run route for
       };
     }
 
+    if (query.table === 'route_sync_events' && query.operation === 'insert') {
+      return {
+        data: null,
+        error: null
+      };
+    }
+
     throw new Error(`Unexpected query ${query.table}:${query.operation}`);
   });
 
@@ -1870,17 +2249,18 @@ test('POST /routes/upload-manifest merges into an existing not-yet-run route for
 
     assert.equal(response.status, 201);
     const payload = await response.json();
+
     assert.equal(payload.route_id, 'route-stale');
     assert.equal(payload.merged_into_existing_route, true);
-    assert.equal(deletedStopRouteId, 'route-stale');
+    assert.equal(payload.total_stops, 3);
     assert.deepEqual(deletedPackageStopIds, ['stop-old-1']);
+    assert.equal(deletedStopRouteId, 'route-stale');
     assert.equal(updatedRoutePayload.driver_id, 'driver-1');
     assert.equal(updatedRoutePayload.vehicle_id, 'vehicle-1');
     assert.equal(updatedRoutePayload.total_stops, 3);
     assert.equal(insertedStopsPayload.length, 3);
-    assert.equal(insertedStopsPayload[0].address, '999 Legacy Ln, Escondido, CA 92026');
+    assert.equal(insertedStopsPayload[0].sid, 'OLD123');
     assert.equal(insertedStopsPayload[1].sid, 'SID123');
-    assert.equal(insertedStopsPayload[2].sid, '0');
   } finally {
     await server.close();
   }

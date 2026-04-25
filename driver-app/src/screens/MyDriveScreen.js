@@ -27,6 +27,35 @@ export function getStopsPerHourLabel(value) {
   return `${value} stops/hr`;
 }
 
+export function hasGrantedLocationPermission(permission) {
+  return Boolean(permission?.granted || permission?.status === 'granted');
+}
+
+export function shouldPromptForLocationPermission(permission) {
+  const status = String(permission?.status || '').toLowerCase();
+  return !status || status === 'undetermined';
+}
+
+export function getPostDispatchChangeNotice(route) {
+  const policyCode = route?.post_dispatch_change_policy?.code || 'none';
+
+  if (policyCode === 'manager_review_required') {
+    return {
+      title: 'Route changed after dispatch',
+      body: 'FCC changed this route after it went live and work has already started. Check with your manager before continuing if anything looks different.'
+    };
+  }
+
+  if (policyCode === 'driver_warning') {
+    return {
+      title: 'Route updated after dispatch',
+      body: 'FCC changed this route after it went live. Review stop order and details carefully before moving on.'
+    };
+  }
+
+  return null;
+}
+
 export function formatBreakLabel(breakType) {
   switch (breakType) {
     case 'lunch':
@@ -880,11 +909,13 @@ export default function MyDriveScreen({ navigation, route: screenRoute }) {
   const [currentLocation, setCurrentLocation] = useState(null);
   const [clockedInAt, setClockedInAt] = useState(null);
   const [activeBreak, setActiveBreak] = useState(null);
+  const [driverDay, setDriverDay] = useState({ status: 'unknown' });
   const [isLoading, setIsLoading] = useState(true);
   const [isRetryingLoad, setIsRetryingLoad] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isUpdatingClock, setIsUpdatingClock] = useState(false);
   const [isUpdatingBreak, setIsUpdatingBreak] = useState(false);
+  const [hasLocationAccess, setHasLocationAccess] = useState(true);
   const [legendExpanded, setLegendExpanded] = useState(false);
   const [selectedMapItemId, setSelectedMapItemId] = useState(null);
   const [currentTime, setCurrentTime] = useState(() => new Date());
@@ -908,6 +939,7 @@ export default function MyDriveScreen({ navigation, route: screenRoute }) {
     [selectedMapItem]
   );
   const stopsPerHourLabel = getStopsPerHourLabel(route?.stops_per_hour);
+  const postDispatchNotice = getPostDispatchChangeNotice(route);
   const deliveredStopCount = useMemo(
     () => stops.filter((stop) => stop.status === 'delivered' || stop.status === 'pickup_complete').length,
     [stops]
@@ -1050,14 +1082,29 @@ export default function MyDriveScreen({ navigation, route: screenRoute }) {
 
     async function bootstrap() {
       try {
-        await Location.requestForegroundPermissionsAsync();
+        const currentPermission = await Location.getForegroundPermissionsAsync();
+        const permission = shouldPromptForLocationPermission(currentPermission)
+          ? await Location.requestForegroundPermissionsAsync()
+          : currentPermission;
+        const granted = hasGrantedLocationPermission(permission);
+
+        if (isMounted) {
+          setHasLocationAccess(granted);
+        }
+
+        if (!granted) {
+          return;
+        }
+
         const position = await Location.getCurrentPositionAsync({});
 
         if (isMounted) {
           setCurrentLocation(position);
         }
       } catch (_error) {
-        // Location is optional for initial render.
+        if (isMounted) {
+          setHasLocationAccess(false);
+        }
       }
 
       try {
@@ -1138,6 +1185,9 @@ export default function MyDriveScreen({ navigation, route: screenRoute }) {
         api.get('/timecards/status')
       ]);
       const nextRoute = routeResponse.data?.route || null;
+      const nextDriverDay = routeResponse.data?.driver_day || {
+        status: nextRoute ? 'dispatched' : 'unassigned'
+      };
       const activeBreakState = timecardStatusResponse.data?.active_break || null;
       const serverClockInAt =
         timecardStatusResponse.data?.active_timecard?.clock_in || timecardStatusResponse.data?.clock_in_at || null;
@@ -1147,6 +1197,7 @@ export default function MyDriveScreen({ navigation, route: screenRoute }) {
       }
 
       setRoute(nextRoute);
+      setDriverDay(nextDriverDay);
       setStops(nextRoute?.stops || []);
       setClockedInAt(serverClockInAt);
       setActiveBreak(activeBreakState);
@@ -1182,6 +1233,17 @@ export default function MyDriveScreen({ navigation, route: screenRoute }) {
     }
 
     try {
+      const currentPermission = await Location.getForegroundPermissionsAsync();
+      const permission = shouldPromptForLocationPermission(currentPermission)
+        ? await Location.requestForegroundPermissionsAsync()
+        : currentPermission;
+
+      if (!hasGrantedLocationPermission(permission)) {
+        setHasLocationAccess(false);
+        return;
+      }
+
+      setHasLocationAccess(true);
       const position = await Location.getCurrentPositionAsync({});
       setCurrentLocation(position);
 
@@ -1492,8 +1554,14 @@ export default function MyDriveScreen({ navigation, route: screenRoute }) {
     return (
       <SafeAreaView style={styles.safeArea}>
         <View style={styles.centeredState}>
-          <Text style={styles.emptyTitle}>No active stop right now</Text>
-          <Text style={styles.emptyText}>Your route is either complete or still waiting to be assigned.</Text>
+          <Text style={styles.emptyTitle}>
+            {driverDay?.status === 'awaiting_dispatch' ? 'Route staged for dispatch' : 'No active stop right now'}
+          </Text>
+          <Text style={styles.emptyText}>
+            {driverDay?.status === 'awaiting_dispatch'
+              ? 'Your route is staged in ReadyRoute and will appear here as soon as your lead manager dispatches the day.'
+              : 'Your route is either complete or still waiting to be assigned.'}
+          </Text>
         </View>
       </SafeAreaView>
     );
@@ -1502,6 +1570,31 @@ export default function MyDriveScreen({ navigation, route: screenRoute }) {
   return (
     <SafeAreaView edges={['top']} style={styles.safeArea}>
       <View style={styles.container}>
+        {postDispatchNotice || !hasLocationAccess ? (
+          <View pointerEvents="box-none" style={styles.topOverlay}>
+            {!hasLocationAccess ? (
+              <View style={styles.locationNoticeCard}>
+                <Text style={styles.locationNoticeTitle}>Location sharing required</Text>
+                <Text style={styles.locationNoticeBody}>
+                  ReadyRoute needs live location access so managers can track active drivers while you are using the app.
+                </Text>
+                <Pressable
+                  onPress={() => Linking.openSettings?.().catch(() => {})}
+                  style={styles.locationNoticeButton}
+                >
+                  <Text style={styles.locationNoticeButtonText}>Open Settings</Text>
+                </Pressable>
+              </View>
+            ) : null}
+            {postDispatchNotice ? (
+              <View style={styles.dispatchNoticeCard}>
+                <Text style={styles.dispatchNoticeTitle}>{postDispatchNotice.title}</Text>
+                <Text style={styles.dispatchNoticeBody}>{postDispatchNotice.body}</Text>
+              </View>
+            ) : null}
+          </View>
+        ) : null}
+
         <MapView
           // Let the driver use the map like a normal phone map.
           initialRegion={initialRegion}
@@ -1782,10 +1875,65 @@ const styles = StyleSheet.create({
   topOverlay: {
     left: 0,
     paddingHorizontal: 12,
+    paddingTop: 6,
     position: 'absolute',
     right: 0,
     top: 0,
     zIndex: 10
+  },
+  dispatchNoticeCard: {
+    backgroundColor: 'rgba(255, 244, 232, 0.97)',
+    borderColor: '#ffcfad',
+    borderRadius: 18,
+    borderWidth: 1,
+    paddingHorizontal: 14,
+    paddingVertical: 12
+  },
+  locationNoticeCard: {
+    backgroundColor: 'rgba(255, 241, 230, 0.98)',
+    borderColor: '#ffbf8c',
+    borderRadius: 18,
+    borderWidth: 1,
+    marginBottom: 8,
+    paddingHorizontal: 14,
+    paddingVertical: 12
+  },
+  locationNoticeTitle: {
+    color: '#173042',
+    fontSize: 14,
+    fontWeight: '800',
+    marginBottom: 4
+  },
+  locationNoticeBody: {
+    color: '#6a4a2a',
+    fontSize: 13,
+    lineHeight: 18
+  },
+  locationNoticeButton: {
+    alignItems: 'center',
+    alignSelf: 'flex-start',
+    backgroundColor: '#ff7a1a',
+    borderRadius: 10,
+    justifyContent: 'center',
+    marginTop: 10,
+    minHeight: 34,
+    paddingHorizontal: 12
+  },
+  locationNoticeButtonText: {
+    color: '#ffffff',
+    fontSize: 12,
+    fontWeight: '800'
+  },
+  dispatchNoticeTitle: {
+    color: '#9a3412',
+    fontSize: 14,
+    fontWeight: '800',
+    marginBottom: 4
+  },
+  dispatchNoticeBody: {
+    color: '#7c4a22',
+    fontSize: 13,
+    lineHeight: 18
   },
   bottomOverlay: {
     bottom: 0,

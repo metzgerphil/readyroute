@@ -13,10 +13,21 @@ jest.mock('../services/api', () => ({
   }
 }));
 
+jest.mock('expo-location', () => ({
+  getForegroundPermissionsAsync: jest.fn(),
+  requestForegroundPermissionsAsync: jest.fn()
+}));
+
 import {
   DAILY_SAFETY_REMINDERS,
   getDailySafetyReminder,
   getDayOfYear,
+  getDriverDayStatus,
+  getLocationRequirementCopy,
+  getPostDispatchChangeNotice,
+  getDriverWaitingCopy,
+  hasGrantedLocationPermission,
+  shouldPromptForLocationPermission,
   formatBreakLabel,
   getGreetingByTime,
   getRoutePresentation,
@@ -71,5 +82,45 @@ describe('HomeScreen helpers', () => {
         stops_per_hour: 12.4
       })
     ).toEqual(['Route 816', 'Vehicle 418666', '12.4 stops/hr']);
+  });
+
+  it('derives the staged waiting state for drivers before dispatch', () => {
+    expect(getDriverDayStatus({ status: 'awaiting_dispatch' }, null)).toBe('awaiting_dispatch');
+    expect(getDriverDayStatus({ status: 'awaiting_dispatch' }, { id: 'route-1' })).toBe('dispatched');
+    expect(
+      getDriverWaitingCopy({
+        route_preview: {
+          work_area_name: '810',
+          last_manifest_sync_at: '2026-04-24T13:45:00.000Z'
+        }
+      }).title
+    ).toBe('Route staged for dispatch');
+  });
+
+  it('classifies post-dispatch route changes for driver messaging', () => {
+    expect(
+      getPostDispatchChangeNotice({
+        post_dispatch_change_policy: {
+          code: 'manager_review_required'
+        }
+      }).title
+    ).toBe('Route changed after dispatch');
+    expect(
+      getPostDispatchChangeNotice({
+        post_dispatch_change_policy: {
+          code: 'driver_warning'
+        }
+      }).title
+    ).toBe('Route updated after dispatch');
+    expect(getPostDispatchChangeNotice(null)).toBeNull();
+  });
+
+  it('describes and validates the required location-sharing gate', () => {
+    expect(hasGrantedLocationPermission({ granted: true })).toBe(true);
+    expect(hasGrantedLocationPermission({ status: 'granted' })).toBe(true);
+    expect(hasGrantedLocationPermission({ granted: false })).toBe(false);
+    expect(shouldPromptForLocationPermission({ status: 'undetermined' })).toBe(true);
+    expect(shouldPromptForLocationPermission({ status: 'denied' })).toBe(false);
+    expect(getLocationRequirementCopy().title).toBe('Share location to use ReadyRoute');
   });
 });

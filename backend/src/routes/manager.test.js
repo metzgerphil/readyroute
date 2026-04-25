@@ -231,11 +231,22 @@ test('GET /manager/dashboard returns stops_per_hour using the first-scan formula
     if (query.table === 'stops' && query.operation === 'select') {
       return {
         data: [
-          { id: 'stop-1', route_id: 'route-1', sequence_order: 1, address: '100 Main St', status: 'delivered', completed_at: '2026-04-08T16:00:00.000Z', delivery_type_code: '009', has_time_commit: true },
-          { id: 'stop-2', route_id: 'route-1', sequence_order: 2, address: '200 Main St', status: 'delivered', completed_at: '2026-04-08T16:30:00.000Z', delivery_type_code: '014', has_time_commit: false },
-          { id: 'stop-3', route_id: 'route-1', sequence_order: 3, address: '300 Main St', status: 'delivered', completed_at: '2026-04-08T17:00:00.000Z', delivery_type_code: '021', has_time_commit: true },
-          { id: 'stop-4', route_id: 'route-1', sequence_order: 4, address: '400 Main St', status: 'delivered', completed_at: '2026-04-08T17:15:00.000Z', delivery_type_code: '013', has_time_commit: false },
-          { id: 'stop-5', route_id: 'route-1', sequence_order: 5, address: '500 Main St', status: 'pending', completed_at: null, delivery_type_code: null, has_time_commit: true }
+          { id: 'stop-1', route_id: 'route-1', sequence_order: 1, address: '100 Main St', status: 'delivered', completed_at: '2026-04-08T16:00:00.000Z', delivery_type_code: '009', has_time_commit: true, exception_code: null },
+          { id: 'stop-2', route_id: 'route-1', sequence_order: 2, address: '200 Main St', status: 'delivered', completed_at: '2026-04-08T16:30:00.000Z', delivery_type_code: '014', has_time_commit: false, exception_code: null },
+          { id: 'stop-3', route_id: 'route-1', sequence_order: 3, address: '300 Main St', status: 'incomplete', completed_at: '2026-04-08T17:00:00.000Z', delivery_type_code: '021', has_time_commit: true, exception_code: '07' },
+          { id: 'stop-4', route_id: 'route-1', sequence_order: 4, address: '400 Main St', status: 'delivered', completed_at: '2026-04-08T17:15:00.000Z', delivery_type_code: '013', has_time_commit: false, exception_code: null },
+          { id: 'stop-5', route_id: 'route-1', sequence_order: 5, address: '500 Main St', status: 'pending', completed_at: null, delivery_type_code: null, has_time_commit: true, exception_code: null }
+        ],
+        error: null
+      };
+    }
+
+    if (query.table === 'packages' && query.operation === 'select') {
+      return {
+        data: [
+          { id: 'pkg-1', stop_id: 'stop-1' },
+          { id: 'pkg-2', stop_id: 'stop-3' },
+          { id: 'pkg-3', stop_id: 'stop-5' }
         ],
         error: null
       };
@@ -313,6 +324,21 @@ test('GET /manager/dashboard returns stops_per_hour using the first-scan formula
     assert.equal(body.completed_stops, 4);
     assert.equal(body.time_commits_total, 3);
     assert.equal(body.time_commits_completed, 2);
+    assert.equal(body.route_summary.completed, 0);
+    assert.equal(body.route_summary.total, 1);
+    assert.equal(body.commits_summary.completed, 2);
+    assert.equal(body.commits_summary.total, 3);
+    assert.deepEqual(body.stop_status_summary, {
+      completed: 4,
+      pending: 1,
+      exception: 1
+    });
+    assert.deepEqual(body.package_status_summary, {
+      completed: 1,
+      pending: 1,
+      exception: 1,
+      total: 3
+    });
     assert.equal(body.sync_status.routes_today, 1);
     assert.equal(body.sync_status.routes_assigned, 1);
     assert.equal(body.sync_status.drivers_on_road, 1);
@@ -377,8 +403,15 @@ test('GET /manager/dashboard returns null stops_per_hour when no stops are compl
     if (query.table === 'stops' && query.operation === 'select') {
       return {
         data: [
-          { id: 'stop-1', route_id: 'route-1', sequence_order: 1, address: '100 Main St', status: 'pending', completed_at: null, delivery_type_code: null }
+          { id: 'stop-1', route_id: 'route-1', sequence_order: 1, address: '100 Main St', status: 'pending', completed_at: null, delivery_type_code: null, exception_code: null }
         ],
+        error: null
+      };
+    }
+
+    if (query.table === 'packages' && query.operation === 'select') {
+      return {
+        data: [],
         error: null
       };
     }
@@ -409,6 +442,17 @@ test('GET /manager/dashboard returns null stops_per_hour when no stops are compl
     assert.equal(body.drivers[0].vehicle_name, null);
     assert.equal(body.drivers[0].vehicle_plate, null);
     assert.equal(body.sync_status.routes_today, 1);
+    assert.deepEqual(body.stop_status_summary, {
+      completed: 0,
+      pending: 1,
+      exception: 0
+    });
+    assert.deepEqual(body.package_status_summary, {
+      completed: 0,
+      pending: 0,
+      exception: 0,
+      total: 0
+    });
   } finally {
     await server.close();
   }
@@ -649,8 +693,26 @@ test('GET /manager/csas returns linked CSA workspaces and highlights the current
       if (idInFilter) {
         return {
           data: [
-            { id: 'acct-1', company_name: 'Bridge Transportation - CSA 811', manager_email: 'phillovesjoy@gmail.com', created_at: '2026-04-01T00:00:00.000Z' },
-            { id: 'acct-2', company_name: 'Bridge Transportation - CSA 823', manager_email: null, created_at: '2026-04-02T00:00:00.000Z' }
+            {
+              id: 'acct-1',
+              company_name: 'Bridge Transportation - CSA 811',
+              manager_email: 'phillovesjoy@gmail.com',
+              created_at: '2026-04-01T00:00:00.000Z',
+              operations_timezone: 'America/Los_Angeles',
+              dispatch_window_start_hour: 6,
+              dispatch_window_end_hour: 11,
+              manifest_sync_interval_minutes: 15
+            },
+            {
+              id: 'acct-2',
+              company_name: 'Bridge Transportation - CSA 823',
+              manager_email: null,
+              created_at: '2026-04-02T00:00:00.000Z',
+              operations_timezone: 'America/New_York',
+              dispatch_window_start_hour: 7,
+              dispatch_window_end_hour: 12,
+              manifest_sync_interval_minutes: 20
+            }
           ],
           error: null
         };
@@ -688,8 +750,30 @@ test('GET /manager/csas returns linked CSA workspaces and highlights the current
     if (query.table === 'routes' && query.operation === 'select') {
       return {
         data: [
-          { id: 'route-1', account_id: 'acct-1', archived_at: null, date: '2026-04-20' },
-          { id: 'route-2', account_id: 'acct-2', archived_at: null, date: '2026-04-20' }
+          {
+            id: 'route-1',
+            account_id: 'acct-1',
+            archived_at: null,
+            date: '2026-04-20',
+            driver_id: 'driver-1',
+            vehicle_id: 'vehicle-1',
+            dispatch_state: 'staged',
+            sync_state: 'staged_stable',
+            last_manifest_change_at: '2026-04-20T12:00:00.000Z',
+            dispatched_at: null
+          },
+          {
+            id: 'route-2',
+            account_id: 'acct-2',
+            archived_at: null,
+            date: '2026-04-20',
+            driver_id: 'driver-2',
+            vehicle_id: 'vehicle-2',
+            dispatch_state: 'staged',
+            sync_state: 'staged_changed',
+            last_manifest_change_at: '2026-04-20T15:00:00.000Z',
+            dispatched_at: null
+          }
         ],
         error: null
       };
@@ -714,6 +798,9 @@ test('GET /manager/csas returns linked CSA workspaces and highlights the current
     assert.equal(body.csas[1].manager_email, 'phillovesjoy@gmail.com');
     assert.equal(body.csas[1].driver_count, 2);
     assert.equal(body.csas[0].routes_today, 1);
+    assert.equal(body.csas[0].ready, 1);
+    assert.equal(body.csas[1].review, 1);
+    assert.equal(body.csas[1].route_sync_settings.operations_timezone, 'America/New_York');
   } finally {
     await server.close();
   }
@@ -974,6 +1061,7 @@ test('POST /manager/account/cancel rejects non-owner managers', async () => {
     await server.close();
   }
 });
+
 test('GET /manager/driver-access returns the account starter PIN', async () => {
   const supabase = new MockSupabase((query) => {
     if (query.table === 'accounts' && query.operation === 'select') {
@@ -1066,6 +1154,99 @@ test('PATCH /manager/driver-access updates the account starter PIN', async () =>
 
     assert.equal(response.status, 200);
     assert.deepEqual(await response.json(), { ok: true, starter_pin: '1234' });
+  } finally {
+    await server.close();
+  }
+});
+
+test('GET /manager/route-sync-settings returns the CSA timezone and dispatch window settings', async () => {
+  const supabase = new MockSupabase((query) => {
+    if (query.table === 'accounts' && query.operation === 'select') {
+      return {
+        data: {
+          operations_timezone: 'America/Chicago',
+          dispatch_window_start_hour: 5,
+          dispatch_window_end_hour: 10,
+          manifest_sync_interval_minutes: 20
+        },
+        error: null
+      };
+    }
+
+    throw new Error(`Unexpected query ${query.table}:${query.operation}`);
+  });
+
+  const server = await startTestServer({
+    supabase,
+    now: () => new Date('2026-04-24T13:30:00.000Z')
+  });
+
+  try {
+    const response = await fetch(`${server.baseUrl}/manager/route-sync-settings`, {
+      headers: {
+        Authorization: `Bearer ${signManagerToken()}`
+      }
+    });
+
+    assert.equal(response.status, 200);
+    const body = await response.json();
+    assert.equal(body.route_sync_settings.operations_timezone, 'America/Chicago');
+    assert.equal(body.route_sync_settings.dispatch_window_start_hour, 5);
+    assert.equal(body.route_sync_settings.dispatch_window_end_hour, 10);
+    assert.equal(body.route_sync_settings.manifest_sync_interval_minutes, 20);
+    assert.equal(body.route_sync_settings.dispatch_window_state, 'active_window');
+  } finally {
+    await server.close();
+  }
+});
+
+test('PATCH /manager/route-sync-settings updates CSA timezone and dispatch window settings', async () => {
+  const supabase = new MockSupabase((query) => {
+    if (query.table === 'accounts' && query.operation === 'update') {
+      assert.equal(query.payload.operations_timezone, 'America/New_York');
+      assert.equal(query.payload.dispatch_window_start_hour, 7);
+      assert.equal(query.payload.dispatch_window_end_hour, 12);
+      assert.equal(query.payload.manifest_sync_interval_minutes, 10);
+      return {
+        data: {
+          operations_timezone: 'America/New_York',
+          dispatch_window_start_hour: 7,
+          dispatch_window_end_hour: 12,
+          manifest_sync_interval_minutes: 10
+        },
+        error: null
+      };
+    }
+
+    throw new Error(`Unexpected query ${query.table}:${query.operation}`);
+  });
+
+  const server = await startTestServer({
+    supabase,
+    now: () => new Date('2026-04-24T13:30:00.000Z')
+  });
+
+  try {
+    const response = await fetch(`${server.baseUrl}/manager/route-sync-settings`, {
+      method: 'PATCH',
+      headers: {
+        Authorization: `Bearer ${signManagerToken()}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        operations_timezone: 'America/New_York',
+        dispatch_window_start_hour: 7,
+        dispatch_window_end_hour: 12,
+        manifest_sync_interval_minutes: 10
+      })
+    });
+
+    assert.equal(response.status, 200);
+    const body = await response.json();
+    assert.equal(body.ok, true);
+    assert.equal(body.route_sync_settings.operations_timezone, 'America/New_York');
+    assert.equal(body.route_sync_settings.dispatch_window_label, '7:00 AM - 12:00 PM');
+    assert.equal(body.route_sync_settings.manifest_sync_interval_minutes, 10);
   } finally {
     await server.close();
   }
@@ -1207,6 +1388,73 @@ test('POST /manager/fedex-accounts creates the first FedEx account as default', 
   }
 });
 
+test('POST /manager/fedex-accounts accepts FCC portal credentials without billing details', async () => {
+  const originalCredentialKey = process.env.FEDEX_SYNC_CREDENTIALS_KEY;
+  process.env.FEDEX_SYNC_CREDENTIALS_KEY = 'test-fcc-credential-key';
+
+  const supabase = new MockSupabase((query) => {
+    if (query.table === 'fedex_accounts' && query.operation === 'select') {
+      return {
+        data: [],
+        error: null
+      };
+    }
+
+    if (query.table === 'fedex_accounts' && query.operation === 'update') {
+      return { data: null, error: null };
+    }
+
+    if (query.table === 'fedex_accounts' && query.operation === 'insert') {
+      assert.equal(query.payload.nickname, 'FCC Portal Access');
+      assert.match(query.payload.account_number, /^FCC[A-F0-9]{12}$/);
+      assert.equal(query.payload.billing_address_line1, 'FCC Portal Credential');
+      assert.equal(query.payload.connection_status, 'connected');
+      assert.equal(query.payload.fcc_username, 'bridge@example.com');
+      assert.ok(query.payload.fcc_password_encrypted);
+      return {
+        data: {
+          id: 'fx-portal-1',
+          account_id: 'acct-1',
+          ...query.payload,
+          fcc_password_encrypted: query.payload.fcc_password_encrypted,
+          created_at: '2026-04-22T14:00:00.000Z',
+          updated_at: '2026-04-22T14:00:00.000Z',
+          disconnected_at: null
+        },
+        error: null
+      };
+    }
+
+    throw new Error(`Unexpected query ${query.table}:${query.operation}`);
+  });
+
+  const server = await startTestServer({ supabase });
+
+  try {
+    const response = await fetch(`${server.baseUrl}/manager/fedex-accounts`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${signManagerToken()}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        fcc_username: 'bridge@example.com',
+        fcc_password: 'super-secret-password'
+      })
+    });
+
+    assert.equal(response.status, 201);
+    const body = await response.json();
+    assert.equal(body.account.nickname, 'FCC Portal Access');
+    assert.equal(body.account.fcc_username, 'bridge@example.com');
+    assert.equal(body.account.has_saved_fcc_password, true);
+    assert.equal(body.account.connection_status, 'connected');
+  } finally {
+    process.env.FEDEX_SYNC_CREDENTIALS_KEY = originalCredentialKey;
+    await server.close();
+  }
+});
+
 test('POST /manager/fedex-accounts/:id/default promotes the selected account', async () => {
   const supabase = new MockSupabase((query) => {
     if (query.table === 'fedex_accounts' && query.operation === 'select') {
@@ -1297,6 +1545,7 @@ test('POST /manager/fedex-accounts/:id/default promotes the selected account', a
     await server.close();
   }
 });
+
 test('POST /manager/drivers uses the CSA starter PIN when no driver PIN is provided', async () => {
   const supabase = new MockSupabase((query) => {
     if (query.table === 'accounts' && query.operation === 'select') {
@@ -2355,6 +2604,13 @@ test('PATCH /manager/routes/:route_id/assign updates route driver and vehicle', 
       };
     }
 
+    if (query.table === 'route_sync_events' && query.operation === 'insert') {
+      return {
+        data: null,
+        error: null
+      };
+    }
+
     throw new Error(`Unexpected query ${query.table}:${query.operation}`);
   });
 
@@ -2386,7 +2642,13 @@ test('GET /manager/routes returns sync status and fedex connection metadata', as
   const supabase = new MockSupabase((query) => {
     if (query.table === 'accounts' && query.operation === 'select') {
       return {
-        data: { fedex_csp_id: '919' },
+        data: {
+          fedex_csp_id: '919',
+          operations_timezone: 'America/Chicago',
+          dispatch_window_start_hour: 5,
+          dispatch_window_end_hour: 10,
+          manifest_sync_interval_minutes: 20
+        },
         error: null
       };
     }
@@ -2433,8 +2695,17 @@ test('GET /manager/routes returns sync status and fedex connection metadata', as
             date: '2026-04-09',
             source: 'gpx_upload',
             total_stops: 12,
-            completed_stops: 0,
-            status: 'pending',
+            completed_stops: 1,
+            status: 'in_progress',
+            dispatch_state: 'staged',
+            dispatched_at: null,
+            sync_state: 'staged_changed',
+            last_manifest_sync_at: '2026-04-09T12:47:00.000Z',
+            last_manifest_change_at: '2026-04-09T12:47:00.000Z',
+            manifest_stop_count: 12,
+            manifest_package_count: 15,
+            manifest_fingerprint: 'fingerprint-1',
+            last_manifest_sync_error: null,
             created_at: '2026-04-09T12:47:00.000Z',
             completed_at: null
           }
@@ -2465,8 +2736,46 @@ test('GET /manager/routes returns sync status and fedex connection metadata', as
             scanned_at: null,
             completed_at: null,
             has_time_commit: true
+          },
+          {
+            id: 'stop-2',
+            route_id: 'route-1',
+            sequence_order: 2,
+            address: '200 Main St',
+            lat: 32.71,
+            lng: -117.11,
+            status: 'delivered',
+            notes: null,
+            exception_code: null,
+            delivery_type_code: '014',
+            signer_name: null,
+            signature_url: null,
+            age_confirmed: false,
+            pod_photo_url: null,
+            pod_signature_url: null,
+            scanned_at: '2026-04-09T13:15:00.000Z',
+            completed_at: '2026-04-09T13:15:00.000Z',
+            has_time_commit: false
           }
         ],
+        error: null
+      };
+    }
+
+    if (query.table === 'packages' && query.operation === 'select') {
+      return {
+        data: [
+          { id: 'pkg-1', stop_id: 'stop-1' },
+          { id: 'pkg-2', stop_id: 'stop-2' },
+          { id: 'pkg-3', stop_id: 'stop-2' }
+        ],
+        error: null
+      };
+    }
+
+    if (query.table === 'driver_positions' && query.operation === 'select') {
+      return {
+        data: [],
         error: null
       };
     }
@@ -2484,10 +2793,20 @@ test('GET /manager/routes returns sync status and fedex connection metadata', as
       };
     }
 
+    if (query.table === 'route_sync_events' && query.operation === 'select') {
+      return {
+        data: [],
+        error: null
+      };
+    }
+
     throw new Error(`Unexpected query ${query.table}:${query.operation}`);
   });
 
-  const server = await startTestServer({ supabase });
+  const server = await startTestServer({
+    supabase,
+    now: () => new Date('2026-04-09T13:30:00.000Z')
+  });
 
   try {
     const response = await fetch(`${server.baseUrl}/manager/routes?date=2026-04-09`, {
@@ -2500,7 +2819,14 @@ test('GET /manager/routes returns sync status and fedex connection metadata', as
     const body = await response.json();
     assert.equal(body.sync_status.routes_today, 1);
     assert.equal(body.sync_status.routes_assigned, 0);
+    assert.equal(body.sync_status.routes_dispatched, 0);
+    assert.equal(body.sync_status.routes_changed, 0);
+    assert.equal(body.sync_status.routes_blocked, 1);
     assert.equal(body.sync_status.last_sync_at, '2026-04-09T12:47:00.000Z');
+    assert.equal(body.route_sync_settings.operations_timezone, 'America/Chicago');
+    assert.equal(body.route_sync_settings.dispatch_window_label, '5:00 AM - 10:00 AM');
+    assert.equal(body.route_sync_settings.dispatch_window_state, 'active_window');
+    assert.equal(body.route_sync_settings.manifest_sync_interval_minutes, 20);
     assert.equal(body.fedex_connection.is_connected, true);
     assert.equal(body.fedex_connection.terminal_label, '••••6789');
     assert.equal(body.fedex_connection.default_account_label, 'PV Main (••••6789)');
@@ -2509,6 +2835,13 @@ test('GET /manager/routes returns sync status and fedex connection metadata', as
     assert.equal(body.routes[0].vehicle_plate, '8WAI675');
     assert.equal(body.routes[0].time_commits_total, 1);
     assert.equal(body.routes[0].time_commits_completed, 0);
+    assert.equal(body.routes[0].delivered_packages, 2);
+    assert.equal(body.routes[0].total_packages, 3);
+    assert.equal(body.routes[0].stops_per_hour, 4);
+    assert.equal(body.routes[0].is_online, false);
+    assert.equal(body.routes[0].last_position, null);
+    assert.equal(body.routes[0].dispatch_state, 'staged');
+    assert.equal(body.routes[0].sync_state, 'dispatch_blocked');
     assert.equal(body.routes[0].stops[0].delivery_type_code, '009');
   } finally {
     await server.close();
@@ -2561,6 +2894,425 @@ test('POST /manager/routes/archive-date archives only past-date routes and prese
     const body = await response.json();
     assert.equal(body.archived_count, 2);
     assert.deepEqual(body.archived_work_areas, ['810', '811']);
+  } finally {
+    await server.close();
+  }
+});
+
+test('POST /manager/routes/dispatch marks staged routes as dispatched', async () => {
+  const supabase = new MockSupabase((query) => {
+    if (query.table === 'routes' && query.operation === 'select') {
+      return {
+        data: [
+          {
+            id: 'route-1',
+            driver_id: 'driver-1',
+            vehicle_id: 'vehicle-1',
+            work_area_name: '810',
+            dispatch_state: 'staged',
+            sync_state: 'staged_stable',
+            last_manifest_change_at: '2026-04-19T15:45:00.000Z',
+            dispatched_at: null,
+            archived_at: null
+          },
+          {
+            id: 'route-2',
+            driver_id: 'driver-2',
+            vehicle_id: 'vehicle-2',
+            work_area_name: '811',
+            dispatch_state: 'staged',
+            sync_state: 'staged_stable',
+            last_manifest_change_at: '2026-04-19T15:40:00.000Z',
+            dispatched_at: null,
+            archived_at: null
+          }
+        ],
+        error: null
+      };
+    }
+
+    if (query.table === 'routes' && query.operation === 'update') {
+      assert.equal(query.payload.dispatch_state, 'dispatched');
+      assert.equal(query.payload.dispatched_by_manager_user_id, 'manager-1');
+      assert.ok(query.payload.dispatched_at);
+      return {
+        data: [
+          { id: 'route-1', work_area_name: '810', dispatched_at: query.payload.dispatched_at },
+          { id: 'route-2', work_area_name: '811', dispatched_at: query.payload.dispatched_at }
+        ],
+        error: null
+      };
+    }
+
+    if (query.table === 'route_sync_events' && query.operation === 'insert') {
+      return {
+        data: null,
+        error: null
+      };
+    }
+
+    throw new Error(`Unexpected query ${query.table}:${query.operation}`);
+  });
+
+  const server = await startTestServer({
+    supabase,
+    now: () => new Date('2026-04-19T16:00:00.000Z')
+  });
+
+  try {
+    const response = await fetch(`${server.baseUrl}/manager/routes/dispatch`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${signManagerToken()}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({ date: '2026-04-19' })
+    });
+
+    assert.equal(response.status, 200);
+    const body = await response.json();
+    assert.equal(body.dispatched_count, 2);
+    assert.deepEqual(body.dispatched_work_areas, ['810', '811']);
+    assert.equal(body.dispatched_route_ids.length, 2);
+    assert.equal(body.dispatched_at, '2026-04-19T16:00:00.000Z');
+  } finally {
+    await server.close();
+  }
+});
+
+test('POST /manager/routes/dispatch blocks routes missing assignments', async () => {
+  const supabase = new MockSupabase((query) => {
+    if (query.table === 'routes' && query.operation === 'select') {
+      return {
+        data: [
+          {
+            id: 'route-1',
+            driver_id: null,
+            vehicle_id: 'vehicle-1',
+            work_area_name: '810',
+            dispatch_state: 'staged',
+            archived_at: null
+          }
+        ],
+        error: null
+      };
+    }
+
+    throw new Error(`Unexpected query ${query.table}:${query.operation}`);
+  });
+
+  const server = await startTestServer({
+    supabase,
+    now: () => new Date('2026-04-19T16:00:00.000Z')
+  });
+
+  try {
+    const response = await fetch(`${server.baseUrl}/manager/routes/dispatch`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${signManagerToken()}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({ date: '2026-04-19' })
+    });
+
+    assert.equal(response.status, 409);
+    const body = await response.json();
+    assert.match(body.error, /not ready to dispatch/i);
+    assert.equal(body.blocked_routes[0].work_area_name, '810');
+    assert.equal(body.blocked_routes[0].sync_state, 'dispatch_blocked');
+    assert.equal(body.blocked_routes[0].needs_driver, true);
+    assert.equal(body.blocked_routes[0].needs_vehicle, false);
+  } finally {
+    await server.close();
+  }
+});
+
+test('POST /manager/routes/dispatch blocks routes with unstable sync state', async () => {
+  const supabase = new MockSupabase((query) => {
+    if (query.table === 'routes' && query.operation === 'select') {
+      return {
+        data: [
+          {
+            id: 'route-1',
+            driver_id: 'driver-1',
+            vehicle_id: 'vehicle-1',
+            work_area_name: '810',
+            dispatch_state: 'staged',
+            sync_state: 'sync_failed',
+            last_manifest_change_at: '2026-04-19T15:45:00.000Z',
+            dispatched_at: null,
+            archived_at: null
+          }
+        ],
+        error: null
+      };
+    }
+
+    throw new Error(`Unexpected query ${query.table}:${query.operation}`);
+  });
+
+  const server = await startTestServer({
+    supabase,
+    now: () => new Date('2026-04-19T16:00:00.000Z')
+  });
+
+  try {
+    const response = await fetch(`${server.baseUrl}/manager/routes/dispatch`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${signManagerToken()}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({ date: '2026-04-19' })
+    });
+
+    assert.equal(response.status, 409);
+    const body = await response.json();
+    assert.equal(body.blocked_routes[0].sync_state, 'sync_failed');
+    assert.equal(body.blocked_routes[0].needs_driver, false);
+    assert.equal(body.blocked_routes[0].needs_vehicle, false);
+  } finally {
+    await server.close();
+  }
+});
+
+test('POST /manager/routes/dispatch returns warning routes when staged manifests changed', async () => {
+  const supabase = new MockSupabase((query) => {
+    if (query.table === 'routes' && query.operation === 'select') {
+      return {
+        data: [
+          {
+            id: 'route-1',
+            driver_id: 'driver-1',
+            vehicle_id: 'vehicle-1',
+            work_area_name: '810',
+            dispatch_state: 'staged',
+            sync_state: 'staged_changed',
+            last_manifest_change_at: '2026-04-19T15:45:00.000Z',
+            dispatched_at: null,
+            archived_at: null
+          }
+        ],
+        error: null
+      };
+    }
+
+    if (query.table === 'routes' && query.operation === 'update') {
+      return {
+        data: [
+          { id: 'route-1', work_area_name: '810', dispatched_at: query.payload.dispatched_at }
+        ],
+        error: null
+      };
+    }
+
+    if (query.table === 'route_sync_events' && query.operation === 'insert') {
+      return {
+        data: null,
+        error: null
+      };
+    }
+
+    throw new Error(`Unexpected query ${query.table}:${query.operation}`);
+  });
+
+  const server = await startTestServer({
+    supabase,
+    now: () => new Date('2026-04-19T16:00:00.000Z')
+  });
+
+  try {
+    const response = await fetch(`${server.baseUrl}/manager/routes/dispatch`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${signManagerToken()}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({ date: '2026-04-19' })
+    });
+
+    assert.equal(response.status, 200);
+    const body = await response.json();
+    assert.equal(body.warning_routes.length, 1);
+    assert.equal(body.warning_routes[0].work_area_name, '810');
+    assert.equal(body.warning_routes[0].sync_state, 'staged_changed');
+  } finally {
+    await server.close();
+  }
+});
+
+test('POST /manager/routes/dispatch can dispatch only the selected route ids', async () => {
+  let updatedRouteIds = [];
+
+  const supabase = new MockSupabase((query) => {
+    if (query.table === 'routes' && query.operation === 'select') {
+      return {
+        data: [
+          {
+            id: 'route-1',
+            driver_id: 'driver-1',
+            vehicle_id: 'vehicle-1',
+            work_area_name: '810',
+            dispatch_state: 'staged',
+            sync_state: 'staged_stable',
+            status: 'pending',
+            completed_stops: 0,
+            last_manifest_change_at: '2026-04-19T15:45:00.000Z',
+            dispatched_at: null,
+            archived_at: null
+          },
+          {
+            id: 'route-2',
+            driver_id: 'driver-2',
+            vehicle_id: 'vehicle-2',
+            work_area_name: '811',
+            dispatch_state: 'staged',
+            sync_state: 'staged_stable',
+            status: 'pending',
+            completed_stops: 0,
+            last_manifest_change_at: '2026-04-19T15:40:00.000Z',
+            dispatched_at: null,
+            archived_at: null
+          }
+        ],
+        error: null
+      };
+    }
+
+    if (query.table === 'routes' && query.operation === 'update') {
+      updatedRouteIds = query.filters.find((filter) => filter.column === 'id' && filter.op === 'in')?.value || [];
+      return {
+        data: [{ id: 'route-2', work_area_name: '811', dispatched_at: query.payload.dispatched_at }],
+        error: null
+      };
+    }
+
+    if (query.table === 'route_sync_events' && query.operation === 'insert') {
+      return {
+        data: null,
+        error: null
+      };
+    }
+
+    throw new Error(`Unexpected query ${query.table}:${query.operation}`);
+  });
+
+  const server = await startTestServer({
+    supabase,
+    now: () => new Date('2026-04-19T16:00:00.000Z')
+  });
+
+  try {
+    const response = await fetch(`${server.baseUrl}/manager/routes/dispatch`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${signManagerToken()}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({ date: '2026-04-19', route_ids: ['route-2'] })
+    });
+
+    assert.equal(response.status, 200);
+    const body = await response.json();
+    assert.deepEqual(updatedRouteIds, ['route-2']);
+    assert.deepEqual(body.dispatched_route_ids, ['route-2']);
+    assert.deepEqual(body.dispatched_work_areas, ['811']);
+  } finally {
+    await server.close();
+  }
+});
+
+test('GET /manager/routes classifies post-dispatch changes that need manager review', async () => {
+  const supabase = new MockSupabase((query) => {
+    if (query.table === 'accounts' && query.operation === 'select') {
+      return {
+        data: {
+          fedex_csp_id: null
+        },
+        error: null
+      };
+    }
+
+    if (query.table === 'fedex_accounts' && query.operation === 'select') {
+      return { data: [], error: null };
+    }
+
+    if (query.table === 'routes' && query.operation === 'select') {
+      return {
+        data: [
+          {
+            id: 'route-1',
+            account_id: 'acct-1',
+            driver_id: 'driver-1',
+            vehicle_id: 'vehicle-1',
+            work_area_name: '810',
+            date: '2026-04-24',
+            source: 'gpx_upload',
+            total_stops: 12,
+            completed_stops: 3,
+            status: 'in_progress',
+            dispatch_state: 'dispatched',
+            dispatched_at: '2026-04-24T14:00:00.000Z',
+            sync_state: 'staged_stable',
+            last_manifest_sync_at: '2026-04-24T13:40:00.000Z',
+            last_manifest_change_at: '2026-04-24T14:20:00.000Z',
+            manifest_stop_count: 12,
+            manifest_package_count: 16,
+            manifest_fingerprint: 'fingerprint-1',
+            last_manifest_sync_error: null,
+            created_at: '2026-04-24T13:40:00.000Z',
+            completed_at: null,
+            archived_at: null
+          }
+        ],
+        error: null
+      };
+    }
+
+    if (query.table === 'stops' && query.operation === 'select') {
+      return { data: [], error: null };
+    }
+
+    if (query.table === 'packages' && query.operation === 'select') {
+      return { data: [], error: null };
+    }
+
+    if (query.table === 'driver_positions' && query.operation === 'select') {
+      return { data: [], error: null };
+    }
+
+    if (query.table === 'drivers' && query.operation === 'select') {
+      return { data: [{ id: 'driver-1', name: 'Luis Jimenez' }], error: null };
+    }
+
+    if (query.table === 'vehicles' && query.operation === 'select') {
+      return { data: [{ id: 'vehicle-1', name: '402984', plate: '8WAI675' }], error: null };
+    }
+
+    if (query.table === 'route_sync_events' && query.operation === 'select') {
+      return { data: [], error: null };
+    }
+
+    throw new Error(`Unexpected query ${query.table}:${query.operation}`);
+  });
+
+  const server = await startTestServer({
+    supabase,
+    now: () => new Date('2026-04-24T14:30:00.000Z')
+  });
+
+  try {
+    const response = await fetch(`${server.baseUrl}/manager/routes?date=2026-04-24`, {
+      headers: {
+        Authorization: `Bearer ${signManagerToken()}`
+      }
+    });
+
+    assert.equal(response.status, 200);
+    const body = await response.json();
+    assert.equal(body.routes[0].sync_state, 'changed_after_dispatch');
+    assert.equal(body.routes[0].post_dispatch_change_policy.code, 'manager_review_required');
   } finally {
     await server.close();
   }

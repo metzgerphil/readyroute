@@ -21,6 +21,12 @@ function validateVedrSettingsPayload(payload = {}) {
   const errors = {};
   const normalizedProvider = normalizeVedrProvider(payload.provider);
   const normalizedAccountId = String(payload.account_id || '').trim();
+  const normalizedProviderLoginUrl = payload.provider_login_url === null || payload.provider_login_url === undefined || payload.provider_login_url === ''
+    ? null
+    : String(payload.provider_login_url).trim();
+  const normalizedProviderUsernameHint = payload.provider_username_hint === null || payload.provider_username_hint === undefined || payload.provider_username_hint === ''
+    ? null
+    : String(payload.provider_username_hint).trim();
 
   if (!normalizedAccountId) {
     errors.account_id = 'account_id is required';
@@ -30,12 +36,25 @@ function validateVedrSettingsPayload(payload = {}) {
     errors.provider = `provider must be one of: ${VEDR_PROVIDER_VALUES.join(', ')}`;
   }
 
+  if (normalizedProviderLoginUrl) {
+    try {
+      const parsed = new URL(normalizedProviderLoginUrl);
+      if (!['http:', 'https:'].includes(parsed.protocol)) {
+        errors.provider_login_url = 'provider_login_url must use http or https';
+      }
+    } catch {
+      errors.provider_login_url = 'provider_login_url must be a valid URL';
+    }
+  }
+
   return {
     valid: Object.keys(errors).length === 0,
     errors,
     value: {
       account_id: normalizedAccountId || null,
-      provider: normalizedProvider
+      provider: normalizedProvider,
+      provider_login_url: normalizedProviderLoginUrl,
+      provider_username_hint: normalizedProviderUsernameHint
     }
   };
 }
@@ -49,6 +68,8 @@ function presentVedrSettings(row = {}) {
     id: row.id || null,
     account_id: row.account_id || null,
     provider,
+    provider_login_url: row.provider_login_url || null,
+    provider_username_hint: row.provider_username_hint || null,
     connection_status: connectionStatus,
     provider_selected_at: row.provider_selected_at || null,
     connection_started_at: row.connection_started_at || null,

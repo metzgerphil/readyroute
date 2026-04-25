@@ -6,6 +6,7 @@ const jwt = require('jsonwebtoken');
 const defaultSupabase = require('../lib/supabase');
 const { requireManager } = require('../middleware/auth');
 const { createBillingService } = require('../services/billing');
+const { encryptFedexSecret } = require('../services/fedexCredentials');
 const { attachApartmentIntelligenceToStops } = require('../services/apartmentIntelligence');
 const { isUsableCoordinate, summarizeCoordinateHealth } = require('../services/coordinates');
 const { attachPropertyIntelToStops, savePropertyIntel } = require('../services/propertyIntel');
@@ -22,8 +23,6 @@ const {
 } = require('../services/manifestParser');
 const { attachStopNotesToStops, saveStopNote } = require('../services/stopNotes');
 
-const DEFAULT_DRIVER_STARTER_PIN = '1234';
-
 function getCurrentDateString(now = new Date(), timeZone = process.env.APP_TIME_ZONE || 'America/Los_Angeles') {
   return new Intl.DateTimeFormat('en-CA', {
     timeZone,
@@ -33,9 +32,94 @@ function getCurrentDateString(now = new Date(), timeZone = process.env.APP_TIME_
   }).format(now);
 }
 
+const DEFAULT_DRIVER_STARTER_PIN = '1234';
+const DEFAULT_ROUTE_SYNC_SETTINGS = Object.freeze({
+  operations_timezone: process.env.APP_TIME_ZONE || 'America/Los_Angeles',
+  dispatch_window_start_hour: 6,
+  dispatch_window_end_hour: 11,
+  manifest_sync_interval_minutes: 15
+});
+
 function parseIsoDateToUtcMidday(value) {
   const [year, month, day] = String(value).split('-').map(Number);
   return new Date(Date.UTC(year, month - 1, day, 12, 0, 0));
+}
+
+function formatHourLabel(hour) {
+  const normalizedHour = Number(hour);
+
+  if (!Number.isInteger(normalizedHour) || normalizedHour < 0 || normalizedHour > 23) {
+    return '--';
+  }
+
+  const period = normalizedHour >= 12 ? 'PM' : 'AM';
+  const displayHour = normalizedHour % 12 || 12;
+  return `${displayHour}:00 ${period}`;
+}
+
+function getTimeZoneDateParts(now, timeZone) {
+  const formatter = new Intl.DateTimeFormat('en-CA', {
+    timeZone,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    hour12: false
+  });
+
+  const parts = formatter.formatToParts(now);
+  const lookup = new Map(parts.map((part) => [part.type, part.value]));
+  return {
+    date: `${lookup.get('year')}-${lookup.get('month')}-${lookup.get('day')}`,
+    hour: Number(lookup.get('hour'))
+  };
+}
+
+function presentRouteSyncSettings(account, selectedDate, now = new Date()) {
+  const operationsTimezone = account?.operations_timezone || DEFAULT_ROUTE_SYNC_SETTINGS.operations_timezone;
+  const dispatchWindowStartHour = Number(account?.dispatch_window_start_hour ?? DEFAULT_ROUTE_SYNC_SETTINGS.dispatch_window_start_hour);
+  const dispatchWindowEndHour = Number(account?.dispatch_window_end_hour ?? DEFAULT_ROUTE_SYNC_SETTINGS.dispatch_window_end_hour);
+  const manifestSyncIntervalMinutes = Number(
+    account?.manifest_sync_interval_minutes ?? DEFAULT_ROUTE_SYNC_SETTINGS.manifest_sync_interval_minutes
+  );
+
+  const localNow = getTimeZoneDateParts(now, operationsTimezone);
+  let dispatchWindowState = 'scheduled';
+
+  if (selectedDate < localNow.date) {
+    dispatchWindowState = 'historical';
+  } else if (selectedDate === localNow.date) {
+    if (localNow.hour < dispatchWindowStartHour) {
+      dispatchWindowState = 'before_window';
+    } else if (localNow.hour >= dispatchWindowEndHour) {
+      dispatchWindowState = 'after_window';
+    } else {
+      dispatchWindowState = 'active_window';
+    }
+  }
+
+  return {
+    operations_timezone: operationsTimezone,
+    dispatch_window_start_hour: dispatchWindowStartHour,
+    dispatch_window_end_hour: dispatchWindowEndHour,
+    dispatch_window_label: `${formatHourLabel(dispatchWindowStartHour)} - ${formatHourLabel(dispatchWindowEndHour)}`,
+    manifest_sync_interval_minutes: manifestSyncIntervalMinutes,
+    local_today: localNow.date,
+    dispatch_window_state: dispatchWindowState
+  };
+}
+
+function isValidTimeZone(value) {
+  if (!value || typeof value !== 'string') {
+    return false;
+  }
+
+  try {
+    new Intl.DateTimeFormat('en-US', { timeZone: value }).format(new Date());
+    return true;
+  } catch (_error) {
+    return false;
+  }
 }
 
 function getWeekRangeFromDate(dateValue) {
@@ -700,6 +784,37 @@ function normalizeFedexAccountNumber(value) {
   return String(value || '').trim().replace(/\s+/g, '');
 }
 
+function buildFccPortalAccountNumber(accountId, username) {
+  const digest = crypto
+    .createHash('sha256')
+    .update(`${accountId || 'account'}:${String(username || '').trim().toLowerCase()}`)
+    .digest('hex')
+    .slice(0, 12)
+    .toUpperCase();
+
+  return `FCC${digest}`;
+}
+
+function withFccPortalDefaults(input, accountId) {
+  if (!input.fcc_username) {
+    return input;
+  }
+
+  return {
+    ...input,
+    nickname: input.nickname || 'FCC Portal Access',
+    account_number: input.account_number || buildFccPortalAccountNumber(accountId, input.fcc_username),
+    billing_contact_name: input.billing_contact_name || 'FCC Portal',
+    billing_company_name: input.billing_company_name || 'ReadyRoute FCC Access',
+    billing_address_line1: input.billing_address_line1 || 'FCC Portal Credential',
+    billing_city: input.billing_city || 'FCC Portal',
+    billing_state_or_province: input.billing_state_or_province || 'NA',
+    billing_postal_code: input.billing_postal_code || '00000',
+    billing_country_code: input.billing_country_code || 'US',
+    connection_status: input.connection_status === 'not_started' ? 'connected' : input.connection_status
+  };
+}
+
 function maskFedexAccountNumber(value) {
   const normalized = normalizeFedexAccountNumber(value);
 
@@ -728,6 +843,9 @@ function toFedexAccountRecord(row) {
     billing_country_code: row.billing_country_code || 'US',
     connection_status: row.connection_status || 'not_started',
     connection_reference: row.connection_reference || null,
+    fcc_username: row.fcc_username || null,
+    has_saved_fcc_password: Boolean(row.fcc_password_encrypted),
+    fcc_password_updated_at: row.fcc_password_updated_at || null,
     last_verified_at: row.last_verified_at || null,
     is_default: row.is_default === true,
     created_by_manager_user_id: row.created_by_manager_user_id || null,
@@ -741,7 +859,7 @@ async function listFedexAccountsForAccount(supabase, accountId) {
   const fedexAccountsQuery = await supabase
     .from('fedex_accounts')
     .select(
-      'id, account_id, nickname, account_number, billing_contact_name, billing_company_name, billing_address_line1, billing_address_line2, billing_city, billing_state_or_province, billing_postal_code, billing_country_code, connection_status, connection_reference, last_verified_at, is_default, created_by_manager_user_id, created_at, updated_at, disconnected_at'
+      'id, account_id, nickname, account_number, billing_contact_name, billing_company_name, billing_address_line1, billing_address_line2, billing_city, billing_state_or_province, billing_postal_code, billing_country_code, connection_status, connection_reference, fcc_username, fcc_password_encrypted, fcc_password_updated_at, last_verified_at, is_default, created_by_manager_user_id, created_at, updated_at, disconnected_at'
     )
     .eq('account_id', accountId)
     .order('is_default', { ascending: false })
@@ -797,7 +915,7 @@ async function getFedexAccountForManager(supabase, accountId, fedexAccountId) {
   const fedexAccountQuery = await supabase
     .from('fedex_accounts')
     .select(
-      'id, account_id, nickname, account_number, billing_contact_name, billing_company_name, billing_address_line1, billing_address_line2, billing_city, billing_state_or_province, billing_postal_code, billing_country_code, connection_status, connection_reference, last_verified_at, is_default, created_by_manager_user_id, created_at, updated_at, disconnected_at'
+      'id, account_id, nickname, account_number, billing_contact_name, billing_company_name, billing_address_line1, billing_address_line2, billing_city, billing_state_or_province, billing_postal_code, billing_country_code, connection_status, connection_reference, fcc_username, fcc_password_encrypted, fcc_password_updated_at, last_verified_at, is_default, created_by_manager_user_id, created_at, updated_at, disconnected_at'
     )
     .eq('account_id', accountId)
     .eq('id', fedexAccountId)
@@ -816,7 +934,12 @@ async function getFedexAccountForManager(supabase, accountId, fedexAccountId) {
 
   return {
     migrationRequired: false,
-    account: fedexAccountQuery.data ? toFedexAccountRecord(fedexAccountQuery.data) : null
+    account: fedexAccountQuery.data
+      ? {
+          ...toFedexAccountRecord(fedexAccountQuery.data),
+          fcc_password_encrypted: fedexAccountQuery.data.fcc_password_encrypted || null
+        }
+      : null
   };
 }
 
@@ -833,7 +956,10 @@ function parseFedexAccountInput(body = {}) {
     billing_postal_code: String(body.billing_postal_code || '').trim(),
     billing_country_code: String(body.billing_country_code || 'US').trim().toUpperCase(),
     connection_status: String(body.connection_status || 'not_started').trim().toLowerCase(),
-    connection_reference: String(body.connection_reference || '').trim()
+    connection_reference: String(body.connection_reference || '').trim(),
+    fcc_username: String(body.fcc_username || '').trim(),
+    fcc_password: String(body.fcc_password || ''),
+    clear_saved_fcc_password: body.clear_saved_fcc_password === true
   };
 }
 
@@ -862,8 +988,42 @@ function validateFedexAccountInput(input) {
     return 'connection_status must be not_started, pending_mfa, connected, or failed';
   }
 
+  if (input.fcc_username.length > 120) {
+    return 'fcc_username must be 120 characters or fewer';
+  }
+
+  if (input.fcc_password && !input.fcc_username) {
+    return 'fcc_username is required when saving an FCC password';
+  }
+
   return null;
 }
+
+function validateFccPortalCredentialInput(input, { isExistingAccount = false, hasSavedPassword = false } = {}) {
+  const looksLikeFccPortalAccess =
+    Boolean(input.fcc_username) ||
+    /^FCC/i.test(input.account_number || '') ||
+    /fcc portal/i.test(input.nickname || '');
+
+  if (!looksLikeFccPortalAccess) {
+    return null;
+  }
+
+  if (!input.fcc_username) {
+    return 'MyBizAccount / FCC username is required for FCC Portal Access.';
+  }
+
+  if (!isExistingAccount && !input.fcc_password) {
+    return 'MyBizAccount password is required for FCC Portal Access.';
+  }
+
+  if (isExistingAccount && !input.fcc_password && !hasSavedPassword && !input.clear_saved_fcc_password) {
+    return 'Re-enter the MyBizAccount password before saving this FCC Portal Access login.';
+  }
+
+  return null;
+}
+
 function normalizeEmail(value) {
   return String(value || '').trim().toLowerCase();
 }
@@ -1042,7 +1202,7 @@ async function findManagerIdentityForAccount(supabase, accountId, email) {
   };
 }
 
-async function listAccessibleCsasForManager(supabase, managerEmail, currentAccountId = null, today = getCurrentDateString()) {
+async function listAccessibleCsasForManager(supabase, managerEmail, currentAccountId = null, now = new Date()) {
   const normalizedEmail = normalizeEmail(managerEmail);
   const accessibleIds = new Set();
 
@@ -1083,7 +1243,7 @@ async function listAccessibleCsasForManager(supabase, managerEmail, currentAccou
   const accountIds = [...accessibleIds];
   const accountsQuery = await supabase
     .from('accounts')
-    .select('id, company_name, manager_email, created_at')
+    .select('id, company_name, manager_email, created_at, operations_timezone, dispatch_window_start_hour, dispatch_window_end_hour, manifest_sync_interval_minutes')
     .in('id', accountIds)
     .order('company_name');
 
@@ -1118,11 +1278,18 @@ async function listAccessibleCsasForManager(supabase, managerEmail, currentAccou
     throw vehiclesQuery.error;
   }
 
+  const localTodayByAccount = new Map();
+  for (const account of accountsQuery.data || []) {
+    const routeSyncSettings = presentRouteSyncSettings(account, getCurrentDateString(now), now);
+    localTodayByAccount.set(account.id, routeSyncSettings.local_today);
+  }
+
+  const routeDates = [...new Set(localTodayByAccount.values())];
   const routesQuery = await supabase
     .from('routes')
-    .select('id, account_id, archived_at, date')
+    .select('id, account_id, archived_at, date, driver_id, vehicle_id, dispatch_state, sync_state, last_manifest_change_at, dispatched_at')
     .in('account_id', accountIds)
-    .eq('date', today);
+    .in('date', routeDates);
 
   if (routesQuery.error) {
     throw routesQuery.error;
@@ -1149,20 +1316,57 @@ async function listAccessibleCsasForManager(supabase, managerEmail, currentAccou
   }
 
   const routesByAccount = new Map();
+  const routeStatusSummaryByAccount = new Map();
   for (const row of routesQuery.data || []) {
     if (row.archived_at) {
       continue;
     }
 
+    if (row.date !== localTodayByAccount.get(row.account_id)) {
+      continue;
+    }
+
     routesByAccount.set(row.account_id, (routesByAccount.get(row.account_id) || 0) + 1);
+
+    const current = routeStatusSummaryByAccount.get(row.account_id) || {
+      ready: 0,
+      review: 0,
+      blocked: 0,
+      dispatched: 0
+    };
+    const syncState = presentRouteSyncState(row);
+
+    if (row.dispatch_state === 'dispatched') {
+      current.dispatched += 1;
+    } else if (shouldBlockDispatchForSyncState(syncState)) {
+      current.blocked += 1;
+    } else if (['staged_changed', 'changed_after_dispatch'].includes(syncState)) {
+      current.review += 1;
+    } else {
+      current.ready += 1;
+    }
+
+    routeStatusSummaryByAccount.set(row.account_id, current);
   }
 
   return (accountsQuery.data || []).map((account) => ({
+    ...(routeStatusSummaryByAccount.get(account.id) || {
+      ready: 0,
+      review: 0,
+      blocked: 0,
+      dispatched: 0
+    }),
     id: account.id,
     company_name: account.company_name,
     manager_email: account.manager_email || primaryManagerEmailByAccount.get(account.id) || null,
     created_at: account.created_at || null,
     is_current: account.id === currentAccountId,
+    local_date: localTodayByAccount.get(account.id) || getCurrentDateString(now),
+    route_sync_settings: presentRouteSyncSettings(
+      account,
+      localTodayByAccount.get(account.id) || getCurrentDateString(now),
+      now
+    ),
     manager_count: managersByAccount.get(account.id) || 0,
     driver_count: driversByAccount.get(account.id) || 0,
     vehicle_count: vehiclesByAccount.get(account.id) || 0,
@@ -1250,6 +1454,89 @@ function isDisplayableManagerRoute(route) {
   return !route?.archived_at && Boolean(String(route?.work_area_name || '').trim());
 }
 
+function isDispatchBlockedRoute(route) {
+  return !route?.driver_id || !route?.vehicle_id;
+}
+
+function presentRouteSyncState(route) {
+  if (!route) {
+    return 'sync_pending';
+  }
+
+  if (route.dispatch_state === 'dispatched' && route.dispatched_at && route.last_manifest_change_at) {
+    const dispatchedAt = new Date(route.dispatched_at).getTime();
+    const lastChangeAt = new Date(route.last_manifest_change_at).getTime();
+
+    if (Number.isFinite(dispatchedAt) && Number.isFinite(lastChangeAt) && lastChangeAt > dispatchedAt) {
+      return 'changed_after_dispatch';
+    }
+  }
+
+  if (isDispatchBlockedRoute(route)) {
+    return 'dispatch_blocked';
+  }
+
+  return route.sync_state || 'sync_pending';
+}
+
+function shouldBlockDispatchForSyncState(syncState) {
+  return ['sync_pending', 'syncing', 'sync_failed', 'needs_attention', 'dispatch_blocked'].includes(syncState);
+}
+
+function getPostDispatchChangePolicy(route) {
+  const syncState = presentRouteSyncState(route);
+
+  if (syncState !== 'changed_after_dispatch') {
+    return {
+      code: 'none',
+      label: 'No post-dispatch change',
+      tone: 'neutral',
+      should_notify_driver: false,
+      should_notify_manager: false,
+      requires_manager_review: false
+    };
+  }
+
+  const completedStops = Number(route?.completed_stops || 0);
+  const hasStartedWork = completedStops > 0 || route?.status === 'in_progress' || route?.status === 'complete';
+
+  if (hasStartedWork) {
+    return {
+      code: 'manager_review_required',
+      label: 'Manager review required',
+      tone: 'urgent',
+      should_notify_driver: true,
+      should_notify_manager: true,
+      requires_manager_review: true
+    };
+  }
+
+  return {
+    code: 'driver_warning',
+    label: 'Driver warning',
+    tone: 'warning',
+    should_notify_driver: true,
+    should_notify_manager: true,
+    requires_manager_review: false
+  };
+}
+
+async function recordRouteSyncEvents(supabase, events = []) {
+  const payload = (events || []).filter(
+    (event) => event?.account_id && event?.route_id && event?.work_date && event?.event_type && event?.summary
+  );
+
+  if (!payload.length) {
+    return;
+  }
+
+  const { error } = await supabase.from('route_sync_events').insert(payload);
+
+  if (error) {
+    console.error('Route sync event insert failed:', error);
+  }
+}
+
 function getTimeCommitCounts(stops = []) {
   const timeCommitStops = (stops || []).filter((stop) => stop.has_time_commit);
   const completedStatuses = new Set(['delivered', 'attempted', 'incomplete']);
@@ -1261,11 +1548,62 @@ function getTimeCommitCounts(stops = []) {
   };
 }
 
+function isCompletedStopStatus(status) {
+  return ['delivered', 'attempted', 'incomplete', 'pickup_complete', 'pickup_attempted'].includes(status);
+}
+
+function getStopStatusSummary(stops = []) {
+  return (stops || []).reduce(
+    (summary, stop) => {
+      if (stop.exception_code || stop.status === 'attempted' || stop.status === 'incomplete' || stop.status === 'pickup_attempted') {
+        summary.exception += 1;
+      }
+
+      if (isCompletedStopStatus(stop.status)) {
+        summary.completed += 1;
+      } else {
+        summary.pending += 1;
+      }
+
+      return summary;
+    },
+    {
+      completed: 0,
+      pending: 0,
+      exception: 0
+    }
+  );
+}
+
+function getPackageStatusSummary(packages = [], stopsById = new Map()) {
+  return (packages || []).reduce(
+    (summary, pkg) => {
+      const stop = stopsById.get(pkg.stop_id);
+
+      if (stop?.exception_code || stop?.status === 'attempted' || stop?.status === 'incomplete' || stop?.status === 'pickup_attempted') {
+        summary.exception += 1;
+      } else if (stop && isCompletedStopStatus(stop.status)) {
+        summary.completed += 1;
+      } else {
+        summary.pending += 1;
+      }
+
+      return summary;
+    },
+    {
+      completed: 0,
+      pending: 0,
+      exception: 0
+    }
+  );
+}
+
 function createPackagesByStopId(packages = []) {
   return (packages || []).reduce((map, pkg) => {
     const current = map.get(pkg.stop_id) || [];
     current.push({
       id: pkg.id,
+      stop_id: pkg.stop_id,
       tracking_number: pkg.tracking_number,
       requires_signature: pkg.requires_signature,
       hazmat: pkg.hazmat
@@ -1273,6 +1611,36 @@ function createPackagesByStopId(packages = []) {
     map.set(pkg.stop_id, current);
     return map;
   }, new Map());
+}
+
+async function fetchPackagesByStopIds(supabase, stopIds = [], selectClause = 'id, stop_id') {
+  const normalizedStopIds = [...new Set((stopIds || []).filter(Boolean))];
+
+  if (!normalizedStopIds.length) {
+    return { data: [], error: null };
+  }
+
+  const chunkSize = 125;
+  const packageRows = [];
+
+  for (let index = 0; index < normalizedStopIds.length; index += chunkSize) {
+    const chunk = normalizedStopIds.slice(index, index + chunkSize);
+    const { data, error } = await supabase
+      .from('packages')
+      .select(selectClause)
+      .in('stop_id', chunk);
+
+    if (error) {
+      return { data: null, error };
+    }
+
+    packageRows.push(...(data || []));
+  }
+
+  return {
+    data: packageRows,
+    error: null
+  };
 }
 
 function getCoordinateBoundary(stops = []) {
@@ -1378,12 +1746,13 @@ function createManagerRouter(options = {}) {
       const vehicleIds = [...new Set(visibleRoutes.map((route) => route.vehicle_id).filter(Boolean))];
       let stops = [];
       let positions = [];
+      let packages = [];
       let vehicles = [];
 
       if (routeIds.length > 0) {
         const { data: stopRows, error: stopsError } = await supabase
           .from('stops')
-          .select('id, route_id, sequence_order, status, completed_at, address, delivery_type_code, has_time_commit')
+          .select('id, route_id, sequence_order, status, completed_at, address, delivery_type_code, has_time_commit, exception_code')
           .in('route_id', routeIds)
           .order('sequence_order');
 
@@ -1393,6 +1762,23 @@ function createManagerRouter(options = {}) {
         }
 
         stops = stopRows || [];
+
+        const stopIds = stops.map((stop) => stop.id);
+
+        if (stopIds.length > 0) {
+          const { data: packageRows, error: packagesError } = await fetchPackagesByStopIds(
+            supabase,
+            stopIds,
+            'id, stop_id'
+          );
+
+          if (packagesError) {
+            console.error('Dashboard packages lookup failed:', packagesError);
+            return res.status(500).json({ error: 'Failed to load dashboard packages' });
+          }
+
+          packages = packageRows || [];
+        }
 
         const { data: positionRows, error: positionsError } = await supabase
           .from('driver_positions')
@@ -1425,6 +1811,7 @@ function createManagerRouter(options = {}) {
 
       const driverById = new Map((drivers || []).map((driver) => [driver.id, driver]));
       const vehicleById = new Map((vehicles || []).map((vehicle) => [vehicle.id, vehicle]));
+      const stopsById = new Map((stops || []).map((stop) => [stop.id, stop]));
       const stopsByRouteId = (stops || []).reduce((map, stop) => {
         const current = map.get(stop.route_id) || [];
         current.push(stop);
@@ -1442,6 +1829,7 @@ function createManagerRouter(options = {}) {
         (sum, route) => sum + Number(route.completed_stops || 0),
         0
       );
+      const completedRoutes = visibleRoutes.filter((route) => route.status === 'complete').length;
       const routesToday = Number(visibleRoutes.length);
       const routesAssigned = visibleRoutes.filter((route) => Boolean(route.driver_id)).length;
       const driversOnRoad = visibleRoutes.filter((route) => route.status === 'in_progress' && route.driver_id).length;
@@ -1454,6 +1842,8 @@ function createManagerRouter(options = {}) {
         },
         { total: 0, completed: 0 }
       );
+      const stopStatusSummary = getStopStatusSummary(stops);
+      const packageStatusSummary = getPackageStatusSummary(packages, stopsById);
 
       const driverSnapshot = visibleRoutes.map((route) => {
         const driver = route.driver_id ? driverById.get(route.driver_id) || null : null;
@@ -1518,6 +1908,19 @@ function createManagerRouter(options = {}) {
         completed_stops: completedStops,
         time_commits_total: timeCommitTotals.total,
         time_commits_completed: timeCommitTotals.completed,
+        route_summary: {
+          completed: completedRoutes,
+          total: routesToday
+        },
+        commits_summary: {
+          completed: timeCommitTotals.completed,
+          total: timeCommitTotals.total
+        },
+        stop_status_summary: stopStatusSummary,
+        package_status_summary: {
+          ...packageStatusSummary,
+          total: packages.length
+        },
         sync_status: {
           routes_today: routesToday,
           routes_assigned: routesAssigned,
@@ -1574,7 +1977,7 @@ function createManagerRouter(options = {}) {
         supabase,
         req.account.manager_email,
         req.account.account_id,
-        getCurrentDateString(nowProvider())
+        nowProvider()
       );
       const currentCsa = accessibleCsas.find((entry) => entry.is_current) || null;
 
@@ -1831,7 +2234,7 @@ function createManagerRouter(options = {}) {
         supabase,
         req.account.manager_email,
         req.account.account_id,
-        getCurrentDateString(nowProvider())
+        nowProvider()
       );
 
       return res.status(200).json({
@@ -1858,6 +2261,82 @@ function createManagerRouter(options = {}) {
     } catch (error) {
       console.error('Driver access settings lookup failed:', error);
       return res.status(500).json({ error: 'Failed to load driver access settings' });
+    }
+  });
+
+  router.get('/route-sync-settings', requireManager, async (req, res) => {
+    try {
+      const { data: account, error } = await supabase
+        .from('accounts')
+        .select('operations_timezone, dispatch_window_start_hour, dispatch_window_end_hour, manifest_sync_interval_minutes')
+        .eq('id', req.account.account_id)
+        .maybeSingle();
+
+      if (error) {
+        console.error('Route sync settings lookup failed:', error);
+        return res.status(500).json({ error: 'Failed to load route sync settings' });
+      }
+
+      return res.status(200).json({
+        route_sync_settings: presentRouteSyncSettings(account || {}, getCurrentDateString(nowProvider()), nowProvider())
+      });
+    } catch (error) {
+      console.error('Route sync settings endpoint failed:', error);
+      return res.status(500).json({ error: 'Failed to load route sync settings' });
+    }
+  });
+
+  router.patch('/route-sync-settings', requireManager, async (req, res) => {
+    const operationsTimezone = String(req.body?.operations_timezone || '').trim();
+    const dispatchWindowStartHour = Number(req.body?.dispatch_window_start_hour);
+    const dispatchWindowEndHour = Number(req.body?.dispatch_window_end_hour);
+    const manifestSyncIntervalMinutes = Number(req.body?.manifest_sync_interval_minutes);
+
+    if (!isValidTimeZone(operationsTimezone)) {
+      return res.status(400).json({ error: 'operations_timezone must be a valid IANA timezone.' });
+    }
+
+    if (!Number.isInteger(dispatchWindowStartHour) || dispatchWindowStartHour < 0 || dispatchWindowStartHour > 23) {
+      return res.status(400).json({ error: 'dispatch_window_start_hour must be an integer from 0 to 23.' });
+    }
+
+    if (!Number.isInteger(dispatchWindowEndHour) || dispatchWindowEndHour < 1 || dispatchWindowEndHour > 23) {
+      return res.status(400).json({ error: 'dispatch_window_end_hour must be an integer from 1 to 23.' });
+    }
+
+    if (dispatchWindowEndHour <= dispatchWindowStartHour) {
+      return res.status(400).json({ error: 'dispatch_window_end_hour must be later than dispatch_window_start_hour.' });
+    }
+
+    if (![5, 10, 15, 20, 30, 60].includes(manifestSyncIntervalMinutes)) {
+      return res.status(400).json({ error: 'manifest_sync_interval_minutes must be one of 5, 10, 15, 20, 30, or 60.' });
+    }
+
+    try {
+      const { data: account, error } = await supabase
+        .from('accounts')
+        .update({
+          operations_timezone: operationsTimezone,
+          dispatch_window_start_hour: dispatchWindowStartHour,
+          dispatch_window_end_hour: dispatchWindowEndHour,
+          manifest_sync_interval_minutes: manifestSyncIntervalMinutes
+        })
+        .eq('id', req.account.account_id)
+        .select('operations_timezone, dispatch_window_start_hour, dispatch_window_end_hour, manifest_sync_interval_minutes')
+        .maybeSingle();
+
+      if (error) {
+        console.error('Route sync settings update failed:', error);
+        return res.status(500).json({ error: 'Failed to update route sync settings' });
+      }
+
+      return res.status(200).json({
+        ok: true,
+        route_sync_settings: presentRouteSyncSettings(account || {}, getCurrentDateString(nowProvider(), operationsTimezone), nowProvider())
+      });
+    } catch (error) {
+      console.error('Route sync settings patch endpoint failed:', error);
+      return res.status(500).json({ error: 'Failed to update route sync settings' });
     }
   });
 
@@ -1910,8 +2389,10 @@ function createManagerRouter(options = {}) {
   });
 
   router.post('/fedex-accounts', requireManager, async (req, res) => {
-    const input = parseFedexAccountInput(req.body);
-    const validationError = validateFedexAccountInput(input);
+    const input = withFccPortalDefaults(parseFedexAccountInput(req.body), req.account.account_id);
+    const validationError =
+      validateFedexAccountInput(input) ||
+      validateFccPortalCredentialInput(input);
 
     if (validationError) {
       return res.status(400).json({ error: validationError });
@@ -1926,6 +2407,9 @@ function createManagerRouter(options = {}) {
 
       const shouldBeDefault = Boolean(req.body?.is_default) || existingAccounts.accounts.filter((account) => !account.disconnected_at).length === 0;
       const timestamp = nowProvider().toISOString();
+      const encryptedFccPassword = input.fcc_password
+        ? encryptFedexSecret(input.fcc_password)
+        : null;
 
       if (shouldBeDefault) {
         const { error: clearDefaultError } = await supabase
@@ -1959,13 +2443,16 @@ function createManagerRouter(options = {}) {
           billing_country_code: input.billing_country_code,
           connection_status: input.connection_status,
           connection_reference: input.connection_reference || null,
+          fcc_username: input.fcc_username || null,
+          fcc_password_encrypted: encryptedFccPassword,
+          fcc_password_updated_at: encryptedFccPassword ? timestamp : null,
           last_verified_at: input.connection_status === 'connected' ? timestamp : null,
           is_default: shouldBeDefault,
           created_by_manager_user_id: req.account.manager_user_id || null,
           updated_at: timestamp
         })
         .select(
-          'id, account_id, nickname, account_number, billing_contact_name, billing_company_name, billing_address_line1, billing_address_line2, billing_city, billing_state_or_province, billing_postal_code, billing_country_code, connection_status, connection_reference, last_verified_at, is_default, created_by_manager_user_id, created_at, updated_at, disconnected_at'
+          'id, account_id, nickname, account_number, billing_contact_name, billing_company_name, billing_address_line1, billing_address_line2, billing_city, billing_state_or_province, billing_postal_code, billing_country_code, connection_status, connection_reference, fcc_username, fcc_password_encrypted, fcc_password_updated_at, last_verified_at, is_default, created_by_manager_user_id, created_at, updated_at, disconnected_at'
         )
         .single();
 
@@ -1983,6 +2470,9 @@ function createManagerRouter(options = {}) {
         account: toFedexAccountRecord(createdAccount)
       });
     } catch (error) {
+      if (/FEDEX_SYNC_CREDENTIALS_KEY/i.test(String(error?.message || ''))) {
+        return res.status(500).json({ error: 'FCC credential encryption is not configured on the server yet.' });
+      }
       console.error('FedEx account creation failed:', error);
       return res.status(500).json({ error: 'Failed to add FedEx account' });
     }
@@ -1990,7 +2480,7 @@ function createManagerRouter(options = {}) {
 
   router.patch('/fedex-accounts/:fedexAccountId', requireManager, async (req, res) => {
     const fedexAccountId = String(req.params.fedexAccountId || '').trim();
-    const input = parseFedexAccountInput(req.body);
+    const input = withFccPortalDefaults(parseFedexAccountInput(req.body), req.account.account_id);
     const validationError = validateFedexAccountInput(input);
 
     if (!fedexAccountId) {
@@ -2012,7 +2502,20 @@ function createManagerRouter(options = {}) {
         return res.status(404).json({ error: 'FedEx account not found' });
       }
 
+      const fccValidationError = validateFccPortalCredentialInput(input, {
+        isExistingAccount: true,
+        hasSavedPassword: Boolean(existingFedexAccount.account.fcc_password_encrypted)
+      });
+
+      if (fccValidationError) {
+        return res.status(400).json({ error: fccValidationError });
+      }
+
       const timestamp = nowProvider().toISOString();
+      const encryptedFccPassword = input.fcc_password
+        ? encryptFedexSecret(input.fcc_password)
+        : existingFedexAccount.account.fcc_password_encrypted;
+      const shouldClearSavedPassword = input.clear_saved_fcc_password === true;
       const { data: updatedAccount, error: updateError } = await supabase
         .from('fedex_accounts')
         .update({
@@ -2028,6 +2531,13 @@ function createManagerRouter(options = {}) {
           billing_country_code: input.billing_country_code,
           connection_status: input.connection_status,
           connection_reference: input.connection_reference || null,
+          fcc_username: input.fcc_username || null,
+          fcc_password_encrypted: shouldClearSavedPassword ? null : encryptedFccPassword,
+          fcc_password_updated_at: shouldClearSavedPassword
+            ? null
+            : input.fcc_password
+              ? timestamp
+              : existingFedexAccount.account.fcc_password_updated_at || null,
           last_verified_at: input.connection_status === 'connected'
             ? (existingFedexAccount.account.last_verified_at || timestamp)
             : null,
@@ -2037,7 +2547,7 @@ function createManagerRouter(options = {}) {
         .eq('account_id', req.account.account_id)
         .eq('id', fedexAccountId)
         .select(
-          'id, account_id, nickname, account_number, billing_contact_name, billing_company_name, billing_address_line1, billing_address_line2, billing_city, billing_state_or_province, billing_postal_code, billing_country_code, connection_status, connection_reference, last_verified_at, is_default, created_by_manager_user_id, created_at, updated_at, disconnected_at'
+          'id, account_id, nickname, account_number, billing_contact_name, billing_company_name, billing_address_line1, billing_address_line2, billing_city, billing_state_or_province, billing_postal_code, billing_country_code, connection_status, connection_reference, fcc_username, fcc_password_encrypted, fcc_password_updated_at, last_verified_at, is_default, created_by_manager_user_id, created_at, updated_at, disconnected_at'
         )
         .single();
 
@@ -2055,6 +2565,9 @@ function createManagerRouter(options = {}) {
         account: toFedexAccountRecord(updatedAccount)
       });
     } catch (error) {
+      if (/FEDEX_SYNC_CREDENTIALS_KEY/i.test(String(error?.message || ''))) {
+        return res.status(500).json({ error: 'FCC credential encryption is not configured on the server yet.' });
+      }
       console.error('FedEx account update failed:', error);
       return res.status(500).json({ error: 'Failed to update FedEx account' });
     }
@@ -2106,7 +2619,7 @@ function createManagerRouter(options = {}) {
         .eq('account_id', req.account.account_id)
         .eq('id', fedexAccountId)
         .select(
-          'id, account_id, nickname, account_number, billing_contact_name, billing_company_name, billing_address_line1, billing_address_line2, billing_city, billing_state_or_province, billing_postal_code, billing_country_code, connection_status, connection_reference, last_verified_at, is_default, created_by_manager_user_id, created_at, updated_at, disconnected_at'
+          'id, account_id, nickname, account_number, billing_contact_name, billing_company_name, billing_address_line1, billing_address_line2, billing_city, billing_state_or_province, billing_postal_code, billing_country_code, connection_status, connection_reference, fcc_username, fcc_password_encrypted, fcc_password_updated_at, last_verified_at, is_default, created_by_manager_user_id, created_at, updated_at, disconnected_at'
         )
         .single();
 
@@ -2153,7 +2666,7 @@ function createManagerRouter(options = {}) {
         .eq('account_id', req.account.account_id)
         .eq('id', fedexAccountId)
         .select(
-          'id, account_id, nickname, account_number, billing_contact_name, billing_company_name, billing_address_line1, billing_address_line2, billing_city, billing_state_or_province, billing_postal_code, billing_country_code, connection_status, connection_reference, last_verified_at, is_default, created_by_manager_user_id, created_at, updated_at, disconnected_at'
+          'id, account_id, nickname, account_number, billing_contact_name, billing_company_name, billing_address_line1, billing_address_line2, billing_city, billing_state_or_province, billing_postal_code, billing_country_code, connection_status, connection_reference, fcc_username, fcc_password_encrypted, fcc_password_updated_at, last_verified_at, is_default, created_by_manager_user_id, created_at, updated_at, disconnected_at'
         )
         .single();
 
@@ -2467,53 +2980,6 @@ function createManagerRouter(options = {}) {
     } catch (error) {
       console.error('Manager invite refresh failed:', error);
       return res.status(500).json({ error: 'Failed to refresh manager invite' });
-    }
-  });
-
-  router.get('/driver-access', requireManager, async (req, res) => {
-    try {
-      const account = await getAccountManagerContext(supabase, req.account.account_id);
-
-      if (!account) {
-        return res.status(404).json({ error: 'Account not found' });
-      }
-
-      return res.status(200).json({
-        starter_pin: account.driver_starter_pin || DEFAULT_DRIVER_STARTER_PIN
-      });
-    } catch (error) {
-      console.error('Driver access settings lookup failed:', error);
-      return res.status(500).json({ error: 'Failed to load driver access settings' });
-    }
-  });
-
-  router.patch('/driver-access', requireManager, async (req, res) => {
-    const starterPin = String(req.body?.starter_pin || '').trim();
-
-    if (!/^\d{4}$/.test(starterPin)) {
-      return res.status(400).json({ error: 'Starter PIN must be a 4-digit code' });
-    }
-
-    try {
-      const { error } = await supabase
-        .from('accounts')
-        .update({
-          driver_starter_pin: starterPin
-        })
-        .eq('id', req.account.account_id);
-
-      if (error) {
-        if (isMissingDriverStarterPinColumn(error)) {
-          return res.status(500).json({ error: 'Run the latest account driver starter PIN migration in Supabase before saving this setting.' });
-        }
-        console.error('Driver access settings update failed:', error);
-        return res.status(500).json({ error: 'Failed to update driver access settings' });
-      }
-
-      return res.status(200).json({ ok: true, starter_pin: starterPin });
-    } catch (error) {
-      console.error('Driver access settings patch endpoint failed:', error);
-      return res.status(500).json({ error: 'Failed to update driver access settings' });
     }
   });
 
@@ -3776,7 +4242,7 @@ function createManagerRouter(options = {}) {
     try {
       const { data: route, error: routeError } = await supabase
         .from('routes')
-        .select('id, account_id, work_area_name, archived_at')
+        .select('id, account_id, work_area_name, date, archived_at')
         .eq('id', routeId)
         .eq('account_id', req.account.account_id)
         .maybeSingle();
@@ -3841,13 +4307,32 @@ function createManagerRouter(options = {}) {
         .from('routes')
         .update(updatePayload)
         .eq('id', routeId)
-        .select('id, driver_id, vehicle_id, work_area_name, total_stops, completed_stops, status')
+        .select('id, date, driver_id, vehicle_id, work_area_name, total_stops, completed_stops, status')
         .single();
 
       if (updateError) {
         console.error('Manager route assignment update failed:', updateError);
         return res.status(500).json({ error: 'Failed to update route assignment' });
       }
+
+      await recordRouteSyncEvents(supabase, [
+        {
+          account_id: req.account.account_id,
+          route_id: updatedRoute.id,
+          work_date: updatedRoute.date || route.date || getCurrentDateString(nowProvider()),
+          event_type: 'route_assignment_updated',
+          event_status: !updatedRoute.driver_id || !updatedRoute.vehicle_id ? 'warning' : 'info',
+          summary: `Route ${updatedRoute.work_area_name || updatedRoute.id} assignment updated`,
+          details: {
+            driver_id: updatedRoute.driver_id || null,
+            vehicle_id: updatedRoute.vehicle_id || null,
+            completed_stops: Number(updatedRoute.completed_stops || 0),
+            total_stops: Number(updatedRoute.total_stops || 0),
+            route_status: updatedRoute.status || null
+          },
+          manager_user_id: req.account.manager_user_id
+        }
+      ]);
 
       return res.status(200).json({ ok: true, route: updatedRoute });
     } catch (error) {
@@ -4000,10 +4485,11 @@ function createManagerRouter(options = {}) {
       let packagesByStopId = new Map();
 
       if (stopIds.length > 0) {
-        const { data: packages, error: packagesError } = await supabase
-          .from('packages')
-          .select('id, stop_id, tracking_number, requires_signature, hazmat')
-          .in('stop_id', stopIds);
+        const { data: packages, error: packagesError } = await fetchPackagesByStopIds(
+          supabase,
+          stopIds,
+          'id, stop_id, tracking_number, requires_signature, hazmat'
+        );
 
         if (packagesError) {
           console.error('Manager route detail packages lookup failed:', packagesError);
@@ -4399,7 +4885,7 @@ function createManagerRouter(options = {}) {
     try {
       const { data: account, error: accountError } = await supabase
         .from('accounts')
-        .select('fedex_csp_id')
+        .select('fedex_csp_id, operations_timezone, dispatch_window_start_hour, dispatch_window_end_hour, manifest_sync_interval_minutes')
         .eq('id', req.account.account_id)
         .maybeSingle();
 
@@ -4413,7 +4899,7 @@ function createManagerRouter(options = {}) {
 
       const { data: routes, error: routesError } = await supabase
         .from('routes')
-        .select('id, account_id, driver_id, vehicle_id, work_area_name, date, source, total_stops, completed_stops, status, created_at, completed_at, archived_at')
+        .select('id, account_id, driver_id, vehicle_id, work_area_name, date, source, total_stops, completed_stops, status, dispatch_state, dispatched_at, sync_state, last_manifest_sync_at, last_manifest_change_at, manifest_stop_count, manifest_package_count, manifest_fingerprint, last_manifest_sync_error, created_at, completed_at, archived_at')
         .eq('account_id', req.account.account_id)
         .eq('date', date)
         .is('archived_at', null)
@@ -4429,9 +4915,19 @@ function createManagerRouter(options = {}) {
       const driverIds = [...new Set(visibleRoutes.map((route) => route.driver_id).filter(Boolean))];
       const vehicleIds = [...new Set(visibleRoutes.map((route) => route.vehicle_id).filter(Boolean))];
       let stopsByRouteId = new Map();
-      const latestSyncAt = getLatestTimestamp(visibleRoutes.map((route) => route.created_at));
+      let packagesByStopId = new Map();
+      let lastPositionByDriverId = new Map();
+      const latestSyncAt = getLatestTimestamp(
+        visibleRoutes.map((route) => route.last_manifest_sync_at || route.created_at)
+      );
+      const routesBySyncState = visibleRoutes.reduce((summary, route) => {
+        const syncState = presentRouteSyncState(route);
+        summary[syncState] = (summary[syncState] || 0) + 1;
+        return summary;
+      }, {});
       let driversById = new Map();
       let vehiclesById = new Map();
+      let routeEventsByRouteId = new Map();
 
       if (routeIds.length > 0) {
         const { data: stops, error: stopsError } = await supabase
@@ -4453,6 +4949,38 @@ function createManagerRouter(options = {}) {
           map.set(stop.route_id, current);
           return map;
         }, new Map());
+
+        const stopIds = (stops || []).map((stop) => stop.id);
+
+        if (stopIds.length > 0) {
+          const { data: packages, error: packagesError } = await fetchPackagesByStopIds(
+            supabase,
+            stopIds,
+            'id, stop_id'
+          );
+
+          if (packagesError) {
+            console.error('Manager routes package lookup failed:', packagesError);
+            return res.status(500).json({ error: 'Failed to load route packages' });
+          }
+
+          packagesByStopId = createPackagesByStopId(packages || []);
+        }
+      }
+
+      if (driverIds.length > 0) {
+        const { data: positionRows, error: positionsError } = await supabase
+          .from('driver_positions')
+          .select('driver_id, route_id, lat, lng, timestamp')
+          .in('driver_id', driverIds)
+          .order('timestamp', { ascending: false });
+
+        if (positionsError) {
+          console.error('Manager routes position lookup failed:', positionsError);
+          return res.status(500).json({ error: 'Failed to load route positions' });
+        }
+
+        lastPositionByDriverId = createLastPositionMap(positionRows || []);
       }
 
       if (driverIds.length > 0) {
@@ -4485,27 +5013,223 @@ function createManagerRouter(options = {}) {
         vehiclesById = new Map((vehicles || []).map((vehicle) => [vehicle.id, vehicle]));
       }
 
+      const visibleRouteIds = visibleRoutes.map((route) => route.id);
+
+      if (visibleRouteIds.length > 0) {
+        const { data: routeEvents, error: routeEventsError } = await supabase
+          .from('route_sync_events')
+          .select('id, route_id, event_type, event_status, summary, details, manager_user_id, created_at')
+          .in('route_id', visibleRouteIds)
+          .order('created_at', { ascending: false });
+
+        if (routeEventsError) {
+          console.error('Manager route event lookup failed:', routeEventsError);
+          return res.status(500).json({ error: 'Failed to load route audit history' });
+        }
+
+        routeEventsByRouteId = (routeEvents || []).reduce((map, event) => {
+          const current = map.get(event.route_id) || [];
+
+          if (current.length < 5) {
+            current.push(event);
+          }
+
+          map.set(event.route_id, current);
+          return map;
+        }, new Map());
+      }
+
+      const currentTime = nowProvider();
+
       return res.status(200).json({
         sync_status: {
           routes_today: Number(visibleRoutes.length),
           routes_assigned: visibleRoutes.filter((route) => Boolean(route.driver_id)).length,
+          routes_dispatched: visibleRoutes.filter((route) => route.dispatch_state === 'dispatched').length,
+          routes_changed: Number((routesBySyncState.staged_changed || 0) + (routesBySyncState.changed_after_dispatch || 0)),
+          routes_blocked: Number((routesBySyncState.dispatch_blocked || 0) + (routesBySyncState.needs_attention || 0)),
           last_sync_at: latestSyncAt
         },
+        route_sync_settings: presentRouteSyncSettings(account || {}, date, nowProvider()),
         fedex_connection: fedexConnectionSummary,
-        routes: visibleRoutes.map((route) => ({
-          ...summarizeCoordinateHealth(stopsByRouteId.get(route.id) || []),
-          ...route,
-          driver_name: route.driver_id ? driversById.get(route.driver_id)?.name || null : null,
-          vehicle_name: route.vehicle_id ? vehiclesById.get(route.vehicle_id)?.name || null : null,
-          vehicle_plate: route.vehicle_id ? vehiclesById.get(route.vehicle_id)?.plate || null : null,
-          time_commits_total: getTimeCommitCounts(stopsByRouteId.get(route.id) || []).total,
-          time_commits_completed: getTimeCommitCounts(stopsByRouteId.get(route.id) || []).completed,
-          stops: stopsByRouteId.get(route.id) || []
-        }))
+        routes: visibleRoutes.map((route) => {
+          const routeStops = stopsByRouteId.get(route.id) || [];
+          const stopsById = new Map(routeStops.map((stop) => [stop.id, stop]));
+          const routePackages = routeStops.flatMap((stop) => packagesByStopId.get(stop.id) || []);
+          const packageSummary = getPackageStatusSummary(routePackages, stopsById);
+          const completedRouteStops = routeStops.filter((stop) => stop.completed_at);
+          const firstScan = completedRouteStops.reduce((earliest, stop) => {
+            if (!stop.completed_at) {
+              return earliest;
+            }
+
+            if (!earliest || new Date(stop.completed_at).getTime() < new Date(earliest).getTime()) {
+              return stop.completed_at;
+            }
+
+            return earliest;
+          }, null);
+          const lastPosition = route.driver_id ? lastPositionByDriverId.get(route.driver_id) || null : null;
+          const lastPositionTimestamp = lastPosition
+            ? lastPosition.timestamp || lastPosition.recorded_at || lastPosition.created_at || null
+            : null;
+          const isOnline = Boolean(
+            lastPositionTimestamp &&
+            currentTime.getTime() - new Date(lastPositionTimestamp).getTime() < 2 * 60 * 1000
+          );
+
+          return {
+            ...summarizeCoordinateHealth(routeStops),
+            ...route,
+            sync_state: presentRouteSyncState(route),
+            post_dispatch_change_policy: getPostDispatchChangePolicy(route),
+            audit_events: routeEventsByRouteId.get(route.id) || [],
+            driver_name: route.driver_id ? driversById.get(route.driver_id)?.name || null : null,
+            vehicle_name: route.vehicle_id ? vehiclesById.get(route.vehicle_id)?.name || null : null,
+            vehicle_plate: route.vehicle_id ? vehiclesById.get(route.vehicle_id)?.plate || null : null,
+            time_commits_total: getTimeCommitCounts(routeStops).total,
+            time_commits_completed: getTimeCommitCounts(routeStops).completed,
+            delivered_packages: packageSummary.completed,
+            total_packages: routePackages.length,
+            stops_per_hour: getStopsPerHour({
+              completedStops: Number(route.completed_stops || 0),
+              firstScan,
+              currentTime
+            }),
+            last_position: lastPosition
+              ? {
+                  lat: lastPosition.lat,
+                  lng: lastPosition.lng,
+                  timestamp: lastPositionTimestamp
+                }
+              : null,
+            is_online: isOnline,
+            stops: routeStops
+          };
+        })
       });
     } catch (error) {
       console.error('Manager routes endpoint failed:', error);
       return res.status(500).json({ error: 'Failed to load routes' });
+    }
+  });
+
+  router.post('/routes/dispatch', requireManager, async (req, res) => {
+    const date = parseDateParam(req.body?.date, nowProvider);
+    const routeIds = Array.isArray(req.body?.route_ids)
+      ? req.body.route_ids.map((value) => String(value || '').trim()).filter(Boolean)
+      : [];
+
+    if (!date) {
+      return res.status(400).json({ error: 'date must be in YYYY-MM-DD format' });
+    }
+
+    try {
+      const { data: routes, error: routesError } = await supabase
+        .from('routes')
+        .select('id, driver_id, vehicle_id, work_area_name, status, completed_stops, dispatch_state, sync_state, last_manifest_change_at, dispatched_at, archived_at')
+        .eq('account_id', req.account.account_id)
+        .eq('date', date)
+        .is('archived_at', null)
+        .order('id');
+
+      if (routesError) {
+        console.error('Route dispatch lookup failed:', routesError);
+        return res.status(500).json({ error: 'Failed to load routes for dispatch' });
+      }
+
+      let visibleRoutes = (routes || []).filter(isDisplayableManagerRoute);
+
+      if (routeIds.length > 0) {
+        const routeIdSet = new Set(routeIds);
+        visibleRoutes = visibleRoutes.filter((route) => routeIdSet.has(route.id));
+      }
+
+      if (!visibleRoutes.length) {
+        return res.status(400).json({ error: 'No routes are available to dispatch for this date.' });
+      }
+
+      const blockedRoutes = visibleRoutes.filter((route) => shouldBlockDispatchForSyncState(presentRouteSyncState(route)));
+      const warningRoutes = visibleRoutes.filter((route) => ['staged_changed', 'changed_after_dispatch'].includes(presentRouteSyncState(route)));
+
+      if (blockedRoutes.length > 0) {
+        return res.status(409).json({
+          error: 'Some routes are not ready to dispatch yet.',
+          blocked_routes: blockedRoutes.map((route) => ({
+            id: route.id,
+            work_area_name: route.work_area_name,
+            sync_state: presentRouteSyncState(route),
+            needs_driver: !route.driver_id,
+            needs_vehicle: !route.vehicle_id
+          }))
+        });
+      }
+
+      const stagedRouteIds = visibleRoutes
+        .filter((route) => route.dispatch_state !== 'dispatched')
+        .map((route) => route.id);
+
+      if (!stagedRouteIds.length) {
+        return res.status(200).json({
+          dispatched_count: 0,
+          already_dispatched: true,
+          dispatched_route_ids: [],
+          dispatched_work_areas: []
+        });
+      }
+
+      const dispatchedAt = nowProvider().toISOString();
+      const { data: updatedRoutes, error: updateError } = await supabase
+        .from('routes')
+        .update({
+          dispatch_state: 'dispatched',
+          dispatched_at: dispatchedAt,
+          dispatched_by_manager_user_id: req.account.manager_user_id
+        })
+        .in('id', stagedRouteIds)
+        .eq('account_id', req.account.account_id)
+        .select('id, work_area_name, dispatched_at');
+
+      if (updateError) {
+        console.error('Route dispatch update failed:', updateError);
+        return res.status(500).json({ error: 'Failed to dispatch routes' });
+      }
+
+      await recordRouteSyncEvents(
+        supabase,
+        visibleRoutes
+          .filter((route) => stagedRouteIds.includes(route.id))
+          .map((route) => ({
+            account_id: req.account.account_id,
+            route_id: route.id,
+            work_date: date,
+            event_type: 'routes_dispatched',
+            event_status: ['staged_changed', 'changed_after_dispatch'].includes(presentRouteSyncState(route)) ? 'warning' : 'info',
+            summary: `Route ${route.work_area_name || route.id} dispatched to drivers`,
+            details: {
+              sync_state: presentRouteSyncState(route),
+              post_dispatch_change_policy: getPostDispatchChangePolicy(route),
+              had_warning_at_dispatch: ['staged_changed', 'changed_after_dispatch'].includes(presentRouteSyncState(route))
+            },
+            manager_user_id: req.account.manager_user_id
+          }))
+      );
+
+      return res.status(200).json({
+        dispatched_count: (updatedRoutes || []).length,
+        dispatched_at: dispatchedAt,
+        dispatched_route_ids: (updatedRoutes || []).map((route) => route.id),
+        dispatched_work_areas: (updatedRoutes || []).map((route) => route.work_area_name),
+        warning_routes: warningRoutes.map((route) => ({
+          id: route.id,
+          work_area_name: route.work_area_name,
+          sync_state: presentRouteSyncState(route),
+          post_dispatch_change_policy: getPostDispatchChangePolicy(route)
+        }))
+      });
+    } catch (error) {
+      console.error('Route dispatch endpoint failed:', error);
+      return res.status(500).json({ error: 'Failed to dispatch routes' });
     }
   });
 

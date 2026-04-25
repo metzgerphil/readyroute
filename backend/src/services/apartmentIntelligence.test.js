@@ -3,6 +3,7 @@ const assert = require('node:assert/strict');
 
 const {
   extractUnitNumber,
+  normalizeStoredFloor,
   normalizeBuildingAddress,
   predictFloor
 } = require('./apartmentIntelligence');
@@ -21,6 +22,14 @@ test('predictFloor follows the apartment heuristic', () => {
   assert.deepEqual(predictFloor('1204'), { floor: 12, confidence: 'medium' });
   assert.deepEqual(predictFloor('12'), { floor: 1, confidence: 'low' });
   assert.equal(predictFloor('APT B'), null);
+});
+
+test('normalizeStoredFloor keeps unknown apartment floors null', () => {
+  assert.equal(normalizeStoredFloor(null), null);
+  assert.equal(normalizeStoredFloor(''), null);
+  assert.equal(normalizeStoredFloor(0), null);
+  assert.equal(normalizeStoredFloor('0'), null);
+  assert.equal(normalizeStoredFloor(3), 3);
 });
 
 test('normalizeBuildingAddress keeps a stable building key', () => {

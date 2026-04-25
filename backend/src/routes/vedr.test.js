@@ -149,6 +149,8 @@ test('GET /api/vedr/settings returns an empty shape when no record exists', asyn
     assert.equal(response.status, 200);
     assert.deepEqual(await response.json(), {
       provider: null,
+      provider_login_url: null,
+      provider_username_hint: null,
       connection_status: 'not_started',
       provider_selected_at: null,
       connection_started_at: null,
@@ -171,6 +173,8 @@ test('PUT /api/vedr/settings creates settings and moves the account into waiting
       assert.deepEqual(query.payload, {
         account_id: 'acct-1',
         provider: 'groundcloud',
+        provider_login_url: null,
+        provider_username_hint: null,
         connection_status: 'waiting_for_login',
         provider_selected_at: '2026-04-17T18:00:00.000Z',
         connection_started_at: '2026-04-17T18:00:00.000Z',
@@ -183,6 +187,8 @@ test('PUT /api/vedr/settings creates settings and moves the account into waiting
           id: 'vedr-1',
           account_id: 'acct-1',
           provider: 'groundcloud',
+          provider_login_url: null,
+          provider_username_hint: null,
           connection_status: 'waiting_for_login',
           provider_selected_at: '2026-04-17T18:00:00.000Z',
           connection_started_at: '2026-04-17T18:00:00.000Z',
@@ -213,6 +219,8 @@ test('PUT /api/vedr/settings creates settings and moves the account into waiting
     assert.equal(response.status, 200);
     assert.deepEqual(await response.json(), {
       provider: 'groundcloud',
+      provider_login_url: null,
+      provider_username_hint: null,
       connection_status: 'waiting_for_login',
       provider_selected_at: '2026-04-17T18:00:00.000Z',
       connection_started_at: '2026-04-17T18:00:00.000Z',
@@ -237,6 +245,8 @@ test('PUT /api/vedr/settings preserves verified timestamps while re-entering wai
           id: 'vedr-1',
           account_id: 'acct-1',
           provider: 'groundcloud',
+          provider_login_url: null,
+          provider_username_hint: null,
           connection_status: 'connected',
           provider_selected_at: '2026-04-17T18:00:00.000Z',
           connection_started_at: '2026-04-17T18:00:00.000Z',
@@ -252,6 +262,8 @@ test('PUT /api/vedr/settings preserves verified timestamps while re-entering wai
     if (query.table === 'vedr_settings' && query.operation === 'update') {
       assert.deepEqual(query.payload, {
         provider: 'velocitor',
+        provider_login_url: null,
+        provider_username_hint: null,
         connection_status: 'waiting_for_login',
         provider_selected_at: '2026-04-17T18:00:00.000Z',
         connection_started_at: '2026-04-17T19:00:00.000Z',
@@ -265,6 +277,8 @@ test('PUT /api/vedr/settings preserves verified timestamps while re-entering wai
           id: 'vedr-1',
           account_id: 'acct-1',
           provider: 'velocitor',
+          provider_login_url: null,
+          provider_username_hint: null,
           connection_status: 'waiting_for_login',
           provider_selected_at: '2026-04-17T18:00:00.000Z',
           connection_started_at: '2026-04-17T19:00:00.000Z',
@@ -295,6 +309,8 @@ test('PUT /api/vedr/settings preserves verified timestamps while re-entering wai
     assert.equal(response.status, 200);
     assert.deepEqual(await response.json(), {
       provider: 'velocitor',
+      provider_login_url: null,
+      provider_username_hint: null,
       connection_status: 'waiting_for_login',
       provider_selected_at: '2026-04-17T18:00:00.000Z',
       connection_started_at: '2026-04-17T19:00:00.000Z',
@@ -319,6 +335,8 @@ test('POST /api/vedr/settings/mark-connected marks the provider as connected', a
           id: 'vedr-1',
           account_id: 'acct-1',
           provider: 'groundcloud',
+          provider_login_url: null,
+          provider_username_hint: null,
           connection_status: 'waiting_for_login',
           provider_selected_at: '2026-04-17T18:00:00.000Z',
           connection_started_at: '2026-04-17T18:00:00.000Z',
@@ -344,6 +362,8 @@ test('POST /api/vedr/settings/mark-connected marks the provider as connected', a
           id: 'vedr-1',
           account_id: 'acct-1',
           provider: 'groundcloud',
+          provider_login_url: null,
+          provider_username_hint: null,
           connection_status: 'connected',
           provider_selected_at: '2026-04-17T18:00:00.000Z',
           connection_started_at: '2026-04-17T18:00:00.000Z',
@@ -372,6 +392,8 @@ test('POST /api/vedr/settings/mark-connected marks the provider as connected', a
     assert.equal(response.status, 200);
     assert.deepEqual(await response.json(), {
       provider: 'groundcloud',
+      provider_login_url: null,
+      provider_username_hint: null,
       connection_status: 'connected',
       provider_selected_at: '2026-04-17T18:00:00.000Z',
       connection_started_at: '2026-04-17T18:00:00.000Z',
@@ -381,6 +403,100 @@ test('POST /api/vedr/settings/mark-connected marks the provider as connected', a
       account_id: 'acct-1',
       created_at: '2026-04-17T18:00:00.000Z',
       updated_at: '2026-04-17T18:15:00.000Z'
+    });
+  } finally {
+    await server.close();
+  }
+});
+
+test('PUT /api/vedr/settings updates provider access details without restarting a connected provider', async () => {
+  const now = () => new Date('2026-04-17T20:00:00.000Z');
+  const supabase = new MockSupabase((query) => {
+    if (query.table === 'vedr_settings' && query.operation === 'select') {
+      return {
+        data: {
+          id: 'vedr-1',
+          account_id: 'acct-1',
+          provider: 'velocitor',
+          provider_login_url: null,
+          provider_username_hint: null,
+          connection_status: 'connected',
+          provider_selected_at: '2026-04-17T18:00:00.000Z',
+          connection_started_at: '2026-04-17T18:00:00.000Z',
+          connection_verified_at: '2026-04-17T18:15:00.000Z',
+          setup_completed_at: '2026-04-17T18:15:00.000Z',
+          created_at: '2026-04-17T18:00:00.000Z',
+          updated_at: '2026-04-17T18:15:00.000Z'
+        },
+        error: null
+      };
+    }
+
+    if (query.table === 'vedr_settings' && query.operation === 'update') {
+      assert.deepEqual(query.payload, {
+        provider: 'velocitor',
+        provider_login_url: 'https://vtrack.velsol.com/Account/Login',
+        provider_username_hint: 'vladfed0801@gmail.com',
+        connection_status: 'connected',
+        provider_selected_at: '2026-04-17T18:00:00.000Z',
+        connection_started_at: '2026-04-17T18:00:00.000Z',
+        connection_verified_at: '2026-04-17T18:15:00.000Z',
+        setup_completed_at: '2026-04-17T18:15:00.000Z',
+        updated_at: '2026-04-17T20:00:00.000Z'
+      });
+
+      return {
+        data: {
+          id: 'vedr-1',
+          account_id: 'acct-1',
+          provider: 'velocitor',
+          provider_login_url: 'https://vtrack.velsol.com/Account/Login',
+          provider_username_hint: 'vladfed0801@gmail.com',
+          connection_status: 'connected',
+          provider_selected_at: '2026-04-17T18:00:00.000Z',
+          connection_started_at: '2026-04-17T18:00:00.000Z',
+          connection_verified_at: '2026-04-17T18:15:00.000Z',
+          setup_completed_at: '2026-04-17T18:15:00.000Z',
+          created_at: '2026-04-17T18:00:00.000Z',
+          updated_at: '2026-04-17T20:00:00.000Z'
+        },
+        error: null
+      };
+    }
+
+    throw new Error(`Unexpected query ${query.table}:${query.operation}:${query.mode}`);
+  });
+
+  const server = await startTestServer({ supabase, now });
+
+  try {
+    const response = await fetch(`${server.baseUrl}/api/vedr/settings`, {
+      method: 'PUT',
+      headers: {
+        Authorization: `Bearer ${signManagerToken()}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        provider: 'velocitor',
+        provider_login_url: 'https://vtrack.velsol.com/Account/Login',
+        provider_username_hint: 'vladfed0801@gmail.com'
+      })
+    });
+
+    assert.equal(response.status, 200);
+    assert.deepEqual(await response.json(), {
+      provider: 'velocitor',
+      provider_login_url: 'https://vtrack.velsol.com/Account/Login',
+      provider_username_hint: 'vladfed0801@gmail.com',
+      connection_status: 'connected',
+      provider_selected_at: '2026-04-17T18:00:00.000Z',
+      connection_started_at: '2026-04-17T18:00:00.000Z',
+      connection_verified_at: '2026-04-17T18:15:00.000Z',
+      setup_completed_at: '2026-04-17T18:15:00.000Z',
+      id: 'vedr-1',
+      account_id: 'acct-1',
+      created_at: '2026-04-17T18:00:00.000Z',
+      updated_at: '2026-04-17T20:00:00.000Z'
     });
   } finally {
     await server.close();

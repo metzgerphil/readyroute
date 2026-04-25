@@ -148,6 +148,16 @@ describe('ReadyRoute end-to-end workflow', () => {
       expect(uploadResponse.body.total_stops).toBe(5);
       cleanup.routeId = uploadResponse.body.route_id;
 
+      const dispatchResponse = await api
+        .post('/manager/routes/dispatch')
+        .set('Authorization', `Bearer ${managerToken}`)
+        .send({
+          date: today,
+          route_ids: [cleanup.routeId]
+        });
+
+      expect(dispatchResponse.status).toBe(200);
+
       const { data: uploadedStops, error: uploadedStopsError } = await supabase
         .from('stops')
         .select('id, route_id, sequence_order, address, lat, lng, completed_at, exception_code')

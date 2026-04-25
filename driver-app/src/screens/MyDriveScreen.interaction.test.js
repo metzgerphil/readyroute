@@ -31,6 +31,7 @@ jest.mock('../services/auth', () => ({
 }));
 
 jest.mock('expo-location', () => ({
+  getForegroundPermissionsAsync: jest.fn(),
   requestForegroundPermissionsAsync: jest.fn(),
   getCurrentPositionAsync: jest.fn()
 }));
@@ -78,6 +79,7 @@ describe('MyDriveScreen interactions', () => {
     mockMapMethods.fitToCoordinates.mockClear();
     mockMapMethods.animateToRegion.mockClear();
 
+    Location.getForegroundPermissionsAsync.mockResolvedValue({ status: 'granted', granted: true });
     Location.requestForegroundPermissionsAsync.mockResolvedValue({ granted: true });
     Location.getCurrentPositionAsync.mockResolvedValue({
       coords: {
@@ -177,6 +179,39 @@ describe('MyDriveScreen interactions', () => {
       stopId: 'stop-2'
     });
     expect(mockMapMethods.fitToCoordinates).toHaveBeenCalledTimes(initialFitCallCount);
+  });
+
+  it('shows the dispatch waiting state when the route is staged but not yet live', async () => {
+    api.get.mockImplementation((url) => {
+      if (url === '/routes/today') {
+        return Promise.resolve({
+          data: {
+            route: null,
+            driver_day: {
+              status: 'awaiting_dispatch'
+            }
+          }
+        });
+      }
+
+      if (url === '/timecards/status') {
+        return Promise.resolve({
+          data: {
+            clock_in_at: null,
+            active_break: null
+          }
+        });
+      }
+
+      return Promise.reject(new Error(`Unexpected GET ${url}`));
+    });
+
+    const screen = await renderAndFlush();
+
+    await waitFor(() => {
+      expect(screen.getByText('Route staged for dispatch')).toBeTruthy();
+      expect(screen.getByText(/will appear here as soon as your lead manager dispatches the day/)).toBeTruthy();
+    });
   });
 
   it('hands off navigation to Google Maps and completes the selected stop', async () => {
@@ -505,4 +540,5 @@ describe('MyDriveScreen interactions', () => {
     expect(auth.removeClockInTime).toHaveBeenCalled();
     expect(auth.saveClockInTime).not.toHaveBeenCalledWith('2026-04-23T15:58:00.000Z');
   });
+
 });

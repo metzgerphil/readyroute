@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { useNavigate } from 'react-router-dom';
 
@@ -23,6 +23,16 @@ export default function LoginPage() {
   const [resetEmail, setResetEmail] = useState('');
   const [resetMessage, setResetMessage] = useState('');
   const [resetErrorMessage, setResetErrorMessage] = useState('');
+  const handoffToken = searchParams.get('token') || '';
+
+  useEffect(() => {
+    if (!handoffToken) {
+      return;
+    }
+
+    saveManagerToken(handoffToken);
+    navigate('/', { replace: true });
+  }, [handoffToken, navigate]);
 
   async function handleSubmit(event) {
     event.preventDefault();
@@ -174,7 +184,7 @@ export default function LoginPage() {
               </button>
             </form>
             <div className="login-helper-note">
-              In local development, the reset link appears here and in the backend terminal. In production, this is where email delivery will plug in.
+              In local development, the reset link appears here and in the backend terminal. In production, ReadyRoute emails the reset link when the mail service is configured.
             </div>
           </div>
 

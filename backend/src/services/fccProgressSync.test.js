@@ -1,0 +1,218 @@
+const test = require('node:test');
+const assert = require('node:assert/strict');
+
+const { createFccProgressSyncService } = require('./fccProgressSync');
+
+class MockQueryBuilder {
+  constructor(supabase, table) {
+    this.supabase = supabase;
+    this.table = table;
+    this.operation = 'select';
+    this.state = {
+      table,
+      filters: [],
+      payload: undefined,
+      columns: null
+    };
+  }
+
+  select(columns) {
+    if (this.operation === 'insert' || this.operation === 'update') {
+      return this;
+    }
+
+    this.operation = 'select';
+    this.state.columns = columns;
+    return this;
+  }
+
+  insert(payload) {
+    this.operation = 'insert';
+    this.state.payload = payload;
+    return this;
+  }
+
+  update(payload) {
+    this.operation = 'update';
+    this.state.payload = payload;
+    return this;
+  }
+
+  eq(column, value) {
+    this.state.filters.push({ op: 'eq', column, value });
+    return this;
+  }
+
+  is(column, value) {
+    this.state.filters.push({ op: 'is', column, value });
+    return this;
+  }
+
+  order() {
+    return this;
+  }
+
+  maybeSingle() {
+    return this.execute('maybeSingle');
+  }
+
+  single() {
+    return this.execute('single');
+  }
+
+  then(resolve, reject) {
+    return this.execute('all').then(resolve, reject);
+  }
+
+  execute(mode) {
+    return Promise.resolve(
+      this.supabase.execute({
+        table: this.table,
+        operation: this.operation,
+        mode,
+        ...this.state
+      })
+    );
+  }
+}
+
+class MockSupabase {
+  constructor(handler) {
+    this.handler = handler;
+    this.calls = [];
+  }
+
+  from(table) {
+    return new MockQueryBuilder(this, table);
+  }
+
+  execute(query) {
+    this.calls.push(query);
+    return this.handler(query, this.calls);
+  }
+}
+
+test('applyRouteProgress marks matched FCC green rows complete on dispatched routes', async () => {
+  const route = {
+    id: 'route-1',
+    account_id: 'acct-1',
+    work_area_name: '823',
+    date: '2026-04-24',
+    status: 'pending',
+    total_stops: 3,
+    completed_stops: 0,
+    dispatch_state: 'dispatched',
+    completed_at: null
+  };
+  const stops = [
+    { id: 'stop-1', route_id: 'route-1', sequence_order: 1, sid: '1001', address: '818 N JUNIPER ST', address_line2: 'APT 4', status: 'pending', completed_at: null, scanned_at: null },
+    { id: 'stop-2', route_id: 'route-1', sequence_order: 2, sid: '1002', address: '300 E MISSION AVE', address_line2: 'APT 2', status: 'pending', completed_at: null, scanned_at: null },
+    { id: 'stop-3', route_id: 'route-1', sequence_order: 3, sid: '1008', address: '359 E MISSION AVE', address_line2: null, status: 'pending', completed_at: null, scanned_at: null }
+  ];
+  const routeEvents = [];
+
+  const supabase = new MockSupabase((query) => {
+    if (query.table === 'routes' && query.operation === 'select') {
+      return { data: [route], error: null };
+    }
+
+    if (query.table === 'stops' && query.operation === 'select') {
+      return { data: stops, error: null };
+    }
+
+    if (query.table === 'stops' && query.operation === 'update') {
+      const stopId = query.filters.find((filter) => filter.column === 'id')?.value;
+      const stop = stops.find((entry) => entry.id === stopId);
+      Object.assign(stop, query.payload);
+      return { data: stop, error: null };
+    }
+
+    if (query.table === 'routes' && query.operation === 'update') {
+      Object.assign(route, query.payload);
+      return { data: route, error: null };
+    }
+
+    if (query.table === 'route_sync_events' && query.operation === 'insert') {
+      routeEvents.push(query.payload);
+      return { data: query.payload, error: null };
+    }
+
+    throw new Error(`Unexpected query ${query.table}:${query.operation}:${query.mode}`);
+  });
+
+  const service = createFccProgressSyncService({
+    supabase,
+    now: () => new Date('2026-04-24T18:45:00.000Z')
+  });
+
+  const result = await service.applyRouteProgress({
+    accountId: 'acct-1',
+    workDate: '2026-04-24',
+    progressSnapshots: [
+      {
+        work_area_name: 'OCEA - 823 RAMIREZCASTELLANOS, BRAYANT - Available',
+        record_count: 3,
+        delivered_packages: 146,
+        rows: [
+          { sid: '1001', stop_number: 1, address: '818 N JUNIPER ST', address_line2: 'APT 4', is_completed: false },
+          { sid: '1002', stop_number: 2, address: '300 E MISSION AVE', address_line2: 'APT 2', is_completed: true },
+          { sid: '1008', stop_number: 3, address: '359 E MISSION AVE', is_completed: false }
+        ]
+      }
+    ]
+  });
+
+  assert.equal(result.route_count, 1);
+  assert.equal(result.completed_updates, 1);
+  assert.equal(result.has_changes, true);
+  assert.equal(stops[1].status, 'delivered');
+  assert.ok(stops[1].completed_at);
+  assert.equal(route.completed_stops, 1);
+  assert.equal(route.status, 'in_progress');
+  assert.equal(routeEvents.length, 1);
+  assert.equal(routeEvents[0].event_type, 'fcc_progress_synced');
+});
+
+test('applyRouteProgress ignores snapshots that do not match a dispatched route', async () => {
+  const supabase = new MockSupabase((query) => {
+    if (query.table === 'routes' && query.operation === 'select') {
+      return {
+        data: [
+          {
+            id: 'route-1',
+            account_id: 'acct-1',
+            work_area_name: '823',
+            date: '2026-04-24',
+            status: 'pending',
+            total_stops: 3,
+            completed_stops: 0,
+            dispatch_state: 'staged',
+            completed_at: null
+          }
+        ],
+        error: null
+      };
+    }
+
+    if (query.table === 'route_sync_events' && query.operation === 'insert') {
+      return { data: query.payload, error: null };
+    }
+
+    throw new Error(`Unexpected query ${query.table}:${query.operation}:${query.mode}`);
+  });
+
+  const service = createFccProgressSyncService({ supabase });
+  const result = await service.applyRouteProgress({
+    accountId: 'acct-1',
+    workDate: '2026-04-24',
+    progressSnapshots: [
+      {
+        work_area_name: '810 BRIDGE 12',
+        rows: [{ sid: '1001', is_completed: true }]
+      }
+    ]
+  });
+
+  assert.equal(result.completed_updates, 0);
+  assert.equal(result.routes[0].status, 'route_not_found');
+});

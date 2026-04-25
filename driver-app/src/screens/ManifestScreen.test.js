@@ -22,6 +22,7 @@ import { fireEvent, render, waitFor } from '@testing-library/react-native';
 import api from '../services/api';
 import * as auth from '../services/auth';
 import {
+  getPostDispatchChangeNotice,
   getPinColorModeLabel,
   getStatusConfig,
   isPriorityStop,
@@ -57,6 +58,24 @@ describe('ManifestScreen helpers', () => {
   it('exposes plain-language pin color mode labels', () => {
     expect(getPinColorModeLabel('sid')).toBe('SID Colors');
     expect(getPinColorModeLabel('black')).toBe('Black');
+  });
+
+  it('builds the right notice copy for post-dispatch route changes', () => {
+    expect(
+      getPostDispatchChangeNotice({
+        post_dispatch_change_policy: {
+          code: 'manager_review_required'
+        }
+      }).title
+    ).toBe('Route changed after dispatch');
+
+    expect(
+      getPostDispatchChangeNotice({
+        post_dispatch_change_policy: {
+          code: 'driver_warning'
+        }
+      }).title
+    ).toBe('Route updated after dispatch');
   });
 
   it('lets the driver switch pin color mode from the route list', async () => {

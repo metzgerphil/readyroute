@@ -26,6 +26,8 @@ function requireVedrAdminAccess(req, res, next) {
 function createEmptyVedrSettings() {
   return {
     provider: null,
+    provider_login_url: null,
+    provider_username_hint: null,
     connection_status: VEDR_CONNECTION_STATUSES.NOT_STARTED,
     provider_selected_at: null,
     connection_started_at: null,
@@ -43,7 +45,7 @@ function createVedrRouter(options = {}) {
     try {
       const { data, error } = await supabase
         .from('vedr_settings')
-        .select('id, account_id, provider, connection_status, provider_selected_at, connection_started_at, connection_verified_at, setup_completed_at, created_at, updated_at')
+        .select('id, account_id, provider, provider_login_url, provider_username_hint, connection_status, provider_selected_at, connection_started_at, connection_verified_at, setup_completed_at, created_at, updated_at')
         .eq('account_id', req.account.account_id)
         .maybeSingle();
 
@@ -68,7 +70,9 @@ function createVedrRouter(options = {}) {
     try {
       const validation = validateVedrSettingsPayload({
         account_id: req.account.account_id,
-        provider: req.body?.provider
+        provider: req.body?.provider,
+        provider_login_url: req.body?.provider_login_url,
+        provider_username_hint: req.body?.provider_username_hint
       });
 
       if (!validation.valid) {
@@ -77,7 +81,7 @@ function createVedrRouter(options = {}) {
 
       const { data: existingSettings, error: lookupError } = await supabase
         .from('vedr_settings')
-        .select('id, account_id, provider, connection_status, provider_selected_at, connection_started_at, connection_verified_at, setup_completed_at, created_at, updated_at')
+        .select('id, account_id, provider, provider_login_url, provider_username_hint, connection_status, provider_selected_at, connection_started_at, connection_verified_at, setup_completed_at, created_at, updated_at')
         .eq('account_id', req.account.account_id)
         .maybeSingle();
 
@@ -86,12 +90,18 @@ function createVedrRouter(options = {}) {
         return res.status(500).json({ error: 'Failed to validate existing VEDR settings' });
       }
 
-      const provider = validation.value.provider;
+      const {
+        provider,
+        provider_login_url: providerLoginUrl,
+        provider_username_hint: providerUsernameHint
+      } = validation.value;
       const timestamp = now().toISOString();
 
       if (provider === null) {
         const resetPayload = {
           provider: null,
+          provider_login_url: null,
+          provider_username_hint: null,
           connection_status: VEDR_CONNECTION_STATUSES.NOT_STARTED,
           provider_selected_at: null,
           connection_started_at: null,
@@ -107,7 +117,7 @@ function createVedrRouter(options = {}) {
               account_id: req.account.account_id,
               ...resetPayload
             })
-            .select('id, account_id, provider, connection_status, provider_selected_at, connection_started_at, connection_verified_at, setup_completed_at, created_at, updated_at')
+            .select('id, account_id, provider, provider_login_url, provider_username_hint, connection_status, provider_selected_at, connection_started_at, connection_verified_at, setup_completed_at, created_at, updated_at')
             .single();
 
           if (insertError) {
@@ -122,7 +132,7 @@ function createVedrRouter(options = {}) {
           .from('vedr_settings')
           .update(resetPayload)
           .eq('id', existingSettings.id)
-          .select('id, account_id, provider, connection_status, provider_selected_at, connection_started_at, connection_verified_at, setup_completed_at, created_at, updated_at')
+          .select('id, account_id, provider, provider_login_url, provider_username_hint, connection_status, provider_selected_at, connection_started_at, connection_verified_at, setup_completed_at, created_at, updated_at')
           .single();
 
         if (updateError) {
@@ -134,8 +144,13 @@ function createVedrRouter(options = {}) {
       }
 
       const nextProviderSelectedAt = existingSettings?.provider_selected_at || timestamp;
-      const nextConnectionStartedAt = timestamp;
-      const nextConnectionStatus = VEDR_CONNECTION_STATUSES.WAITING_FOR_LOGIN;
+      const isProviderChange = existingSettings?.provider !== provider;
+      const nextConnectionStartedAt = isProviderChange || !existingSettings?.connection_started_at
+        ? timestamp
+        : existingSettings.connection_started_at;
+      const nextConnectionStatus = isProviderChange || !existingSettings?.connection_status
+        ? VEDR_CONNECTION_STATUSES.WAITING_FOR_LOGIN
+        : existingSettings.connection_status;
 
       if (!existingSettings) {
         const { data: insertedSettings, error: insertError } = await supabase
@@ -143,13 +158,15 @@ function createVedrRouter(options = {}) {
           .insert({
             account_id: req.account.account_id,
             provider,
+            provider_login_url: providerLoginUrl,
+            provider_username_hint: providerUsernameHint,
             connection_status: nextConnectionStatus,
             provider_selected_at: nextProviderSelectedAt,
             connection_started_at: nextConnectionStartedAt,
             connection_verified_at: null,
             setup_completed_at: null
           })
-          .select('id, account_id, provider, connection_status, provider_selected_at, connection_started_at, connection_verified_at, setup_completed_at, created_at, updated_at')
+          .select('id, account_id, provider, provider_login_url, provider_username_hint, connection_status, provider_selected_at, connection_started_at, connection_verified_at, setup_completed_at, created_at, updated_at')
           .single();
 
         if (insertError) {
@@ -165,6 +182,8 @@ function createVedrRouter(options = {}) {
         .from('vedr_settings')
         .update({
           provider,
+          provider_login_url: providerLoginUrl,
+          provider_username_hint: providerUsernameHint,
           connection_status: nextConnectionStatus,
           provider_selected_at: nextProviderSelectedAt,
           connection_started_at: nextConnectionStartedAt,
@@ -173,7 +192,7 @@ function createVedrRouter(options = {}) {
           updated_at: timestamp
         })
         .eq('id', existingSettings.id)
-        .select('id, account_id, provider, connection_status, provider_selected_at, connection_started_at, connection_verified_at, setup_completed_at, created_at, updated_at')
+        .select('id, account_id, provider, provider_login_url, provider_username_hint, connection_status, provider_selected_at, connection_started_at, connection_verified_at, setup_completed_at, created_at, updated_at')
         .single();
 
       if (updateError) {
@@ -193,7 +212,7 @@ function createVedrRouter(options = {}) {
     try {
       const { data: existingSettings, error: lookupError } = await supabase
         .from('vedr_settings')
-        .select('id, account_id, provider, connection_status, provider_selected_at, connection_started_at, connection_verified_at, setup_completed_at, created_at, updated_at')
+        .select('id, account_id, provider, provider_login_url, provider_username_hint, connection_status, provider_selected_at, connection_started_at, connection_verified_at, setup_completed_at, created_at, updated_at')
         .eq('account_id', req.account.account_id)
         .maybeSingle();
 
@@ -216,7 +235,7 @@ function createVedrRouter(options = {}) {
           updated_at: now().toISOString()
         })
         .eq('id', existingSettings.id)
-        .select('id, account_id, provider, connection_status, provider_selected_at, connection_started_at, connection_verified_at, setup_completed_at, created_at, updated_at')
+        .select('id, account_id, provider, provider_login_url, provider_username_hint, connection_status, provider_selected_at, connection_started_at, connection_verified_at, setup_completed_at, created_at, updated_at')
         .single();
 
       if (updateError) {

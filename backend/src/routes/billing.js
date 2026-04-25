@@ -121,7 +121,7 @@ function createBillingRouter(options = {}) {
         const { error } = await supabase
           .from('accounts')
           .update({
-            plan: 'active',
+            plan: 'pro',
             subscription_status: 'active'
           })
           .eq('stripe_customer_id', object.customer);

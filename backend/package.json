@@ -9,6 +9,12 @@
   "scripts": {
     "start": "node src/index.js",
     "dev": "nodemon --watch src --ext js,json src/index.js",
+    "postinstall": "playwright install --with-deps chromium",
+    "playwright:install": "playwright install --with-deps chromium",
+    "fedex:sync": "node src/scripts/runFedexSync.js",
+    "fedex:sync:manifests": "FEDEX_SYNC_MODE=manifests node src/scripts/runFedexSync.js",
+    "fedex:sync:progress": "FEDEX_SYNC_MODE=progress node src/scripts/runFedexSync.js",
+    "fedex:sync:daemon": "node src/scripts/runFedexSyncDaemon.js",
     "seed:auth": "node src/scripts/seedAuthUsers.js",
     "seed:manager": "node src/scripts/addManagerUser.js",
     "test:unit": "node --test src/**/*.test.js",
@@ -23,6 +29,7 @@
     "dotenv": "^16.4.7",
     "express": "^4.21.2",
     "jsonwebtoken": "^9.0.2",
+    "playwright": "^1.59.1",
     "stripe": "^22.0.1",
     "xlsx": "^0.18.5"
   },

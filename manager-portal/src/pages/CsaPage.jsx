@@ -4,9 +4,10 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 
 import api from '../services/api';
 import { clearManagerToken, saveManagerToken } from '../services/auth';
+import { ROUTE_SYNC_INTERVAL_OPTIONS, ROUTE_SYNC_TIMEZONES } from '../config/constants';
 
 const DEFAULT_FEDEX_FORM = {
-  nickname: '',
+  nickname: 'FCC Portal Access',
   account_number: '',
   billing_contact_name: '',
   billing_company_name: '',
@@ -16,8 +17,12 @@ const DEFAULT_FEDEX_FORM = {
   billing_state_or_province: '',
   billing_postal_code: '',
   billing_country_code: 'US',
-  connection_status: 'not_started',
-  connection_reference: ''
+  connection_status: 'connected',
+  connection_reference: '',
+  fcc_username: '',
+  fcc_password: '',
+  has_saved_fcc_password: false,
+  clear_saved_fcc_password: false
 };
 
 const FEDEX_STATUS_LABELS = {
@@ -27,6 +32,45 @@ const FEDEX_STATUS_LABELS = {
   failed: 'Needs attention',
   disconnected: 'Disconnected'
 };
+
+const DEFAULT_ROUTE_SYNC_FORM = {
+  operations_timezone: 'America/Los_Angeles',
+  dispatch_window_start_hour: 6,
+  dispatch_window_end_hour: 11,
+  manifest_sync_interval_minutes: 15
+};
+
+function formatHourLabel(hour) {
+  const normalizedHour = Number(hour);
+  const period = normalizedHour >= 12 ? 'PM' : 'AM';
+  const displayHour = normalizedHour % 12 || 12;
+  return `${displayHour}:00 ${period}`;
+}
+
+function buildFccPortalAccountNumber(username) {
+  const normalized = String(username || '').trim().replace(/[^a-zA-Z0-9]/g, '').toUpperCase();
+  return `FCC${normalized || 'PORTAL'}`.slice(0, 32);
+}
+
+function buildFccPortalPayload(form) {
+  const username = String(form.fcc_username || '').trim();
+
+  return {
+    ...form,
+    nickname: String(form.nickname || '').trim() || 'FCC Portal Access',
+    account_number: String(form.account_number || '').trim() || buildFccPortalAccountNumber(username),
+    billing_contact_name: form.billing_contact_name || 'FCC Portal',
+    billing_company_name: form.billing_company_name || 'ReadyRoute FCC Access',
+    billing_address_line1: form.billing_address_line1 || 'FCC Portal Credential',
+    billing_address_line2: form.billing_address_line2 || '',
+    billing_city: form.billing_city || 'FCC Portal',
+    billing_state_or_province: form.billing_state_or_province || 'NA',
+    billing_postal_code: form.billing_postal_code || '00000',
+    billing_country_code: form.billing_country_code || 'US',
+    connection_status: form.connection_status || 'connected',
+    fcc_username: username
+  };
+}
 
 export default function CsaPage() {
   const navigate = useNavigate();
@@ -44,7 +88,10 @@ export default function CsaPage() {
   const [fedexForm, setFedexForm] = useState(DEFAULT_FEDEX_FORM);
   const [editingFedexAccountId, setEditingFedexAccountId] = useState(null);
   const [isSavingFedexAccount, setIsSavingFedexAccount] = useState(false);
+  const [fedexFormMessage, setFedexFormMessage] = useState({ type: '', text: '' });
   const [fedexActionAccountId, setFedexActionAccountId] = useState(null);
+  const [routeSyncForm, setRouteSyncForm] = useState(DEFAULT_ROUTE_SYNC_FORM);
+  const [isSavingRouteSyncSettings, setIsSavingRouteSyncSettings] = useState(false);
 
   useEffect(() => {
     document.title = 'CSA Access | ReadyRoute';
@@ -66,15 +113,45 @@ export default function CsaPage() {
     }
   });
 
+  const routeSyncSettingsQuery = useQuery({
+    queryKey: ['manager-route-sync-settings'],
+    queryFn: async () => {
+      const response = await api.get('/manager/route-sync-settings');
+      return response.data?.route_sync_settings || DEFAULT_ROUTE_SYNC_FORM;
+    }
+  });
+
   const csas = useMemo(() => csaQuery.data?.csas || [], [csaQuery.data?.csas]);
   const currentCsa = csaQuery.data?.current_csa || null;
   const fedexAccounts = useMemo(() => fedexAccountsQuery.data?.accounts || [], [fedexAccountsQuery.data?.accounts]);
   const fedexConnectedCount = fedexAccountsQuery.data?.connected_accounts_count || 0;
   const isFedexSetupFocus = searchParams.get('focus') === 'fedex';
 
-  function resetFedexForm() {
+  useEffect(() => {
+    if (!routeSyncSettingsQuery.data) {
+      return;
+    }
+
+    setRouteSyncForm({
+      operations_timezone: routeSyncSettingsQuery.data.operations_timezone || DEFAULT_ROUTE_SYNC_FORM.operations_timezone,
+      dispatch_window_start_hour: Number(
+        routeSyncSettingsQuery.data.dispatch_window_start_hour ?? DEFAULT_ROUTE_SYNC_FORM.dispatch_window_start_hour
+      ),
+      dispatch_window_end_hour: Number(
+        routeSyncSettingsQuery.data.dispatch_window_end_hour ?? DEFAULT_ROUTE_SYNC_FORM.dispatch_window_end_hour
+      ),
+      manifest_sync_interval_minutes: Number(
+        routeSyncSettingsQuery.data.manifest_sync_interval_minutes ?? DEFAULT_ROUTE_SYNC_FORM.manifest_sync_interval_minutes
+      )
+    });
+  }, [routeSyncSettingsQuery.data]);
+
+  function resetFedexForm({ keepMessage = false } = {}) {
     setFedexForm(DEFAULT_FEDEX_FORM);
     setEditingFedexAccountId(null);
+    if (!keepMessage) {
+      setFedexFormMessage({ type: '', text: '' });
+    }
   }
 
   function populateFedexForm(account) {
@@ -91,7 +168,11 @@ export default function CsaPage() {
       billing_postal_code: account.billing_postal_code || '',
       billing_country_code: account.billing_country_code || 'US',
       connection_status: account.connection_status || 'not_started',
-      connection_reference: account.connection_reference || ''
+      connection_reference: account.connection_reference || '',
+      fcc_username: account.fcc_username || '',
+      fcc_password: '',
+      has_saved_fcc_password: account.has_saved_fcc_password === true,
+      clear_saved_fcc_password: false
     });
   }
 
@@ -99,6 +180,13 @@ export default function CsaPage() {
     await Promise.all([
       queryClient.invalidateQueries({ queryKey: ['manager-fedex-accounts'] }),
       queryClient.invalidateQueries({ queryKey: ['manager-dashboard'] })
+    ]);
+  }
+
+  async function refreshRouteSyncSettings() {
+    await Promise.all([
+      queryClient.invalidateQueries({ queryKey: ['manager-route-sync-settings'] }),
+      queryClient.invalidateQueries({ queryKey: ['manager-routes'] })
     ]);
   }
 
@@ -196,21 +284,38 @@ export default function CsaPage() {
     event.preventDefault();
     setErrorMessage('');
     setSuccessMessage('');
+    setFedexFormMessage({ type: '', text: '' });
+
+    if (!String(fedexForm.fcc_username || '').trim()) {
+      setFedexFormMessage({ type: 'error', text: 'Enter the MyBizAccount/FCC username before saving.' });
+      return;
+    }
+
+    if ((!editingFedexAccountId || fedexForm.has_saved_fcc_password !== true) && !String(fedexForm.fcc_password || '').trim()) {
+      setFedexFormMessage({ type: 'error', text: 'Enter the MyBizAccount password before saving this FCC login.' });
+      return;
+    }
+
     setIsSavingFedexAccount(true);
 
     try {
+      const payload = buildFccPortalPayload(fedexForm);
       if (editingFedexAccountId) {
-        await api.patch(`/manager/fedex-accounts/${editingFedexAccountId}`, fedexForm);
-        setSuccessMessage('FedEx account updated.');
+        await api.patch(`/manager/fedex-accounts/${editingFedexAccountId}`, payload);
+        setSuccessMessage('FCC portal login updated.');
+        setFedexFormMessage({ type: 'success', text: 'FCC portal login saved.' });
       } else {
-        await api.post('/manager/fedex-accounts', fedexForm);
-        setSuccessMessage('FedEx account added to this CSA.');
+        await api.post('/manager/fedex-accounts', payload);
+        setSuccessMessage('FCC portal login added to this CSA.');
+        setFedexFormMessage({ type: 'success', text: 'FCC portal login saved. ReadyRoute can now use it for FCC sync.' });
       }
 
-      resetFedexForm();
+      resetFedexForm({ keepMessage: true });
       await refreshFedexQueries();
     } catch (error) {
-      setErrorMessage(error.response?.data?.error || 'Could not save this FedEx account.');
+      const message = error.response?.data?.error || error.message || 'Could not save this FCC portal login.';
+      setErrorMessage(message);
+      setFedexFormMessage({ type: 'error', text: message });
     } finally {
       setIsSavingFedexAccount(false);
     }
@@ -223,10 +328,10 @@ export default function CsaPage() {
 
     try {
       await api.post(`/manager/fedex-accounts/${accountId}/default`);
-      setSuccessMessage('Default FedEx account updated.');
+      setSuccessMessage('Default FCC portal login updated.');
       await refreshFedexQueries();
     } catch (error) {
-      setErrorMessage(error.response?.data?.error || 'Could not change the default FedEx account.');
+      setErrorMessage(error.response?.data?.error || 'Could not change the default FCC portal login.');
     } finally {
       setFedexActionAccountId(null);
     }
@@ -250,18 +355,19 @@ export default function CsaPage() {
         billing_postal_code: account.billing_postal_code,
         billing_country_code: account.billing_country_code || 'US',
         connection_status: nextStatus,
-        connection_reference: account.connection_reference || ''
+        connection_reference: account.connection_reference || '',
+        fcc_username: account.fcc_username || ''
       });
       setSuccessMessage(
         nextStatus === 'connected'
-          ? 'FedEx account marked connected.'
+          ? 'FCC portal login marked connected.'
           : nextStatus === 'pending_mfa'
-            ? 'FedEx account moved to pending MFA.'
-            : 'FedEx account updated.'
+            ? 'FCC portal login moved to pending MFA.'
+            : 'FCC portal login updated.'
       );
       await refreshFedexQueries();
     } catch (error) {
-      setErrorMessage(error.response?.data?.error || 'Could not update the FedEx account status.');
+      setErrorMessage(error.response?.data?.error || 'Could not update the FCC portal login status.');
     } finally {
       setFedexActionAccountId(null);
     }
@@ -277,12 +383,34 @@ export default function CsaPage() {
       if (editingFedexAccountId === accountId) {
         resetFedexForm();
       }
-      setSuccessMessage('FedEx account disconnected from this CSA.');
+      setSuccessMessage('FCC portal login disconnected from this CSA.');
       await refreshFedexQueries();
     } catch (error) {
-      setErrorMessage(error.response?.data?.error || 'Could not disconnect that FedEx account.');
+      setErrorMessage(error.response?.data?.error || 'Could not disconnect that FCC portal login.');
     } finally {
       setFedexActionAccountId(null);
+    }
+  }
+
+  async function handleSaveRouteSyncSettings(event) {
+    event.preventDefault();
+    setErrorMessage('');
+    setSuccessMessage('');
+    setIsSavingRouteSyncSettings(true);
+
+    try {
+      await api.patch('/manager/route-sync-settings', {
+        operations_timezone: routeSyncForm.operations_timezone,
+        dispatch_window_start_hour: Number(routeSyncForm.dispatch_window_start_hour),
+        dispatch_window_end_hour: Number(routeSyncForm.dispatch_window_end_hour),
+        manifest_sync_interval_minutes: Number(routeSyncForm.manifest_sync_interval_minutes)
+      });
+      setSuccessMessage('Route sync settings updated for this CSA.');
+      await refreshRouteSyncSettings();
+    } catch (error) {
+      setErrorMessage(error.response?.data?.error || 'Could not update the route sync settings.');
+    } finally {
+      setIsSavingRouteSyncSettings(false);
     }
   }
 
@@ -322,6 +450,17 @@ export default function CsaPage() {
                     <span>{csa.driver_count} drivers</span>
                     <span>{csa.vehicle_count} vehicles</span>
                     <span>{csa.routes_today} routes today</span>
+                  </div>
+                  <div className="records-route-meta">
+                    <span>{csa.route_sync_settings?.operations_timezone || 'Local timezone not set'}</span>
+                    <span>{csa.route_sync_settings?.dispatch_window_label || 'Dispatch window not set'}</span>
+                    <span>{csa.local_date || 'No local date'}</span>
+                  </div>
+                  <div className="records-route-meta">
+                    <span>{csa.ready || 0} ready</span>
+                    <span>{csa.review || 0} review</span>
+                    <span>{csa.blocked || 0} blocked</span>
+                    <span>{csa.dispatched || 0} dispatched</span>
                   </div>
                   <div className="records-route-meta">
                     <span>{csa.manager_email || 'No primary email'}</span>
@@ -383,14 +522,14 @@ export default function CsaPage() {
         </div>
 
         <div className="card">
-          <div className="card-title">FedEx Accounts</div>
+          <div className="card-title">FCC Portal Access</div>
           <div className="driver-meta">
-            Add one or more FedEx shipping accounts for this CSA. ReadyRoute will use the default connected account for future FedEx operations.
+            Save the MyBizAccount/FCC login ReadyRoute should use to pull Combined Manifest data for this CSA.
           </div>
 
           {isFedexSetupFocus ? (
             <div className="info-banner">
-              Add both CSA FedEx accounts here now if you have them. One account should be marked as the default connection for day-to-day operations.
+              Add the FCC portal username and password for this CSA. ReadyRoute uses this login to open MyBizAccount and pull manifests automatically.
             </div>
           ) : null}
 
@@ -403,7 +542,7 @@ export default function CsaPage() {
           <div className="csa-fedex-summary">
             <div>
               <strong>{fedexAccounts.length}</strong>
-              <span>accounts on file</span>
+              <span>portal logins on file</span>
             </div>
             <div>
               <strong>{fedexConnectedCount}</strong>
@@ -411,7 +550,7 @@ export default function CsaPage() {
             </div>
             <div>
               <strong>{fedexAccountsQuery.data?.default_account_label || 'None selected'}</strong>
-              <span>default account</span>
+              <span>default FCC login</span>
             </div>
           </div>
 
@@ -422,10 +561,17 @@ export default function CsaPage() {
                   <div className="csa-fedex-card-topline">
                     <div>
                       <strong>{account.nickname}</strong>
-                      <div className="driver-meta">
-                        {account.account_number_masked} · {account.billing_city}, {account.billing_state_or_province}
-                      </div>
+                    <div className="driver-meta">
+                      {account.fcc_username ? `MyBizAccount: ${account.fcc_username}` : 'MyBizAccount login not configured'}
                     </div>
+                    {account.fcc_username ? (
+                      <div className="driver-meta">
+                        {account.has_saved_fcc_password ? 'Password saved for FCC automation' : 'Password missing'}
+                      </div>
+                    ) : (
+                      <div className="driver-meta">FCC login not configured yet.</div>
+                    )}
+                  </div>
                     <div className="csa-fedex-chip-row">
                       {account.is_default ? <span className="csa-fedex-chip default">Default</span> : null}
                       <span className={`csa-fedex-chip status ${account.connection_status}`}>
@@ -435,14 +581,14 @@ export default function CsaPage() {
                   </div>
 
                   <div className="records-route-meta">
-                    <span>{account.billing_address_line1}</span>
-                    <span>{account.billing_postal_code}</span>
+                    <span>{account.account_number_masked}</span>
+                    <span>{account.connection_status === 'connected' ? 'Ready for sync' : 'Not ready for sync'}</span>
                     <span>{account.last_verified_at ? `Verified ${new Date(account.last_verified_at).toLocaleDateString()}` : 'Not yet verified'}</span>
                   </div>
 
                   <div className="csa-fedex-actions">
                     <button className="secondary-button" onClick={() => populateFedexForm(account)} type="button">
-                      Edit account
+                      Edit login
                     </button>
                     {!account.is_default && !account.disconnected_at ? (
                       <button
@@ -489,99 +635,67 @@ export default function CsaPage() {
               ))}
             </div>
           ) : (
-            <div className="labor-empty-state">No FedEx accounts are linked to this CSA yet.</div>
+            <div className="labor-empty-state">No FCC portal login is saved for this CSA yet.</div>
           )}
 
           <form className="csa-form" onSubmit={handleSaveFedexAccount}>
             <div className="field-label">
-              {editingFedexAccountId ? 'Edit FedEx account' : 'Add a FedEx account'}
+              {editingFedexAccountId ? 'Edit FCC portal login' : 'Add FCC portal login'}
             </div>
 
             <div className="csa-fedex-form-grid">
               <input
                 className="text-field"
                 onChange={(event) => updateFedexField('nickname', event.target.value)}
-                placeholder="Account nickname"
+                placeholder="Login nickname"
                 value={fedexForm.nickname}
               />
               <input
                 className="text-field"
-                onChange={(event) => updateFedexField('account_number', event.target.value)}
-                placeholder="FedEx account number"
-                value={fedexForm.account_number}
+                onChange={(event) => updateFedexField('fcc_username', event.target.value)}
+                placeholder="MyBizAccount / FCC username"
+                value={fedexForm.fcc_username}
               />
               <input
                 className="text-field"
-                onChange={(event) => updateFedexField('billing_contact_name', event.target.value)}
-                placeholder="Billing contact name"
-                value={fedexForm.billing_contact_name}
-              />
-              <input
-                className="text-field"
-                onChange={(event) => updateFedexField('billing_company_name', event.target.value)}
-                placeholder="Billing company name"
-                value={fedexForm.billing_company_name}
-              />
-              <input
-                className="text-field"
-                onChange={(event) => updateFedexField('billing_address_line1', event.target.value)}
-                placeholder="Billing address line 1"
-                value={fedexForm.billing_address_line1}
-              />
-              <input
-                className="text-field"
-                onChange={(event) => updateFedexField('billing_address_line2', event.target.value)}
-                placeholder="Billing address line 2"
-                value={fedexForm.billing_address_line2}
-              />
-              <input
-                className="text-field"
-                onChange={(event) => updateFedexField('billing_city', event.target.value)}
-                placeholder="City"
-                value={fedexForm.billing_city}
-              />
-              <input
-                className="text-field"
-                onChange={(event) => updateFedexField('billing_state_or_province', event.target.value)}
-                placeholder="State / province"
-                value={fedexForm.billing_state_or_province}
-              />
-              <input
-                className="text-field"
-                onChange={(event) => updateFedexField('billing_postal_code', event.target.value)}
-                placeholder="Postal code"
-                value={fedexForm.billing_postal_code}
-              />
-              <input
-                className="text-field"
-                maxLength={2}
-                onChange={(event) => updateFedexField('billing_country_code', event.target.value.toUpperCase())}
-                placeholder="Country code"
-                value={fedexForm.billing_country_code}
-              />
-              <select
-                className="text-field"
-                onChange={(event) => updateFedexField('connection_status', event.target.value)}
-                value={fedexForm.connection_status}
-              >
-                <option value="not_started">Not started</option>
-                <option value="pending_mfa">Pending MFA</option>
-                <option value="connected">Connected</option>
-                <option value="failed">Needs attention</option>
-              </select>
-              <input
-                className="text-field"
-                onChange={(event) => updateFedexField('connection_reference', event.target.value)}
-                placeholder="Connection reference (optional)"
-                value={fedexForm.connection_reference}
+                onChange={(event) => {
+                  updateFedexField('fcc_password', event.target.value);
+                  if (event.target.value) {
+                    updateFedexField('clear_saved_fcc_password', false);
+                  }
+                }}
+                placeholder={editingFedexAccountId ? 'MyBizAccount password (leave blank to keep saved password)' : 'MyBizAccount password'}
+                type="password"
+                value={fedexForm.fcc_password}
               />
             </div>
+
+            {editingFedexAccountId ? (
+              <label className="checkbox-row">
+                <input
+                  checked={fedexForm.clear_saved_fcc_password === true}
+                  onChange={(event) => updateFedexField('clear_saved_fcc_password', event.target.checked)}
+                  type="checkbox"
+                />
+                Clear the saved FCC password
+              </label>
+            ) : null}
+
+            <div className="driver-meta">
+              ReadyRoute uses this login at https://mybizaccount.fedex.com/my.policy, then navigates to FCC to pull the Combined Manifest. The password is stored encrypted and never returned in the API response.
+            </div>
+
+            {fedexFormMessage.text ? (
+              <div className={fedexFormMessage.type === 'error' ? 'error-banner' : 'info-banner'}>
+                {fedexFormMessage.text}
+              </div>
+            ) : null}
 
             <div className="csa-fedex-actions">
               <button className="secondary-button" disabled={isSavingFedexAccount} type="submit">
                 {isSavingFedexAccount
-                  ? (editingFedexAccountId ? 'Saving account...' : 'Adding account...')
-                  : (editingFedexAccountId ? 'Save FedEx account' : 'Add FedEx account')}
+                  ? (editingFedexAccountId ? 'Saving login...' : 'Adding login...')
+                  : (editingFedexAccountId ? 'Save FCC login' : 'Add FCC login')}
               </button>
               {editingFedexAccountId ? (
                 <button className="secondary-button" onClick={resetFedexForm} type="button">
@@ -589,6 +703,93 @@ export default function CsaPage() {
                 </button>
               ) : null}
             </div>
+          </form>
+        </div>
+
+        <div className="card">
+          <div className="card-title">Route Sync Window</div>
+          <div className="driver-meta">
+            Configure this CSA’s local timezone, dispatch window, and FCC sync cadence. ReadyRoute uses these settings to reason about morning route readiness per terminal instead of assuming one national dispatch schedule.
+          </div>
+
+          {routeSyncSettingsQuery.data ? (
+            <div className="info-banner">
+              Current dispatch window: {routeSyncSettingsQuery.data.dispatch_window_label} · {routeSyncSettingsQuery.data.operations_timezone}
+            </div>
+          ) : null}
+
+          <form className="csa-form" onSubmit={handleSaveRouteSyncSettings}>
+            <div className="csa-fedex-form-grid">
+              <label className="field-label">
+                Local timezone
+                <select
+                  className="text-field"
+                  onChange={(event) => setRouteSyncForm((current) => ({ ...current, operations_timezone: event.target.value }))}
+                  value={routeSyncForm.operations_timezone}
+                >
+                  {ROUTE_SYNC_TIMEZONES.map((timezone) => (
+                    <option key={timezone} value={timezone}>
+                      {timezone}
+                    </option>
+                  ))}
+                </select>
+              </label>
+
+              <label className="field-label">
+                Dispatch window start
+                <select
+                  className="text-field"
+                  onChange={(event) =>
+                    setRouteSyncForm((current) => ({ ...current, dispatch_window_start_hour: Number(event.target.value) }))
+                  }
+                  value={routeSyncForm.dispatch_window_start_hour}
+                >
+                  {Array.from({ length: 24 }, (_, hour) => (
+                    <option key={hour} value={hour}>
+                      {formatHourLabel(hour)}
+                    </option>
+                  ))}
+                </select>
+              </label>
+
+              <label className="field-label">
+                Dispatch window end
+                <select
+                  className="text-field"
+                  onChange={(event) =>
+                    setRouteSyncForm((current) => ({ ...current, dispatch_window_end_hour: Number(event.target.value) }))
+                  }
+                  value={routeSyncForm.dispatch_window_end_hour}
+                >
+                  {Array.from({ length: 23 }, (_, index) => index + 1).map((hour) => (
+                    <option key={hour} value={hour}>
+                      {formatHourLabel(hour)}
+                    </option>
+                  ))}
+                </select>
+              </label>
+
+              <label className="field-label">
+                FCC sync cadence
+                <select
+                  className="text-field"
+                  onChange={(event) =>
+                    setRouteSyncForm((current) => ({ ...current, manifest_sync_interval_minutes: Number(event.target.value) }))
+                  }
+                  value={routeSyncForm.manifest_sync_interval_minutes}
+                >
+                  {ROUTE_SYNC_INTERVAL_OPTIONS.map((minutes) => (
+                    <option key={minutes} value={minutes}>
+                      Every {minutes} minutes
+                    </option>
+                  ))}
+                </select>
+              </label>
+            </div>
+
+            <button className="secondary-button" disabled={isSavingRouteSyncSettings} type="submit">
+              {isSavingRouteSyncSettings ? 'Saving route sync settings...' : 'Save route sync settings'}
+            </button>
           </form>
         </div>
 

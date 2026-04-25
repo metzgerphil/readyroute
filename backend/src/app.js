@@ -15,6 +15,7 @@ const { createVehiclesRouter } = require('./routes/vehicles');
 const { createVedrRouter } = require('./routes/vedr');
 const routeRoutes = require('./routes/routes');
 const { createRoutesRouter } = require('./routes/routes');
+const { createInternalSyncRouter } = require('./routes/internalSync');
 
 function createApp(options = {}) {
   const app = express();
@@ -23,8 +24,10 @@ function createApp(options = {}) {
     'http://localhost:5173',
     'http://127.0.0.1:5173',
     'https://app.readyroute.app',
+    'https://portal.readyroute.org',
     process.env.VITE_MANAGER_PORTAL_URL,
-    process.env.VERCEL_MANAGER_PORTAL_URL
+    process.env.VERCEL_MANAGER_PORTAL_URL,
+    process.env.MANAGER_PORTAL_URL
   ].filter(Boolean);
   const authRouter = options.supabase || options.jwtSecret
     ? createAuthRouter({
@@ -32,7 +35,8 @@ function createApp(options = {}) {
         jwtSecret: options.jwtSecret,
         stripeClient: options.stripeClient,
         stripePriceId: options.stripePriceId,
-        trialDays: options.trialDays
+        trialDays: options.trialDays,
+        sendManagerPasswordResetEmail: options.sendManagerPasswordResetEmail
       })
     : authRoutes;
   const billingRouter = options.supabase && !options.stripeClient && !process.env.STRIPE_SECRET_KEY
@@ -44,7 +48,14 @@ function createApp(options = {}) {
         stripePriceId: options.stripePriceId
       });
   const routesRouter = options.supabase
-    ? createRoutesRouter({ supabase: options.supabase })
+    ? createRoutesRouter({
+        supabase: options.supabase,
+        now: options.now,
+        fedexSyncService: options.fedexSyncService,
+        fccProgressSyncService: options.fccProgressSyncService,
+        manifestIngestService: options.manifestIngestService,
+        inboundIngestSecret: options.inboundIngestSecret
+      })
     : routeRoutes;
   const managerRouter = options.supabase || options.now
     ? createManagerRouter({
@@ -65,6 +76,15 @@ function createApp(options = {}) {
     ? createVehiclesRouter({ supabase: options.supabase, now: options.now })
     : vehicleRoutes;
   const vedrRouter = createVedrRouter({ supabase: options.supabase, now: options.now });
+  const internalSyncRouter = createInternalSyncRouter({
+    supabase: options.supabase,
+    now: options.now,
+    fedexSyncService: options.fedexSyncService,
+    manifestIngestService: options.manifestIngestService,
+    fccProgressSyncService: options.fccProgressSyncService,
+    fedexFccAdapter: options.fedexFccAdapter,
+    workerSecret: options.fedexSyncWorkerSecret
+  });
   const requireActiveSubscription = options.enforceBilling === false || (Boolean(options.supabase) && options.enforceBilling !== true)
     ? (_req, _res, next) => next()
     : createRequireActiveSubscription({ supabase: options.supabase });
@@ -94,6 +114,7 @@ function createApp(options = {}) {
   });
 
   app.use('/auth', authRouter);
+  app.use('/internal', internalSyncRouter);
   app.use('/manager', requireManager, requireActiveSubscription, managerRouter);
   app.use('/api/vedr', requireManager, requireActiveSubscription, vedrRouter);
   app.use('/routes', routesRouter);

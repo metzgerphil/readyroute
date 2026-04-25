@@ -250,7 +250,94 @@ test('POST /timecards/breaks/start records a lunch break for the active timecard
     const body = await response.json();
     assert.equal(body.ok, true);
     assert.equal(body.active_break.break_type, 'lunch');
+    assert.match(body.active_break.scheduled_end_at, /^\d{4}-\d{2}-\d{2}T/);
   } finally {
+    await server.close();
+  }
+});
+
+test('GET /timecards/status auto-ends expired breaks and returns no active break', async () => {
+  let breakClosed = false;
+
+  const supabase = new MockSupabase((query) => {
+    if (query.table === 'timecards' && query.operation === 'select') {
+      return {
+        data: {
+          id: 'timecard-1',
+          route_id: 'route-1',
+          clock_in: '2026-04-14T15:00:00.000Z',
+          clock_out: null
+        },
+        error: null
+      };
+    }
+
+    if (query.table === 'timecard_breaks' && query.operation === 'select') {
+      return {
+        data: {
+          id: 'break-1',
+          break_type: 'lunch',
+          started_at: '2026-04-14T15:00:00.000Z',
+          ended_at: null
+        },
+        error: null
+      };
+    }
+
+    if (query.table === 'timecard_breaks' && query.operation === 'update') {
+      breakClosed = true;
+      assert.equal(query.filters[0].column, 'id');
+      assert.equal(query.filters[0].value, 'break-1');
+      assert.equal(query.payload.ended_at, '2026-04-14T15:30:00.000Z');
+      return { data: null, error: null };
+    }
+
+    throw new Error(`Unexpected query ${query.table}:${query.operation}`);
+  });
+
+  const RealDate = Date;
+  global.Date = class extends RealDate {
+    constructor(...args) {
+      if (args.length) {
+        return new RealDate(...args);
+      }
+
+      return new RealDate('2026-04-14T15:31:00.000Z');
+    }
+
+    static now() {
+      return new RealDate('2026-04-14T15:31:00.000Z').getTime();
+    }
+
+    static parse(value) {
+      return RealDate.parse(value);
+    }
+
+    static UTC(...args) {
+      return RealDate.UTC(...args);
+    }
+  };
+
+  const server = await startTestServer(supabase);
+
+  try {
+    const response = await fetch(`${server.baseUrl}/timecards/status`, {
+      method: 'GET',
+      headers: {
+        Authorization: `Bearer ${signDriverToken()}`
+      }
+    });
+
+    assert.equal(response.status, 200);
+    const body = await response.json();
+    assert.equal(body.ok, true);
+    assert.equal(body.active_break, null);
+    assert.equal(body.expired_break.id, 'break-1');
+    assert.equal(body.expired_break.auto_ended, true);
+    assert.equal(body.expired_break.ended_at, '2026-04-14T15:30:00.000Z');
+    assert.equal(breakClosed, true);
+  } finally {
+    global.Date = RealDate;
     await server.close();
   }
 });

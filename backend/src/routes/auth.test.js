@@ -10,15 +10,18 @@ function createSupabaseStub(initialAccount = {}) {
   const account = {
     id: initialAccount.id || 'account-1',
     manager_email: initialAccount.manager_email || 'phillovesjoy@gmail.com',
-    manager_password_hash: initialAccount.manager_password_hash || null
+    manager_password_hash: initialAccount.manager_password_hash || null,
+    company_name: initialAccount.company_name || 'Bridge Transportation'
   };
   const managerUser = initialAccount.manager_user || null;
+  const driver = initialAccount.driver || null;
 
   return {
     account,
     managerUser,
+    driver,
     from(table) {
-      assert.ok(['accounts', 'manager_users'].includes(table));
+      assert.ok(['accounts', 'drivers', 'manager_users'].includes(table));
 
       const query = {
         select() {
@@ -28,7 +31,25 @@ function createSupabaseStub(initialAccount = {}) {
           this[column] = value;
           return this;
         },
+        limit() {
+          return this;
+        },
         async maybeSingle() {
+          if (table === 'drivers') {
+            if (!driver) {
+              return { data: null, error: null };
+            }
+
+            if (
+              (this.email && this.email !== driver.email) ||
+              (this.id && this.id !== driver.id)
+            ) {
+              return { data: null, error: null };
+            }
+
+            return { data: { ...driver }, error: null };
+          }
+
           if (table === 'manager_users') {
             if (!managerUser) {
               return { data: null, error: null };
@@ -105,18 +126,104 @@ test('manager login supports manager_users records', async () => {
   assert.equal(response.body.user.email, 'vlad@example.com');
 });
 
+test('mobile login returns both portal tokens for a linked manager-driver identity', async () => {
+  const secret = '2468';
+  const driverPinHash = await bcrypt.hash(secret, 10);
+  const managerPasswordHash = await bcrypt.hash(secret, 10);
+  const supabase = createSupabaseStub({
+    manager_email: 'owner@example.com',
+    manager_password_hash: await bcrypt.hash('OwnerPass!2026', 10),
+    manager_user: {
+      id: 'manager-user-1',
+      account_id: 'account-1',
+      email: 'vlad@example.com',
+      password_hash: managerPasswordHash,
+      full_name: 'Vlad Fedoryshyn',
+      is_active: true
+    },
+    driver: {
+      id: 'driver-1',
+      account_id: 'account-1',
+      name: 'Vlad Fedoryshyn',
+      email: 'vlad@example.com',
+      pin: driverPinHash,
+      is_active: true
+    }
+  });
+  const app = createApp({ supabase, jwtSecret: 'test-secret', enforceBilling: false });
+
+  const response = await request(app)
+    .post('/auth/mobile/login')
+    .send({ email: 'vlad@example.com', secret });
+
+  assert.equal(response.status, 200);
+  assert.deepEqual(response.body.portals, ['driver', 'manager']);
+
+  const driverPayload = jwt.verify(response.body.driver_token, 'test-secret');
+  const managerPayload = jwt.verify(response.body.manager_token, 'test-secret');
+
+  assert.equal(driverPayload.driver_id, 'driver-1');
+  assert.equal(driverPayload.role, 'driver');
+  assert.equal(driverPayload.email, 'vlad@example.com');
+  assert.equal(managerPayload.manager_user_id, 'manager-user-1');
+  assert.equal(managerPayload.role, 'manager');
+});
+
 test('manager password reset request returns a reset URL in non-production', async () => {
   const hash = await bcrypt.hash('OldPassword!123', 10);
   const supabase = createSupabaseStub({ manager_password_hash: hash });
-  const app = createApp({ supabase, jwtSecret: 'test-secret', enforceBilling: false });
+  const sentEmails = [];
+  const app = createApp({
+    supabase,
+    jwtSecret: 'test-secret',
+    enforceBilling: false,
+    sendManagerPasswordResetEmail: async (payload) => {
+      sentEmails.push(payload);
+      return { delivered: true, skipped: false, provider_id: 'email-1' };
+    }
+  });
 
   const response = await request(app)
     .post('/auth/manager/request-password-reset')
     .send({ email: 'phillovesjoy@gmail.com' });
 
   assert.equal(response.status, 200);
-  assert.match(response.body.message, /password reset link/i);
+  assert.match(response.body.message, /password reset email sent/i);
   assert.match(response.body.reset_url, /\/reset-password\?token=/);
+  assert.equal(sentEmails.length, 1);
+  assert.equal(sentEmails[0].to, 'phillovesjoy@gmail.com');
+  assert.equal(sentEmails[0].companyName, 'Bridge Transportation');
+});
+
+test('manager password reset request fails honestly in production when email delivery is unavailable', async () => {
+  const hash = await bcrypt.hash('OldPassword!123', 10);
+  const supabase = createSupabaseStub({ manager_password_hash: hash });
+  const originalNodeEnv = process.env.NODE_ENV;
+  process.env.NODE_ENV = 'production';
+
+  let response;
+
+  try {
+    const app = createApp({
+      supabase,
+      jwtSecret: 'test-secret',
+      enforceBilling: false,
+      sendManagerPasswordResetEmail: async () => ({
+        delivered: false,
+        skipped: true,
+        reason: 'Email service is not configured'
+      })
+    });
+
+    response = await request(app)
+      .post('/auth/manager/request-password-reset')
+      .send({ email: 'phillovesjoy@gmail.com' });
+  } finally {
+    process.env.NODE_ENV = originalNodeEnv;
+  }
+
+  assert.equal(response.status, 503);
+  assert.match(response.body.error, /not configured/i);
 });
 
 test('manager password reset updates the password and invalidates the old one', async () => {

@@ -15,20 +15,20 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import api from '../services/api';
-import { saveToken } from '../services/auth';
+import { saveSessionTokens } from '../services/auth';
 
 export default function LoginScreen({ onAuthenticated }) {
   const { width } = useWindowDimensions();
   const [email, setEmail] = useState('');
-  const [pin, setPin] = useState('');
+  const [secret, setSecret] = useState('');
   const [loading, setLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
 
   const formWidth = Math.min(width - 32, 460);
 
   async function handleLogin() {
-    if (!email.trim() || !pin.trim()) {
-      setErrorMessage('Incorrect email or PIN. Try again.');
+    if (!email.trim() || !secret.trim()) {
+      setErrorMessage('Incorrect email or password. Try again.');
       return;
     }
 
@@ -37,21 +37,37 @@ export default function LoginScreen({ onAuthenticated }) {
     setErrorMessage('');
 
     try {
-      const response = await api.post('/auth/driver/login', {
+      const mobileResponse = await api.post('/auth/mobile/login', {
         email: email.trim(),
-        pin: pin.trim()
+        secret: secret.trim()
       });
 
-      const token = response.data?.token;
+      const driverToken = mobileResponse.data?.driver_token || null;
+      const managerToken = mobileResponse.data?.manager_token || null;
 
-      if (!token) {
-        throw new Error('Missing token in login response');
+      if (!driverToken && !managerToken) {
+        throw new Error('Missing mobile session tokens');
       }
 
-      await saveToken(token);
-      onAuthenticated(token);
-    } catch (_error) {
-      setErrorMessage('Incorrect email or PIN. Try again.');
+      await saveSessionTokens({ driverToken, managerToken });
+      onAuthenticated({ driverToken, managerToken });
+    } catch (_mobileError) {
+      try {
+        const response = await api.post('/auth/driver/login', {
+          email: email.trim(),
+          pin: secret.trim()
+        });
+        const legacyDriverToken = response.data?.token;
+
+        if (!legacyDriverToken) {
+          throw new Error('Missing driver token');
+        }
+
+        await saveSessionTokens({ driverToken: legacyDriverToken });
+        onAuthenticated({ driverToken: legacyDriverToken, managerToken: null });
+      } catch (_legacyError) {
+        setErrorMessage('Incorrect email or password. Try again.');
+      }
     } finally {
       setLoading(false);
     }
@@ -78,7 +94,7 @@ export default function LoginScreen({ onAuthenticated }) {
 
               <View style={styles.form}>
                 <Text style={styles.helperText}>
-                  Sign in with your ReadyRoute driver email and the 4-digit PIN from dispatch.
+                  Sign in with your ReadyRoute email and either your 4-digit driver PIN or your manager password.
                 </Text>
                 <TextInput
                   autoCapitalize="none"
@@ -97,19 +113,17 @@ export default function LoginScreen({ onAuthenticated }) {
                   value={email}
                 />
                 <TextInput
-                  keyboardType="number-pad"
-                  maxLength={4}
                   onChangeText={(value) => {
-                    setPin(value.replace(/[^\d]/g, ''));
+                    setSecret(value);
                     if (errorMessage) {
                       setErrorMessage('');
                     }
                   }}
-                  placeholder="4-digit PIN"
+                  placeholder="4-digit PIN or password"
                   placeholderTextColor="#8b8b8b"
                   secureTextEntry
                   style={styles.input}
-                  value={pin}
+                  value={secret}
                 />
                 <Pressable
                   disabled={loading}
@@ -123,7 +137,7 @@ export default function LoginScreen({ onAuthenticated }) {
                   {loading ? (
                     <ActivityIndicator color="#ffffff" />
                   ) : (
-                    <Text style={styles.buttonText}>Start My Day</Text>
+                    <Text style={styles.buttonText}>Sign In</Text>
                   )}
                 </Pressable>
                 {errorMessage ? <Text style={styles.errorText}>{errorMessage}</Text> : null}

@@ -125,6 +125,15 @@ function upgradeConfidence(confidence) {
   return 'high';
 }
 
+function normalizeStoredFloor(value) {
+  if (value === null || value === undefined || value === '') {
+    return null;
+  }
+
+  const numericValue = Number(value);
+  return Number.isFinite(numericValue) && numericValue > 0 ? numericValue : null;
+}
+
 async function loadApartmentUnitRecord(supabase, accountId, normalizedAddress, unitNumber) {
   const { data, error } = await supabase
     .from('apartment_units')
@@ -286,7 +295,7 @@ async function ensureApartmentRecord(supabase, accountId, stop) {
     normalized_address: normalizedAddress,
     display_address: getPrimaryAddressLine(stop.address, stop.address_line2) || stop.address || null,
     unit_number: unitNumber,
-    floor: Number.isFinite(Number(intelligence.floor)) ? Number(intelligence.floor) : null,
+    floor: normalizeStoredFloor(intelligence.floor),
     confidence: intelligence.confidence || 'low',
     source: intelligence.source || 'predicted',
     verified: false,
@@ -568,5 +577,6 @@ module.exports = {
   extractUnitNumber,
   getDeliveryFloor,
   normalizeBuildingAddress,
+  normalizeStoredFloor,
   predictFloor
 };

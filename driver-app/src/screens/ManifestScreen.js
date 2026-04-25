@@ -44,6 +44,26 @@ export function getPinColorModeLabel(mode) {
   return mode === 'black' ? 'Black' : 'SID Colors';
 }
 
+export function getPostDispatchChangeNotice(route) {
+  const policyCode = route?.post_dispatch_change_policy?.code || 'none';
+
+  if (policyCode === 'manager_review_required') {
+    return {
+      title: 'Route changed after dispatch',
+      body: 'FCC changed this route after it went live and work has already started. Check with your manager before continuing if anything looks different.'
+    };
+  }
+
+  if (policyCode === 'driver_warning') {
+    return {
+      title: 'Route updated after dispatch',
+      body: 'FCC changed this route after it went live. Review stop order and details carefully before making your next move.'
+    };
+  }
+
+  return null;
+}
+
 function getListPinTheme(stop, pinColorMode) {
   if (pinColorMode !== 'sid') {
     return {
@@ -101,10 +121,12 @@ function OpenBoxIcon({ color = '#6f7d87' }) {
 
 export default function ManifestScreen({ navigation, route }) {
   const [routeData, setRouteData] = useState(null);
+  const [driverDay, setDriverDay] = useState({ status: 'unknown' });
   const [search, setSearch] = useState('');
   const [isLoading, setIsLoading] = useState(true);
   const [pinColorMode, setPinColorMode] = useState('sid');
   const selectedStopId = route?.params?.selectedStopId;
+  const postDispatchNotice = getPostDispatchChangeNotice(routeData);
 
   useLayoutEffect(() => {
     navigation.setOptions({
@@ -118,9 +140,15 @@ export default function ManifestScreen({ navigation, route }) {
     async function loadRoute() {
       try {
         const response = await api.get('/routes/today');
+        const nextRoute = response.data?.route || null;
 
         if (isMounted) {
-          setRouteData(response.data?.route || null);
+          setRouteData(nextRoute);
+          setDriverDay(
+            response.data?.driver_day || {
+              status: nextRoute ? 'dispatched' : 'unassigned'
+            }
+          );
         }
       } finally {
         if (isMounted) {
@@ -286,6 +314,22 @@ export default function ManifestScreen({ navigation, route }) {
           value={search}
         />
 
+        {!isLoading && !routeData && driverDay?.status === 'awaiting_dispatch' ? (
+          <View style={styles.noticeCard}>
+            <Text style={styles.noticeTitle}>Route staged for dispatch</Text>
+            <Text style={styles.noticeBody}>
+              Your stop list will appear here as soon as your lead manager dispatches the day.
+            </Text>
+          </View>
+        ) : null}
+
+        {postDispatchNotice ? (
+          <View style={styles.noticeCard}>
+            <Text style={styles.noticeTitle}>{postDispatchNotice.title}</Text>
+            <Text style={styles.noticeBody}>{postDispatchNotice.body}</Text>
+          </View>
+        ) : null}
+
         {isLoading ? (
           <View style={styles.centered}>
             <ActivityIndicator color="#FF6200" size="large" />
@@ -380,6 +424,26 @@ const styles = StyleSheet.create({
     marginBottom: 16,
     minHeight: 56,
     paddingHorizontal: 16
+  },
+  noticeCard: {
+    backgroundColor: '#fff4e8',
+    borderColor: '#ffcfad',
+    borderRadius: 18,
+    borderWidth: 1,
+    marginBottom: 14,
+    paddingHorizontal: 16,
+    paddingVertical: 14
+  },
+  noticeTitle: {
+    color: '#9a3412',
+    fontSize: 15,
+    fontWeight: '800',
+    marginBottom: 6
+  },
+  noticeBody: {
+    color: '#7c4a22',
+    fontSize: 14,
+    lineHeight: 20
   },
   centered: {
     alignItems: 'center',

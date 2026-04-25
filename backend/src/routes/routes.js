@@ -3,6 +3,10 @@ const express = require('express');
 
 const defaultSupabase = require('../lib/supabase');
 const { requireDriver, requireManager } = require('../middleware/auth');
+const { createCliFedexFccAdapter } = require('../services/fccDownloader');
+const { createFccProgressSyncService } = require('../services/fccProgressSync');
+const { createFedexSyncService } = require('../services/fedexSync');
+const { createManifestIngestService } = require('../services/manifestIngest');
 const {
   detectManifestFormat,
   detectBusinessContact,
@@ -257,6 +261,54 @@ function getStoredRouteStatus(status, currentStatus) {
   return status;
 }
 
+function getManifestPackageCount(stops = []) {
+  return (stops || []).reduce((sum, stop) => sum + Math.max(1, Number(stop?.package_count || 1)), 0);
+}
+
+function buildManifestSyncFingerprint({ manifestMeta = {}, stops = [] }) {
+  const normalizedStops = (stops || []).map((stop) => ({
+    sequence: Number(stop.sequence || stop.sequence_order || 0),
+    address: String(stop.address || '').trim(),
+    address_line2: String(stop.address_line2 || '').trim(),
+    sid: String(stop.sid || '').trim(),
+    type: String(stop.type || stop.stop_type || '').trim(),
+    package_count: Math.max(1, Number(stop.package_count || 1)),
+    ready_time: stop.ready_time || null,
+    close_time: stop.close_time || null,
+    lat: stop.lat == null ? null : Number(stop.lat),
+    lng: stop.lng == null ? null : Number(stop.lng)
+  }));
+
+  return crypto
+    .createHash('sha256')
+    .update(
+      JSON.stringify({
+        date: manifestMeta.date || null,
+        work_area_name: manifestMeta.work_area_name || null,
+        driver_name: manifestMeta.driver_name || null,
+        vehicle_number: manifestMeta.vehicle_number || null,
+        stops: normalizedStops
+      })
+    )
+    .digest('hex');
+}
+
+function buildRouteSyncMetadata({ manifestMeta = {}, routeStops = [], previousRoute = null, syncedAt = new Date().toISOString() }) {
+  const manifestFingerprint = buildManifestSyncFingerprint({ manifestMeta, stops: routeStops });
+  const previousFingerprint = previousRoute?.manifest_fingerprint || null;
+  const hasChanged = previousFingerprint !== manifestFingerprint;
+
+  return {
+    sync_state: hasChanged ? 'staged_changed' : 'staged_stable',
+    last_manifest_sync_at: syncedAt,
+    last_manifest_change_at: hasChanged ? syncedAt : previousRoute?.last_manifest_change_at || syncedAt,
+    manifest_stop_count: routeStops.length,
+    manifest_package_count: getManifestPackageCount(routeStops),
+    manifest_fingerprint: manifestFingerprint,
+    last_manifest_sync_error: null
+  };
+}
+
 function presentRouteStatus(route) {
   if (!route) {
     return route;
@@ -365,9 +417,10 @@ function isMissingBucketError(error) {
 async function loadDriverRoute(supabase, { driverId, accountId, routeId, date }) {
   let query = supabase
     .from('routes')
-    .select('id, date, status, total_stops, completed_stops, completed_at')
+    .select('id, date, work_area_name, status, dispatch_state, dispatched_at, sync_state, last_manifest_change_at, total_stops, completed_stops, completed_at')
     .eq('driver_id', driverId)
-    .eq('account_id', accountId);
+    .eq('account_id', accountId)
+    .eq('dispatch_state', 'dispatched');
 
   if (routeId) {
     query = query.eq('id', routeId);
@@ -384,15 +437,32 @@ async function loadDriverRoute(supabase, { driverId, accountId, routeId, date })
   return { data, error };
 }
 
+async function loadDriverAssignedRoutePreview(supabase, { driverId, accountId, date }) {
+  const { data, error } = await supabase
+    .from('routes')
+    .select(
+      'id, date, work_area_name, status, dispatch_state, sync_state, last_manifest_sync_at, last_manifest_change_at, total_stops, completed_stops'
+    )
+    .eq('driver_id', driverId)
+    .eq('account_id', accountId)
+    .eq('date', date)
+    .order('date', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  return { data, error };
+}
+
 async function loadAuthorizedStop(supabase, { stopId, driverId, accountId }) {
   const { data, error } = await supabase
     .from('stops')
     .select(
-      'id, route_id, sequence_order, address, status, completed_at, routes!inner(id, driver_id, account_id, total_stops, completed_stops, status)'
+      'id, route_id, sequence_order, address, status, completed_at, routes!inner(id, driver_id, account_id, dispatch_state, total_stops, completed_stops, status)'
     )
     .eq('id', stopId)
     .eq('routes.driver_id', driverId)
     .eq('routes.account_id', accountId)
+    .eq('routes.dispatch_state', 'dispatched')
     .maybeSingle();
 
   if (!data) {
@@ -413,10 +483,11 @@ async function loadAuthorizedStop(supabase, { stopId, driverId, accountId }) {
 async function loadExistingManifestRoute(supabase, { accountId, date, workAreaName }) {
   const { data, error } = await supabase
     .from('routes')
-    .select('id, status, completed_stops, completed_at, driver_id, vehicle_id')
+    .select('id, status, dispatch_state, completed_stops, completed_at, driver_id, vehicle_id, manifest_fingerprint, last_manifest_change_at')
     .eq('account_id', accountId)
     .eq('date', date)
     .eq('work_area_name', workAreaName)
+    .is('archived_at', null)
     .maybeSingle();
 
   return { data, error };
@@ -431,7 +502,80 @@ function canReplaceExistingManifestRoute(route) {
 
   // Allow manifest refreshes until the route has actual worked-stop history.
   // Dispatch may mark a route in progress before any stops are completed.
-  return completedStops === 0 && !route.completed_at && route.status !== 'complete';
+  return completedStops === 0 && !route.completed_at && route.status !== 'complete' && route.dispatch_state !== 'dispatched';
+}
+
+function hasRouteChangedAfterDispatch(route) {
+  if (!route?.dispatched_at || !route?.last_manifest_change_at) {
+    return false;
+  }
+
+  return new Date(route.last_manifest_change_at).getTime() > new Date(route.dispatched_at).getTime();
+}
+
+function getPostDispatchChangePolicy(route) {
+  if (!hasRouteChangedAfterDispatch(route)) {
+    return {
+      code: 'none',
+      label: 'No post-dispatch change',
+      tone: 'neutral',
+      should_notify_driver: false,
+      requires_manager_review: false
+    };
+  }
+
+  const completedStops = Number(route?.completed_stops || 0);
+  const hasStartedWork = completedStops > 0 || route?.status === 'in_progress' || route?.status === 'complete';
+
+  if (hasStartedWork) {
+    return {
+      code: 'manager_review_required',
+      label: 'Manager review required',
+      tone: 'urgent',
+      should_notify_driver: true,
+      requires_manager_review: true
+    };
+  }
+
+  return {
+    code: 'driver_warning',
+    label: 'Driver warning',
+    tone: 'warning',
+    should_notify_driver: true,
+    requires_manager_review: false
+  };
+}
+
+async function recordRouteSyncEvent(supabase, {
+  accountId,
+  routeId,
+  workDate,
+  eventType,
+  eventStatus = 'info',
+  summary,
+  details = {},
+  managerUserId = null
+}) {
+  if (!accountId || !routeId || !workDate || !eventType || !summary) {
+    return;
+  }
+
+  const { error } = await supabase
+    .from('route_sync_events')
+    .insert({
+      account_id: accountId,
+      route_id: routeId,
+      work_date: workDate,
+      event_type: eventType,
+      event_status: eventStatus,
+      summary,
+      details,
+      manager_user_id: managerUserId
+    });
+
+  if (error) {
+    console.error('Route sync event insert failed:', error);
+  }
 }
 
 function buildPendingManifestStopKey(stop, fallbackKey) {
@@ -507,9 +651,95 @@ function mergePendingManifestStops(existingStops = [], incomingStops = []) {
 function createRoutesRouter(options = {}) {
   const router = express.Router();
   const supabase = options.supabase || defaultSupabase;
+  const nowProvider = options.now || (() => new Date());
+  const inboundIngestSecret = options.inboundIngestSecret || process.env.FEDEX_INGEST_SHARED_SECRET || '';
+  const manifestIngestService =
+    options.manifestIngestService ||
+    createManifestIngestService({
+      supabase,
+      now: nowProvider
+    });
+  const fccProgressSyncService =
+    options.fccProgressSyncService ||
+    createFccProgressSyncService({
+      supabase,
+      now: nowProvider
+    });
+  const fedexSyncService =
+    options.fedexSyncService ||
+    createFedexSyncService({
+      supabase,
+      now: nowProvider,
+      manifestIngestService,
+      fccProgressSyncService,
+      adapter: options.fedexFccAdapter || createCliFedexFccAdapter()
+    });
 
-  router.post('/pull-fedex', requireManager, async (_req, res) => {
-    return res.status(200).json({ message: 'FedEx Integrator approval pending' });
+  router.post('/pull-fedex', requireManager, async (req, res) => {
+    try {
+      const result = await fedexSyncService.triggerManualSync({
+        accountId: req.account.account_id,
+        managerUserId: req.account.manager_user_id || null,
+        workDate: req.body?.date || null
+      });
+
+      return res.status(202).json(result);
+    } catch (error) {
+      console.error('Manual FedEx sync trigger failed:', error);
+      return res.status(500).json({ error: 'Failed to start FedEx sync' });
+    }
+  });
+
+  router.post('/pull-fedex-progress', requireManager, async (req, res) => {
+    try {
+      const result = await fedexSyncService.syncRouteProgress({
+        accountId: req.account.account_id,
+        managerUserId: req.account.manager_user_id || null,
+        workDate: req.body?.date || null
+      });
+
+      return res.status(202).json(result);
+    } catch (error) {
+      console.error('Manual FedEx progress sync trigger failed:', error);
+      return res.status(500).json({ error: 'Failed to start FedEx progress sync' });
+    }
+  });
+
+  router.post('/receive-fedex-manifest', parseMultipartForm, async (req, res) => {
+    if (!inboundIngestSecret) {
+      return res.status(503).json({ error: 'Inbound FedEx ingest is not configured on this server yet.' });
+    }
+
+    const providedSecret = String(req.headers['x-readyroute-ingest-secret'] || '').trim();
+
+    if (!providedSecret || providedSecret !== inboundIngestSecret) {
+      return res.status(403).json({ error: 'Invalid inbound ingest secret.' });
+    }
+
+    if (!req.file) {
+      return res.status(400).json({ error: 'Manifest file is required' });
+    }
+
+    try {
+      const result = await fedexSyncService.receiveInboundManifestDelivery({
+        connectionReference: String(req.body?.connection_reference || '').trim() || null,
+        accountNumber: String(req.body?.account_number || '').trim() || null,
+        manifestFile: req.file,
+        companionGpxFile: req.files?.gpx_file || null,
+        workDate: String(req.body?.date || '').trim() || null,
+        workAreaName: String(req.body?.work_area_name || '').trim() || null,
+        driverId: String(req.body?.driver_id || '').trim() || null,
+        vehicleId: String(req.body?.vehicle_id || '').trim() || null
+      });
+
+      return res.status(202).json(result);
+    } catch (error) {
+      console.error('Inbound FedEx manifest ingest failed:', error);
+      return res.status(Number(error?.statusCode || 500)).json({
+        error: error?.message || 'Failed to ingest inbound FedEx manifest',
+        ...(error?.run ? { run: error.run } : {})
+      });
+    }
   });
 
   async function handleManifestUpload(req, res) {
@@ -520,422 +750,43 @@ function createRoutesRouter(options = {}) {
     }
 
     try {
-      const manifestFormat = detectManifestFormat(req.file.buffer, req.file.originalname);
-
-      if (manifestFormat === 'unknown') {
-        return res.status(400).json({ error: 'Unsupported manifest file type. Use .xls, .xlsx, or .gpx.' });
-      }
-
-      const manifest =
-        manifestFormat === 'xls'
-          ? parseXLSManifest(req.file.buffer)
-          : await parseGPXManifest(req.file.buffer);
-      let parsedStops = manifest?.stops || [];
-      let manifestMeta = manifest?.manifest_meta || {};
-
-      const optionalGpxFile = req.files?.gpx_file || null;
-      if (optionalGpxFile) {
-        const gpxFormat = detectManifestFormat(optionalGpxFile.buffer, optionalGpxFile.originalname);
-
-        if (gpxFormat !== 'gpx') {
-          return res.status(400).json({ error: 'Optional companion file must be a .gpx file.' });
-        }
-
-        const gpxManifest = await parseGPXManifest(optionalGpxFile.buffer);
-        parsedStops = mergeManifestStops(parsedStops, gpxManifest?.stops || []);
-        manifestMeta = mergeManifestMeta(manifestMeta, gpxManifest?.manifest_meta || null);
-      }
-
-      if (!parsedStops.length) {
-        return res.status(400).json({ error: 'No stops found in manifest file' });
-      }
-
-      const resolvedDate = date || manifestMeta.date;
-      const resolvedWorkAreaName = String(workAreaName || manifestMeta.work_area_name || '').trim();
-      let resolvedDriverId = requestedDriverId || null;
-      let resolvedVehicleId = requestedVehicleId || null;
-      let autoMatchedDriver = false;
-      let autoMatchedVehicle = false;
-      let unmatchedDriverName = null;
-      let matchedDriverName = null;
-
-      if (manifestFormat === 'xls') {
-        if (!resolvedDate || !resolvedWorkAreaName) {
-          return res.status(400).json({ error: 'Manifest is missing required date or work area information' });
-        }
-
-        const manifestDriverName = String(manifestMeta.driver_name || '').trim();
-        const manifestVehicleNumber = String(manifestMeta.vehicle_number || '').trim();
-
-        if (manifestDriverName) {
-          const { data: drivers, error: driversError } = await supabase
-            .from('drivers')
-            .select('id, name')
-            .eq('account_id', req.account.account_id);
-
-          if (driversError) {
-            console.error('Driver lookup failed during manifest upload:', driversError);
-            return res.status(500).json({ error: 'Failed to match manifest driver' });
-          }
-
-          const matchedDriver = (drivers || []).find(
-            (driver) => normalizeComparisonValue(driver.name) === normalizeComparisonValue(manifestDriverName)
-          );
-
-          if (matchedDriver) {
-            resolvedDriverId = matchedDriver.id;
-            autoMatchedDriver = true;
-            matchedDriverName = matchedDriver.name;
-          } else {
-            resolvedDriverId = null;
-            unmatchedDriverName = manifestDriverName;
-          }
-        }
-
-        if (manifestVehicleNumber) {
-          const { data: vehicles, error: vehiclesError } = await supabase
-            .from('vehicles')
-            .select('id, name')
-            .eq('account_id', req.account.account_id);
-
-          if (vehiclesError) {
-            console.error('Vehicle lookup failed during manifest upload:', vehiclesError);
-            return res.status(500).json({ error: 'Failed to match manifest vehicle' });
-          }
-
-          const matchedVehicle = (vehicles || []).find(
-            (vehicle) => normalizeComparisonValue(vehicle.name) === normalizeComparisonValue(manifestVehicleNumber)
-          );
-
-          if (matchedVehicle) {
-            resolvedVehicleId = matchedVehicle.id;
-            autoMatchedVehicle = true;
-          } else {
-            resolvedVehicleId = null;
-          }
-        }
-      } else {
-        if (!resolvedDriverId || !resolvedVehicleId || !resolvedDate || !resolvedWorkAreaName) {
-          return res.status(400).json({ error: 'driver_id, vehicle_id, date, and work_area_name are required' });
-        }
-      }
-
-
-      const manifestStops = parsedStops.map((stop) => ({
-        ...stop,
-        geocode_source: stop.geocode_source || 'manifest',
-        geocode_accuracy: stop.geocode_accuracy || 'manifest'
-      }));
-      const addressWarnings = [];
-      const correctedStops = await applyLocationCorrectionsToStops(
-        supabase,
-        req.account.account_id,
-        manifestStops
-      );
-      const geocodedManifest = await enrichManifestStopsWithGeocoding(
-        supabase,
-        req.account.account_id,
-        correctedStops
-      );
-      let routeStops = normalizeMergedStopSequences(geocodedManifest.stops);
-
-      const { data: existingRoute, error: existingRouteError } = await loadExistingManifestRoute(supabase, {
+      const result = await manifestIngestService.stageManifestArtifacts({
         accountId: req.account.account_id,
-        date: resolvedDate,
-        workAreaName: resolvedWorkAreaName
+        managerUserId: req.account.manager_user_id || null,
+        manifestFile: req.file,
+        companionGpxFile: req.files?.gpx_file || null,
+        requestedDriverId,
+        requestedVehicleId,
+        requestedDate: date,
+        requestedWorkAreaName: workAreaName,
+        source: 'manifest_upload'
       });
 
-      if (existingRouteError) {
-        console.error('Existing route lookup failed during manifest upload:', existingRouteError);
-        return res.status(500).json({ error: 'Failed to check for an existing route before upload' });
-      }
-
-      let routeId = null;
-      let mergedIntoExistingRoute = false;
-
-      if (existingRoute) {
-        if (!canReplaceExistingManifestRoute(existingRoute)) {
-          return res.status(409).json({
-            error: `Route ${resolvedWorkAreaName || 'this work area'} for ${resolvedDate || 'this date'} already exists and has already started. Open the existing route below instead of uploading the same manifest again.`
-          });
-        }
-
-        const { data: existingStops, error: existingStopsError } = await supabase
-          .from('stops')
-          .select(
-            'id, sequence_order, address, address_line2, contact_name, lat, lng, is_pickup, is_business, sid, ready_time, close_time, has_time_commit, stop_type, has_pickup, has_delivery, geocode_source, geocode_accuracy'
-          )
-          .eq('route_id', existingRoute.id)
-          .order('sequence_order');
-
-        if (existingStopsError) {
-          console.error('Existing route stop lookup failed during manifest upload:', existingStopsError);
-          return res.status(500).json({ error: 'Failed to load the existing route before applying the new manifest' });
-        }
-        const existingStopIds = (existingStops || []).map((stop) => stop.id);
-        const packageCountByStopId = new Map();
-
-        if (existingStopIds.length) {
-          const { data: existingPackages, error: existingPackagesError } = await supabase
-            .from('packages')
-            .select('id, stop_id')
-            .in('stop_id', existingStopIds);
-
-          if (existingPackagesError) {
-            console.error('Existing route package lookup failed during manifest upload:', existingPackagesError);
-            return res.status(500).json({ error: 'Failed to load the existing route packages before applying the new manifest' });
-          }
-
-          for (const pkg of existingPackages || []) {
-            packageCountByStopId.set(pkg.stop_id, (packageCountByStopId.get(pkg.stop_id) || 0) + 1);
-          }
-        }
-
-        const existingManifestStops = (existingStops || []).map((stop) =>
-          toManifestStopFromExistingRouteStop(stop, packageCountByStopId.get(stop.id) || 1)
-        );
-
-        routeStops = mergePendingManifestStops(existingManifestStops, routeStops);
-        resolvedDriverId = resolvedDriverId || existingRoute.driver_id || null;
-        resolvedVehicleId = resolvedVehicleId || existingRoute.vehicle_id || null;
-
-        if (existingStopIds.length) {
-          const { error: deletePackagesError } = await supabase
-            .from('packages')
-            .delete()
-            .in('stop_id', existingStopIds);
-
-          if (deletePackagesError) {
-            console.error('Existing route package cleanup failed during manifest upload:', deletePackagesError);
-            return res.status(500).json({ error: 'Failed to clear the old package placeholders before applying the new manifest' });
-          }
-        }
-
-        const { error: deleteStopsError } = await supabase
-          .from('stops')
-          .delete()
-          .eq('route_id', existingRoute.id);
-
-        if (deleteStopsError) {
-          console.error('Existing route stop cleanup failed during manifest upload:', deleteStopsError);
-          return res.status(500).json({ error: 'Failed to clear the old route stops before applying the new manifest' });
-        }
-
-        const { data: updatedRoute, error: updateRouteError } = await supabase
-          .from('routes')
-          .update({
-            driver_id: resolvedDriverId,
-            vehicle_id: resolvedVehicleId,
-            sa_number: manifestMeta.sa_number || null,
-            contractor_name: manifestMeta.contractor_name || null,
-            source: 'manifest_upload',
-            total_stops: routeStops.length,
-            completed_stops: 0,
-            status: 'pending'
-          })
-          .eq('id', existingRoute.id)
-          .eq('account_id', req.account.account_id)
-          .select('id')
-          .single();
-
-        if (updateRouteError) {
-          console.error('Existing route update failed during manifest upload:', updateRouteError);
-          return res.status(500).json({ error: 'Failed to update the existing route with the new manifest data' });
-        }
-
-        routeId = updatedRoute.id;
-        mergedIntoExistingRoute = true;
-      } else {
-        const { data: routeRecord, error: routeError } = await supabase
-          .from('routes')
-          .insert({
-            account_id: req.account.account_id,
-            driver_id: resolvedDriverId,
-            vehicle_id: resolvedVehicleId,
-            work_area_name: resolvedWorkAreaName,
-            date: resolvedDate,
-            sa_number: manifestMeta.sa_number || null,
-            contractor_name: manifestMeta.contractor_name || null,
-            source: 'manifest_upload',
-            total_stops: routeStops.length,
-            completed_stops: 0,
-            status: 'pending'
-          })
-          .select('id')
-          .single();
-
-        if (routeError) {
-          console.error('Route creation failed:', routeError);
-          const friendlyError = getManifestUploadError(routeError, {
-            workAreaName: resolvedWorkAreaName,
-            date: resolvedDate
-          });
-          return res.status(routeError?.code === '23505' ? 409 : 500).json({
-            error: friendlyError || 'Failed to create route from manifest'
-          });
-        }
-
-        routeId = routeRecord.id;
-      }
-
-      const stopInsertPayload = routeStops.map((stop) => ({
-        route_id: routeId,
-        sequence_order: stop.sequence,
-        address: stop.address,
-        address_line2: stop.address_line2 || null,
-        contact_name: stop.contact_name || null,
-        lat: stop.lat,
-        lng: stop.lng,
-        status: 'pending',
-        is_pickup: Boolean(stop.is_pickup),
-        is_business: Boolean(stop.is_business),
-        has_note: Boolean(stop.warning),
-        sid: stop.sid || null,
-        ready_time: stop.ready_time || null,
-        close_time: stop.close_time || null,
-        has_time_commit: Boolean(stop.has_time_commit),
-        stop_type: stop.type || 'delivery',
-        has_pickup: Boolean(stop.has_pickup),
-        has_delivery: stop.has_delivery !== false,
-        geocode_source: stop.geocode_source || 'manifest',
-        geocode_accuracy: stop.geocode_accuracy || 'manifest',
-        notes: stop.warning ? stop.warning : null
-      }));
-
-      const { data: insertedStops, error: stopsError } = await supabase
-        .from('stops')
-        .insert(stopInsertPayload)
-        .select('id, sequence_order');
-
-      if (stopsError) {
-        console.error('Stop insertion failed:', stopsError);
-        if (!mergedIntoExistingRoute) {
-          await supabase.from('routes').delete().eq('id', routeId);
-        }
-        return res.status(500).json({
-          error: getManifestSchemaError(stopsError) || 'Failed to save stops from manifest',
-          ...(process.env.NODE_ENV !== 'production'
-            ? {
-                debug: {
-                  code: stopsError.code || null,
-                  message: stopsError.message || null,
-                  details: stopsError.details || null,
-                  hint: stopsError.hint || null
-                }
-              }
-            : {})
-        });
-      }
-
-      const stopIdBySequence = new Map(insertedStops.map((stop) => [stop.sequence_order, stop.id]));
-
-      const packageInsertPayload = routeStops.flatMap((stop) => {
-        const packageCount = Math.max(1, Number(stop.package_count || 1));
-        const stopId = stopIdBySequence.get(stop.sequence);
-        const packageKeyBase = stop.sid && stop.sid !== '0'
-          ? `RR-${routeId.slice(0, 8)}-STOPID-${stopId}-SID-${stop.sid}`
-          : `RR-${routeId.slice(0, 8)}-STOPID-${stopId}`;
-
-        return Array.from({ length: packageCount }, (_, index) => ({
-          stop_id: stopId,
-          tracking_number: `${packageKeyBase}-${index + 1}`,
-          requires_signature: false,
-          hazmat: false
-        }));
-      });
-
-      const { error: packagesError } = await supabase
-        .from('packages')
-        .insert(packageInsertPayload);
-
-      if (packagesError) {
-        console.error('Package insertion failed:', packagesError);
-        if (!mergedIntoExistingRoute) {
-          await supabase.from('routes').delete().eq('id', routeId);
-        }
-        return res.status(500).json({ error: 'Failed to save package placeholders' });
-      }
-
-      const deliveryCount = routeStops.filter((stop) => stop.type === 'delivery').length;
-      const pickupCount = routeStops.filter((stop) => stop.type === 'pickup').length;
-      const combinedCount = routeStops.filter((stop) => stop.type === 'combined').length;
-      const timeCommitCount = routeStops.filter((stop) => stop.has_time_commit).length;
-      const coordinateHealth = summarizeCoordinateHealth(routeStops);
-      const coordinateIntegrity = detectSuspiciousCoordinateClusters(routeStops);
-
-      if (coordinateIntegrity.suspicious_cluster_count > 0) {
-        console.error('Manifest upload rejected due to suspicious coordinate collapse:', {
-          account_id: req.account.account_id,
-          work_area_name: resolvedWorkAreaName,
-          date: resolvedDate,
-          suspicious_clusters: coordinateIntegrity.suspicious_clusters
-        });
-
-        if (!mergedIntoExistingRoute) {
-          await supabase.from('routes').delete().eq('id', routeId);
-        }
-
-        return res.status(422).json({
-          error: 'Manifest upload was blocked because too many different stop addresses collapsed onto the same map pin. Please re-check the manifest/GPX pair before dispatch.',
-          route_health: coordinateHealth,
-          coordinate_integrity: coordinateIntegrity
-        });
-      }
-
-      const insertedStopsForEnrichment = routeStops.map((stop) => ({
-        ...stop,
-        id: stopIdBySequence.get(stop.sequence)
-      }));
-
-      try {
-        await bootstrapApartmentRecords(supabase, req.account.account_id, insertedStopsForEnrichment);
-      } catch (apartmentError) {
-        console.warn('Apartment intelligence bootstrap failed during manifest upload:', apartmentError);
-      }
-
-      return res.status(201).json({
-        route_id: routeId,
-        total_stops: routeStops.length,
-        delivery_count: deliveryCount,
-        pickup_count: pickupCount,
-        combined_count: combinedCount,
-        time_commit_count: timeCommitCount,
-        auto_matched_driver: autoMatchedDriver,
-        ...(matchedDriverName ? { matched_driver_name: matchedDriverName } : {}),
-        ...(unmatchedDriverName ? { unmatched_driver_name: unmatchedDriverName } : {}),
-        auto_matched_vehicle: autoMatchedVehicle,
-        manifest_meta: manifestMeta,
-        geocoding: {
-          status: geocodedManifest.summary.status,
-          attempted: geocodedManifest.summary.attempted,
-          geocoded: geocodedManifest.summary.geocoded,
-          failed: geocodedManifest.summary.failed
-        },
-        merged_into_existing_route: mergedIntoExistingRoute,
-        route_health: coordinateHealth,
-        address_warnings: addressWarnings
-      });
+      return res.status(201).json(result);
     } catch (error) {
       console.error('Manifest upload failed:', error);
+      const statusCode = Number(error?.statusCode || 500);
       const message = error?.message || 'Failed to upload manifest';
+      const response = { error: message };
 
-      if (/unsupported manifest file type/i.test(message)) {
-        return res.status(400).json({ error: message });
+      if (error?.route_health) {
+        response.route_health = error.route_health;
       }
 
-      return res.status(500).json({
-        error: 'Failed to upload manifest',
-        ...(process.env.NODE_ENV !== 'production'
-          ? {
-              debug: {
-                message: error?.message || null,
-                details: error?.details || null,
-                hint: error?.hint || null,
-                stack: error?.stack || null
-              }
-            }
-          : {})
-      });
+      if (error?.coordinate_integrity) {
+        response.coordinate_integrity = error.coordinate_integrity;
+      }
+
+      if (statusCode >= 500 && process.env.NODE_ENV !== 'production') {
+        response.debug = {
+          message: error?.message || null,
+          details: error?.details || null,
+          hint: error?.hint || null,
+          stack: error?.stack || null
+        };
+      }
+
+      return res.status(statusCode).json(response);
     }
   }
 
@@ -1058,10 +909,11 @@ function createRoutesRouter(options = {}) {
 
   router.get('/today', requireDriver, async (req, res) => {
     try {
+      const currentDate = getCurrentDateString();
       const { data: route, error: routeError } = await loadDriverRoute(supabase, {
         driverId: req.driver.driver_id,
         accountId: req.driver.account_id,
-        date: getCurrentDateString()
+        date: currentDate
       });
 
       if (routeError) {
@@ -1070,7 +922,38 @@ function createRoutesRouter(options = {}) {
       }
 
       if (!route) {
-        return res.status(200).json({ route: null });
+        const { data: stagedRoute, error: stagedRouteError } = await loadDriverAssignedRoutePreview(supabase, {
+          driverId: req.driver.driver_id,
+          accountId: req.driver.account_id,
+          date: currentDate
+        });
+
+        if (stagedRouteError) {
+          console.error('Today staged route lookup failed:', stagedRouteError);
+          return res.status(500).json({ error: 'Failed to load driver dispatch status' });
+        }
+
+        return res.status(200).json({
+          route: null,
+          driver_day: stagedRoute
+            ? {
+                status: 'awaiting_dispatch',
+                route_preview: {
+                  id: stagedRoute.id,
+                  date: stagedRoute.date,
+                  work_area_name: stagedRoute.work_area_name,
+                  total_stops: Number(stagedRoute.total_stops || 0),
+                  completed_stops: Number(stagedRoute.completed_stops || 0),
+                  sync_state: stagedRoute.sync_state || 'sync_pending',
+                  dispatch_state: stagedRoute.dispatch_state || 'staged',
+                  last_manifest_sync_at: stagedRoute.last_manifest_sync_at || null,
+                  last_manifest_change_at: stagedRoute.last_manifest_change_at || null
+                }
+              }
+            : {
+                status: 'unassigned'
+              }
+        });
       }
 
       const { data: stops, error: stopsError } = await supabase
@@ -1138,12 +1021,20 @@ function createRoutesRouter(options = {}) {
         req.driver?.account_id || req.account?.account_id,
         apartmentStops
       );
+      const postDispatchChangePolicy = getPostDispatchChangePolicy(route);
 
       return res.status(200).json({
         route: {
           id: route.id,
           date: route.date,
+          work_area_name: route.work_area_name || null,
           status: presentRouteStatus(route).status,
+          dispatch_state: route.dispatch_state || 'dispatched',
+          dispatched_at: route.dispatched_at || null,
+          sync_state: route.sync_state || 'staged_stable',
+          last_manifest_change_at: route.last_manifest_change_at || null,
+          manifest_changed_after_dispatch: hasRouteChangedAfterDispatch(route),
+          post_dispatch_change_policy: postDispatchChangePolicy,
           total_stops: Number(route.total_stops || 0),
           completed_stops: Number(route.completed_stops || 0),
           stops_per_hour: getStopsPerHour({
@@ -1168,6 +1059,13 @@ function createRoutesRouter(options = {}) {
             unresolved: 0,
             status: 'disabled'
           }
+        },
+        driver_day: {
+          status: 'dispatched',
+          manifest_changed_after_dispatch: hasRouteChangedAfterDispatch(route),
+          post_dispatch_change_policy: postDispatchChangePolicy,
+          dispatched_at: route.dispatched_at || null,
+          last_manifest_change_at: route.last_manifest_change_at || null
         }
       });
     } catch (error) {

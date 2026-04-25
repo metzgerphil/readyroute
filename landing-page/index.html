@@ -27,6 +27,8 @@
   .nav-links .nav-login:hover { color: var(--white); border-color: rgba(255,255,255,0.42); background: rgba(255,255,255,0.05); }
   .nav-cta { background: var(--orange); color: var(--white) !important; padding: 10px 24px; border-radius: 4px; font-weight: 600 !important; font-size: 14px !important; transition: background 0.2s !important; }
   .nav-cta:hover { background: var(--orange-dark) !important; }
+  .mobile-nav-actions { display: none; background: var(--dark); padding: 84px 24px 0; gap: 12px; }
+  .mobile-nav-actions a { flex: 1; text-align: center; }
   .hero { background: var(--dark); padding: 148px 48px 108px; position: relative; overflow: hidden; }
   .hero::after { content: ''; position: absolute; top: 0; right: 0; width: 45%; height: 100%; background: linear-gradient(135deg, transparent 30%, rgba(255,98,0,0.06) 100%); pointer-events: none; }
   .hero-eyebrow { display: inline-block; font-family: var(--display); font-size: 12px; font-weight: 700; letter-spacing: 3.5px; text-transform: uppercase; color: var(--orange); border: 1px solid rgba(255,98,0,0.35); padding: 6px 14px; border-radius: 2px; margin-bottom: 32px; }
@@ -157,6 +159,7 @@
   .hero-note    { animation: fadeUp 0.55s 0.32s ease both; }
   @media (max-width: 900px) {
     nav { padding: 0 24px; } .nav-links { display: none; }
+    .mobile-nav-actions { display: flex; }
     .hero { padding: 120px 24px 80px; }
     .proof-bar { padding: 20px 24px; gap: 28px; } .proof-divider { display: none; }
     .section { padding: 72px 24px; }
@@ -187,6 +190,11 @@
   </ul>
 </nav>
 
+<div class="mobile-nav-actions">
+  <a href="https://portal.readyroute.org/login" class="btn-ghost" style="color:#FFFFFF;border-color:rgba(255,255,255,0.24);">Portal Login</a>
+  <a href="https://portal.readyroute.org/start-trial" class="btn-primary" style="padding:14px 24px;font-size:16px;">Start Free Trial</a>
+</div>
+
 <section class="hero">
   <div class="container">
     <div class="hero-eyebrow">Built by contractors, for contractors</div>
@@ -194,7 +202,7 @@
     <p class="hero-sub">The routing and dispatch platform built for last-mile contractors who run tight margins and need every advantage they can get.</p>
     <div class="hero-actions">
       <a href="https://portal.readyroute.org/start-trial" class="btn-primary">Start Your Free Trial</a>
-      <a href="#features" class="btn-ghost">See what's included →</a>
+      <a href="https://portal.readyroute.org/login" class="btn-ghost">Portal Login</a>
     </div>
     <p class="hero-note">14-day free trial &nbsp;·&nbsp; No setup fee &nbsp;·&nbsp; Cancel anytime</p>
   </div>

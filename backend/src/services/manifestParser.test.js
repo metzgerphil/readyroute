@@ -164,7 +164,7 @@ test('parseXLSManifest groups combined stops and keeps time commit data accurate
   assert.equal(closeOnlyTcStop?.building_label, 'Building C');
 });
 
-test('parseXLSManifest skips nonpositive ST numbers and malformed shifted rows', () => {
+test('parseXLSManifest preserves valid zero-number rows and still skips malformed shifted rows', () => {
   const workbook = XLSX.utils.book_new();
 
   XLSX.utils.book_append_sheet(
@@ -183,6 +183,9 @@ test('parseXLSManifest skips nonpositive ST numbers and malformed shifted rows',
     XLSX.utils.aoa_to_sheet([
       ['ST#', 'Delivery/Pickup', 'Contact Name', 'Address Line 1', 'Address Line 2', 'City', 'State', 'Postal Code', '# Pkgs', 'SID', 'Ready', 'Close'],
       [1, 'Delivery', 'GOOD STOP', '123 Main St', '', 'Escondido', 'CA', '92025', 1, 'SID1', '', ''],
+      [0, 'Delivery', 'STARBUCKS', '351 W Felicita Ave', '', 'Escondido', 'CA', '92025-6515', 1, 'SID10', '', ''],
+      [0, 'Delivery', 'VONS', '351 W Felicita Ave', '', 'Escondido', 'CA', '92025-6515', 4, 'SID11', '', ''],
+      [0, 'Pickup', 'STARBUCKS', '351 W Felicita Ave', '', 'Escondido', 'CA', '92025-6515', 1, '', '13:00', '14:00'],
       [0, 'Delivery', 'ADVANCED COMMUNICATION SYSTEMS', '92029', '', '', '', '', 1, '', '', ''],
       [2, 'Delivery', 'ALSO GOOD', '456 Oak Ave', 'STE 100', 'Escondido', 'CA', '92029', 2, 'SID2', '', '17:00']
     ]),
@@ -191,13 +194,51 @@ test('parseXLSManifest skips nonpositive ST numbers and malformed shifted rows',
 
   const manifest = parseXLSManifest(XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' }));
 
-  assert.equal(manifest.stops.length, 2);
+  assert.equal(manifest.stops.length, 4);
   assert.deepEqual(
-    manifest.stops.map((stop) => stop.stop_number),
-    [1, 2]
+    manifest.stops.map((stop) => stop.sequence),
+    [1, 100001, 2, 100002]
   );
-  assert.equal(manifest.stops[1].close_time, '17:00');
-  assert.equal(manifest.stops[1].has_time_commit, true);
+  assert.equal(manifest.stops[1].type, 'combined');
+  assert.equal(manifest.stops[1].address, '351 W Felicita Ave, Escondido, CA 92025-6515');
+  assert.equal(manifest.stops[1].pickup_ready_time, '13:00');
+  assert.equal(manifest.stops[1].pickup_close_time, '14:00');
+  assert.equal(manifest.stops[2].close_time, '17:00');
+  assert.equal(manifest.stops[2].has_time_commit, true);
+});
+
+test('parseXLSManifest normalizes suspicious 02:00-04:00 business delivery windows to 14:00-16:00', () => {
+  const workbook = XLSX.utils.book_new();
+
+  XLSX.utils.book_append_sheet(
+    workbook,
+    XLSX.utils.aoa_to_sheet([
+      ['Page', 'Combined Manifest'],
+      ['Date', '04/23/2026'],
+      ['SA#', '306902'],
+      ['WA#', '0810']
+    ]),
+    'Header'
+  );
+
+  XLSX.utils.book_append_sheet(
+    workbook,
+    XLSX.utils.aoa_to_sheet([
+      ['ST#', 'Delivery/Pickup', 'Contact Name', 'Address Line 1', 'Address Line 2', 'City', 'State', 'Postal Code', '# Pkgs', 'SID', 'Ready', 'Close'],
+      [56, 'Delivery', 'BEARCOM', '2229 ENTERPRISE ST', '', 'Escondido', 'CA', '92029-2073', 1, '3061', '02:00', '04:00'],
+      [57, 'Delivery', 'Jane Smith', '123 Main St', 'APT A', 'Escondido', 'CA', '92029', 1, '3062', '02:00', '04:00']
+    ]),
+    'Stop Details'
+  );
+
+  const manifest = parseXLSManifest(XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' }));
+  const businessStop = manifest.stops.find((stop) => stop.stop_number === 56);
+  const residentialStop = manifest.stops.find((stop) => stop.stop_number === 57);
+
+  assert.equal(businessStop.ready_time, '14:00');
+  assert.equal(businessStop.close_time, '16:00');
+  assert.equal(residentialStop.ready_time, '02:00');
+  assert.equal(residentialStop.close_time, '04:00');
 });
 
 test('parseXLSManifest normalizes suspicious 02:00-04:00 business delivery windows to 14:00-16:00', () => {
