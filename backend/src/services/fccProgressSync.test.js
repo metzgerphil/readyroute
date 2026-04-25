@@ -102,6 +102,7 @@ test('applyRouteProgress marks matched FCC green rows complete on dispatched rou
     total_stops: 3,
     completed_stops: 0,
     dispatch_state: 'dispatched',
+    driver_id: null,
     completed_at: null
   };
   const stops = [
@@ -118,6 +119,10 @@ test('applyRouteProgress marks matched FCC green rows complete on dispatched rou
 
     if (query.table === 'stops' && query.operation === 'select') {
       return { data: stops, error: null };
+    }
+
+    if (query.table === 'drivers' && query.operation === 'select') {
+      return { data: [], error: null };
     }
 
     if (query.table === 'stops' && query.operation === 'update') {
@@ -155,7 +160,7 @@ test('applyRouteProgress marks matched FCC green rows complete on dispatched rou
         delivered_packages: 146,
         rows: [
           { sid: '1001', stop_number: 1, address: '818 N JUNIPER ST', address_line2: 'APT 4', is_completed: false },
-          { sid: '1002', stop_number: 2, address: '300 E MISSION AVE', address_line2: 'APT 2', is_completed: true },
+          { sid: 'FCC-DIFFERENT-1002', stop_number: 2, address: '300 E MISSION AVE', address_line2: 'APT 2', is_completed: true },
           { sid: '1008', stop_number: 3, address: '359 E MISSION AVE', is_completed: false }
         ]
       }
@@ -171,6 +176,83 @@ test('applyRouteProgress marks matched FCC green rows complete on dispatched rou
   assert.equal(route.status, 'in_progress');
   assert.equal(routeEvents.length, 1);
   assert.equal(routeEvents[0].event_type, 'fcc_progress_synced');
+});
+
+test('applyRouteProgress assigns an unassigned route to the FCC driver when names match', async () => {
+  const route = {
+    id: 'route-823',
+    account_id: 'acct-1',
+    work_area_name: '823',
+    date: '2026-04-24',
+    status: 'pending',
+    total_stops: 1,
+    completed_stops: 0,
+    dispatch_state: 'dispatched',
+    driver_id: null,
+    completed_at: null
+  };
+  const stops = [
+    { id: 'stop-1', route_id: 'route-823', sequence_order: 1, sid: '1001', address: '818 N JUNIPER ST', address_line2: null, status: 'pending', completed_at: null, scanned_at: null }
+  ];
+  const routeEvents = [];
+
+  const supabase = new MockSupabase((query) => {
+    if (query.table === 'routes' && query.operation === 'select') {
+      return { data: [route], error: null };
+    }
+
+    if (query.table === 'stops' && query.operation === 'select') {
+      return { data: stops, error: null };
+    }
+
+    if (query.table === 'drivers' && query.operation === 'select') {
+      return {
+        data: [
+          { id: 'driver-823', name: 'Brayant Ramirezcastellanos' },
+          { id: 'driver-other', name: 'Miguel Araujo Garcia' }
+        ],
+        error: null
+      };
+    }
+
+    if (query.table === 'routes' && query.operation === 'update') {
+      Object.assign(route, query.payload);
+      return { data: route, error: null };
+    }
+
+    if (query.table === 'route_sync_events' && query.operation === 'insert') {
+      routeEvents.push(query.payload);
+      return { data: query.payload, error: null };
+    }
+
+    throw new Error(`Unexpected query ${query.table}:${query.operation}:${query.mode}`);
+  });
+
+  const service = createFccProgressSyncService({
+    supabase,
+    now: () => new Date('2026-04-24T18:45:00.000Z')
+  });
+
+  const result = await service.applyRouteProgress({
+    accountId: 'acct-1',
+    workDate: '2026-04-24',
+    progressSnapshots: [
+      {
+        work_area_name: 'OCEA - 823 RAMIREZCASTELLANOS, BRAYANT - Available',
+        record_count: 1,
+        rows: [{ sid: '1001', stop_number: 1, address: '818 N JUNIPER ST', is_completed: false }]
+      }
+    ]
+  });
+
+  assert.equal(result.completed_updates, 0);
+  assert.equal(result.driver_assignments, 1);
+  assert.equal(result.has_changes, true);
+  assert.equal(result.routes[0].status, 'updated');
+  assert.equal(result.routes[0].matched_driver_name, 'Brayant Ramirezcastellanos');
+  assert.equal(route.driver_id, 'driver-823');
+  assert.equal(routeEvents.length, 1);
+  assert.equal(routeEvents[0].details.matched_driver_name, 'Brayant Ramirezcastellanos');
 });
 
 test('applyRouteProgress ignores snapshots that do not match a dispatched route', async () => {

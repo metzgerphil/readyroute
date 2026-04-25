@@ -6,7 +6,7 @@ const {
   parseXLSManifest
 } = require('./manifestParser');
 const { mergeManifestMeta, mergeManifestStops, normalizeMergedStopSequences } = require('./manifestMerge');
-const { normalizeRouteWorkAreaName } = require('./routeIdentity');
+const { namesLookLikeMatch, normalizeRouteWorkAreaName } = require('./routeIdentity');
 const { bootstrapApartmentRecords } = require('./apartmentIntelligence');
 const { applyLocationCorrectionsToStops } = require('./locationCorrections');
 const { enrichManifestStopsWithGeocoding } = require('./manifestGeocoding');
@@ -331,9 +331,7 @@ function createManifestIngestService(options = {}) {
           throw new Error('Failed to match manifest driver');
         }
 
-        const matchedDriver = (drivers || []).find(
-          (driver) => normalizeComparisonValue(driver.name) === normalizeComparisonValue(manifestDriverName)
-        );
+        const matchedDriver = (drivers || []).find((driver) => namesLookLikeMatch(driver.name, manifestDriverName));
 
         if (matchedDriver) {
           resolvedDriverId = matchedDriver.id;

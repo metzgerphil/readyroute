@@ -1,5 +1,10 @@
+const { namesLookLikeMatch, parseFccWorkAreaIdentity } = require('./routeIdentity');
+
 function normalizeComparisonValue(value) {
   return String(value || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-zA-Z0-9]+/g, ' ')
     .trim()
     .replace(/\s+/g, ' ')
     .toLowerCase();
@@ -10,44 +15,54 @@ function extractRouteCode(value) {
   return match ? match[1] : null;
 }
 
-function buildStopMatchKey(stop) {
+function pushUnique(keys, key) {
+  if (key && !keys.includes(key)) {
+    keys.push(key);
+  }
+}
+
+function buildStopMatchKeys(stop) {
+  const keys = [];
   const sid = String(stop?.sid || '').trim();
 
   if (sid && sid !== '0') {
-    return `sid:${sid}`;
+    pushUnique(keys, `sid:${sid}`);
   }
 
-  const address = normalizeComparisonValue([stop?.address, stop?.address_line2].filter(Boolean).join(' '));
-  if (address) {
-    return `address:${address}`;
-  }
+  const fullAddress = normalizeComparisonValue([stop?.address, stop?.address_line2].filter(Boolean).join(' '));
+  pushUnique(keys, fullAddress ? `address:${fullAddress}` : null);
+
+  const primaryAddress = normalizeComparisonValue(stop?.address);
+  pushUnique(keys, primaryAddress ? `address:${primaryAddress}` : null);
 
   const sequence = Number(stop?.sequence_order || stop?.sequence || 0);
   if (sequence > 0) {
-    return `sequence:${sequence}`;
+    pushUnique(keys, `sequence:${sequence}`);
   }
 
-  return null;
+  return keys;
 }
 
-function buildProgressMatchKey(row) {
+function buildProgressMatchKeys(row) {
+  const keys = [];
   const sid = String(row?.sid || '').trim();
 
   if (sid && sid !== '0') {
-    return `sid:${sid}`;
+    pushUnique(keys, `sid:${sid}`);
   }
 
-  const address = normalizeComparisonValue([row?.address, row?.address_line2].filter(Boolean).join(' '));
-  if (address) {
-    return `address:${address}`;
-  }
+  const fullAddress = normalizeComparisonValue([row?.address, row?.address_line2].filter(Boolean).join(' '));
+  pushUnique(keys, fullAddress ? `address:${fullAddress}` : null);
+
+  const primaryAddress = normalizeComparisonValue(row?.address);
+  pushUnique(keys, primaryAddress ? `address:${primaryAddress}` : null);
 
   const sequence = Number(row?.stop_number || row?.sequence || 0);
   if (sequence > 0) {
-    return `sequence:${sequence}`;
+    pushUnique(keys, `sequence:${sequence}`);
   }
 
-  return null;
+  return keys;
 }
 
 async function recordRouteSyncEvent(supabase, {
@@ -85,10 +100,23 @@ async function recordRouteSyncEvent(supabase, {
 async function loadCandidateRoutes(supabase, { accountId, workDate }) {
   const { data, error } = await supabase
     .from('routes')
-    .select('id, account_id, work_area_name, date, status, total_stops, completed_stops, dispatch_state, completed_at')
+    .select('id, account_id, work_area_name, date, status, total_stops, completed_stops, dispatch_state, completed_at, driver_id')
     .eq('account_id', accountId)
     .eq('date', workDate)
     .is('archived_at', null);
+
+  if (error) {
+    throw error;
+  }
+
+  return data || [];
+}
+
+async function loadAccountDrivers(supabase, accountId) {
+  const { data, error } = await supabase
+    .from('drivers')
+    .select('id, name')
+    .eq('account_id', accountId);
 
   if (error) {
     throw error;
@@ -155,7 +183,17 @@ function createFccProgressSyncService(options = {}) {
     const routes = await loadCandidateRoutes(supabase, { accountId, workDate });
     const dispatchedRoutes = routes.filter((route) => route.dispatch_state === 'dispatched');
     const appliedResults = [];
+    let drivers = null;
     let totalCompletedUpdates = 0;
+    let totalDriverAssignments = 0;
+
+    async function getDrivers() {
+      if (!drivers) {
+        drivers = await loadAccountDrivers(supabase, accountId);
+      }
+
+      return drivers;
+    }
 
     for (const snapshot of progressSnapshots) {
       const route =
@@ -177,9 +215,10 @@ function createFccProgressSyncService(options = {}) {
       const stops = await loadRouteStops(supabase, route.id);
       const stopByKey = new Map();
       stops.forEach((stop) => {
-        const key = buildStopMatchKey(stop);
-        if (key && !stopByKey.has(key)) {
-          stopByKey.set(key, stop);
+        for (const key of buildStopMatchKeys(stop)) {
+          if (key && !stopByKey.has(key)) {
+            stopByKey.set(key, stop);
+          }
         }
       });
 
@@ -188,8 +227,10 @@ function createFccProgressSyncService(options = {}) {
       const existingCompletedStops = stops.reduce((sum, stop) => sum + (stop.completed_at ? 1 : 0), 0);
 
       for (const row of completedRows) {
-        const key = buildProgressMatchKey(row);
-        const matchedStop = key ? stopByKey.get(key) : null;
+        const matchedStop =
+          buildProgressMatchKeys(row)
+            .map((key) => stopByKey.get(key))
+            .find(Boolean) || null;
 
         if (!matchedStop || matchedStop.completed_at) {
           continue;
@@ -226,21 +267,28 @@ function createFccProgressSyncService(options = {}) {
         Number(route.total_stops || 0) > 0 && nextCompletedStops >= Number(route.total_stops || 0)
           ? nowProvider().toISOString()
           : route.completed_at || null;
+      const fccDriverName = parseFccWorkAreaIdentity(snapshot?.work_area_name).driverName;
+      const matchedDriver =
+        !route.driver_id && fccDriverName
+          ? (await getDrivers()).find((driver) => namesLookLikeMatch(driver.name, fccDriverName)) || null
+          : null;
+      const routeUpdatePayload = {
+        completed_stops: nextCompletedStops,
+        status: routeStatus,
+        ...(completedAt ? { completed_at: completedAt } : {}),
+        ...(matchedDriver ? { driver_id: matchedDriver.id } : {})
+      };
 
       const { error: routeUpdateError } = await supabase
         .from('routes')
-        .update({
-          completed_stops: nextCompletedStops,
-          status: routeStatus,
-          ...(completedAt ? { completed_at: completedAt } : {})
-        })
+        .update(routeUpdatePayload)
         .eq('id', route.id);
 
       if (routeUpdateError) {
         throw routeUpdateError;
       }
 
-      if (updates.length > 0) {
+      if (updates.length > 0 || matchedDriver) {
         await recordRouteSyncEvent(supabase, {
           accountId,
           routeId: route.id,
@@ -254,18 +302,23 @@ function createFccProgressSyncService(options = {}) {
             matched_rows: completedRows.length,
             total_rows: Number(snapshot?.record_count || (snapshot?.rows || []).length || 0),
             visual_completed_rows: completedRows.length,
-            delivered_packages: Number(snapshot?.delivered_packages || 0)
+            delivered_packages: Number(snapshot?.delivered_packages || 0),
+            fcc_driver_name: fccDriverName || null,
+            matched_driver_name: matchedDriver?.name || null
           },
           managerUserId
         });
       }
 
       totalCompletedUpdates += updates.length;
+      totalDriverAssignments += matchedDriver ? 1 : 0;
       appliedResults.push({
         work_area_name: snapshot?.work_area_name || route.work_area_name || null,
         route_id: route.id,
-        status: updates.length > 0 ? 'updated' : 'no_changes',
+        status: updates.length > 0 || matchedDriver ? 'updated' : 'no_changes',
         completed_updates: updates.length,
+        matched_driver_name: matchedDriver?.name || null,
+        fcc_driver_name: fccDriverName || null,
         matched_rows: completedRows.length,
         total_rows: Number(snapshot?.record_count || (snapshot?.rows || []).length || 0)
       });
@@ -274,7 +327,8 @@ function createFccProgressSyncService(options = {}) {
     return {
       route_count: progressSnapshots.length,
       completed_updates: totalCompletedUpdates,
-      has_changes: totalCompletedUpdates > 0,
+      driver_assignments: totalDriverAssignments,
+      has_changes: totalCompletedUpdates > 0 || totalDriverAssignments > 0,
       routes: appliedResults
     };
   }
