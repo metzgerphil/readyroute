@@ -101,7 +101,7 @@ export function createStopMarkerSVG(stop, isCurrentStop = false) {
   const maps = getGoogleMaps();
   const stopType = getStopType(stop);
   const isTimedStop = Boolean(stop?.has_time_commit);
-  const sidLabel = stop?.sid && String(stop.sid) !== '0' ? String(stop.sid) : '';
+  const sequenceLabel = stop?.sequence_order != null ? String(stop.sequence_order) : '';
   const size = isCurrentStop ? 40 : 32;
   const baseRadius = size / 2;
   const center = 24;
@@ -114,7 +114,7 @@ export function createStopMarkerSVG(stop, isCurrentStop = false) {
       ? getPendingStroke(stop)
       : getStatusStroke(stop?.status, stopType, stop);
   const textColor = stopType === 'pickup' || isTimedStop ? '#ffffff' : getStatusTextColor(stop?.status, stopType);
-  const content = stopType === 'pickup' || isTimedStop ? '+' : sidLabel || String(stop?.sequence_order ?? '');
+  const content = stopType === 'pickup' || isTimedStop ? '+' : sequenceLabel;
   const fontSize = stopType === 'pickup' || isTimedStop
     ? Math.max(18, size * 0.56)
     : Math.max(9, Math.min(13, size * (content.length > 4 ? 0.3 : 0.4)));
