@@ -4,6 +4,38 @@ function stripRouteStatusSuffix(value) {
     .trim();
 }
 
+function normalizeNameForMatch(value) {
+  return String(value || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-zA-Z0-9]+/g, ' ')
+    .trim()
+    .replace(/\s+/g, ' ')
+    .toLowerCase();
+}
+
+function namesLookLikeMatch(left, right) {
+  const leftNormalized = normalizeNameForMatch(left);
+  const rightNormalized = normalizeNameForMatch(right);
+
+  if (!leftNormalized || !rightNormalized) {
+    return false;
+  }
+
+  if (leftNormalized === rightNormalized) {
+    return true;
+  }
+
+  const leftTokens = leftNormalized.split(' ').filter(Boolean);
+  const rightTokens = rightNormalized.split(' ').filter(Boolean);
+  const [leftFirst] = leftTokens;
+  const [rightFirst] = rightTokens;
+  const leftLast = leftTokens[leftTokens.length - 1];
+  const rightLast = rightTokens[rightTokens.length - 1];
+
+  return Boolean(leftFirst && rightFirst && leftLast && rightLast && leftFirst === rightFirst && leftLast === rightLast);
+}
+
 function extractRouteCode(value) {
   const match = String(value || '').match(/\b(\d{3})\b/);
   return match ? match[1] : null;
@@ -64,6 +96,8 @@ function normalizeRouteWorkAreaName(value) {
 
 module.exports = {
   extractRouteCode,
+  namesLookLikeMatch,
+  normalizeNameForMatch,
   normalizeRouteWorkAreaName,
   parseFccWorkAreaIdentity,
   stripRouteStatusSuffix
