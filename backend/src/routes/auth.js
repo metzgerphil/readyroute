@@ -5,6 +5,7 @@ const jwt = require('jsonwebtoken');
 
 const defaultSupabase = require('../lib/supabase');
 const { createBillingService } = require('../services/billing');
+const { sendManagerPasswordResetEmail: defaultSendManagerPasswordResetEmail } = require('../services/managerInviteEmail');
 
 function createAuthRouter(options = {}) {
   const router = express.Router();
@@ -16,6 +17,7 @@ function createAuthRouter(options = {}) {
     stripePriceId: options.stripePriceId,
     trialDays: options.trialDays
   });
+  const sendManagerPasswordResetEmail = options.sendManagerPasswordResetEmail || defaultSendManagerPasswordResetEmail;
 
   function signToken(payload, expiresIn) {
     if (!jwtSecret) {
@@ -72,6 +74,7 @@ function createAuthRouter(options = {}) {
       .from('manager_users')
       .select('id, account_id, email, password_hash, full_name, is_active')
       .eq('email', normalizedEmail)
+      .limit(1)
       .maybeSingle();
 
     if (
@@ -115,6 +118,67 @@ function createAuthRouter(options = {}) {
       full_name: null,
       is_active: true,
       source: 'legacy_account'
+    };
+  }
+
+  async function findDriverByEmail(email) {
+    const normalizedEmail = String(email).trim().toLowerCase();
+    const { data, error } = await supabase
+      .from('drivers')
+      .select('id, account_id, name, email, pin, is_active')
+      .eq('email', normalizedEmail)
+      .maybeSingle();
+
+    if (error) {
+      throw error;
+    }
+
+    return data || null;
+  }
+
+  async function getAccountSummary(accountId) {
+    if (!accountId) {
+      return null;
+    }
+
+    const { data, error } = await supabase
+      .from('accounts')
+      .select('id, company_name')
+      .eq('id', accountId)
+      .maybeSingle();
+
+    if (error) {
+      throw error;
+    }
+
+    return data || null;
+  }
+
+  function buildDriverAuthPayload(driver, accountSummary = null) {
+    return {
+      driver_id: driver.id,
+      account_id: driver.account_id,
+      name: driver.name,
+      full_name: driver.name,
+      email: driver.email,
+      company_name: accountSummary?.company_name || null,
+      csa_name: accountSummary?.company_name || null,
+      primary_role: 'driver',
+      role: 'driver'
+    };
+  }
+
+  function buildManagerAuthPayload(managerIdentity, accountSummary = null) {
+    return {
+      account_id: managerIdentity.account_id,
+      manager_user_id: managerIdentity.source === 'manager_user' ? managerIdentity.id : null,
+      manager_email: managerIdentity.email,
+      manager_name: managerIdentity.full_name,
+      full_name: managerIdentity.full_name,
+      company_name: accountSummary?.company_name || null,
+      csa_name: accountSummary?.company_name || null,
+      primary_role: 'manager',
+      role: 'manager'
     };
   }
 
@@ -308,7 +372,7 @@ function createAuthRouter(options = {}) {
           stripe_subscription_id: subscription?.id || null,
           subscription_status: subscriptionStatus,
           vehicle_count: quantity,
-          plan: ['active', 'trialing'].includes(subscriptionStatus) ? 'active' : 'starter'
+          plan: ['active', 'trialing'].includes(subscriptionStatus) ? 'pro' : 'starter'
         })
         .eq('id', payload.account_id);
 
@@ -355,16 +419,8 @@ function createAuthRouter(options = {}) {
     }
 
     try {
-      const { data: driver, error } = await supabase
-        .from('drivers')
-        .select('id, account_id, name, pin')
-        .eq('email', String(email).trim().toLowerCase())
-        .maybeSingle();
-
-      if (error) {
-        console.error('Driver login lookup failed:', error);
-        return res.status(500).json({ error: 'Failed to log in driver' });
-      }
+      const driver = await findDriverByEmail(email);
+      const accountSummary = await getAccountSummary(driver?.account_id);
 
       if (!driver || !driver.pin) {
         return res.status(401).json({ error: 'Invalid credentials' });
@@ -377,12 +433,7 @@ function createAuthRouter(options = {}) {
       }
 
       const token = signToken(
-        {
-          driver_id: driver.id,
-          account_id: driver.account_id,
-          name: driver.name,
-          role: 'driver'
-        },
+        buildDriverAuthPayload(driver, accountSummary),
         '12h'
       );
 
@@ -392,6 +443,8 @@ function createAuthRouter(options = {}) {
           driver_id: driver.id,
           account_id: driver.account_id,
           name: driver.name,
+          email: driver.email,
+          company_name: accountSummary?.company_name || null,
           role: 'driver'
         }
       });
@@ -410,6 +463,7 @@ function createAuthRouter(options = {}) {
 
     try {
       const managerIdentity = await findManagerIdentityByEmail(email);
+      const accountSummary = await getAccountSummary(managerIdentity?.account_id);
 
       if (!managerIdentity || !managerIdentity.password_hash || managerIdentity.is_active === false) {
         return res.status(401).json({ error: 'Invalid credentials' });
@@ -422,13 +476,7 @@ function createAuthRouter(options = {}) {
       }
 
       const token = signToken(
-        {
-          account_id: managerIdentity.account_id,
-          manager_user_id: managerIdentity.source === 'manager_user' ? managerIdentity.id : null,
-          manager_email: managerIdentity.email,
-          manager_name: managerIdentity.full_name,
-          role: 'manager'
-        },
+        buildManagerAuthPayload(managerIdentity, accountSummary),
         '24h'
       );
 
@@ -439,12 +487,91 @@ function createAuthRouter(options = {}) {
           manager_user_id: managerIdentity.source === 'manager_user' ? managerIdentity.id : null,
           email: managerIdentity.email,
           name: managerIdentity.full_name,
+          company_name: accountSummary?.company_name || null,
           role: 'manager'
         }
       });
     } catch (error) {
       console.error('Manager login failed:', error);
       return res.status(500).json({ error: 'Failed to log in manager' });
+    }
+  });
+
+  router.post('/mobile/login', async (req, res) => {
+    const email = String(req.body?.email || '').trim().toLowerCase();
+    const secret = String(req.body?.secret || '').trim();
+
+    if (!email || !secret) {
+      return res.status(400).json({ error: 'Email and PIN or password are required' });
+    }
+
+    try {
+      const [driver, managerIdentity] = await Promise.all([
+        findDriverByEmail(email),
+        findManagerIdentityByEmail(email)
+      ]);
+      const accountSummary = await getAccountSummary(driver?.account_id || managerIdentity?.account_id);
+
+      let hasDriverAccess = false;
+      let hasManagerAccess = false;
+
+      if (driver?.pin) {
+        hasDriverAccess = await bcrypt.compare(secret, driver.pin);
+      }
+
+      if (managerIdentity?.password_hash && managerIdentity.is_active !== false) {
+        hasManagerAccess = await bcrypt.compare(secret, managerIdentity.password_hash);
+      }
+
+      if (!hasDriverAccess && !hasManagerAccess) {
+        return res.status(401).json({ error: 'Invalid credentials' });
+      }
+
+      const linkedDriverAccess = Boolean(
+        driver &&
+        driver.account_id &&
+        managerIdentity &&
+        managerIdentity.account_id === driver.account_id &&
+        managerIdentity.is_active !== false
+      );
+
+      const linkedManagerAccess = Boolean(
+        managerIdentity &&
+        managerIdentity.account_id &&
+        driver &&
+        driver.account_id === managerIdentity.account_id &&
+        driver.pin
+      );
+
+      const grantDriverAccess = hasDriverAccess || (hasManagerAccess && linkedDriverAccess);
+      const grantManagerAccess = hasManagerAccess || (hasDriverAccess && linkedManagerAccess);
+
+      const driverToken = grantDriverAccess && driver
+        ? signToken(buildDriverAuthPayload(driver, accountSummary), '12h')
+        : null;
+      const managerToken = grantManagerAccess && managerIdentity
+        ? signToken(buildManagerAuthPayload(managerIdentity, accountSummary), '24h')
+        : null;
+
+      const portals = [
+        ...(driverToken ? ['driver'] : []),
+        ...(managerToken ? ['manager'] : [])
+      ];
+
+      return res.status(200).json({
+        driver_token: driverToken,
+        manager_token: managerToken,
+        portals,
+        user: {
+          account_id: driver?.account_id || managerIdentity?.account_id || null,
+          email,
+          name: driver?.name || managerIdentity?.full_name || null,
+          company_name: accountSummary?.company_name || null
+        }
+      });
+    } catch (error) {
+      console.error('Mobile login failed:', error);
+      return res.status(500).json({ error: 'Failed to log in' });
     }
   });
 
@@ -480,8 +607,33 @@ function createAuthRouter(options = {}) {
       const resetUrl = buildPasswordResetUrl(token);
       console.log(`Manager password reset link for ${managerIdentity.email}: ${resetUrl}`);
 
+      const accountQuery = await supabase
+        .from('accounts')
+        .select('company_name')
+        .eq('id', managerIdentity.account_id)
+        .maybeSingle();
+
+      if (accountQuery.error) {
+        throw accountQuery.error;
+      }
+
+      const emailDelivery = await sendManagerPasswordResetEmail({
+        to: managerIdentity.email,
+        fullName: managerIdentity.full_name,
+        resetUrl,
+        companyName: accountQuery.data?.company_name
+      });
+
+      if (process.env.NODE_ENV === 'production' && emailDelivery?.skipped) {
+        return res.status(503).json({ error: 'Password reset email service is not configured yet' });
+      }
+
       if (process.env.NODE_ENV !== 'production') {
         responsePayload.reset_url = resetUrl;
+      }
+
+      if (emailDelivery?.delivered) {
+        responsePayload.message = 'Password reset email sent. Check your inbox for the reset link.';
       }
 
       return res.status(200).json(responsePayload);

@@ -18,7 +18,8 @@
         "LSApplicationQueriesSchemes": [
           "comgooglemaps",
           "maps"
-        ]
+        ],
+        "NSLocationWhenInUseUsageDescription": "ReadyRoute requires live location while drivers are using the app so managers can track active drivers and support routes in real time."
       }
     },
     "android": {
@@ -26,7 +27,11 @@
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#ffffff"
       },
-      "edgeToEdgeEnabled": true
+      "edgeToEdgeEnabled": true,
+      "permissions": [
+        "ACCESS_COARSE_LOCATION",
+        "ACCESS_FINE_LOCATION"
+      ]
     },
     "web": {
       "favicon": "./assets/favicon.png"

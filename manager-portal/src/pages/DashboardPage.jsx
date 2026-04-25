@@ -6,7 +6,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import DriverRow from '../components/DriverRow';
 import OverviewRoutesSection from '../components/OverviewRoutesSection';
 import api from '../services/api';
-import { getTodayString, loadStoredOperationsDate, saveStoredOperationsDate } from '../utils/operationsDate';
+import { getTodayString, saveStoredOperationsDate } from '../utils/operationsDate';
 
 const GOOGLE_MAPS_KEY = import.meta.env.VITE_GOOGLE_MAPS_KEY;
 const GOOGLE_MAPS_SRC = GOOGLE_MAPS_KEY
@@ -697,7 +697,7 @@ export default function DashboardPage() {
   const [viewMode, setViewMode] = useState('map');
   const [isCompactBanner, setIsCompactBanner] = useState(false);
   const [vehiclePickerRouteId, setVehiclePickerRouteId] = useState(null);
-  const dashboardDate = searchParams.get('date') || loadStoredOperationsDate() || getTodayString();
+  const dashboardDate = searchParams.get('date') || getTodayString();
   const isSelectedDateToday = dashboardDate === getTodayString();
 
   useEffect(() => {

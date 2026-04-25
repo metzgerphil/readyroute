@@ -2309,6 +2309,15 @@ input {
   font-weight: 700;
 }
 
+.manifest-route-readiness-line {
+  margin-top: 8px;
+  color: #516575;
+  font-size: 0.9rem;
+  font-weight: 700;
+  line-height: 1.5;
+  max-width: 38ch;
+}
+
 .manifest-route-warning {
   margin: 0;
 }
@@ -2330,6 +2339,40 @@ input {
   color: #173042;
   font-size: 0.8rem;
   font-weight: 800;
+}
+
+.manifest-route-audit {
+  display: grid;
+  gap: 10px;
+  padding: 14px 16px;
+  border-radius: 18px;
+  background: #f8fafc;
+  border: 1px solid #e3e9ef;
+}
+
+.manifest-route-audit-row {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: start;
+  gap: 10px;
+}
+
+.manifest-route-audit-copy {
+  min-width: 0;
+}
+
+.manifest-route-audit-summary {
+  color: #173042;
+  font-size: 0.9rem;
+  font-weight: 800;
+  line-height: 1.4;
+}
+
+.manifest-route-audit-time {
+  margin-top: 2px;
+  color: #66737c;
+  font-size: 0.8rem;
+  font-weight: 700;
 }
 
 .manifest-summary-badges,
@@ -2396,6 +2439,77 @@ button.manifest-attention-chip {
   gap: 12px;
 }
 
+.manifest-dispatch-board {
+  display: grid;
+  gap: 16px;
+}
+
+.manifest-dispatch-overview {
+  display: grid;
+  grid-template-columns: minmax(0, 1.8fr) minmax(280px, 0.9fr);
+  gap: 16px;
+  padding: 18px 20px;
+  border-radius: 22px;
+  background: linear-gradient(135deg, #fff8f2 0%, #fff1e3 100%);
+  border: 1px solid #ffd7b5;
+}
+
+.manifest-dispatch-eyebrow {
+  color: #c2410c;
+  font-size: 0.78rem;
+  font-weight: 900;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+}
+
+.manifest-dispatch-headline {
+  margin-top: 8px;
+  color: #173042;
+  font-size: 1.55rem;
+  font-weight: 900;
+  line-height: 1.15;
+}
+
+.manifest-dispatch-status-panel {
+  display: grid;
+  gap: 10px;
+  align-content: start;
+}
+
+.manifest-dispatch-status-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px 16px;
+  border-radius: 18px;
+  background: #ffffff;
+  border: 1px solid #f0dfcf;
+}
+
+.manifest-dispatch-status-row.warning {
+  background: #fffaf3;
+  border-color: #f7d8ad;
+}
+
+.manifest-dispatch-status-row.urgent {
+  background: #fff4f2;
+  border-color: #fecaca;
+}
+
+.manifest-dispatch-status-label {
+  color: #516575;
+  font-size: 0.86rem;
+  font-weight: 800;
+}
+
+.manifest-dispatch-status-value {
+  color: #173042;
+  font-size: 1.35rem;
+  font-weight: 900;
+  line-height: 1;
+}
+
 .manifest-dispatch-card {
   display: grid;
   gap: 4px;
@@ -2428,6 +2542,66 @@ button.manifest-attention-chip {
   border-radius: 18px;
   background: #fffdfa;
   border: 1px solid #eee4da;
+}
+
+.manifest-dispatch-lanes {
+  display: grid;
+  gap: 18px;
+}
+
+.manifest-lane-card {
+  display: grid;
+  gap: 16px;
+  padding: 18px;
+  border-radius: 24px;
+  border: 1px solid #e4ebf0;
+  background: #fcfeff;
+}
+
+.manifest-lane-card.warning {
+  background: #fffdfa;
+  border-color: #f1ddc3;
+}
+
+.manifest-lane-card.urgent {
+  background: #fff7f5;
+  border-color: #fecaca;
+}
+
+.manifest-lane-card.success {
+  background: #f9fdfb;
+  border-color: #d6eedf;
+}
+
+.manifest-lane-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.manifest-lane-count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 48px;
+  min-height: 48px;
+  padding: 0 14px;
+  border-radius: 18px;
+  background: #ffffff;
+  border: 1px solid #e3e9ef;
+  color: #173042;
+  font-size: 1.2rem;
+  font-weight: 900;
+}
+
+.manifest-lane-empty {
+  padding: 16px 18px;
+  border-radius: 18px;
+  background: #ffffff;
+  border: 1px dashed #d7e0e8;
+  color: #66737c;
+  font-weight: 700;
 }
 
 .manifest-route-card-grid {
@@ -2479,6 +2653,21 @@ button.manifest-attention-chip {
 .manifest-route-actions {
   display: flex;
   justify-content: flex-end;
+}
+
+.manifest-dispatch-select {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  color: #173042;
+  font-size: 0.86rem;
+  font-weight: 800;
+}
+
+.manifest-dispatch-select input {
+  width: 18px;
+  height: 18px;
+  accent-color: #ff6200;
 }
 
 .manifest-route-table {
@@ -2959,10 +3148,15 @@ button.manifest-attention-chip {
 }
 
 @media (max-width: 980px) {
+  .manifest-dispatch-overview,
   .manifest-dispatch-summary,
   .manifest-route-grid,
   .manifest-route-card-grid {
     grid-template-columns: 1fr;
+  }
+
+  .manifest-lane-header {
+    flex-direction: column;
   }
 
   .manager-access-grid {

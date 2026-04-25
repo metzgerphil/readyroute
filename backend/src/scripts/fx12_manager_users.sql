@@ -9,7 +9,8 @@ create table if not exists public.manager_users (
   updated_at timestamptz not null default now()
 );
 
-create unique index if not exists manager_users_email_uidx on public.manager_users(lower(email));
+drop index if exists public.manager_users_email_uidx;
+create unique index if not exists manager_users_account_email_uidx on public.manager_users(account_id, lower(email));
 create index if not exists manager_users_account_id_idx on public.manager_users(account_id);
 
 insert into public.manager_users (account_id, email, full_name, password_hash, is_active)

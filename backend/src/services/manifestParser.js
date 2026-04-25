@@ -589,12 +589,28 @@ function getStopRowObject(headerRow, row) {
   }, {});
 }
 
-function buildParsedStop(stopNumber, deliveryRow, pickupRow) {
+function normalizeSyntheticStopFingerprint(row) {
+  return [
+    row?.contact_name,
+    row?.address_line1,
+    row?.address_line2,
+    row?.city,
+    row?.state,
+    row?.postal_code
+  ]
+    .map((value) => String(value || '').trim().toUpperCase())
+    .join('|');
+}
+
+function buildParsedStop(stopNumber, deliveryRow, pickupRow, options = {}) {
   const baseRow = deliveryRow || pickupRow;
   const deliveryPackageCount = deliveryRow ? deliveryRow.package_count : 0;
   const pickupPackageCount = pickupRow ? pickupRow.package_count : 0;
   const hasDelivery = Boolean(deliveryRow);
   const hasPickup = Boolean(pickupRow);
+  const sequence = Number.isInteger(options.sequence) && options.sequence > 0
+    ? options.sequence
+    : stopNumber;
   const secondaryAddressType = detectSecondaryAddressType(baseRow.address_line2);
   const unitLabel = extractUnitLikeValue(baseRow.address_line2);
   const buildingLabel = extractBuildingLabel(baseRow.address_line2);
@@ -608,8 +624,9 @@ function buildParsedStop(stopNumber, deliveryRow, pickupRow) {
   const closeTime = hasDelivery ? deliveryRow.close_time : pickupRow.close_time;
 
   return {
-    stop_number: stopNumber,
-    sequence: stopNumber,
+    stop_number: Number.isInteger(stopNumber) && stopNumber > 0 ? stopNumber : sequence,
+    sequence,
+    uses_synthetic_sequence: Boolean(options.usesSyntheticSequence),
     type: hasDelivery && hasPickup ? 'combined' : hasDelivery ? 'delivery' : 'pickup',
     has_pickup: hasPickup,
     has_delivery: hasDelivery,
@@ -831,19 +848,16 @@ function parseXLSManifest(fileBuffer) {
 
   const [sheetHeaders, ...dataRows] = stopRows;
   const groupedStops = new Map();
+  const pendingSyntheticStopKeys = new Map();
+  let nextSyntheticSequence = 1;
 
-  for (const row of dataRows) {
+  for (const [rowIndex, row] of dataRows.entries()) {
     if (!Array.isArray(row) || row.every((cell) => String(cell || '').trim() === '')) {
       continue;
     }
 
     const record = getStopRowObject(sheetHeaders, row);
     const stopNumber = parseInteger(record['ST#'], null);
-
-    if (!Number.isInteger(stopNumber) || stopNumber <= 0) {
-      continue;
-    }
-
     const type = String(record['Delivery/Pickup'] || '').trim().toLowerCase();
     if (type !== 'delivery' && type !== 'pickup') {
       continue;
@@ -900,15 +914,47 @@ function parseXLSManifest(fileBuffer) {
     }
 
     parsedRow.has_time_commit = Boolean(parsedRow.ready_time || parsedRow.close_time);
+    parsedRow._row_index = rowIndex + 1;
 
-    const existing = groupedStops.get(stopNumber) || {};
-    existing[type] = parsedRow;
-    groupedStops.set(stopNumber, existing);
+    let groupKey = null;
+
+    if (Number.isInteger(stopNumber) && stopNumber > 0) {
+      groupKey = `stop:${stopNumber}`;
+    } else {
+      const syntheticFingerprint = normalizeSyntheticStopFingerprint(parsedRow);
+      const pendingGroupKey = pendingSyntheticStopKeys.get(syntheticFingerprint) || null;
+      const pendingGroup = pendingGroupKey ? groupedStops.get(pendingGroupKey) : null;
+
+      if (pendingGroup && !pendingGroup.rows[type]) {
+        groupKey = pendingGroupKey;
+      } else {
+        const syntheticSequence = nextSyntheticSequence;
+        nextSyntheticSequence += 1;
+        groupKey = `synthetic:${syntheticSequence}`;
+      }
+
+      pendingSyntheticStopKeys.set(syntheticFingerprint, groupKey);
+    }
+
+    const existing = groupedStops.get(groupKey) || {
+      stopNumber: Number.isInteger(stopNumber) && stopNumber > 0 ? stopNumber : null,
+      sequence: Number.isInteger(stopNumber) && stopNumber > 0 ? stopNumber : 100000 + (nextSyntheticSequence - 1),
+      usesSyntheticSequence: !(Number.isInteger(stopNumber) && stopNumber > 0),
+      sortOrder: Number.isInteger(stopNumber) && stopNumber > 0 ? stopNumber : rowIndex + 1,
+      rows: {}
+    };
+    existing.rows[type] = parsedRow;
+    groupedStops.set(groupKey, existing);
   }
 
-  const stops = Array.from(groupedStops.entries())
-    .sort(([left], [right]) => left - right)
-    .map(([stopNumber, rows]) => buildParsedStop(stopNumber, rows.delivery, rows.pickup));
+  const stops = Array.from(groupedStops.values())
+    .sort((left, right) => left.sortOrder - right.sortOrder)
+    .map((group) =>
+      buildParsedStop(group.stopNumber, group.rows.delivery, group.rows.pickup, {
+        sequence: group.sequence,
+        usesSyntheticSequence: group.usesSyntheticSequence
+      })
+    );
 
   return {
     manifest_meta: manifestMeta,

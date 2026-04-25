@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { Link, useSearchParams } from 'react-router-dom';
 
 import {
   VEDR_CONNECTION_STATUSES,
@@ -11,6 +12,8 @@ import api from '../services/api';
 function createEmptySettings() {
   return {
     provider: null,
+    provider_login_url: null,
+    provider_username_hint: null,
     connection_status: VEDR_CONNECTION_STATUSES.NOT_STARTED,
     provider_selected_at: null,
     connection_started_at: null,
@@ -26,6 +29,17 @@ function openInNewTab(url) {
 
   window.open(url, '_blank', 'noopener,noreferrer');
 }
+
+function getProviderLaunchUrl(settings, providerKey) {
+  if (settings?.provider_login_url) {
+    return settings.provider_login_url;
+  }
+
+  const provider = VEDR_PROVIDER_CONFIG[providerKey];
+  return provider?.dashboardUrl || provider?.loginUrlWithRedirect || '';
+}
+
+const AVAILABLE_PROVIDER_KEYS = Object.values(VEDR_PROVIDERS);
 
 function ProviderCard({ providerKey, isSubmitting, onConnect }) {
   const provider = VEDR_PROVIDER_CONFIG[providerKey];
@@ -95,6 +109,7 @@ function ReturningProviderCard({
 }
 
 export default function VedrPage() {
+  const [searchParams] = useSearchParams();
   const queryClient = useQueryClient();
   const [localSettings, setLocalSettings] = useState(null);
   const [helperMessage, setHelperMessage] = useState('');
@@ -110,8 +125,8 @@ export default function VedrPage() {
   });
 
   const saveSettingsMutation = useMutation({
-    mutationFn: async (provider) => {
-      const response = await api.put('/api/vedr/settings', { provider });
+    mutationFn: async ({ provider, provider_login_url, provider_username_hint }) => {
+      const response = await api.put('/api/vedr/settings', { provider, provider_login_url, provider_username_hint });
       return response.data || createEmptySettings();
     },
     onSuccess: (updatedSettings) => {
@@ -135,6 +150,28 @@ export default function VedrPage() {
   const isAwaitingLogin = activeConnectionStatus === VEDR_CONNECTION_STATUSES.WAITING_FOR_LOGIN
     || activeConnectionStatus === VEDR_CONNECTION_STATUSES.PROVIDER_SELECTED;
   const isSubmittingProvider = saveSettingsMutation.isPending || markConnectedMutation.isPending;
+  const isSetupFlow = searchParams.get('source') === 'setup';
+  const setupBanner = useMemo(() => {
+    if (!isSetupFlow) {
+      return null;
+    }
+
+    if (activeConnectionStatus === VEDR_CONNECTION_STATUSES.CONNECTED) {
+      return {
+        tone: 'done',
+        title: 'VEDR is connected',
+        body: 'Your camera provider is in place, so you can move directly into loading drivers.',
+        actionTo: '/drivers?source=setup&focus=drivers',
+        actionLabel: 'Continue to Drivers'
+      };
+    }
+
+    return {
+      tone: 'active',
+      title: 'Connect the CSA camera provider',
+      body: 'Choose the provider, complete the login handoff, then mark the connection complete here to keep onboarding moving.'
+    };
+  }, [activeConnectionStatus, isSetupFlow]);
 
   useEffect(() => {
     const previousTitle = document.title;
@@ -160,13 +197,17 @@ export default function VedrPage() {
   function handleConnectProvider(providerKey) {
     const provider = VEDR_PROVIDER_CONFIG[providerKey];
 
-    saveSettingsMutation.mutate(providerKey, {
+    saveSettingsMutation.mutate({
+      provider: providerKey,
+      provider_login_url: null,
+      provider_username_hint: null
+    }, {
       onSuccess: (updatedSettings) => {
         setLocalSettings(updatedSettings);
         setIsSwitchConfirming(false);
         setSwitchingPreviousSettings(null);
         setHelperMessage(`We've opened ${provider.shortName} in a new tab. Log in there once — your session will be remembered for future visits. Come back here when you're done.`);
-        openInNewTab(provider.loginUrlWithRedirect);
+        openInNewTab(getProviderLaunchUrl(updatedSettings, providerKey));
       }
     });
   }
@@ -181,19 +222,17 @@ export default function VedrPage() {
       onSuccess: (updatedSettings) => {
         setLocalSettings(updatedSettings);
         setHelperMessage('');
-        openInNewTab(provider.dashboardUrl || provider.loginUrlWithRedirect);
+        openInNewTab(getProviderLaunchUrl(updatedSettings, activeProviderKey));
       }
     });
   }
 
   function handleOpenLogin(providerKey) {
-    const provider = VEDR_PROVIDER_CONFIG[providerKey];
-    openInNewTab(provider.loginUrlWithRedirect);
+    openInNewTab(getProviderLaunchUrl(effectiveSettings, providerKey));
   }
 
   function handleOpenDashboard(providerKey) {
-    const provider = VEDR_PROVIDER_CONFIG[providerKey];
-    openInNewTab(provider.dashboardUrl || provider.loginUrlWithRedirect);
+    openInNewTab(getProviderLaunchUrl(effectiveSettings, providerKey));
   }
 
   function handleSwitchProvider() {
@@ -215,12 +254,13 @@ export default function VedrPage() {
   }
 
   function confirmSwitchProvider() {
-    saveSettingsMutation.mutate(null, {
+    saveSettingsMutation.mutate({ provider: null }, {
       onSuccess: (updatedSettings) => {
         setLocalSettings(updatedSettings);
         setIsSwitchConfirming(false);
         setSwitchingPreviousSettings(null);
         setHelperMessage('');
+        setAccessMessage('');
       }
     });
   }
@@ -254,7 +294,22 @@ export default function VedrPage() {
         </div>
       </div>
 
-      {activeProvider ? (
+      {setupBanner ? (
+        <div className={`card setup-continue-banner ${setupBanner.tone}`}>
+          <div>
+            <div className="setup-next-eyebrow">Onboarding</div>
+            <h2>{setupBanner.title}</h2>
+            <p>{setupBanner.body}</p>
+          </div>
+          {setupBanner.actionTo ? (
+            <Link className="primary-cta setup-next-action" to={setupBanner.actionTo}>
+              {setupBanner.actionLabel}
+            </Link>
+          ) : null}
+        </div>
+      ) : null}
+
+      {activeProviderKey ? (
         <div className="card vedr-returning-card">
           <div className="vedr-provider-eyebrow">{isAwaitingLogin ? 'Connection in progress' : 'Connected Provider'}</div>
           <h2>{VEDR_PROVIDER_CONFIG[activeProviderKey].brandName}</h2>
@@ -309,7 +364,7 @@ export default function VedrPage() {
             <p>Select the camera system your company uses. You only need to do this once.</p>
           </div>
 
-          {isSwitchConfirming ? (
+      {isSwitchConfirming ? (
             <div className="vedr-confirm-banner">
               <strong>Are you sure you want to switch providers?</strong>
               <span>Your current selection will be removed.</span>
@@ -327,20 +382,18 @@ export default function VedrPage() {
           {stateOneHelper}
 
           <div className="vedr-provider-grid">
-            <ProviderCard
-              isSubmitting={isSubmittingProvider}
-              onConnect={handleConnectProvider}
-              providerKey={VEDR_PROVIDERS.GROUNDCLOUD}
-            />
-            <ProviderCard
-              isSubmitting={isSubmittingProvider}
-              onConnect={handleConnectProvider}
-              providerKey={VEDR_PROVIDERS.VELOCITOR}
-            />
+            {AVAILABLE_PROVIDER_KEYS.map((providerKey) => (
+              <ProviderCard
+                isSubmitting={isSubmittingProvider}
+                key={providerKey}
+                onConnect={handleConnectProvider}
+                providerKey={providerKey}
+              />
+            ))}
           </div>
 
           <div className="vedr-muted-note">
-            Not sure which one you use? Check with your DSP operations team. GroundCloud is provided by Descartes and Velocitor runs the V-Track platform.
+            Not sure which one you use? Check with your DSP operations team and choose the same camera or telematics platform they already use today.
           </div>
         </div>
       )}
@@ -367,6 +420,10 @@ export default function VedrPage() {
             </div>
           </div>
         </div>
+      ) : null}
+
+      {activeProviderKey ? (
+        null
       ) : null}
     </section>
   );

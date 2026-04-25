@@ -1,5 +1,6 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { Link, useSearchParams } from 'react-router-dom';
 
 import api from '../services/api';
 import { getTodayString, loadStoredOperationsDate, saveStoredOperationsDate } from '../utils/operationsDate';
@@ -87,6 +88,17 @@ const emptyManagerInviteForm = {
   email: ''
 };
 
+const emptyLaborForm = {
+  driver_id: '',
+  driver_name: '',
+  date: '',
+  clock_in: '',
+  clock_out: '',
+  break_minutes: '0',
+  lunch_minutes: '0',
+  adjustment_reason: ''
+};
+
 function DriverModal({ form, mode, errorMessage, isSubmitting, onChange, onClose, onSubmit }) {
   const isEdit = mode === 'edit';
 
@@ -124,12 +136,15 @@ function DriverModal({ form, mode, errorMessage, isSubmitting, onChange, onClose
 
           {!isEdit ? (
             <>
+              <div className="driver-meta">
+                Leave the PIN fields blank to use this CSA&apos;s starter driver PIN.
+              </div>
               <input
                 className="text-field"
                 inputMode="numeric"
                 maxLength={4}
                 onChange={(event) => onChange('pin', event.target.value)}
-                placeholder="4-digit PIN"
+                placeholder="4-digit PIN (optional)"
                 type="password"
                 value={form.pin}
               />
@@ -143,7 +158,31 @@ function DriverModal({ form, mode, errorMessage, isSubmitting, onChange, onClose
                 value={form.confirmPin}
               />
             </>
-          ) : null}
+          ) : (
+            <>
+              <div className="driver-meta">
+                Leave the PIN fields blank to keep the current driver PIN. Add a new 4-digit PIN only when you want to reset it.
+              </div>
+              <input
+                className="text-field"
+                inputMode="numeric"
+                maxLength={4}
+                onChange={(event) => onChange('pin', event.target.value)}
+                placeholder="New 4-digit PIN (optional)"
+                type="password"
+                value={form.pin}
+              />
+              <input
+                className="text-field"
+                inputMode="numeric"
+                maxLength={4}
+                onChange={(event) => onChange('confirmPin', event.target.value)}
+                placeholder="Confirm new PIN"
+                type="password"
+                value={form.confirmPin}
+              />
+            </>
+          )}
 
           {errorMessage ? <div className="error-banner">{errorMessage}</div> : null}
 
@@ -244,6 +283,95 @@ function ManagerModal({
   );
 }
 
+function LaborAdjustmentModal({
+  form,
+  errorMessage,
+  isSubmitting,
+  onChange,
+  onClose,
+  onSubmit
+}) {
+  return (
+    <div className="modal-backdrop">
+      <div className="modal-card">
+        <div className="modal-header">
+          <div className="card-title">Edit Labor</div>
+          <button className="icon-button" onClick={onClose} type="button">×</button>
+        </div>
+
+        <form className="form-card modal-form" onSubmit={onSubmit}>
+          <div className="driver-meta">
+            Adjust labor for <strong>{form.driver_name || 'Driver'}</strong> on {form.date || 'the selected date'}.
+          </div>
+          <label className="field-group">
+            <span className="field-label">Clock In</span>
+            <input
+              className="text-field"
+              onChange={(event) => onChange('clock_in', event.target.value)}
+              type="datetime-local"
+              value={form.clock_in}
+            />
+          </label>
+          <label className="field-group">
+            <span className="field-label">Clock Out</span>
+            <input
+              className="text-field"
+              onChange={(event) => onChange('clock_out', event.target.value)}
+              type="datetime-local"
+              value={form.clock_out}
+            />
+          </label>
+          <label className="field-group">
+            <span className="field-label">Break Minutes</span>
+            <input
+              className="text-field"
+              min="0"
+              onChange={(event) => onChange('break_minutes', event.target.value)}
+              step="1"
+              type="number"
+              value={form.break_minutes}
+            />
+          </label>
+          <label className="field-group">
+            <span className="field-label">Lunch Minutes</span>
+            <input
+              className="text-field"
+              min="0"
+              onChange={(event) => onChange('lunch_minutes', event.target.value)}
+              step="1"
+              type="number"
+              value={form.lunch_minutes}
+            />
+          </label>
+          <label className="field-group">
+            <span className="field-label">Reason</span>
+            <textarea
+              className="text-field"
+              onChange={(event) => onChange('adjustment_reason', event.target.value)}
+              placeholder="Why are you correcting this labor record?"
+              rows={4}
+              value={form.adjustment_reason}
+            />
+          </label>
+
+          <div className="driver-meta">
+            ReadyRoute will save these as the manager-corrected labor totals for that day and refresh the daily labor summary if the day is already closed out.
+          </div>
+
+          {errorMessage ? <div className="error-banner">{errorMessage}</div> : null}
+
+          <div className="modal-actions">
+            <button className="secondary-inline-button" onClick={onClose} type="button">Cancel</button>
+            <button className="primary-inline-button" disabled={isSubmitting} type="submit">
+              {isSubmitting ? 'Saving...' : 'Save Labor'}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
 function formatCurrency(value) {
   return new Intl.NumberFormat('en-US', {
     style: 'currency',
@@ -287,6 +415,92 @@ function formatShiftWindow(clockIn, clockOut) {
   return `${start} → ${end}`;
 }
 
+function formatShortTime(value) {
+  if (!value) {
+    return '—';
+  }
+
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return '—';
+  }
+
+  return new Intl.DateTimeFormat('en-US', {
+    hour: 'numeric',
+    minute: '2-digit'
+  }).format(date);
+}
+
+function getLiveStatusClass(code) {
+  switch (code) {
+    case 'working':
+      return 'live-status-chip-working';
+    case 'on_lunch':
+      return 'live-status-chip-lunch';
+    case 'on_break':
+      return 'live-status-chip-break';
+    case 'clocked_out':
+      return 'live-status-chip-off';
+    case 'not_clocked_in':
+    default:
+      return 'live-status-chip-idle';
+  }
+}
+
+function getMinutesUntil(value) {
+  if (!value) {
+    return null;
+  }
+
+  const targetMs = new Date(value).getTime();
+  if (!Number.isFinite(targetMs)) {
+    return null;
+  }
+
+  return Math.max(0, Math.ceil((targetMs - Date.now()) / (1000 * 60)));
+}
+
+function formatDateTimeLocalInput(value, fallbackDate) {
+  if (!value) {
+    return fallbackDate ? `${fallbackDate}T08:00` : '';
+  }
+
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return fallbackDate ? `${fallbackDate}T08:00` : '';
+  }
+
+  const localDate = new Date(date.getTime() - date.getTimezoneOffset() * 60000);
+  return localDate.toISOString().slice(0, 16);
+}
+
+function localInputToIso(value) {
+  if (!value) {
+    return null;
+  }
+
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return null;
+  }
+
+  return date.toISOString();
+}
+
+function formatPhoneDisplay(phone) {
+  const digits = String(phone || '').replace(/\D/g, '');
+
+  if (digits.length === 10) {
+    return `(${digits.slice(0, 3)}) ${digits.slice(3, 6)}-${digits.slice(6)}`;
+  }
+
+  if (digits.length === 11 && digits.startsWith('1')) {
+    return `+1 (${digits.slice(1, 4)}) ${digits.slice(4, 7)}-${digits.slice(7)}`;
+  }
+
+  return phone || 'No phone on file';
+}
+
 function groupExceptionBreakdown(breakdown) {
   return CODE_CATEGORY_GROUPS.map((group) => ({
     ...group,
@@ -301,19 +515,25 @@ function groupExceptionBreakdown(breakdown) {
 }
 
 export default function DriversPage() {
+  const [searchParams] = useSearchParams();
   const queryClient = useQueryClient();
   const [selectedWeekDate, setSelectedWeekDate] = useState(loadStoredOperationsDate() || getTodayString());
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isLaborModalOpen, setIsLaborModalOpen] = useState(false);
   const [modalMode, setModalMode] = useState('add');
   const [form, setForm] = useState(emptyForm);
   const [errorMessage, setErrorMessage] = useState('');
-  const [expandedDriverId, setExpandedDriverId] = useState(null);
+  const [laborForm, setLaborForm] = useState(emptyLaborForm);
+  const [laborErrorMessage, setLaborErrorMessage] = useState('');
+  const [expandedLiveLaborDriverId, setExpandedLiveLaborDriverId] = useState(null);
   const [expandedWeeklyLaborDriverId, setExpandedWeeklyLaborDriverId] = useState(null);
   const [expandedDailyLaborDriverId, setExpandedDailyLaborDriverId] = useState(null);
   const [isManagerModalOpen, setIsManagerModalOpen] = useState(false);
   const [managerInviteForm, setManagerInviteForm] = useState(emptyManagerInviteForm);
   const [managerInviteError, setManagerInviteError] = useState('');
   const [managerInviteResult, setManagerInviteResult] = useState(null);
+  const [starterPin, setStarterPin] = useState('');
+  const [starterPinError, setStarterPinError] = useState('');
 
   const driversQuery = useQuery({
     queryKey: ['manager-drivers'],
@@ -323,13 +543,15 @@ export default function DriversPage() {
     }
   });
 
+  const activeDriverStatsId = expandedDailyLaborDriverId || expandedWeeklyLaborDriverId || null;
+
   const driverStatsQuery = useQuery({
-    queryKey: ['manager-driver-stats', expandedDriverId],
+    queryKey: ['manager-driver-stats', activeDriverStatsId],
     queryFn: async () => {
-      const response = await api.get(`/manager/drivers/${expandedDriverId}/stats`);
+      const response = await api.get(`/manager/drivers/${activeDriverStatsId}/stats`);
       return response.data?.stats || null;
     },
-    enabled: Boolean(expandedDriverId)
+    enabled: Boolean(activeDriverStatsId)
   });
 
   const weeklyTimecardsQuery = useQuery({
@@ -356,11 +578,32 @@ export default function DriversPage() {
     }
   });
 
+  const liveLaborQuery = useQuery({
+    queryKey: ['manager-live-labor', selectedWeekDate],
+    queryFn: async () => {
+      const response = await api.get('/manager/timecards/live', {
+        params: {
+          date: selectedWeekDate
+        }
+      });
+      return response.data || null;
+    },
+    refetchInterval: selectedWeekDate === getTodayString() ? 30000 : false
+  });
+
   const managerUsersQuery = useQuery({
     queryKey: ['manager-users'],
     queryFn: async () => {
       const response = await api.get('/manager/manager-users');
       return response.data?.manager_users || [];
+    }
+  });
+
+  const driverAccessQuery = useQuery({
+    queryKey: ['manager-driver-access'],
+    queryFn: async () => {
+      const response = await api.get('/manager/driver-access');
+      return response.data || { starter_pin: null };
     }
   });
 
@@ -390,7 +633,8 @@ export default function DriversPage() {
       await api.put(`/manager/drivers/${form.id}`, {
         name: form.name,
         phone: form.phone,
-        hourly_rate: Number(form.hourly_rate)
+        hourly_rate: Number(form.hourly_rate),
+        pin: form.pin || undefined
       });
     },
     onSuccess: () => {
@@ -412,6 +656,49 @@ export default function DriversPage() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['manager-drivers'] });
+    }
+  });
+
+  const updateDriverAccess = useMutation({
+    mutationFn: async () => {
+      const response = await api.patch('/manager/driver-access', {
+        starter_pin: starterPin
+      });
+      return response.data || null;
+    },
+    onSuccess: (data) => {
+      setStarterPinError('');
+      setStarterPin(data?.starter_pin || '');
+      queryClient.invalidateQueries({ queryKey: ['manager-driver-access'] });
+    },
+    onError: (error) => {
+      setStarterPinError(error.response?.data?.error || 'Unable to update starter PIN.');
+    }
+  });
+
+  const updateLabor = useMutation({
+    mutationFn: async () => {
+      const response = await api.put('/manager/timecards/live', {
+        date: laborForm.date,
+        driver_id: laborForm.driver_id,
+        clock_in: localInputToIso(laborForm.clock_in),
+        clock_out: localInputToIso(laborForm.clock_out),
+        break_minutes: Number(laborForm.break_minutes || 0),
+        lunch_minutes: Number(laborForm.lunch_minutes || 0),
+        adjustment_reason: laborForm.adjustment_reason.trim()
+      });
+      return response.data || null;
+    },
+    onSuccess: () => {
+      setIsLaborModalOpen(false);
+      setLaborErrorMessage('');
+      setLaborForm(emptyLaborForm);
+      queryClient.invalidateQueries({ queryKey: ['manager-live-labor', selectedWeekDate] });
+      queryClient.invalidateQueries({ queryKey: ['manager-daily-labor', selectedWeekDate] });
+      queryClient.invalidateQueries({ queryKey: ['manager-weekly-timecards', selectedWeekDate] });
+    },
+    onError: (error) => {
+      setLaborErrorMessage(error.response?.data?.error || 'Unable to update labor.');
     }
   });
 
@@ -449,6 +736,75 @@ export default function DriversPage() {
   const isSubmitting = createDriver.isPending || updateDriver.isPending;
   const drivers = useMemo(() => driversQuery.data || [], [driversQuery.data]);
   const managerUsers = useMemo(() => managerUsersQuery.data || [], [managerUsersQuery.data]);
+  const isSetupFlow = searchParams.get('source') === 'setup';
+  const setupFocus = searchParams.get('focus') || '';
+  const setupBanner = useMemo(() => {
+    if (!isSetupFlow) {
+      return null;
+    }
+
+    const starterPinSet = Boolean(driverAccessQuery.data?.starter_pin);
+
+    if (setupFocus === 'starter-pin') {
+      if (starterPinSet) {
+        return {
+          tone: 'done',
+          title: 'Starter PIN is ready',
+          body: 'New drivers can now use the shared CSA PIN during initial login.',
+          actionTo: '/vedr?source=setup&focus=vedr',
+          actionLabel: 'Continue to VEDR'
+        };
+      }
+
+      return {
+        tone: 'active',
+        title: 'Set the shared driver PIN first',
+        body: 'Save one 4-digit CSA PIN here, then ReadyRoute can create driver accounts without requiring a unique PIN for each driver up front.'
+      };
+    }
+
+    if (setupFocus === 'drivers') {
+      if (drivers.length > 0) {
+        return {
+          tone: 'done',
+          title: 'Drivers are loaded',
+          body: `${drivers.length} driver${drivers.length === 1 ? '' : 's'} are ready for dispatch and route assignment.`,
+          actionTo: '/vehicles?source=setup&focus=vehicles',
+          actionLabel: 'Continue to Vehicles'
+        };
+      }
+
+      if (!starterPinSet) {
+        return {
+          tone: 'blocked',
+          title: 'Drivers are blocked until the starter PIN is saved',
+          body: 'Set the CSA starter PIN in the Driver Access card below, then come back to create your first drivers.'
+        };
+      }
+
+      return {
+        tone: 'active',
+        title: 'Add the first drivers for this CSA',
+        body: 'Once at least one driver is added here, ReadyRoute can move you straight into vehicle setup.'
+      };
+    }
+
+    if (setupFocus === 'managers') {
+      return {
+        tone: 'active',
+        title: 'Manager access is in place',
+        body: 'You can invite supporting managers here if needed, or jump back into setup and keep moving.',
+        actionTo: '/setup',
+        actionLabel: 'Back to Setup'
+      };
+    }
+
+    return null;
+  }, [driverAccessQuery.data?.starter_pin, drivers.length, isSetupFlow, setupFocus]);
+
+  useEffect(() => {
+    setStarterPin(driverAccessQuery.data?.starter_pin || '');
+  }, [driverAccessQuery.data?.starter_pin]);
 
   function openAddModal() {
     setModalMode('add');
@@ -462,6 +818,22 @@ export default function DriversPage() {
     setManagerInviteResult(null);
     setManagerInviteForm(emptyManagerInviteForm);
     setIsManagerModalOpen(true);
+  }
+
+  function openLaborModal(row) {
+    const latestTimecard = row.latest_timecard || null;
+    setLaborErrorMessage('');
+    setLaborForm({
+      driver_id: row.driver_id,
+      driver_name: row.driver_name,
+      date: selectedWeekDate,
+      clock_in: formatDateTimeLocalInput(latestTimecard?.clock_in, selectedWeekDate),
+      clock_out: latestTimecard?.clock_out ? formatDateTimeLocalInput(latestTimecard.clock_out, null) : '',
+      break_minutes: String(row.break_minutes ?? 0),
+      lunch_minutes: String(row.lunch_minutes ?? 0),
+      adjustment_reason: ''
+    });
+    setIsLaborModalOpen(true);
   }
 
   function openEditModal(driver) {
@@ -488,13 +860,35 @@ export default function DriversPage() {
     setErrorMessage('');
 
     if (modalMode === 'add') {
-      if (form.pin !== form.confirmPin) {
-        setErrorMessage('PINs must match.');
+      if (form.pin || form.confirmPin) {
+        if (form.pin !== form.confirmPin) {
+          setErrorMessage('PINs must match.');
+          return;
+        }
+
+        if (!/^\d{4}$/.test(String(form.pin))) {
+          setErrorMessage('PIN must be a 4-digit code.');
+          return;
+        }
+      } else if (!driverAccessQuery.data?.starter_pin) {
+        setErrorMessage('Set a CSA starter PIN first, or enter a PIN for this driver.');
         return;
       }
 
       createDriver.mutate();
       return;
+    }
+
+    if (form.pin || form.confirmPin) {
+      if (form.pin !== form.confirmPin) {
+        setErrorMessage('PINs must match.');
+        return;
+      }
+
+      if (!/^\d{4}$/.test(String(form.pin))) {
+        setErrorMessage('PIN must be a 4-digit code.');
+        return;
+      }
     }
 
     updateDriver.mutate();
@@ -519,16 +913,22 @@ export default function DriversPage() {
     });
   }
 
-  function toggleExpanded(driverId) {
-    setExpandedDriverId((current) => (current === driverId ? null : driverId));
-  }
-
   function toggleWeeklyLaborDetail(driverId) {
     setExpandedWeeklyLaborDriverId((current) => (current === driverId ? null : driverId));
+    setExpandedDailyLaborDriverId(null);
+    setExpandedLiveLaborDriverId(null);
   }
 
   function toggleDailyLaborDetail(driverId) {
     setExpandedDailyLaborDriverId((current) => (current === driverId ? null : driverId));
+    setExpandedWeeklyLaborDriverId(null);
+    setExpandedLiveLaborDriverId(null);
+  }
+
+  function toggleLiveLaborDetail(driverId) {
+    setExpandedLiveLaborDriverId((current) => (current === driverId ? null : driverId));
+    setExpandedWeeklyLaborDriverId(null);
+    setExpandedDailyLaborDriverId(null);
   }
 
   function updateManagerInviteField(field, value) {
@@ -547,6 +947,54 @@ export default function DriversPage() {
     inviteManagerUser.mutate();
   }
 
+  function handleStarterPinSubmit(event) {
+    event.preventDefault();
+    setStarterPinError('');
+
+    if (!/^\d{4}$/.test(String(starterPin))) {
+      setStarterPinError('Starter PIN must be a 4-digit code.');
+      return;
+    }
+
+    updateDriverAccess.mutate();
+  }
+
+  function updateLaborField(field, value) {
+    setLaborForm((current) => ({ ...current, [field]: value }));
+  }
+
+  function handleLaborSubmit(event) {
+    event.preventDefault();
+    setLaborErrorMessage('');
+
+    if (!laborForm.clock_in) {
+      setLaborErrorMessage('Clock in time is required.');
+      return;
+    }
+
+    if (!laborForm.adjustment_reason.trim()) {
+      setLaborErrorMessage('A reason is required for labor edits.');
+      return;
+    }
+
+    if (laborForm.clock_out) {
+      const clockInIso = localInputToIso(laborForm.clock_in);
+      const clockOutIso = localInputToIso(laborForm.clock_out);
+
+      if (!clockInIso || !clockOutIso) {
+        setLaborErrorMessage('Clock in and clock out must be valid datetimes.');
+        return;
+      }
+
+      if (new Date(clockOutIso).getTime() <= new Date(clockInIso).getTime()) {
+        setLaborErrorMessage('Clock out must be later than clock in.');
+        return;
+      }
+    }
+
+    updateLabor.mutate();
+  }
+
   return (
     <section className="page-section">
       <div className="page-header">
@@ -562,6 +1010,55 @@ export default function DriversPage() {
             Add Driver
           </button>
         </div>
+      </div>
+
+      {setupBanner ? (
+        <div className={`card setup-continue-banner ${setupBanner.tone}`}>
+          <div>
+            <div className="setup-next-eyebrow">Onboarding</div>
+            <h2>{setupBanner.title}</h2>
+            <p>{setupBanner.body}</p>
+          </div>
+          {setupBanner.actionTo ? (
+            <Link className="primary-cta setup-next-action" to={setupBanner.actionTo}>
+              {setupBanner.actionLabel}
+            </Link>
+          ) : null}
+        </div>
+      ) : null}
+
+      <div className="card driver-access-card">
+        <div className="section-title-row">
+          <div>
+            <div className="card-title">Driver Access</div>
+            <div className="driver-meta">
+              New drivers can start with one shared CSA PIN, then get a personal reset later if needed.
+            </div>
+          </div>
+        </div>
+        <form className="driver-access-inline-form" onSubmit={handleStarterPinSubmit}>
+          <label className="field-group">
+            <span className="field-label">Starter Driver PIN</span>
+            <input
+              className="text-field"
+              inputMode="numeric"
+              maxLength={4}
+              onChange={(event) => setStarterPin(event.target.value)}
+              placeholder="4-digit PIN"
+              type="password"
+              value={starterPin}
+            />
+          </label>
+          <button className="primary-inline-button" disabled={updateDriverAccess.isPending} type="submit">
+            {updateDriverAccess.isPending ? 'Saving...' : 'Save Starter PIN'}
+          </button>
+        </form>
+        {starterPinError ? <div className="error-banner">{starterPinError}</div> : null}
+        {driverAccessQuery.isLoading ? <div className="driver-meta">Loading current starter PIN...</div> : null}
+      </div>
+
+      <div className="info-banner">
+        Drivers do not need to self-register. Use each driver&apos;s email as the login, assign a simple 4-digit PIN from this page, and the app will keep them signed in until you deactivate them or reset their access.
       </div>
 
       <div className="card">
@@ -617,6 +1114,150 @@ export default function DriversPage() {
       <div className="card">
         <div className="section-title-row">
           <div>
+            <div className="card-title">Live Labor</div>
+            <div className="driver-meta">
+              Real-time clock-in, lunch, and break visibility for {selectedWeekDate}.
+            </div>
+          </div>
+          <div className="driver-meta">
+            {selectedWeekDate === getTodayString() ? 'Auto-refreshing every 30 seconds' : 'Historical date selected'}
+          </div>
+        </div>
+
+        {liveLaborQuery.isLoading ? (
+          <div className="driver-meta">Loading live labor status...</div>
+        ) : liveLaborQuery.isError ? (
+          <div className="error-banner">Unable to load live labor status.</div>
+        ) : (
+          <>
+            <div className="stats-grid">
+              <div className="stat-card">
+                <div className="stat-label">Working</div>
+                <div className="stat-value small">{liveLaborQuery.data?.totals?.working ?? 0}</div>
+              </div>
+              <div className="stat-card">
+                <div className="stat-label">On Lunch</div>
+                <div className="stat-value small">{liveLaborQuery.data?.totals?.on_lunch ?? 0}</div>
+              </div>
+              <div className="stat-card">
+                <div className="stat-label">On Break</div>
+                <div className="stat-value small">{liveLaborQuery.data?.totals?.on_break ?? 0}</div>
+              </div>
+              <div className="stat-card">
+                <div className="stat-label">Not Clocked In</div>
+                <div className="stat-value small">{liveLaborQuery.data?.totals?.not_clocked_in ?? 0}</div>
+              </div>
+            </div>
+
+            <div className="weekly-timecard-table live-labor-table">
+              <div className="weekly-timecard-header">
+                <span>Driver</span>
+                <span>Status</span>
+                <span>Current Shift</span>
+                <span>Worked</span>
+                <span>Breaks</span>
+                <span>Actions</span>
+              </div>
+
+              {(liveLaborQuery.data?.drivers || []).map((row) => {
+                const driverRecord = drivers.find((driver) => driver.id === row.driver_id) || null;
+                const isExpanded = expandedLiveLaborDriverId === row.driver_id;
+                const breakEndsIn = getMinutesUntil(row.active_break?.scheduled_end_at);
+
+                return (
+                  <div className="weekly-timecard-group" key={`live-${row.driver_id}`}>
+                    <div className="weekly-timecard-row">
+                      <div className="driver-cell-stack">
+                        <strong>{row.driver_name}</strong>
+                        <div className="driver-cell-meta">
+                          <small>{row.email}</small>
+                          <small className="driver-cell-phone">{formatPhoneDisplay(driverRecord?.phone || row.phone)}</small>
+                        </div>
+                      </div>
+                      <div className="live-status-cell">
+                        <span className={`live-status-chip ${getLiveStatusClass(row.status?.code)}`}>
+                          {row.status?.label || 'Unknown'}
+                        </span>
+                        {row.active_break?.scheduled_end_at ? (
+                          <small>
+                            Ends {formatShortTime(row.active_break.scheduled_end_at)}
+                            {breakEndsIn !== null ? ` · ${breakEndsIn} min` : ''}
+                          </small>
+                        ) : null}
+                      </div>
+                      <span>{row.latest_timecard ? formatShiftWindow(row.latest_timecard.clock_in, row.latest_timecard.clock_out) : '—'}</span>
+                      <span>{formatHours(row.worked_hours)}</span>
+                      <span>{`${formatMinutes(row.break_minutes)} · ${formatMinutes(row.lunch_minutes)} lunch`}</span>
+                      <span>
+                        <button className="secondary-inline-button" onClick={() => toggleLiveLaborDetail(row.driver_id)} type="button">
+                          {isExpanded ? 'Hide' : 'View'}
+                        </button>
+                      </span>
+                    </div>
+                    {isExpanded ? (
+                      <div className="labor-detail-panel">
+                        <div className="driver-directory-actions">
+                          <button className="secondary-inline-button" onClick={() => openLaborModal(row)} type="button">
+                            Edit Labor
+                          </button>
+                        </div>
+                        {row.latest_timecard ? (
+                          <div className="labor-shift-card">
+                            <div className="labor-shift-topline">
+                              <strong>{row.latest_timecard.route_name ? `Route ${row.latest_timecard.route_name}` : 'No route linked'}</strong>
+                              <span>{formatShiftWindow(row.latest_timecard.clock_in, row.latest_timecard.clock_out)}</span>
+                            </div>
+                            <div className="labor-shift-metrics">
+                              <span>{formatHours(row.worked_hours)} worked so far</span>
+                              <span>{formatMinutes(row.break_minutes)} total breaks</span>
+                              <span>{formatMinutes(row.lunch_minutes)} lunch</span>
+                              {row.latest_timecard.manager_adjusted ? <span>Manager adjusted</span> : null}
+                            </div>
+                            {row.latest_timecard.compliance_flags?.length ? (
+                              <div className="labor-flag-list">
+                                {row.latest_timecard.compliance_flags.map((flag) => (
+                                  <span className="labor-flag-chip" key={`${row.driver_id}-${flag}`}>{flag}</span>
+                                ))}
+                              </div>
+                            ) : null}
+                            {row.adjustments?.length ? (
+                              <div className="labor-audit-list">
+                                {row.adjustments.map((adjustment) => (
+                                  <div className="labor-audit-card" key={adjustment.id}>
+                                    <strong>{formatDateTime(adjustment.created_at)}</strong>
+                                    <span>{adjustment.adjustment_reason}</span>
+                                  </div>
+                                ))}
+                              </div>
+                            ) : null}
+                            {(row.timecards || []).length ? (
+                              <div className="labor-break-list">
+                                {row.timecards.flatMap((timecard) => timecard.breaks || []).map((breakRow) => (
+                                  <span className="labor-break-chip" key={breakRow.id}>
+                                    {`${String(breakRow.break_type || 'break').toUpperCase()} · ${formatShortTime(breakRow.started_at)}${
+                                      breakRow.ended_at ? ` → ${formatShortTime(breakRow.ended_at)}` : ' · Active'
+                                    }`}
+                                  </span>
+                                ))}
+                              </div>
+                            ) : null}
+                          </div>
+                        ) : (
+                          <div className="labor-empty-state">No labor activity recorded for this driver on {selectedWeekDate}.</div>
+                        )}
+                      </div>
+                    ) : null}
+                  </div>
+                );
+              })}
+            </div>
+          </>
+        )}
+      </div>
+
+      <div className="card">
+        <div className="section-title-row">
+          <div>
             <div className="card-title">Finalized Day</div>
             <div className="driver-meta">
               {dailyLaborQuery.data?.snapshot
@@ -654,38 +1295,53 @@ export default function DriversPage() {
             <div className="weekly-timecard-table">
               <div className="weekly-timecard-header">
                 <span>Driver</span>
-                <span>Rate</span>
                 <span>Shifts</span>
                 <span>Worked</span>
-                <span>Paid</span>
                 <span>Breaks</span>
                 <span>Lunch</span>
-                <span>Est. Pay</span>
-                <span>Details</span>
+                <span>Actions</span>
               </div>
 
-              {(dailyLaborQuery.data.drivers || []).map((row) => (
+              {(dailyLaborQuery.data.drivers || []).map((row) => {
+                const driverRecord = drivers.find((driver) => driver.id === row.driver_id) || null;
+                const isExpanded = expandedDailyLaborDriverId === row.driver_id;
+                const stats = isExpanded ? driverStatsQuery.data : null;
+                const groupedExceptions = groupExceptionBreakdown(stats?.exception_code_breakdown || {});
+
+                return (
                 <div className="weekly-timecard-group" key={row.driver_id}>
                   <div className="weekly-timecard-row">
-                    <span>
+                    <div className="driver-cell-stack">
                       <strong>{row.driver_name}</strong>
-                      <small>{row.email}</small>
-                    </span>
-                    <span>{formatCurrency(row.hourly_rate)}</span>
+                      <div className="driver-cell-meta">
+                        <small>{row.email}</small>
+                        <small className="driver-cell-phone">{formatPhoneDisplay(driverRecord?.phone)}</small>
+                      </div>
+                    </div>
                     <span>{row.shift_count}</span>
                     <span>{formatHours(row.worked_hours)}</span>
-                    <span>{formatHours(row.payable_hours)}</span>
                     <span>{formatMinutes(row.break_minutes)}</span>
                     <span>{formatMinutes(row.lunch_minutes)}</span>
-                    <span>{formatCurrency(row.estimated_pay)}</span>
                     <span>
                       <button className="secondary-inline-button" onClick={() => toggleDailyLaborDetail(row.driver_id)} type="button">
-                        {expandedDailyLaborDriverId === row.driver_id ? 'Hide' : 'View'}
+                        {isExpanded ? 'Hide' : 'View'}
                       </button>
                     </span>
                   </div>
-                  {expandedDailyLaborDriverId === row.driver_id ? (
+                  {isExpanded ? (
                     <div className="labor-detail-panel">
+                      <div className="driver-directory-actions">
+                        {driverRecord ? (
+                          <>
+                            <button className="secondary-inline-button" onClick={() => openEditModal(driverRecord)} type="button">
+                              Edit Driver
+                            </button>
+                            <button className="secondary-inline-button" onClick={() => handleStatusToggle(driverRecord)} type="button">
+                              {driverRecord.is_active ? 'Deactivate Driver' : 'Activate Driver'}
+                            </button>
+                          </>
+                        ) : null}
+                      </div>
                       {row.compliance_flags?.length ? (
                         <div className="labor-flag-list">
                           {row.compliance_flags.map((flag) => (
@@ -693,6 +1349,47 @@ export default function DriversPage() {
                           ))}
                         </div>
                       ) : null}
+                      {row.adjustments?.length ? (
+                        <div className="labor-audit-list">
+                          {row.adjustments.map((adjustment) => (
+                            <div className="labor-audit-card" key={adjustment.id}>
+                              <strong>{formatDateTime(adjustment.created_at)}</strong>
+                              <span>{adjustment.adjustment_reason}</span>
+                            </div>
+                          ))}
+                        </div>
+                      ) : null}
+                      <div className="stats-grid compact">
+                        <div className="stat-card">
+                          <div className="stat-label">Last 7 Days Avg Stops/Hr</div>
+                          <div className="stat-value small">{stats?.last_7_days_stops_per_hour ?? '--'}</div>
+                        </div>
+                        <div className="stat-card">
+                          <div className="stat-label">Deliveries This Month</div>
+                          <div className="stat-value small">{stats?.total_deliveries_this_month ?? 0}</div>
+                        </div>
+                        <div className="stat-card expansion-card">
+                          <div className="stat-label">Exception Code Breakdown</div>
+                          <div className="exception-list">
+                            {groupedExceptions.length ? (
+                              groupedExceptions.map((group) => (
+                                <div className="exception-group" key={group.key}>
+                                  <div className="exception-group-title">{group.title}</div>
+                                  <div className="exception-chip-list">
+                                    {group.items.map((item) => (
+                                      <div className="exception-chip" key={item.code}>
+                                        {item.code} — {item.label}: {item.count}
+                                      </div>
+                                    ))}
+                                  </div>
+                                </div>
+                              ))
+                            ) : (
+                              <div className="driver-meta">No exceptions recorded</div>
+                            )}
+                          </div>
+                        </div>
+                      </div>
                       {(row.timecards || []).length ? (
                         (row.timecards || []).map((timecard) => (
                           <div className="labor-shift-card" key={timecard.id}>
@@ -702,7 +1399,6 @@ export default function DriversPage() {
                             </div>
                             <div className="labor-shift-metrics">
                               <span>{formatHours(timecard.worked_hours)} worked</span>
-                              <span>{formatHours(timecard.payable_hours)} paid</span>
                               <span>{formatMinutes(timecard.break_minutes)} breaks</span>
                               <span>{formatMinutes(timecard.lunch_minutes)} lunch</span>
                             </div>
@@ -723,7 +1419,7 @@ export default function DriversPage() {
                     </div>
                   ) : null}
                 </div>
-              ))}
+              )})}
             </div>
           </>
         ) : (
@@ -790,38 +1486,53 @@ export default function DriversPage() {
             <div className="weekly-timecard-table">
               <div className="weekly-timecard-header">
                 <span>Driver</span>
-                <span>Rate</span>
                 <span>Shifts</span>
                 <span>Worked</span>
-                <span>Paid</span>
                 <span>Breaks</span>
                 <span>Lunch</span>
-                <span>Est. Pay</span>
-                <span>Details</span>
+                <span>Actions</span>
               </div>
 
-              {(weeklyTimecardsQuery.data?.drivers || []).map((row) => (
+              {(weeklyTimecardsQuery.data?.drivers || []).map((row) => {
+                const driverRecord = drivers.find((driver) => driver.id === row.driver_id) || null;
+                const isExpanded = expandedWeeklyLaborDriverId === row.driver_id;
+                const stats = isExpanded ? driverStatsQuery.data : null;
+                const groupedExceptions = groupExceptionBreakdown(stats?.exception_code_breakdown || {});
+
+                return (
                 <div className="weekly-timecard-group" key={row.driver_id}>
                   <div className="weekly-timecard-row">
-                    <span>
+                    <div className="driver-cell-stack">
                       <strong>{row.driver_name}</strong>
-                      <small>{row.email}</small>
-                    </span>
-                    <span>{formatCurrency(row.hourly_rate)}</span>
+                      <div className="driver-cell-meta">
+                        <small>{row.email}</small>
+                        <small className="driver-cell-phone">{formatPhoneDisplay(driverRecord?.phone)}</small>
+                      </div>
+                    </div>
                     <span>{row.shift_count}</span>
                     <span>{formatHours(row.worked_hours)}</span>
-                    <span>{formatHours(row.payable_hours)}</span>
                     <span>{formatMinutes(row.break_minutes)}</span>
                     <span>{formatMinutes(row.lunch_minutes)}</span>
-                    <span>{formatCurrency(row.estimated_pay)}</span>
                     <span>
                       <button className="secondary-inline-button" onClick={() => toggleWeeklyLaborDetail(row.driver_id)} type="button">
-                        {expandedWeeklyLaborDriverId === row.driver_id ? 'Hide' : 'View'}
+                        {isExpanded ? 'Hide' : 'View'}
                       </button>
                     </span>
                   </div>
-                  {expandedWeeklyLaborDriverId === row.driver_id ? (
+                  {isExpanded ? (
                     <div className="labor-detail-panel">
+                      <div className="driver-directory-actions">
+                        {driverRecord ? (
+                          <>
+                            <button className="secondary-inline-button" onClick={() => openEditModal(driverRecord)} type="button">
+                              Edit Driver
+                            </button>
+                            <button className="secondary-inline-button" onClick={() => handleStatusToggle(driverRecord)} type="button">
+                              {driverRecord.is_active ? 'Deactivate Driver' : 'Activate Driver'}
+                            </button>
+                          </>
+                        ) : null}
+                      </div>
                       {row.compliance_flags?.length ? (
                         <div className="labor-flag-list">
                           {row.compliance_flags.map((flag) => (
@@ -829,99 +1540,6 @@ export default function DriversPage() {
                           ))}
                         </div>
                       ) : null}
-                      {(row.timecards || []).length ? (
-                        (row.timecards || []).map((timecard) => (
-                          <div className="labor-shift-card" key={timecard.id}>
-                            <div className="labor-shift-topline">
-                              <strong>{timecard.route_name ? `Route ${timecard.route_name}` : 'Unlabeled route'}</strong>
-                              <span>{formatShiftWindow(timecard.clock_in, timecard.clock_out)}</span>
-                            </div>
-                            <div className="labor-shift-metrics">
-                              <span>{formatHours(timecard.worked_hours)} worked</span>
-                              <span>{formatHours(timecard.payable_hours)} paid</span>
-                              <span>{formatMinutes(timecard.break_minutes)} breaks</span>
-                              <span>{formatMinutes(timecard.lunch_minutes)} lunch</span>
-                            </div>
-                            {(timecard.breaks || []).length ? (
-                              <div className="labor-break-list">
-                                {timecard.breaks.map((breakRow) => (
-                                  <span className="labor-break-chip" key={breakRow.id}>
-                                    {`${String(breakRow.break_type || 'break').toUpperCase()} · ${formatMinutes(breakRow.minutes)}`}
-                                  </span>
-                                ))}
-                              </div>
-                            ) : null}
-                          </div>
-                        ))
-                      ) : (
-                        <div className="labor-empty-state">No shift detail recorded for this week yet.</div>
-                      )}
-                    </div>
-                  ) : null}
-                </div>
-              ))}
-            </div>
-          </>
-        )}
-      </div>
-
-      <div className="card">
-        <div className="driver-admin-table">
-          <div className="driver-admin-header">
-            <span>Name</span>
-            <span>Email</span>
-            <span>Phone</span>
-            <span>Hourly Rate</span>
-            <span>Status</span>
-            <span>Actions</span>
-          </div>
-
-          {(drivers || []).map((driver) => {
-            const isExpanded = expandedDriverId === driver.id;
-            const stats = isExpanded ? driverStatsQuery.data : null;
-            const groupedExceptions = groupExceptionBreakdown(stats?.exception_code_breakdown || {});
-
-            return (
-              <div className="driver-admin-group" key={driver.id}>
-                <button className="driver-admin-row" onClick={() => toggleExpanded(driver.id)} type="button">
-                  <span className="driver-name">{driver.name}</span>
-                  <span>{driver.email}</span>
-                  <span>{driver.phone}</span>
-                  <span>{formatCurrency(driver.hourly_rate)}</span>
-                  <span>
-                    <span className={driver.is_active ? 'online-pill online' : 'online-pill offline'}>
-                      {driver.is_active ? 'Active' : 'Inactive'}
-                    </span>
-                  </span>
-                  <span className="row-actions">
-                    <button
-                      className="icon-button"
-                      onClick={(event) => {
-                        event.stopPropagation();
-                        openEditModal(driver);
-                      }}
-                      type="button"
-                    >
-                      ✎
-                    </button>
-                    <button
-                      className="secondary-inline-button"
-                      onClick={(event) => {
-                        event.stopPropagation();
-                        handleStatusToggle(driver);
-                      }}
-                      type="button"
-                    >
-                      {driver.is_active ? 'Deactivate' : 'Activate'}
-                    </button>
-                  </span>
-                </button>
-
-                {isExpanded ? (
-                  <div className="driver-expansion">
-                    {driverStatsQuery.isLoading ? (
-                      <div className="driver-meta">Loading performance stats...</div>
-                    ) : (
                       <div className="stats-grid compact">
                         <div className="stat-card">
                           <div className="stat-label">Last 7 Days Avg Stops/Hr</div>
@@ -953,13 +1571,39 @@ export default function DriversPage() {
                           </div>
                         </div>
                       </div>
-                    )}
-                  </div>
-                ) : null}
-              </div>
-            );
-          })}
-        </div>
+                      {(row.timecards || []).length ? (
+                        (row.timecards || []).map((timecard) => (
+                          <div className="labor-shift-card" key={timecard.id}>
+                            <div className="labor-shift-topline">
+                              <strong>{timecard.route_name ? `Route ${timecard.route_name}` : 'Unlabeled route'}</strong>
+                              <span>{formatShiftWindow(timecard.clock_in, timecard.clock_out)}</span>
+                            </div>
+                            <div className="labor-shift-metrics">
+                              <span>{formatHours(timecard.worked_hours)} worked</span>
+                              <span>{formatMinutes(timecard.break_minutes)} breaks</span>
+                              <span>{formatMinutes(timecard.lunch_minutes)} lunch</span>
+                            </div>
+                            {(timecard.breaks || []).length ? (
+                              <div className="labor-break-list">
+                                {timecard.breaks.map((breakRow) => (
+                                  <span className="labor-break-chip" key={breakRow.id}>
+                                    {`${String(breakRow.break_type || 'break').toUpperCase()} · ${formatMinutes(breakRow.minutes)}`}
+                                  </span>
+                                ))}
+                              </div>
+                            ) : null}
+                          </div>
+                        ))
+                      ) : (
+                        <div className="labor-empty-state">No shift detail recorded for this week yet.</div>
+                      )}
+                    </div>
+                  ) : null}
+                </div>
+              )})}
+            </div>
+          </>
+        )}
       </div>
 
       {isModalOpen ? (
@@ -986,6 +1630,17 @@ export default function DriversPage() {
           onRefreshInvite={(managerUserId) => refreshManagerInvite.mutate(managerUserId)}
           onSubmit={handleManagerInviteSubmit}
           result={managerInviteResult}
+        />
+      ) : null}
+
+      {isLaborModalOpen ? (
+        <LaborAdjustmentModal
+          errorMessage={laborErrorMessage}
+          form={laborForm}
+          isSubmitting={updateLabor.isPending}
+          onChange={updateLaborField}
+          onClose={() => setIsLaborModalOpen(false)}
+          onSubmit={handleLaborSubmit}
         />
       ) : null}
     </section>

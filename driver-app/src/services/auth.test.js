@@ -7,7 +7,17 @@ jest.mock('@react-native-async-storage/async-storage', () => ({
 }));
 
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { getDriverFromToken, getPinColorMode, savePinColorMode, subscribePinColorMode } from './auth';
+import {
+  getDriverFromToken,
+  getLastPortalMode,
+  getPinColorMode,
+  getPortalAccess,
+  getSessionIdentity,
+  saveLastPortalMode,
+  savePinColorMode,
+  saveSessionTokens,
+  subscribePinColorMode
+} from './auth';
 
 function makeToken(payload) {
   const encodedPayload = Buffer.from(JSON.stringify(payload))
@@ -73,5 +83,95 @@ describe('auth service helpers', () => {
     expect(listener).toHaveBeenCalledWith('sid');
 
     unsubscribe();
+  });
+
+  it('stores both driver and manager tokens for a mobile session', async () => {
+    AsyncStorage.setItem.mockResolvedValue();
+
+    await saveSessionTokens({
+      driverToken: 'driver-token',
+      managerToken: 'manager-token'
+    });
+
+    expect(AsyncStorage.setItem).toHaveBeenCalledWith('readyroute_driver_token', 'driver-token');
+    expect(AsyncStorage.setItem).toHaveBeenCalledWith('readyroute_manager_token', 'manager-token');
+  });
+
+  it('stores the last selected portal by the current account identity', async () => {
+    const driverToken = makeToken({
+      account_id: 'acct-42',
+      driver_id: 'driver-42',
+      email: 'driver@example.com',
+      role: 'driver'
+    });
+    const managerToken = makeToken({
+      account_id: 'acct-42',
+      manager_email: 'driver@example.com',
+      role: 'manager'
+    });
+
+    AsyncStorage.setItem.mockResolvedValueOnce();
+    await saveLastPortalMode('manager', { driverToken, managerToken });
+
+    expect(AsyncStorage.setItem).toHaveBeenCalledWith(
+      'readyroute_last_portal:acct-42:driver@example.com',
+      'manager'
+    );
+
+    AsyncStorage.getItem.mockResolvedValueOnce('driver');
+    await expect(getLastPortalMode({ driverToken, managerToken })).resolves.toBe('driver');
+    expect(AsyncStorage.getItem).toHaveBeenLastCalledWith(
+      'readyroute_last_portal:acct-42:driver@example.com'
+    );
+  });
+
+  it('reports driver and manager access from saved tokens', () => {
+    const driverToken = makeToken({
+      account_id: 'acct-99',
+      driver_id: 'driver-99',
+      role: 'driver'
+    });
+    const managerToken = makeToken({
+      account_id: 'acct-99',
+      manager_email: 'manager@example.com',
+      role: 'manager'
+    });
+
+    expect(getPortalAccess({ driverToken, managerToken })).toEqual({
+      driver: true,
+      manager: true
+    });
+  });
+
+  it('derives the drawer identity from the active session mode', () => {
+    const driverToken = makeToken({
+      account_id: 'acct-99',
+      driver_id: 'driver-99',
+      full_name: 'Luis Perez',
+      company_name: 'Bridge Transportation',
+      role: 'driver'
+    });
+    const managerToken = makeToken({
+      account_id: 'acct-99',
+      full_name: 'Luis Perez',
+      company_name: 'Bridge Transportation',
+      role: 'manager'
+    });
+
+    expect(
+      getSessionIdentity({
+        activeMode: 'manager',
+        driverToken,
+        managerToken
+      })
+    ).toEqual({
+      fullName: 'Luis Perez',
+      companyName: 'Bridge Transportation',
+      primaryRole: 'Manager',
+      roles: {
+        driver: true,
+        manager: true
+      }
+    });
   });
 });

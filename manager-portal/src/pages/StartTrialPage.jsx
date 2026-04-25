@@ -1,8 +1,8 @@
+import axios from 'axios';
 import { useEffect, useState } from 'react';
-import { Link, useNavigate, useSearchParams } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 
 import api from '../services/api';
-import { getManagerToken } from '../services/auth';
 
 const DEFAULT_FORM = {
   company_name: '',
@@ -13,7 +13,6 @@ const DEFAULT_FORM = {
 };
 
 export default function StartTrialPage() {
-  const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const [form, setForm] = useState({
     ...DEFAULT_FORM,
@@ -26,14 +25,12 @@ export default function StartTrialPage() {
       : ''
   );
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const estimatedVehicleCount = Math.max(Number(form.vehicle_count) || 0, 0);
+  const estimatedMonthlyTotal = estimatedVehicleCount * 15;
 
   useEffect(() => {
     document.title = 'Start Free Trial | ReadyRoute';
-
-    if (getManagerToken()) {
-      navigate('/setup', { replace: true });
-    }
-  }, [navigate]);
+  }, []);
 
   function updateField(field, value) {
     setForm((current) => ({ ...current, [field]: value }));
@@ -46,7 +43,7 @@ export default function StartTrialPage() {
     setIsSubmitting(true);
 
     try {
-      const response = await api.post('/auth/manager/start-trial', {
+      const response = await axios.post(`${api.defaults.baseURL}/auth/manager/start-trial`, {
         ...form,
         vehicle_count: Number(form.vehicle_count)
       });
@@ -86,8 +83,8 @@ export default function StartTrialPage() {
 
           <div className="login-hero-points">
             <div className="login-hero-point">
-              <strong>Billing up front</strong>
-              <span>Your card is saved now, and billing begins automatically after the 14-day trial.</span>
+              <strong>$15 per vehicle per month</strong>
+              <span>Your card is saved now, and billing begins automatically after your full 14-day trial.</span>
             </div>
             <div className="login-hero-point">
               <strong>Guided setup</strong>
@@ -144,7 +141,7 @@ export default function StartTrialPage() {
               value={form.password}
             />
 
-            <label className="field-label" htmlFor="trial-vehicle-count">Estimated active vehicles</label>
+            <label className="field-label" htmlFor="trial-vehicle-count">Estimated vehicles</label>
             <input
               className="text-field"
               id="trial-vehicle-count"
@@ -158,8 +155,9 @@ export default function StartTrialPage() {
             {errorMessage ? <div className="error-banner">{errorMessage}</div> : null}
 
             <div className="trial-billing-note">
-              Start your free trial. Your card will be saved during Stripe checkout, and billing will begin
-              automatically in 14 days unless you cancel first.
+              Start your free trial at $15 per vehicle per month. Based on {estimatedVehicleCount || 0} vehicles,
+              your estimated monthly total after trial is ${estimatedMonthlyTotal.toLocaleString()}/month. Billing
+              begins automatically in 14 days unless you cancel first.
             </div>
 
             <div className="login-action-row">

@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
+  Linking,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -9,11 +10,10 @@ import {
   View
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import * as Location from 'expo-location';
 
 import api from '../services/api';
 import {
-  getDriverFromToken,
-  getToken,
   removeClockInTime,
   removeToken,
   saveClockInTime
@@ -241,6 +241,66 @@ export function getRouteSummary(route) {
   ].filter(Boolean);
 }
 
+export function getDriverDayStatus(driverDay, route) {
+  if (route) {
+    return 'dispatched';
+  }
+
+  return driverDay?.status || 'unassigned';
+}
+
+export function getDriverWaitingCopy(driverDay) {
+  const routePreview = driverDay?.route_preview || null;
+  const routeLabel = routePreview?.work_area_name ? `Route ${routePreview.work_area_name}` : 'Your route';
+  const syncedLine = routePreview?.last_manifest_sync_at
+    ? ` ReadyRoute last staged it at ${new Date(routePreview.last_manifest_sync_at).toLocaleTimeString([], {
+        hour: 'numeric',
+        minute: '2-digit'
+      })}.`
+    : '';
+
+  return {
+    title: 'Route staged for dispatch',
+    body: `${routeLabel} is loaded in ReadyRoute and waiting for your lead manager to dispatch the day.${syncedLine}`
+  };
+}
+
+export function getPostDispatchChangeNotice(route) {
+  const policyCode = route?.post_dispatch_change_policy?.code || 'none';
+
+  if (policyCode === 'manager_review_required') {
+    return {
+      title: 'Route changed after dispatch',
+      body: 'FCC changed this route after it went live and work has already started. Check with your manager before continuing if anything looks different.'
+    };
+  }
+
+  if (policyCode === 'driver_warning') {
+    return {
+      title: 'Route updated after dispatch',
+      body: 'FCC changed this route after it went live. Review your next stops carefully before heading out.'
+    };
+  }
+
+  return null;
+}
+
+export function hasGrantedLocationPermission(permission) {
+  return Boolean(permission?.granted || permission?.status === 'granted');
+}
+
+export function getLocationRequirementCopy() {
+  return {
+    title: 'Share location to use ReadyRoute',
+    body: 'ReadyRoute requires live location sharing while drivers are using the app so managers can track active drivers and support routes in real time.'
+  };
+}
+
+export function shouldPromptForLocationPermission(permission) {
+  const status = String(permission?.status || '').toLowerCase();
+  return !status || status === 'undetermined';
+}
+
 function isUnauthorizedError(error) {
   return error?.response?.status === 401;
 }
@@ -249,7 +309,6 @@ export default function HomeScreen({ navigation, onLogout }) {
   const isMountedRef = useRef(true);
   const activeBreakTimerRef = useRef(null);
   const [route, setRoute] = useState(null);
-  const [driverName, setDriverName] = useState('Driver');
   const [clockedInAt, setClockedInAt] = useState(null);
   const [activeBreak, setActiveBreak] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -257,7 +316,57 @@ export default function HomeScreen({ navigation, onLogout }) {
   const [isUpdatingClock, setIsUpdatingClock] = useState(false);
   const [isUpdatingBreak, setIsUpdatingBreak] = useState(false);
   const [isRetryingLoad, setIsRetryingLoad] = useState(false);
+  const [isResolvingLocationPermission, setIsResolvingLocationPermission] = useState(false);
+  const [hasLocationAccess, setHasLocationAccess] = useState(true);
   const [loadError, setLoadError] = useState(null);
+  const [driverDay, setDriverDay] = useState({ status: 'unknown' });
+
+  async function ensureLocationPermission({ showAlert = false } = {}) {
+    setIsResolvingLocationPermission(true);
+
+    try {
+      const currentPermission = await Location.getForegroundPermissionsAsync();
+      const permission = shouldPromptForLocationPermission(currentPermission)
+        ? await Location.requestForegroundPermissionsAsync()
+        : currentPermission;
+      const granted = hasGrantedLocationPermission(permission);
+
+      if (isMountedRef.current) {
+        setHasLocationAccess(granted);
+      }
+
+      if (!granted && showAlert) {
+        Alert.alert('Location required', getLocationRequirementCopy().body, [
+          {
+            text: 'Not now',
+            style: 'cancel'
+          },
+          {
+            text: 'Open Settings',
+            onPress: () => {
+              Linking.openSettings?.().catch(() => {});
+            }
+          }
+        ]);
+      }
+
+      return granted;
+    } catch (_error) {
+      if (isMountedRef.current) {
+        setHasLocationAccess(false);
+      }
+
+      if (showAlert) {
+        Alert.alert('Location required', getLocationRequirementCopy().body);
+      }
+
+      return false;
+    } finally {
+      if (isMountedRef.current) {
+        setIsResolvingLocationPermission(false);
+      }
+    }
+  }
 
   async function loadHomeData({ showAlert = true, isRetry = false } = {}) {
     if (isRetry && isMountedRef.current) {
@@ -265,8 +374,7 @@ export default function HomeScreen({ navigation, onLogout }) {
     }
 
     try {
-      const [token, routeResponse, timecardStatusResponse] = await Promise.all([
-        getToken(),
+      const [routeResponse, timecardStatusResponse] = await Promise.all([
         api.get('/routes/today'),
         api.get('/timecards/status')
       ]);
@@ -275,16 +383,19 @@ export default function HomeScreen({ navigation, onLogout }) {
         return;
       }
 
-      const payload = getDriverFromToken(token);
-      setDriverName(payload?.name || 'Driver');
       const timecardStatus = timecardStatusResponse;
       const activeTimecard = timecardStatus?.data?.active_timecard || null;
       const activeBreakState = timecardStatus?.data?.active_break || null;
       const resolvedClockIn = activeTimecard?.clock_in || null;
+      const nextRoute = routeResponse.data?.route || null;
+      const nextDriverDay = routeResponse.data?.driver_day || {
+        status: nextRoute ? 'dispatched' : 'unassigned'
+      };
 
       setClockedInAt(resolvedClockIn);
       setActiveBreak(activeBreakState);
-      setRoute(routeResponse.data?.route || null);
+      setRoute(nextRoute);
+      setDriverDay(nextDriverDay);
       setLoadError(null);
 
       if (resolvedClockIn) {
@@ -322,6 +433,7 @@ export default function HomeScreen({ navigation, onLogout }) {
   }
 
   useEffect(() => {
+    ensureLocationPermission({ showAlert: false });
     loadHomeData();
 
     return () => {
@@ -331,6 +443,28 @@ export default function HomeScreen({ navigation, onLogout }) {
       }
     };
   }, []);
+
+  useEffect(() => {
+    const unsubscribe = navigation?.addListener?.('focus', () => {
+      loadHomeData({ showAlert: false });
+    });
+
+    return unsubscribe;
+  }, [navigation]);
+
+  useEffect(() => {
+    const driverDayStatus = getDriverDayStatus(driverDay, route);
+
+    if (driverDayStatus !== 'awaiting_dispatch') {
+      return undefined;
+    }
+
+    const interval = setInterval(() => {
+      loadHomeData({ showAlert: false });
+    }, 30000);
+
+    return () => clearInterval(interval);
+  }, [driverDay, route]);
 
   useEffect(() => {
     if (activeBreakTimerRef.current) {
@@ -383,6 +517,12 @@ export default function HomeScreen({ navigation, onLogout }) {
       return;
     }
 
+    const hasPermission = await ensureLocationPermission({ showAlert: true });
+
+    if (!hasPermission) {
+      return;
+    }
+
     if (route.status === 'in_progress') {
       navigation.navigate('MyDrive');
       return;
@@ -415,6 +555,14 @@ export default function HomeScreen({ navigation, onLogout }) {
   }
 
   async function handleClockToggle() {
+    if (!clockedInAt) {
+      const hasPermission = await ensureLocationPermission({ showAlert: true });
+
+      if (!hasPermission) {
+        return;
+      }
+    }
+
     if (!route && !clockedInAt) {
       Alert.alert('No route assigned', 'You need a route assigned today before clocking in.');
       return;
@@ -502,9 +650,12 @@ export default function HomeScreen({ navigation, onLogout }) {
   }
 
   const friendlyDate = getFriendlyDate();
-  const greeting = getGreetingByTime();
   const routePresentation = route ? getRoutePresentation(route.status) : null;
   const routeSummary = getRouteSummary(route);
+  const driverDayStatus = getDriverDayStatus(driverDay, route);
+  const waitingCopy = getDriverWaitingCopy(driverDay);
+  const postDispatchNotice = getPostDispatchChangeNotice(route);
+  const locationRequirementCopy = getLocationRequirementCopy();
   const breakButtonLabel = activeBreak ? `End ${formatBreakLabel(activeBreak.break_type)}` : 'Break';
   const dailyReminder = useMemo(() => getDailySafetyReminder(new Date()), []);
 
@@ -555,13 +706,33 @@ export default function HomeScreen({ navigation, onLogout }) {
           <View style={styles.mainContent}>
             <View style={styles.topRow}>
               <View style={styles.topRowText}>
-                <Text style={styles.title}>{greeting}, {driverName}</Text>
                 <Text style={styles.dateText}>{friendlyDate}</Text>
               </View>
               <Pressable onPress={handleLogout} style={styles.logoutButton}>
                 <Text style={styles.logoutText}>Logout</Text>
               </Pressable>
             </View>
+
+            {!hasLocationAccess ? (
+              <View style={styles.locationGateCard}>
+                <Text style={styles.locationGateTitle}>{locationRequirementCopy.title}</Text>
+                <Text style={styles.locationGateBody}>{locationRequirementCopy.body}</Text>
+                <Pressable
+                  onPress={() => ensureLocationPermission({ showAlert: true })}
+                  style={({ pressed }) => [
+                    styles.locationGateButton,
+                    isResolvingLocationPermission && styles.buttonDisabled,
+                    pressed && !isResolvingLocationPermission ? styles.buttonPressed : null
+                  ]}
+                >
+                  {isResolvingLocationPermission ? (
+                    <ActivityIndicator color="#ffffff" />
+                  ) : (
+                    <Text style={styles.locationGateButtonText}>Enable Location</Text>
+                  )}
+                </Pressable>
+              </View>
+            ) : null}
 
             <View style={styles.safetyCard}>
               <View style={styles.safetyCardHeader}>
@@ -590,21 +761,34 @@ export default function HomeScreen({ navigation, onLogout }) {
                 </View>
               ) : (
                 <View style={styles.inlineEmptyState}>
-                  <Text style={styles.inlineEmptyTitle}>No route assigned yet</Text>
-                  <Text style={styles.inlineEmptyBody}>Your manager still needs to assign today&apos;s route.</Text>
+                  <Text style={styles.inlineEmptyTitle}>
+                    {driverDayStatus === 'awaiting_dispatch' ? waitingCopy.title : 'No route assigned yet'}
+                  </Text>
+                  <Text style={styles.inlineEmptyBody}>
+                    {driverDayStatus === 'awaiting_dispatch'
+                      ? waitingCopy.body
+                      : 'Your manager still needs to assign today&apos;s route.'}
+                  </Text>
                 </View>
               )}
             </View>
 
+            {postDispatchNotice ? (
+              <View style={styles.inlineNoticeState}>
+                <Text style={styles.inlineNoticeTitle}>{postDispatchNotice.title}</Text>
+                <Text style={styles.inlineNoticeBody}>{postDispatchNotice.body}</Text>
+              </View>
+            ) : null}
+
             {routePresentation?.actionLabel ? (
               <Pressable
-                disabled={isStartingRoute}
+                disabled={isStartingRoute || !hasLocationAccess}
                 onPress={handleRouteAction}
                 style={({ pressed }) => [
                   styles.primaryButton,
                   styles.startRouteButton,
-                  isStartingRoute && styles.buttonDisabled,
-                  pressed && !isStartingRoute ? styles.buttonPressed : null
+                  (isStartingRoute || !hasLocationAccess) && styles.buttonDisabled,
+                  pressed && !isStartingRoute && hasLocationAccess ? styles.buttonPressed : null
                 ]}
               >
                 {isStartingRoute ? (
@@ -618,14 +802,14 @@ export default function HomeScreen({ navigation, onLogout }) {
 
           <View style={styles.actionRow}>
             <Pressable
-              disabled={isUpdatingClock || (!route && !clockedInAt)}
+              disabled={isUpdatingClock || (!route && !clockedInAt) || (!hasLocationAccess && !clockedInAt)}
               onPress={handleClockToggle}
               style={({ pressed }) => [
                 styles.clockButton,
                 clockedInAt ? styles.clockButtonActive : styles.clockButtonIdle,
                 styles.actionButton,
-                (isUpdatingClock || (!route && !clockedInAt)) && styles.buttonDisabled,
-                pressed && !isUpdatingClock ? styles.clockButtonPressed : null
+                (isUpdatingClock || (!route && !clockedInAt) || (!hasLocationAccess && !clockedInAt)) && styles.buttonDisabled,
+                pressed && !isUpdatingClock && (hasLocationAccess || clockedInAt) ? styles.clockButtonPressed : null
               ]}
             >
               {isUpdatingClock ? (
@@ -715,29 +899,24 @@ const styles = StyleSheet.create({
     textAlign: 'center'
   },
   topRow: {
-    alignItems: 'flex-start',
+    alignItems: 'center',
     flexDirection: 'row',
     justifyContent: 'space-between',
     gap: 12,
-    marginBottom: 18
+    marginBottom: 10,
+    marginTop: 74
   },
   topRowText: {
     flex: 1,
     flexShrink: 1,
     paddingRight: 8
   },
-  title: {
-    color: '#173042',
-    flexShrink: 1,
-    fontSize: 24,
-    fontWeight: '800',
-    lineHeight: 31
-  },
   dateText: {
-    color: '#707070',
+    color: '#173042',
     fontSize: 16,
-    lineHeight: 24,
-    marginTop: 8
+    fontWeight: '700',
+    lineHeight: 22,
+    marginTop: 0
   },
   logoutButton: {
     alignSelf: 'flex-start',
@@ -751,6 +930,39 @@ const styles = StyleSheet.create({
     color: '#173042',
     fontSize: 16,
     fontWeight: '700'
+  },
+  locationGateCard: {
+    backgroundColor: '#fff1e6',
+    borderColor: '#ffbf8c',
+    borderRadius: 24,
+    borderWidth: 1,
+    padding: 18
+  },
+  locationGateTitle: {
+    color: '#173042',
+    fontSize: 19,
+    fontWeight: '800',
+    marginBottom: 8
+  },
+  locationGateBody: {
+    color: '#5d6973',
+    fontSize: 15,
+    lineHeight: 22
+  },
+  locationGateButton: {
+    alignItems: 'center',
+    alignSelf: 'flex-start',
+    backgroundColor: '#ff7a1a',
+    borderRadius: 999,
+    justifyContent: 'center',
+    marginTop: 14,
+    minHeight: 42,
+    paddingHorizontal: 16
+  },
+  locationGateButtonText: {
+    color: '#ffffff',
+    fontSize: 14,
+    fontWeight: '800'
   },
   safetyCard: {
     backgroundColor: '#FFF3CD',
@@ -884,6 +1096,24 @@ const styles = StyleSheet.create({
   },
   inlineEmptyBody: {
     color: '#666666',
+    fontSize: 14,
+    lineHeight: 20
+  },
+  inlineNoticeState: {
+    backgroundColor: '#fff4e8',
+    borderColor: '#ffcfad',
+    borderRadius: 18,
+    borderWidth: 1,
+    padding: 16
+  },
+  inlineNoticeTitle: {
+    color: '#9a3412',
+    fontSize: 16,
+    fontWeight: '700',
+    marginBottom: 6
+  },
+  inlineNoticeBody: {
+    color: '#7c4a22',
     fontSize: 14,
     lineHeight: 20
   },

@@ -16,6 +16,7 @@ jest.mock('../services/auth', () => ({
 }));
 
 jest.mock('expo-location', () => ({
+  getForegroundPermissionsAsync: jest.fn(),
   requestForegroundPermissionsAsync: jest.fn(),
   getCurrentPositionAsync: jest.fn()
 }));
@@ -51,6 +52,8 @@ import {
   getStopsPerHourLabel,
   getTimeCommitCallout,
   getTimeCommitUrgency,
+  hasGrantedLocationPermission,
+  shouldPromptForLocationPermission,
   getStopType,
   getVisibleBannerBadges,
   toCoordinate
@@ -101,6 +104,10 @@ describe('MyDriveScreen helpers', () => {
     expect(getTimeCommitCallout(timedStop).title).toContain('Deliver between');
     expect(getStopsPerHourLabel(null)).toBe('-- stops/hr');
     expect(getStopsPerHourLabel(1.4)).toBe('1.4 stops/hr');
+    expect(hasGrantedLocationPermission({ granted: true })).toBe(true);
+    expect(hasGrantedLocationPermission({ granted: false })).toBe(false);
+    expect(shouldPromptForLocationPermission({ status: 'undetermined' })).toBe(true);
+    expect(shouldPromptForLocationPermission({ status: 'granted' })).toBe(false);
   });
 
   it('keeps quick intel and stop tools compact and operational', () => {

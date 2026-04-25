@@ -286,7 +286,7 @@ test('POST /billing/webhook processes Stripe test events', async () => {
       subscription_status: 'past_due'
     });
     assert.deepEqual(updates[2], {
-      plan: 'active',
+      plan: 'pro',
       subscription_status: 'active'
     });
   } finally {

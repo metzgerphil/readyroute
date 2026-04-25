@@ -33,11 +33,21 @@ create table if not exists public.accounts (
   subscription_status text,
   vehicle_count integer not null default 0,
   plan text not null default 'starter',
+  driver_starter_pin text default '1234',
+  operations_timezone text not null default 'America/Los_Angeles',
+  dispatch_window_start_hour integer not null default 6,
+  dispatch_window_end_hour integer not null default 11,
+  manifest_sync_interval_minutes integer not null default 15,
   manager_email text unique,
   manager_password_hash text,
   created_at timestamptz not null default now(),
   constraint accounts_vehicle_count_nonnegative check (vehicle_count >= 0),
-  constraint accounts_plan_check check (plan in ('starter', 'active', 'suspended'))
+  constraint accounts_plan_check check (plan in ('starter', 'pro', 'active', 'suspended')),
+  constraint accounts_driver_starter_pin_check check (driver_starter_pin is null or driver_starter_pin ~ '^[0-9]{4}$'),
+  constraint accounts_dispatch_window_start_hour_check check (dispatch_window_start_hour >= 0 and dispatch_window_start_hour <= 23),
+  constraint accounts_dispatch_window_end_hour_check check (dispatch_window_end_hour >= 1 and dispatch_window_end_hour <= 23),
+  constraint accounts_dispatch_window_order_check check (dispatch_window_end_hour > dispatch_window_start_hour),
+  constraint accounts_manifest_sync_interval_check check (manifest_sync_interval_minutes in (5, 10, 15, 20, 30, 60))
 );
 
 create table if not exists public.manager_users (
@@ -51,6 +61,47 @@ create table if not exists public.manager_users (
   accepted_at timestamptz,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
+);
+
+create table if not exists public.account_link_codes (
+  id uuid primary key default gen_random_uuid(),
+  account_id uuid not null references public.accounts(id) on delete cascade,
+  code text not null unique,
+  created_by_manager_user_id uuid references public.manager_users(id) on delete set null,
+  created_at timestamptz not null default now(),
+  expires_at timestamptz not null,
+  used_at timestamptz,
+  used_by_account_id uuid references public.accounts(id) on delete set null
+);
+
+create table if not exists public.fedex_accounts (
+  id uuid primary key default gen_random_uuid(),
+  account_id uuid not null references public.accounts(id) on delete cascade,
+  nickname text not null,
+  account_number text not null,
+  billing_contact_name text,
+  billing_company_name text,
+  billing_address_line1 text not null,
+  billing_address_line2 text,
+  billing_city text not null,
+  billing_state_or_province text not null,
+  billing_postal_code text not null,
+  billing_country_code text not null default 'US',
+  connection_status text not null default 'not_started',
+  connection_reference text,
+  fcc_username text,
+  fcc_password_encrypted text,
+  fcc_password_updated_at timestamptz,
+  last_verified_at timestamptz,
+  is_default boolean not null default false,
+  created_by_manager_user_id uuid references public.manager_users(id) on delete set null,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  disconnected_at timestamptz,
+  constraint fedex_accounts_connection_status_check check (
+    connection_status in ('not_started', 'pending_mfa', 'connected', 'failed', 'disconnected')
+  ),
+  constraint fedex_accounts_account_number_length check (char_length(trim(account_number)) >= 5)
 );
 
 create table if not exists public.drivers (
@@ -70,10 +121,13 @@ create table if not exists public.vehicles (
   id uuid primary key default gen_random_uuid(),
   account_id uuid not null references public.accounts(id) on delete cascade,
   name text not null,
+  truck_type text,
+  custom_truck_type text,
   make text,
   model text,
   year integer,
   plate text,
+  registration_expiration date,
   current_mileage integer not null default 0,
   last_service_date date,
   last_service_mileage integer,
@@ -88,11 +142,25 @@ create table if not exists public.vehicle_maintenance (
   vehicle_id uuid not null references public.vehicles(id) on delete cascade,
   account_id uuid not null references public.accounts(id) on delete cascade,
   service_date date not null,
+  service_type text,
   description text not null,
+  condition_notes text,
   cost numeric(10, 2),
   mileage_at_service integer,
   next_service_mileage integer,
+  next_service_date date,
   created_at timestamptz not null default now()
+);
+
+create table if not exists public.vehicle_maintenance_settings (
+  id uuid primary key default gen_random_uuid(),
+  account_id uuid not null references public.accounts(id) on delete cascade,
+  service_type text not null,
+  is_enabled boolean not null default true,
+  default_interval_miles integer,
+  default_interval_days integer,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
 );
 
 create table if not exists public.routes (
@@ -103,6 +171,16 @@ create table if not exists public.routes (
   work_area_name text not null,
   date date not null,
   status text not null default 'pending',
+  dispatch_state text not null default 'staged',
+  dispatched_at timestamptz,
+  dispatched_by_manager_user_id uuid references public.manager_users(id) on delete set null,
+  sync_state text not null default 'sync_pending',
+  last_manifest_sync_at timestamptz,
+  last_manifest_change_at timestamptz,
+  manifest_stop_count integer not null default 0,
+  manifest_package_count integer not null default 0,
+  manifest_fingerprint text,
+  last_manifest_sync_error text,
   source text,
   sa_number text,
   contractor_name text,
@@ -110,11 +188,59 @@ create table if not exists public.routes (
   completed_stops integer not null default 0,
   started_at timestamptz,
   completed_at timestamptz,
+  archived_at timestamptz,
+  archived_reason text,
   created_at timestamptz not null default now(),
   constraint routes_total_stops_nonnegative check (total_stops >= 0),
   constraint routes_completed_stops_nonnegative check (completed_stops >= 0),
+  constraint routes_manifest_stop_count_nonnegative check (manifest_stop_count >= 0),
+  constraint routes_manifest_package_count_nonnegative check (manifest_package_count >= 0),
   constraint routes_completed_stops_lte_total_stops check (completed_stops <= total_stops),
-  constraint routes_status_check check (status in ('pending', 'ready', 'in_progress', 'complete'))
+  constraint routes_status_check check (status in ('pending', 'ready', 'in_progress', 'complete')),
+  constraint routes_dispatch_state_check check (dispatch_state in ('staged', 'dispatched')),
+  constraint routes_sync_state_check check (sync_state in ('sync_pending', 'syncing', 'staged_changed', 'staged_stable', 'dispatch_blocked', 'changed_after_dispatch', 'needs_attention', 'sync_failed'))
+);
+
+create table if not exists public.route_sync_events (
+  id uuid primary key default gen_random_uuid(),
+  account_id uuid not null references public.accounts(id) on delete cascade,
+  route_id uuid not null references public.routes(id) on delete cascade,
+  work_date date not null,
+  event_type text not null,
+  event_status text not null default 'info',
+  summary text not null,
+  details jsonb not null default '{}'::jsonb,
+  manager_user_id uuid references public.manager_users(id) on delete set null,
+  created_at timestamptz not null default timezone('utc', now()),
+  constraint route_sync_events_type_check check (event_type in ('manifest_staged', 'manifest_updated', 'route_assignment_updated', 'routes_dispatched', 'post_dispatch_change', 'fcc_progress_synced')),
+  constraint route_sync_events_status_check check (event_status in ('info', 'warning', 'urgent'))
+);
+
+create table if not exists public.fedex_sync_runs (
+  id uuid primary key default gen_random_uuid(),
+  account_id uuid not null references public.accounts(id) on delete cascade,
+  fedex_account_id uuid references public.fedex_accounts(id) on delete set null,
+  work_date date not null,
+  trigger_source text not null default 'manual',
+  run_status text not null default 'queued',
+  sync_window_state text,
+  initiated_by_manager_user_id uuid references public.manager_users(id) on delete set null,
+  manifest_count integer not null default 0,
+  changed_route_count integer not null default 0,
+  error_summary text,
+  details jsonb not null default '{}'::jsonb,
+  started_at timestamptz,
+  finished_at timestamptz,
+  created_at timestamptz not null default now(),
+  constraint fedex_sync_runs_trigger_source_check check (trigger_source in ('manual', 'scheduled', 'progress_sync')),
+  constraint fedex_sync_runs_status_check check (
+    run_status in ('queued', 'running', 'completed', 'completed_with_changes', 'skipped', 'failed')
+  ),
+  constraint fedex_sync_runs_window_state_check check (
+    sync_window_state is null or sync_window_state in ('before_window', 'active_window', 'after_window', 'historical', 'scheduled')
+  ),
+  constraint fedex_sync_runs_manifest_count_nonnegative check (manifest_count >= 0),
+  constraint fedex_sync_runs_changed_route_count_nonnegative check (changed_route_count >= 0)
 );
 
 create table if not exists public.stops (
@@ -243,6 +369,8 @@ create table if not exists public.vedr_settings (
   id uuid primary key default gen_random_uuid(),
   account_id uuid not null references public.accounts(id) on delete cascade,
   provider text,
+  provider_login_url text,
+  provider_username_hint text,
   connection_status text not null default 'not_started',
   provider_selected_at timestamptz,
   connection_started_at timestamptz,
@@ -306,6 +434,20 @@ create table if not exists public.daily_driver_labor (
   estimated_pay numeric(10, 2) not null default 0
 );
 
+create table if not exists public.labor_adjustments (
+  id uuid primary key default gen_random_uuid(),
+  account_id uuid not null references public.accounts(id) on delete cascade,
+  manager_user_id uuid references public.manager_users(id) on delete set null,
+  driver_id uuid not null references public.drivers(id) on delete cascade,
+  route_id uuid references public.routes(id) on delete set null,
+  timecard_id uuid references public.timecards(id) on delete set null,
+  work_date date not null,
+  adjustment_reason text not null,
+  before_state jsonb not null default '{}'::jsonb,
+  after_state jsonb not null default '{}'::jsonb,
+  created_at timestamptz not null default now()
+);
+
 create table if not exists public.driver_positions (
   id uuid primary key default gen_random_uuid(),
   driver_id uuid not null references public.drivers(id) on delete cascade,
@@ -323,6 +465,27 @@ alter table public.accounts add column if not exists manager_password_hash text;
 alter table public.accounts add column if not exists stripe_subscription_id text;
 alter table public.accounts add column if not exists subscription_status text;
 alter table public.accounts add column if not exists vehicle_count integer not null default 0;
+alter table public.accounts add column if not exists driver_starter_pin text default '1234';
+alter table public.accounts add column if not exists operations_timezone text not null default 'America/Los_Angeles';
+alter table public.accounts add column if not exists dispatch_window_start_hour integer not null default 6;
+alter table public.accounts add column if not exists dispatch_window_end_hour integer not null default 11;
+alter table public.accounts add column if not exists manifest_sync_interval_minutes integer not null default 15;
+
+update public.accounts
+set driver_starter_pin = '1234'
+where driver_starter_pin is null;
+do $$
+begin
+  if not exists (
+    select 1
+    from pg_constraint
+    where conname = 'accounts_driver_starter_pin_check'
+  ) then
+    alter table public.accounts
+      add constraint accounts_driver_starter_pin_check
+      check (driver_starter_pin is null or driver_starter_pin ~ '^[0-9]{4}$');
+  end if;
+end $$;
 
 alter table public.routes add column if not exists work_area_name text;
 alter table public.routes add column if not exists created_at timestamptz not null default now();
@@ -332,6 +495,8 @@ alter table public.routes add column if not exists total_stops integer not null 
 alter table public.routes add column if not exists completed_stops integer not null default 0;
 alter table public.routes add column if not exists started_at timestamptz;
 alter table public.routes add column if not exists completed_at timestamptz;
+alter table public.routes add column if not exists archived_at timestamptz;
+alter table public.routes add column if not exists archived_reason text;
 
 alter table public.stops add column if not exists address_line2 text;
 alter table public.stops add column if not exists contact_name text;
@@ -394,6 +559,8 @@ alter table public.property_intel add column if not exists created_at timestampt
 alter table public.property_intel add column if not exists updated_at timestamptz not null default now();
 alter table public.vedr_settings add column if not exists account_id uuid references public.accounts(id) on delete cascade;
 alter table public.vedr_settings add column if not exists provider text;
+alter table public.vedr_settings add column if not exists provider_login_url text;
+alter table public.vedr_settings add column if not exists provider_username_hint text;
 alter table public.vedr_settings add column if not exists connection_status text not null default 'not_started';
 alter table public.vedr_settings add column if not exists provider_selected_at timestamptz;
 alter table public.vedr_settings add column if not exists connection_started_at timestamptz;
@@ -451,13 +618,23 @@ create index if not exists vehicle_maintenance_vehicle_id_idx on public.vehicle_
 create index if not exists vehicle_maintenance_account_id_idx on public.vehicle_maintenance(account_id);
 create index if not exists vehicle_maintenance_service_date_idx on public.vehicle_maintenance(service_date desc);
 create index if not exists manager_users_account_id_idx on public.manager_users(account_id);
-create unique index if not exists manager_users_email_uidx on public.manager_users(lower(email));
+alter table public.manager_users drop constraint if exists manager_users_email_key;
+drop index if exists public.manager_users_email_uidx;
+drop index if exists public.manager_users_lower_email_uidx;
+create unique index if not exists manager_users_account_email_uidx on public.manager_users(account_id, lower(email));
+create index if not exists account_link_codes_account_id_idx on public.account_link_codes(account_id);
+create index if not exists account_link_codes_expires_at_idx on public.account_link_codes(expires_at desc);
+create index if not exists fedex_accounts_account_id_idx on public.fedex_accounts(account_id);
+create index if not exists fedex_accounts_status_idx on public.fedex_accounts(account_id, connection_status);
+create unique index if not exists fedex_accounts_default_uidx on public.fedex_accounts(account_id) where is_default = true and disconnected_at is null;
+create unique index if not exists fedex_accounts_account_number_uidx on public.fedex_accounts(account_id, account_number) where disconnected_at is null;
 create index if not exists routes_account_id_idx on public.routes(account_id);
 create index if not exists routes_driver_id_idx on public.routes(driver_id);
 create index if not exists routes_vehicle_id_idx on public.routes(vehicle_id);
 create index if not exists routes_date_idx on public.routes(date);
 create index if not exists routes_work_area_name_idx on public.routes(work_area_name);
-create unique index if not exists routes_work_area_date_account on public.routes(account_id, work_area_name, date);
+create index if not exists routes_archived_at_idx on public.routes(archived_at);
+create unique index if not exists routes_work_area_date_account on public.routes(account_id, work_area_name, date) where archived_at is null;
 create index if not exists stops_route_id_idx on public.stops(route_id);
 create index if not exists stops_status_idx on public.stops(status);
 create index if not exists packages_stop_id_idx on public.packages(stop_id);
@@ -484,8 +661,14 @@ create index if not exists timecard_breaks_driver_id_idx on public.timecard_brea
 create index if not exists timecard_breaks_started_at_idx on public.timecard_breaks(started_at desc);
 create index if not exists daily_labor_snapshots_account_date_idx on public.daily_labor_snapshots(account_id, work_date desc);
 create unique index if not exists daily_labor_snapshots_account_date_uidx on public.daily_labor_snapshots(account_id, work_date);
+create index if not exists route_sync_events_route_created_idx on public.route_sync_events(route_id, created_at desc);
+create index if not exists route_sync_events_account_work_date_idx on public.route_sync_events(account_id, work_date desc, created_at desc);
+create index if not exists fedex_sync_runs_account_work_date_idx on public.fedex_sync_runs(account_id, work_date desc, created_at desc);
+create index if not exists fedex_sync_runs_status_idx on public.fedex_sync_runs(run_status, created_at desc);
 create index if not exists daily_driver_labor_batch_id_idx on public.daily_driver_labor(batch_id);
 create unique index if not exists daily_driver_labor_batch_driver_uidx on public.daily_driver_labor(batch_id, driver_id);
+create index if not exists labor_adjustments_account_date_idx on public.labor_adjustments(account_id, work_date desc);
+create index if not exists labor_adjustments_driver_id_idx on public.labor_adjustments(driver_id, created_at desc);
 create index if not exists timecards_route_id_idx on public.timecards(route_id);
 create index if not exists driver_positions_driver_id_idx on public.driver_positions(driver_id);
 create index if not exists driver_positions_route_id_idx on public.driver_positions(route_id);
@@ -503,6 +686,11 @@ alter table public.road_rules enable row level security;
 alter table public.stop_notes enable row level security;
 alter table public.property_intel enable row level security;
 alter table public.vedr_settings enable row level security;
+alter table public.fedex_accounts enable row level security;
+alter table public.fedex_accounts add column if not exists fcc_username text;
+alter table public.fedex_accounts add column if not exists fcc_password_encrypted text;
+alter table public.fedex_accounts add column if not exists fcc_password_updated_at timestamptz;
+alter table public.fedex_sync_runs enable row level security;
 alter table public.timecards enable row level security;
 alter table public.driver_positions enable row level security;
 
@@ -609,6 +797,20 @@ with check (account_id = public.readyroute_account_id());
 drop policy if exists vedr_settings_by_account on public.vedr_settings;
 create policy vedr_settings_by_account
 on public.vedr_settings
+for all
+using (account_id = public.readyroute_account_id())
+with check (account_id = public.readyroute_account_id());
+
+drop policy if exists fedex_accounts_by_account on public.fedex_accounts;
+create policy fedex_accounts_by_account
+on public.fedex_accounts
+for all
+using (account_id = public.readyroute_account_id())
+with check (account_id = public.readyroute_account_id());
+
+drop policy if exists fedex_sync_runs_by_account on public.fedex_sync_runs;
+create policy fedex_sync_runs_by_account
+on public.fedex_sync_runs
 for all
 using (account_id = public.readyroute_account_id())
 with check (account_id = public.readyroute_account_id());

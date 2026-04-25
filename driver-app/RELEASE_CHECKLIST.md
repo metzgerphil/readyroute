@@ -4,6 +4,7 @@
 - `npm run check`
 - `npm run check:release`
 - Confirm `EXPO_PUBLIC_API_URL` points to production, not localhost
+- Confirm `EXPO_PUBLIC_USE_LOCAL_API=false` unless you intentionally want the simulator/dev app hitting your local backend
 - Confirm `EXPO_PUBLIC_GOOGLE_MAPS_API_KEY` is present and active
 - Confirm `eas.json` production profile is current
 

@@ -22,6 +22,34 @@ function formatSyncLine(timestamp) {
   return `Last synced today at ${format(date, 'h:mm a')}`;
 }
 
+function formatAuditEventTime(timestamp) {
+  if (!timestamp) {
+    return 'Unknown time';
+  }
+
+  return format(new Date(timestamp), 'h:mm a');
+}
+
+function getDispatchWindowCopy(routeSyncSettings) {
+  if (!routeSyncSettings) {
+    return 'ReadyRoute uses this CSA’s local dispatch window to interpret route readiness.';
+  }
+
+  switch (routeSyncSettings.dispatch_window_state) {
+    case 'before_window':
+      return `It is still before this CSA’s local dispatch window (${routeSyncSettings.dispatch_window_label} ${routeSyncSettings.operations_timezone}). ReadyRoute should keep staging morning changes.`;
+    case 'active_window':
+      return `This CSA is inside its active dispatch window (${routeSyncSettings.dispatch_window_label} ${routeSyncSettings.operations_timezone}). Dispatch can happen as soon as blockers are cleared.`;
+    case 'after_window':
+      return `This CSA is past its configured dispatch window for today (${routeSyncSettings.dispatch_window_label} ${routeSyncSettings.operations_timezone}). Treat late manifest changes more carefully.`;
+    case 'historical':
+      return `You are reviewing a historical date. Dispatch timing is shown using ${routeSyncSettings.operations_timezone}.`;
+    case 'scheduled':
+    default:
+      return `ReadyRoute will use ${routeSyncSettings.operations_timezone} and the ${routeSyncSettings.dispatch_window_label} window for this CSA’s morning route sync logic.`;
+  }
+}
+
 const ROUTE_COLOR_PALETTE = [
   '#ff6200',
   '#1a73e8',
@@ -85,6 +113,14 @@ function buildManifestMarkers(routes, routeColorMap) {
 }
 
 function getRouteStatus(route) {
+  if (route.dispatch_state === 'dispatched') {
+    return { label: 'Dispatched', className: 'manifest-status-pill active' };
+  }
+
+  if (route.dispatch_state === 'staged') {
+    return { label: 'Staged', className: 'manifest-status-pill ready' };
+  }
+
   if (!route.driver_id) {
     return { label: 'Unassigned', className: 'manifest-status-pill unassigned' };
   }
@@ -98,6 +134,26 @@ function getRouteStatus(route) {
   }
 
   return { label: 'Ready', className: 'manifest-status-pill ready' };
+}
+
+function getRouteSyncStatePill(route) {
+  switch (route.sync_state) {
+    case 'staged_stable':
+      return { label: 'Stable', className: 'manifest-status-pill mapped' };
+    case 'staged_changed':
+      return { label: 'Changed', className: 'manifest-status-pill partial' };
+    case 'dispatch_blocked':
+      return { label: 'Blocked', className: 'manifest-status-pill unassigned' };
+    case 'changed_after_dispatch':
+      return { label: 'Changed after dispatch', className: 'manifest-status-pill partial' };
+    case 'sync_failed':
+      return { label: 'Sync failed', className: 'manifest-status-pill needs-pins' };
+    case 'syncing':
+      return { label: 'Syncing', className: 'manifest-status-pill ready' };
+    case 'sync_pending':
+    default:
+      return { label: 'Pending sync', className: 'manifest-status-pill ready' };
+  }
 }
 
 function getRouteMapHealth(route) {
@@ -197,6 +253,25 @@ function saveStoredManifestUpload(dateValue, latestUpload) {
 function getRouteAttentionItems(route) {
   const items = [];
 
+  if (route?.sync_state === 'staged_changed') {
+    items.push({ key: 'sync-changed', label: 'Manifest changed since last sync', tone: 'warning' });
+  }
+
+  if (route?.sync_state === 'changed_after_dispatch') {
+    items.push({
+      key: 'post-dispatch-change',
+      label:
+        route?.post_dispatch_change_policy?.code === 'manager_review_required'
+          ? 'Changed after dispatch · manager review required'
+          : 'Changed after dispatch · driver warning',
+      tone: route?.post_dispatch_change_policy?.code === 'manager_review_required' ? 'urgent' : 'warning'
+    });
+  }
+
+  if (route?.sync_state === 'sync_failed') {
+    items.push({ key: 'sync-failed', label: 'Sync failed', tone: 'urgent' });
+  }
+
   if (!route?.driver_id) {
     items.push({ key: 'driver', label: 'Needs driver', tone: 'urgent' });
   }
@@ -225,6 +300,81 @@ function getRouteAttentionItems(route) {
   }
 
   return items;
+}
+
+function routeHasAddressWarnings(route) {
+  return (route?.stops || []).some((stop) => Boolean(stop?.notes));
+}
+
+function routeBlocksDispatch(route) {
+  return ['sync_pending', 'syncing', 'sync_failed', 'needs_attention', 'dispatch_blocked'].includes(
+    route?.sync_state
+  );
+}
+
+function routeNeedsDispatchReview(route) {
+  if (route?.dispatch_state === 'dispatched' || routeBlocksDispatch(route)) {
+    return false;
+  }
+
+  return (
+    route?.sync_state === 'staged_changed' ||
+    route?.sync_state === 'changed_after_dispatch' ||
+    route?.map_status === 'needs_pins' ||
+    route?.map_status === 'partially_mapped' ||
+    routeHasAddressWarnings(route)
+  );
+}
+
+function getRouteDispatchSummary(route) {
+  if (routeBlocksDispatch(route)) {
+    if (!route?.driver_id && !route?.vehicle_id) {
+      return 'Assign a driver and a vehicle before this route can dispatch.';
+    }
+    if (!route?.driver_id) {
+      return 'Assign a driver before dispatch.';
+    }
+    if (!route?.vehicle_id) {
+      return 'Assign a vehicle before dispatch.';
+    }
+    if (route?.sync_state === 'sync_failed') {
+      return 'Manifest sync failed. Review this route before dispatch.';
+    }
+    if (route?.sync_state === 'syncing' || route?.sync_state === 'sync_pending') {
+      return 'ReadyRoute is still building this manifest.';
+    }
+    return 'This route needs attention before dispatch.';
+  }
+
+  if (route?.sync_state === 'changed_after_dispatch') {
+    if (route?.post_dispatch_change_policy?.code === 'manager_review_required') {
+      return 'The manifest changed after dispatch and the route is already in progress. Recheck with the driver before sending further updates.';
+    }
+
+    return 'The manifest changed after dispatch before work really started. Warn the driver and confirm they see the updated route.';
+  }
+
+  if (route?.sync_state === 'staged_changed') {
+    return 'The manifest changed since the last stable sync. Review before dispatch.';
+  }
+
+  if (route?.map_status === 'needs_pins') {
+    return 'This route still needs usable pins before drivers head out.';
+  }
+
+  if (route?.map_status === 'partially_mapped') {
+    return `${route?.missing_stops || 0} stop${route?.missing_stops === 1 ? '' : 's'} still need pins before dispatch review is complete.`;
+  }
+
+  if (routeHasAddressWarnings(route)) {
+    return 'Address warnings were detected on this route. Review before dispatch.';
+  }
+
+  if (route?.dispatch_state === 'dispatched') {
+    return 'This route is already live in the driver app.';
+  }
+
+  return 'This route is staged and ready to dispatch.';
 }
 
 function createWarningRows(routes, editedWarnings = {}) {
@@ -273,6 +423,7 @@ export default function ManifestPage() {
   const [editedWarnings, setEditedWarnings] = useState({});
   const [editingWarningIds, setEditingWarningIds] = useState({});
   const [savingRouteIds, setSavingRouteIds] = useState(new Set());
+  const [selectedDispatchRouteIds, setSelectedDispatchRouteIds] = useState([]);
 
   const today = getTodayString();
   const isPastDate = date < today;
@@ -305,6 +456,7 @@ export default function ManifestPage() {
   const routePayload = routesQuery.data || {};
   const routeSummaries = routePayload.routes || [];
   const syncStatus = routePayload.sync_status || { routes_today: 0, routes_assigned: 0, last_sync_at: null };
+  const routeSyncSettings = routePayload.route_sync_settings || null;
   const fedexConnection = routePayload.fedex_connection || { is_connected: false, terminal_label: null };
   const warningRows = useMemo(() => createWarningRows(routeSummaries, editedWarnings), [routeSummaries, editedWarnings]);
   const routeColorMap = useMemo(() => getRouteColorMap(routeSummaries), [routeSummaries]);
@@ -325,7 +477,21 @@ export default function ManifestPage() {
   const routesNeedingVehicles = routeSummaries.filter((route) => !route.vehicle_id);
   const routesNeedingPins = routeSummaries.filter((route) => route.map_status === 'needs_pins');
   const partiallyMappedRoutes = routeSummaries.filter((route) => route.map_status === 'partially_mapped');
-  const routesWithWarnings = routeSummaries.filter((route) => (route.stops || []).some((stop) => Boolean(stop.notes)));
+  const routesWithWarnings = routeSummaries.filter((route) => routeHasAddressWarnings(route));
+  const routesWithSyncWarnings = routeSummaries.filter((route) => route.sync_state === 'staged_changed');
+  const routesChangedAfterDispatch = routeSummaries.filter((route) => route.sync_state === 'changed_after_dispatch');
+  const routesWithSyncFailures = routeSummaries.filter((route) => route.sync_state === 'sync_failed');
+  const stagedRoutes = routeSummaries.filter((route) => route.dispatch_state !== 'dispatched');
+  const dispatchedRoutes = routeSummaries.filter((route) => route.dispatch_state === 'dispatched');
+  const blockedDispatchRoutes = routeSummaries.filter((route) => routeBlocksDispatch(route));
+  const reviewDispatchRoutes = routeSummaries.filter((route) => routeNeedsDispatchReview(route));
+  const readyDispatchRoutes = routeSummaries.filter(
+    (route) =>
+      route.dispatch_state !== 'dispatched' && !routeBlocksDispatch(route) && !routeNeedsDispatchReview(route)
+  );
+  const dispatchableRoutes = routeSummaries.filter(
+    (route) => route.dispatch_state !== 'dispatched' && !routeBlocksDispatch(route)
+  );
   const isSetupFlow = searchParams.get('source') === 'setup';
   const setupFocus = searchParams.get('focus') || '';
   const setupBanner = useMemo(() => {
@@ -364,6 +530,10 @@ export default function ManifestPage() {
   }, [date]);
 
   useEffect(() => {
+    setSelectedDispatchRouteIds(dispatchableRoutes.map((route) => route.id));
+  }, [dispatchableRoutes]);
+
+  useEffect(() => {
     saveStoredManifestUpload(date, latestUpload);
   }, [date, latestUpload]);
 
@@ -395,6 +565,12 @@ export default function ManifestPage() {
     }, 220);
   }
 
+  function toggleDispatchRoute(routeId) {
+    setSelectedDispatchRouteIds((current) =>
+      current.includes(routeId) ? current.filter((value) => value !== routeId) : [...current, routeId]
+    );
+  }
+
   const pullManifestMutation = useMutation({
     mutationFn: async () => {
       const response = await api.post('/routes/pull-fedex');
@@ -412,6 +588,23 @@ export default function ManifestPage() {
       if ((refreshed?.routes || []).length > 0) {
         setSyncPanelExpanded(false);
       }
+    }
+  });
+
+  const dispatchRoutesMutation = useMutation({
+    mutationFn: async () => {
+      const response = await api.post('/manager/routes/dispatch', {
+        date,
+        route_ids: selectedDispatchRouteIds
+      });
+      return response.data;
+    },
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['manager-routes', date] }),
+        queryClient.invalidateQueries({ queryKey: ['fleet-map-routes', date] }),
+        queryClient.invalidateQueries({ queryKey: ['dashboard-overview-routes', date] })
+      ]);
     }
   });
 
@@ -1014,10 +1207,54 @@ export default function ManifestPage() {
             <div className="manifest-note">{allRoutesHaveDrivers ? 'All visible routes have drivers assigned.' : 'Some routes still need driver assignment.'}</div>
           </div>
 
-          <div className="manifest-dispatch-summary">
+          <div className="manifest-dispatch-board">
+            <div className="manifest-dispatch-overview">
+              <div>
+                <div className="manifest-dispatch-eyebrow">Dispatch board</div>
+                <div className="manifest-dispatch-headline">
+                  {blockedDispatchRoutes.length
+                    ? `${blockedDispatchRoutes.length} route${blockedDispatchRoutes.length === 1 ? '' : 's'} still block dispatch`
+                    : reviewDispatchRoutes.length
+                      ? `${reviewDispatchRoutes.length} route${reviewDispatchRoutes.length === 1 ? '' : 's'} should be reviewed before dispatch`
+                      : `${readyDispatchRoutes.length} route${readyDispatchRoutes.length === 1 ? '' : 's'} are ready to dispatch`}
+                </div>
+                <div className="manifest-step-subtitle">
+                  ReadyRoute is staging FCC route data in the background. Use this board to clear blockers, review changed routes, and dispatch when the day is ready.
+                </div>
+                {routeSyncSettings ? (
+                  <div className="manifest-note">
+                    {getDispatchWindowCopy(routeSyncSettings)} FCC polling target: every {routeSyncSettings.manifest_sync_interval_minutes} minutes.
+                  </div>
+                ) : null}
+              </div>
+              <div className="manifest-dispatch-status-panel">
+                <div className="manifest-dispatch-status-row">
+                  <span className="manifest-dispatch-status-label">Ready now</span>
+                  <span className="manifest-dispatch-status-value">{readyDispatchRoutes.length}</span>
+                </div>
+                <div className="manifest-dispatch-status-row warning">
+                  <span className="manifest-dispatch-status-label">Review before dispatch</span>
+                  <span className="manifest-dispatch-status-value">{reviewDispatchRoutes.length}</span>
+                </div>
+                <div className="manifest-dispatch-status-row urgent">
+                  <span className="manifest-dispatch-status-label">Blocking dispatch</span>
+                  <span className="manifest-dispatch-status-value">{blockedDispatchRoutes.length}</span>
+                </div>
+              </div>
+            </div>
+
+            <div className="manifest-dispatch-summary">
             <div className="manifest-dispatch-card">
               <div className="manifest-dispatch-value">{routeSummaries.length - routesNeedingDrivers.length}</div>
               <div className="manifest-dispatch-label">Routes with drivers</div>
+            </div>
+            <div className="manifest-dispatch-card">
+              <div className="manifest-dispatch-value">{stagedRoutes.length}</div>
+              <div className="manifest-dispatch-label">Staged</div>
+            </div>
+            <div className="manifest-dispatch-card">
+              <div className="manifest-dispatch-value">{dispatchedRoutes.length}</div>
+              <div className="manifest-dispatch-label">Dispatched</div>
             </div>
             <div className="manifest-dispatch-card warning">
               <div className="manifest-dispatch-value">{routesNeedingDrivers.length}</div>
@@ -1035,10 +1272,76 @@ export default function ManifestPage() {
               <div className="manifest-dispatch-value">{routesWithWarnings.length}</div>
               <div className="manifest-dispatch-label">Have address warnings</div>
             </div>
+            <div className="manifest-dispatch-card warning">
+              <div className="manifest-dispatch-value">{routesWithSyncWarnings.length + routesChangedAfterDispatch.length}</div>
+              <div className="manifest-dispatch-label">Changed manifests</div>
+            </div>
+          </div>
           </div>
 
-          {(routesNeedingDrivers.length || routesNeedingVehicles.length || routesNeedingPins.length || partiallyMappedRoutes.length || routesWithWarnings.length) ? (
+          {dispatchRoutesMutation.isError ? (
+            <div className="error-banner">
+              {dispatchRoutesMutation.error?.response?.data?.error || 'Failed to dispatch routes.'}
+            </div>
+          ) : null}
+          {dispatchRoutesMutation.data?.dispatched_count ? (
+            <div className="success-banner">
+              Dispatched {dispatchRoutesMutation.data.dispatched_count} route{dispatchRoutesMutation.data.dispatched_count === 1 ? '' : 's'} for {formatMorningDate(date)}.
+            </div>
+          ) : null}
+
+          <div className="manifest-route-actions">
+            <button
+              className="primary-cta manifest-button"
+              disabled={isPastDate || dispatchRoutesMutation.isPending || selectedDispatchRouteIds.length === 0}
+              onClick={() => dispatchRoutesMutation.mutate()}
+              type="button"
+            >
+              {dispatchRoutesMutation.isPending
+                ? 'Dispatching…'
+                : `Dispatch ${selectedDispatchRouteIds.length} Route${selectedDispatchRouteIds.length === 1 ? '' : 's'}`}
+            </button>
+            <div className="manifest-note">
+              {blockedDispatchRoutes.length
+                ? `${blockedDispatchRoutes.length} route${blockedDispatchRoutes.length === 1 ? '' : 's'} will block dispatch until assignments or sync issues are resolved.`
+                : reviewDispatchRoutes.length
+                  ? `${reviewDispatchRoutes.length} route${reviewDispatchRoutes.length === 1 ? '' : 's'} should be reviewed, but can still dispatch if the lead manager is comfortable sending them.`
+                  : 'Staged routes stay hidden from drivers until dispatch. After dispatch, driver apps pick up the live route for the day.'}
+            </div>
+          </div>
+
+          {(routesNeedingDrivers.length || routesNeedingVehicles.length || routesNeedingPins.length || partiallyMappedRoutes.length || routesWithWarnings.length || routesWithSyncWarnings.length || routesChangedAfterDispatch.length || routesWithSyncFailures.length) ? (
             <div className="manifest-attention-strip">
+              {routesWithSyncFailures.map((route) => (
+                <button
+                  className="manifest-attention-chip urgent"
+                  key={`${route.id}-sync-failed`}
+                  onClick={() => jumpToRouteField(route.id, 'driver_id')}
+                  type="button"
+                >
+                  {route.work_area_name}: sync failed
+                </button>
+              ))}
+              {routesWithSyncWarnings.map((route) => (
+                <button
+                  className="manifest-attention-chip warning"
+                  key={`${route.id}-sync-warning`}
+                  onClick={() => jumpToRouteField(route.id)}
+                  type="button"
+                >
+                  {route.work_area_name}: manifest changed
+                </button>
+              ))}
+              {routesChangedAfterDispatch.map((route) => (
+                <button
+                  className="manifest-attention-chip urgent"
+                  key={`${route.id}-post-dispatch`}
+                  onClick={() => jumpToRouteField(route.id)}
+                  type="button"
+                >
+                  {route.work_area_name}: changed after dispatch
+                </button>
+              ))}
               {routesNeedingDrivers.map((route) => (
                 <button
                   className="manifest-attention-chip urgent"
@@ -1092,9 +1395,44 @@ export default function ManifestPage() {
             </div>
           ) : null}
 
-          <div className="manifest-route-grid">
-            {routeSummaries.map((route) => {
+          <div className="manifest-dispatch-lanes">
+            {[
+              {
+                key: 'blocked',
+                title: 'Blocking dispatch',
+                subtitle: 'These routes need assignments or sync repair before the day can be dispatched.',
+                className: 'manifest-lane-card urgent',
+                routes: blockedDispatchRoutes
+              },
+              {
+                key: 'review',
+                title: 'Review before dispatch',
+                subtitle: 'These routes can move forward, but the lead manager should confirm changes, warnings, or pin gaps.',
+                className: 'manifest-lane-card warning',
+                routes: reviewDispatchRoutes
+              },
+              {
+                key: 'ready',
+                title: 'Ready to dispatch',
+                subtitle: 'These routes are staged cleanly and are ready for the driver app once dispatch happens.',
+                className: 'manifest-lane-card success',
+                routes: readyDispatchRoutes
+              }
+            ].map((lane) => (
+              <section className={lane.className} key={lane.key}>
+                <div className="manifest-lane-header">
+                  <div>
+                    <div className="card-title">{lane.title}</div>
+                    <div className="manifest-step-subtitle">{lane.subtitle}</div>
+                  </div>
+                  <div className="manifest-lane-count">{lane.routes.length}</div>
+                </div>
+
+                {lane.routes.length ? (
+                  <div className="manifest-route-grid">
+                    {lane.routes.map((route) => {
               const routeStatus = getRouteStatus(route);
+              const routeSyncPill = getRouteSyncStatePill(route);
               const routeMapHealth = getRouteMapHealth(route);
               const isSaving = savingRouteIds.has(route.id);
               const upcomingStops = (route.stops || [])
@@ -1114,6 +1452,17 @@ export default function ManifestPage() {
                     }
                   }}
                 >
+                  {route.dispatch_state !== 'dispatched' && !routeBlocksDispatch(route) ? (
+                    <label className="manifest-dispatch-select">
+                      <input
+                        checked={selectedDispatchRouteIds.includes(route.id)}
+                        onChange={() => toggleDispatchRoute(route.id)}
+                        type="checkbox"
+                      />
+                      <span>Include in dispatch</span>
+                    </label>
+                  ) : null}
+
                   <div className="manifest-route-card-header">
                     <div>
                       <div className="manifest-route-card-title">{route.work_area_name || '--'}</div>
@@ -1122,9 +1471,11 @@ export default function ManifestPage() {
                         {route.completed_stops ? ` · ${route.completed_stops} done` : ''}
                         {typeof route.mapped_stops === 'number' ? ` · ${route.mapped_stops} mapped` : ''}
                       </div>
+                      <div className="manifest-route-readiness-line">{getRouteDispatchSummary(route)}</div>
                     </div>
                     <div className="manifest-route-pill-stack">
                       <span className={routeStatus.className}>{routeStatus.label}</span>
+                      <span className={routeSyncPill.className}>{routeSyncPill.label}</span>
                       <span className={routeMapHealth.className}>{routeMapHealth.label}</span>
                     </div>
                   </div>
@@ -1151,6 +1502,23 @@ export default function ManifestPage() {
                         <span className={`manifest-attention-chip ${item.tone}`} key={`${route.id}-${item.key}`}>
                           {item.label}
                         </span>
+                      ))}
+                    </div>
+                  ) : null}
+
+                  {route.audit_events?.length ? (
+                    <div className="manifest-route-audit">
+                      <div className="manifest-address-heading">Recent route history</div>
+                      {route.audit_events.slice(0, 3).map((event) => (
+                        <div className="manifest-route-audit-row" key={event.id}>
+                          <span className={`manifest-status-pill ${event.event_status === 'urgent' ? 'needs-pins' : event.event_status === 'warning' ? 'partial' : 'mapped'}`}>
+                            {event.event_status === 'urgent' ? 'Urgent' : event.event_status === 'warning' ? 'Warning' : 'Logged'}
+                          </span>
+                          <div className="manifest-route-audit-copy">
+                            <div className="manifest-route-audit-summary">{event.summary}</div>
+                            <div className="manifest-route-audit-time">{formatAuditEventTime(event.created_at)}</div>
+                          </div>
+                        </div>
                       ))}
                     </div>
                   ) : null}
@@ -1229,7 +1597,15 @@ export default function ManifestPage() {
                   </div>
                 </article>
               );
-            })}
+                    })}
+                  </div>
+                ) : (
+                  <div className="manifest-lane-empty">
+                    No routes currently belong in this section.
+                  </div>
+                )}
+              </section>
+            ))}
           </div>
 
           <div className="manifest-map-shell">

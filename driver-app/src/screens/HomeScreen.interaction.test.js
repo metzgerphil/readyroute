@@ -1,6 +1,7 @@
 import React from 'react';
 import { Alert, Animated } from 'react-native';
 import { act, fireEvent, render, waitFor } from '@testing-library/react-native';
+import * as Location from 'expo-location';
 
 import HomeScreen, { getDailySafetyReminder } from './HomeScreen';
 import api from '../services/api';
@@ -36,6 +37,11 @@ jest.mock('../services/statusCodes', () => ({
   loadStatusCodes: jest.fn()
 }));
 
+jest.mock('expo-location', () => ({
+  getForegroundPermissionsAsync: jest.fn(),
+  requestForegroundPermissionsAsync: jest.fn()
+}));
+
 describe('HomeScreen interactions', () => {
   const navigation = { navigate: jest.fn() };
   const onLogout = jest.fn();
@@ -64,6 +70,8 @@ describe('HomeScreen interactions', () => {
     getClockInTime.mockResolvedValue(null);
     getDriverFromToken.mockReturnValue({ name: 'Phil' });
     loadStatusCodes.mockResolvedValue(undefined);
+    Location.getForegroundPermissionsAsync.mockResolvedValue({ status: 'granted', granted: true });
+    Location.requestForegroundPermissionsAsync.mockResolvedValue({ granted: true });
 
     api.get.mockImplementation((url) => {
       if (url === '/routes/today') {
@@ -124,6 +132,54 @@ describe('HomeScreen interactions', () => {
     });
 
     expect(navigation.navigate).toHaveBeenCalledWith('MyDrive');
+  });
+
+  it('shows a waiting-for-dispatch state when a staged route is assigned but not yet live', async () => {
+    api.get.mockImplementation((url) => {
+      if (url === '/routes/today') {
+        return Promise.resolve({
+          data: {
+            route: null,
+            driver_day: {
+              status: 'awaiting_dispatch',
+              route_preview: {
+                work_area_name: '810',
+                last_manifest_sync_at: '2026-04-24T13:45:00.000Z'
+              }
+            }
+          }
+        });
+      }
+
+      if (url === '/timecards/status') {
+        return Promise.resolve({
+          data: {
+            active_timecard: null,
+            active_break: null
+          }
+        });
+      }
+
+      return Promise.reject(new Error(`Unexpected GET ${url}`));
+    });
+
+    const screen = await renderAndFlush();
+
+    await waitFor(() => {
+      expect(screen.getByText('Route staged for dispatch')).toBeTruthy();
+      expect(screen.getByText(/Route 810 is loaded in ReadyRoute/)).toBeTruthy();
+    });
+  });
+
+  it('shows a location-sharing gate when driver location permission is denied', async () => {
+    Location.getForegroundPermissionsAsync.mockResolvedValue({ status: 'denied', granted: false });
+
+    const screen = await renderAndFlush();
+
+    await waitFor(() => {
+      expect(screen.getByText('Share location to use ReadyRoute')).toBeTruthy();
+      expect(screen.getByText('Enable Location')).toBeTruthy();
+    });
   });
 
   it('clocks in and starts a lunch break from the action row', async () => {
