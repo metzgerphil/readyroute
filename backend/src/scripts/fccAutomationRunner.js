@@ -133,12 +133,18 @@ function normalizeText(value) {
     .trim();
 }
 
+function normalizeWorkAreaName(value) {
+  return normalizeText(value)
+    .replace(/\s+-\s+(Available|Unavailable|Assigned|Unassigned|Selected)\s*$/i, '')
+    .trim();
+}
+
 function normalizeWorkAreaKey(value) {
-  return normalizeText(value).toLowerCase();
+  return normalizeWorkAreaName(value).toLowerCase();
 }
 
 function extractRouteCode(value) {
-  const match = normalizeText(value).match(/\b(\d{3,5})\b/);
+  const match = normalizeWorkAreaName(value).match(/\b(\d{3,5})\b/);
   return match ? match[1] : null;
 }
 
@@ -552,7 +558,7 @@ async function listCandidateWorkAreas(page, config) {
   const workAreas = [];
 
   for (const optionWorkArea of optionWorkAreas) {
-    const text = normalizeText(optionWorkArea);
+    const text = normalizeWorkAreaName(optionWorkArea);
 
     if (isMeaningfulWorkAreaName(text)) {
       workAreas.push(text);
@@ -572,7 +578,7 @@ async function listCandidateWorkAreas(page, config) {
       continue;
     }
     seen.add(key);
-    deduped.push(workArea);
+    deduped.push(normalizeWorkAreaName(workArea));
   }
 
   if (config.routeFilter.length === 0) {
@@ -593,7 +599,11 @@ async function selectWorkArea(page, config, targetWorkArea) {
   }
 
   const resolvedValue = await select.evaluate((element, target) => {
-    const normalize = (value) => String(value || '').replace(/\s+/g, ' ').trim().toLowerCase();
+    const normalize = (value) => String(value || '')
+      .replace(/\s+/g, ' ')
+      .replace(/\s+-\s+(Available|Unavailable|Assigned|Unassigned|Selected)\s*$/i, '')
+      .trim()
+      .toLowerCase();
     const targetNormalized = normalize(target);
     const targetCodeMatch = String(target || '').match(/\b(\d{3,5})\b/);
     const targetCode = targetCodeMatch ? targetCodeMatch[1] : null;
