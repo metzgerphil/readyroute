@@ -15,13 +15,6 @@ const GOOGLE_MAPS_SRC = GOOGLE_MAPS_KEY
   ? `https://maps.googleapis.com/maps/api/js?key=${GOOGLE_MAPS_KEY}&v=weekly`
   : null;
 
-const STATUS_META = {
-  pending: { label: 'Pending', fill: '#1a2332', border: '#ffffff', text: '#ffffff' },
-  delivered: { label: 'Delivered', fill: '#27ae60', border: '#1e8449', text: '#ffffff' },
-  attempted: { label: 'Attempted', fill: '#f39c12', border: '#d68910', text: '#ffffff' },
-  incomplete: { label: 'Incomplete', fill: '#e74c3c', border: '#cb4335', text: '#ffffff' }
-};
-
 const ROUTE_STATUS_META = {
   pending: { label: 'Pending', color: '#9ca3af' },
   ready: { label: 'Ready', color: '#3b82f6' },
@@ -93,10 +86,6 @@ function getFriendlyDate(dateValue) {
   return format(new Date(`${dateValue}T12:00:00`), 'MMMM d, yyyy');
 }
 
-function getStatusMeta(status) {
-  return STATUS_META[status] || STATUS_META.pending;
-}
-
 function getStopType(stop) {
   if (stop.stop_type === 'combined' || (stop.has_pickup && stop.has_delivery)) {
     return 'combined';
@@ -107,30 +96,12 @@ function getStopType(stop) {
   return 'delivery';
 }
 
-function getStopTypeLabel(stop) {
-  const type = getStopType(stop);
-  if (type === 'combined') {
-    return 'Combined';
-  }
-  if (type === 'pickup') {
-    return 'Pickup';
-  }
-  return 'Delivery';
-}
-
 function getPackageCount(stop) {
   return Array.isArray(stop.packages) ? stop.packages.length : 0;
 }
 
-function getDriverInitials(name) {
-  const parts = String(name || '').split(/\s+/).filter(Boolean);
-  if (!parts.length) {
-    return 'RR';
-  }
-  if (parts.length === 1) {
-    return parts[0].slice(0, 2).toUpperCase();
-  }
-  return `${parts[0][0] || ''}${parts[parts.length - 1][0] || ''}`.toUpperCase();
+function getStopMapLabel(stop) {
+  return stop?.sid && String(stop.sid) !== '0' ? `SID ${stop.sid}` : `ST#${stop.sequence_order || '—'}`;
 }
 
 function formatTimeCommit(stop) {
@@ -330,25 +301,9 @@ function getRouteCentroid(stops = []) {
   };
 }
 
-function buildInfoBadge(label, styles) {
-  return `<span style="${styles}">${escapeHtml(label)}</span>`;
-}
-
-function formatWarningFlag(flag) {
-  return String(flag || '')
-    .replace(/_/g, ' ')
-    .replace(/\b([a-z])/g, (_match, letter) => letter.toUpperCase());
-}
-
-function getPinAccuracyLabel(stop) {
-  return getPropertyWorkflowHint(stop).pinMeta.title;
-}
-
 function buildInfoWindow(stop) {
   const packageCount = getPackageCount(stop);
-  const status = getStatusMeta(stop.status);
   const stopType = getStopType(stop);
-  const typeLabel = getStopTypeLabel(stop);
   const timeCommitLine = formatTimeCommit(stop);
   const timeCommitCopy = timeCommitLine
     ? stopType === 'pickup'
@@ -359,68 +314,12 @@ function buildInfoWindow(stop) {
     : null;
   const addressLine1 = stop.address || 'No address available';
   const noteText = stop.has_note && stop.notes ? stop.notes : null;
-  const exceptionText = stop.exception_code ? ` (${stop.exception_code})` : '';
   const locationAccuracy =
     stop.geocode_source === 'driver_verified'
       ? { color: '#0891b2', label: 'Driver-verified location' }
       : stop.geocode_source === 'tomtom' && stop.geocode_accuracy === 'point'
       ? { color: '#16a34a', label: 'Precise location' }
       : { color: '#6b7280', label: 'Street level' };
-  const badges = [
-    buildInfoBadge(
-      typeLabel,
-      'display:inline-flex; align-items:center; justify-content:center; padding:4px 10px; border-radius:999px; background:#fff3e8; color:#ff6200; font-size:12px; font-weight:900;'
-    )
-  ];
-
-  if (stop.is_business) {
-    badges.push(
-      buildInfoBadge(
-        'Business',
-        'display:inline-flex; align-items:center; justify-content:center; padding:4px 10px; border-radius:999px; background:#111111; color:#ffffff; font-size:11px; font-weight:900;'
-      )
-    );
-  }
-
-  if (stop.is_apartment_unit) {
-    badges.push(
-      buildInfoBadge(
-        'Apartment / Unit',
-        'display:inline-flex; align-items:center; justify-content:center; padding:4px 10px; border-radius:999px; background:#f3e8ff; color:#7c3aed; font-size:11px; font-weight:900;'
-      )
-    );
-  }
-
-  if (stop.has_note && noteText) {
-    badges.push(
-      buildInfoBadge(
-        'Has note',
-        'display:inline-flex; align-items:center; justify-content:center; padding:4px 10px; border-radius:999px; background:#fff7ed; color:#c2410c; font-size:11px; font-weight:900;'
-      )
-    );
-  }
-
-  if (stop.has_time_commit && timeCommitLine) {
-    badges.push(
-      buildInfoBadge(
-        `TC ${timeCommitLine}`,
-        'display:inline-flex; align-items:center; justify-content:center; padding:4px 10px; border-radius:999px; background:#fff3cd; color:#8a5200; font-size:11px; font-weight:900;'
-      )
-    );
-  }
-
-  const operationalLines = [
-    packageCount ? `${packageCount} ${packageCount === 1 ? 'package' : 'packages'}` : '0 packages'
-  ];
-
-  if (stop.sid && stop.sid !== '0') {
-    operationalLines.push(`SID ${stop.sid}`);
-  }
-
-  if (stop.delivery_type_code) {
-    operationalLines.push(`Delivery code ${stop.delivery_type_code}`);
-  }
-
   const pickupContextCopy =
     stopType === 'pickup'
       ? 'Pickup stop'
@@ -437,55 +336,23 @@ function buildInfoWindow(stop) {
           : ''
       } • ${escapeHtml(apartmentIntelligence.verified ? 'Verified' : `${apartmentIntelligence.confidence} confidence ${apartmentIntelligence.source}`)}`
       : null;
-  const propertyBadges = [];
-
-  if (propertyIntel?.location_type) {
-    propertyBadges.push(
-      buildInfoBadge(
-        String(propertyIntel.location_type).toUpperCase(),
-        'display:inline-flex; align-items:center; justify-content:center; padding:4px 10px; border-radius:999px; background:#e2e8f0; color:#173042; font-size:11px; font-weight:900;'
-      )
-    );
-  }
-
-  if (propertyIntel?.building) {
-    propertyBadges.push(
-      buildInfoBadge(
-        propertyIntel.building,
-        'display:inline-flex; align-items:center; justify-content:center; padding:4px 10px; border-radius:999px; background:#e0f2fe; color:#0f4c81; font-size:11px; font-weight:900;'
-      )
-    );
-  }
-
-  (propertyIntel?.warning_flags || []).forEach((flag) => {
-    propertyBadges.push(
-      buildInfoBadge(
-        formatWarningFlag(flag),
-        'display:inline-flex; align-items:center; justify-content:center; padding:4px 10px; border-radius:999px; background:#fff7ed; color:#c2410c; font-size:11px; font-weight:900;'
-      )
-    );
-  });
-
   return `
-    <div style="min-width:300px; max-width:340px; color:#173042; padding:8px 6px;">
-      <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
-        <div style="font-size:15px; font-weight:900;">ST#${stop.sequence_order}</div>
+    <div style="min-width:320px; max-width:430px; color:#173042; padding:10px 8px 8px;">
+      <div style="display:flex; align-items:center; justify-content:space-between; gap:14px;">
+        <div style="font-size:22px; line-height:1; font-weight:950; letter-spacing:-0.02em;">${escapeHtml(getStopMapLabel(stop))}</div>
+        <div style="display:inline-flex; align-items:center; gap:8px; padding:8px 12px; border-radius:999px; background:#f1f5f9; color:#173042; font-size:18px; font-weight:950;" aria-label="${packageCount} packages">
+          <svg aria-hidden="true" width="22" height="22" viewBox="0 0 24 24" style="display:block;">
+            <path d="M4 8.5 12 4l8 4.5v7L12 20l-8-4.5v-7Z" fill="#ff6200" opacity="0.16" stroke="#ff6200" stroke-width="1.8" />
+            <path d="M4.4 8.6 12 13l7.6-4.4M12 13v6.6" fill="none" stroke="#ff6200" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" />
+          </svg>
+          <span>${packageCount}</span>
+        </div>
       </div>
-      <div style="display:flex; gap:6px; align-items:center; flex-wrap:wrap; margin-top:8px;">
-        ${badges.join('')}
-      </div>
-      ${
-        propertyBadges.length
-          ? `<div style="display:flex; gap:6px; align-items:center; flex-wrap:wrap; margin-top:8px;">
-              ${propertyBadges.join('')}
-            </div>`
-          : ''
-      }
-      ${stop.contact_name ? `<div style="margin-top:8px; font-size:14px; font-weight:900;">${stop.contact_name}</div>` : ''}
-      <div style="margin-top:6px; font-size:13px; font-weight:700; color:#173042;">${escapeHtml(addressLine1)}</div>
+      ${stop.contact_name ? `<div style="margin-top:12px; font-size:18px; line-height:1.15; font-weight:950;">${escapeHtml(stop.contact_name)}</div>` : ''}
+      <div style="margin-top:8px; font-size:20px; line-height:1.2; font-weight:950; letter-spacing:-0.02em; color:#173042;">${escapeHtml(addressLine1)}</div>
       ${
         stop.address_line2
-          ? `<div style="margin-top:2px; font-size:12px; color:#6b7280;"><span style="font-weight:800; color:#4b5563;">Unit / Access:</span> ${escapeHtml(stop.address_line2)}</div>`
+          ? `<div style="margin-top:6px; font-size:16px; line-height:1.2; color:#5f6b76;"><span style="font-weight:900; color:#173042;">Unit / Access:</span> ${escapeHtml(stop.address_line2)}</div>`
           : ''
       }
       ${
@@ -520,11 +387,10 @@ function buildInfoWindow(stop) {
             </div>`
           : ''
       }
-      <div style="margin-top:8px; display:flex; align-items:center; gap:6px; color:${locationAccuracy.color}; font-size:12px; font-weight:800;">
+      <div style="margin-top:12px; display:flex; align-items:center; gap:6px; color:${locationAccuracy.color}; font-size:13px; font-weight:850;">
         <span style="width:8px; height:8px; border-radius:50%; background:${locationAccuracy.color}; display:inline-block;"></span>
         <span>${locationAccuracy.label}</span>
       </div>
-      <div style="margin-top:8px; font-size:12px; color:#5f6b76;">${operationalLines.map(escapeHtml).join(' • ')}</div>
       ${
         timeCommitCopy
           ? `<div style="margin-top:10px; padding:8px 10px; border-radius:12px; background:#fff3cd; color:#8a5200; font-size:12px; font-weight:800;">
@@ -539,11 +405,6 @@ function buildInfoWindow(stop) {
             </div>`
           : ''
       }
-      <div style="margin-top:10px;">
-        <span style="display:inline-flex; align-items:center; justify-content:center; min-height:28px; padding:0 12px; border-radius:999px; background:${status.fill}; color:${status.text}; font-size:12px; font-weight:900; border:${stop.status === 'pending' ? '1px solid #ffffff' : 'none'};">
-          ${status.label}${exceptionText}
-        </span>
-      </div>
       ${
         noteText
           ? `<div style="margin-top:10px; padding:10px 12px; border-left:4px solid #ff6200; border-radius:10px; background:#fff7ed; font-size:12px; color:#7c2d12; font-weight:800;">
@@ -859,7 +720,9 @@ export default function RoutePage() {
             zoomControl: true
           });
           infoWindowRef.current = new google.maps.InfoWindow({
-            disableAutoPan: true
+            disableAutoPan: false,
+            maxWidth: 460,
+            pixelOffset: new google.maps.Size(0, -8)
           });
 
           google.maps.event.addListenerOnce(mapInstanceRef.current, 'idle', () => {
@@ -987,13 +850,14 @@ export default function RoutePage() {
       const marker = new google.maps.Marker({
         map,
         position: { lat: Number(stop.lat), lng: Number(stop.lng) },
-        title: `Stop ${stop.sequence_order}`,
+        title: getStopMapLabel(stop),
         icon: createStopMarkerSVG(stop, stop.id === selectedStopId),
         zIndex: getMarkerZIndex(stop, stop.id === selectedStopId)
       });
 
       marker.addListener('click', () => {
         setSelectedStopId(stop.id);
+        map.panTo(marker.getPosition());
         infoWindow.setContent(buildInfoWindow(stop));
         infoWindow.open({ anchor: marker, map, shouldFocus: false });
       });
@@ -1125,6 +989,7 @@ export default function RoutePage() {
     const selectedStop = orderedStops.find((stop) => stop.id === selectedStopId);
 
     if (selectedMarker && selectedStop) {
+      map.panTo(selectedMarker.getPosition());
       infoWindow.setContent(buildInfoWindow(selectedStop));
       infoWindow.open({ anchor: selectedMarker, map, shouldFocus: false });
     }
