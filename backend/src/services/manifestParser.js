@@ -1,5 +1,6 @@
 const XLSX = require('xlsx');
 const { isUsableCoordinate } = require('./coordinates');
+const { normalizeRouteWorkAreaName } = require('./routeIdentity');
 
 function decodeXml(value) {
   return String(value || '')
@@ -802,7 +803,7 @@ async function parseGPXManifest(fileBuffer) {
     manifest_meta: routeName
       ? {
           date: '',
-          work_area_name: workAreaMatch ? stripLeadingZeros(workAreaMatch[1]) : '',
+          work_area_name: normalizeRouteWorkAreaName(workAreaMatch ? stripLeadingZeros(workAreaMatch[1]) : ''),
           driver_name: '',
           vehicle_number: '',
           sa_number: '',
@@ -832,7 +833,7 @@ function parseXLSManifest(fileBuffer) {
 
   const manifestMeta = {
     date: formatManifestDate(headerLookup.Date),
-    work_area_name: stripLeadingZeros(headerLookup['WA#']),
+    work_area_name: normalizeRouteWorkAreaName(stripLeadingZeros(headerLookup['WA#'])),
     driver_name: formatDriverName(headerLookup.Driver),
     vehicle_number: String(headerLookup['Vehicle #'] || '').trim(),
     sa_number: String(headerLookup['SA#'] || '').trim(),

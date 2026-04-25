@@ -302,6 +302,7 @@ function createFedexSyncService(options = {}) {
               manifestFile: pair.manifest_file,
               companionGpxFile: pair.companion_gpx_file || null,
               requestedDriverId: pair.driver_id || null,
+              requestedDriverName: pair.driver_name || null,
               requestedVehicleId: pair.vehicle_id || null,
               requestedDate: pair.date || resolvedWorkDate,
               requestedWorkAreaName: pair.work_area_name || null,
