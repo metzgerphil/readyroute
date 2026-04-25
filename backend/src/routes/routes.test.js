@@ -1611,9 +1611,9 @@ test('POST /routes/upload-manifest accepts XLSX manifests and auto-matches drive
       };
     }
 
-    if (query.table === 'routes' && query.operation === 'select' && query.mode === 'maybeSingle') {
+    if (query.table === 'routes' && query.operation === 'select' && query.mode === 'all') {
       return {
-        data: null,
+        data: [],
         error: null
       };
     }
@@ -1775,9 +1775,9 @@ test('POST /routes/upload-manifest geocodes unknown addresses once and saves map
       };
     }
 
-    if (query.table === 'routes' && query.operation === 'select' && query.mode === 'maybeSingle') {
+    if (query.table === 'routes' && query.operation === 'select' && query.mode === 'all') {
       return {
-        data: null,
+        data: [],
         error: null
       };
     }
@@ -1913,9 +1913,9 @@ test('POST /routes/upload-manifest optionally merges GPX coordinates into spread
       return { data: [], error: null };
     }
 
-    if (query.table === 'routes' && query.operation === 'select' && query.mode === 'maybeSingle') {
+    if (query.table === 'routes' && query.operation === 'select' && query.mode === 'all') {
       return {
-        data: null,
+        data: [],
         error: null
       };
     }
@@ -2036,14 +2036,17 @@ test('POST /routes/upload-manifest returns a clear duplicate-route error when th
       };
     }
 
-    if (query.table === 'routes' && query.operation === 'select' && query.mode === 'maybeSingle') {
+    if (query.table === 'routes' && query.operation === 'select' && query.mode === 'all') {
       return {
-        data: {
-          id: 'route-existing',
-          status: 'in_progress',
-          completed_stops: 1,
-          completed_at: null
-        },
+        data: [
+          {
+            id: 'route-existing',
+            work_area_name: '810',
+            status: 'in_progress',
+            completed_stops: 1,
+            completed_at: null
+          }
+        ],
         error: null
       };
     }
@@ -2118,16 +2121,19 @@ test('POST /routes/upload-manifest merges into an existing not-yet-run route for
       };
     }
 
-    if (query.table === 'routes' && query.operation === 'select' && query.mode === 'maybeSingle') {
+    if (query.table === 'routes' && query.operation === 'select' && query.mode === 'all') {
       return {
-        data: {
-          id: 'route-stale',
-          status: 'in_progress',
-          completed_stops: 0,
-          completed_at: null,
-          driver_id: 'driver-existing',
-          vehicle_id: 'vehicle-existing'
-        },
+        data: [
+          {
+            id: 'route-stale',
+            work_area_name: 'OCEA - 810 BRIDGE 02',
+            status: 'in_progress',
+            completed_stops: 0,
+            completed_at: null,
+            driver_id: 'driver-existing',
+            vehicle_id: 'vehicle-existing'
+          }
+        ],
         error: null
       };
     }

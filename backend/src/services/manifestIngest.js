@@ -6,6 +6,7 @@ const {
   parseXLSManifest
 } = require('./manifestParser');
 const { mergeManifestMeta, mergeManifestStops, normalizeMergedStopSequences } = require('./manifestMerge');
+const { normalizeRouteWorkAreaName } = require('./routeIdentity');
 const { bootstrapApartmentRecords } = require('./apartmentIntelligence');
 const { applyLocationCorrectionsToStops } = require('./locationCorrections');
 const { enrichManifestStopsWithGeocoding } = require('./manifestGeocoding');
@@ -114,14 +115,22 @@ function createAddressHash(address) {
 async function loadExistingManifestRoute(supabase, { accountId, date, workAreaName }) {
   const { data, error } = await supabase
     .from('routes')
-    .select('id, status, dispatch_state, completed_stops, completed_at, driver_id, vehicle_id, manifest_fingerprint, last_manifest_change_at')
+    .select('id, work_area_name, status, dispatch_state, completed_stops, completed_at, driver_id, vehicle_id, manifest_fingerprint, last_manifest_change_at')
     .eq('account_id', accountId)
     .eq('date', date)
-    .eq('work_area_name', workAreaName)
     .is('archived_at', null)
-    .maybeSingle();
+    .order('created_at', { ascending: false });
 
-  return { data, error };
+  if (error) {
+    return { data: null, error };
+  }
+
+  const normalizedTarget = normalizeRouteWorkAreaName(workAreaName);
+  const route = (data || []).find(
+    (entry) => normalizeRouteWorkAreaName(entry.work_area_name) === normalizedTarget
+  ) || null;
+
+  return { data: route, error: null };
 }
 
 function canReplaceExistingManifestRoute(route) {
@@ -254,6 +263,7 @@ function createManifestIngestService(options = {}) {
     manifestFile,
     companionGpxFile = null,
     requestedDriverId = null,
+    requestedDriverName = null,
     requestedVehicleId = null,
     requestedDate = null,
     requestedWorkAreaName = null,
@@ -294,7 +304,8 @@ function createManifestIngestService(options = {}) {
     }
 
     const resolvedDate = requestedDate || manifestMeta.date;
-    const resolvedWorkAreaName = String(requestedWorkAreaName || manifestMeta.work_area_name || '').trim();
+    const resolvedWorkAreaName = normalizeRouteWorkAreaName(requestedWorkAreaName || manifestMeta.work_area_name || '');
+    const requestedDriverNameCandidate = String(requestedDriverName || '').trim();
     let resolvedDriverId = requestedDriverId || null;
     let resolvedVehicleId = requestedVehicleId || null;
     let autoMatchedDriver = false;
@@ -307,7 +318,7 @@ function createManifestIngestService(options = {}) {
         throw new Error('Manifest is missing required date or work area information');
       }
 
-      const manifestDriverName = String(manifestMeta.driver_name || '').trim();
+      const manifestDriverName = String(manifestMeta.driver_name || requestedDriverNameCandidate || '').trim();
       const manifestVehicleNumber = String(manifestMeta.vehicle_number || '').trim();
 
       if (manifestDriverName) {
@@ -462,6 +473,7 @@ function createManifestIngestService(options = {}) {
         .update({
           driver_id: resolvedDriverId,
           vehicle_id: resolvedVehicleId,
+          work_area_name: resolvedWorkAreaName,
           dispatch_state: 'staged',
           dispatched_at: null,
           dispatched_by_manager_user_id: null,

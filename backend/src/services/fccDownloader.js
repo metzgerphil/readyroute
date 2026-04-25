@@ -4,6 +4,7 @@ const { execFile } = require('child_process');
 const { promisify } = require('util');
 
 const { decryptFedexSecret } = require('./fedexCredentials');
+const { normalizeRouteWorkAreaName, parseFccWorkAreaIdentity } = require('./routeIdentity');
 
 const execFileAsync = promisify(execFile);
 
@@ -130,9 +131,12 @@ function createCliFedexFccAdapter(options = {}) {
 
           const manifestBuffer = await fs.readFile(manifest.xls_path);
           const gpxBuffer = manifest.gpx_path ? await fs.readFile(manifest.gpx_path) : null;
+          const identity = parseFccWorkAreaIdentity(manifest.work_area_name || '');
 
           return {
-            work_area_name: manifest.work_area_name || null,
+            work_area_name: identity.routeCode || normalizeRouteWorkAreaName(manifest.work_area_name) || null,
+            raw_work_area_name: identity.rawWorkAreaName || manifest.work_area_name || null,
+            driver_name: manifest.driver_name || identity.driverName || null,
             date: manifest.date || workDate,
             driver_id: manifest.driver_id || null,
             vehicle_id: manifest.vehicle_id || null,
