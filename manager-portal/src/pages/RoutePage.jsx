@@ -576,6 +576,7 @@ export default function RoutePage() {
   const mapTileWatchdogRef = useRef(null);
   const mapTileRetryCountRef = useRef(0);
   const mapTilesLoadedRef = useRef(false);
+  const mapPaintedRef = useRef(false);
   const [date, setDate] = useState(() => getInitialRouteDate(searchParams));
   const [mapError, setMapError] = useState('');
   const [mapReady, setMapReady] = useState(false);
@@ -635,6 +636,7 @@ export default function RoutePage() {
     infoWindowRef.current = null;
     mapInstanceRef.current = null;
     mapTilesLoadedRef.current = false;
+    mapPaintedRef.current = false;
     setMapReady(false);
   }
 
@@ -849,7 +851,12 @@ export default function RoutePage() {
       clearTileWatchdog();
 
       mapTileWatchdogRef.current = window.setTimeout(() => {
-        if (!active || mapTilesLoadedRef.current || !mapContainerRef.current || !map) {
+        if (!active || !mapContainerRef.current || !map) {
+          return;
+        }
+
+        const googleDomPainted = mapPaintedRef.current || Boolean(mapContainerRef.current.querySelector('.gm-style'));
+        if (mapTilesLoadedRef.current && googleDomPainted) {
           return;
         }
 
@@ -859,11 +866,16 @@ export default function RoutePage() {
           fitRoute();
         }
 
-        if (mapTileRetryCountRef.current < 2) {
+        if (mapTileRetryCountRef.current < 3) {
           mapTileRetryCountRef.current += 1;
           setMapIsRepainting(true);
           window.setTimeout(() => {
-            if (!active || mapTilesLoadedRef.current) {
+            if (
+              !active ||
+              (mapTilesLoadedRef.current &&
+                mapContainerRef.current &&
+                mapContainerRef.current.querySelector('.gm-style'))
+            ) {
               return;
             }
 
@@ -872,7 +884,13 @@ export default function RoutePage() {
           }, 250);
         } else {
           setMapIsRepainting(false);
-          setMapError('The map is loaded but tiles did not paint. Tap Recenter map or refresh this page.');
+          setMapLoading(false);
+          setMapReady(false);
+          setMapError(
+            googleDomPainted
+              ? 'The map loaded but tiles did not paint. Tap Fit to route or refresh this page.'
+              : 'Google Maps did not attach to this route map. Refresh this page or check the Maps JavaScript API key settings.'
+          );
         }
       }, 2600);
     }
@@ -910,8 +928,10 @@ export default function RoutePage() {
             map.setZoom(11);
           }
 
-          setMapReady(true);
-          setMapLoading(false);
+          const googleDomPainted = Boolean(mapContainerRef.current?.querySelector?.('.gm-style'));
+          mapPaintedRef.current = googleDomPainted;
+          setMapReady(googleDomPainted);
+          setMapLoading(!googleDomPainted);
           startTileWatchdog(google, map);
         }, 180);
       });
@@ -944,6 +964,8 @@ export default function RoutePage() {
 
         if (shouldCreateFreshMap) {
           resetMapInstance();
+          mapTilesLoadedRef.current = false;
+          mapPaintedRef.current = false;
           mapInstanceRef.current = new google.maps.Map(mapContainerRef.current, {
             center: { lat: 33.1217, lng: -117.0815 },
             zoom: 11,
@@ -967,9 +989,16 @@ export default function RoutePage() {
             stabilizeMap(google, mapInstanceRef.current);
           });
           google.maps.event.addListenerOnce(mapInstanceRef.current, 'tilesloaded', () => {
-            mapTilesLoadedRef.current = true;
-            setMapIsRepainting(false);
-            clearTileWatchdog();
+            const googleDomPainted = Boolean(mapContainerRef.current?.querySelector?.('.gm-style'));
+            mapTilesLoadedRef.current = googleDomPainted;
+            mapPaintedRef.current = googleDomPainted;
+
+            if (googleDomPainted) {
+              setMapReady(true);
+              setMapLoading(false);
+              setMapIsRepainting(false);
+              clearTileWatchdog();
+            }
           });
         } else {
           stabilizeMap(google, mapInstanceRef.current);
