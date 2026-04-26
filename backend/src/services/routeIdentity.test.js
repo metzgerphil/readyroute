@@ -29,10 +29,22 @@ test('parseFccWorkAreaIdentity treats bridge labels as route-only descriptors', 
   );
 });
 
-test('normalizeRouteWorkAreaName keeps only the three digit route code when present', () => {
+test('normalizeRouteWorkAreaName keeps only the route code when present', () => {
   assert.equal(normalizeRouteWorkAreaName('OCEA - 811 BRIDGE 02'), '811');
+  assert.equal(normalizeRouteWorkAreaName('OCEA - 1505 WKND - BRIDGE'), '1505');
   assert.equal(normalizeRouteWorkAreaName('817'), '817');
   assert.equal(normalizeRouteWorkAreaName('Custom Route'), 'Custom Route');
+});
+
+test('parseFccWorkAreaIdentity treats four digit weekend bridge labels as route-only descriptors', () => {
+  assert.deepEqual(
+    parseFccWorkAreaIdentity('OCEA - 1505 WKND - BRIDGE'),
+    {
+      routeCode: '1505',
+      driverName: '',
+      rawWorkAreaName: 'OCEA - 1505 WKND - BRIDGE'
+    }
+  );
 });
 
 test('stripRouteStatusSuffix removes FCC availability status only at the end', () => {

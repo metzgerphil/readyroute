@@ -138,8 +138,7 @@ function canReplaceExistingManifestRoute(route) {
     return false;
   }
 
-  const completedStops = Number(route.completed_stops || 0);
-  return completedStops === 0 && !route.completed_at && route.status !== 'complete' && route.dispatch_state !== 'dispatched';
+  return route.dispatch_state !== 'dispatched' && !route.completed_at;
 }
 
 function isWorkedStopStatus(status) {

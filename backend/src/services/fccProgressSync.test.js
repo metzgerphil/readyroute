@@ -345,7 +345,10 @@ test('applyRouteProgress assigns an unassigned route to the FCC driver when name
   assert.equal(routeEvents[0].details.matched_driver_name, 'Brayant Ramirezcastellanos');
 });
 
-test('applyRouteProgress ignores snapshots that do not match a dispatched route', async () => {
+test('applyRouteProgress skips progress updates until the manager dispatches the route', async () => {
+  const stopsWereLoaded = [];
+  const stopUpdates = [];
+  const routeUpdates = [];
   const supabase = new MockSupabase((query) => {
     if (query.table === 'routes' && query.operation === 'select') {
       return {
@@ -366,7 +369,18 @@ test('applyRouteProgress ignores snapshots that do not match a dispatched route'
       };
     }
 
-    if (query.table === 'route_sync_events' && query.operation === 'insert') {
+    if (query.table === 'stops' && query.operation === 'select') {
+      stopsWereLoaded.push(query);
+      return { data: [], error: null };
+    }
+
+    if (query.table === 'stops' && query.operation === 'update') {
+      stopUpdates.push(query.payload);
+      return { data: query.payload, error: null };
+    }
+
+    if (query.table === 'routes' && query.operation === 'update') {
+      routeUpdates.push(query.payload);
       return { data: query.payload, error: null };
     }
 
@@ -379,12 +393,58 @@ test('applyRouteProgress ignores snapshots that do not match a dispatched route'
     workDate: '2026-04-24',
     progressSnapshots: [
       {
-        work_area_name: '810 BRIDGE 12',
+        work_area_name: '823 BRIDGE 12',
         rows: [{ sid: '1001', is_completed: true }]
       }
     ]
   });
 
   assert.equal(result.completed_updates, 0);
+  assert.equal(result.has_changes, false);
+  assert.equal(result.routes[0].route_id, 'route-1');
+  assert.equal(result.routes[0].status, 'route_not_dispatched');
+  assert.equal(stopsWereLoaded.length, 0);
+  assert.equal(stopUpdates.length, 0);
+  assert.equal(routeUpdates.length, 0);
+});
+
+test('applyRouteProgress reports route_not_found when FCC progress has no matching route', async () => {
+  const supabase = new MockSupabase((query) => {
+    if (query.table === 'routes' && query.operation === 'select') {
+      return {
+        data: [
+          {
+            id: 'route-1',
+            account_id: 'acct-1',
+            work_area_name: '823',
+            date: '2026-04-24',
+            status: 'pending',
+            total_stops: 3,
+            completed_stops: 0,
+            dispatch_state: 'staged',
+            completed_at: null
+          }
+        ],
+        error: null
+      };
+    }
+
+    throw new Error(`Unexpected query ${query.table}:${query.operation}:${query.mode}`);
+  });
+
+  const service = createFccProgressSyncService({ supabase });
+  const result = await service.applyRouteProgress({
+    accountId: 'acct-1',
+    workDate: '2026-04-24',
+    progressSnapshots: [
+      {
+        work_area_name: 'OCEA - 999 BRIDGE 12',
+        rows: [{ sid: '1001', is_completed: true }]
+      }
+    ]
+  });
+
+  assert.equal(result.completed_updates, 0);
+  assert.equal(result.routes[0].route_id, null);
   assert.equal(result.routes[0].status, 'route_not_found');
 });
