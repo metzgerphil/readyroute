@@ -911,6 +911,7 @@ export default function RoutePage() {
           }
 
           setMapReady(true);
+          setMapLoading(false);
           startTileWatchdog(google, map);
         }, 180);
       });
@@ -958,6 +959,10 @@ export default function RoutePage() {
             pixelOffset: new google.maps.Size(0, -8)
           });
 
+          // Some browsers never deliver the first Google Maps idle event when
+          // the map is created inside a freshly mounted, flex-sized panel.
+          // Stabilize immediately so the canvas paints instead of sitting gray.
+          stabilizeMap(google, mapInstanceRef.current);
           google.maps.event.addListenerOnce(mapInstanceRef.current, 'idle', () => {
             stabilizeMap(google, mapInstanceRef.current);
           });
@@ -981,7 +986,6 @@ export default function RoutePage() {
           });
           resizeObserverRef.current.observe(mapContainerRef.current);
         }
-        setMapLoading(false);
       } catch (error) {
         console.error('RoutePage Google Maps load failed:', error);
         if (active) {
