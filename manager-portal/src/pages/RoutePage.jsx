@@ -110,7 +110,7 @@ function getStopPopupTitle(stop) {
 
 function formatCompletionTime(stop) {
   const timestamp = stop?.completed_at || stop?.scanned_at;
-  if (!timestamp || stop?.status !== 'delivered') {
+  if (!timestamp || stop?.status === 'pending') {
     return null;
   }
 
@@ -124,6 +124,19 @@ function formatCompletionTime(stop) {
     minute: '2-digit',
     hour12: true
   }).format(date);
+}
+
+function getCompletionBadge(stop) {
+  const time = formatCompletionTime(stop);
+  if (!time) {
+    return null;
+  }
+
+  if (stop?.status === 'delivered') {
+    return { time, icon: '✓', background: '#16a34a' };
+  }
+
+  return { time, icon: '×', background: '#6b7280' };
 }
 
 function formatTimeCommit(stop) {
@@ -325,7 +338,7 @@ function getRouteCentroid(stops = []) {
 
 function buildInfoWindow(stop) {
   const packageCount = getPackageCount(stop);
-  const completionTime = formatCompletionTime(stop);
+  const completionBadge = getCompletionBadge(stop);
   const stopType = getStopType(stop);
   const timeCommitLine = formatTimeCommit(stop);
   const timeCommitCopy = timeCommitLine
@@ -415,10 +428,17 @@ function buildInfoWindow(stop) {
         <span>${locationAccuracy.label}</span>
       </div>
       ${
-        completionTime
-          ? `<div style="margin-top:12px; display:inline-flex; align-items:center; gap:8px; padding:8px 12px; border-radius:999px; background:#16a34a; color:#ffffff; font-size:18px; font-weight:950;">
-              <span style="font-size:22px; line-height:1;">✓</span>
-              <span>${escapeHtml(completionTime)}</span>
+        stop.exception_code
+          ? `<div style="margin-top:12px; display:inline-flex; align-items:center; gap:8px; padding:8px 12px; border-radius:999px; background:#c93300; color:#ffffff; font-size:18px; font-weight:950;">
+              Code ${escapeHtml(String(stop.exception_code).padStart(2, '0'))}
+            </div>`
+          : ''
+      }
+      ${
+        completionBadge
+          ? `<div style="margin-top:12px; display:inline-flex; align-items:center; gap:8px; padding:8px 12px; border-radius:999px; background:${completionBadge.background}; color:#ffffff; font-size:18px; font-weight:950;">
+              <span style="font-size:22px; line-height:1;">${completionBadge.icon}</span>
+              <span>${escapeHtml(completionBadge.time)}</span>
             </div>`
           : ''
       }
@@ -492,7 +512,7 @@ export default function RoutePage() {
   const [mapType, setMapType] = useState('roadmap');
   const [selectedStopId, setSelectedStopId] = useState(null);
   const [showLegend, setShowLegend] = useState(true);
-  const [showStopDrawer, setShowStopDrawer] = useState(false);
+  const [showStopDrawer, setShowStopDrawer] = useState(true);
   const [stopDrawerFilterCount, setStopDrawerFilterCount] = useState(0);
   const [showExceptions, setShowExceptions] = useState(false);
   const [activeExceptionsTab, setActiveExceptionsTab] = useState('exceptions');
@@ -1531,6 +1551,8 @@ export default function RoutePage() {
 
         <StopListDrawer
           open={showStopDrawer}
+          route={route}
+          routeDriverName={routeDriverName}
           stops={allStops}
           selectedStopId={selectedStopId}
           onClose={() => setShowStopDrawer(false)}

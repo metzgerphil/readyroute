@@ -61,6 +61,72 @@ function formatTimeCommit(stop) {
   return `Close ${stop.close_time}`;
 }
 
+function formatCompletionTime(stop) {
+  const timestamp = stop?.completed_at || stop?.scanned_at;
+  if (!timestamp || stop?.status === 'pending') {
+    return null;
+  }
+
+  const date = new Date(timestamp);
+  if (Number.isNaN(date.getTime())) {
+    return null;
+  }
+
+  return new Intl.DateTimeFormat('en-US', {
+    hour: 'numeric',
+    minute: '2-digit',
+    hour12: true
+  }).format(date);
+}
+
+function getPackageCount(stop) {
+  return Array.isArray(stop?.packages) ? stop.packages.length : 0;
+}
+
+function getStopStats(stops = []) {
+  return stops.reduce(
+    (stats, stop) => {
+      const type = getStopType(stop);
+      const packageCount = getPackageCount(stop);
+      const isCompleted = stop.status === 'delivered' || stop.status === 'attempted' || Boolean(stop.completed_at);
+
+      stats.totalStops += 1;
+      stats.totalPackages += packageCount;
+
+      if (isCompleted) {
+        stats.completedStops += 1;
+        stats.completedPackages += packageCount;
+      }
+
+      if (type === 'pickup' || type === 'combined') {
+        stats.pickups += 1;
+        if (isCompleted) {
+          stats.completedPickups += 1;
+        }
+      }
+
+      if (type === 'delivery' || type === 'combined') {
+        stats.deliveries += 1;
+        if (isCompleted) {
+          stats.completedDeliveries += 1;
+        }
+      }
+
+      return stats;
+    },
+    {
+      totalStops: 0,
+      completedStops: 0,
+      totalPackages: 0,
+      completedPackages: 0,
+      deliveries: 0,
+      completedDeliveries: 0,
+      pickups: 0,
+      completedPickups: 0
+    }
+  );
+}
+
 function formatWarningFlag(flag) {
   return String(flag || '')
     .replace(/_/g, ' ')
@@ -110,6 +176,8 @@ function filterStops(stops, activeFilter, searchTerm) {
 
 export default function StopListDrawer({
   open,
+  route,
+  routeDriverName,
   stops,
   selectedStopId,
   onClose,
@@ -132,19 +200,11 @@ export default function StopListDrawer({
 
     return { delivered, pending, exceptions };
   }, [visibleStops]);
+  const routeStats = useMemo(() => getStopStats(stops), [stops]);
 
   useEffect(() => {
     onFilterCountChange?.(activeFilter === 'all' ? 0 : 1);
   }, [activeFilter, onFilterCountChange]);
-
-  useEffect(() => {
-    if (!open) {
-      return;
-    }
-
-    const selectedIndex = visibleStops.findIndex((stop) => stop.id === selectedStopId);
-    setFocusedIndex(selectedIndex >= 0 ? selectedIndex : visibleStops.length ? 0 : -1);
-  }, [open, selectedStopId, visibleStops]);
 
   function handleKeyDown(event) {
     if (!open || !visibleStops.length) {
@@ -175,12 +235,52 @@ export default function StopListDrawer({
     >
       <div className="stop-list-drawer-header">
         <div className="stop-list-drawer-title">
-          <strong>Stops</strong>
-          <span>{`(${stops.length})`}</span>
+          <strong>{route?.work_area_name || 'Route'}</strong>
+          <span>{routeDriverName || 'Unassigned'}</span>
+          {route?.vehicle_number || route?.vehicle_name ? <span>{route.vehicle_number || route.vehicle_name}</span> : null}
         </div>
         <button type="button" className="stop-list-drawer-close" onClick={onClose}>
           ×
         </button>
+      </div>
+
+      <div className="stop-list-route-summary">
+        <div className="stop-list-summary-card">
+          <span className="stop-list-summary-icon">⌖</span>
+          <strong>{`${routeStats.completedStops}/${routeStats.totalStops}`}</strong>
+          <span>Total Stops</span>
+        </div>
+        <div className="stop-list-summary-card">
+          <span className="stop-list-summary-icon">▱</span>
+          <strong>{`${routeStats.completedPackages}/${routeStats.totalPackages}`}</strong>
+          <span>Total Packages</span>
+        </div>
+        <div className="stop-list-summary-card">
+          <span className="stop-list-summary-icon">↓</span>
+          <strong>{`${routeStats.completedDeliveries}/${routeStats.deliveries}`}</strong>
+          <span>Deliveries</span>
+          <span
+            className="stop-list-summary-bar"
+            style={{
+              '--progress': routeStats.deliveries
+                ? `${Math.round((routeStats.completedDeliveries / routeStats.deliveries) * 100)}%`
+                : '0%'
+            }}
+          />
+        </div>
+        <div className="stop-list-summary-card">
+          <span className="stop-list-summary-icon">↑</span>
+          <strong>{`${routeStats.completedPickups}/${routeStats.pickups}`}</strong>
+          <span>Pickups</span>
+          <span
+            className="stop-list-summary-bar"
+            style={{
+              '--progress': routeStats.pickups
+                ? `${Math.round((routeStats.completedPickups / routeStats.pickups) * 100)}%`
+                : '0%'
+            }}
+          />
+        </div>
       </div>
 
       <div className="stop-list-drawer-controls">
@@ -216,6 +316,8 @@ export default function StopListDrawer({
             const isFocused = focusedIndex === index;
             const propertyIntel = stop.property_intel;
             const pinMeta = getPinWorkflowMeta(stop);
+            const completionTime = formatCompletionTime(stop);
+            const packageCount = getPackageCount(stop);
 
             return (
               <button
@@ -230,8 +332,16 @@ export default function StopListDrawer({
                 </div>
 
                 <div className="stop-list-row-content">
-                  <div className="stop-list-row-contact">{stop.contact_name || `Stop ${stop.sequence_order}`}</div>
-                  <div className="stop-list-row-address">{stop.address}</div>
+                  <div className="stop-list-row-main">
+                    <div className="stop-list-row-address">{stop.address}</div>
+                    {completionTime ? (
+                      <span className={`stop-list-row-time ${stop.status === 'delivered' ? 'delivered' : 'exception'}`}>
+                        <span>{stop.status === 'delivered' ? '✓' : '×'}</span>
+                        {completionTime}
+                      </span>
+                    ) : null}
+                  </div>
+                  {stop.contact_name ? <div className="stop-list-row-contact">{stop.contact_name}</div> : null}
                   {stop.address_line2 ? <div className="stop-list-row-address-line2">{stop.address_line2}</div> : null}
                   {stop.secondary_address_type || stop.unit_label || stop.suite_label || stop.building_label ? (
                     <div className="stop-list-row-address-line2">
@@ -255,6 +365,17 @@ export default function StopListDrawer({
                   ) : null}
                   {propertyIntel?.access_note ? <div className="stop-list-row-address-line2">{`Access: ${propertyIntel.access_note}`}</div> : null}
                   {propertyIntel?.parking_note ? <div className="stop-list-row-address-line2">{`Parking: ${propertyIntel.parking_note}`}</div> : null}
+                  <div className="stop-list-row-package-meta">
+                    <span className="stop-list-package-icon" aria-hidden="true">
+                      <svg width="22" height="22" viewBox="0 0 24 24">
+                        <path d="M4 8.5 12 4l8 4.5v7L12 20l-8-4.5v-7Z" fill="none" stroke="currentColor" strokeWidth="2" />
+                        <path d="M4.5 8.7 12 13l7.5-4.3M12 13v6.5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                      </svg>
+                    </span>
+                    <span>{`${packageCount} PKG${packageCount === 1 ? '' : 'S'}`}</span>
+                    {stop.sid && stop.sid !== '0' ? <span className="stop-list-row-sid">{`SID: ${stop.sid}`}</span> : null}
+                  </div>
+
                   <div className="stop-list-row-badges">
                     {stop.is_business ? <span className="stop-mini-badge business">BUSINESS</span> : null}
                     {stop.is_apartment_unit ? <span className="stop-mini-badge apartment">APARTMENT</span> : null}
@@ -289,13 +410,14 @@ export default function StopListDrawer({
                 </div>
 
                 <div className="stop-list-row-status">
-                  <span className="stop-status-chip" style={{ backgroundColor: status.statusFill, color: status.statusText }}>
-                    {status.label}
-                  </span>
-                  {stop.status === 'attempted' && stop.exception_code ? (
-                    <span className="stop-list-row-exception">{`Code ${stop.exception_code}`}</span>
+                  {stop.exception_code ? (
+                    <span className="stop-list-row-exception">{`Code ${String(stop.exception_code).padStart(2, '0')}`}</span>
                   ) : null}
-                  {stop.sid && stop.sid !== '0' ? <span className="stop-list-row-sid">{`SID ${stop.sid}`}</span> : null}
+                  {!completionTime ? (
+                    <span className="stop-status-chip" style={{ backgroundColor: status.statusFill, color: status.statusText }}>
+                      {status.label}
+                    </span>
+                  ) : null}
                 </div>
               </button>
             );
