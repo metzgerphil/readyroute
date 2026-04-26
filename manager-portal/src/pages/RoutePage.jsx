@@ -1394,10 +1394,15 @@ export default function RoutePage() {
         <div ref={mapContainerRef} className="route-map-fullscreen" />
         {mapError ? <div className="route-map-error">{mapError}</div> : null}
 
-        <div className="route-map-toolbar-left">
-          <button type="button" className="route-map-tool" onClick={() => setShowStopDrawer((value) => !value)} title="Stop list">
-            ≣
+        {!showStopDrawer ? (
+          <button type="button" className="route-map-stop-list-handle" onClick={() => setShowStopDrawer(true)}>
+            <span className="route-map-stop-list-icon" aria-hidden="true">⌖</span>
+            <span>Stop List</span>
+            <span className="route-map-stop-list-chevron" aria-hidden="true">›</span>
           </button>
+        ) : null}
+
+        <div className={`route-map-toolbar-left ${!showStopDrawer ? 'with-stop-handle' : ''}`}>
           <button type="button" className="route-map-tool" onClick={fitRoute} title="Recenter map">
             ⌖
           </button>
