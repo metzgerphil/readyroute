@@ -135,17 +135,15 @@
 }
 
 .route-page-toolbar-row {
-  min-height: 142px;
-  padding: 18px 22px 20px;
+  min-height: auto;
+  padding: 18px 22px;
   border-top: 1px solid #f3efe9;
   border-bottom: 1px solid #e5e5e5;
   background: #ffffff;
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
-  grid-template-rows: auto auto;
   column-gap: 24px;
-  row-gap: 28px;
-  align-items: start;
+  align-items: end;
 }
 
 .route-page-toolbar {
@@ -164,7 +162,7 @@
 .route-page-toolbar-right-group {
   justify-content: flex-end;
   grid-column: 2;
-  grid-row: 2;
+  grid-row: 1;
   align-self: end;
 }
 
@@ -233,26 +231,6 @@
 .route-toolbar-icon {
   font-size: 0.92rem;
   line-height: 1;
-}
-
-.route-page-filter-button {
-  border: 1px solid #f0d8c2;
-  background: #fff8f2;
-  color: #173042;
-}
-
-.route-page-filter-count {
-  min-width: 24px;
-  height: 24px;
-  padding: 0 7px;
-  border-radius: 999px;
-  background: #ff6200;
-  color: #ffffff;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 0.78rem;
-  font-weight: 900;
 }
 
 .route-page-feedback {

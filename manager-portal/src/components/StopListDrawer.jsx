@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 
 import './StopListDrawer.css';
 
@@ -182,8 +182,7 @@ export default function StopListDrawer({
   stops,
   selectedStopId,
   onClose,
-  onSelectStop,
-  onFilterCountChange
+  onSelectStop
 }) {
   const [searchTerm, setSearchTerm] = useState('');
   const [focusedIndex, setFocusedIndex] = useState(-1);
@@ -201,10 +200,6 @@ export default function StopListDrawer({
     return { delivered, pending, exceptions };
   }, [visibleStops]);
   const routeStats = useMemo(() => getStopStats(stops), [stops]);
-
-  useEffect(() => {
-    onFilterCountChange?.(0);
-  }, [onFilterCountChange]);
 
   function handleKeyDown(event) {
     if (!open || !visibleStops.length) {

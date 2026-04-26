@@ -580,7 +580,6 @@ export default function RoutePage() {
   const [selectedStopId, setSelectedStopId] = useState(null);
   const [showLegend, setShowLegend] = useState(true);
   const [showStopDrawer, setShowStopDrawer] = useState(true);
-  const [stopDrawerFilterCount, setStopDrawerFilterCount] = useState(0);
   const [showExceptions, setShowExceptions] = useState(false);
   const [activeExceptionsTab, setActiveExceptionsTab] = useState('exceptions');
   const [isSavingNote, setIsSavingNote] = useState(false);
@@ -1463,12 +1462,6 @@ export default function RoutePage() {
                     onChange={(event) => handleDateChange(event.target.value)}
                   />
                 </label>
-
-                <button className="route-page-filter-button route-toolbar-button" type="button" onClick={() => setShowStopDrawer((value) => !value)}>
-                  <span className="route-toolbar-icon" aria-hidden="true">⌯</span>
-                  Stop Filters
-                  <span className="route-page-filter-count">{stopDrawerFilterCount}</span>
-                </button>
               </div>
 
               <div className="route-page-toolbar route-page-toolbar-right-group">
@@ -1704,7 +1697,6 @@ export default function RoutePage() {
           selectedStopId={selectedStopId}
           onClose={() => setShowStopDrawer(false)}
           onSelectStop={handleStopClick}
-          onFilterCountChange={setStopDrawerFilterCount}
         />
 
         {noteEditorStop ? (
