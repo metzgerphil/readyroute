@@ -14,6 +14,7 @@ import {
 import MapView, { Marker, PROVIDER_GOOGLE } from 'react-native-maps';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import RouteMetricIcon from '../components/RouteMetricIcon';
 import api from '../services/api';
 import {
   buildRouteDetailMapModel,
@@ -90,6 +91,26 @@ export function formatSyncLabel(timestamp) {
 
 function formatMetricRatio(completed, total) {
   return `${Number(completed || 0)}/${Number(total || 0)}`;
+}
+
+function getRouteExceptionCount(route) {
+  if (route?.exception_count != null) {
+    return Number(route.exception_count || 0);
+  }
+
+  return (route?.stops || []).filter((stop) =>
+    Boolean(stop?.exception_code) ||
+    ['attempted', 'incomplete', 'pickup_attempted'].includes(stop?.status)
+  ).length;
+}
+
+function IconMetric({ color = '#173042', icon, value }) {
+  return (
+    <View style={styles.iconMetric}>
+      <RouteMetricIcon color={color} name={icon} size={16} />
+      <Text style={[styles.iconMetricValue, { color }]}>{value}</Text>
+    </View>
+  );
 }
 
 const STOP_CARD_ESTIMATED_HEIGHT = 116;
@@ -533,18 +554,16 @@ export default function ManagerOverviewScreen({
 
                     <View style={styles.selectedRouteMetricsRow}>
                       <View style={styles.selectedRouteMetric}>
-                        <Text style={styles.selectedRouteMetricLabel}>Stops</Text>
-                        <Text style={styles.selectedRouteMetricValue}>{formatMetricRatio(selectedRouteSummary.completed_stops, selectedRouteSummary.total_stops)}</Text>
+                        <IconMetric color="#ffffff" icon="stop" value={formatMetricRatio(selectedRouteSummary.completed_stops, selectedRouteSummary.total_stops)} />
                       </View>
                       <View style={styles.selectedRouteMetric}>
-                        <Text style={styles.selectedRouteMetricLabel}>Packages</Text>
-                        <Text style={styles.selectedRouteMetricValue}>{formatMetricRatio(packageProgress.delivered, packageProgress.total)}</Text>
+                        <IconMetric color="#ffffff" icon="package" value={formatMetricRatio(packageProgress.delivered, packageProgress.total)} />
                       </View>
                       <View style={styles.selectedRouteMetric}>
-                        <Text style={styles.selectedRouteMetricLabel}>Stops/hr</Text>
-                        <Text style={styles.selectedRouteMetricValue}>
-                          {selectedRouteSummary.stops_per_hour == null ? '-- stops/hr' : `${selectedRouteSummary.stops_per_hour} stops/hr`}
-                        </Text>
+                        <IconMetric color="#ffffff" icon="stopwatch" value={selectedRouteSummary.stops_per_hour == null ? '-- stops/hr' : `${selectedRouteSummary.stops_per_hour} stops/hr`} />
+                      </View>
+                      <View style={styles.selectedRouteMetric}>
+                        <IconMetric color="#ffffff" icon="warning" value={routeWarnings.exceptions} />
                       </View>
                     </View>
 
@@ -714,18 +733,16 @@ export default function ManagerOverviewScreen({
 
                     <View style={styles.routeCardMetricsRow}>
                       <View style={styles.routeCardMetric}>
-                        <Text style={styles.routeCardMetricLabel}>Stops</Text>
-                        <Text style={styles.routeCardMetricValue}>{formatMetricRatio(item.completed_stops, item.total_stops)}</Text>
+                        <IconMetric icon="stop" value={formatMetricRatio(item.completed_stops, item.total_stops)} />
                       </View>
                       <View style={styles.routeCardMetric}>
-                        <Text style={styles.routeCardMetricLabel}>Packages</Text>
-                        <Text style={styles.routeCardMetricValue}>{formatMetricRatio(item.delivered_packages, item.total_packages)}</Text>
+                        <IconMetric icon="package" value={formatMetricRatio(item.delivered_packages, item.total_packages)} />
                       </View>
                       <View style={styles.routeCardMetric}>
-                        <Text style={styles.routeCardMetricLabel}>Stops/hr</Text>
-                        <Text style={styles.routeCardMetricValue}>
-                          {item.stops_per_hour == null ? '-- stops/hr' : `${item.stops_per_hour} stops/hr`}
-                        </Text>
+                        <IconMetric icon="stopwatch" value={item.stops_per_hour == null ? '-- stops/hr' : `${item.stops_per_hour} stops/hr`} />
+                      </View>
+                      <View style={styles.routeCardMetric}>
+                        <IconMetric icon="warning" value={getRouteExceptionCount(item)} />
                       </View>
                     </View>
 
@@ -1202,6 +1219,7 @@ const styles = StyleSheet.create({
   },
   selectedRouteMetricsRow: {
     flexDirection: 'row',
+    flexWrap: 'wrap',
     gap: 10,
     marginTop: 16
   },
@@ -1209,7 +1227,17 @@ const styles = StyleSheet.create({
     backgroundColor: '#ff7a1a',
     borderRadius: 18,
     flex: 1,
+    minWidth: '45%',
     padding: 12
+  },
+  iconMetric: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: 6
+  },
+  iconMetricValue: {
+    fontSize: 13,
+    fontWeight: '800'
   },
   selectedRouteMetricLabel: {
     color: '#fff4eb',
@@ -1319,6 +1347,7 @@ const styles = StyleSheet.create({
   },
   routeCardMetricsRow: {
     flexDirection: 'row',
+    flexWrap: 'wrap',
     gap: 8,
     marginTop: 8
   },
@@ -1326,6 +1355,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#ffe7d3',
     borderRadius: 12,
     flex: 1,
+    minWidth: '47%',
     paddingHorizontal: 8,
     paddingVertical: 7
   },

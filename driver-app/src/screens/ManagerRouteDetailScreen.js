@@ -3,6 +3,7 @@ import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View, Platf
 import MapView, { Marker, PROVIDER_GOOGLE } from 'react-native-maps';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import RouteMetricIcon from '../components/RouteMetricIcon';
 import api from '../services/api';
 import {
   buildRouteDetailMapModel,
@@ -40,6 +41,15 @@ function formatExceptionCode(code) {
   }
 
   return /^\d+$/.test(value) ? `Code ${value.padStart(2, '0')}` : `Code ${value.toUpperCase()}`;
+}
+
+function IconMetric({ icon, value }) {
+  return (
+    <View style={styles.iconMetric}>
+      <RouteMetricIcon color="#ffffff" name={icon} size={16} />
+      <Text style={styles.summaryValue}>{value}</Text>
+    </View>
+  );
 }
 
 export default function ManagerRouteDetailScreen({ navigation, route }) {
@@ -128,16 +138,16 @@ export default function ManagerRouteDetailScreen({ navigation, route }) {
 
           <View style={styles.summaryRow}>
             <View style={styles.summaryPill}>
-              <Text style={styles.summaryLabel}>Stops</Text>
-              <Text style={styles.summaryValue}>{routeSummary.completed_stops || 0}/{routeSummary.total_stops || 0}</Text>
+              <IconMetric icon="stop" value={`${routeSummary.completed_stops || 0}/${routeSummary.total_stops || 0}`} />
             </View>
             <View style={styles.summaryPill}>
-              <Text style={styles.summaryLabel}>Packages</Text>
-              <Text style={styles.summaryValue}>{packageProgress.delivered}/{packageProgress.total}</Text>
+              <IconMetric icon="package" value={`${packageProgress.delivered}/${packageProgress.total}`} />
             </View>
             <View style={styles.summaryPill}>
-              <Text style={styles.summaryLabel}>Rate</Text>
-              <Text style={styles.summaryValue}>{routeSummary.stops_per_hour == null ? '--' : routeSummary.stops_per_hour}</Text>
+              <IconMetric icon="stopwatch" value={routeSummary.stops_per_hour == null ? '-- stops/hr' : `${routeSummary.stops_per_hour} stops/hr`} />
+            </View>
+            <View style={styles.summaryPill}>
+              <IconMetric icon="warning" value={warnings.exceptions} />
             </View>
           </View>
 
@@ -321,6 +331,7 @@ const styles = StyleSheet.create({
   },
   summaryRow: {
     flexDirection: 'row',
+    flexWrap: 'wrap',
     gap: 10,
     marginTop: 16
   },
@@ -328,7 +339,13 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(255,255,255,0.08)',
     borderRadius: 18,
     flex: 1,
+    minWidth: '45%',
     padding: 12
+  },
+  iconMetric: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: 6
   },
   summaryLabel: {
     color: '#8fd0d7',

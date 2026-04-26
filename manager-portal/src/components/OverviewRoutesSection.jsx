@@ -43,11 +43,15 @@ function getPackageTotals(route) {
 
     return sum + (stop.packages || []).length;
   }, 0);
+  const fallbackTotal = Number(route.total_packages || route.manifest_package_count || 0);
+  const fallbackDelivered = Number(route.delivered_packages || 0);
+  const resolvedTotal = totalPackages || fallbackTotal;
+  const resolvedDelivered = totalPackages ? processedPackages : fallbackDelivered;
 
   return {
-    total: totalPackages,
-    delivered: processedPackages,
-    left: Math.max(0, totalPackages - processedPackages)
+    total: resolvedTotal,
+    delivered: resolvedDelivered,
+    left: Math.max(0, resolvedTotal - resolvedDelivered)
   };
 }
 
@@ -112,7 +116,7 @@ function buildSummary(routes) {
       summary.timeCommitsActual += Number(route.time_commits_completed || 0);
       summary.timeCommitsPlanned += Number(route.time_commits_total || 0);
       summary.impacts += Number(route.impacts || 0);
-      summary.exceptions += Number(route.exceptions || 0);
+      summary.exceptions += Number(route.exceptions || route.exception_count || 0);
 
       if (route.actual_miles !== null && route.actual_miles !== undefined) {
         summary.actualMiles += Number(route.actual_miles || 0);
@@ -209,6 +213,53 @@ function InfoLabel({ label, tooltip }) {
           {tooltip}
         </span>
       </span>
+    </span>
+  );
+}
+
+function MetricIcon({ name }) {
+  if (name === 'package') {
+    return (
+      <svg aria-hidden="true" className="overview-metric-icon" viewBox="0 0 24 24">
+        <path d="M12 2.8 20 7.2v9.2l-8 4.8-8-4.8V7.2L12 2.8Z" />
+        <path d="M4.5 7.5 12 12l7.5-4.5M12 12v8.5" />
+      </svg>
+    );
+  }
+
+  if (name === 'stopwatch') {
+    return (
+      <svg aria-hidden="true" className="overview-metric-icon" viewBox="0 0 24 24">
+        <circle cx="12" cy="13" r="7" />
+        <path d="M9 2h6M12 5V2M12 13V9M16.5 6.5 18 5" />
+      </svg>
+    );
+  }
+
+  if (name === 'warning') {
+    return (
+      <svg aria-hidden="true" className="overview-metric-icon" viewBox="0 0 24 24">
+        <path d="M12 3 22 20H2L12 3Z" />
+        <path d="M12 9v5" />
+        <circle className="filled" cx="12" cy="17" r="1.1" />
+      </svg>
+    );
+  }
+
+  return (
+    <svg aria-hidden="true" className="overview-metric-icon" viewBox="0 0 24 24">
+      <path d="M12 21s7-6.1 7-12A7 7 0 0 0 5 9c0 5.9 7 12 7 12Z" />
+      <circle cx="12" cy="9" r="2.4" />
+      <path d="M5 20h14" />
+    </svg>
+  );
+}
+
+function IconMetric({ children, icon }) {
+  return (
+    <span className="overview-icon-metric">
+      <MetricIcon name={icon} />
+      <span>{children}</span>
     </span>
   );
 }
@@ -571,7 +622,7 @@ export default function OverviewRoutesSection({ date, routes }) {
                 <div className="overview-table-cell col-stops">
                   <div className="overview-metric-block">
                     <div className="overview-metric-primary">
-                      {stats.deliveriesCompleted}/{stats.deliveriesTotal}
+                      <IconMetric icon="stop">{stats.deliveriesCompleted}/{stats.deliveriesTotal}</IconMetric>
                     </div>
                     <div className="overview-metric-secondary">({stats.deliveriesLeft} left)</div>
                     <div className="overview-progress-track compact">
@@ -605,7 +656,7 @@ export default function OverviewRoutesSection({ date, routes }) {
                 <div className="overview-table-cell col-packages">
                   <div className="overview-metric-block">
                     <div className="overview-metric-primary">
-                      {stats.packageTotals.delivered}/{stats.packageTotals.total}
+                      <IconMetric icon="package">{stats.packageTotals.delivered}/{stats.packageTotals.total}</IconMetric>
                     </div>
                     <div className="overview-metric-secondary">({stats.packageTotals.left} left)</div>
                     <div className="overview-progress-track compact">
@@ -616,12 +667,14 @@ export default function OverviewRoutesSection({ date, routes }) {
 
                 <div className="overview-table-cell col-impsexcs">
                   <div className="overview-metric-primary bold">
-                    {route.impacts || 0} / {route.exceptions || 0}
+                    <IconMetric icon="warning">{route.impacts || 0} / {route.exceptions || route.exception_count || 0}</IconMetric>
                   </div>
                 </div>
 
                 <div className="overview-table-cell col-sph">
-                  <div className="overview-metric-primary">{route.stops_per_hour ?? '—'}</div>
+                  <div className="overview-metric-primary">
+                    <IconMetric icon="stopwatch">{route.stops_per_hour ?? '—'}</IconMetric>
+                  </div>
                 </div>
 
                 <div className="overview-table-cell col-miles">
