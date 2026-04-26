@@ -707,6 +707,13 @@ export default function DashboardPage() {
 
   useEffect(() => {
     saveStoredOperationsDate(dashboardDate);
+  }, [dashboardDate]);
+
+  useEffect(() => {
+    if (searchParams.has('date')) {
+      return;
+    }
+
     const nextParams = new URLSearchParams(searchParams);
     nextParams.set('date', dashboardDate);
     setSearchParams(nextParams, { replace: true });

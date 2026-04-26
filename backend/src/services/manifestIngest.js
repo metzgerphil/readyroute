@@ -355,6 +355,21 @@ function createManifestIngestService(options = {}) {
       throw new Error('No stops found in manifest file');
     }
 
+    if (
+      source === 'fedex_sync' &&
+      requestedDate &&
+      manifestMeta.date &&
+      manifestMeta.date !== requestedDate
+    ) {
+      const error = new Error(
+        `FCC manifest date ${manifestMeta.date} does not match requested ReadyRoute date ${requestedDate}.`
+      );
+      error.code = 'STALE_FEDEX_MANIFEST_DATE';
+      error.manifestDate = manifestMeta.date;
+      error.requestedDate = requestedDate;
+      throw error;
+    }
+
     const resolvedDate = requestedDate || manifestMeta.date;
     const resolvedWorkAreaName = normalizeRouteWorkAreaName(requestedWorkAreaName || manifestMeta.work_area_name || '');
     const requestedDriverNameCandidate = String(requestedDriverName || '').trim();
