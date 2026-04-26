@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 
 import './StopListDrawer.css';
-import { getPinWorkflowMeta } from '../utils/pinWorkflow';
 
 function getStopType(stop) {
   if (stop.stop_type === 'combined' || (stop.has_pickup && stop.has_delivery)) {
@@ -303,7 +302,6 @@ export default function StopListDrawer({
             const isHighlighted = selectedStopId === stop.id;
             const isFocused = focusedIndex === index;
             const propertyIntel = stop.property_intel;
-            const pinMeta = getPinWorkflowMeta(stop);
             const completionTime = formatCompletionTime(stop);
             const packageCount = getPackageCount(stop);
 
@@ -375,18 +373,12 @@ export default function StopListDrawer({
                     {type === 'pickup' ? <span className="stop-mini-badge pickup">PICKUP</span> : null}
                     {type === 'combined' ? <span className="stop-mini-badge combined">COMBINED</span> : null}
                     {propertyIntel?.grouped_stops?.length ? <span className="stop-mini-badge apartment">GROUPED</span> : null}
-                    {pinMeta ? <span className={`stop-mini-badge ${pinMeta.badgeClassName}`}>{pinMeta.shortLabel}</span> : null}
                     {timeCommit ? <span className="stop-mini-badge time-commit">{timeCommit}</span> : null}
                     {(propertyIntel?.warning_flags || []).slice(0, 2).map((flag) => (
                       <span key={flag} className="stop-mini-badge time-commit">{formatWarningFlag(flag)}</span>
                     ))}
                     {stop.has_note ? <span className="stop-note-dot" /> : null}
                   </div>
-                  {pinMeta ? (
-                    <div className="stop-list-row-address-line2">
-                      {`${pinMeta.title} · ${pinMeta.recommendation}`}
-                    </div>
-                  ) : null}
                   {stop.has_note && stop.notes ? (
                     <div className="stop-list-row-note-preview">
                       <span className="stop-list-row-note-label">
