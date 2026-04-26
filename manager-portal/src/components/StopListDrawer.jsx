@@ -3,18 +3,6 @@ import { useEffect, useMemo, useState } from 'react';
 import './StopListDrawer.css';
 import { getPinWorkflowMeta } from '../utils/pinWorkflow';
 
-const FILTER_OPTIONS = [
-  { id: 'all', label: 'All' },
-  { id: 'deliveries', label: 'Deliveries' },
-  { id: 'pickups', label: 'Pickups' },
-  { id: 'pending', label: 'Pending' },
-  { id: 'completed', label: 'Completed' },
-  { id: 'time-commits', label: 'Time Commits' },
-  { id: 'exceptions', label: 'Exceptions' },
-  { id: 'incomplete', label: 'Incomplete' },
-  { id: 'has-note', label: 'Has Note' }
-];
-
 function getStopType(stop) {
   if (stop.stop_type === 'combined' || (stop.has_pickup && stop.has_delivery)) {
     return 'combined';
@@ -199,12 +187,11 @@ export default function StopListDrawer({
   onFilterCountChange
 }) {
   const [searchTerm, setSearchTerm] = useState('');
-  const [activeFilter, setActiveFilter] = useState('all');
   const [focusedIndex, setFocusedIndex] = useState(-1);
 
   const visibleStops = useMemo(
-    () => filterStops(stops, activeFilter, searchTerm),
-    [stops, activeFilter, searchTerm]
+    () => filterStops(stops, 'all', searchTerm),
+    [stops, searchTerm]
   );
 
   const filteredStats = useMemo(() => {
@@ -217,8 +204,8 @@ export default function StopListDrawer({
   const routeStats = useMemo(() => getStopStats(stops), [stops]);
 
   useEffect(() => {
-    onFilterCountChange?.(activeFilter === 'all' ? 0 : 1);
-  }, [activeFilter, onFilterCountChange]);
+    onFilterCountChange?.(0);
+  }, [onFilterCountChange]);
 
   function handleKeyDown(event) {
     if (!open || !visibleStops.length) {
@@ -305,19 +292,6 @@ export default function StopListDrawer({
           value={searchTerm}
           onChange={(event) => setSearchTerm(event.target.value)}
         />
-
-        <div className="stop-list-drawer-chips">
-          {FILTER_OPTIONS.map((option) => (
-            <button
-              key={option.id}
-              type="button"
-              className={`stop-list-chip ${activeFilter === option.id ? 'active' : ''}`}
-              onClick={() => setActiveFilter(option.id)}
-            >
-              {option.label}
-            </button>
-          ))}
-        </div>
       </div>
 
       <div className="stop-list-drawer-body">
@@ -438,16 +412,13 @@ export default function StopListDrawer({
           })
         ) : (
           <div className="stop-list-empty">
-            <div>No stops match your filter.</div>
+            <div>No stops match your search.</div>
             <button
               type="button"
               className="stop-list-clear"
-              onClick={() => {
-                setSearchTerm('');
-                setActiveFilter('all');
-              }}
+              onClick={() => setSearchTerm('')}
             >
-              Clear filters
+              Clear search
             </button>
           </div>
         )}
