@@ -35,6 +35,7 @@ describe('managerRouteDetail helpers', () => {
       pendingTimeCommits: 1
     });
     expect(getStopIndicatorLabels(stops[0])).toEqual(expect.arrayContaining(['Time commit', 'Note', 'Signature']));
+    expect(getStopIndicatorLabels(stops[1])).toEqual(expect.arrayContaining(['Code 07']));
   });
 
   it('formats driver freshness and builds a route detail map model', () => {

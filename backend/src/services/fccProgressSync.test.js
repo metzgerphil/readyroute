@@ -178,6 +178,96 @@ test('applyRouteProgress marks matched FCC green rows complete on dispatched rou
   assert.equal(routeEvents[0].event_type, 'fcc_progress_synced');
 });
 
+test('applyRouteProgress stores FCC exception scans with code and timestamp', async () => {
+  const route = {
+    id: 'route-823',
+    account_id: 'acct-1',
+    work_area_name: '823',
+    date: '2026-04-24',
+    status: 'pending',
+    total_stops: 2,
+    completed_stops: 0,
+    dispatch_state: 'dispatched',
+    driver_id: 'driver-1',
+    completed_at: null
+  };
+  const stops = [
+    { id: 'stop-1', route_id: 'route-823', sequence_order: 1, sid: '1001', address: '818 N JUNIPER ST', address_line2: null, status: 'pending', exception_code: null, completed_at: null, scanned_at: null },
+    { id: 'stop-2', route_id: 'route-823', sequence_order: 2, sid: '1037', address: '508 E MISSION AVE', address_line2: 'APT 101', status: 'pending', exception_code: null, completed_at: null, scanned_at: null }
+  ];
+  const routeEvents = [];
+
+  const supabase = new MockSupabase((query) => {
+    if (query.table === 'routes' && query.operation === 'select') {
+      return { data: [route], error: null };
+    }
+
+    if (query.table === 'stops' && query.operation === 'select') {
+      return { data: stops, error: null };
+    }
+
+    if (query.table === 'stops' && query.operation === 'update') {
+      const stopId = query.filters.find((filter) => filter.column === 'id')?.value;
+      const stop = stops.find((entry) => entry.id === stopId);
+      Object.assign(stop, query.payload);
+      return { data: stop, error: null };
+    }
+
+    if (query.table === 'routes' && query.operation === 'update') {
+      Object.assign(route, query.payload);
+      return { data: route, error: null };
+    }
+
+    if (query.table === 'route_sync_events' && query.operation === 'insert') {
+      routeEvents.push(query.payload);
+      return { data: query.payload, error: null };
+    }
+
+    throw new Error(`Unexpected query ${query.table}:${query.operation}:${query.mode}`);
+  });
+
+  const service = createFccProgressSyncService({
+    supabase,
+    now: () => new Date('2026-04-24T18:45:00.000Z')
+  });
+
+  const result = await service.applyRouteProgress({
+    accountId: 'acct-1',
+    workDate: '2026-04-24',
+    progressSnapshots: [
+      {
+        work_area_name: 'OCEA - 823 RAMIREZCASTELLANOS, BRAYANT - Available',
+        record_count: 2,
+        rows: [
+          { sid: '1001', stop_number: 1, address: '818 N JUNIPER ST', is_completed: false },
+          {
+            sid: '1037',
+            stop_number: 2,
+            address: '508 E MISSION AVE',
+            address_line2: 'APT 101',
+            is_completed: false,
+            is_exception: true,
+            exception_code: '7',
+            scanned_at: '2026-04-24T17:28:00.000Z'
+          }
+        ]
+      }
+    ]
+  });
+
+  assert.equal(result.completed_updates, 1);
+  assert.equal(result.routes[0].completed_updates, 0);
+  assert.equal(result.routes[0].exception_updates, 1);
+  assert.equal(result.has_changes, true);
+  assert.equal(stops[1].status, 'attempted');
+  assert.equal(stops[1].exception_code, '07');
+  assert.equal(stops[1].scanned_at, '2026-04-24T17:28:00.000Z');
+  assert.equal(stops[1].completed_at, '2026-04-24T17:28:00.000Z');
+  assert.equal(route.completed_stops, 1);
+  assert.equal(route.status, 'in_progress');
+  assert.equal(routeEvents[0].details.exception_updates, 1);
+});
+
 test('applyRouteProgress assigns an unassigned route to the FCC driver when names match', async () => {
   const route = {
     id: 'route-823',

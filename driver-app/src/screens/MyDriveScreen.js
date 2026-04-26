@@ -105,6 +105,33 @@ export function formatLaborTime(timestamp) {
   });
 }
 
+export function formatStopScanTime(timestamp) {
+  if (!timestamp) {
+    return null;
+  }
+
+  const date = new Date(timestamp);
+
+  if (Number.isNaN(date.getTime())) {
+    return null;
+  }
+
+  return date.toLocaleTimeString([], {
+    hour: 'numeric',
+    minute: '2-digit'
+  });
+}
+
+export function formatFedExExceptionCode(code) {
+  const value = String(code || '').trim();
+
+  if (!value) {
+    return null;
+  }
+
+  return /^\d+$/.test(value) ? `Code ${value.padStart(2, '0')}` : `Code ${value.toUpperCase()}`;
+}
+
 export function getMarkerRenderKey({ itemId, isCurrentStop, refreshVersion }) {
   return `${itemId}:${isCurrentStop ? 'selected' : 'idle'}:${refreshVersion}`;
 }
@@ -953,6 +980,8 @@ export default function MyDriveScreen({ navigation, route: screenRoute }) {
   const selectedTimeCommitUrgency = getTimeCommitUrgency(selectedStop, currentTime);
   const selectedUrgencyStyles = getUrgencyStyles(selectedTimeCommitUrgency?.level);
   const selectedPackageCount = selectedStop?.packages?.length || 0;
+  const selectedExceptionCode = formatFedExExceptionCode(selectedStop?.exception_code);
+  const selectedScanTime = formatStopScanTime(selectedStop?.scanned_at || selectedStop?.completed_at);
   const selectedGroupPackageCount = selectedStopGroup?.packageCount || 0;
   const driverHeading = getDriverHeading(currentLocation);
   const laborButtonLabel = clockedInAt ? 'Clock Out' : 'Clock In';
@@ -1811,6 +1840,16 @@ export default function MyDriveScreen({ navigation, route: screenRoute }) {
                 <Text style={styles.calloutPackages}>
                   {selectedPackageCount} {selectedPackageCount === 1 ? 'package' : 'packages'}
                 </Text>
+                {selectedExceptionCode || selectedScanTime ? (
+                  <View style={styles.calloutScanRow}>
+                    {selectedExceptionCode ? (
+                      <View style={styles.calloutExceptionPill}>
+                        <Text style={styles.calloutExceptionPillText}>{selectedExceptionCode}</Text>
+                      </View>
+                    ) : null}
+                    {selectedScanTime ? <Text style={styles.calloutScanTime}>{selectedScanTime}</Text> : null}
+                  </View>
+                ) : null}
               </Pressable>
             </View>
           ) : null}
@@ -2584,6 +2623,31 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontWeight: '700',
     marginTop: 8
+  },
+  calloutScanRow: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginTop: 8
+  },
+  calloutExceptionPill: {
+    backgroundColor: '#fff1e8',
+    borderColor: '#fed7aa',
+    borderRadius: 999,
+    borderWidth: 1,
+    paddingHorizontal: 9,
+    paddingVertical: 5
+  },
+  calloutExceptionPillText: {
+    color: '#c2410c',
+    fontSize: 11,
+    fontWeight: '900'
+  },
+  calloutScanTime: {
+    color: '#173042',
+    fontSize: 12,
+    fontWeight: '900'
   },
   selectedStopCard: {
     backgroundColor: 'rgba(255,255,255,0.97)',

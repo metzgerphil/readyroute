@@ -328,6 +328,29 @@
   font-weight: 700;
 }
 
+.overview-icon-metric {
+  align-items: center;
+  display: inline-flex;
+  gap: 7px;
+  white-space: nowrap;
+}
+
+.overview-metric-icon {
+  fill: none;
+  flex: 0 0 auto;
+  height: 20px;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 2;
+  width: 20px;
+}
+
+.overview-metric-icon .filled {
+  fill: currentColor;
+  stroke: none;
+}
+
 .overview-metric-primary.bold {
   font-weight: 800;
 }

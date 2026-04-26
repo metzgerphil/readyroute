@@ -12,12 +12,13 @@ const GOOGLE_MAPS_KEY = import.meta.env.VITE_GOOGLE_MAPS_KEY;
 const GOOGLE_MAPS_SRC = GOOGLE_MAPS_KEY
   ? `https://maps.googleapis.com/maps/api/js?key=${GOOGLE_MAPS_KEY}&v=weekly`
   : null;
+const GOOGLE_MAPS_PLACEHOLDER_KEYS = new Set(['your_key_here', 'your_production_key']);
 
 let googleMapsScriptPromise = null;
 let googleMapsScriptFailed = false;
 
 function loadGoogleMapsScript() {
-  if (!GOOGLE_MAPS_KEY || GOOGLE_MAPS_KEY === 'your_key_here') {
+  if (!GOOGLE_MAPS_KEY || GOOGLE_MAPS_PLACEHOLDER_KEYS.has(GOOGLE_MAPS_KEY)) {
     return Promise.reject(new Error('missing_google_maps_key'));
   }
 
@@ -49,6 +50,10 @@ function loadGoogleMapsScript() {
           resolve(window.google);
           return;
         }
+
+        timeoutId = window.setTimeout(() => {
+          fail(new Error('google_maps_script_timeout'));
+        }, 12000);
 
         existingScript.addEventListener(
           'load',
@@ -702,6 +707,13 @@ export default function DashboardPage() {
 
   useEffect(() => {
     saveStoredOperationsDate(dashboardDate);
+  }, [dashboardDate]);
+
+  useEffect(() => {
+    if (searchParams.has('date')) {
+      return;
+    }
+
     const nextParams = new URLSearchParams(searchParams);
     nextParams.set('date', dashboardDate);
     setSearchParams(nextParams, { replace: true });
@@ -1136,7 +1148,7 @@ export default function DashboardPage() {
                   <button
                     className={`dispatch-health-chip ${route.map_status === 'needs_pins' ? 'pins' : 'partial'}`}
                     key={`pins-${route.id}`}
-                    onClick={() => navigate(`/routes/${route.id}`)}
+                    onClick={() => navigate(`/routes/${route.id}?date=${dashboardDate}`)}
                     type="button"
                   >
                     {route.work_area_name}: {route.map_status === 'needs_pins' ? 'needs pins' : `${route.missing_stops || 0} pins missing`}
@@ -1146,7 +1158,7 @@ export default function DashboardPage() {
                   <button
                     className="dispatch-health-chip warning"
                     key={`warning-${route.id}`}
-                    onClick={() => navigate(`/routes/${route.id}`)}
+                    onClick={() => navigate(`/routes/${route.id}?date=${dashboardDate}`)}
                     type="button"
                   >
                     {route.work_area_name}: review route warnings
@@ -1210,7 +1222,7 @@ export default function DashboardPage() {
 
                         assignVehicleMutation.mutate({ routeId: driver.route_id, vehicleId });
                       }}
-                      onClick={() => driver.name && driver.route_id && navigate(`/routes/${driver.route_id}`)}
+                      onClick={() => driver.name && driver.route_id && navigate(`/routes/${driver.route_id}?date=${dashboardDate}`)}
                       showVehiclePicker={vehiclePickerRouteId === driver.route_id}
                       vehicles={(vehiclesQuery.data || []).filter((vehicle) => vehicle.is_active !== false)}
                     />

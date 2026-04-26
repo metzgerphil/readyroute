@@ -90,7 +90,8 @@ test('pullRouteProgress returns parsed FCC progress snapshots from the runner ou
               record_count: 172,
               rows: [
                 { sid: '1001', is_completed: false },
-                { sid: '1002', is_completed: true }
+                { sid: '1002', is_completed: true },
+                { sid: '1003', is_exception: true, exception_code: '07' }
               ]
             }
           ]
@@ -123,6 +124,7 @@ test('pullRouteProgress returns parsed FCC progress snapshots from the runner ou
   assert.equal(receivedEnv.env.READYROUTE_FCC_RUN_MODE, 'progress');
   assert.equal(result.route_count, 1);
   assert.equal(result.completed_stop_count, 1);
+  assert.equal(result.exception_stop_count, 1);
   assert.equal(result.progress_snapshots[0].record_count, 172);
 });
 

@@ -115,7 +115,7 @@ function createAddressHash(address) {
 async function loadExistingManifestRoute(supabase, { accountId, date, workAreaName }) {
   const { data, error } = await supabase
     .from('routes')
-    .select('id, work_area_name, status, dispatch_state, completed_stops, completed_at, driver_id, vehicle_id, manifest_fingerprint, last_manifest_change_at')
+    .select('id, work_area_name, status, dispatch_state, dispatched_at, dispatched_by_manager_user_id, completed_stops, completed_at, driver_id, vehicle_id, manifest_fingerprint, last_manifest_change_at')
     .eq('account_id', accountId)
     .eq('date', date)
     .is('archived_at', null)
@@ -140,6 +140,10 @@ function canReplaceExistingManifestRoute(route) {
 
   const completedStops = Number(route.completed_stops || 0);
   return completedStops === 0 && !route.completed_at && route.status !== 'complete' && route.dispatch_state !== 'dispatched';
+}
+
+function isWorkedStopStatus(status) {
+  return Boolean(status && status !== 'pending');
 }
 
 async function recordRouteSyncEvent(supabase, {
@@ -249,6 +253,54 @@ function mergePendingManifestStops(existingStops = [], incomingStops = []) {
   return normalizeMergedStopSequences(Array.from(mergedStops.values()));
 }
 
+function buildExistingStopStateMap(existingStops = []) {
+  const stateByKey = new Map();
+
+  existingStops.forEach((stop, index) => {
+    const manifestStop = toManifestStopFromExistingRouteStop(stop);
+    const key = buildPendingManifestStopKey(manifestStop, `existing:${stop?.id || stop?.sequence_order || index}`);
+
+    if (key && !stateByKey.has(key)) {
+      stateByKey.set(key, {
+        status: stop.status || 'pending',
+        exception_code: stop.exception_code || null,
+        delivery_type_code: stop.delivery_type_code || null,
+        signer_name: stop.signer_name || null,
+        signature_url: stop.signature_url || null,
+        age_confirmed: stop.age_confirmed || false,
+        pod_photo_url: stop.pod_photo_url || null,
+        pod_signature_url: stop.pod_signature_url || null,
+        scanned_at: stop.scanned_at || null,
+        completed_at: stop.completed_at || null,
+        has_note: Boolean(stop.has_note),
+        notes: stop.notes || null
+      });
+    }
+  });
+
+  return stateByKey;
+}
+
+function getExistingStopStateForManifestStop(stateByKey, stop, fallbackKey) {
+  return stateByKey.get(buildPendingManifestStopKey(stop, fallbackKey)) || null;
+}
+
+function getRouteStatusAfterManifestRefresh({ completedStops, totalStops, existingRoute, resetToPending }) {
+  if (resetToPending) {
+    return 'pending';
+  }
+
+  if (totalStops > 0 && completedStops >= totalStops) {
+    return 'complete';
+  }
+
+  if (completedStops > 0) {
+    return 'in_progress';
+  }
+
+  return existingRoute?.status || 'pending';
+}
+
 function createManifestIngestService(options = {}) {
   const { supabase } = options;
   const nowProvider = options.now || (() => new Date());
@@ -301,6 +353,21 @@ function createManifestIngestService(options = {}) {
 
     if (!parsedStops.length) {
       throw new Error('No stops found in manifest file');
+    }
+
+    if (
+      source === 'fedex_sync' &&
+      requestedDate &&
+      manifestMeta.date &&
+      manifestMeta.date !== requestedDate
+    ) {
+      const error = new Error(
+        `FCC manifest date ${manifestMeta.date} does not match requested ReadyRoute date ${requestedDate}.`
+      );
+      error.code = 'STALE_FEDEX_MANIFEST_DATE';
+      error.manifestDate = manifestMeta.date;
+      error.requestedDate = requestedDate;
+      throw error;
     }
 
     const resolvedDate = requestedDate || manifestMeta.date;
@@ -391,20 +458,15 @@ function createManifestIngestService(options = {}) {
     let routeId = null;
     let mergedIntoExistingRoute = false;
     let routeSyncMetadata = null;
+    let preservedStopStateByKey = new Map();
 
     if (existingRoute) {
-      if (!canReplaceExistingManifestRoute(existingRoute)) {
-        const conflictError = new Error(
-          `Route ${resolvedWorkAreaName || 'this work area'} for ${resolvedDate || 'this date'} already exists and has already started. Open the existing route below instead of uploading the same manifest again.`
-        );
-        conflictError.statusCode = 409;
-        throw conflictError;
-      }
+      const shouldResetRouteForManifestRefresh = canReplaceExistingManifestRoute(existingRoute);
 
       const { data: existingStops, error: existingStopsError } = await supabase
         .from('stops')
         .select(
-          'id, sequence_order, address, address_line2, contact_name, lat, lng, is_pickup, is_business, sid, ready_time, close_time, has_time_commit, stop_type, has_pickup, has_delivery, geocode_source, geocode_accuracy'
+          'id, sequence_order, address, address_line2, contact_name, lat, lng, status, exception_code, delivery_type_code, signer_name, signature_url, age_confirmed, is_pickup, is_business, has_note, notes, sid, ready_time, close_time, has_time_commit, stop_type, has_pickup, has_delivery, geocode_source, geocode_accuracy, pod_photo_url, pod_signature_url, scanned_at, completed_at'
         )
         .eq('route_id', existingRoute.id)
         .order('sequence_order');
@@ -434,10 +496,29 @@ function createManifestIngestService(options = {}) {
       const existingManifestStops = (existingStops || []).map((stop) =>
         toManifestStopFromExistingRouteStop(stop, packageCountByStopId.get(stop.id) || 1)
       );
+      const existingStopStateByKey = shouldResetRouteForManifestRefresh
+        ? new Map()
+        : buildExistingStopStateMap(existingStops || []);
+      preservedStopStateByKey = existingStopStateByKey;
 
       routeStops = mergePendingManifestStops(existingManifestStops, routeStops);
       resolvedDriverId = resolvedDriverId || existingRoute.driver_id || null;
       resolvedVehicleId = resolvedVehicleId || existingRoute.vehicle_id || null;
+      const preservedCompletedStops = routeStops.reduce((count, stop, index) => {
+        const state = getExistingStopStateForManifestStop(existingStopStateByKey, stop, `merged:${stop?.sequence || index}`);
+        const hasWorkedState = Boolean(state?.completed_at || isWorkedStopStatus(state?.status));
+        return count + (hasWorkedState ? 1 : 0);
+      }, 0);
+      const nextRouteStatus = getRouteStatusAfterManifestRefresh({
+        completedStops: preservedCompletedStops,
+        totalStops: routeStops.length,
+        existingRoute,
+        resetToPending: shouldResetRouteForManifestRefresh
+      });
+      const nextCompletedAt =
+        nextRouteStatus === 'complete'
+          ? existingRoute.completed_at || nowProvider().toISOString()
+          : null;
 
       if (existingStopIds.length) {
         const { error: deletePackagesError } = await supabase
@@ -472,16 +553,19 @@ function createManifestIngestService(options = {}) {
           driver_id: resolvedDriverId,
           vehicle_id: resolvedVehicleId,
           work_area_name: resolvedWorkAreaName,
-          dispatch_state: 'staged',
-          dispatched_at: null,
-          dispatched_by_manager_user_id: null,
+          dispatch_state: shouldResetRouteForManifestRefresh ? 'staged' : existingRoute.dispatch_state || 'staged',
+          dispatched_at: shouldResetRouteForManifestRefresh ? null : existingRoute.dispatched_at || null,
+          dispatched_by_manager_user_id: shouldResetRouteForManifestRefresh
+            ? null
+            : existingRoute.dispatched_by_manager_user_id || null,
           ...routeSyncMetadata,
           sa_number: manifestMeta.sa_number || null,
           contractor_name: manifestMeta.contractor_name || null,
           source,
           total_stops: routeStops.length,
-          completed_stops: 0,
-          status: 'pending'
+          completed_stops: shouldResetRouteForManifestRefresh ? 0 : preservedCompletedStops,
+          completed_at: nextCompletedAt,
+          status: nextRouteStatus
         })
         .eq('id', existingRoute.id)
         .eq('account_id', accountId)
@@ -545,10 +629,8 @@ function createManifestIngestService(options = {}) {
       contact_name: stop.contact_name || null,
       lat: stop.lat,
       lng: stop.lng,
-      status: 'pending',
       is_pickup: Boolean(stop.is_pickup),
       is_business: Boolean(stop.is_business),
-      has_note: Boolean(stop.warning),
       sid: stop.sid || null,
       ready_time: stop.ready_time || null,
       close_time: stop.close_time || null,
@@ -558,7 +640,30 @@ function createManifestIngestService(options = {}) {
       has_delivery: stop.has_delivery !== false,
       geocode_source: stop.geocode_source || 'manifest',
       geocode_accuracy: stop.geocode_accuracy || 'manifest',
-      notes: stop.warning ? stop.warning : null
+      ...(() => {
+        const preservedState = existingRoute
+          ? getExistingStopStateForManifestStop(
+              preservedStopStateByKey,
+              stop,
+              `insert:${stop?.sequence}`
+            )
+          : null;
+
+        return {
+          status: preservedState?.status || 'pending',
+          exception_code: preservedState?.exception_code || null,
+          delivery_type_code: preservedState?.delivery_type_code || null,
+          signer_name: preservedState?.signer_name || null,
+          signature_url: preservedState?.signature_url || null,
+          age_confirmed: preservedState?.age_confirmed || false,
+          pod_photo_url: preservedState?.pod_photo_url || null,
+          pod_signature_url: preservedState?.pod_signature_url || null,
+          scanned_at: preservedState?.scanned_at || null,
+          completed_at: preservedState?.completed_at || null,
+          has_note: Boolean(stop.warning || preservedState?.has_note),
+          notes: stop.warning ? stop.warning : preservedState?.notes || null
+        };
+      })()
     }));
 
     const { data: insertedStops, error: stopsError } = await supabase

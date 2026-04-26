@@ -5057,6 +5057,10 @@ function createManagerRouter(options = {}) {
           const stopsById = new Map(routeStops.map((stop) => [stop.id, stop]));
           const routePackages = routeStops.flatMap((stop) => packagesByStopId.get(stop.id) || []);
           const packageSummary = getPackageStatusSummary(routePackages, stopsById);
+          const exceptionCount = routeStops.filter((stop) =>
+            Boolean(stop.exception_code) ||
+            ['attempted', 'incomplete', 'pickup_attempted'].includes(stop.status)
+          ).length;
           const completedRouteStops = routeStops.filter((stop) => stop.completed_at);
           const firstScan = completedRouteStops.reduce((earliest, stop) => {
             if (!stop.completed_at) {
@@ -5091,6 +5095,9 @@ function createManagerRouter(options = {}) {
             time_commits_completed: getTimeCommitCounts(routeStops).completed,
             delivered_packages: packageSummary.completed,
             total_packages: routePackages.length,
+            exception_count: exceptionCount,
+            exceptions: exceptionCount,
+            impacts: Number(route.impacts || 0),
             stops_per_hour: getStopsPerHour({
               completedStops: Number(route.completed_stops || 0),
               firstScan,

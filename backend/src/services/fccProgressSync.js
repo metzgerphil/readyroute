@@ -128,7 +128,7 @@ async function loadAccountDrivers(supabase, accountId) {
 async function loadRouteStops(supabase, routeId) {
   const { data, error } = await supabase
     .from('stops')
-    .select('id, route_id, sequence_order, sid, address, address_line2, status, completed_at, scanned_at')
+    .select('id, route_id, sequence_order, sid, address, address_line2, status, exception_code, completed_at, scanned_at')
     .eq('route_id', routeId)
     .order('sequence_order');
 
@@ -165,6 +165,59 @@ function deriveRouteStatus({ completedStops, totalStops, currentStatus }) {
   return currentStatus || 'pending';
 }
 
+function normalizeExceptionCode(value) {
+  const raw = String(value || '').trim();
+
+  if (!raw) {
+    return null;
+  }
+
+  const prefixedPickupCode = raw.match(/\b(P\d{1,3})\b/i);
+  if (prefixedPickupCode) {
+    return prefixedPickupCode[1].toUpperCase();
+  }
+
+  const numericCode = raw.match(/\b(?:code\s*)?(\d{1,3})\b/i);
+  if (!numericCode) {
+    return raw.toUpperCase();
+  }
+
+  return Number(numericCode[1]) > 0 ? numericCode[1].padStart(2, '0') : null;
+}
+
+function getProgressRowTimestamp(row, nowProvider) {
+  return (
+    row?.completed_at ||
+    row?.scanned_at ||
+    row?.scan_time ||
+    row?.status_time ||
+    nowProvider().toISOString()
+  );
+}
+
+function getProgressRowUpdate(row, nowProvider) {
+  if (row?.is_completed) {
+    return {
+      status: 'delivered',
+      exceptionCode: null,
+      timestamp: getProgressRowTimestamp(row, nowProvider),
+      type: 'completed'
+    };
+  }
+
+  const exceptionCode = normalizeExceptionCode(row?.exception_code || row?.status_code || row?.scan_code);
+  if (row?.is_exception || exceptionCode) {
+    return {
+      status: row?.status === 'incomplete' ? 'incomplete' : 'attempted',
+      exceptionCode,
+      timestamp: getProgressRowTimestamp(row, nowProvider),
+      type: 'exception'
+    };
+  }
+
+  return null;
+}
+
 function createFccProgressSyncService(options = {}) {
   const { supabase } = options;
   const nowProvider = options.now || (() => new Date());
@@ -185,6 +238,7 @@ function createFccProgressSyncService(options = {}) {
     const appliedResults = [];
     let drivers = null;
     let totalCompletedUpdates = 0;
+    let totalExceptionUpdates = 0;
     let totalDriverAssignments = 0;
 
     async function getDrivers() {
@@ -222,23 +276,43 @@ function createFccProgressSyncService(options = {}) {
         }
       });
 
-      const completedRows = (snapshot?.rows || []).filter((row) => row?.is_completed);
+      const actionableRows = (snapshot?.rows || [])
+        .map((row) => ({
+          row,
+          update: getProgressRowUpdate(row, nowProvider)
+        }))
+        .filter((entry) => entry.update);
       const updates = [];
       const existingCompletedStops = stops.reduce((sum, stop) => sum + (stop.completed_at ? 1 : 0), 0);
 
-      for (const row of completedRows) {
+      for (const { row, update } of actionableRows) {
         const matchedStop =
           buildProgressMatchKeys(row)
             .map((key) => stopByKey.get(key))
             .find(Boolean) || null;
 
-        if (!matchedStop || matchedStop.completed_at) {
+        if (!matchedStop) {
+          continue;
+        }
+
+        const nextExceptionCode = update.exceptionCode || null;
+        const alreadyHasSameTerminalState =
+          Boolean(matchedStop.completed_at) &&
+          matchedStop.status === update.status &&
+          String(matchedStop.exception_code || '') === String(nextExceptionCode || '');
+
+        if (alreadyHasSameTerminalState) {
           continue;
         }
 
         updates.push({
           stopId: matchedStop.id,
-          completedAt: row?.completed_at || nowProvider().toISOString()
+          status: update.status,
+          exceptionCode: nextExceptionCode,
+          completedAt: update.timestamp,
+          scannedAt: update.timestamp,
+          type: update.type,
+          wasAlreadyCompleted: Boolean(matchedStop.completed_at)
         });
       }
 
@@ -246,9 +320,10 @@ function createFccProgressSyncService(options = {}) {
         const { error } = await supabase
           .from('stops')
           .update({
-            status: 'delivered',
+            status: update.status,
+            exception_code: update.exceptionCode,
             completed_at: update.completedAt,
-            scanned_at: update.completedAt
+            scanned_at: update.scannedAt
           })
           .eq('id', update.stopId);
 
@@ -257,7 +332,10 @@ function createFccProgressSyncService(options = {}) {
         }
       }
 
-      const nextCompletedStops = existingCompletedStops + updates.length;
+      const newlyCompletedUpdates = updates.filter((update) => !update.wasAlreadyCompleted).length;
+      const completedUpdates = updates.filter((update) => update.type === 'completed').length;
+      const exceptionUpdates = updates.filter((update) => update.type === 'exception').length;
+      const nextCompletedStops = existingCompletedStops + newlyCompletedUpdates;
       const routeStatus = deriveRouteStatus({
         completedStops: nextCompletedStops,
         totalStops: Number(route.total_stops || 0),
@@ -295,13 +373,16 @@ function createFccProgressSyncService(options = {}) {
           workDate,
           eventType: 'fcc_progress_synced',
           eventStatus: 'info',
-          summary: `FCC progress synced ${updates.length} completed stops for route ${route.work_area_name || snapshot?.work_area_name || route.id}`,
+          summary: `FCC progress synced ${updates.length} worked stops for route ${route.work_area_name || snapshot?.work_area_name || route.id}`,
           details: {
             source,
-            completed_updates: updates.length,
-            matched_rows: completedRows.length,
+            completed_updates: completedUpdates,
+            exception_updates: exceptionUpdates,
+            worked_updates: updates.length,
+            matched_rows: actionableRows.length,
             total_rows: Number(snapshot?.record_count || (snapshot?.rows || []).length || 0),
-            visual_completed_rows: completedRows.length,
+            visual_completed_rows: actionableRows.filter((entry) => entry.update.type === 'completed').length,
+            visual_exception_rows: actionableRows.filter((entry) => entry.update.type === 'exception').length,
             delivered_packages: Number(snapshot?.delivered_packages || 0),
             fcc_driver_name: fccDriverName || null,
             matched_driver_name: matchedDriver?.name || null
@@ -311,15 +392,18 @@ function createFccProgressSyncService(options = {}) {
       }
 
       totalCompletedUpdates += updates.length;
+      totalExceptionUpdates += exceptionUpdates;
       totalDriverAssignments += matchedDriver ? 1 : 0;
       appliedResults.push({
         work_area_name: snapshot?.work_area_name || route.work_area_name || null,
         route_id: route.id,
         status: updates.length > 0 || matchedDriver ? 'updated' : 'no_changes',
-        completed_updates: updates.length,
+        completed_updates: completedUpdates,
+        exception_updates: exceptionUpdates,
+        worked_updates: updates.length,
         matched_driver_name: matchedDriver?.name || null,
         fcc_driver_name: fccDriverName || null,
-        matched_rows: completedRows.length,
+        matched_rows: actionableRows.length,
         total_rows: Number(snapshot?.record_count || (snapshot?.rows || []).length || 0)
       });
     }
@@ -327,6 +411,7 @@ function createFccProgressSyncService(options = {}) {
     return {
       route_count: progressSnapshots.length,
       completed_updates: totalCompletedUpdates,
+      exception_updates: totalExceptionUpdates,
       driver_assignments: totalDriverAssignments,
       has_changes: totalCompletedUpdates > 0 || totalDriverAssignments > 0,
       routes: appliedResults

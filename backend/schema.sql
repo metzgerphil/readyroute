@@ -276,7 +276,7 @@ create table if not exists public.stops (
   completed_at timestamptz,
   notes text,
   constraint stops_sequence_order_positive check (sequence_order > 0),
-  constraint stops_status_check check (status in ('pending', 'delivered', 'complete'))
+  constraint stops_status_check check (status in ('pending', 'delivered', 'complete', 'attempted', 'pickup_complete', 'pickup_attempted', 'incomplete'))
 );
 
 create table if not exists public.packages (
@@ -521,6 +521,9 @@ alter table public.stops add column if not exists pod_signature_url text;
 alter table public.stops add column if not exists scanned_at timestamptz;
 alter table public.stops add column if not exists completed_at timestamptz;
 alter table public.stops add column if not exists notes text;
+alter table public.stops drop constraint if exists stops_status_check;
+alter table public.stops add constraint stops_status_check
+  check (status in ('pending', 'delivered', 'complete', 'attempted', 'pickup_complete', 'pickup_attempted', 'incomplete'));
 
 alter table public.road_rules add column if not exists created_by uuid references public.drivers(id) on delete cascade;
 

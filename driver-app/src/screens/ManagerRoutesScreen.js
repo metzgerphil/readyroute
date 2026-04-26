@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { ActivityIndicator, FlatList, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import ManagerSectionLayout from '../components/ManagerSectionLayout';
+import RouteMetricIcon from '../components/RouteMetricIcon';
 import api from '../services/api';
 
 function getTodayDateParam() {
@@ -56,7 +57,34 @@ function getGpsTone(route) {
   return route?.is_online ? styles.connectivityLive : styles.connectivityStale;
 }
 
+function getExceptionCount(route) {
+  if (route?.exception_count != null) {
+    return Number(route.exception_count || 0);
+  }
+
+  return (route?.stops || []).filter((stop) =>
+    Boolean(stop?.exception_code) ||
+    ['attempted', 'incomplete', 'pickup_attempted'].includes(stop?.status)
+  ).length;
+}
+
+function RouteMetric({ icon, label, value }) {
+  return (
+    <View accessibilityLabel={`${label}: ${value}`} style={styles.routeMetric}>
+      <RouteMetricIcon color="#ffffff" name={icon} size={18} />
+      <Text style={styles.routeMetricValue}>{value}</Text>
+    </View>
+  );
+}
+
 function RouteCard({ onOpenRoute, route }) {
+  const completedStops = Number(route.completed_stops || 0);
+  const totalStops = Number(route.total_stops || 0);
+  const deliveredPackages = Number(route.delivered_packages || 0);
+  const totalPackages = Number(route.total_packages || 0);
+  const exceptionCount = getExceptionCount(route);
+  const progressPercent = totalStops > 0 ? Math.min(100, Math.max(0, (completedStops / totalStops) * 100)) : 0;
+
   return (
     <Pressable onPress={() => onOpenRoute?.(route)} style={styles.routeCard}>
       <View style={styles.routeHeader}>
@@ -80,18 +108,18 @@ function RouteCard({ onOpenRoute, route }) {
       </View>
 
       <View style={styles.metricsRow}>
-        <View style={styles.metricPill}>
-          <Text style={styles.metricLabel}>Stops</Text>
-          <Text style={styles.metricValue}>{route.completed_stops || 0}/{route.total_stops || 0}</Text>
-        </View>
-        <View style={styles.metricPill}>
-          <Text style={styles.metricLabel}>Packages</Text>
-          <Text style={styles.metricValue}>{route.delivered_packages || 0}/{route.total_packages || 0}</Text>
-        </View>
+        <RouteMetric icon="stop" label="Stops" value={`${completedStops}/${totalStops}`} />
+        <RouteMetric icon="package" label="Packages" value={`${deliveredPackages}/${totalPackages}`} />
+        <RouteMetric icon="stopwatch" label="Stops per hour" value={formatStopsPerHour(route.stops_per_hour)} />
+        <RouteMetric icon="warning" label="Exceptions" value={exceptionCount} />
+      </View>
+
+      <View accessibilityLabel={`${Math.round(progressPercent)} percent of route stops completed`} style={styles.routeProgressTrack}>
+        <View style={[styles.routeProgressFill, { width: `${progressPercent}%` }]} />
       </View>
 
       <View style={styles.footerRow}>
-        <Text style={styles.routeRate}>{formatStopsPerHour(route.stops_per_hour)}</Text>
+        <Text style={styles.routeRate}>{exceptionCount ? `${exceptionCount} exception${exceptionCount === 1 ? '' : 's'}` : 'No scanner exceptions'}</Text>
         <View style={[styles.connectivityPill, getGpsTone(route)]}>
           <Text style={styles.connectivityText}>{formatGpsFreshness(route)}</Text>
         </View>
@@ -285,13 +313,13 @@ const styles = StyleSheet.create({
     fontWeight: '800'
   },
   routeCard: {
-    backgroundColor: '#ffffff',
-    borderColor: '#d8e2e8',
-    borderRadius: 18,
+    backgroundColor: '#111820',
+    borderColor: '#24313a',
+    borderRadius: 22,
     borderWidth: 1,
-    marginBottom: 8,
-    paddingHorizontal: 12,
-    paddingVertical: 11
+    marginBottom: 10,
+    paddingHorizontal: 14,
+    paddingVertical: 14
   },
   routeHeader: {
     alignItems: 'flex-start',
@@ -308,13 +336,13 @@ const styles = StyleSheet.create({
     gap: 8
   },
   routeTitle: {
-    color: '#173042',
-    fontSize: 16,
+    color: '#ffffff',
+    fontSize: 18,
     fontWeight: '800',
     marginBottom: 2
   },
   routeMeta: {
-    color: '#667784',
+    color: '#c5d0d8',
     fontSize: 12,
     lineHeight: 16
   },
@@ -331,41 +359,46 @@ const styles = StyleSheet.create({
   },
   overflowButton: {
     alignItems: 'center',
-    backgroundColor: '#f3f6f8',
+    backgroundColor: '#f2c94c',
     borderRadius: 999,
     justifyContent: 'center',
     minHeight: 30,
     minWidth: 30
   },
   overflowText: {
-    color: '#173042',
+    color: '#111820',
     fontSize: 18,
     fontWeight: '800',
     lineHeight: 18
   },
   metricsRow: {
+    alignItems: 'center',
     flexDirection: 'row',
-    gap: 8,
-    marginBottom: 8
+    flexWrap: 'wrap',
+    gap: 14,
+    marginBottom: 12
   },
-  metricPill: {
-    backgroundColor: '#f5f8fa',
-    borderRadius: 12,
-    flex: 1,
-    paddingHorizontal: 8,
-    paddingVertical: 7
+  routeMetric: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: 6
   },
-  metricLabel: {
-    color: '#667784',
-    fontSize: 10,
-    fontWeight: '700',
-    marginBottom: 3,
-    textTransform: 'uppercase'
-  },
-  metricValue: {
-    color: '#173042',
-    fontSize: 14,
+  routeMetricValue: {
+    color: '#ffffff',
+    fontSize: 15,
     fontWeight: '800'
+  },
+  routeProgressTrack: {
+    backgroundColor: '#123840',
+    borderRadius: 999,
+    height: 7,
+    marginBottom: 10,
+    overflow: 'hidden'
+  },
+  routeProgressFill: {
+    backgroundColor: '#14b8c9',
+    borderRadius: 999,
+    height: '100%'
   },
   footerRow: {
     alignItems: 'center',
@@ -374,7 +407,7 @@ const styles = StyleSheet.create({
     gap: 10
   },
   routeRate: {
-    color: '#2f4c5f',
+    color: '#c5d0d8',
     flex: 1,
     fontSize: 12,
     fontWeight: '700'

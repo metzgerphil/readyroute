@@ -171,9 +171,94 @@ function colorLooksGreen(color) {
   return g >= 150 && g > r + 15 && g > b + 15;
 }
 
+function colorLooksException(color) {
+  const match = String(color || '').match(/rgba?\((\d+),\s*(\d+),\s*(\d+)/i);
+
+  if (!match) {
+    return false;
+  }
+
+  const [, r, g, b] = match.map(Number);
+  const looksRed = r >= 180 && r > g + 35 && r > b + 35;
+  const looksOrange = r >= 190 && g >= 80 && g <= 190 && b <= 100;
+  const looksYellow = r >= 190 && g >= 160 && b <= 120;
+
+  return looksRed || looksOrange || looksYellow;
+}
+
 function toInt(value) {
   const parsed = Number(String(value || '').replace(/[^\d.-]/g, ''));
   return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function normalizeExceptionCode(value) {
+  const raw = normalizeText(value);
+
+  if (!raw) {
+    return null;
+  }
+
+  const pickupCodeMatch = raw.match(/\b(P\d{1,3})\b/i);
+  if (pickupCodeMatch) {
+    return pickupCodeMatch[1].toUpperCase();
+  }
+
+  const explicitCodeMatch = raw.match(/\b(?:code|status|exception)\s*#?:?\s*(\d{1,3})\b/i);
+  if (explicitCodeMatch) {
+    return Number(explicitCodeMatch[1]) > 0 ? explicitCodeMatch[1].padStart(2, '0') : null;
+  }
+
+  const loneCodeMatch = raw.match(/^\d{1,3}$/);
+  if (loneCodeMatch) {
+    return Number(raw) > 0 ? raw.padStart(2, '0') : null;
+  }
+
+  return null;
+}
+
+function extractExceptionCode(cells) {
+  const trailingCells = cells.slice(10).map(normalizeText).filter(Boolean);
+
+  for (const cell of trailingCells) {
+    const code = normalizeExceptionCode(cell);
+    if (code) {
+      return code;
+    }
+  }
+
+  const combined = trailingCells.join(' ');
+  return normalizeExceptionCode(combined);
+}
+
+function extractScanTimestamp(cells, workDate) {
+  const trailingText = cells.slice(10).map(normalizeText).filter(Boolean).join(' ');
+  const timeMatch = trailingText.match(/\b(\d{1,2}:\d{2})(?:\s*([AP]M))?\b/i);
+
+  if (!timeMatch) {
+    return null;
+  }
+
+  const [, timePart, meridiem] = timeMatch;
+  const [hourText, minuteText] = timePart.split(':');
+  let hour = Number(hourText);
+  const minute = Number(minuteText);
+
+  if (!Number.isFinite(hour) || !Number.isFinite(minute)) {
+    return null;
+  }
+
+  if (meridiem) {
+    const normalizedMeridiem = meridiem.toUpperCase();
+    if (normalizedMeridiem === 'PM' && hour < 12) {
+      hour += 12;
+    }
+    if (normalizedMeridiem === 'AM' && hour === 12) {
+      hour = 0;
+    }
+  }
+
+  const timestamp = new Date(`${workDate}T${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}:00`);
+  return Number.isNaN(timestamp.getTime()) ? null : timestamp.toISOString();
 }
 
 async function ensureLoggedIn(page, config, credentials) {
@@ -664,7 +749,7 @@ async function parseRecordCount(page) {
   return match ? Number(match[1]) : 0;
 }
 
-async function collectProgressRows(page, config) {
+async function collectProgressRows(page, config, workDate) {
   const rows = page.locator(config.manifestRowSelector);
   const rowCount = await rows.count().catch(() => 0);
   const collected = [];
@@ -690,6 +775,9 @@ async function collectProgressRows(page, config) {
     }).catch(() => '');
     const colors = Array.isArray(rowColors) ? rowColors : [rowColors].filter(Boolean);
     const completedColor = colors.find(colorLooksGreen) || '';
+    const exceptionColor = colors.find(colorLooksException) || '';
+    const exceptionCode = extractExceptionCode(cells);
+    const scanTimestamp = extractScanTimestamp(cells, workDate);
 
     collected.push({
       stop_number: toInt(stopNumber),
@@ -704,7 +792,11 @@ async function collectProgressRows(page, config) {
       close_time: closeTime || null,
       package_count: toInt(packageCount),
       is_completed: Boolean(completedColor),
-      row_color: completedColor || colors[0] || ''
+      is_exception: Boolean(exceptionCode || (!completedColor && exceptionColor)),
+      exception_code: exceptionCode,
+      scanned_at: scanTimestamp,
+      completed_at: completedColor ? scanTimestamp : null,
+      row_color: completedColor || exceptionColor || colors[0] || ''
     });
   }
 
@@ -723,7 +815,7 @@ async function collectWorkAreaSnapshot(page, config, workAreaName, workDate, dow
   );
   await fs.mkdir(rowDir, { recursive: true });
 
-  const rows = await collectProgressRows(page, config);
+  const rows = await collectProgressRows(page, config, workDate);
   const recordCount = await parseRecordCount(page);
   let xlsPath = null;
   let gpxPath = null;

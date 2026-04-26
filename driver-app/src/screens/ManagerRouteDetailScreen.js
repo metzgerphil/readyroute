@@ -3,6 +3,7 @@ import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View, Platf
 import MapView, { Marker, PROVIDER_GOOGLE } from 'react-native-maps';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import RouteMetricIcon from '../components/RouteMetricIcon';
 import api from '../services/api';
 import {
   buildRouteDetailMapModel,
@@ -14,6 +15,42 @@ import {
 
 const googleMapsApiKey = process.env.EXPO_PUBLIC_GOOGLE_MAPS_API_KEY || '';
 const shouldUseGoogleProvider = Platform.OS !== 'ios' || Boolean(String(googleMapsApiKey).trim());
+
+function formatStopTimestamp(timestamp) {
+  if (!timestamp) {
+    return null;
+  }
+
+  const date = new Date(timestamp);
+
+  if (Number.isNaN(date.getTime())) {
+    return null;
+  }
+
+  return date.toLocaleTimeString([], {
+    hour: 'numeric',
+    minute: '2-digit'
+  });
+}
+
+function formatExceptionCode(code) {
+  const value = String(code || '').trim();
+
+  if (!value) {
+    return null;
+  }
+
+  return /^\d+$/.test(value) ? `Code ${value.padStart(2, '0')}` : `Code ${value.toUpperCase()}`;
+}
+
+function IconMetric({ icon, value }) {
+  return (
+    <View style={styles.iconMetric}>
+      <RouteMetricIcon color="#ffffff" name={icon} size={16} />
+      <Text style={styles.summaryValue}>{value}</Text>
+    </View>
+  );
+}
 
 export default function ManagerRouteDetailScreen({ navigation, route }) {
   const initialDate = route?.params?.date || null;
@@ -101,16 +138,16 @@ export default function ManagerRouteDetailScreen({ navigation, route }) {
 
           <View style={styles.summaryRow}>
             <View style={styles.summaryPill}>
-              <Text style={styles.summaryLabel}>Stops</Text>
-              <Text style={styles.summaryValue}>{routeSummary.completed_stops || 0}/{routeSummary.total_stops || 0}</Text>
+              <IconMetric icon="stop" value={`${routeSummary.completed_stops || 0}/${routeSummary.total_stops || 0}`} />
             </View>
             <View style={styles.summaryPill}>
-              <Text style={styles.summaryLabel}>Packages</Text>
-              <Text style={styles.summaryValue}>{packageProgress.delivered}/{packageProgress.total}</Text>
+              <IconMetric icon="package" value={`${packageProgress.delivered}/${packageProgress.total}`} />
             </View>
             <View style={styles.summaryPill}>
-              <Text style={styles.summaryLabel}>Rate</Text>
-              <Text style={styles.summaryValue}>{routeSummary.stops_per_hour == null ? '--' : routeSummary.stops_per_hour}</Text>
+              <IconMetric icon="stopwatch" value={routeSummary.stops_per_hour == null ? '-- stops/hr' : `${routeSummary.stops_per_hour} stops/hr`} />
+            </View>
+            <View style={styles.summaryPill}>
+              <IconMetric icon="warning" value={warnings.exceptions} />
             </View>
           </View>
 
@@ -187,6 +224,8 @@ export default function ManagerRouteDetailScreen({ navigation, route }) {
               <Text style={styles.sectionTitle}>Stop list</Text>
               {stops.map((stop) => {
                 const labels = getStopIndicatorLabels(stop);
+                const scanTime = formatStopTimestamp(stop.scanned_at || stop.completed_at);
+                const exceptionCode = formatExceptionCode(stop.exception_code);
 
                 return (
                   <View key={stop.id} style={styles.stopRow}>
@@ -201,7 +240,13 @@ export default function ManagerRouteDetailScreen({ navigation, route }) {
                       <Text style={styles.stopMeta}>
                         {stop.status || 'pending'}
                         {stop.ready_time && stop.close_time ? ` • ${stop.ready_time}-${stop.close_time}` : ''}
+                        {scanTime ? ` • ${scanTime}` : ''}
                       </Text>
+                      {exceptionCode ? (
+                        <View style={styles.exceptionCodeBadge}>
+                          <Text style={styles.exceptionCodeBadgeText}>{exceptionCode}</Text>
+                        </View>
+                      ) : null}
                       {labels.length ? (
                         <View style={styles.stopBadgeRow}>
                           {labels.map((label) => (
@@ -286,6 +331,7 @@ const styles = StyleSheet.create({
   },
   summaryRow: {
     flexDirection: 'row',
+    flexWrap: 'wrap',
     gap: 10,
     marginTop: 16
   },
@@ -293,7 +339,13 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(255,255,255,0.08)',
     borderRadius: 18,
     flex: 1,
+    minWidth: '45%',
     padding: 12
+  },
+  iconMetric: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: 6
   },
   summaryLabel: {
     color: '#8fd0d7',
@@ -499,6 +551,21 @@ const styles = StyleSheet.create({
     fontSize: 13,
     lineHeight: 18,
     marginBottom: 4
+  },
+  exceptionCodeBadge: {
+    alignSelf: 'flex-start',
+    backgroundColor: '#fff1e8',
+    borderColor: '#fed7aa',
+    borderRadius: 999,
+    borderWidth: 1,
+    marginTop: 4,
+    paddingHorizontal: 10,
+    paddingVertical: 6
+  },
+  exceptionCodeBadgeText: {
+    color: '#c2410c',
+    fontSize: 11,
+    fontWeight: '900'
   },
   stopBadgeRow: {
     flexDirection: 'row',

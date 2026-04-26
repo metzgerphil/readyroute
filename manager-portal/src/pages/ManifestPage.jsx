@@ -1366,7 +1366,7 @@ export default function ManifestPage() {
                 <button
                   className="manifest-attention-chip urgent"
                   key={`${route.id}-pins`}
-                  onClick={() => navigate(`/routes/${route.id}`)}
+                  onClick={() => navigate(`/routes/${route.id}?date=${date}`)}
                   type="button"
                 >
                   {route.work_area_name}: needs pins
@@ -1376,7 +1376,7 @@ export default function ManifestPage() {
                 <button
                   className="manifest-attention-chip warning"
                   key={`${route.id}-partial`}
-                  onClick={() => navigate(`/routes/${route.id}`)}
+                  onClick={() => navigate(`/routes/${route.id}?date=${date}`)}
                   type="button"
                 >
                   {route.work_area_name}: {route.missing_stops || 0} pins missing
@@ -1386,7 +1386,7 @@ export default function ManifestPage() {
                 <button
                   className="manifest-attention-chip warning"
                   key={`${route.id}-warning`}
-                  onClick={() => navigate(`/routes/${route.id}`)}
+                  onClick={() => navigate(`/routes/${route.id}?date=${date}`)}
                   type="button"
                 >
                   {route.work_area_name}: review address warnings
@@ -1589,7 +1589,7 @@ export default function ManifestPage() {
                     <button
                       aria-label="Preview route"
                       className="secondary-inline-button"
-                      onClick={() => navigate(`/routes/${route.id}`)}
+                      onClick={() => navigate(`/routes/${route.id}?date=${date}`)}
                       type="button"
                     >
                       Open Route
@@ -1686,7 +1686,7 @@ export default function ManifestPage() {
                       <button
                         aria-label="Preview route"
                         className="icon-button"
-                        onClick={() => navigate(`/routes/${route.id}`)}
+                        onClick={() => navigate(`/routes/${route.id}?date=${date}`)}
                         type="button"
                       >
                         Open

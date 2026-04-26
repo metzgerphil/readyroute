@@ -1,19 +1,6 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 
 import './StopListDrawer.css';
-import { getPinWorkflowMeta } from '../utils/pinWorkflow';
-
-const FILTER_OPTIONS = [
-  { id: 'all', label: 'All' },
-  { id: 'deliveries', label: 'Deliveries' },
-  { id: 'pickups', label: 'Pickups' },
-  { id: 'pending', label: 'Pending' },
-  { id: 'completed', label: 'Completed' },
-  { id: 'time-commits', label: 'Time Commits' },
-  { id: 'exceptions', label: 'Exceptions' },
-  { id: 'incomplete', label: 'Incomplete' },
-  { id: 'has-note', label: 'Has Note' }
-];
 
 function getStopType(stop) {
   if (stop.stop_type === 'combined' || (stop.has_pickup && stop.has_delivery)) {
@@ -77,6 +64,20 @@ function formatCompletionTime(stop) {
     minute: '2-digit',
     hour12: true
   }).format(date);
+}
+
+function formatExceptionCode(code) {
+  const value = String(code || '').trim();
+
+  if (!value) {
+    return null;
+  }
+
+  if (/^\d+$/.test(value)) {
+    return `Code ${value.length > 2 && value.startsWith('0') ? value.slice(-2) : value.padStart(2, '0')}`;
+  }
+
+  return `Code ${value.toUpperCase()}`;
 }
 
 function getPackageCount(stop) {
@@ -181,16 +182,14 @@ export default function StopListDrawer({
   stops,
   selectedStopId,
   onClose,
-  onSelectStop,
-  onFilterCountChange
+  onSelectStop
 }) {
   const [searchTerm, setSearchTerm] = useState('');
-  const [activeFilter, setActiveFilter] = useState('all');
   const [focusedIndex, setFocusedIndex] = useState(-1);
 
   const visibleStops = useMemo(
-    () => filterStops(stops, activeFilter, searchTerm),
-    [stops, activeFilter, searchTerm]
+    () => filterStops(stops, 'all', searchTerm),
+    [stops, searchTerm]
   );
 
   const filteredStats = useMemo(() => {
@@ -201,10 +200,6 @@ export default function StopListDrawer({
     return { delivered, pending, exceptions };
   }, [visibleStops]);
   const routeStats = useMemo(() => getStopStats(stops), [stops]);
-
-  useEffect(() => {
-    onFilterCountChange?.(activeFilter === 'all' ? 0 : 1);
-  }, [activeFilter, onFilterCountChange]);
 
   function handleKeyDown(event) {
     if (!open || !visibleStops.length) {
@@ -291,19 +286,6 @@ export default function StopListDrawer({
           value={searchTerm}
           onChange={(event) => setSearchTerm(event.target.value)}
         />
-
-        <div className="stop-list-drawer-chips">
-          {FILTER_OPTIONS.map((option) => (
-            <button
-              key={option.id}
-              type="button"
-              className={`stop-list-chip ${activeFilter === option.id ? 'active' : ''}`}
-              onClick={() => setActiveFilter(option.id)}
-            >
-              {option.label}
-            </button>
-          ))}
-        </div>
       </div>
 
       <div className="stop-list-drawer-body">
@@ -315,7 +297,6 @@ export default function StopListDrawer({
             const isHighlighted = selectedStopId === stop.id;
             const isFocused = focusedIndex === index;
             const propertyIntel = stop.property_intel;
-            const pinMeta = getPinWorkflowMeta(stop);
             const completionTime = formatCompletionTime(stop);
             const packageCount = getPackageCount(stop);
 
@@ -387,18 +368,12 @@ export default function StopListDrawer({
                     {type === 'pickup' ? <span className="stop-mini-badge pickup">PICKUP</span> : null}
                     {type === 'combined' ? <span className="stop-mini-badge combined">COMBINED</span> : null}
                     {propertyIntel?.grouped_stops?.length ? <span className="stop-mini-badge apartment">GROUPED</span> : null}
-                    {pinMeta ? <span className={`stop-mini-badge ${pinMeta.badgeClassName}`}>{pinMeta.shortLabel}</span> : null}
                     {timeCommit ? <span className="stop-mini-badge time-commit">{timeCommit}</span> : null}
                     {(propertyIntel?.warning_flags || []).slice(0, 2).map((flag) => (
                       <span key={flag} className="stop-mini-badge time-commit">{formatWarningFlag(flag)}</span>
                     ))}
                     {stop.has_note ? <span className="stop-note-dot" /> : null}
                   </div>
-                  {pinMeta ? (
-                    <div className="stop-list-row-address-line2">
-                      {`${pinMeta.title} · ${pinMeta.recommendation}`}
-                    </div>
-                  ) : null}
                   {stop.has_note && stop.notes ? (
                     <div className="stop-list-row-note-preview">
                       <span className="stop-list-row-note-label">
@@ -411,7 +386,7 @@ export default function StopListDrawer({
 
                 <div className="stop-list-row-status">
                   {stop.exception_code ? (
-                    <span className="stop-list-row-exception">{`Code ${String(stop.exception_code).padStart(2, '0')}`}</span>
+                    <span className="stop-list-row-exception">{formatExceptionCode(stop.exception_code)}</span>
                   ) : null}
                   {!completionTime ? (
                     <span className="stop-status-chip" style={{ backgroundColor: status.statusFill, color: status.statusText }}>
@@ -424,16 +399,13 @@ export default function StopListDrawer({
           })
         ) : (
           <div className="stop-list-empty">
-            <div>No stops match your filter.</div>
+            <div>No stops match your search.</div>
             <button
               type="button"
               className="stop-list-clear"
-              onClick={() => {
-                setSearchTerm('');
-                setActiveFilter('all');
-              }}
+              onClick={() => setSearchTerm('')}
             >
-              Clear filters
+              Clear search
             </button>
           </div>
         )}

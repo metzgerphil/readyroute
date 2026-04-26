@@ -184,11 +184,16 @@ function createCliFedexFccAdapter(options = {}) {
         (sum, snapshot) => sum + (snapshot?.rows || []).filter((row) => row?.is_completed).length,
         0
       );
+      const exceptionStopCount = progressSnapshots.reduce(
+        (sum, snapshot) => sum + (snapshot?.rows || []).filter((row) => row?.is_exception || row?.exception_code).length,
+        0
+      );
 
       return {
         route_count: progressSnapshots.length,
         completed_stop_count: completedStopCount,
-        has_changes: completedStopCount > 0,
+        exception_stop_count: exceptionStopCount,
+        has_changes: false,
         summary: payload?.summary || `Pulled FCC progress for ${progressSnapshots.length} work areas.`,
         details: {
           runner: path.basename(command),
