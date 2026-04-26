@@ -1,6 +1,6 @@
 import { format } from 'date-fns';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 
 import MapLegend from '../components/MapLegend';
@@ -116,6 +116,11 @@ function loadGoogleMapsScript() {
 
 function getTodayString() {
   return format(new Date(), 'yyyy-MM-dd');
+}
+
+function getInitialRouteDate(searchParams) {
+  const requestedDate = searchParams.get('date');
+  return requestedDate || getTodayString();
 }
 
 function getGoogleMapsErrorMessage(error) {
@@ -554,6 +559,7 @@ function buildDriverInfoWindow({ route, routeDriverName, nextStop, pendingTimeCo
 export default function RoutePage() {
   const { id } = useParams();
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const queryClient = useQueryClient();
   const mapContainerRef = useRef(null);
   const mapInstanceRef = useRef(null);
@@ -570,7 +576,7 @@ export default function RoutePage() {
   const mapTileWatchdogRef = useRef(null);
   const mapTileRetryCountRef = useRef(0);
   const mapTilesLoadedRef = useRef(false);
-  const [date, setDate] = useState(getTodayString());
+  const [date, setDate] = useState(() => getInitialRouteDate(searchParams));
   const [mapError, setMapError] = useState('');
   const [mapReady, setMapReady] = useState(false);
   const [mapLoading, setMapLoading] = useState(false);
@@ -648,9 +654,16 @@ export default function RoutePage() {
     }
 
     if (routeOptions.length && !routeOptions.some((route) => route.id === id)) {
-      navigate(`/routes/${routeOptions[0].id}`, { replace: true });
+      navigate(`/routes/${routeOptions[0].id}?date=${date}`, { replace: true });
     }
-  }, [id, navigate, routeOptions, routesQuery.isLoading]);
+  }, [date, id, navigate, routeOptions, routesQuery.isLoading]);
+
+  useEffect(() => {
+    const requestedDate = searchParams.get('date');
+    if (requestedDate && requestedDate !== date) {
+      setDate(requestedDate);
+    }
+  }, [date, searchParams]);
 
   const routeDetailQuery = useQuery({
     queryKey: ['route-page-detail', id, date],
@@ -1222,11 +1235,12 @@ export default function RoutePage() {
     if (!nextRouteId) {
       return;
     }
-    navigate(`/routes/${nextRouteId}`);
+    navigate(`/routes/${nextRouteId}?date=${date}`);
   }
 
   function handleDateChange(nextDate) {
     setDate(nextDate);
+    setSearchParams({ date: nextDate });
     setSelectedStopId(null);
   }
 

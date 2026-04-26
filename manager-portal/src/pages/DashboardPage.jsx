@@ -1141,7 +1141,7 @@ export default function DashboardPage() {
                   <button
                     className={`dispatch-health-chip ${route.map_status === 'needs_pins' ? 'pins' : 'partial'}`}
                     key={`pins-${route.id}`}
-                    onClick={() => navigate(`/routes/${route.id}`)}
+                    onClick={() => navigate(`/routes/${route.id}?date=${dashboardDate}`)}
                     type="button"
                   >
                     {route.work_area_name}: {route.map_status === 'needs_pins' ? 'needs pins' : `${route.missing_stops || 0} pins missing`}
@@ -1151,7 +1151,7 @@ export default function DashboardPage() {
                   <button
                     className="dispatch-health-chip warning"
                     key={`warning-${route.id}`}
-                    onClick={() => navigate(`/routes/${route.id}`)}
+                    onClick={() => navigate(`/routes/${route.id}?date=${dashboardDate}`)}
                     type="button"
                   >
                     {route.work_area_name}: review route warnings
@@ -1215,7 +1215,7 @@ export default function DashboardPage() {
 
                         assignVehicleMutation.mutate({ routeId: driver.route_id, vehicleId });
                       }}
-                      onClick={() => driver.name && driver.route_id && navigate(`/routes/${driver.route_id}`)}
+                      onClick={() => driver.name && driver.route_id && navigate(`/routes/${driver.route_id}?date=${dashboardDate}`)}
                       showVehiclePicker={vehiclePickerRouteId === driver.route_id}
                       vehicles={(vehiclesQuery.data || []).filter((vehicle) => vehicle.is_active !== false)}
                     />

@@ -574,7 +574,7 @@ export default function OverviewRoutesSection({ date, routes }) {
             return (
               <div className={`overview-table-row${index % 2 ? ' alt' : ''}`} key={route.id} style={{ gridTemplateColumns: tableColumns }}>
                 <div className="overview-table-cell col-name">
-                  <button className="overview-link route-link" onClick={() => navigate(`/routes/${route.id}`)} type="button">
+                  <button className="overview-link route-link" onClick={() => navigate(`/routes/${route.id}?date=${date}`)} type="button">
                     {route.work_area_name || ''}
                   </button>
                   {route.has_bad_address ? <span className="overview-gear-badge">⚙</span> : null}
