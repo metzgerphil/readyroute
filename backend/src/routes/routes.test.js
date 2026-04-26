@@ -2013,7 +2013,10 @@ test('POST /routes/upload-manifest optionally merges GPX coordinates into spread
   }
 });
 
-test('POST /routes/upload-manifest returns a clear duplicate-route error when the work area already exists for the date', async () => {
+test('POST /routes/upload-manifest refreshes an active route and preserves completed stop progress', async () => {
+  let updatedRoutePayload;
+  let insertedStopsPayload;
+
   const supabase = new MockSupabase((query) => {
     if (query.table === 'drivers' && query.operation === 'select') {
       return {
@@ -2043,10 +2046,114 @@ test('POST /routes/upload-manifest returns a clear duplicate-route error when th
             id: 'route-existing',
             work_area_name: '810',
             status: 'in_progress',
+            dispatch_state: 'dispatched',
+            dispatched_at: '2026-04-13T14:00:00.000Z',
+            dispatched_by_manager_user_id: 'manager-dispatcher',
             completed_stops: 1,
-            completed_at: null
+            completed_at: null,
+            driver_id: 'driver-existing',
+            vehicle_id: 'vehicle-existing',
+            manifest_fingerprint: 'old-fingerprint',
+            last_manifest_change_at: '2026-04-13T14:05:00.000Z'
           }
         ],
+        error: null
+      };
+    }
+
+    if (query.table === 'stops' && query.operation === 'select' && query.mode === 'all') {
+      return {
+        data: [
+          {
+            id: 'stop-complete-1',
+            sequence_order: 1,
+            address: '123 Main St, Suite 200, San Diego, CA 92029-4159',
+            address_line2: 'Suite 200',
+            contact_name: 'Acme Receiving',
+            lat: 33.1,
+            lng: -117.2,
+            status: 'delivered',
+            exception_code: null,
+            delivery_type_code: null,
+            signer_name: null,
+            signature_url: null,
+            age_confirmed: false,
+            is_pickup: false,
+            is_business: false,
+            has_note: false,
+            notes: null,
+            sid: 'SID123',
+            ready_time: '09:00',
+            close_time: '10:00',
+            has_time_commit: true,
+            stop_type: 'delivery',
+            has_pickup: false,
+            has_delivery: true,
+            geocode_source: 'manifest',
+            geocode_accuracy: 'manifest',
+            pod_photo_url: null,
+            pod_signature_url: null,
+            scanned_at: '2026-04-13T16:00:00.000Z',
+            completed_at: '2026-04-13T16:00:00.000Z'
+          }
+        ],
+        error: null
+      };
+    }
+
+    if (query.table === 'packages' && query.operation === 'select' && query.mode === 'all') {
+      return {
+        data: [
+          { id: 'pkg-complete-1', stop_id: 'stop-complete-1' },
+          { id: 'pkg-complete-2', stop_id: 'stop-complete-1' }
+        ],
+        error: null
+      };
+    }
+
+    if (query.table === 'packages' && query.operation === 'delete') {
+      return {
+        data: null,
+        error: null
+      };
+    }
+
+    if (query.table === 'stops' && query.operation === 'delete') {
+      return {
+        data: null,
+        error: null
+      };
+    }
+
+    if (query.table === 'routes' && query.operation === 'update') {
+      updatedRoutePayload = query.payload;
+      return {
+        data: { id: 'route-existing' },
+        error: null
+      };
+    }
+
+    if (query.table === 'stops' && query.operation === 'insert') {
+      insertedStopsPayload = query.payload;
+      return {
+        data: query.payload.map((stop, index) => ({
+          id: `stop-refreshed-${index + 1}`,
+          sequence_order: stop.sequence_order
+        })),
+        error: null
+      };
+    }
+
+    if (query.table === 'packages' && query.operation === 'insert') {
+      return {
+        data: null,
+        error: null
+      };
+    }
+
+    if (query.table === 'route_sync_events' && query.operation === 'insert') {
+      return {
+        data: null,
         error: null
       };
     }
@@ -2082,12 +2189,20 @@ test('POST /routes/upload-manifest returns a clear duplicate-route error when th
       body
     });
 
-    assert.equal(response.status, 409);
+    assert.equal(response.status, 201);
     const payload = await response.json();
-    assert.equal(
-      payload.error,
-      'Route 810 for 2026-04-13 already exists and has already started. Open the existing route below instead of uploading the same manifest again.'
-    );
+    const completedStop = insertedStopsPayload.find((stop) => stop.sid === 'SID123');
+
+    assert.equal(payload.route_id, 'route-existing');
+    assert.equal(payload.merged_into_existing_route, true);
+    assert.equal(updatedRoutePayload.dispatch_state, 'dispatched');
+    assert.equal(updatedRoutePayload.dispatched_at, '2026-04-13T14:00:00.000Z');
+    assert.equal(updatedRoutePayload.dispatched_by_manager_user_id, 'manager-dispatcher');
+    assert.equal(updatedRoutePayload.completed_stops, 1);
+    assert.equal(updatedRoutePayload.status, 'in_progress');
+    assert.equal(completedStop.status, 'delivered');
+    assert.equal(completedStop.scanned_at, '2026-04-13T16:00:00.000Z');
+    assert.equal(completedStop.completed_at, '2026-04-13T16:00:00.000Z');
   } finally {
     await server.close();
   }
