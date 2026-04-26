@@ -250,16 +250,17 @@ function createFccProgressSyncService(options = {}) {
     }
 
     for (const snapshot of progressSnapshots) {
-      const route =
-        findRouteForSnapshot(dispatchedRoutes, snapshot) ||
-        findRouteForSnapshot(routes, snapshot);
+      const route = findRouteForSnapshot(dispatchedRoutes, snapshot);
 
       if (!route) {
+        const stagedRoute = findRouteForSnapshot(routes, snapshot);
         appliedResults.push({
           work_area_name: snapshot?.work_area_name || null,
-          route_id: null,
-          status: 'route_not_found',
+          route_id: stagedRoute?.id || null,
+          status: stagedRoute ? 'route_not_dispatched' : 'route_not_found',
           completed_updates: 0,
+          exception_updates: 0,
+          worked_updates: 0,
           matched_rows: 0,
           total_rows: Number(snapshot?.record_count || (snapshot?.rows || []).length || 0)
         });

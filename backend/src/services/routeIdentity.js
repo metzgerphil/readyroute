@@ -37,7 +37,7 @@ function namesLookLikeMatch(left, right) {
 }
 
 function extractRouteCode(value) {
-  const match = String(value || '').match(/\b(\d{3})\b/);
+  const match = String(value || '').match(/\b(\d{3,4})\b/);
   return match ? match[1] : null;
 }
 
@@ -47,7 +47,8 @@ function formatDriverCandidate(value) {
     .replace(/^[-:]+|[-:]+$/g, '')
     .trim();
 
-  if (!normalized || /^bridge\s+\d+/i.test(normalized)) {
+  const descriptor = normalized.replace(/[-_]+/g, ' ').replace(/\s+/g, ' ').trim();
+  if (!normalized || /^bridge\s+\d+/i.test(descriptor) || /^(?:wknd\s+)?bridge(?:\s+\d+)?$/i.test(descriptor)) {
     return '';
   }
 

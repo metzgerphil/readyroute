@@ -168,6 +168,7 @@ export default function Layout({ children }) {
               className={({ isActive }) => `sidebar-link${isActive ? ' active' : ''}`}
               end={link.end}
               key={link.to}
+              reloadDocument
               to={link.to}
             >
               <span className="sidebar-link-content">

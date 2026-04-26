@@ -58,7 +58,8 @@ input {
     padding 0.22s ease,
     transform 0.22s ease,
     opacity 0.22s ease;
-  z-index: 20;
+  z-index: 2000;
+  isolation: isolate;
 }
 
 .sidebar.hidden {
@@ -112,16 +113,21 @@ input {
 }
 
 .sidebar-link {
+  display: flex;
+  width: 100%;
   padding: 12px 14px;
   border-radius: 14px;
   color: rgba(255, 255, 255, 0.8);
   font-weight: 700;
+  position: relative;
+  z-index: 1;
 }
 
 .sidebar-link-content {
-  display: inline-flex;
+  display: flex;
   align-items: center;
   gap: 12px;
+  width: 100%;
 }
 
 .sidebar-link-icon {
