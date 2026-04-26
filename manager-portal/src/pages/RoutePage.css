@@ -380,6 +380,10 @@
   width: 40px;
 }
 
+.route-map-toolbar-left.with-stop-handle {
+  top: 82px;
+}
+
 .route-map-toolbar-right {
   top: 18px;
   right: 18px;
@@ -407,6 +411,49 @@
   font-size: 1.05rem;
   font-weight: 900;
   cursor: pointer;
+}
+
+.route-map-stop-list-handle {
+  position: absolute;
+  top: 18px;
+  left: 18px;
+  z-index: 5;
+  min-height: 48px;
+  min-width: 210px;
+  padding: 0 16px;
+  border: 1px solid rgba(232, 221, 210, 0.96);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.98);
+  color: #173042;
+  box-shadow: 0 12px 28px rgba(23, 48, 66, 0.18);
+  display: inline-flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 1.02rem;
+  font-weight: 900;
+  cursor: pointer;
+  transition: transform 0.15s ease, box-shadow 0.15s ease, border-color 0.15s ease;
+}
+
+.route-map-stop-list-handle:hover {
+  transform: translateY(-1px);
+  border-color: #ffcfad;
+  box-shadow: 0 16px 32px rgba(23, 48, 66, 0.2);
+}
+
+.route-map-stop-list-icon {
+  color: #ff6200;
+  font-size: 1.18rem;
+  line-height: 1;
+}
+
+.route-map-stop-list-chevron {
+  margin-left: auto;
+  color: #173042;
+  font-size: 1.7rem;
+  font-weight: 700;
+  line-height: 1;
 }
 
 .route-map-warning-button {
