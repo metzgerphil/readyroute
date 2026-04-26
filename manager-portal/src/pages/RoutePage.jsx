@@ -14,6 +14,7 @@ const GOOGLE_MAPS_KEY = import.meta.env.VITE_GOOGLE_MAPS_KEY;
 const GOOGLE_MAPS_SRC = GOOGLE_MAPS_KEY
   ? `https://maps.googleapis.com/maps/api/js?key=${GOOGLE_MAPS_KEY}&v=weekly`
   : null;
+const GOOGLE_MAPS_PLACEHOLDER_KEYS = new Set(['your_key_here', 'your_production_key']);
 
 const ROUTE_STATUS_META = {
   pending: { label: 'Pending', color: '#9ca3af' },
@@ -23,9 +24,10 @@ const ROUTE_STATUS_META = {
 };
 
 let googleMapsScriptPromise = null;
+let googleMapsScriptFailed = false;
 
 function loadGoogleMapsScript() {
-  if (!GOOGLE_MAPS_KEY || GOOGLE_MAPS_KEY === 'your_key_here') {
+  if (!GOOGLE_MAPS_KEY || GOOGLE_MAPS_PLACEHOLDER_KEYS.has(GOOGLE_MAPS_KEY)) {
     return Promise.reject(new Error('missing_google_maps_key'));
   }
 
@@ -33,23 +35,52 @@ function loadGoogleMapsScript() {
     return Promise.resolve(window.google);
   }
 
+  if (googleMapsScriptFailed) {
+    googleMapsScriptPromise = null;
+    googleMapsScriptFailed = false;
+  }
+
   if (!googleMapsScriptPromise) {
     googleMapsScriptPromise = new Promise((resolve, reject) => {
       const existingScript = document.querySelector('script[data-readyroute-google-maps="true"]');
+      let timeoutId = null;
+
+      function clearTimeoutIfNeeded() {
+        if (timeoutId) {
+          window.clearTimeout(timeoutId);
+          timeoutId = null;
+        }
+      }
+
+      function fail(error) {
+        clearTimeoutIfNeeded();
+        googleMapsScriptFailed = true;
+        googleMapsScriptPromise = null;
+        reject(error);
+      }
+
+      function succeed() {
+        clearTimeoutIfNeeded();
+        resolve(window.google);
+      }
 
       if (existingScript) {
+        timeoutId = window.setTimeout(() => {
+          fail(new Error('google_maps_script_timeout'));
+        }, 12000);
+
         existingScript.addEventListener(
           'load',
           () => {
             if (window.google?.maps?.Map) {
-              resolve(window.google);
+              succeed();
             } else {
-              reject(new Error('google_maps_auth_failed'));
+              fail(new Error('google_maps_auth_failed'));
             }
           },
           { once: true }
         );
-        existingScript.addEventListener('error', () => reject(new Error('google_maps_script_failed')), { once: true });
+        existingScript.addEventListener('error', () => fail(new Error('google_maps_script_failed')), { once: true });
         return;
       }
 
@@ -65,12 +96,17 @@ function loadGoogleMapsScript() {
       script.dataset.readyrouteGoogleMaps = 'true';
       script.onload = () => {
         if (window.__readyrouteGoogleMapsAuthFailed || !window.google?.maps?.Map) {
-          reject(new Error('google_maps_auth_failed'));
+          fail(new Error('google_maps_auth_failed'));
           return;
         }
-        resolve(window.google);
+        succeed();
       };
-      script.onerror = () => reject(new Error('google_maps_script_failed'));
+      script.onerror = () => fail(new Error('google_maps_script_failed'));
+
+      timeoutId = window.setTimeout(() => {
+        fail(new Error('google_maps_script_timeout'));
+      }, 12000);
+
       document.head.appendChild(script);
     });
   }
@@ -80,6 +116,22 @@ function loadGoogleMapsScript() {
 
 function getTodayString() {
   return format(new Date(), 'yyyy-MM-dd');
+}
+
+function getGoogleMapsErrorMessage(error) {
+  if (error?.message === 'missing_google_maps_key') {
+    return 'Google Maps is not configured for this portal. Add VITE_GOOGLE_MAPS_KEY and redeploy.';
+  }
+
+  if (error?.message === 'google_maps_auth_failed') {
+    return 'Google Maps rejected this browser key. Check the Maps JavaScript API and portal.readyroute.org referrer restrictions.';
+  }
+
+  if (error?.message === 'google_maps_script_timeout') {
+    return 'Google Maps is taking too long to load. Refresh this route or check the browser network connection.';
+  }
+
+  return 'Google Maps could not load for this route view.';
 }
 
 function getFriendlyDate(dateValue) {
@@ -521,6 +573,7 @@ export default function RoutePage() {
   const [date, setDate] = useState(getTodayString());
   const [mapError, setMapError] = useState('');
   const [mapReady, setMapReady] = useState(false);
+  const [mapLoading, setMapLoading] = useState(false);
   const [mapRefreshNonce, setMapRefreshNonce] = useState(0);
   const [mapIsRepainting, setMapIsRepainting] = useState(false);
   const [mapType, setMapType] = useState('roadmap');
@@ -862,6 +915,7 @@ export default function RoutePage() {
       }
 
       try {
+        setMapLoading(true);
         const google = await loadGoogleMapsScript();
 
         if (!active || !mapContainerRef.current) {
@@ -915,11 +969,13 @@ export default function RoutePage() {
           });
           resizeObserverRef.current.observe(mapContainerRef.current);
         }
+        setMapLoading(false);
       } catch (error) {
         console.error('RoutePage Google Maps load failed:', error);
         if (active) {
           setMapReady(false);
-          setMapError('Google Maps could not load for this route view.');
+          setMapLoading(false);
+          setMapError(getGoogleMapsErrorMessage(error));
         }
       }
     }
@@ -1472,6 +1528,9 @@ export default function RoutePage() {
 
       <div className="route-map-stage">
         <div key={`route-map-${mapRefreshNonce}`} ref={mapContainerRef} className="route-map-fullscreen" />
+        {mapLoading && !mapReady && !mapError ? (
+          <div className="route-map-loading">Loading map...</div>
+        ) : null}
         {mapIsRepainting && !mapError ? (
           <div className="route-map-repaint-notice">Map is repainting...</div>
         ) : null}

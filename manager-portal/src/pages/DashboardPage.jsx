@@ -12,12 +12,13 @@ const GOOGLE_MAPS_KEY = import.meta.env.VITE_GOOGLE_MAPS_KEY;
 const GOOGLE_MAPS_SRC = GOOGLE_MAPS_KEY
   ? `https://maps.googleapis.com/maps/api/js?key=${GOOGLE_MAPS_KEY}&v=weekly`
   : null;
+const GOOGLE_MAPS_PLACEHOLDER_KEYS = new Set(['your_key_here', 'your_production_key']);
 
 let googleMapsScriptPromise = null;
 let googleMapsScriptFailed = false;
 
 function loadGoogleMapsScript() {
-  if (!GOOGLE_MAPS_KEY || GOOGLE_MAPS_KEY === 'your_key_here') {
+  if (!GOOGLE_MAPS_KEY || GOOGLE_MAPS_PLACEHOLDER_KEYS.has(GOOGLE_MAPS_KEY)) {
     return Promise.reject(new Error('missing_google_maps_key'));
   }
 
@@ -49,6 +50,10 @@ function loadGoogleMapsScript() {
           resolve(window.google);
           return;
         }
+
+        timeoutId = window.setTimeout(() => {
+          fail(new Error('google_maps_script_timeout'));
+        }, 12000);
 
         existingScript.addEventListener(
           'load',
