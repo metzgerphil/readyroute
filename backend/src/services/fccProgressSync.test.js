@@ -38,6 +38,11 @@ class MockQueryBuilder {
     return this;
   }
 
+  delete() {
+    this.operation = 'delete';
+    return this;
+  }
+
   eq(column, value) {
     this.state.filters.push({ op: 'eq', column, value });
     return this;
@@ -345,42 +350,89 @@ test('applyRouteProgress assigns an unassigned route to the FCC driver when name
   assert.equal(routeEvents[0].details.matched_driver_name, 'Brayant Ramirezcastellanos');
 });
 
-test('applyRouteProgress skips progress updates until the manager dispatches the route', async () => {
-  const stopsWereLoaded = [];
+test('applyRouteProgress reconciles staged route rows without marking stops worked before dispatch', async () => {
+  const route = {
+    id: 'route-1',
+    account_id: 'acct-1',
+    work_area_name: '823',
+    date: '2026-04-24',
+    status: 'pending',
+    total_stops: 3,
+    manifest_stop_count: 3,
+    manifest_package_count: 5,
+    completed_stops: 0,
+    dispatch_state: 'staged',
+    completed_at: null,
+    driver_id: null
+  };
+  const stops = [
+    { id: 'stop-1', route_id: 'route-1', sequence_order: 1, sid: '1001', address: '818 N JUNIPER ST', address_line2: null, status: 'pending', exception_code: null, completed_at: null, scanned_at: null },
+    { id: 'stop-2', route_id: 'route-1', sequence_order: 2, sid: '1002', address: '300 E MISSION AVE', address_line2: null, status: 'pending', exception_code: null, completed_at: null, scanned_at: null },
+    { id: 'stop-3', route_id: 'route-1', sequence_order: 3, sid: '1003', address: 'OLD EXTRA STOP', address_line2: null, status: 'pending', exception_code: null, completed_at: null, scanned_at: null }
+  ];
+  const packages = [
+    { id: 'pkg-1', stop_id: 'stop-1', tracking_number: 'old-1' },
+    { id: 'pkg-2', stop_id: 'stop-2', tracking_number: 'old-2' },
+    { id: 'pkg-3', stop_id: 'stop-3', tracking_number: 'old-3' }
+  ];
   const stopUpdates = [];
   const routeUpdates = [];
+  const routeEvents = [];
+
   const supabase = new MockSupabase((query) => {
     if (query.table === 'routes' && query.operation === 'select') {
-      return {
-        data: [
-          {
-            id: 'route-1',
-            account_id: 'acct-1',
-            work_area_name: '823',
-            date: '2026-04-24',
-            status: 'pending',
-            total_stops: 3,
-            completed_stops: 0,
-            dispatch_state: 'staged',
-            completed_at: null
-          }
-        ],
-        error: null
-      };
+      return { data: [route], error: null };
     }
 
     if (query.table === 'stops' && query.operation === 'select') {
-      stopsWereLoaded.push(query);
-      return { data: [], error: null };
+      return { data: stops, error: null };
     }
 
     if (query.table === 'stops' && query.operation === 'update') {
+      const stopId = query.filters.find((filter) => filter.column === 'id')?.value;
+      const stop = stops.find((entry) => entry.id === stopId);
+      Object.assign(stop, query.payload);
       stopUpdates.push(query.payload);
       return { data: query.payload, error: null };
     }
 
+    if (query.table === 'stops' && query.operation === 'delete') {
+      const stopId = query.filters.find((filter) => filter.column === 'id')?.value;
+      const index = stops.findIndex((entry) => entry.id === stopId);
+      if (index >= 0) {
+        stops.splice(index, 1);
+      }
+      return { data: null, error: null };
+    }
+
+    if (query.table === 'packages' && query.operation === 'delete') {
+      const stopId = query.filters.find((filter) => filter.column === 'stop_id')?.value;
+      for (let index = packages.length - 1; index >= 0; index -= 1) {
+        if (packages[index].stop_id === stopId) {
+          packages.splice(index, 1);
+        }
+      }
+      return { data: null, error: null };
+    }
+
+    if (query.table === 'packages' && query.operation === 'insert') {
+      const payload = Array.isArray(query.payload) ? query.payload : [query.payload];
+      packages.push(...payload);
+      return { data: payload, error: null };
+    }
+
     if (query.table === 'routes' && query.operation === 'update') {
+      Object.assign(route, query.payload);
       routeUpdates.push(query.payload);
+      return { data: query.payload, error: null };
+    }
+
+    if (query.table === 'drivers' && query.operation === 'select') {
+      return { data: [], error: null };
+    }
+
+    if (query.table === 'route_sync_events' && query.operation === 'insert') {
+      routeEvents.push(query.payload);
       return { data: query.payload, error: null };
     }
 
@@ -394,18 +446,33 @@ test('applyRouteProgress skips progress updates until the manager dispatches the
     progressSnapshots: [
       {
         work_area_name: '823 BRIDGE 12',
-        rows: [{ sid: '1001', is_completed: true }]
+        rows: [
+          { sid: '1001', stop_number: 1, address: '818 N JUNIPER ST', package_count: 2, is_completed: true },
+          { sid: '1002', stop_number: 2, address: '300 E MISSION AVE', package_count: 1, is_exception: true, exception_code: '7' }
+        ]
       }
     ]
   });
 
   assert.equal(result.completed_updates, 0);
-  assert.equal(result.has_changes, false);
+  assert.equal(result.has_changes, true);
   assert.equal(result.routes[0].route_id, 'route-1');
-  assert.equal(result.routes[0].status, 'route_not_dispatched');
-  assert.equal(stopsWereLoaded.length, 0);
-  assert.equal(stopUpdates.length, 0);
-  assert.equal(routeUpdates.length, 0);
+  assert.equal(result.routes[0].status, 'staged_reconciled');
+  assert.equal(result.routes[0].reconciled_stop_count, 2);
+  assert.equal(result.routes[0].reconciled_package_count, 3);
+  assert.equal(result.routes[0].removed_stop_count, 1);
+  assert.equal(stops.length, 2);
+  assert.equal(stops[0].status, 'pending');
+  assert.equal(stops[0].completed_at, null);
+  assert.equal(stops[1].status, 'pending');
+  assert.equal(stops[1].exception_code, null);
+  assert.equal(route.total_stops, 2);
+  assert.equal(route.manifest_package_count, 3);
+  assert.equal(route.completed_stops, 0);
+  assert.equal(routeUpdates.length, 1);
+  assert.equal(routeEvents[0].event_type, 'fcc_progress_synced');
+  assert.equal(packages.filter((entry) => entry.stop_id === 'stop-1').length, 2);
+  assert.equal(packages.filter((entry) => entry.stop_id === 'stop-3').length, 0);
 });
 
 test('applyRouteProgress reports route_not_found when FCC progress has no matching route', async () => {

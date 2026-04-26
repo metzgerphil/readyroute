@@ -100,7 +100,7 @@ async function recordRouteSyncEvent(supabase, {
 async function loadCandidateRoutes(supabase, { accountId, workDate }) {
   const { data, error } = await supabase
     .from('routes')
-    .select('id, account_id, work_area_name, date, status, total_stops, completed_stops, dispatch_state, completed_at, driver_id')
+    .select('id, account_id, work_area_name, date, status, total_stops, manifest_stop_count, manifest_package_count, completed_stops, dispatch_state, completed_at, driver_id')
     .eq('account_id', accountId)
     .eq('date', workDate)
     .is('archived_at', null);
@@ -128,7 +128,7 @@ async function loadAccountDrivers(supabase, accountId) {
 async function loadRouteStops(supabase, routeId) {
   const { data, error } = await supabase
     .from('stops')
-    .select('id, route_id, sequence_order, sid, address, address_line2, status, exception_code, completed_at, scanned_at')
+    .select('id, route_id, sequence_order, sid, address, address_line2, contact_name, lat, lng, status, exception_code, completed_at, scanned_at, ready_time, close_time, has_time_commit, stop_type, has_pickup, has_delivery, is_pickup, is_business, geocode_source, geocode_accuracy')
     .eq('route_id', routeId)
     .order('sequence_order');
 
@@ -137,6 +137,114 @@ async function loadRouteStops(supabase, routeId) {
   }
 
   return data || [];
+}
+
+function normalizeProgressPackageCount(row) {
+  const packageCount = Number(row?.package_count || row?.packages || 1);
+  return Number.isFinite(packageCount) && packageCount > 0 ? Math.floor(packageCount) : 1;
+}
+
+function getProgressStopType(row) {
+  const rawType = normalizeComparisonValue(row?.delivery_pickup || row?.type || row?.stop_type);
+  const hasPickup = rawType.includes('pickup');
+  const hasDelivery = rawType.includes('delivery') || rawType.includes('deliv');
+
+  if (hasPickup && hasDelivery) {
+    return 'combined';
+  }
+
+  if (hasPickup) {
+    return 'pickup';
+  }
+
+  return 'delivery';
+}
+
+function getProgressStopPayload(row, index, routeId, existingStop = null) {
+  const sequence = Number(row?.stop_number || row?.sequence || index + 1) || index + 1;
+  const stopType = getProgressStopType(row);
+  const hasPickup = stopType === 'pickup' || stopType === 'combined';
+  const hasDelivery = stopType === 'delivery' || stopType === 'combined';
+  const readyTime = row?.ready_time || existingStop?.ready_time || null;
+  const closeTime = row?.close_time || existingStop?.close_time || null;
+
+  return {
+    route_id: routeId,
+    sequence_order: sequence,
+    sid: row?.sid ? String(row.sid).trim() : null,
+    address: String(row?.address || existingStop?.address || `Stop ${sequence}`).trim(),
+    address_line2: row?.address_line2 || existingStop?.address_line2 || null,
+    contact_name: row?.contact_name || existingStop?.contact_name || null,
+    lat: existingStop?.lat || null,
+    lng: existingStop?.lng || null,
+    status: 'pending',
+    exception_code: null,
+    completed_at: null,
+    scanned_at: null,
+    ready_time: readyTime,
+    close_time: closeTime,
+    has_time_commit: Boolean(readyTime || closeTime),
+    stop_type: stopType,
+    has_pickup: hasPickup,
+    has_delivery: hasDelivery,
+    is_pickup: stopType === 'pickup',
+    is_business: Boolean(existingStop?.is_business),
+    geocode_source: existingStop?.geocode_source || null,
+    geocode_accuracy: existingStop?.geocode_accuracy || null
+  };
+}
+
+function valuesDiffer(left, right) {
+  return String(left ?? '') !== String(right ?? '');
+}
+
+function getStagedStopUpdatePayload(existingStop, nextStop) {
+  const payload = {};
+  const keys = [
+    'sequence_order',
+    'sid',
+    'address',
+    'address_line2',
+    'contact_name',
+    'status',
+    'exception_code',
+    'completed_at',
+    'scanned_at',
+    'ready_time',
+    'close_time',
+    'has_time_commit',
+    'stop_type',
+    'has_pickup',
+    'has_delivery',
+    'is_pickup'
+  ];
+
+  for (const key of keys) {
+    if (valuesDiffer(existingStop?.[key], nextStop?.[key])) {
+      payload[key] = nextStop[key];
+    }
+  }
+
+  return payload;
+}
+
+function buildPackagePlaceholders(stopId, packageCount) {
+  return Array.from({ length: packageCount }, (_, index) => ({
+    stop_id: stopId,
+    tracking_number: `FCC-PROGRESS-${stopId}-${index + 1}`
+  }));
+}
+
+function buildStopKeyIndex(stops) {
+  const stopByKey = new Map();
+  stops.forEach((stop) => {
+    for (const key of buildStopMatchKeys(stop)) {
+      if (key && !stopByKey.has(key)) {
+        stopByKey.set(key, stop);
+      }
+    }
+  });
+  return stopByKey;
 }
 
 function findRouteForSnapshot(routes, snapshot) {
@@ -218,6 +326,218 @@ function getProgressRowUpdate(row, nowProvider) {
   return null;
 }
 
+async function resetStopPackages(supabase, stopId, packageCount) {
+  const { error: deleteError } = await supabase
+    .from('packages')
+    .delete()
+    .eq('stop_id', stopId);
+
+  if (deleteError) {
+    throw deleteError;
+  }
+
+  const packagePayload = buildPackagePlaceholders(stopId, packageCount);
+  if (packagePayload.length === 0) {
+    return;
+  }
+
+  const { error: insertError } = await supabase
+    .from('packages')
+    .insert(packagePayload);
+
+  if (insertError) {
+    throw insertError;
+  }
+}
+
+async function reconcileStagedRouteFromSnapshot({
+  supabase,
+  accountId,
+  route,
+  snapshot,
+  workDate,
+  source,
+  managerUserId,
+  fccDriverName,
+  matchedDriver
+}) {
+  const rows = (snapshot?.rows || []).filter((row) => row && (row.address || row.sid || row.stop_number));
+  const totalRows = Number(snapshot?.record_count || rows.length || 0);
+  const shouldClearStaleDriver = Boolean(fccDriverName && !matchedDriver && route.driver_id);
+  const driverUpdatePayload = matchedDriver
+    ? { driver_id: matchedDriver.id }
+    : shouldClearStaleDriver
+      ? { driver_id: null }
+      : {};
+
+  if (rows.length === 0) {
+    if (matchedDriver || shouldClearStaleDriver) {
+      const { error } = await supabase
+        .from('routes')
+        .update(driverUpdatePayload)
+        .eq('id', route.id);
+
+      if (error) {
+        throw error;
+      }
+    }
+
+    return {
+      status: (matchedDriver || shouldClearStaleDriver) ? 'updated' : 'route_not_dispatched',
+      changed: Boolean(matchedDriver || shouldClearStaleDriver),
+      stop_count: 0,
+      package_count: 0,
+      inserted_stop_count: 0,
+      updated_stop_count: 0,
+      removed_stop_count: 0
+    };
+  }
+
+  const existingStops = await loadRouteStops(supabase, route.id);
+  const stopByKey = buildStopKeyIndex(existingStops);
+  const matchedStopIds = new Set();
+  const nextStopIds = [];
+  let insertedStopCount = 0;
+  let updatedStopCount = 0;
+  let packageCount = 0;
+
+  for (const [index, row] of rows.entries()) {
+    const matchedStop =
+      buildProgressMatchKeys(row)
+        .map((key) => stopByKey.get(key))
+        .find((stop) => stop && !matchedStopIds.has(stop.id)) || null;
+    const nextStop = getProgressStopPayload(row, index, route.id, matchedStop);
+    const nextPackageCount = normalizeProgressPackageCount(row);
+    packageCount += nextPackageCount;
+
+    if (matchedStop) {
+      matchedStopIds.add(matchedStop.id);
+      nextStopIds.push(matchedStop.id);
+
+      const updatePayload = getStagedStopUpdatePayload(matchedStop, nextStop);
+      if (Object.keys(updatePayload).length > 0) {
+        const { error } = await supabase
+          .from('stops')
+          .update(updatePayload)
+          .eq('id', matchedStop.id);
+
+        if (error) {
+          throw error;
+        }
+
+        updatedStopCount += 1;
+      }
+
+      await resetStopPackages(supabase, matchedStop.id, nextPackageCount);
+      continue;
+    }
+
+    const { data: insertedStop, error: insertError } = await supabase
+      .from('stops')
+      .insert(nextStop)
+      .select('id')
+      .single();
+
+    if (insertError) {
+      throw insertError;
+    }
+
+    if (!insertedStop?.id) {
+      throw new Error('Failed to insert reconciled FCC progress stop');
+    }
+
+    nextStopIds.push(insertedStop.id);
+    insertedStopCount += 1;
+    await resetStopPackages(supabase, insertedStop.id, nextPackageCount);
+  }
+
+  const staleStops = existingStops.filter((stop) => !matchedStopIds.has(stop.id) && !nextStopIds.includes(stop.id));
+  for (const staleStop of staleStops) {
+    const { error: packageDeleteError } = await supabase
+      .from('packages')
+      .delete()
+      .eq('stop_id', staleStop.id);
+
+    if (packageDeleteError) {
+      throw packageDeleteError;
+    }
+
+    const { error: stopDeleteError } = await supabase
+      .from('stops')
+      .delete()
+      .eq('id', staleStop.id);
+
+    if (stopDeleteError) {
+      throw stopDeleteError;
+    }
+  }
+
+  const routeUpdatePayload = {
+    total_stops: rows.length,
+    manifest_stop_count: rows.length,
+    manifest_package_count: packageCount,
+    completed_stops: 0,
+    status: 'pending',
+    completed_at: null,
+    ...driverUpdatePayload
+  };
+  const routeChanged =
+    Number(route.total_stops || 0) !== rows.length ||
+    Number(route.manifest_stop_count || route.total_stops || 0) !== rows.length ||
+    Number(route.manifest_package_count || 0) !== packageCount ||
+    Number(route.completed_stops || 0) !== 0 ||
+    route.status !== 'pending' ||
+    Boolean(route.completed_at) ||
+    Boolean(matchedDriver && route.driver_id !== matchedDriver.id) ||
+    shouldClearStaleDriver;
+
+  if (routeChanged) {
+    const { error: routeUpdateError } = await supabase
+      .from('routes')
+      .update(routeUpdatePayload)
+      .eq('id', route.id);
+
+    if (routeUpdateError) {
+      throw routeUpdateError;
+    }
+  }
+
+  const changed = routeChanged || insertedStopCount > 0 || updatedStopCount > 0 || staleStops.length > 0;
+  if (changed) {
+    await recordRouteSyncEvent(supabase, {
+      accountId,
+      routeId: route.id,
+      workDate,
+      eventType: 'fcc_progress_synced',
+      eventStatus: 'info',
+      summary: `FCC staged manifest reconciled ${rows.length} stops for route ${route.work_area_name || snapshot?.work_area_name || route.id}`,
+      details: {
+        source,
+        total_rows: totalRows,
+        previous_total_stops: Number(route.total_stops || 0),
+        next_total_stops: rows.length,
+        next_package_count: packageCount,
+        inserted_stop_count: insertedStopCount,
+        updated_stop_count: updatedStopCount,
+        removed_stop_count: staleStops.length,
+        fcc_driver_name: fccDriverName || null,
+        matched_driver_name: matchedDriver?.name || null
+      },
+      managerUserId
+    });
+  }
+
+  return {
+    status: changed ? 'staged_reconciled' : 'route_not_dispatched',
+    changed,
+    stop_count: rows.length,
+    package_count: packageCount,
+    inserted_stop_count: insertedStopCount,
+    updated_stop_count: updatedStopCount,
+    removed_stop_count: staleStops.length
+  };
+}
+
 function createFccProgressSyncService(options = {}) {
   const { supabase } = options;
   const nowProvider = options.now || (() => new Date());
@@ -254,10 +574,51 @@ function createFccProgressSyncService(options = {}) {
 
       if (!route) {
         const stagedRoute = findRouteForSnapshot(routes, snapshot);
+        const fccDriverName = parseFccWorkAreaIdentity(snapshot?.work_area_name).driverName;
+        const matchedDriver =
+          stagedRoute && fccDriverName
+            ? (await getDrivers()).find((driver) => namesLookLikeMatch(driver.name, fccDriverName)) || null
+            : null;
+
+        if (stagedRoute) {
+          const stagedResult = await reconcileStagedRouteFromSnapshot({
+            supabase,
+            accountId,
+            route: stagedRoute,
+            snapshot,
+            workDate,
+            source,
+            managerUserId,
+            fccDriverName,
+            matchedDriver
+          });
+
+          totalDriverAssignments += matchedDriver && stagedRoute.driver_id !== matchedDriver.id ? 1 : 0;
+          appliedResults.push({
+            work_area_name: snapshot?.work_area_name || stagedRoute.work_area_name || null,
+            route_id: stagedRoute.id,
+            status: stagedResult.status,
+            completed_updates: 0,
+            exception_updates: 0,
+            worked_updates: 0,
+            matched_driver_name: matchedDriver?.name || null,
+            fcc_driver_name: fccDriverName || null,
+            matched_rows: 0,
+            total_rows: Number(snapshot?.record_count || (snapshot?.rows || []).length || 0),
+            reconciled_stop_count: stagedResult.stop_count,
+            reconciled_package_count: stagedResult.package_count,
+            inserted_stop_count: stagedResult.inserted_stop_count,
+            updated_stop_count: stagedResult.updated_stop_count,
+            removed_stop_count: stagedResult.removed_stop_count
+          });
+
+          continue;
+        }
+
         appliedResults.push({
           work_area_name: snapshot?.work_area_name || null,
-          route_id: stagedRoute?.id || null,
-          status: stagedRoute ? 'route_not_dispatched' : 'route_not_found',
+          route_id: null,
+          status: 'route_not_found',
           completed_updates: 0,
           exception_updates: 0,
           worked_updates: 0,
@@ -414,7 +775,7 @@ function createFccProgressSyncService(options = {}) {
       completed_updates: totalCompletedUpdates,
       exception_updates: totalExceptionUpdates,
       driver_assignments: totalDriverAssignments,
-      has_changes: totalCompletedUpdates > 0 || totalDriverAssignments > 0,
+      has_changes: totalCompletedUpdates > 0 || totalDriverAssignments > 0 || appliedResults.some((route) => route.status === 'staged_reconciled'),
       routes: appliedResults
     };
   }

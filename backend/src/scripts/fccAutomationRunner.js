@@ -93,6 +93,58 @@ async function hasFccWorkAreaUi(page, config) {
   );
 }
 
+async function dismissFccSessionPrompt(page) {
+  const stayLoggedIn = await findVisibleLocator(
+    page,
+    '#hiddenForm\\:buttonRemainLoggedIn, input[value="Stay Logged In"], button:has-text("Stay Logged In")',
+    1500
+  );
+
+  if (!stayLoggedIn) {
+    return false;
+  }
+
+  await stayLoggedIn.click({ timeout: 5000 }).catch(async (error) => {
+    if (!/intercepts pointer events|Timeout/i.test(String(error?.message || error))) {
+      throw error;
+    }
+
+    await stayLoggedIn.click({ force: true, timeout: 5000 });
+  });
+  await page.waitForLoadState('networkidle', { timeout: 10000 }).catch(() => null);
+  await waitForFccIdle(page, 15000);
+  return true;
+}
+
+async function ensureFccManifestUi(page, config) {
+  await dismissFccSessionPrompt(page);
+
+  if (await hasFccWorkAreaUi(page, config)) {
+    return true;
+  }
+
+  const pAndDTab = await findVisibleLocator(
+    page,
+    '#mainTabSettab_0, [id*="mainTabSettab"]:has-text("P&D Manifests"), text=P&D Manifests',
+    5000
+  );
+
+  if (pAndDTab) {
+    await pAndDTab.click({ timeout: 10000 }).catch(async (error) => {
+      if (!/intercepts pointer events|Timeout/i.test(String(error?.message || error))) {
+        throw error;
+      }
+
+      await pAndDTab.click({ force: true, timeout: 5000 });
+    });
+    await page.waitForLoadState('networkidle', { timeout: 20000 }).catch(() => null);
+    await page.waitForTimeout(3000);
+    await dismissFccSessionPrompt(page);
+  }
+
+  return hasFccWorkAreaUi(page, config);
+}
+
 async function hasMgbaAuthenticationError(page) {
   return pageHasText(page, /error authenticating with mgba/i);
 }
@@ -117,6 +169,51 @@ async function findVisibleLocator(page, selector, timeout = 5000) {
   }
 
   return null;
+}
+
+async function submitPeopleSoftLinkInAnyFrame(page, labelPattern) {
+  for (const frame of page.frames()) {
+    const popupPromise = page.context().waitForEvent('page', { timeout: 8000 }).catch(() => null);
+    const submitted = await frame.evaluate((labelSource) => {
+      const labelRegex = new RegExp(labelSource, 'i');
+      const normalize = (value) => String(value || '').replace(/\s+/g, ' ').trim();
+      const matchingElement = Array.from(document.querySelectorAll('a'))
+        .find((element) => labelRegex.test(normalize(element.textContent))) ||
+        Array.from(document.querySelectorAll('tr'))
+          .find((element) => labelRegex.test(normalize(element.textContent)));
+
+      if (!matchingElement) {
+        return false;
+      }
+
+      const form = document.querySelector('form[name^="win"]');
+      const submitActionName = Object.keys(window).find((name) => /^submitAction_win\d+$/.test(name));
+
+      if (form && submitActionName && typeof window[submitActionName] === 'function') {
+        window[submitActionName](form, matchingElement.id);
+        return true;
+      }
+
+      matchingElement.click();
+      return true;
+    }, labelPattern.source).catch(() => false);
+
+    if (submitted) {
+      const popup = await popupPromise;
+      const activePage = popup || page;
+
+      if (popup) {
+        page._readyrouteActivePage = popup;
+      }
+
+      await activePage.waitForLoadState('domcontentloaded', { timeout: 20000 }).catch(() => null);
+      await activePage.waitForLoadState('networkidle', { timeout: 20000 }).catch(() => null);
+      await activePage.waitForTimeout(5000);
+      return true;
+    }
+  }
+
+  return false;
 }
 
 function buildManifestUrl(config, workDate) {
@@ -351,25 +448,66 @@ async function ensureLoggedIn(page, config, credentials) {
 }
 
 async function clickPortalManifestEntry(page, config) {
-  const fccLinksFrame = page.frameLocator('iframe[title="FCC Links"]');
-  const fccLinksFrameSelectors = [
+  const clickedCustomerConnection = await submitPeopleSoftLinkInAnyFrame(page, /^FedEx Customer Connection$/);
+  page = page._readyrouteActivePage || page;
+
+  if (clickedCustomerConnection) {
+    const clickedFccWeb = await submitPeopleSoftLinkInAnyFrame(page, /^FCC Web$/);
+    page = page._readyrouteActivePage || page;
+
+    if (clickedFccWeb) {
+      return true;
+    }
+  }
+
+  const portalFrameSelectors = [
+    '#GF_NAVC_TL_DVW\\$0_row_0',
     '#GF_FLUID_TL_WRK_GF_HYPERLINK1\\$0',
     'a:has-text("FedEx Customer Connection")',
     'tr:has-text("FedEx Customer Connection")'
   ];
 
-  for (const selector of fccLinksFrameSelectors) {
-    const fccLinksFrameEntry = fccLinksFrame.locator(selector).first();
-    const fccLinksFrameEntryVisible = await fccLinksFrameEntry.isVisible({ timeout: 5000 }).catch(() => false);
+  for (const frame of page.frames()) {
+    const frameText = await frame.locator('body').textContent({ timeout: 1000 }).catch(() => '');
 
-    if (fccLinksFrameEntryVisible) {
-      await Promise.all([
-        page.waitForLoadState('domcontentloaded').catch(() => null),
-        fccLinksFrameEntry.click()
-      ]);
+    if (!/FedEx Customer Connection/i.test(frameText || '')) {
+      continue;
+    }
+
+    const submitted = await frame.evaluate(() => {
+      const form = document.querySelector('form[name^="win"]');
+      const actionId = Array.from(document.querySelectorAll('a, tr'))
+        .find((element) => /FedEx Customer Connection/i.test(element.textContent || ''))
+        ?.id || 'GF_FLUID_TL_WRK_GF_HYPERLINK1$0';
+      const submitActionName = Object.keys(window).find((name) => /^submitAction_win\d+$/.test(name));
+
+      if (form && submitActionName && typeof window[submitActionName] === 'function') {
+        window[submitActionName](form, actionId);
+        return true;
+      }
+
+      return false;
+    }).catch(() => false);
+
+    if (submitted) {
       await page.waitForLoadState('networkidle', { timeout: 20000 }).catch(() => null);
       await page.waitForTimeout(5000);
       return true;
+    }
+
+    for (const selector of portalFrameSelectors) {
+      const candidate = frame.locator(selector).first();
+      const visible = await candidate.isVisible({ timeout: 1000 }).catch(() => false);
+
+      if (visible) {
+        await Promise.all([
+          page.waitForLoadState('domcontentloaded').catch(() => null),
+          candidate.click({ force: true })
+        ]);
+        await page.waitForLoadState('networkidle', { timeout: 20000 }).catch(() => null);
+        await page.waitForTimeout(5000);
+        return true;
+      }
     }
   }
 
@@ -395,11 +533,20 @@ async function clickPortalManifestEntry(page, config) {
     return false;
   }
 
+  const popupPromise = page.context().waitForEvent('page', { timeout: 8000 }).catch(() => null);
   await Promise.all([
     page.waitForLoadState('domcontentloaded').catch(() => null),
     entry.click()
   ]);
-  await page.waitForLoadState('networkidle', { timeout: 15000 }).catch(() => null);
+  const popup = await popupPromise;
+
+  if (popup) {
+    page._readyrouteActivePage = popup;
+    await popup.waitForLoadState('domcontentloaded', { timeout: 15000 }).catch(() => null);
+    await popup.waitForLoadState('networkidle', { timeout: 15000 }).catch(() => null);
+  } else {
+    await page.waitForLoadState('networkidle', { timeout: 15000 }).catch(() => null);
+  }
   return true;
 }
 
@@ -412,38 +559,64 @@ async function enterFccThroughPortal(page, config, downloadDir) {
   await page.waitForLoadState('networkidle', { timeout: 15000 }).catch(() => null);
   await page.waitForTimeout(config.portalWarmupMs);
 
-  if (await hasFccWorkAreaUi(page, config)) {
+  if (await ensureFccManifestUi(page, config)) {
     await saveDebugSnapshot(page, downloadDir, 'fcc-portal-entered');
     return true;
   }
 
   const clickedManifestEntry = await clickPortalManifestEntry(page, config);
+  const activePage = page._readyrouteActivePage || page;
 
   if (clickedManifestEntry) {
-    await page.waitForTimeout(3000);
+    await activePage.waitForTimeout(3000);
   }
 
-  if (await hasFccWorkAreaUi(page, config)) {
-    await saveDebugSnapshot(page, downloadDir, 'fcc-portal-entered');
+  if (await ensureFccManifestUi(activePage, config)) {
+    if (activePage !== page) {
+      page._readyrouteActivePage = activePage;
+    }
+    await saveDebugSnapshot(activePage, downloadDir, 'fcc-portal-entered');
     return true;
   }
 
-  await saveDebugSnapshot(page, downloadDir, clickedManifestEntry ? 'fcc-portal-after-manifest-click' : 'fcc-portal-no-manifest-entry');
+  await saveDebugSnapshot(activePage, downloadDir, clickedManifestEntry ? 'fcc-portal-after-manifest-click' : 'fcc-portal-no-manifest-entry');
   return clickedManifestEntry;
 }
 
 async function openManifestPage(page, config, manifestUrl, downloadDir) {
+  if (await ensureFccManifestUi(page, config)) {
+    return true;
+  }
+
   await gotoWithRetry(page, manifestUrl, { waitUntil: 'networkidle' });
 
   if (await hasMgbaAuthenticationError(page)) {
-    const debugDir = await saveDebugSnapshot(page, downloadDir, 'fcc-mgba-authentication-error');
+    const enteredThroughPortal = await enterFccThroughPortal(page, config, downloadDir);
+    const activePage = page._readyrouteActivePage || page;
+
+    if (enteredThroughPortal && (await ensureFccManifestUi(activePage, config))) {
+      return true;
+    }
+
+    if (enteredThroughPortal) {
+      await gotoWithRetry(activePage, manifestUrl, { waitUntil: 'networkidle' });
+
+      if (await ensureFccManifestUi(activePage, config)) {
+        if (activePage !== page) {
+          page._readyrouteActivePage = activePage;
+        }
+        return true;
+      }
+    }
+
+    const debugDir = await saveDebugSnapshot(activePage, downloadDir, 'fcc-mgba-authentication-error');
     throw new Error(
       `FedEx rejected the direct FCC page with "Error authenticating with MGBA". ` +
         `ReadyRoute needs the portal entry route before cpc-mi can load. Debug saved to ${debugDir}`
     );
   }
 
-  if (await hasFccWorkAreaUi(page, config)) {
+  if (await ensureFccManifestUi(page, config)) {
     return true;
   }
 
@@ -460,18 +633,20 @@ async function openManifestPage(page, config, manifestUrl, downloadDir) {
     }
   }
 
-  return hasFccWorkAreaUi(page, config);
+  return ensureFccManifestUi(page, config);
 }
 
 async function preparePortalSession(page, config, credentials, downloadDir) {
   await enterFccThroughPortal(page, config, downloadDir);
+  page = page._readyrouteActivePage || page;
 
-  if (await hasFccWorkAreaUi(page, config)) {
-    return;
+  if (await ensureFccManifestUi(page, config)) {
+    return page;
   }
 
   await ensureLoggedIn(page, config, credentials);
   await enterFccThroughPortal(page, config, downloadDir);
+  return page._readyrouteActivePage || page;
 }
 
 async function ensureCombinedManifestTab(page, config) {
@@ -873,19 +1048,21 @@ async function main() {
       acceptDownloads: true,
       ...(await exists(sessionStatePath) ? { storageState: sessionStatePath } : {})
     });
-    const page = await context.newPage();
+    let page = await context.newPage();
     const manifestUrl = buildManifestUrl(config, workDate);
     const hasSavedSession = await exists(sessionStatePath);
     const credentials = { username, password };
 
     if (hasSavedSession) {
-      await preparePortalSession(page, config, credentials, downloadDir);
+      page = await preparePortalSession(page, config, credentials, downloadDir);
       await openManifestPage(page, config, manifestUrl, downloadDir);
+      page = page._readyrouteActivePage || page;
     } else {
       await gotoWithRetry(page, config.loginUrl || manifestUrl, { waitUntil: 'domcontentloaded' });
       await ensureLoggedIn(page, config, credentials);
-      await preparePortalSession(page, config, credentials, downloadDir);
+      page = await preparePortalSession(page, config, credentials, downloadDir);
       await openManifestPage(page, config, manifestUrl, downloadDir);
+      page = page._readyrouteActivePage || page;
     }
 
     await ensureCombinedManifestTab(page, config);
