@@ -198,22 +198,31 @@ function getExceptionBadgeMeta(code, isIncomplete = false) {
     return { label: 'Incomplete', className: 'incomplete-only' };
   }
 
+  const normalizedCode = String(code || '').trim();
+  const lookupCode =
+    /^\d+$/.test(normalizedCode) && normalizedCode.length < 3
+      ? normalizedCode.padStart(3, '0')
+      : normalizedCode;
+  const displayCode =
+    /^\d+$/.test(normalizedCode) && normalizedCode.length > 2 && normalizedCode.startsWith('0')
+      ? normalizedCode.slice(-2)
+      : normalizedCode;
   const category2 = new Set(['001', '003', '004', '006', '007', '010', '030', '034', '250']);
   const category1 = new Set(['011', '012', '015', '016', '017', '027', '079', '081', '082', '083', '095', '100']);
 
-  if (code === '002') {
-    return { label: 'Code 002 — Bad Address', className: 'bad-address' };
+  if (lookupCode === '002') {
+    return { label: `Code ${displayCode || '02'} — Bad Address`, className: 'bad-address' };
   }
 
-  if (category2.has(String(code))) {
-    return { label: `Code ${code}`, className: 'category-2' };
+  if (category2.has(lookupCode)) {
+    return { label: `Code ${displayCode || lookupCode}`, className: 'category-2' };
   }
 
-  if (category1.has(String(code))) {
-    return { label: `Code ${code}`, className: 'category-1' };
+  if (category1.has(lookupCode)) {
+    return { label: `Code ${displayCode || lookupCode}`, className: 'category-1' };
   }
 
-  return { label: code ? `Code ${code}` : 'Incomplete', className: 'category-default' };
+  return { label: normalizedCode ? `Code ${displayCode || normalizedCode}` : 'Incomplete', className: 'category-default' };
 }
 
 function getFlagTypeMeta(flagType) {
@@ -430,7 +439,7 @@ function buildInfoWindow(stop) {
       ${
         stop.exception_code
           ? `<div style="margin-top:12px; display:inline-flex; align-items:center; gap:8px; padding:8px 12px; border-radius:999px; background:#c93300; color:#ffffff; font-size:18px; font-weight:950;">
-              Code ${escapeHtml(String(stop.exception_code).padStart(2, '0'))}
+              ${escapeHtml(getExceptionBadgeMeta(stop.exception_code).label)}
             </div>`
           : ''
       }

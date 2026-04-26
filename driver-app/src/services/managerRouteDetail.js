@@ -20,6 +20,20 @@ function isExceptionStop(stop) {
   return Boolean(stop?.exception_code) || stop?.status === 'incomplete';
 }
 
+function formatExceptionCode(code) {
+  const value = String(code || '').trim();
+
+  if (!value) {
+    return 'Exception';
+  }
+
+  if (/^\d+$/.test(value)) {
+    return `Code ${value.padStart(2, '0')}`;
+  }
+
+  return `Code ${value.toUpperCase()}`;
+}
+
 export function getPackageProgress(stops = []) {
   const allPackages = (stops || []).flatMap((stop) => stop?.packages || []);
 
@@ -60,7 +74,7 @@ export function getStopIndicatorLabels(stop) {
   const labels = [];
 
   if (isExceptionStop(stop)) {
-    labels.push('Exception');
+    labels.push(formatExceptionCode(stop?.exception_code));
   }
 
   if (stop?.has_time_commit && !isCompletedStop(stop)) {

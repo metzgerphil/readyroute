@@ -79,6 +79,20 @@ function formatCompletionTime(stop) {
   }).format(date);
 }
 
+function formatExceptionCode(code) {
+  const value = String(code || '').trim();
+
+  if (!value) {
+    return null;
+  }
+
+  if (/^\d+$/.test(value)) {
+    return `Code ${value.length > 2 && value.startsWith('0') ? value.slice(-2) : value.padStart(2, '0')}`;
+  }
+
+  return `Code ${value.toUpperCase()}`;
+}
+
 function getPackageCount(stop) {
   return Array.isArray(stop?.packages) ? stop.packages.length : 0;
 }
@@ -411,7 +425,7 @@ export default function StopListDrawer({
 
                 <div className="stop-list-row-status">
                   {stop.exception_code ? (
-                    <span className="stop-list-row-exception">{`Code ${String(stop.exception_code).padStart(2, '0')}`}</span>
+                    <span className="stop-list-row-exception">{formatExceptionCode(stop.exception_code)}</span>
                   ) : null}
                   {!completionTime ? (
                     <span className="stop-status-chip" style={{ backgroundColor: status.statusFill, color: status.statusText }}>

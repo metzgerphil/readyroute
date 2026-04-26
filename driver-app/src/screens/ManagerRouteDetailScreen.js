@@ -15,6 +15,33 @@ import {
 const googleMapsApiKey = process.env.EXPO_PUBLIC_GOOGLE_MAPS_API_KEY || '';
 const shouldUseGoogleProvider = Platform.OS !== 'ios' || Boolean(String(googleMapsApiKey).trim());
 
+function formatStopTimestamp(timestamp) {
+  if (!timestamp) {
+    return null;
+  }
+
+  const date = new Date(timestamp);
+
+  if (Number.isNaN(date.getTime())) {
+    return null;
+  }
+
+  return date.toLocaleTimeString([], {
+    hour: 'numeric',
+    minute: '2-digit'
+  });
+}
+
+function formatExceptionCode(code) {
+  const value = String(code || '').trim();
+
+  if (!value) {
+    return null;
+  }
+
+  return /^\d+$/.test(value) ? `Code ${value.padStart(2, '0')}` : `Code ${value.toUpperCase()}`;
+}
+
 export default function ManagerRouteDetailScreen({ navigation, route }) {
   const initialDate = route?.params?.date || null;
   const routeId = route?.params?.routeId || null;
@@ -187,6 +214,8 @@ export default function ManagerRouteDetailScreen({ navigation, route }) {
               <Text style={styles.sectionTitle}>Stop list</Text>
               {stops.map((stop) => {
                 const labels = getStopIndicatorLabels(stop);
+                const scanTime = formatStopTimestamp(stop.scanned_at || stop.completed_at);
+                const exceptionCode = formatExceptionCode(stop.exception_code);
 
                 return (
                   <View key={stop.id} style={styles.stopRow}>
@@ -201,7 +230,13 @@ export default function ManagerRouteDetailScreen({ navigation, route }) {
                       <Text style={styles.stopMeta}>
                         {stop.status || 'pending'}
                         {stop.ready_time && stop.close_time ? ` • ${stop.ready_time}-${stop.close_time}` : ''}
+                        {scanTime ? ` • ${scanTime}` : ''}
                       </Text>
+                      {exceptionCode ? (
+                        <View style={styles.exceptionCodeBadge}>
+                          <Text style={styles.exceptionCodeBadgeText}>{exceptionCode}</Text>
+                        </View>
+                      ) : null}
                       {labels.length ? (
                         <View style={styles.stopBadgeRow}>
                           {labels.map((label) => (
@@ -499,6 +534,21 @@ const styles = StyleSheet.create({
     fontSize: 13,
     lineHeight: 18,
     marginBottom: 4
+  },
+  exceptionCodeBadge: {
+    alignSelf: 'flex-start',
+    backgroundColor: '#fff1e8',
+    borderColor: '#fed7aa',
+    borderRadius: 999,
+    borderWidth: 1,
+    marginTop: 4,
+    paddingHorizontal: 10,
+    paddingVertical: 6
+  },
+  exceptionCodeBadgeText: {
+    color: '#c2410c',
+    fontSize: 11,
+    fontWeight: '900'
   },
   stopBadgeRow: {
     flexDirection: 'row',
