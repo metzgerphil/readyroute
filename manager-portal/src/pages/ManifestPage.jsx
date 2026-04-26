@@ -504,7 +504,7 @@ export default function ManifestPage() {
         tone: 'done',
         title: 'First routes are in ReadyRoute',
         body: `${routeSummaries.length} route${routeSummaries.length === 1 ? '' : 's'} loaded for ${formatMorningDate(date)}. You can assign, review, and dispatch from here.`,
-        actionTo: '/dashboard',
+        actionTo: `/?date=${date}`,
         actionLabel: 'Open Dashboard'
       };
     }
@@ -539,6 +539,13 @@ export default function ManifestPage() {
 
   useEffect(() => {
     saveStoredOperationsDate(date);
+  }, [date]);
+
+  useEffect(() => {
+    if (searchParams.get('date') === date) {
+      return;
+    }
+
     const nextParams = new URLSearchParams(searchParams);
     nextParams.set('date', date);
     setSearchParams(nextParams, { replace: true });
