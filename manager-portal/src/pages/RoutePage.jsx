@@ -515,9 +515,14 @@ export default function RoutePage() {
   const exceptionsPanelRef = useRef(null);
   const resizeObserverRef = useRef(null);
   const mapStabilizeTimerRef = useRef(null);
+  const mapTileWatchdogRef = useRef(null);
+  const mapTileRetryCountRef = useRef(0);
+  const mapTilesLoadedRef = useRef(false);
   const [date, setDate] = useState(getTodayString());
   const [mapError, setMapError] = useState('');
   const [mapReady, setMapReady] = useState(false);
+  const [mapRefreshNonce, setMapRefreshNonce] = useState(0);
+  const [mapIsRepainting, setMapIsRepainting] = useState(false);
   const [mapType, setMapType] = useState('roadmap');
   const [selectedStopId, setSelectedStopId] = useState(null);
   const [showLegend, setShowLegend] = useState(true);
@@ -564,6 +569,15 @@ export default function RoutePage() {
       territoryBorderRef.current.setMap(null);
       territoryBorderRef.current = null;
     }
+  }
+
+  function resetMapInstance() {
+    clearMapArtifacts();
+    infoWindowRef.current?.close();
+    infoWindowRef.current = null;
+    mapInstanceRef.current = null;
+    mapTilesLoadedRef.current = false;
+    setMapReady(false);
   }
 
   const routesQuery = useQuery({
@@ -725,8 +739,9 @@ export default function RoutePage() {
 
   useEffect(() => {
     setSelectedStopId(null);
-    setMapReady(false);
-    infoWindowRef.current?.close();
+    mapTileRetryCountRef.current = 0;
+    resetMapInstance();
+    setMapRefreshNonce((value) => value + 1);
   }, [id, date]);
 
   useEffect(() => {
@@ -758,6 +773,50 @@ export default function RoutePage() {
       }
     }
 
+    function clearTileWatchdog() {
+      if (mapTileWatchdogRef.current) {
+        window.clearTimeout(mapTileWatchdogRef.current);
+        mapTileWatchdogRef.current = null;
+      }
+    }
+
+    function startTileWatchdog(google, map) {
+      clearTileWatchdog();
+
+      mapTileWatchdogRef.current = window.setTimeout(() => {
+        if (!active || mapTilesLoadedRef.current || !mapContainerRef.current || !map) {
+          return;
+        }
+
+        google.maps.event.trigger(map, 'resize');
+
+        if (orderedStops.length) {
+          fitRoute();
+        }
+
+        if (mapTileRetryCountRef.current < 2) {
+          mapTileRetryCountRef.current += 1;
+          setMapIsRepainting(true);
+          window.setTimeout(() => {
+            if (!active || mapTilesLoadedRef.current) {
+              return;
+            }
+
+            resetMapInstance();
+            setMapRefreshNonce((value) => value + 1);
+          }, 250);
+        } else {
+          setMapIsRepainting(false);
+          setMapError('The map is loaded but tiles did not paint. Tap Recenter map or refresh this page.');
+        }
+      }, 2600);
+    }
+
+    function containerHasSize() {
+      const rect = mapContainerRef.current?.getBoundingClientRect?.();
+      return Boolean(rect && rect.width > 40 && rect.height > 40);
+    }
+
     function stabilizeMap(google, map) {
       if (!active || !google?.maps || !map) {
         return;
@@ -787,12 +846,18 @@ export default function RoutePage() {
           }
 
           setMapReady(true);
+          startTileWatchdog(google, map);
         }, 180);
       });
     }
 
     async function initMap() {
       if (!mapContainerRef.current) {
+        return;
+      }
+
+      if (!containerHasSize()) {
+        window.setTimeout(initMap, 100);
         return;
       }
 
@@ -804,14 +869,14 @@ export default function RoutePage() {
         }
 
         setMapError('');
+        setMapIsRepainting(false);
 
         const shouldCreateFreshMap =
           !mapInstanceRef.current ||
           (typeof mapInstanceRef.current.getDiv === 'function' && mapInstanceRef.current.getDiv() !== mapContainerRef.current);
 
         if (shouldCreateFreshMap) {
-          clearMapArtifacts();
-          setMapReady(false);
+          resetMapInstance();
           mapInstanceRef.current = new google.maps.Map(mapContainerRef.current, {
             center: { lat: 33.1217, lng: -117.0815 },
             zoom: 11,
@@ -829,6 +894,11 @@ export default function RoutePage() {
 
           google.maps.event.addListenerOnce(mapInstanceRef.current, 'idle', () => {
             stabilizeMap(google, mapInstanceRef.current);
+          });
+          google.maps.event.addListenerOnce(mapInstanceRef.current, 'tilesloaded', () => {
+            mapTilesLoadedRef.current = true;
+            setMapIsRepainting(false);
+            clearTileWatchdog();
           });
         } else {
           stabilizeMap(google, mapInstanceRef.current);
@@ -859,10 +929,11 @@ export default function RoutePage() {
     return () => {
       active = false;
       clearPendingStabilizeTimer();
+      clearTileWatchdog();
       resizeObserverRef.current?.disconnect();
       resizeObserverRef.current = null;
     };
-  }, [orderedStops.length]);
+  }, [orderedStops.length, mapRefreshNonce]);
 
   useEffect(() => {
     const google = window.google;
@@ -1400,7 +1471,10 @@ export default function RoutePage() {
       </header>
 
       <div className="route-map-stage">
-        <div ref={mapContainerRef} className="route-map-fullscreen" />
+        <div key={`route-map-${mapRefreshNonce}`} ref={mapContainerRef} className="route-map-fullscreen" />
+        {mapIsRepainting && !mapError ? (
+          <div className="route-map-repaint-notice">Map is repainting...</div>
+        ) : null}
         {mapError ? <div className="route-map-error">{mapError}</div> : null}
 
         {!showStopDrawer ? (
