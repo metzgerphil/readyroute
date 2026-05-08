@@ -113,7 +113,7 @@ export default function Layout({ children }) {
       });
       saveManagerToken(response.data?.token || '');
       window.location.assign('/setup');
-    } catch (_error) {
+    } catch {
       window.alert('CSA switch could not be completed right now.');
     } finally {
       setIsSwitchingCsa(false);

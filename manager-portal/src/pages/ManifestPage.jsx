@@ -8,6 +8,7 @@ import MapView from '../components/MapView';
 import { getTodayString, loadStoredOperationsDate, saveStoredOperationsDate } from '../utils/operationsDate';
 
 const MANIFEST_UPLOAD_STORAGE_KEY = 'readyroute:manifest-latest-upload';
+const EMPTY_ARRAY = [];
 
 function formatMorningDate(dateValue) {
   return format(new Date(`${dateValue}T12:00:00`), 'EEEE, MMMM d');
@@ -225,7 +226,7 @@ function loadStoredManifestUpload(dateValue) {
     }
 
     return parsed.latestUpload;
-  } catch (_error) {
+  } catch {
     return null;
   }
 }
@@ -245,7 +246,7 @@ function saveStoredManifestUpload(dateValue, latestUpload) {
       MANIFEST_UPLOAD_STORAGE_KEY,
       JSON.stringify({ date: dateValue, latestUpload })
     );
-  } catch (_error) {
+  } catch {
     // Ignore session storage write failures in the browser.
   }
 }
@@ -454,7 +455,7 @@ export default function ManifestPage() {
   });
 
   const routePayload = routesQuery.data || {};
-  const routeSummaries = routePayload.routes || [];
+  const routeSummaries = useMemo(() => routePayload.routes || EMPTY_ARRAY, [routePayload.routes]);
   const syncStatus = routePayload.sync_status || { routes_today: 0, routes_assigned: 0, last_sync_at: null };
   const routeSyncSettings = routePayload.route_sync_settings || null;
   const fedexConnection = routePayload.fedex_connection || { is_connected: false, terminal_label: null };

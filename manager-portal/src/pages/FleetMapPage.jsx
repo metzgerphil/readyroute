@@ -14,6 +14,8 @@ const GOOGLE_MAPS_SRC = GOOGLE_MAPS_KEY
   : null;
 
 let googleMapsScriptPromise = null;
+const EMPTY_ARRAY = [];
+const EMPTY_OBJECT = {};
 
 function loadGoogleMapsScript() {
   if (!GOOGLE_MAPS_KEY || GOOGLE_MAPS_KEY === 'your_key_here') {
@@ -151,7 +153,7 @@ export default function FleetMapPage() {
     }
   });
 
-  const routes = routesQuery.data || [];
+  const routes = useMemo(() => routesQuery.data || EMPTY_ARRAY, [routesQuery.data]);
   const hasNoRoutes = !routesQuery.isLoading && routes.length === 0;
   const routesWithColors = useMemo(
     () => routes.map((route, index) => ({ ...route, routeColor: getRouteColor(route, index) })),
@@ -167,7 +169,7 @@ export default function FleetMapPage() {
           try {
             const response = await api.get(`/manager/routes/${route.id}/driver-position`);
             return { routeId: route.id, position: response.data };
-          } catch (error) {
+          } catch {
             return { routeId: route.id, position: null };
           }
         })
@@ -181,7 +183,7 @@ export default function FleetMapPage() {
     refetchInterval: 30000
   });
 
-  const driverPositions = driverPositionsQuery.data || {};
+  const driverPositions = useMemo(() => driverPositionsQuery.data || EMPTY_OBJECT, [driverPositionsQuery.data]);
 
   const routeRows = useMemo(
     () =>

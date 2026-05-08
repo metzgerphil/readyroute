@@ -260,7 +260,6 @@ export default function VedrPage() {
         setIsSwitchConfirming(false);
         setSwitchingPreviousSettings(null);
         setHelperMessage('');
-        setAccessMessage('');
       }
     });
   }

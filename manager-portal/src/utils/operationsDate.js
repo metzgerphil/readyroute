@@ -17,7 +17,7 @@ export function loadStoredOperationsDate() {
       window.sessionStorage.getItem(OPERATIONS_SELECTED_DATE_STORAGE_KEY) ||
       window.sessionStorage.getItem(LEGACY_MANIFEST_SELECTED_DATE_STORAGE_KEY)
     );
-  } catch (_error) {
+  } catch {
     return null;
   }
 }
@@ -30,7 +30,7 @@ export function saveStoredOperationsDate(dateValue) {
   try {
     window.sessionStorage.setItem(OPERATIONS_SELECTED_DATE_STORAGE_KEY, dateValue);
     window.sessionStorage.setItem(LEGACY_MANIFEST_SELECTED_DATE_STORAGE_KEY, dateValue);
-  } catch (_error) {
+  } catch {
     // Ignore session storage write failures in the browser.
   }
 }

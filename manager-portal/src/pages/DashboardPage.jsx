@@ -13,6 +13,7 @@ const GOOGLE_MAPS_SRC = GOOGLE_MAPS_KEY
   ? `https://maps.googleapis.com/maps/api/js?key=${GOOGLE_MAPS_KEY}&v=weekly`
   : null;
 const GOOGLE_MAPS_PLACEHOLDER_KEYS = new Set(['your_key_here', 'your_production_key']);
+const EMPTY_ARRAY = [];
 
 let googleMapsScriptPromise = null;
 let googleMapsScriptFailed = false;
@@ -700,7 +701,7 @@ export default function DashboardPage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const queryClient = useQueryClient();
   const [viewMode, setViewMode] = useState('map');
-  const [isCompactBanner, setIsCompactBanner] = useState(false);
+  const [compactBannerKey, setCompactBannerKey] = useState(null);
   const [vehiclePickerRouteId, setVehiclePickerRouteId] = useState(null);
   const dashboardDate = searchParams.get('date') || getTodayString();
   const isSelectedDateToday = dashboardDate === getTodayString();
@@ -748,7 +749,7 @@ export default function DashboardPage() {
     }
   });
 
-  const overviewRoutes = routesOverviewQuery.data || [];
+  const overviewRoutes = useMemo(() => routesOverviewQuery.data || EMPTY_ARRAY, [routesOverviewQuery.data]);
   const overviewRouteIdsKey = overviewRoutes.map((route) => route.id).join(',');
 
   const routeDetailMapQuery = useQuery({
@@ -815,30 +816,30 @@ export default function DashboardPage() {
     [overviewRoutes]
   );
   const activeDashboard = isSelectedDateToday ? (dashboard || fallbackDashboard) : fallbackDashboard;
-  const routeRows = activeDashboard?.drivers || [];
+  const routeRows = useMemo(() => activeDashboard?.drivers || EMPTY_ARRAY, [activeDashboard?.drivers]);
   const syncStatus = activeDashboard?.sync_status;
   const bannerState =
     dashboardQuery.isLoading && overviewRoutes.length === 0
       ? 'loading'
       : getBannerState(syncStatus, dispatchHealth);
+  const activeBannerKey = `${bannerState}:${syncStatus?.routes_today ?? ''}:${syncStatus?.routes_assigned ?? ''}`;
+  const isCompactBanner = bannerState === 'active' && compactBannerKey === activeBannerKey;
   const missingRoutesState = useMemo(
     () => getMissingRoutesState(syncStatus, dashboard?.date || dashboardDate),
     [dashboard?.date, dashboardDate, syncStatus]
   );
 
   useEffect(() => {
-    setIsCompactBanner(false);
-
     if (bannerState !== 'active') {
       return undefined;
     }
 
     const timeoutId = window.setTimeout(() => {
-      setIsCompactBanner(true);
+      setCompactBannerKey(activeBannerKey);
     }, 10000);
 
     return () => window.clearTimeout(timeoutId);
-  }, [bannerState, syncStatus?.routes_today, syncStatus?.routes_assigned]);
+  }, [activeBannerKey, bannerState]);
 
   const routeDetailsById = useMemo(
     () =>
