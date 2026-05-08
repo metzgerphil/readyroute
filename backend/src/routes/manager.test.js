@@ -609,6 +609,65 @@ test('POST /manager/drivers creates a driver with a hashed PIN', async () => {
   }
 });
 
+test('POST /manager/drivers creates a driver without phone or hourly rate', async () => {
+  const supabase = new MockSupabase((query) => {
+    if (query.table === 'accounts' && query.operation === 'select') {
+      return {
+        data: {
+          id: 'acct-1',
+          company_name: 'ReadyRoute Test',
+          manager_email: 'manager@example.com',
+          driver_starter_pin: '2468'
+        },
+        error: null
+      };
+    }
+
+    if (query.table === 'drivers' && query.operation === 'select') {
+      return { data: null, error: null };
+    }
+
+    if (query.table === 'drivers' && query.operation === 'insert') {
+      assert.equal(query.payload.name, 'No Phone Driver');
+      assert.equal(query.payload.email, 'nophone@example.com');
+      assert.equal(query.payload.fedex_driver_id, 'FX456');
+      assert.equal(query.payload.phone, null);
+      assert.equal(query.payload.hourly_rate, 0);
+      assert.equal(query.payload.is_active, true);
+      assert.notEqual(query.payload.pin, '2468');
+
+      return {
+        data: { id: 'driver-100' },
+        error: null
+      };
+    }
+
+    throw new Error(`Unexpected query ${query.table}:${query.operation}`);
+  });
+
+  const server = await startTestServer({ supabase });
+
+  try {
+    const response = await fetch(`${server.baseUrl}/manager/drivers`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${signManagerToken()}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        name: 'No Phone Driver',
+        email: 'NoPhone@Example.com',
+        fedex_driver_id: 'FX456'
+      })
+    });
+
+    assert.equal(response.status, 201);
+    assert.deepEqual(await response.json(), { driver_id: 'driver-100', starter_pin_applied: true });
+  } finally {
+    await server.close();
+  }
+});
+
 test('POST /manager/drivers returns 409 when the email already exists', async () => {
   const supabase = new MockSupabase((query) => {
     if (query.table === 'accounts' && query.operation === 'select') {

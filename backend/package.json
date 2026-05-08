@@ -17,6 +17,7 @@
     "fedex:sync:daemon": "node src/scripts/runFedexSyncDaemon.js",
     "seed:auth": "node src/scripts/seedAuthUsers.js",
     "seed:manager": "node src/scripts/addManagerUser.js",
+    "smoke:production": "node src/scripts/productionSmoke.js",
     "test:unit": "node --test src/**/*.test.js",
     "test:e2e": "jest --runInBand tests/e2e.test.js",
     "test": "npm run test:unit && npm run test:e2e"

@@ -109,6 +109,7 @@ create table if not exists public.drivers (
   account_id uuid not null references public.accounts(id) on delete cascade,
   name text not null,
   email text not null unique,
+  fedex_driver_id text,
   phone text,
   hourly_rate numeric(10, 2) not null default 0,
   is_active boolean not null default true,
