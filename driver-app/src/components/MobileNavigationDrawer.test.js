@@ -27,11 +27,12 @@ describe('MobileNavigationDrawer', () => {
 
     expect(layout.isTabletLayout).toBe(false);
     expect(layout.sheetFrameStyle).toEqual({
-      bottom: 0,
+      height: 736,
       left: 0,
       right: 0,
-      top: 117
+      top: 108
     });
+    expect(layout.sheetHeight).toBe(736);
   });
 
   it('uses a capped tablet panel width', () => {
@@ -43,12 +44,12 @@ describe('MobileNavigationDrawer', () => {
 
     expect(layout.isTabletLayout).toBe(true);
     expect(layout.sheetFrameStyle).toEqual({
-      borderBottomLeftRadius: 26,
-      borderBottomRightRadius: 26,
-      bottom: 44,
-      left: 242,
-      top: 104,
-      width: 540
+      borderBottomLeftRadius: 28,
+      borderBottomRightRadius: 28,
+      height: 1214,
+      left: 252,
+      top: 108,
+      width: 520
     });
   });
 
@@ -61,6 +62,7 @@ describe('MobileNavigationDrawer', () => {
 
     expect(layout.isTabletLayout).toBe(false);
     expect(layout.sheetFrameStyle.right).toBe(0);
+    expect(layout.sheetHeight).toBe(282);
   });
 
   it('shows driver identity and role-aware driver menu items', () => {
