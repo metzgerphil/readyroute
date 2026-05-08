@@ -3,11 +3,13 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { getDrawerMenuItems, getModeSwitchLabel } from '../services/shellNavigation';
 
-const PHONE_MENU_MIN_TOP = 112;
-const TABLET_MENU_MIN_TOP = 104;
-const TOP_CONTROL_GAP = 70;
-const TABLET_PANEL_MAX_WIDTH = 540;
+const TOP_CONTROL_ROW_TOP = 58;
+const TOP_CONTROL_ROW_HEIGHT = 42;
+const TOP_CONTROL_ROW_GAP = 8;
+const SAFE_AREA_TOP_GAP = 8;
+const TABLET_PANEL_MAX_WIDTH = 520;
 const TABLET_PANEL_MIN_SIDE_GUTTER = 24;
+const TABLET_PANEL_BOTTOM_GAP = 24;
 
 function getInitial(name) {
   const trimmedName = String(name || '').trim();
@@ -16,22 +18,22 @@ function getInitial(name) {
 
 export function getMobileMenuLayout({ height, insets, width }) {
   const isTabletLayout = Math.min(height, width) >= 768;
-  const sheetTop = Math.max(
-    insets.top + TOP_CONTROL_GAP,
-    isTabletLayout ? TABLET_MENU_MIN_TOP : PHONE_MENU_MIN_TOP
-  );
+  const topControlBottom = TOP_CONTROL_ROW_TOP + TOP_CONTROL_ROW_HEIGHT + TOP_CONTROL_ROW_GAP;
+  const sheetTop = Math.max(insets.top + SAFE_AREA_TOP_GAP, topControlBottom);
   const panelWidth = Math.min(width - TABLET_PANEL_MIN_SIDE_GUTTER * 2, TABLET_PANEL_MAX_WIDTH);
+  const tabletBottom = Math.max(insets.bottom + TABLET_PANEL_BOTTOM_GAP, TABLET_PANEL_BOTTOM_GAP);
+  const sheetHeight = Math.max(0, height - sheetTop - (isTabletLayout ? tabletBottom : 0));
   const sheetFrameStyle = isTabletLayout
     ? {
-        borderBottomLeftRadius: 26,
-        borderBottomRightRadius: 26,
-        bottom: Math.max(insets.bottom + 24, 24),
+        borderBottomLeftRadius: 28,
+        borderBottomRightRadius: 28,
+        height: sheetHeight,
         left: (width - panelWidth) / 2,
         top: sheetTop,
         width: panelWidth
       }
     : {
-        bottom: 0,
+        height: sheetHeight,
         left: 0,
         right: 0,
         top: sheetTop
@@ -40,6 +42,7 @@ export function getMobileMenuLayout({ height, insets, width }) {
   return {
     isTabletLayout,
     sheetFrameStyle,
+    sheetHeight,
     sheetTop
   };
 }
@@ -142,8 +145,8 @@ const styles = StyleSheet.create({
   },
   sheet: {
     backgroundColor: '#ffffff',
-    borderTopLeftRadius: 26,
-    borderTopRightRadius: 26,
+    borderTopLeftRadius: 30,
+    borderTopRightRadius: 30,
     elevation: 18,
     overflow: 'hidden',
     paddingHorizontal: 18,
