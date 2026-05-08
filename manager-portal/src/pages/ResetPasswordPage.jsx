@@ -11,12 +11,15 @@ export default function ResetPasswordPage() {
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [errorMessage, setErrorMessage] = useState('');
-  const [infoMessage, setInfoMessage] = useState(
-    token
-      ? mode === 'invite'
-        ? 'Set your manager password to activate this ReadyRoute invite.'
-        : 'Choose a new password for your manager account.'
-      : 'Open this page from a reset link, or paste the reset token below.'
+  const infoMessage = useMemo(
+    () => (
+      token
+        ? mode === 'invite'
+          ? 'Set your manager password to activate this ReadyRoute invite.'
+          : 'Choose a new password for your manager account.'
+        : 'Open this page from a reset link, or paste the reset token below.'
+    ),
+    [mode, token]
   );
   const [manualToken, setManualToken] = useState(token);
   const [isSubmitting, setIsSubmitting] = useState(false);

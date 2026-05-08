@@ -38,6 +38,15 @@ const SERVICE_TYPE_OPTIONS = [
   'General Repair',
   'Other'
 ];
+const EMPTY_ARRAY = [];
+
+function normalizeMaintenanceSettings(settings = EMPTY_ARRAY) {
+  return settings.map((setting) => ({
+    ...setting,
+    default_interval_miles: setting.default_interval_miles ?? '',
+    default_interval_days: setting.default_interval_days ?? ''
+  }));
+}
 
 function findMaintenanceSetting(settings, serviceType) {
   return (settings || []).find((setting) => setting.service_type === serviceType) || null;
@@ -563,7 +572,7 @@ export default function VehiclesPage() {
   const [toastMessage, setToastMessage] = useState('');
   const [maintenanceVehicle, setMaintenanceVehicle] = useState(null);
   const [historyVehicle, setHistoryVehicle] = useState(null);
-  const [maintenanceSettingsDraft, setMaintenanceSettingsDraft] = useState([]);
+  const [maintenanceSettingsDraft, setMaintenanceSettingsDraft] = useState(null);
   const [maintenanceForm, setMaintenanceForm] = useState({
     service_date: getTodayString(),
     service_type: 'Oil Change',
@@ -667,7 +676,7 @@ export default function VehiclesPage() {
   const saveMaintenanceSettingsMutation = useMutation({
     mutationFn: async () => {
       const response = await api.put('/vehicles/settings/maintenance', {
-        settings: maintenanceSettingsDraft.map((setting) => ({
+        settings: activeMaintenanceSettings.map((setting) => ({
           ...setting,
           default_interval_miles: setting.default_interval_miles === '' ? null : Number(setting.default_interval_miles),
           default_interval_days: setting.default_interval_days === '' ? null : Number(setting.default_interval_days)
@@ -689,11 +698,12 @@ export default function VehiclesPage() {
     }
   });
 
-  const vehicles = useMemo(() => vehiclesQuery.data || [], [vehiclesQuery.data]);
-  const activeMaintenanceSettings = useMemo(
-    () => (maintenanceSettingsDraft.length ? maintenanceSettingsDraft : maintenanceSettingsQuery.data || []),
-    [maintenanceSettingsDraft, maintenanceSettingsQuery.data]
+  const vehicles = useMemo(() => vehiclesQuery.data || EMPTY_ARRAY, [vehiclesQuery.data]);
+  const normalizedMaintenanceSettings = useMemo(
+    () => normalizeMaintenanceSettings(maintenanceSettingsQuery.data || EMPTY_ARRAY),
+    [maintenanceSettingsQuery.data]
   );
+  const activeMaintenanceSettings = maintenanceSettingsDraft ?? normalizedMaintenanceSettings;
   const dueSoonVehicles = useMemo(() => vehicles.filter((vehicle) => vehicle.service_due), [vehicles]);
   const registrationAttentionVehicles = useMemo(
     () => vehicles.filter((vehicle) => {
@@ -738,20 +748,6 @@ export default function VehiclesPage() {
     const timeout = window.setTimeout(() => setToastMessage(''), 2500);
     return () => window.clearTimeout(timeout);
   }, [toastMessage]);
-
-  useEffect(() => {
-    if (!maintenanceSettingsQuery.data?.length) {
-      return;
-    }
-
-    setMaintenanceSettingsDraft(
-      maintenanceSettingsQuery.data.map((setting) => ({
-        ...setting,
-        default_interval_miles: setting.default_interval_miles ?? '',
-        default_interval_days: setting.default_interval_days ?? ''
-      }))
-    );
-  }, [maintenanceSettingsQuery.data]);
 
   function updateVehicleField(field, value) {
     setVehicleForm((current) => {
@@ -813,7 +809,7 @@ export default function VehiclesPage() {
 
   function updateMaintenanceSetting(serviceType, field, value) {
     setMaintenanceSettingsDraft((current) =>
-      current.map((setting) =>
+      (current ?? normalizedMaintenanceSettings).map((setting) =>
         setting.service_type === serviceType ? { ...setting, [field]: value } : setting
       )
     );
@@ -939,7 +935,7 @@ export default function VehiclesPage() {
       {toastMessage ? <div className="success-banner">{toastMessage}</div> : null}
 
       <MaintenanceSettingsCard
-        draft={maintenanceSettingsDraft}
+        draft={activeMaintenanceSettings}
         isExpanded={isMaintenanceProgramExpanded}
         isLoading={maintenanceSettingsQuery.isLoading}
         isSaving={saveMaintenanceSettingsMutation.isPending}

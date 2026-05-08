@@ -1,5 +1,5 @@
 import { format } from 'date-fns';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 
@@ -15,6 +15,7 @@ const GOOGLE_MAPS_SRC = GOOGLE_MAPS_KEY
   ? `https://maps.googleapis.com/maps/api/js?key=${GOOGLE_MAPS_KEY}&v=weekly`
   : null;
 const GOOGLE_MAPS_PLACEHOLDER_KEYS = new Set(['your_key_here', 'your_production_key']);
+const EMPTY_ARRAY = [];
 
 const ROUTE_STATUS_META = {
   pending: { label: 'Pending', color: '#9ca3af' },
@@ -604,7 +605,7 @@ export default function RoutePage() {
   const [actionError, setActionError] = useState('');
   const [isHeaderCollapsed, setIsHeaderCollapsed] = useState(false);
 
-  function clearMapArtifacts() {
+  const clearMapArtifacts = useCallback(() => {
     stopMarkersRef.current.forEach((marker) => marker.setMap(null));
     stopMarkersRef.current.clear();
 
@@ -627,16 +628,16 @@ export default function RoutePage() {
       territoryBorderRef.current.setMap(null);
       territoryBorderRef.current = null;
     }
-  }
+  }, []);
 
-  function resetMapInstance() {
+  const resetMapInstance = useCallback(() => {
     clearMapArtifacts();
     infoWindowRef.current?.close();
     infoWindowRef.current = null;
     mapInstanceRef.current = null;
     mapTilesLoadedRef.current = false;
     setMapReady(false);
-  }
+  }, [clearMapArtifacts]);
 
   const routesQuery = useQuery({
     queryKey: ['route-page-routes', date],
@@ -646,7 +647,7 @@ export default function RoutePage() {
     }
   });
 
-  const routeOptions = routesQuery.data || [];
+  const routeOptions = useMemo(() => routesQuery.data || EMPTY_ARRAY, [routesQuery.data]);
 
   useEffect(() => {
     if (!id || routesQuery.isLoading) {
@@ -696,7 +697,7 @@ export default function RoutePage() {
   const routeDetail = routeDetailQuery.data;
   const route = routeDetail?.route || routeOptions.find((item) => item.id === id) || null;
   const coordinateRecovery = routeDetail?.coordinate_recovery || null;
-  const allStops = routeDetail?.stops || [];
+  const allStops = useMemo(() => routeDetail?.stops || EMPTY_ARRAY, [routeDetail?.stops]);
   const mappableStops = useMemo(
     () =>
       allStops.filter(
@@ -722,7 +723,7 @@ export default function RoutePage() {
     () => allStops.filter((stop) => stop.status === 'incomplete'),
     [allStops]
   );
-  const roadFlags = roadFlagsQuery.data || [];
+  const roadFlags = useMemo(() => roadFlagsQuery.data || EMPTY_ARRAY, [roadFlagsQuery.data]);
   const routeExceptionCount = exceptionStops.length + incompleteStops.length;
   const routeDispatchWarnings = useMemo(
     () => getRouteDispatchWarnings({ route, allStops, roadFlags }),
@@ -747,7 +748,7 @@ export default function RoutePage() {
     selectedStopIdRef.current = selectedStopId;
   }, [selectedStopId]);
 
-  function getInfoWindowPixelOffset(marker) {
+  const getInfoWindowPixelOffset = useCallback((marker) => {
     const google = window.google;
     const map = mapInstanceRef.current;
     const position = marker?.getPosition?.();
@@ -766,9 +767,9 @@ export default function RoutePage() {
     const topSafeZone = 250;
 
     return new google.maps.Size(0, markerY < topSafeZone ? topSafeZone - markerY : -8);
-  }
+  }, []);
 
-  function openStopInfoWindow(stop, marker) {
+  const openStopInfoWindow = useCallback((stop, marker) => {
     const infoWindow = infoWindowRef.current;
     const map = mapInstanceRef.current;
 
@@ -782,7 +783,38 @@ export default function RoutePage() {
     }
     infoWindow.setContent(buildInfoWindow(stop));
     infoWindow.open({ anchor: marker, map, shouldFocus: false });
-  }
+  }, [getInfoWindowPixelOffset]);
+
+  const fitRoute = useCallback(() => {
+    const google = window.google;
+    const map = mapInstanceRef.current;
+
+    if (!google?.maps || !map) {
+      return;
+    }
+
+    const bounds = new google.maps.LatLngBounds();
+
+    orderedStops.forEach((stop) => {
+      bounds.extend({ lat: Number(stop.lat), lng: Number(stop.lng) });
+    });
+
+    if (
+      livePosition?.lat != null &&
+      livePosition?.lng != null &&
+      routeCentroid &&
+      getDistanceMiles(
+        { lat: Number(livePosition.lat), lng: Number(livePosition.lng) },
+        routeCentroid
+      ) <= 50
+    ) {
+      bounds.extend({ lat: Number(livePosition.lat), lng: Number(livePosition.lng) });
+    }
+
+    if (!bounds.isEmpty()) {
+      map.fitBounds(bounds, 72);
+    }
+  }, [livePosition?.lat, livePosition?.lng, orderedStops, routeCentroid]);
 
   useEffect(() => {
     if (!actionMessage) {
@@ -807,7 +839,7 @@ export default function RoutePage() {
     mapTileRetryCountRef.current = 0;
     resetMapInstance();
     setMapRefreshNonce((value) => value + 1);
-  }, [id, date]);
+  }, [id, date, resetMapInstance]);
 
   useEffect(() => {
     if (!showExceptions) {
@@ -1005,7 +1037,7 @@ export default function RoutePage() {
       resizeObserverRef.current?.disconnect();
       resizeObserverRef.current = null;
     };
-  }, [orderedStops.length, mapRefreshNonce]);
+  }, [fitRoute, mapRefreshNonce, mapType, orderedStops.length, resetMapInstance]);
 
   useEffect(() => {
     const google = window.google;
@@ -1047,38 +1079,15 @@ export default function RoutePage() {
     ) {
       setMapError('');
     }
-  }, [allStops.length, coordinateRecovery?.attempted, coordinateRecovery?.recovered, mappableStops.length, route?.total_stops, routeDetailQuery.isLoading]);
-
-  function fitRoute() {
-    const google = window.google;
-    const map = mapInstanceRef.current;
-
-    if (!google?.maps || !map) {
-      return;
-    }
-
-    const bounds = new google.maps.LatLngBounds();
-
-    orderedStops.forEach((stop) => {
-      bounds.extend({ lat: Number(stop.lat), lng: Number(stop.lng) });
-    });
-
-    if (
-      livePosition?.lat != null &&
-      livePosition?.lng != null &&
-      routeCentroid &&
-      getDistanceMiles(
-        { lat: Number(livePosition.lat), lng: Number(livePosition.lng) },
-        routeCentroid
-      ) <= 50
-    ) {
-      bounds.extend({ lat: Number(livePosition.lat), lng: Number(livePosition.lng) });
-    }
-
-    if (!bounds.isEmpty()) {
-      map.fitBounds(bounds, 72);
-    }
-  }
+  }, [
+    allStops.length,
+    coordinateRecovery?.attempted,
+    coordinateRecovery?.recovered,
+    mapError,
+    mappableStops.length,
+    route?.total_stops,
+    routeDetailQuery.isLoading
+  ]);
 
   useEffect(() => {
     const google = window.google;
@@ -1209,7 +1218,12 @@ export default function RoutePage() {
     routeDriverName,
     route?.status,
     nextStop,
-    pendingTimeCommitCount
+    clearMapArtifacts,
+    openStopInfoWindow,
+    pendingTimeCommitCount,
+    fitRoute,
+    route,
+    selectedStopId
   ]);
 
   useEffect(() => {
@@ -1236,7 +1250,7 @@ export default function RoutePage() {
     if (selectedMarker && selectedStop) {
       openStopInfoWindow(selectedStop, selectedMarker);
     }
-  }, [orderedStops, selectedStopId]);
+  }, [openStopInfoWindow, orderedStops, selectedStopId]);
 
   function handleRouteChange(nextRouteId) {
     if (!nextRouteId) {

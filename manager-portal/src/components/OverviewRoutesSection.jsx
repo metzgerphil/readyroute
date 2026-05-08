@@ -1,6 +1,5 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useMutation, useQuery } from '@tanstack/react-query';
-import { format } from 'date-fns';
 import { useNavigate } from 'react-router-dom';
 
 import api from '../services/api';
@@ -284,11 +283,8 @@ function StatCard({ title, primary, secondary, progress, footer, success = false
 }
 
 function ReassignModal({ drivers, isSaving, onClose, onSave, route }) {
-  const [selectedDriverId, setSelectedDriverId] = useState(route?.driver_id || '');
-
-  useEffect(() => {
-    setSelectedDriverId(route?.driver_id || '');
-  }, [route?.driver_id, route?.id]);
+  const [selectedDriverOverrides, setSelectedDriverOverrides] = useState({});
+  const selectedDriverId = selectedDriverOverrides[route?.id] ?? route?.driver_id ?? '';
 
   if (!route) {
     return null;
@@ -314,7 +310,7 @@ function ReassignModal({ drivers, isSaving, onClose, onSave, route }) {
           <select
             className="text-field"
             id="overview-driver-select"
-            onChange={(event) => setSelectedDriverId(event.target.value)}
+            onChange={(event) => setSelectedDriverOverrides((current) => ({ ...current, [route.id]: event.target.value }))}
             value={selectedDriverId}
           >
             <option value="">Select driver...</option>
@@ -373,17 +369,16 @@ function SkeletonTable() {
 
 export default function OverviewRoutesSection({ date, routes }) {
   const navigate = useNavigate();
-  const [routeRows, setRouteRows] = useState(routes ?? null);
-  const [isAlertDismissed, setIsAlertDismissed] = useState(false);
+  const [routeOverrides, setRouteOverrides] = useState({});
+  const [dismissedAlertDate, setDismissedAlertDate] = useState(null);
   const [reassigningRoute, setReassigningRoute] = useState(null);
+  const routeRows = useMemo(() => {
+    if (routes === null || routes === undefined) {
+      return routes;
+    }
 
-  useEffect(() => {
-    setRouteRows(routes ?? null);
-  }, [routes]);
-
-  useEffect(() => {
-    setIsAlertDismissed(false);
-  }, [date]);
+    return routes.map((route) => ({ ...route, ...(routeOverrides[route.id] || {}) }));
+  }, [routeOverrides, routes]);
 
   const driversQuery = useQuery({
     queryKey: ['overview-route-drivers'],
@@ -401,23 +396,19 @@ export default function OverviewRoutesSection({ date, routes }) {
     onSuccess: ({ routeId, driverId }) => {
       const selectedDriver = (driversQuery.data || []).find((driver) => driver.id === driverId) || null;
 
-      setRouteRows((current) =>
-        (current || []).map((route) =>
-          route.id === routeId
-            ? {
-                ...route,
-                driver_id: driverId,
-                driver_name: selectedDriver?.name || route.driver_name || null
-              }
-            : route
-        )
-      );
+      setRouteOverrides((current) => ({
+        ...current,
+        [routeId]: {
+          driver_id: driverId,
+          driver_name: selectedDriver?.name || null
+        }
+      }));
       setReassigningRoute(null);
     }
   });
 
   const summary = useMemo(() => buildSummary(routeRows || []), [routeRows]);
-  const dueBadAddress = summary.hasBadAddress && !isAlertDismissed;
+  const dueBadAddress = summary.hasBadAddress && dismissedAlertDate !== date;
   const tableColumns = '1fr 1.2fr 1fr 1fr 1fr 0.75fr 1fr 0.85fr 0.8fr 1fr 0.85fr';
 
   if (routeRows === null || routeRows === undefined) {
@@ -463,7 +454,7 @@ export default function OverviewRoutesSection({ date, routes }) {
         {dueBadAddress ? (
           <div className="overview-alert-banner">
             <div>One or more routes contains a bad address. Review your manifest.</div>
-            <button className="overview-alert-dismiss" onClick={() => setIsAlertDismissed(true)} type="button">
+            <button className="overview-alert-dismiss" onClick={() => setDismissedAlertDate(date)} type="button">
               Dismiss
             </button>
           </div>

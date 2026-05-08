@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link, useSearchParams } from 'react-router-dom';
 
@@ -532,7 +532,7 @@ export default function DriversPage() {
   const [managerInviteForm, setManagerInviteForm] = useState(emptyManagerInviteForm);
   const [managerInviteError, setManagerInviteError] = useState('');
   const [managerInviteResult, setManagerInviteResult] = useState(null);
-  const [starterPin, setStarterPin] = useState('');
+  const [starterPinDraft, setStarterPinDraft] = useState(null);
   const [starterPinError, setStarterPinError] = useState('');
 
   const driversQuery = useQuery({
@@ -668,7 +668,7 @@ export default function DriversPage() {
     },
     onSuccess: (data) => {
       setStarterPinError('');
-      setStarterPin(data?.starter_pin || '');
+      setStarterPinDraft(data?.starter_pin || '');
       queryClient.invalidateQueries({ queryKey: ['manager-driver-access'] });
     },
     onError: (error) => {
@@ -802,9 +802,7 @@ export default function DriversPage() {
     return null;
   }, [driverAccessQuery.data?.starter_pin, drivers.length, isSetupFlow, setupFocus]);
 
-  useEffect(() => {
-    setStarterPin(driverAccessQuery.data?.starter_pin || '');
-  }, [driverAccessQuery.data?.starter_pin]);
+  const starterPin = starterPinDraft ?? driverAccessQuery.data?.starter_pin ?? '';
 
   function openAddModal() {
     setModalMode('add');
@@ -1043,7 +1041,7 @@ export default function DriversPage() {
               className="text-field"
               inputMode="numeric"
               maxLength={4}
-              onChange={(event) => setStarterPin(event.target.value)}
+              onChange={(event) => setStarterPinDraft(event.target.value)}
               placeholder="4-digit PIN"
               type="password"
               value={starterPin}
