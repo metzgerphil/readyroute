@@ -1103,16 +1103,19 @@ export default function RoutePage() {
       marker.addListener('click', () => {
         selectedStopIdRef.current = stop.id;
         setSelectedStopId(stop.id);
+        setShowStopDrawer(true);
         openStopInfoWindow(stop, marker);
       });
 
       marker.addListener('mouseover', () => {
-        openStopInfoWindow(stop, marker);
+        marker.setIcon(createStopMarkerSVG(stop, true));
+        marker.setZIndex(getMarkerZIndex(stop, true));
       });
 
       marker.addListener('mouseout', () => {
         if (selectedStopIdRef.current !== stop.id) {
-          infoWindow.close();
+          marker.setIcon(createStopMarkerSVG(stop, false));
+          marker.setZIndex(getMarkerZIndex(stop, false));
         }
       });
 

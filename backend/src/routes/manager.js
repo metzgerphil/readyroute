@@ -775,6 +775,11 @@ function isMissingDriverStarterPinColumn(error) {
   return /driver_starter_pin/i.test(message) && /column|schema cache|could not find/i.test(message);
 }
 
+function isMissingFedexDriverIdColumn(error) {
+  const message = String(error?.message || error?.details || error?.hint || '');
+  return /fedex_driver_id/i.test(message) && /column|schema cache|could not find/i.test(message);
+}
+
 function isMissingFedexAccountsTable(error) {
   const message = String(error?.message || error?.details || error?.hint || '');
   return ['PGRST116', 'PGRST205', '42P01'].includes(error?.code) || /fedex_accounts/i.test(message);
@@ -1937,18 +1942,31 @@ function createManagerRouter(options = {}) {
 
   router.get('/drivers', requireManager, async (req, res) => {
     try {
-      const { data: drivers, error } = await supabase
+      let driversQuery = await supabase
         .from('drivers')
-        .select('id, account_id, name, email, phone, hourly_rate, is_active')
+        .select('id, account_id, name, email, fedex_driver_id, phone, hourly_rate, is_active')
         .eq('account_id', req.account.account_id)
         .order('name');
 
-      if (error) {
-        console.error('Manager drivers lookup failed:', error);
+      if (driversQuery.error && isMissingFedexDriverIdColumn(driversQuery.error)) {
+        driversQuery = await supabase
+          .from('drivers')
+          .select('id, account_id, name, email, phone, hourly_rate, is_active')
+          .eq('account_id', req.account.account_id)
+          .order('name');
+      }
+
+      if (driversQuery.error) {
+        console.error('Manager drivers lookup failed:', driversQuery.error);
         return res.status(500).json({ error: 'Failed to load drivers' });
       }
 
-      return res.status(200).json({ drivers: drivers || [] });
+      return res.status(200).json({
+        drivers: (driversQuery.data || []).map((driver) => ({
+          fedex_driver_id: null,
+          ...driver
+        }))
+      });
     } catch (error) {
       console.error('Manager drivers endpoint failed:', error);
       return res.status(500).json({ error: 'Failed to load drivers' });
@@ -3004,11 +3022,11 @@ function createManagerRouter(options = {}) {
   });
 
   router.post('/drivers', requireManager, async (req, res) => {
-    const { name, email, phone, hourly_rate: hourlyRate, pin } = req.body || {};
-    const parsedHourlyRate = Number(hourlyRate);
+    const { name, email, fedex_driver_id: fedexDriverId, phone, hourly_rate: hourlyRate, pin } = req.body || {};
+    const parsedHourlyRate = hourlyRate == null || hourlyRate === '' ? 0 : Number(hourlyRate);
 
-    if (!name || !email || !phone || !Number.isFinite(parsedHourlyRate)) {
-      return res.status(400).json({ error: 'name, email, phone, and hourly_rate are required' });
+    if (!name || !email || !Number.isFinite(parsedHourlyRate)) {
+      return res.status(400).json({ error: 'name and email are required' });
     }
 
     try {
@@ -3043,26 +3061,38 @@ function createManagerRouter(options = {}) {
 
       const pinHash = await bcrypt.hash(resolvedPin, 10);
 
-      const { data: driver, error } = await supabase
+      const driverPayload = {
+        account_id: req.account.account_id,
+        name: String(name).trim(),
+        email: normalizedEmail,
+        fedex_driver_id: String(fedexDriverId || '').trim() || null,
+        phone: String(phone || '').trim() || null,
+        hourly_rate: parsedHourlyRate,
+        pin: pinHash,
+        is_active: true
+      };
+
+      let insertQuery = await supabase
         .from('drivers')
-        .insert({
-          account_id: req.account.account_id,
-          name: String(name).trim(),
-          email: normalizedEmail,
-          phone: String(phone).trim(),
-          hourly_rate: parsedHourlyRate,
-          pin: pinHash,
-          is_active: true
-        })
+        .insert(driverPayload)
         .select('id')
         .single();
 
-      if (error) {
-        console.error('Manager driver creation failed:', error);
+      if (insertQuery.error && isMissingFedexDriverIdColumn(insertQuery.error)) {
+        const { fedex_driver_id: _fedexDriverId, ...fallbackPayload } = driverPayload;
+        insertQuery = await supabase
+          .from('drivers')
+          .insert(fallbackPayload)
+          .select('id')
+          .single();
+      }
+
+      if (insertQuery.error) {
+        console.error('Manager driver creation failed:', insertQuery.error);
         return res.status(500).json({ error: 'Failed to create driver' });
       }
 
-      return res.status(201).json({ driver_id: driver.id, starter_pin_applied: !pin });
+      return res.status(201).json({ driver_id: insertQuery.data.id, starter_pin_applied: !pin });
     } catch (error) {
       console.error('Manager create driver endpoint failed:', error);
       return res.status(500).json({ error: 'Failed to create driver' });

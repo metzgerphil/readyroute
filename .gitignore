@@ -15,6 +15,7 @@ backend/google-service-account.json
 node_modules/
 .npm-cache/
 .playwright-browsers/
+.tools/
 
 # build output
 dist/

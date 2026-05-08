@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 
 import './StopListDrawer.css';
 
@@ -186,6 +186,7 @@ export default function StopListDrawer({
 }) {
   const [searchTerm, setSearchTerm] = useState('');
   const [focusedIndex, setFocusedIndex] = useState(-1);
+  const rowRefs = useRef(new Map());
 
   const visibleStops = useMemo(
     () => filterStops(stops, 'all', searchTerm),
@@ -200,6 +201,15 @@ export default function StopListDrawer({
     return { delivered, pending, exceptions };
   }, [visibleStops]);
   const routeStats = useMemo(() => getStopStats(stops), [stops]);
+
+  useEffect(() => {
+    if (!open || !selectedStopId) {
+      return;
+    }
+
+    const selectedRow = rowRefs.current.get(selectedStopId);
+    selectedRow?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  }, [open, selectedStopId, visibleStops]);
 
   function handleKeyDown(event) {
     if (!open || !visibleStops.length) {
@@ -303,6 +313,13 @@ export default function StopListDrawer({
             return (
               <button
                 key={stop.id}
+                ref={(element) => {
+                  if (element) {
+                    rowRefs.current.set(stop.id, element);
+                  } else {
+                    rowRefs.current.delete(stop.id);
+                  }
+                }}
                 type="button"
                 className={`stop-list-row ${isHighlighted ? 'highlighted' : ''} ${isFocused ? 'focused' : ''}`}
                 onClick={() => onSelectStop(stop)}
