@@ -16,6 +16,17 @@ function getInitial(name) {
   return trimmedName ? trimmedName.charAt(0).toUpperCase() : 'R';
 }
 
+function getMenuIconLabel(item) {
+  const label = String(item?.label || '');
+  const words = label.split(/\s+/).filter(Boolean);
+
+  if (words.length > 1) {
+    return words.slice(0, 2).map((word) => word.charAt(0)).join('').toUpperCase();
+  }
+
+  return label.slice(0, 2).toUpperCase() || 'RR';
+}
+
 export function getMobileMenuLayout({ height, insets, width }) {
   const isTabletLayout = Math.min(height, width) >= 768;
   const topControlBottom = TOP_CONTROL_ROW_TOP + TOP_CONTROL_ROW_HEIGHT + TOP_CONTROL_ROW_GAP;
@@ -82,10 +93,10 @@ export default function MobileNavigationDrawer({
               <Text numberOfLines={1} style={styles.company}>
                 {identity?.companyName || 'ReadyRoute'}
               </Text>
-              <Text style={styles.modeText}>{activeMode === 'manager' ? 'Manager mode' : 'Driver mode'}</Text>
+              <Text style={styles.modeText}>{activeMode === 'manager' ? 'Manager Mode' : 'Driver Mode'}</Text>
             </View>
             <Pressable accessibilityLabel="Close menu" onPress={onClose} style={({ pressed }) => [styles.closeButton, pressed ? styles.pressed : null]}>
-              <Text style={styles.closeButtonText}>×</Text>
+              <Text style={styles.closeButtonText}>X</Text>
             </Pressable>
           </View>
 
@@ -115,9 +126,21 @@ export default function MobileNavigationDrawer({
                       pressed ? styles.pressed : null
                     ]}
                   >
+                    {isActive ? <View style={styles.activeRail} /> : null}
+                    <View style={[styles.menuIcon, isActive ? styles.menuIconActive : null]}>
+                      <Text style={[styles.menuIconText, isActive ? styles.menuIconTextActive : null]}>
+                        {getMenuIconLabel(item)}
+                      </Text>
+                    </View>
                     <Text style={[styles.menuLabel, isActive ? styles.menuLabelActive : null]}>
                       {item.label}
                     </Text>
+                    {isActive ? (
+                      <View style={styles.currentBadge}>
+                        <Text style={styles.currentBadgeText}>Open</Text>
+                      </View>
+                    ) : null}
+                    <Text style={[styles.chevron, isActive ? styles.chevronActive : null]}>&gt;</Text>
                   </Pressable>
                 );
               })}
@@ -170,16 +193,16 @@ const styles = StyleSheet.create({
     borderBottomColor: '#edf1f5',
     borderBottomWidth: 1,
     flexDirection: 'row',
-    gap: 12,
-    paddingBottom: 16
+    gap: 10,
+    paddingBottom: 14
   },
   avatar: {
     alignItems: 'center',
     backgroundColor: '#ff7a1a',
-    borderRadius: 18,
-    height: 44,
+    borderRadius: 23,
+    height: 46,
     justifyContent: 'center',
-    width: 44
+    width: 46
   },
   avatarText: {
     color: '#ffffff',
@@ -192,9 +215,9 @@ const styles = StyleSheet.create({
   },
   name: {
     color: '#142635',
-    fontSize: 17,
+    fontSize: 16,
     fontWeight: '800',
-    lineHeight: 22
+    lineHeight: 21
   },
   company: {
     color: '#657582',
@@ -205,30 +228,31 @@ const styles = StyleSheet.create({
   },
   modeText: {
     color: '#4d148c',
-    fontSize: 12,
+    fontSize: 11,
     fontWeight: '800',
-    lineHeight: 17,
+    letterSpacing: 0.4,
+    lineHeight: 16,
     marginTop: 4,
     textTransform: 'uppercase'
   },
   closeButton: {
     alignItems: 'center',
     borderColor: '#d9e2ea',
-    borderRadius: 16,
+    borderRadius: 14,
     borderWidth: 1,
-    height: 40,
+    height: 38,
     justifyContent: 'center',
-    width: 40
+    width: 38
   },
   closeButtonText: {
     color: '#142635',
-    fontSize: 24,
+    fontSize: 15,
     fontWeight: '800',
-    lineHeight: 28
+    lineHeight: 18
   },
   content: {
     paddingBottom: 20,
-    paddingTop: 18
+    paddingTop: 16
   },
   menuScroll: {
     flex: 1
@@ -236,13 +260,13 @@ const styles = StyleSheet.create({
   switchButton: {
     backgroundColor: '#f7f0ff',
     borderColor: '#d8c1ff',
-    borderRadius: 14,
+    borderRadius: 12,
     borderWidth: 1,
     justifyContent: 'center',
-    marginBottom: 16,
-    minHeight: 52,
+    marginBottom: 14,
+    minHeight: 50,
     paddingHorizontal: 16,
-    paddingVertical: 13
+    paddingVertical: 12
   },
   switchButtonText: {
     color: '#4d148c',
@@ -250,28 +274,85 @@ const styles = StyleSheet.create({
     fontWeight: '800'
   },
   menuSection: {
-    gap: 6
+    gap: 4
   },
   menuItem: {
-    borderRadius: 12,
-    justifyContent: 'center',
-    minHeight: 52,
-    paddingHorizontal: 14,
-    paddingVertical: 13
+    alignItems: 'center',
+    borderColor: '#eef2f5',
+    borderRadius: 10,
+    borderWidth: 1,
+    flexDirection: 'row',
+    gap: 10,
+    minHeight: 50,
+    overflow: 'hidden',
+    paddingHorizontal: 12,
+    paddingVertical: 10
   },
   menuItemActive: {
-    backgroundColor: '#fff1e7',
-    borderColor: '#ff7a1a',
-    borderWidth: 1
+    backgroundColor: '#fff7f0',
+    borderColor: '#ffd5b7'
+  },
+  activeRail: {
+    backgroundColor: '#ff7a1a',
+    bottom: 8,
+    left: 0,
+    position: 'absolute',
+    top: 8,
+    width: 3
+  },
+  menuIcon: {
+    alignItems: 'center',
+    backgroundColor: '#f3f6f8',
+    borderRadius: 9,
+    height: 30,
+    justifyContent: 'center',
+    width: 30
+  },
+  menuIconActive: {
+    backgroundColor: '#ffe8d6'
+  },
+  menuIconText: {
+    color: '#657582',
+    fontSize: 11,
+    fontWeight: '900',
+    letterSpacing: 0.2
+  },
+  menuIconTextActive: {
+    color: '#f05a00'
   },
   menuLabel: {
     color: '#142635',
-    fontSize: 16,
-    fontWeight: '700'
+    flex: 1,
+    fontSize: 15,
+    fontWeight: '700',
+    lineHeight: 20
   },
   menuLabelActive: {
+    color: '#142635',
+    fontWeight: '800'
+  },
+  currentBadge: {
+    backgroundColor: '#fff0e5',
+    borderColor: '#ffcba8',
+    borderRadius: 999,
+    borderWidth: 1,
+    paddingHorizontal: 8,
+    paddingVertical: 3
+  },
+  currentBadgeText: {
     color: '#f05a00',
-    fontWeight: '900'
+    fontSize: 11,
+    fontWeight: '800',
+    lineHeight: 14
+  },
+  chevron: {
+    color: '#9aa6af',
+    fontSize: 18,
+    fontWeight: '800',
+    lineHeight: 20
+  },
+  chevronActive: {
+    color: '#f05a00'
   },
   footer: {
     borderTopColor: '#edf1f5',
@@ -280,12 +361,12 @@ const styles = StyleSheet.create({
   },
   logoutButton: {
     alignItems: 'center',
-    backgroundColor: '#fff7f7',
-    borderColor: '#f3c5c1',
-    borderRadius: 14,
+    backgroundColor: '#fff5f4',
+    borderColor: '#f2bbb5',
+    borderRadius: 12,
     borderWidth: 1,
     justifyContent: 'center',
-    minHeight: 52
+    minHeight: 50
   },
   logoutText: {
     color: '#c0352b',
