@@ -3,7 +3,7 @@ export function getDrawerMenuItems(activeMode) {
     return [
       {
         key: 'manager-overview',
-        label: 'Manager Overview',
+        label: 'Map View',
         screen: 'ManagerOverview'
       },
       {

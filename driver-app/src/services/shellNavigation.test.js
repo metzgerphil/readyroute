@@ -11,7 +11,7 @@ describe('shellNavigation helpers', () => {
 
   it('returns manager navigation items for manager mode', () => {
     expect(getDrawerMenuItems('manager').map((item) => item.label)).toEqual([
-      'Manager Overview',
+      'Map View',
       'Routes',
       'Notifications',
       'Settings'
