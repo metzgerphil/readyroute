@@ -84,12 +84,14 @@ describe('MobileNavigationDrawer', () => {
 
     expect(screen.getByText('Luis Perez')).toBeTruthy();
     expect(screen.getByText('Bridge Transportation')).toBeTruthy();
-    expect(screen.getByText('Driver mode')).toBeTruthy();
+    expect(screen.getByText('Driver Mode')).toBeTruthy();
     expect(screen.getByText('L')).toBeTruthy();
     expect(screen.getByText('Switch to Manager Mode')).toBeTruthy();
     expect(screen.getByText('Driver Home')).toBeTruthy();
     expect(screen.getByText('My Drive')).toBeTruthy();
     expect(screen.getByText('Manifest')).toBeTruthy();
+    expect(screen.getByText('DH')).toBeTruthy();
+    expect(screen.getByText('Open')).toBeTruthy();
   });
 
   it('shows manager menu items and hides the switch action when only one role is available', () => {
@@ -114,6 +116,7 @@ describe('MobileNavigationDrawer', () => {
     expect(screen.getByText('Routes')).toBeTruthy();
     expect(screen.getByText('Notifications')).toBeTruthy();
     expect(screen.getByText('Settings')).toBeTruthy();
+    expect(screen.getByText('MO')).toBeTruthy();
     expect(screen.queryByText('Manager')).toBeNull();
     expect(screen.queryByText('Switch to Driver Mode')).toBeNull();
 
