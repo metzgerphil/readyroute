@@ -353,6 +353,78 @@ test('mergePendingManifestStops keeps same-street delivery suites separate when 
   assert.equal(merged[1].packages[0].tracking_number, 'TRACK-2');
 });
 
+test('mergePendingManifestStops keeps same-address pickup and delivery rows from duplicating package detail', () => {
+  const merged = __private.mergePendingManifestStops(
+    [
+      {
+        id: 'pickup-row',
+        sequence: 1,
+        stop_number: 1,
+        type: 'pickup',
+        has_delivery: false,
+        has_pickup: true,
+        is_pickup: true,
+        address: '230 MARKET PL, ESCONDIDO, CA 92029',
+        address_line1: '230 MARKET PL',
+        address_line2: '',
+        sid: '0',
+        contact_name: 'ACTION MAIL',
+        package_count: 1,
+        pickup_package_count: 1
+      },
+      {
+        id: 'delivery-row',
+        sequence: 2,
+        stop_number: 2,
+        type: 'delivery',
+        has_delivery: true,
+        has_pickup: false,
+        is_pickup: false,
+        address: '230 MARKET PL, ESCONDIDO, CA 92029',
+        address_line1: '230 MARKET PL',
+        address_line2: '',
+        sid: '8095',
+        contact_name: 'ACTION MAIL',
+        package_count: 3,
+        delivery_package_count: 3
+      }
+    ],
+    [
+      {
+        sequence: 2,
+        stop_number: 2,
+        type: 'delivery',
+        has_delivery: true,
+        has_pickup: false,
+        is_pickup: false,
+        address: '230 MARKET PL, ESCONDIDO, CA 92029',
+        address_line1: '230 MARKET PL',
+        address_line2: '',
+        sid: '8095',
+        contact_name: 'ERIN ALONSO',
+        package_count: 3,
+        delivery_package_count: 3,
+        packages: [
+          { tracking_number: '517460036794' },
+          { tracking_number: '517460036809' },
+          { tracking_number: '797973590997' }
+        ]
+      }
+    ]
+  );
+
+  assert.equal(merged.length, 2);
+  assert.equal(merged[0].type, 'pickup');
+  assert.equal(merged[0].packages?.length || 0, 0);
+  assert.equal(merged[1].type, 'delivery');
+  assert.equal(merged[1].packages.length, 3);
+  assert.deepEqual(merged[1].packages.map((pkg) => pkg.tracking_number), [
+    '517460036794',
+    '517460036809',
+    '797973590997'
+  ]);
+});
+
 test('buildManifestLayers prefers explicit combined delivery pickup layers over legacy file field', () => {
   const legacyFile = { originalname: 'legacy.xls', buffer: Buffer.from('legacy') };
   const combinedFile = { originalname: 'CombinedManifest.xls', buffer: Buffer.from('combined') };

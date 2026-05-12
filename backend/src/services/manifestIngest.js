@@ -245,7 +245,16 @@ function buildPendingManifestStopKeyWithDuplicateSids(stop, fallbackKey, duplica
     return `sid:${sid}`;
   }
 
-  return buildStopAddressAlias(stop) || fallbackKey;
+  const hasPickup = Boolean(stop?.has_pickup || stop?.is_pickup || stop?.type === 'pickup' || stop?.stop_type === 'pickup' || stop?.type === 'combined' || stop?.stop_type === 'combined');
+  const hasDelivery = stop?.has_delivery !== false && stop?.type !== 'pickup' && stop?.stop_type !== 'pickup';
+  const scope = hasDelivery ? 'delivery' : hasPickup ? 'pickup' : 'generic';
+  const addressAlias = hasDelivery
+    ? buildStopAddressAlias(stop, 'delivery-address')
+    : hasPickup
+      ? buildStopAddressAlias(stop, 'pickup-address')
+      : buildStopAddressAlias(stop);
+
+  return addressAlias ? `${scope}:${addressAlias}` : fallbackKey;
 }
 
 function normalizeStopStreetAlias(value) {
@@ -520,21 +529,21 @@ function mergePendingManifestStops(existingStops = [], incomingStops = []) {
     const hasDelivery = stop?.has_delivery !== false && stop?.type !== 'pickup' && stop?.stop_type !== 'pickup';
     const genericAddressAlias = buildStopAddressAlias(stop);
 
-    if (genericAddressAlias && !aliasToPrimaryKey.has(genericAddressAlias)) {
-      aliasToPrimaryKey.set(genericAddressAlias, primaryKey);
+    if (genericAddressAlias && !aliasToPrimaryKey.has(`generic:${genericAddressAlias}`)) {
+      aliasToPrimaryKey.set(`generic:${genericAddressAlias}`, primaryKey);
     }
 
     if (hasPickup) {
       const pickupAlias = buildStopAddressAlias(stop, 'pickup-address');
-      if (pickupAlias && !aliasToPrimaryKey.has(pickupAlias)) {
-        aliasToPrimaryKey.set(pickupAlias, primaryKey);
+      if (pickupAlias && !aliasToPrimaryKey.has(`pickup:${pickupAlias}`)) {
+        aliasToPrimaryKey.set(`pickup:${pickupAlias}`, primaryKey);
       }
     }
 
     if (hasDelivery) {
       const deliveryAlias = buildStopAddressAlias(stop, 'delivery-address');
-      if (deliveryAlias && !aliasToPrimaryKey.has(deliveryAlias)) {
-        aliasToPrimaryKey.set(deliveryAlias, primaryKey);
+      if (deliveryAlias && !aliasToPrimaryKey.has(`delivery:${deliveryAlias}`)) {
+        aliasToPrimaryKey.set(`delivery:${deliveryAlias}`, primaryKey);
       }
     }
   }
@@ -548,13 +557,13 @@ function mergePendingManifestStops(existingStops = [], incomingStops = []) {
     const hasPickup = Boolean(stop?.has_pickup || stop?.is_pickup || stop?.type === 'pickup' || stop?.stop_type === 'pickup' || stop?.type === 'combined' || stop?.stop_type === 'combined');
     const hasDelivery = stop?.has_delivery !== false && stop?.type !== 'pickup' && stop?.stop_type !== 'pickup';
     const sliceAliases = [
-      hasPickup ? buildStopAddressAlias(stop, 'pickup-address') : null,
-      hasDelivery ? buildStopAddressAlias(stop, 'delivery-address') : null,
-      buildStopAddressAlias(stop)
+      hasPickup ? ['pickup', buildStopAddressAlias(stop, 'pickup-address')] : null,
+      hasDelivery ? ['delivery', buildStopAddressAlias(stop, 'delivery-address')] : null,
+      ['generic', buildStopAddressAlias(stop)]
     ].filter(Boolean);
 
-    for (const alias of sliceAliases) {
-      const matchedPrimaryKey = aliasToPrimaryKey.get(alias);
+    for (const [scope, alias] of sliceAliases) {
+      const matchedPrimaryKey = alias ? aliasToPrimaryKey.get(`${scope}:${alias}`) : null;
       if (matchedPrimaryKey && mergedStops.has(matchedPrimaryKey)) {
         return matchedPrimaryKey;
       }
