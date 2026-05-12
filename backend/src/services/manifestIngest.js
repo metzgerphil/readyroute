@@ -583,6 +583,200 @@ function mergePendingManifestStops(existingStops = [], incomingStops = []) {
   return normalizeMergedStopSequences(primaryKeys.map((key) => mergedStops.get(key)).filter(Boolean));
 }
 
+function hasManifestFile(file) {
+  return Boolean(file?.buffer);
+}
+
+function getManifestFileLabel(file, fallback = 'manifest') {
+  return file?.originalname || fallback;
+}
+
+function countStopsWithContact(stops = []) {
+  return (stops || []).filter((stop) => (
+    hasContactValue(stop?.primary_phone) ||
+    hasContactValue(stop?.alternate_phone) ||
+    hasContactValue(stop?.email) ||
+    hasContactValue(stop?.business_name) ||
+    hasContactValue(stop?.company_name) ||
+    hasContactValue(stop?.customer_instructions) ||
+    hasContactValue(stop?.delivery_instructions) ||
+    hasContactValue(stop?.consignee) ||
+    hasContactValue(stop?.shipper)
+  )).length;
+}
+
+function countExplicitPackages(stops = []) {
+  return (stops || []).reduce((sum, stop) => {
+    const explicitPackages = Array.isArray(stop?.packages)
+      ? stop.packages.filter((pkg) => String(pkg?.tracking_number || '').trim())
+      : [];
+    return sum + explicitPackages.length;
+  }, 0);
+}
+
+function countServiceCodes(stops = []) {
+  return (stops || []).reduce((sum, stop) => {
+    const explicitPackages = Array.isArray(stop?.packages) ? stop.packages : [];
+    return sum + explicitPackages.filter((pkg) => hasContactValue(pkg?.service_code)).length;
+  }, 0);
+}
+
+function summarizeManifestLayer(layer) {
+  const stops = layer?.stops || [];
+  return {
+    key: layer?.key || 'manifest',
+    label: layer?.label || layer?.key || 'Manifest',
+    file_name: getManifestFileLabel(layer?.file, layer?.key || 'manifest'),
+    companion_gpx_name: layer?.companionGpxFile?.originalname || null,
+    format: layer?.format || 'unknown',
+    stop_count: stops.length,
+    pickup_stop_count: stops.filter((stop) => stop?.has_pickup || stop?.is_pickup || stop?.type === 'pickup' || stop?.type === 'combined').length,
+    delivery_stop_count: stops.filter((stop) => stop?.has_delivery !== false && stop?.type !== 'pickup').length,
+    contact_stop_count: countStopsWithContact(stops),
+    explicit_package_count: countExplicitPackages(stops),
+    service_code_count: countServiceCodes(stops),
+    mapped_stop_count: stops.filter((stop) => toNumber(stop?.lat) !== null && toNumber(stop?.lng) !== null).length
+  };
+}
+
+function buildManifestLayers({
+  manifestFile,
+  companionGpxFile,
+  combinedManifestFile,
+  combinedGpxFile,
+  deliveryManifestFile,
+  deliveryGpxFile,
+  pickupManifestFile
+}) {
+  const namedLayers = [
+    { key: 'combined', label: 'Combined manifest', file: combinedManifestFile, companionGpxFile: combinedGpxFile || companionGpxFile || null },
+    { key: 'delivery', label: 'Delivery manifest', file: deliveryManifestFile, companionGpxFile: deliveryGpxFile || null },
+    { key: 'pickup', label: 'Pickup manifest', file: pickupManifestFile, companionGpxFile: null }
+  ].filter((layer) => hasManifestFile(layer.file));
+
+  if (namedLayers.length) {
+    return namedLayers;
+  }
+
+  return hasManifestFile(manifestFile)
+    ? [{ key: 'primary', label: 'Manifest', file: manifestFile, companionGpxFile: companionGpxFile || null }]
+    : [];
+}
+
+async function parseManifestLayer(layer) {
+  const manifestFormat = detectManifestFormat(layer.file.buffer, layer.file.originalname);
+
+  if (manifestFormat === 'unknown') {
+    throw new Error(`Unsupported ${layer.label || 'manifest'} file type. Use .xls, .xlsx, or .gpx.`);
+  }
+
+  const manifest =
+    manifestFormat === 'xls'
+      ? parseXLSManifest(layer.file.buffer)
+      : await parseGPXManifest(layer.file.buffer);
+
+  let parsedStops = manifest?.stops || [];
+  let manifestMeta = manifest?.manifest_meta || {};
+
+  if (hasManifestFile(layer.companionGpxFile)) {
+    const gpxFormat = detectManifestFormat(layer.companionGpxFile.buffer, layer.companionGpxFile.originalname);
+
+    if (gpxFormat !== 'gpx') {
+      throw new Error(`${layer.label || 'Manifest'} companion file must be a .gpx file.`);
+    }
+
+    const gpxManifest = await parseGPXManifest(layer.companionGpxFile.buffer);
+    parsedStops = mergeManifestStops(parsedStops, gpxManifest?.stops || []);
+    parsedStops = normalizeMergedStopSequences(parsedStops);
+    manifestMeta = mergeManifestMeta(manifestMeta, gpxManifest?.manifest_meta || null);
+  }
+
+  return {
+    ...layer,
+    format: manifestFormat,
+    stops: parsedStops,
+    manifest_meta: manifestMeta || {}
+  };
+}
+
+function mergeParsedManifestLayers(parsedLayers = []) {
+  if (!parsedLayers.length) {
+    return {
+      parsedStops: [],
+      manifestMeta: {},
+      manifestFormat: 'unknown',
+      manifestLayerSummary: []
+    };
+  }
+
+  const parsedStops = parsedLayers.reduce((mergedStops, layer) => {
+    if (!mergedStops.length) {
+      return normalizeMergedStopSequences(layer.stops || []);
+    }
+
+    return mergePendingManifestStops(mergedStops, layer.stops || []);
+  }, []);
+
+  const manifestMeta = parsedLayers.reduce(
+    (mergedMeta, layer) => mergeManifestMeta(mergedMeta, layer.manifest_meta || null),
+    null
+  ) || {};
+
+  return {
+    parsedStops,
+    manifestMeta,
+    manifestFormat: parsedLayers.some((layer) => layer.format === 'xls') ? 'xls' : parsedLayers[0]?.format || 'unknown',
+    manifestLayerSummary: parsedLayers.map(summarizeManifestLayer)
+  };
+}
+
+function validateManifestPackageTracking(routeStops = []) {
+  const seen = new Map();
+  const duplicates = [];
+
+  for (const stop of routeStops || []) {
+    for (const pkg of stop?.packages || []) {
+      const trackingNumber = String(pkg?.tracking_number || '').trim();
+      if (!trackingNumber) {
+        continue;
+      }
+
+      if (seen.has(trackingNumber)) {
+        duplicates.push({
+          tracking_number: trackingNumber,
+          first_sequence: seen.get(trackingNumber),
+          duplicate_sequence: stop?.sequence || null
+        });
+      } else {
+        seen.set(trackingNumber, stop?.sequence || null);
+      }
+    }
+  }
+
+  if (duplicates.length) {
+    const error = new Error(
+      `Manifest has ${duplicates.length} duplicate package tracking number${duplicates.length === 1 ? '' : 's'} after merging. Check duplicate addresses/suites before saving this route.`
+    );
+    error.statusCode = 422;
+    error.duplicate_packages = duplicates.slice(0, 10);
+    throw error;
+  }
+}
+
+function getPackageSaveError(error) {
+  const schemaError = getManifestSchemaError(error);
+  if (schemaError) {
+    return schemaError;
+  }
+
+  const message = String(error?.message || error?.details || error?.hint || '').trim();
+  if (/duplicate key|unique constraint/i.test(message)) {
+    return 'Package save failed because duplicate tracking numbers were detected after manifest merge. Check for duplicate stop addresses, suites, or repeated manifest files.';
+  }
+
+  return 'Failed to save packages from manifest. The route was not fully updated; retry the upload or contact support before dispatching.';
+}
+
 function buildExistingStopStateMap(existingStops = []) {
   const stateByKey = new Map();
 
@@ -644,6 +838,11 @@ function createManifestIngestService(options = {}) {
     managerUserId = null,
     manifestFile,
     companionGpxFile = null,
+    combinedManifestFile = null,
+    combinedGpxFile = null,
+    deliveryManifestFile = null,
+    deliveryGpxFile = null,
+    pickupManifestFile = null,
     requestedDriverId = null,
     requestedDriverName = null,
     requestedVehicleId = null,
@@ -651,35 +850,27 @@ function createManifestIngestService(options = {}) {
     requestedWorkAreaName = null,
     source = 'fedex_sync'
   }) {
-    if (!manifestFile?.buffer) {
+    const manifestLayers = buildManifestLayers({
+      manifestFile,
+      companionGpxFile,
+      combinedManifestFile,
+      combinedGpxFile,
+      deliveryManifestFile,
+      deliveryGpxFile,
+      pickupManifestFile
+    });
+
+    if (!manifestLayers.length) {
       throw new Error('Manifest file is required');
     }
 
-    const manifestFormat = detectManifestFormat(manifestFile.buffer, manifestFile.originalname);
-
-    if (manifestFormat === 'unknown') {
-      throw new Error('Unsupported manifest file type. Use .xls, .xlsx, or .gpx.');
-    }
-
-    let manifest =
-      manifestFormat === 'xls'
-        ? parseXLSManifest(manifestFile.buffer)
-        : await parseGPXManifest(manifestFile.buffer);
-    let parsedStops = manifest?.stops || [];
-    let manifestMeta = manifest?.manifest_meta || {};
-
-    if (companionGpxFile) {
-      const gpxFormat = detectManifestFormat(companionGpxFile.buffer, companionGpxFile.originalname);
-
-      if (gpxFormat !== 'gpx') {
-        throw new Error('Optional companion file must be a .gpx file.');
-      }
-
-      const gpxManifest = await parseGPXManifest(companionGpxFile.buffer);
-      parsedStops = mergeManifestStops(parsedStops, gpxManifest?.stops || []);
-      parsedStops = normalizeMergedStopSequences(parsedStops);
-      manifestMeta = mergeManifestMeta(manifestMeta, gpxManifest?.manifest_meta || null);
-    }
+    const parsedLayers = await Promise.all(manifestLayers.map(parseManifestLayer));
+    const {
+      parsedStops,
+      manifestMeta,
+      manifestFormat,
+      manifestLayerSummary
+    } = mergeParsedManifestLayers(parsedLayers);
 
     if (!parsedStops.length) {
       throw new Error('No stops found in manifest file');
@@ -774,6 +965,19 @@ function createManifestIngestService(options = {}) {
     const correctedStops = await applyLocationCorrectionsToStops(supabase, accountId, manifestStops);
     const geocodedManifest = await enrichManifestStopsWithGeocoding(supabase, accountId, correctedStops);
     let routeStops = normalizeMergedStopSequences(geocodedManifest.stops);
+    validateManifestPackageTracking(routeStops);
+    const coordinateHealth = summarizeCoordinateHealth(routeStops);
+    const coordinateIntegrity = detectSuspiciousCoordinateClusters(routeStops);
+
+    if (coordinateIntegrity.suspicious_cluster_count > 0) {
+      const error = new Error(
+        'Manifest upload was blocked because too many different stop addresses collapsed onto the same map pin. Please re-check the manifest/GPX pair before dispatch.'
+      );
+      error.statusCode = 422;
+      error.route_health = coordinateHealth;
+      error.coordinate_integrity = coordinateIntegrity;
+      throw error;
+    }
 
     const { data: existingRoute, error: existingRouteError } = await loadExistingManifestRoute(supabase, {
       accountId,
@@ -1071,8 +1275,9 @@ function createManifestIngestService(options = {}) {
       if (!mergedIntoExistingRoute) {
         await supabase.from('routes').delete().eq('id', routeId);
       }
-      const error = new Error('Failed to save package placeholders');
+      const error = new Error(getPackageSaveError(packagesError));
       error.statusCode = 500;
+      error.details = packagesError?.details || packagesError?.message || null;
       throw error;
     }
 
@@ -1081,22 +1286,6 @@ function createManifestIngestService(options = {}) {
     const combinedCount = routeStops.filter((stop) => stop.type === 'combined').length;
     const pickupStopCount = routeStops.filter((stop) => stop.has_pickup || stop.type === 'pickup' || stop.type === 'combined').length;
     const timeCommitCount = routeStops.filter((stop) => stop.has_time_commit).length;
-    const coordinateHealth = summarizeCoordinateHealth(routeStops);
-    const coordinateIntegrity = detectSuspiciousCoordinateClusters(routeStops);
-
-    if (coordinateIntegrity.suspicious_cluster_count > 0) {
-      if (!mergedIntoExistingRoute) {
-        await supabase.from('routes').delete().eq('id', routeId);
-      }
-
-      const error = new Error(
-        'Manifest upload was blocked because too many different stop addresses collapsed onto the same map pin. Please re-check the manifest/GPX pair before dispatch.'
-      );
-      error.statusCode = 422;
-      error.route_health = coordinateHealth;
-      error.coordinate_integrity = coordinateIntegrity;
-      throw error;
-    }
 
     const insertedStopsForEnrichment = routeStops.map((stop) => ({
       ...stop,
@@ -1124,10 +1313,15 @@ function createManifestIngestService(options = {}) {
         ? `Manifest refreshed for route ${resolvedWorkAreaName}`
         : `Manifest staged for route ${resolvedWorkAreaName}`,
       details: {
-        upload_mode: companionGpxFile ? 'spreadsheet_gpx' : manifestFormat,
+        upload_mode: manifestLayerSummary.length > 1
+          ? 'manifest_bundle'
+          : manifestLayers.some((layer) => hasManifestFile(layer.companionGpxFile))
+            ? 'spreadsheet_gpx'
+            : manifestFormat,
         total_stops: routeStops.length,
         manifest_stop_count: routeSyncMetadata?.manifest_stop_count || routeStops.length,
         manifest_package_count: routeSyncMetadata?.manifest_package_count || packageInsertPayload.length,
+        manifest_layers: manifestLayerSummary,
         sync_state: routeSyncMetadata?.sync_state || null,
         auto_matched_driver: autoMatchedDriver,
         auto_matched_vehicle: autoMatchedVehicle,
@@ -1152,6 +1346,7 @@ function createManifestIngestService(options = {}) {
       ...(unmatchedDriverName ? { unmatched_driver_name: unmatchedDriverName } : {}),
       auto_matched_vehicle: autoMatchedVehicle,
       manifest_meta: manifestMeta,
+      manifest_layers: manifestLayerSummary,
       geocoding: {
         status: geocodedManifest.summary.status,
         attempted: geocodedManifest.summary.attempted,
@@ -1175,6 +1370,9 @@ function createManifestIngestService(options = {}) {
 module.exports = {
   createManifestIngestService,
   __private: {
-    mergePendingManifestStops
+    mergePendingManifestStops,
+    buildManifestLayers,
+    mergeParsedManifestLayers,
+    validateManifestPackageTracking
   }
 };

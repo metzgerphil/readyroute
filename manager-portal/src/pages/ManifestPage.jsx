@@ -198,6 +198,8 @@ function getPinSourceSummary(routeHealth) {
 
 function getUploadModeLabel(uploadMode) {
   switch (uploadMode) {
+    case 'manifest_bundle':
+      return 'Manifest bundle';
     case 'spreadsheet_gpx':
       return 'Spreadsheet + GPX';
     case 'spreadsheet':
@@ -415,6 +417,13 @@ export default function ManifestPage() {
   const [activeTab, setActiveTab] = useState('auto');
   const [selectedFile, setSelectedFile] = useState(null);
   const [selectedGpxFile, setSelectedGpxFile] = useState(null);
+  const [manifestBundleFiles, setManifestBundleFiles] = useState({
+    combinedManifest: null,
+    combinedGpx: null,
+    deliveryManifest: null,
+    deliveryGpx: null,
+    pickupManifest: null
+  });
   const [workAreaName, setWorkAreaName] = useState('');
   const [driverId, setDriverId] = useState('');
   const [vehicleId, setVehicleId] = useState('');
@@ -467,9 +476,15 @@ export default function ManifestPage() {
     return getRouteCenter(allStops);
   }, [routeSummaries]);
   const selectedFileName = selectedFile?.name?.toLowerCase() || '';
-  const hasSelectedFile = Boolean(selectedFile);
+  const bundleFileList = useMemo(
+    () => Object.values(manifestBundleFiles).filter(Boolean),
+    [manifestBundleFiles]
+  );
+  const hasManifestBundleFiles = bundleFileList.length > 0;
+  const hasSelectedFile = Boolean(selectedFile) || hasManifestBundleFiles;
   const isSpreadsheetUpload = selectedFileName.endsWith('.xls') || selectedFileName.endsWith('.xlsx');
-  const needsGpxUploadFields = hasSelectedFile && !isSpreadsheetUpload && (!workAreaName.trim() || !driverId || !vehicleId);
+  const isManifestBundleUpload = hasManifestBundleFiles;
+  const needsGpxUploadFields = hasSelectedFile && !isSpreadsheetUpload && !isManifestBundleUpload && (!workAreaName.trim() || !driverId || !vehicleId);
   const latestUploadRoute = latestUpload ? routeSummaries.find((route) => route.id === latestUpload.route_id) : null;
   const hasRoutesToday = routeSummaries.length > 0;
   const canModifyExistingRoutes = hasRoutesToday;
@@ -636,11 +651,31 @@ export default function ManifestPage() {
   const uploadManifestMutation = useMutation({
     mutationFn: async () => {
       const formData = new FormData();
-      formData.append('file', selectedFile);
-      if (selectedGpxFile) {
-        formData.append('gpx_file', selectedGpxFile);
+
+      if (isManifestBundleUpload) {
+        if (manifestBundleFiles.combinedManifest) {
+          formData.append('combined_manifest_file', manifestBundleFiles.combinedManifest);
+        }
+        if (manifestBundleFiles.combinedGpx) {
+          formData.append('combined_gpx_file', manifestBundleFiles.combinedGpx);
+        }
+        if (manifestBundleFiles.deliveryManifest) {
+          formData.append('delivery_manifest_file', manifestBundleFiles.deliveryManifest);
+        }
+        if (manifestBundleFiles.deliveryGpx) {
+          formData.append('delivery_gpx_file', manifestBundleFiles.deliveryGpx);
+        }
+        if (manifestBundleFiles.pickupManifest) {
+          formData.append('pickup_manifest_file', manifestBundleFiles.pickupManifest);
+        }
+      } else {
+        formData.append('file', selectedFile);
+        if (selectedGpxFile) {
+          formData.append('gpx_file', selectedGpxFile);
+        }
       }
-      if (!isSpreadsheetUpload) {
+
+      if (!isSpreadsheetUpload && !isManifestBundleUpload) {
         formData.append('work_area_name', workAreaName.trim());
         formData.append('driver_id', driverId);
         formData.append('vehicle_id', vehicleId);
@@ -656,7 +691,9 @@ export default function ManifestPage() {
       return response.data;
     },
     onSuccess: async (data) => {
-      const uploadMode = selectedGpxFile && isSpreadsheetUpload
+      const uploadMode = isManifestBundleUpload
+        ? 'manifest_bundle'
+        : selectedGpxFile && isSpreadsheetUpload
         ? 'spreadsheet_gpx'
         : isSpreadsheetUpload
           ? 'spreadsheet'
@@ -664,6 +701,13 @@ export default function ManifestPage() {
       const resolvedDate = data.manifest_meta?.date || date;
       setSelectedFile(null);
       setSelectedGpxFile(null);
+      setManifestBundleFiles({
+        combinedManifest: null,
+        combinedGpx: null,
+        deliveryManifest: null,
+        deliveryGpx: null,
+        pickupManifest: null
+      });
       setWorkAreaName('');
       setDriverId('');
       setVehicleId('');
@@ -749,6 +793,48 @@ export default function ManifestPage() {
       return;
     }
 
+    const bundleFiles = files.reduce((bundle, file) => {
+      const lowerName = file.name.toLowerCase();
+      const isSpreadsheet = lowerName.endsWith('.xls') || lowerName.endsWith('.xlsx');
+      const isGpx = lowerName.endsWith('.gpx');
+
+      if (isSpreadsheet && lowerName.includes('combined')) {
+        bundle.combinedManifest = file;
+      } else if (isGpx && lowerName.includes('combined')) {
+        bundle.combinedGpx = file;
+      } else if (isSpreadsheet && lowerName.includes('delivery')) {
+        bundle.deliveryManifest = file;
+      } else if (isGpx && lowerName.includes('delivery')) {
+        bundle.deliveryGpx = file;
+      } else if (isSpreadsheet && lowerName.includes('pickup')) {
+        bundle.pickupManifest = file;
+      }
+
+      return bundle;
+    }, {
+      combinedManifest: null,
+      combinedGpx: null,
+      deliveryManifest: null,
+      deliveryGpx: null,
+      pickupManifest: null
+    });
+    const recognizedBundleFiles = Object.values(bundleFiles).filter(Boolean);
+    const shouldUseBundle = recognizedBundleFiles.length > 1 || Boolean(bundleFiles.deliveryManifest || bundleFiles.pickupManifest);
+
+    if (shouldUseBundle) {
+      setLatestUpload(null);
+      setSelectedFile(null);
+      setSelectedGpxFile(null);
+      setManifestBundleFiles((current) => ({
+        ...current,
+        ...Object.fromEntries(Object.entries(bundleFiles).filter(([, file]) => Boolean(file)))
+      }));
+      if (gpxInputRef.current) {
+        gpxInputRef.current.value = '';
+      }
+      return;
+    }
+
     const spreadsheet = files.find((file) => {
       const lowerName = file.name.toLowerCase();
       return lowerName.endsWith('.xls') || lowerName.endsWith('.xlsx');
@@ -760,6 +846,13 @@ export default function ManifestPage() {
     }
 
     setLatestUpload(null);
+    setManifestBundleFiles({
+      combinedManifest: null,
+      combinedGpx: null,
+      deliveryManifest: null,
+      deliveryGpx: null,
+      pickupManifest: null
+    });
 
     if (spreadsheet) {
       setSelectedFile(spreadsheet);
@@ -809,6 +902,12 @@ export default function ManifestPage() {
 
     if (latestUpload.time_commit_count > 0) {
       lines.push(`${latestUpload.time_commit_count} stops have time commit windows (TCs)`);
+    }
+
+    if ((latestUpload.manifest_layers || []).length > 1) {
+      lines.push(
+        `Merged ${latestUpload.manifest_layers.length} manifest layers: ${latestUpload.manifest_layers.map((layer) => layer.label || layer.key).join(', ')}`
+      );
     }
 
     if (latestUpload.route_health) {
@@ -1005,11 +1104,13 @@ export default function ManifestPage() {
                   }}
                   type="button"
                 >
-                  <span className="upload-title">Drag your FedEx Combined Manifest (.xls, .xlsx) and optional GPX file here</span>
+                  <span className="upload-title">Drag your FedEx Combined, Delivery, or Pickup Manifest (.xls, .xlsx) and optional GPX file here</span>
                   <span className="upload-subtitle">
-                    {hasSelectedFile
+                    {hasManifestBundleFiles
+                      ? bundleFileList.map((file) => file.name).join(' + ')
+                      : hasSelectedFile
                       ? `${selectedFile.name} · ${(selectedFile.size / 1024).toFixed(1)} KB${selectedGpxFile ? ` + ${selectedGpxFile.name}` : ''}`
-                      : 'Accepts .xls, .xlsx, and .gpx files. You can select both the spreadsheet and the GPX together.'}
+                      : 'Upload Combined, Delivery, Pickup, and GPX files together to merge route pins, contact info, package detail, and service codes.'}
                   </span>
                 </button>
 
@@ -1022,7 +1123,7 @@ export default function ManifestPage() {
                   type="file"
                 />
 
-                {isSpreadsheetUpload ? (
+                {isSpreadsheetUpload && !isManifestBundleUpload ? (
                   <div className="manifest-upload-grid">
                     <div className="manifest-field">
                       <span className="field-label">Optional GPX companion</span>
@@ -1036,7 +1137,7 @@ export default function ManifestPage() {
                       <div className="manifest-step-subtitle">
                         {selectedGpxFile
                           ? `${selectedGpxFile.name} · ${(selectedGpxFile.size / 1024).toFixed(1)} KB`
-                          : 'Optional: attach a GPX file to supply route coordinates while keeping the richer XLS stop detail.'}
+                          : 'Optional: attach a GPX file to supply route coordinates while keeping the richer XLS stop, package, contact, and pickup detail.'}
                       </div>
                       {selectedGpxFile ? (
                         <button
@@ -1164,7 +1265,7 @@ export default function ManifestPage() {
                     !hasSelectedFile ||
                     uploadManifestMutation.isPending ||
                     isPastDate ||
-                    (!isSpreadsheetUpload && (!workAreaName.trim() || !driverId || !vehicleId))
+                    (!isSpreadsheetUpload && !isManifestBundleUpload && (!workAreaName.trim() || !driverId || !vehicleId))
                   }
                   onClick={() => uploadManifestMutation.mutate()}
                   type="button"

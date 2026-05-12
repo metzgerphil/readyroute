@@ -239,10 +239,45 @@ function normalizePackageRows(packages) {
   return (packages || []).map((pkg) => ({
     id: pkg.id,
     tracking_number: pkg.tracking_number,
+    service_code: pkg.service_code,
     requires_signature: pkg.requires_signature,
     requires_adult_signature: pkg.requires_adult_signature,
     hazmat: pkg.hazmat
   }));
+}
+
+function isOptionalPackageDetailColumnError(error) {
+  const message = String(error?.message || error?.details || error?.hint || '');
+  return /service_code/i.test(message) || /requires_adult_signature/i.test(message) || /schema cache/i.test(message);
+}
+
+async function selectPackagesForStops(queryBuilder) {
+  const withDetails = await queryBuilder('id, stop_id, tracking_number, service_code, requires_signature, requires_adult_signature, hazmat');
+
+  if (!withDetails.error || !isOptionalPackageDetailColumnError(withDetails.error)) {
+    return withDetails;
+  }
+
+  return queryBuilder('id, stop_id, tracking_number, requires_signature, hazmat');
+}
+
+const STOP_CONTACT_INFO_FIELDS = [
+  'primary_phone',
+  'alternate_phone',
+  'email',
+  'business_name',
+  'company_name',
+  'customer_instructions',
+  'delivery_instructions',
+  'consignee',
+  'shipper'
+];
+
+function hasStopContactInfo(stop = {}) {
+  return STOP_CONTACT_INFO_FIELDS.some((field) => {
+    const value = stop?.[field];
+    return value !== null && value !== undefined && String(value).trim() !== '';
+  });
 }
 
 function getStoredStopStatus(status) {
@@ -339,6 +374,7 @@ function presentStopStatus(stop) {
   const floorLabel = extractFloorLabel(stop.address_line2);
   const enrichedStop = {
     ...stop,
+    has_contact_info: hasStopContactInfo(stop),
     is_business:
       stop.is_business != null
         ? derivedIsBusiness
@@ -611,6 +647,18 @@ function toManifestStopFromExistingRouteStop(stop, packageCount = 1) {
     address: stop?.address || '',
     address_line2: stop?.address_line2 || null,
     contact_name: stop?.contact_name || null,
+    business_name: stop?.business_name || null,
+    company_name: stop?.company_name || null,
+    primary_phone: stop?.primary_phone || null,
+    alternate_phone: stop?.alternate_phone || null,
+    email: stop?.email || null,
+    customer_instructions: stop?.customer_instructions || null,
+    delivery_instructions: stop?.delivery_instructions || null,
+    consignee: stop?.consignee || null,
+    shipper: stop?.shipper || null,
+    contact_source: stop?.contact_source || null,
+    contact_last_imported_at: stop?.contact_last_imported_at || null,
+    raw_contact_metadata: stop?.raw_contact_metadata || null,
     lat: toNumber(stop?.lat),
     lng: toNumber(stop?.lng),
     is_pickup: Boolean(stop?.is_pickup),
@@ -626,6 +674,37 @@ function toManifestStopFromExistingRouteStop(stop, packageCount = 1) {
     geocode_accuracy: stop?.geocode_accuracy || 'manifest',
     package_count: Math.max(1, Number(packageCount || 1))
   };
+}
+
+function isPickupStop(stop) {
+  return Boolean(
+    stop?.has_pickup ||
+    stop?.is_pickup ||
+    stop?.stop_type === 'pickup' ||
+    stop?.stop_type === 'combined'
+  );
+}
+
+function getPickupStopSummary(stops = []) {
+  return (stops || []).reduce(
+    (summary, stop) => {
+      if (!isPickupStop(stop)) {
+        return summary;
+      }
+
+      summary.total += 1;
+
+      if (stop.completed_at || ['delivered', 'attempted', 'incomplete', 'pickup_complete', 'pickup_attempted'].includes(stop.status)) {
+        summary.completed += 1;
+      }
+
+      return summary;
+    },
+    {
+      completed: 0,
+      total: 0
+    }
+  );
 }
 
 function mergePendingManifestStops(existingStops = [], incomingStops = []) {
@@ -716,7 +795,14 @@ function createRoutesRouter(options = {}) {
       return res.status(403).json({ error: 'Invalid inbound ingest secret.' });
     }
 
-    if (!req.file) {
+    const hasManifestFile = Boolean(
+      req.file ||
+      req.files?.combined_manifest_file ||
+      req.files?.delivery_manifest_file ||
+      req.files?.pickup_manifest_file
+    );
+
+    if (!hasManifestFile) {
       return res.status(400).json({ error: 'Manifest file is required' });
     }
 
@@ -755,6 +841,11 @@ function createRoutesRouter(options = {}) {
         managerUserId: req.account.manager_user_id || null,
         manifestFile: req.file,
         companionGpxFile: req.files?.gpx_file || null,
+        combinedManifestFile: req.files?.combined_manifest_file || null,
+        combinedGpxFile: req.files?.combined_gpx_file || null,
+        deliveryManifestFile: req.files?.delivery_manifest_file || null,
+        deliveryGpxFile: req.files?.delivery_gpx_file || null,
+        pickupManifestFile: req.files?.pickup_manifest_file || null,
         requestedDriverId,
         requestedVehicleId,
         requestedDate: date,
@@ -775,6 +866,10 @@ function createRoutesRouter(options = {}) {
 
       if (error?.coordinate_integrity) {
         response.coordinate_integrity = error.coordinate_integrity;
+      }
+
+      if (error?.duplicate_packages) {
+        response.duplicate_packages = error.duplicate_packages;
       }
 
       if (statusCode >= 500 && process.env.NODE_ENV !== 'production') {
@@ -890,7 +985,7 @@ function createRoutesRouter(options = {}) {
       const { data: codes, error } = await supabase
         .from('fedex_status_codes')
         .select(
-          'id, code, description, category, category_label, affects_service_score, requires_warning, is_pickup_code, created_at'
+          'id, code, description, category, category_label, affects_service_score, requires_warning, is_pickup_code, is_exception_code, created_at'
         )
         .order('category')
         .order('code');
@@ -959,7 +1054,7 @@ function createRoutesRouter(options = {}) {
       const { data: stops, error: stopsError } = await supabase
         .from('stops')
         .select(
-          'id, route_id, sequence_order, address, contact_name, address_line2, sid, ready_time, close_time, has_time_commit, stop_type, has_pickup, has_delivery, is_business, has_note, geocode_source, geocode_accuracy, lat, lng, status, exception_code, delivery_type_code, signer_name, signature_url, age_confirmed, is_pickup, pod_photo_url, pod_signature_url, scanned_at, completed_at'
+          'id, route_id, sequence_order, address, contact_name, address_line2, business_name, company_name, primary_phone, alternate_phone, email, customer_instructions, delivery_instructions, consignee, shipper, sid, ready_time, close_time, has_time_commit, stop_type, has_pickup, has_delivery, is_business, has_note, geocode_source, geocode_accuracy, lat, lng, status, exception_code, delivery_type_code, signer_name, signature_url, age_confirmed, is_pickup, pod_photo_url, pod_signature_url, scanned_at, completed_at'
         )
         .eq('route_id', route.id)
         .order('sequence_order');
@@ -973,11 +1068,13 @@ function createRoutesRouter(options = {}) {
       let packagesByStopId = new Map();
 
       if (stopIds.length > 0) {
-        const { data: packages, error: packagesError } = await supabase
-          .from('packages')
-          .select('id, stop_id, tracking_number, requires_signature, requires_adult_signature, hazmat')
-          .in('stop_id', stopIds)
-          .order('id');
+        const { data: packages, error: packagesError } = await selectPackagesForStops((selectClause) =>
+          supabase
+            .from('packages')
+            .select(selectClause)
+            .in('stop_id', stopIds)
+            .order('id')
+        );
 
         if (packagesError) {
           console.error('Today package lookup failed:', packagesError);
@@ -986,12 +1083,7 @@ function createRoutesRouter(options = {}) {
 
         packagesByStopId = (packages || []).reduce((map, pkg) => {
           const current = map.get(pkg.stop_id) || [];
-          current.push({
-            id: pkg.id,
-            tracking_number: pkg.tracking_number,
-            requires_signature: pkg.requires_signature,
-            hazmat: pkg.hazmat
-          });
+          current.push(pkg);
           map.set(pkg.stop_id, current);
           return map;
         }, new Map());
@@ -1022,6 +1114,7 @@ function createRoutesRouter(options = {}) {
         apartmentStops
       );
       const postDispatchChangePolicy = getPostDispatchChangePolicy(route);
+      const pickupStopSummary = getPickupStopSummary(routeStops);
 
       return res.status(200).json({
         route: {
@@ -1037,6 +1130,10 @@ function createRoutesRouter(options = {}) {
           post_dispatch_change_policy: postDispatchChangePolicy,
           total_stops: Number(route.total_stops || 0),
           completed_stops: Number(route.completed_stops || 0),
+          pickup_stops: pickupStopSummary.total,
+          pickup_stops_completed: pickupStopSummary.completed,
+          pickup_stop_count: pickupStopSummary.total,
+          driver_pickup_stops: pickupStopSummary.total,
           stops_per_hour: getStopsPerHour({
             completedStops: Number(route.completed_stops || 0),
             firstScan: (stops || [])
@@ -1185,7 +1282,7 @@ function createRoutesRouter(options = {}) {
       const { data: stopRecord, error: recordError } = await supabase
         .from('stops')
         .select(
-          'id, route_id, sequence_order, address, contact_name, address_line2, sid, ready_time, close_time, has_time_commit, stop_type, has_pickup, has_delivery, lat, lng, status, notes, exception_code, delivery_type_code, signer_name, signature_url, age_confirmed, is_pickup, pod_photo_url, pod_signature_url, scanned_at, completed_at'
+          'id, route_id, sequence_order, address, contact_name, address_line2, business_name, company_name, primary_phone, alternate_phone, email, customer_instructions, delivery_instructions, consignee, shipper, sid, ready_time, close_time, has_time_commit, stop_type, has_pickup, has_delivery, lat, lng, status, notes, exception_code, delivery_type_code, signer_name, signature_url, age_confirmed, is_pickup, pod_photo_url, pod_signature_url, scanned_at, completed_at'
         )
         .eq('id', stopId)
         .maybeSingle();
@@ -1195,11 +1292,13 @@ function createRoutesRouter(options = {}) {
         return res.status(500).json({ error: 'Failed to load stop detail' });
       }
 
-      const { data: packages, error: packagesError } = await supabase
-        .from('packages')
-        .select('id, stop_id, tracking_number, requires_signature, requires_adult_signature, hazmat')
-        .eq('stop_id', stopId)
-        .order('id');
+      const { data: packages, error: packagesError } = await selectPackagesForStops((selectClause) =>
+        supabase
+          .from('packages')
+          .select(selectClause)
+          .eq('stop_id', stopId)
+          .order('id')
+      );
 
       if (packagesError) {
         console.error('Stop detail package lookup failed:', packagesError);

@@ -352,3 +352,102 @@ test('mergePendingManifestStops keeps same-street delivery suites separate when 
   assert.equal(merged[1].primary_phone, '555-111-0002');
   assert.equal(merged[1].packages[0].tracking_number, 'TRACK-2');
 });
+
+test('buildManifestLayers prefers explicit combined delivery pickup layers over legacy file field', () => {
+  const legacyFile = { originalname: 'legacy.xls', buffer: Buffer.from('legacy') };
+  const combinedFile = { originalname: 'CombinedManifest.xls', buffer: Buffer.from('combined') };
+  const deliveryFile = { originalname: 'DeliveryManifest.xls', buffer: Buffer.from('delivery') };
+  const pickupFile = { originalname: 'PickupManifest.xls', buffer: Buffer.from('pickup') };
+  const combinedGpxFile = { originalname: 'CombinedManifest.gpx', buffer: Buffer.from('gpx') };
+
+  const layers = __private.buildManifestLayers({
+    manifestFile: legacyFile,
+    combinedManifestFile: combinedFile,
+    combinedGpxFile,
+    deliveryManifestFile: deliveryFile,
+    pickupManifestFile: pickupFile
+  });
+
+  assert.deepEqual(layers.map((layer) => layer.key), ['combined', 'delivery', 'pickup']);
+  assert.equal(layers[0].file, combinedFile);
+  assert.equal(layers[0].companionGpxFile, combinedGpxFile);
+  assert.equal(layers[1].file, deliveryFile);
+  assert.equal(layers[2].file, pickupFile);
+});
+
+test('mergeParsedManifestLayers summarizes layered contact package and service detail', () => {
+  const merged = __private.mergeParsedManifestLayers([
+    {
+      key: 'combined',
+      label: 'Combined manifest',
+      format: 'xls',
+      file: { originalname: 'CombinedManifest.xls' },
+      stops: [
+        {
+          sequence: 1,
+          stop_number: 1,
+          type: 'delivery',
+          has_delivery: true,
+          address: '101 MAIN ST, ESCONDIDO, CA 92025',
+          address_line1: '101 MAIN ST',
+          sid: '1001',
+          package_count: 1
+        }
+      ],
+      manifest_meta: { date: '2026-05-11', work_area_name: '829' }
+    },
+    {
+      key: 'delivery',
+      label: 'Delivery manifest',
+      format: 'xls',
+      file: { originalname: 'DeliveryManifest.xls' },
+      stops: [
+        {
+          sequence: 1,
+          stop_number: 1,
+          type: 'delivery',
+          has_delivery: true,
+          address: '101 MAIN ST, ESCONDIDO, CA 92025',
+          address_line1: '101 MAIN ST',
+          sid: '1001',
+          primary_phone: '555-111-2222',
+          delivery_instructions: 'Ring bell',
+          package_count: 1,
+          packages: [{ tracking_number: 'TRACK-101', service_code: 'PRM' }]
+        }
+      ],
+      manifest_meta: { date: '2026-05-11', work_area_name: '829' }
+    }
+  ]);
+
+  assert.equal(merged.manifestFormat, 'xls');
+  assert.equal(merged.parsedStops.length, 1);
+  assert.equal(merged.parsedStops[0].primary_phone, '555-111-2222');
+  assert.equal(merged.parsedStops[0].delivery_instructions, 'Ring bell');
+  assert.equal(merged.parsedStops[0].packages[0].tracking_number, 'TRACK-101');
+  assert.equal(merged.manifestLayerSummary.length, 2);
+  assert.equal(merged.manifestLayerSummary[1].contact_stop_count, 1);
+  assert.equal(merged.manifestLayerSummary[1].explicit_package_count, 1);
+  assert.equal(merged.manifestLayerSummary[1].service_code_count, 1);
+});
+
+test('validateManifestPackageTracking blocks duplicate package tracking before route mutation', () => {
+  assert.throws(
+    () => __private.validateManifestPackageTracking([
+      {
+        sequence: 1,
+        packages: [{ tracking_number: 'TRACK-DUP' }]
+      },
+      {
+        sequence: 2,
+        packages: [{ tracking_number: 'TRACK-DUP' }]
+      }
+    ]),
+    (error) => {
+      assert.equal(error.statusCode, 422);
+      assert.match(error.message, /duplicate package tracking/i);
+      assert.equal(error.duplicate_packages[0].tracking_number, 'TRACK-DUP');
+      return true;
+    }
+  );
+});
