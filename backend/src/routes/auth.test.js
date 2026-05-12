@@ -13,7 +13,8 @@ function createSupabaseStub(initialAccount = {}) {
     manager_password_hash: initialAccount.manager_password_hash || null,
     company_name: initialAccount.company_name || 'Bridge Transportation'
   };
-  const managerUser = initialAccount.manager_user || null;
+  const managerUsers = initialAccount.manager_users || (initialAccount.manager_user ? [initialAccount.manager_user] : []);
+  const managerUser = initialAccount.manager_user || managerUsers[0] || null;
   const driver = initialAccount.driver || null;
 
   return {
@@ -34,6 +35,24 @@ function createSupabaseStub(initialAccount = {}) {
         limit() {
           return this;
         },
+        order() {
+          return this;
+        },
+        then(resolve, reject) {
+          if (table !== 'manager_users') {
+            return Promise.resolve({ data: null, error: null }).then(resolve, reject);
+          }
+
+          const rows = managerUsers
+            .filter((row) => (
+              (!this.email || this.email === row.email) &&
+              (!this.id || this.id === row.id) &&
+              (!this.account_id || this.account_id === row.account_id)
+            ))
+            .sort((left, right) => String(left.account_id).localeCompare(String(right.account_id)));
+
+          return Promise.resolve({ data: rows.map((row) => ({ ...row })), error: null }).then(resolve, reject);
+        },
         async maybeSingle() {
           if (table === 'drivers') {
             if (!driver) {
@@ -51,18 +70,17 @@ function createSupabaseStub(initialAccount = {}) {
           }
 
           if (table === 'manager_users') {
-            if (!managerUser) {
+            const row = managerUsers.find((candidate) => (
+              (!this.email || this.email === candidate.email) &&
+              (!this.id || this.id === candidate.id) &&
+              (!this.account_id || this.account_id === candidate.account_id)
+            ));
+
+            if (!row) {
               return { data: null, error: null };
             }
 
-            if (
-              (this.email && this.email !== managerUser.email) ||
-              (this.id && this.id !== managerUser.id)
-            ) {
-              return { data: null, error: null };
-            }
-
-            return { data: { ...managerUser }, error: null };
+            return { data: { ...row }, error: null };
           }
 
           if (
@@ -193,6 +211,58 @@ test('manager password reset request returns a reset URL in non-production', asy
   assert.equal(sentEmails.length, 1);
   assert.equal(sentEmails[0].to, 'phillovesjoy@gmail.com');
   assert.equal(sentEmails[0].companyName, 'Bridge Transportation');
+});
+
+test('manager password reset ignores inactive duplicate manager users', async () => {
+  const activeHash = await bcrypt.hash('ActivePassword!123', 10);
+  const inactiveHash = await bcrypt.hash('InactivePassword!123', 10);
+  const supabase = createSupabaseStub({
+    id: 'bridge-account',
+    manager_email: 'owner@example.com',
+    manager_password_hash: await bcrypt.hash('OwnerPass!2026', 10),
+    manager_users: [
+      {
+        id: 'inactive-manager-user',
+        account_id: 'pv-delivery-account',
+        email: 'phillovesjoy@gmail.com',
+        password_hash: inactiveHash,
+        full_name: null,
+        is_active: false
+      },
+      {
+        id: 'active-manager-user',
+        account_id: 'bridge-account',
+        email: 'phillovesjoy@gmail.com',
+        password_hash: activeHash,
+        full_name: 'Phillip Metzger',
+        is_active: true
+      }
+    ]
+  });
+  const sentEmails = [];
+  const app = createApp({
+    supabase,
+    jwtSecret: 'test-secret',
+    enforceBilling: false,
+    sendManagerPasswordResetEmail: async (payload) => {
+      sentEmails.push(payload);
+      return { delivered: true, skipped: false, provider_id: 'email-1' };
+    }
+  });
+
+  const response = await request(app)
+    .post('/auth/manager/request-password-reset')
+    .send({ email: 'phillovesjoy@gmail.com' });
+
+  assert.equal(response.status, 200);
+  assert.match(response.body.message, /password reset email sent/i);
+  assert.equal(sentEmails.length, 1);
+  assert.equal(sentEmails[0].to, 'phillovesjoy@gmail.com');
+
+  const token = new URL(response.body.reset_url).searchParams.get('token');
+  const tokenPayload = jwt.verify(token, 'test-secret');
+  assert.equal(tokenPayload.manager_user_id, 'active-manager-user');
+  assert.equal(tokenPayload.account_id, 'bridge-account');
 });
 
 test('manager password reset request fails honestly in production when email delivery is unavailable', async () => {

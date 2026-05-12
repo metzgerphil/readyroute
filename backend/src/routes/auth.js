@@ -67,6 +67,36 @@ function createAuthRouter(options = {}) {
     return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(email || '').trim().toLowerCase());
   }
 
+  function normalizeManagerIdentity(row) {
+    return {
+      id: row.id,
+      account_id: row.account_id,
+      email: row.email,
+      password_hash: row.password_hash,
+      full_name: row.full_name,
+      is_active: row.is_active,
+      source: 'manager_user'
+    };
+  }
+
+  function compareManagerIdentityPriority(left, right) {
+    const leftActive = left.is_active !== false ? 1 : 0;
+    const rightActive = right.is_active !== false ? 1 : 0;
+
+    if (leftActive !== rightActive) {
+      return rightActive - leftActive;
+    }
+
+    const leftHasPassword = left.password_hash ? 1 : 0;
+    const rightHasPassword = right.password_hash ? 1 : 0;
+
+    if (leftHasPassword !== rightHasPassword) {
+      return rightHasPassword - leftHasPassword;
+    }
+
+    return String(left.account_id || '').localeCompare(String(right.account_id || ''));
+  }
+
   async function findManagerIdentityByEmail(email) {
     const normalizedEmail = String(email).trim().toLowerCase();
 
@@ -74,8 +104,8 @@ function createAuthRouter(options = {}) {
       .from('manager_users')
       .select('id, account_id, email, password_hash, full_name, is_active')
       .eq('email', normalizedEmail)
-      .limit(1)
-      .maybeSingle();
+      .order('is_active', { ascending: false })
+      .order('account_id', { ascending: true });
 
     if (
       managerUserQuery.error &&
@@ -84,16 +114,14 @@ function createAuthRouter(options = {}) {
       throw managerUserQuery.error;
     }
 
-    if (managerUserQuery.data) {
-      return {
-        id: managerUserQuery.data.id,
-        account_id: managerUserQuery.data.account_id,
-        email: managerUserQuery.data.email,
-        password_hash: managerUserQuery.data.password_hash,
-        full_name: managerUserQuery.data.full_name,
-        is_active: managerUserQuery.data.is_active,
-        source: 'manager_user'
-      };
+    if (Array.isArray(managerUserQuery.data) && managerUserQuery.data.length) {
+      return managerUserQuery.data
+        .map(normalizeManagerIdentity)
+        .sort(compareManagerIdentityPriority)[0];
+    }
+
+    if (managerUserQuery.data && !Array.isArray(managerUserQuery.data)) {
+      return normalizeManagerIdentity(managerUserQuery.data);
     }
 
     const legacyAccountQuery = await supabase
