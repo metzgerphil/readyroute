@@ -2,7 +2,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const XLSX = require('xlsx');
 
-const { createManifestIngestService } = require('./manifestIngest');
+const { createManifestIngestService, __private } = require('./manifestIngest');
 
 function buildManifestBuffer({ date = '04/25/2026' } = {}) {
   const workbook = XLSX.utils.book_new();
@@ -70,4 +70,216 @@ test('stageManifestArtifacts rejects stale FCC manifests before staging them as 
       return true;
     }
   );
+});
+
+test('mergePendingManifestStops layers delivery and pickup manifests without dropping existing route detail', () => {
+  const merged = __private.mergePendingManifestStops(
+    [
+      {
+        id: 'combined-1',
+        sequence: 1,
+        stop_number: 1,
+        type: 'combined',
+        has_delivery: true,
+        has_pickup: true,
+        address: '111 W WASHINGTON AVE, ESCONDIDO, CA 92025',
+        address_line1: '111 W WASHINGTON AVE',
+        address_line2: '',
+        contact_name: 'WALGREENS 05455',
+        sid: '1001',
+        package_count: 3,
+        delivery_package_count: 2,
+        pickup_package_count: 1,
+        ready_time: '10:00',
+        close_time: '19:00'
+      },
+      {
+        id: 'pickup-only',
+        sequence: 2,
+        stop_number: 2,
+        type: 'pickup',
+        has_delivery: false,
+        has_pickup: true,
+        is_pickup: true,
+        address: '341 E PENNSYLVANIA AVE, ESCONDIDO, CA 92025',
+        address_line1: '341 E PENNSYLVANIA AVE',
+        address_line2: '',
+        contact_name: 'JAMES COFFEE COMPANY',
+        sid: '0',
+        package_count: 1,
+        delivery_package_count: 0,
+        pickup_package_count: 1
+      }
+    ],
+    [
+      {
+        sequence: 1,
+        stop_number: 1,
+        type: 'delivery',
+        has_delivery: true,
+        has_pickup: false,
+        address: '111 W WASHINGTON AVE, ESCONDIDO, CA 92025',
+        address_line1: '111 W WASHINGTON AVE',
+        address_line2: '',
+        contact_name: 'Walgreens Receiver',
+        primary_phone: '555-111-2222',
+        delivery_instructions: 'Use receiving dock',
+        sid: '1001',
+        package_count: 2,
+        delivery_package_count: 2,
+        pickup_package_count: 0,
+        packages: [
+          {
+            tracking_number: '794612345678',
+            service_code: 'ISIGNRES',
+            requires_signature: true,
+            requires_adult_signature: false,
+            hazmat: false
+          }
+        ]
+      },
+      {
+        sequence: 4,
+        stop_number: 4,
+        type: 'pickup',
+        has_delivery: false,
+        has_pickup: true,
+        is_pickup: true,
+        address: '341 E PENNSYLVANIA AVE, ESCONDIDO, CA 92025',
+        address_line1: '341 E PENNSYLVANIA AVE',
+        address_line2: '',
+        contact_name: 'JAMES COFFEE COMPANY',
+        sid: '0',
+        package_count: 0,
+        delivery_package_count: 0,
+        pickup_package_count: 0,
+        raw_contact_metadata: {
+          PUID: '4',
+          'PU Closed': '14:02'
+        }
+      }
+    ]
+  );
+
+  assert.equal(merged.length, 2);
+  assert.equal(merged[0].type, 'combined');
+  assert.equal(merged[0].has_delivery, true);
+  assert.equal(merged[0].has_pickup, true);
+  assert.equal(merged[0].primary_phone, '555-111-2222');
+  assert.equal(merged[0].delivery_instructions, 'Use receiving dock');
+  assert.equal(merged[0].pickup_package_count, 1);
+  assert.equal(merged[0].packages[0].tracking_number, '794612345678');
+  assert.equal(merged[1].type, 'pickup');
+  assert.equal(merged[1].contact_name, 'JAMES COFFEE COMPANY');
+  assert.equal(merged[1].raw_contact_metadata['PU Closed'], '14:02');
+});
+
+test('mergePendingManifestStops never turns blank pickup coordinates into origin pins', () => {
+  const merged = __private.mergePendingManifestStops(
+    [
+      {
+        id: 'delivery-1',
+        sequence: 1,
+        stop_number: 1,
+        type: 'delivery',
+        has_delivery: true,
+        has_pickup: false,
+        address: '1550 SIMPSON WAY, ESCONDIDO, CA 92029',
+        address_line1: '1550 SIMPSON WAY',
+        address_line2: '',
+        sid: '1001',
+        lat: 33.123744,
+        lng: -117.111447,
+        package_count: 1
+      }
+    ],
+    [
+      {
+        sequence: 4,
+        stop_number: 4,
+        type: 'pickup',
+        has_delivery: false,
+        has_pickup: true,
+        is_pickup: true,
+        address: '1550 SIMPSON WAY, ESCONDIDO, CA 92029',
+        address_line1: '1550 SIMPSON WAY',
+        address_line2: '',
+        sid: '0',
+        lat: null,
+        lng: '',
+        package_count: 6,
+        pickup_package_count: 6
+      }
+    ]
+  );
+
+  assert.equal(merged.length, 1);
+  assert.equal(merged[0].type, 'combined');
+  assert.equal(merged[0].lat, 33.123744);
+  assert.equal(merged[0].lng, -117.111447);
+  assert.notEqual(merged[0].lat, 0);
+  assert.notEqual(merged[0].lng, 0);
+});
+
+test('mergePendingManifestStops matches duplicate SID stops by address instead of collapsing them', () => {
+  const merged = __private.mergePendingManifestStops(
+    [
+      {
+        id: 'existing-1',
+        sequence: 1,
+        stop_number: 1,
+        type: 'delivery',
+        has_delivery: true,
+        has_pickup: false,
+        address: '4180 CANYON DE ORO, ENCINITAS, CA 92024',
+        address_line1: '4180 CANYON DE ORO',
+        sid: '1500',
+        package_count: 1
+      },
+      {
+        id: 'existing-2',
+        sequence: 2,
+        stop_number: 2,
+        type: 'delivery',
+        has_delivery: true,
+        has_pickup: false,
+        address: '3086 STARRY NIGHT DR, ESCONDIDO, CA 92029',
+        address_line1: '3086 STARRY NIGHT DR',
+        sid: '1500',
+        package_count: 1
+      }
+    ],
+    [
+      {
+        sequence: 1,
+        stop_number: 1,
+        type: 'delivery',
+        has_delivery: true,
+        has_pickup: false,
+        address: '4180 CANYON DE ORO, ENCINITAS, CA 92024',
+        address_line1: '4180 CANYON DE ORO',
+        sid: '1500',
+        primary_phone: '555-111-0001',
+        package_count: 1
+      },
+      {
+        sequence: 2,
+        stop_number: 2,
+        type: 'delivery',
+        has_delivery: true,
+        has_pickup: false,
+        address: '3086 STARRY NIGHT DR, ESCONDIDO, CA 92029',
+        address_line1: '3086 STARRY NIGHT DR',
+        sid: '1500',
+        primary_phone: '555-111-0002',
+        package_count: 1
+      }
+    ]
+  );
+
+  assert.equal(merged.length, 2);
+  assert.equal(merged[0].address, '4180 CANYON DE ORO, ENCINITAS, CA 92024');
+  assert.equal(merged[0].primary_phone, '555-111-0001');
+  assert.equal(merged[1].address, '3086 STARRY NIGHT DR, ESCONDIDO, CA 92029');
+  assert.equal(merged[1].primary_phone, '555-111-0002');
 });

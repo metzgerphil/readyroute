@@ -36,6 +36,21 @@ function getManifestSchemaError(error) {
   return null;
 }
 
+function canRetryPackageInsertWithoutDetailColumns(error) {
+  const message = String(error?.message || error?.details || error?.hint || '');
+  return (
+    /service_code/i.test(message) ||
+    /requires_adult_signature/i.test(message) ||
+    /schema cache/i.test(message) ||
+    /column .* does not exist/i.test(message) ||
+    /could not find the .*column/i.test(message)
+  );
+}
+
+function stripOptionalPackageDetailColumns(packageRows = []) {
+  return (packageRows || []).map(({ service_code, requires_adult_signature, ...row }) => row);
+}
+
 function getManifestUploadError(error, { workAreaName, date }) {
   const schemaError = getManifestSchemaError(error);
 
@@ -197,9 +212,130 @@ function buildPendingManifestStopKey(stop, fallbackKey) {
   return fallbackKey;
 }
 
+function getManifestStopSid(stop) {
+  const sid = String(stop?.sid || '').trim();
+  return sid && sid !== '0' ? sid : null;
+}
+
+function buildDuplicateManifestSidSet(...stopGroups) {
+  const sidCounts = new Map();
+
+  for (const stops of stopGroups) {
+    for (const stop of stops || []) {
+      const sid = getManifestStopSid(stop);
+      if (!sid) {
+        continue;
+      }
+
+      sidCounts.set(sid, (sidCounts.get(sid) || 0) + 1);
+    }
+  }
+
+  return new Set(
+    [...sidCounts.entries()]
+      .filter(([, count]) => count > 1)
+      .map(([sid]) => sid)
+  );
+}
+
+function buildPendingManifestStopKeyWithDuplicateSids(stop, fallbackKey, duplicateSids = new Set()) {
+  const sid = getManifestStopSid(stop);
+
+  if (sid && !duplicateSids.has(sid)) {
+    return `sid:${sid}`;
+  }
+
+  return buildStopAddressAlias(stop) || fallbackKey;
+}
+
+function buildStopAddressAlias(stop, slice = '') {
+  const streetCandidate = String(stop?.address_line1 || stop?.address || '')
+    .split(',')[0]
+    .trim();
+  const normalizedAddress = normalizeComparisonValue(streetCandidate)
+    .replace(/\bavenue\b/g, 'ave')
+    .replace(/\bstreet\b/g, 'st')
+    .replace(/\broad\b/g, 'rd')
+    .replace(/\bdrive\b/g, 'dr')
+    .replace(/\bplace\b/g, 'pl')
+    .replace(/\blane\b/g, 'ln')
+    .replace(/\bcourt\b/g, 'ct')
+    .replace(/\bboulevard\b/g, 'blvd')
+    .replace(/\bparkway\b/g, 'pkwy')
+    .replace(/\bbl\b/g, 'blvd')
+    .replace(/^(\d+)\s*-\s*\d+\b/, '$1')
+    .replace(/[^a-z0-9]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+
+  if (!normalizedAddress) {
+    return null;
+  }
+
+  return `${slice || 'address'}:${normalizedAddress}`;
+}
+
 function toNumber(value) {
+  if (value === null || value === undefined || String(value).trim() === '') {
+    return null;
+  }
+
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : null;
+}
+
+const CONTACT_FIELDS = [
+  'contact_name',
+  'business_name',
+  'company_name',
+  'primary_phone',
+  'alternate_phone',
+  'email',
+  'customer_instructions',
+  'delivery_instructions',
+  'consignee',
+  'shipper',
+  'contact_source',
+  'contact_last_imported_at'
+];
+
+function hasContactValue(value) {
+  return value !== null && value !== undefined && String(value).trim() !== '';
+}
+
+function mergeRawContactMetadata(primaryMetadata, fallbackMetadata) {
+  const merged = {};
+
+  for (const metadata of [fallbackMetadata, primaryMetadata]) {
+    if (!metadata || typeof metadata !== 'object' || Array.isArray(metadata)) {
+      continue;
+    }
+
+    for (const [key, value] of Object.entries(metadata)) {
+      if (key && hasContactValue(value)) {
+        merged[key] = value;
+      }
+    }
+  }
+
+  return Object.keys(merged).length ? merged : null;
+}
+
+function mergeStopContactFields(primaryStop = {}, fallbackStop = {}) {
+  const merged = {};
+
+  for (const field of CONTACT_FIELDS) {
+    merged[field] = hasContactValue(primaryStop?.[field])
+      ? primaryStop[field]
+      : fallbackStop?.[field] ?? null;
+  }
+
+  const rawContactMetadata = mergeRawContactMetadata(primaryStop?.raw_contact_metadata, fallbackStop?.raw_contact_metadata);
+  if (rawContactMetadata) {
+    merged.raw_contact_metadata = rawContactMetadata;
+  }
+
+  return merged;
 }
 
 function toManifestStopFromExistingRouteStop(stop, packageCount = 1) {
@@ -207,6 +343,7 @@ function toManifestStopFromExistingRouteStop(stop, packageCount = 1) {
   const stopType = stop?.stop_type || (stop?.is_pickup ? 'pickup' : 'delivery');
   const hasPickup = Boolean(stop?.has_pickup || stop?.is_pickup || stopType === 'pickup' || stopType === 'combined');
   const hasDelivery = stop?.has_delivery === false ? false : stopType !== 'pickup';
+  const normalizedPackageCount = Math.max(1, Number(packageCount || 1));
 
   return {
     id: stop?.id || null,
@@ -215,6 +352,18 @@ function toManifestStopFromExistingRouteStop(stop, packageCount = 1) {
     address: stop?.address || '',
     address_line2: stop?.address_line2 || null,
     contact_name: stop?.contact_name || null,
+    business_name: stop?.business_name || null,
+    company_name: stop?.company_name || null,
+    primary_phone: stop?.primary_phone || null,
+    alternate_phone: stop?.alternate_phone || null,
+    email: stop?.email || null,
+    customer_instructions: stop?.customer_instructions || null,
+    delivery_instructions: stop?.delivery_instructions || null,
+    consignee: stop?.consignee || null,
+    shipper: stop?.shipper || null,
+    contact_source: stop?.contact_source || null,
+    contact_last_imported_at: stop?.contact_last_imported_at || null,
+    raw_contact_metadata: stop?.raw_contact_metadata || null,
     lat: toNumber(stop?.lat),
     lng: toNumber(stop?.lng),
     is_pickup: Boolean(stop?.is_pickup),
@@ -226,30 +375,183 @@ function toManifestStopFromExistingRouteStop(stop, packageCount = 1) {
     type: stopType,
     has_pickup: hasPickup,
     has_delivery: hasDelivery,
+    delivery_package_count: hasDelivery ? normalizedPackageCount : 0,
+    pickup_package_count: hasPickup && !hasDelivery ? normalizedPackageCount : 0,
     geocode_source: stop?.geocode_source || 'manifest',
     geocode_accuracy: stop?.geocode_accuracy || 'manifest',
-    package_count: Math.max(1, Number(packageCount || 1))
+    package_count: normalizedPackageCount
+  };
+}
+
+function getStopSlicePackageCount(stop = {}, slice) {
+  const explicitField = slice === 'delivery' ? 'delivery_package_count' : 'pickup_package_count';
+  const explicitCount = Number(stop?.[explicitField]);
+  if (Number.isFinite(explicitCount) && explicitCount > 0) {
+    return explicitCount;
+  }
+
+  const hasSlice = slice === 'delivery' ? stop?.has_delivery !== false : Boolean(stop?.has_pickup || stop?.is_pickup);
+  const hasOtherSlice = slice === 'delivery' ? Boolean(stop?.has_pickup || stop?.is_pickup) : stop?.has_delivery !== false;
+
+  if (hasSlice && !hasOtherSlice) {
+    return Math.max(0, Number(stop?.package_count || 0));
+  }
+
+  return 0;
+}
+
+function mergePackageDetails(primaryPackages = [], fallbackPackages = []) {
+  const merged = [];
+  const seenTrackingNumbers = new Set();
+
+  for (const pkg of [...(fallbackPackages || []), ...(primaryPackages || [])]) {
+    const trackingNumber = String(pkg?.tracking_number || '').trim();
+    if (!trackingNumber || seenTrackingNumbers.has(trackingNumber)) {
+      continue;
+    }
+
+    seenTrackingNumbers.add(trackingNumber);
+    merged.push({
+      tracking_number: trackingNumber,
+      service_code: pkg.service_code || null,
+      requires_signature: Boolean(pkg.requires_signature),
+      requires_adult_signature: Boolean(pkg.requires_adult_signature),
+      hazmat: Boolean(pkg.hazmat)
+    });
+  }
+
+  return merged;
+}
+
+function mergeLayeredManifestStop(primaryStop = {}, fallbackStop = {}) {
+  const contactFields = mergeStopContactFields(primaryStop, fallbackStop);
+  const primaryIsPickupOnly = Boolean(primaryStop?.has_pickup || primaryStop?.is_pickup || primaryStop?.type === 'pickup' || primaryStop?.stop_type === 'pickup') &&
+    primaryStop?.has_delivery === false;
+  const fallbackHasDelivery = fallbackStop?.has_delivery !== false && fallbackStop?.type !== 'pickup' && fallbackStop?.stop_type !== 'pickup';
+
+  if (primaryIsPickupOnly && fallbackHasDelivery && hasContactValue(fallbackStop?.contact_name)) {
+    contactFields.contact_name = fallbackStop.contact_name;
+  }
+
+  const hasDelivery = Boolean(primaryStop?.has_delivery || fallbackStop?.has_delivery);
+  const hasPickup = Boolean(primaryStop?.has_pickup || fallbackStop?.has_pickup || primaryStop?.is_pickup || fallbackStop?.is_pickup);
+  const packages = mergePackageDetails(primaryStop?.packages, fallbackStop?.packages);
+  const primaryDeliveryCount = getStopSlicePackageCount(primaryStop, 'delivery');
+  const fallbackDeliveryCount = getStopSlicePackageCount(fallbackStop, 'delivery');
+  const primaryPickupCount = getStopSlicePackageCount(primaryStop, 'pickup');
+  const fallbackPickupCount = getStopSlicePackageCount(fallbackStop, 'pickup');
+  const deliveryPackageCount = hasDelivery
+    ? primaryDeliveryCount || fallbackDeliveryCount || (packages.length && !hasPickup ? packages.length : 0)
+    : 0;
+  const pickupPackageCount = hasPickup ? primaryPickupCount || fallbackPickupCount : 0;
+  const packageCountFromSlices = deliveryPackageCount + pickupPackageCount;
+  const packageCount = Math.max(
+    packages.length,
+    packageCountFromSlices,
+    Number(primaryStop?.package_count || 0),
+    Number(fallbackStop?.package_count || 0),
+    1
+  );
+  const stopType = hasDelivery && hasPickup ? 'combined' : hasPickup ? 'pickup' : 'delivery';
+
+  return {
+    ...fallbackStop,
+    ...primaryStop,
+    ...contactFields,
+    packages: packages.length ? packages : primaryStop?.packages || fallbackStop?.packages || [],
+    package_count: packageCount,
+    delivery_package_count: deliveryPackageCount,
+    pickup_package_count: pickupPackageCount,
+    type: stopType,
+    stop_type: stopType,
+    has_delivery: hasDelivery,
+    has_pickup: hasPickup,
+    is_pickup: !hasDelivery && hasPickup,
+    ready_time: primaryStop?.ready_time || fallbackStop?.ready_time || null,
+    close_time: primaryStop?.close_time || fallbackStop?.close_time || null,
+    pickup_ready_time: primaryStop?.pickup_ready_time || fallbackStop?.pickup_ready_time || null,
+    pickup_close_time: primaryStop?.pickup_close_time || fallbackStop?.pickup_close_time || null,
+    has_time_commit: Boolean(primaryStop?.has_time_commit || fallbackStop?.has_time_commit),
+    lat: toNumber(primaryStop?.lat) ?? toNumber(fallbackStop?.lat),
+    lng: toNumber(primaryStop?.lng) ?? toNumber(fallbackStop?.lng),
+    geocode_source: primaryStop?.geocode_source || fallbackStop?.geocode_source || 'manifest',
+    geocode_accuracy: primaryStop?.geocode_accuracy || fallbackStop?.geocode_accuracy || 'manifest',
+    sid: primaryStop?.sid || fallbackStop?.sid || null
   };
 }
 
 function mergePendingManifestStops(existingStops = [], incomingStops = []) {
   const mergedStops = new Map();
+  const aliasToPrimaryKey = new Map();
+  const primaryKeys = [];
+  const duplicateSids = buildDuplicateManifestSidSet(existingStops, incomingStops);
+
+  function rememberStopAliases(primaryKey, stop) {
+    const hasPickup = Boolean(stop?.has_pickup || stop?.is_pickup || stop?.type === 'pickup' || stop?.stop_type === 'pickup' || stop?.type === 'combined' || stop?.stop_type === 'combined');
+    const hasDelivery = stop?.has_delivery !== false && stop?.type !== 'pickup' && stop?.stop_type !== 'pickup';
+    const genericAddressAlias = buildStopAddressAlias(stop);
+
+    if (genericAddressAlias && !aliasToPrimaryKey.has(genericAddressAlias)) {
+      aliasToPrimaryKey.set(genericAddressAlias, primaryKey);
+    }
+
+    if (hasPickup) {
+      const pickupAlias = buildStopAddressAlias(stop, 'pickup-address');
+      if (pickupAlias && !aliasToPrimaryKey.has(pickupAlias)) {
+        aliasToPrimaryKey.set(pickupAlias, primaryKey);
+      }
+    }
+
+    if (hasDelivery) {
+      const deliveryAlias = buildStopAddressAlias(stop, 'delivery-address');
+      if (deliveryAlias && !aliasToPrimaryKey.has(deliveryAlias)) {
+        aliasToPrimaryKey.set(deliveryAlias, primaryKey);
+      }
+    }
+  }
+
+  function findExistingPrimaryKey(stop, fallbackKey) {
+    const primaryKey = buildPendingManifestStopKeyWithDuplicateSids(stop, fallbackKey, duplicateSids);
+    if (mergedStops.has(primaryKey)) {
+      return primaryKey;
+    }
+
+    const hasPickup = Boolean(stop?.has_pickup || stop?.is_pickup || stop?.type === 'pickup' || stop?.stop_type === 'pickup' || stop?.type === 'combined' || stop?.stop_type === 'combined');
+    const hasDelivery = stop?.has_delivery !== false && stop?.type !== 'pickup' && stop?.stop_type !== 'pickup';
+    const sliceAliases = [
+      hasPickup ? buildStopAddressAlias(stop, 'pickup-address') : null,
+      hasDelivery ? buildStopAddressAlias(stop, 'delivery-address') : null,
+      buildStopAddressAlias(stop)
+    ].filter(Boolean);
+
+    for (const alias of sliceAliases) {
+      const matchedPrimaryKey = aliasToPrimaryKey.get(alias);
+      if (matchedPrimaryKey && mergedStops.has(matchedPrimaryKey)) {
+        return matchedPrimaryKey;
+      }
+    }
+
+    return primaryKey;
+  }
 
   existingStops.forEach((stop, index) => {
-    mergedStops.set(
-      buildPendingManifestStopKey(stop, `existing:${stop?.id || stop?.sequence || index}`),
-      stop
-    );
+    const primaryKey = buildPendingManifestStopKeyWithDuplicateSids(stop, `existing:${stop?.id || stop?.sequence || index}`, duplicateSids);
+    mergedStops.set(primaryKey, stop);
+    primaryKeys.push(primaryKey);
+    rememberStopAliases(primaryKey, stop);
   });
 
   incomingStops.forEach((stop, index) => {
-    mergedStops.set(
-      buildPendingManifestStopKey(stop, `incoming:${stop?.sequence || index}`),
-      stop
-    );
+    const key = findExistingPrimaryKey(stop, `incoming:${stop?.sequence || index}`);
+    const existingStop = mergedStops.get(key) || null;
+    mergedStops.set(key, existingStop ? mergeLayeredManifestStop(stop, existingStop) : stop);
+    if (!primaryKeys.includes(key)) {
+      primaryKeys.push(key);
+    }
+    rememberStopAliases(key, mergedStops.get(key));
   });
 
-  return normalizeMergedStopSequences(Array.from(mergedStops.values()));
+  return normalizeMergedStopSequences(primaryKeys.map((key) => mergedStops.get(key)).filter(Boolean));
 }
 
 function buildExistingStopStateMap(existingStops = []) {
@@ -465,7 +767,7 @@ function createManifestIngestService(options = {}) {
       const { data: existingStops, error: existingStopsError } = await supabase
         .from('stops')
         .select(
-          'id, sequence_order, address, address_line2, contact_name, lat, lng, status, exception_code, delivery_type_code, signer_name, signature_url, age_confirmed, is_pickup, is_business, has_note, notes, sid, ready_time, close_time, has_time_commit, stop_type, has_pickup, has_delivery, geocode_source, geocode_accuracy, pod_photo_url, pod_signature_url, scanned_at, completed_at'
+          'id, sequence_order, address, address_line2, contact_name, business_name, company_name, primary_phone, alternate_phone, email, customer_instructions, delivery_instructions, consignee, shipper, contact_source, contact_last_imported_at, raw_contact_metadata, lat, lng, status, exception_code, delivery_type_code, signer_name, signature_url, age_confirmed, is_pickup, is_business, has_note, notes, sid, ready_time, close_time, has_time_commit, stop_type, has_pickup, has_delivery, geocode_source, geocode_accuracy, pod_photo_url, pod_signature_url, scanned_at, completed_at'
         )
         .eq('route_id', existingRoute.id)
         .order('sequence_order');
@@ -626,6 +928,18 @@ function createManifestIngestService(options = {}) {
       address: stop.address,
       address_line2: stop.address_line2 || null,
       contact_name: stop.contact_name || null,
+      business_name: stop.business_name || null,
+      company_name: stop.company_name || null,
+      primary_phone: stop.primary_phone || null,
+      alternate_phone: stop.alternate_phone || null,
+      email: stop.email || null,
+      customer_instructions: stop.customer_instructions || null,
+      delivery_instructions: stop.delivery_instructions || null,
+      consignee: stop.consignee || null,
+      shipper: stop.shipper || null,
+      contact_source: stop.contact_source || null,
+      contact_last_imported_at: stop.contact_last_imported_at || (stop.contact_source ? nowProvider().toISOString() : null),
+      raw_contact_metadata: stop.raw_contact_metadata || null,
       lat: stop.lat,
       lng: stop.lng,
       is_pickup: Boolean(stop.is_pickup),
@@ -682,8 +996,23 @@ function createManifestIngestService(options = {}) {
     const stopIdBySequence = new Map(insertedStops.map((stop) => [stop.sequence_order, stop.id]));
 
     const packageInsertPayload = routeStops.flatMap((stop) => {
-      const packageCount = Math.max(1, Number(stop.package_count || 1));
+      const explicitPackages = Array.isArray(stop.packages)
+        ? stop.packages.filter((pkg) => pkg?.tracking_number)
+        : [];
       const stopId = stopIdBySequence.get(stop.sequence);
+
+      if (explicitPackages.length) {
+        return explicitPackages.map((pkg) => ({
+          stop_id: stopId,
+          tracking_number: String(pkg.tracking_number || '').trim(),
+          service_code: pkg.service_code || null,
+          requires_signature: Boolean(pkg.requires_signature),
+          requires_adult_signature: Boolean(pkg.requires_adult_signature),
+          hazmat: Boolean(pkg.hazmat)
+        }));
+      }
+
+      const packageCount = Math.max(1, Number(stop.package_count || 1));
       const packageKeyBase = stop.sid && stop.sid !== '0'
         ? `RR-${routeId.slice(0, 8)}-STOPID-${stopId}-SID-${stop.sid}`
         : `RR-${routeId.slice(0, 8)}-STOPID-${stopId}`;
@@ -691,14 +1020,23 @@ function createManifestIngestService(options = {}) {
       return Array.from({ length: packageCount }, (_, index) => ({
         stop_id: stopId,
         tracking_number: `${packageKeyBase}-${index + 1}`,
+        service_code: null,
         requires_signature: false,
+        requires_adult_signature: false,
         hazmat: false
       }));
     });
 
-    const { error: packagesError } = await supabase
+    let { error: packagesError } = await supabase
       .from('packages')
       .insert(packageInsertPayload);
+
+    if (packagesError && canRetryPackageInsertWithoutDetailColumns(packagesError)) {
+      const { error: fallbackPackagesError } = await supabase
+        .from('packages')
+        .insert(stripOptionalPackageDetailColumns(packageInsertPayload));
+      packagesError = fallbackPackagesError;
+    }
 
     if (packagesError) {
       if (!mergedIntoExistingRoute) {
@@ -712,6 +1050,7 @@ function createManifestIngestService(options = {}) {
     const deliveryCount = routeStops.filter((stop) => stop.type === 'delivery').length;
     const pickupCount = routeStops.filter((stop) => stop.type === 'pickup').length;
     const combinedCount = routeStops.filter((stop) => stop.type === 'combined').length;
+    const pickupStopCount = routeStops.filter((stop) => stop.has_pickup || stop.type === 'pickup' || stop.type === 'combined').length;
     const timeCommitCount = routeStops.filter((stop) => stop.has_time_commit).length;
     const coordinateHealth = summarizeCoordinateHealth(routeStops);
     const coordinateIntegrity = detectSuspiciousCoordinateClusters(routeStops);
@@ -774,6 +1113,8 @@ function createManifestIngestService(options = {}) {
       total_stops: routeStops.length,
       delivery_count: deliveryCount,
       pickup_count: pickupCount,
+      pickup_stop_count: pickupStopCount,
+      total_pickup_stops: pickupStopCount,
       combined_count: combinedCount,
       time_commit_count: timeCommitCount,
       merged_into_existing_route: mergedIntoExistingRoute,
@@ -803,5 +1144,8 @@ function createManifestIngestService(options = {}) {
 }
 
 module.exports = {
-  createManifestIngestService
+  createManifestIngestService,
+  __private: {
+    mergePendingManifestStops
+  }
 };

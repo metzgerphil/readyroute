@@ -53,6 +53,56 @@ test('mergeManifestStops merges by SID and address without requiring sequence al
   assert.equal(merged[1].lng, -117.3);
 });
 
+test('mergeManifestStops preserves contact fields and does not overwrite them with GPX blanks', () => {
+  const merged = mergeManifestStops(
+    [
+      {
+        sequence: 1,
+        sid: 'SID123',
+        address_line1: '123 Main St',
+        address: '123 Main St, San Diego, CA 92029',
+        contact_name: 'Acme Receiving',
+        primary_phone: '(555) 111-2222 ext. 9',
+        email: 'dock@example.com',
+        delivery_instructions: 'Use rear dock',
+        raw_contact_metadata: {
+          'Contact Preference': 'Text first'
+        },
+        lat: null,
+        lng: null
+      }
+    ],
+    [
+      {
+        sequence: 1,
+        sid: 'SID123',
+        address_line1: '123 Main St',
+        address: '123 Main St',
+        contact_name: '',
+        primary_phone: '',
+        email: '',
+        raw_contact_metadata: {
+          'Warehouse Contact': 'Dock office'
+        },
+        lat: 33.1,
+        lng: -117.2,
+        geocode_source: 'manifest',
+        geocode_accuracy: 'manifest'
+      }
+    ]
+  );
+
+  assert.equal(merged[0].lat, 33.1);
+  assert.equal(merged[0].contact_name, 'Acme Receiving');
+  assert.equal(merged[0].primary_phone, '(555) 111-2222 ext. 9');
+  assert.equal(merged[0].email, 'dock@example.com');
+  assert.equal(merged[0].delivery_instructions, 'Use rear dock');
+  assert.deepEqual(merged[0].raw_contact_metadata, {
+    'Warehouse Contact': 'Dock office',
+    'Contact Preference': 'Text first'
+  });
+});
+
 test('mergeManifestStops does not force sequence-based merges when GPX and XLS are misaligned', () => {
   const merged = mergeManifestStops(
     [
@@ -188,6 +238,52 @@ test('mergeManifestStops ignores placeholder SID values and falls back to addres
   assert.equal(merged[0].lng, -117.112454);
   assert.equal(merged[1].lat, 33.124775);
   assert.equal(merged[1].lng, -117.120303);
+});
+
+test('mergeManifestStops does not use duplicate SID values as unique coordinate matches', () => {
+  const merged = mergeManifestStops(
+    [
+      {
+        sequence: 9,
+        sid: '1500',
+        address_line1: '4180 CANYON DE ORO',
+        address: '4180 CANYON DE ORO, ENCINITAS, CA 92024',
+        lat: null,
+        lng: null
+      },
+      {
+        sequence: 22,
+        sid: '1500',
+        address_line1: '3086 STARRY NIGHT DR',
+        address: '3086 STARRY NIGHT DR, ESCONDIDO, CA 92029',
+        lat: null,
+        lng: null
+      }
+    ],
+    [
+      {
+        sequence: 9,
+        sid: '1500',
+        address_line1: '4180 CANYON DE ORO',
+        address: '4180 CANYON DE ORO',
+        lat: 33.01,
+        lng: -117.01
+      },
+      {
+        sequence: 22,
+        sid: '1500',
+        address_line1: '3086 STARRY NIGHT DR',
+        address: '3086 STARRY NIGHT DR',
+        lat: 33.22,
+        lng: -117.22
+      }
+    ]
+  );
+
+  assert.equal(merged[0].lat, 33.01);
+  assert.equal(merged[0].lng, -117.01);
+  assert.equal(merged[1].lat, 33.22);
+  assert.equal(merged[1].lng, -117.22);
 });
 
 test('normalizeMergedStopSequences produces a clean contiguous stop order', () => {

@@ -10,7 +10,8 @@ const {
   detectBusinessContact,
   detectSecondaryAddressType,
   extractFloorLabel,
-  inferLocationType
+  inferLocationType,
+  normalizeManifestStopType
 } = require('./manifestParser');
 
 function buildFedExWorkbookBuffer() {
@@ -95,6 +96,54 @@ function buildFedExWorkbookBuffer() {
   return XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' });
 }
 
+function buildContactFixtureWorkbookBuffer(rows) {
+  const workbook = XLSX.utils.book_new();
+
+  XLSX.utils.book_append_sheet(
+    workbook,
+    XLSX.utils.aoa_to_sheet([
+      ['Page', 'Combined Manifest'],
+      ['Date', '04/13/2026'],
+      ['WA#', '0810']
+    ]),
+    'Header'
+  );
+
+  XLSX.utils.book_append_sheet(
+    workbook,
+    XLSX.utils.aoa_to_sheet([
+      [
+        'ST#',
+        'Delivery/Pickup',
+        'Contact Name',
+        'Recipient',
+        'Customer',
+        'Business Name',
+        'Company Name',
+        'Phone',
+        'Telephone',
+        'Alternate Phone',
+        'Email Address',
+        'Customer Instructions',
+        'Delivery Instructions',
+        'Consignee',
+        'Shipper',
+        'Address Line 1',
+        'Address Line 2',
+        'City',
+        'State',
+        'Postal Code',
+        '# Pkgs',
+        'SID'
+      ],
+      ...rows
+    ]),
+    'Stop Details'
+  );
+
+  return XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' });
+}
+
 test('parseXLSManifest parses FedEx Combined Manifest metadata and 111 grouped stops', () => {
   const buffer = buildFedExWorkbookBuffer();
   const manifest = parseXLSManifest(buffer);
@@ -106,6 +155,281 @@ test('parseXLSManifest parses FedEx Combined Manifest metadata and 111 grouped s
   assert.equal(manifest.manifest_meta.sa_number, '919');
   assert.equal(manifest.manifest_meta.contractor_name, 'Bridge Transportation Inc');
   assert.equal(manifest.stops.length, 111);
+});
+
+test('parseXLSManifest preserves optional customer contact fields from flexible headers', () => {
+  const workbook = XLSX.utils.book_new();
+
+  XLSX.utils.book_append_sheet(
+    workbook,
+    XLSX.utils.aoa_to_sheet([
+      ['Page', 'Combined Manifest'],
+      ['Date', '04/13/2026'],
+      ['WA#', '0810']
+    ]),
+    'Header'
+  );
+
+  XLSX.utils.book_append_sheet(
+    workbook,
+    XLSX.utils.aoa_to_sheet([
+      [
+        'ST#',
+        'Delivery/Pickup',
+        'Recipient Name',
+        'Business Name',
+        'Company Name',
+        'Phone',
+        'Alternate Phone',
+        'Email Address',
+        'Delivery Instructions',
+        'Customer Instructions',
+        'Consignee',
+        'Shipper',
+        'Contact Preference',
+        'Address Line 1',
+        'Address Line 2',
+        'City',
+        'State',
+        'Postal Code',
+        '# Pkgs',
+        'SID',
+        'Ready',
+        'Close'
+      ],
+      [
+        1,
+        'Delivery',
+        'Acme Receiving',
+        'Acme Warehouse',
+        'Acme Corp',
+        '(555) 111-2222 ext. 9',
+        '555.222.3333',
+        'dock@example.com',
+        'Use rear dock',
+        'Call before delivery',
+        'Acme Logistics',
+        'Sender Co',
+        'Text first',
+        '123 Main St',
+        'Suite 200',
+        'San Diego',
+        'CA',
+        '92029',
+        2,
+        'SID123',
+        '',
+        ''
+      ]
+    ]),
+    'Stop Details'
+  );
+
+  const manifest = parseXLSManifest(XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' }));
+  const stop = manifest.stops[0];
+
+  assert.equal(stop.contact_name, 'Acme Receiving');
+  assert.equal(stop.business_name, 'Acme Warehouse');
+  assert.equal(stop.company_name, 'Acme Corp');
+  assert.equal(stop.primary_phone, '(555) 111-2222 ext. 9');
+  assert.equal(stop.alternate_phone, '555.222.3333');
+  assert.equal(stop.email, 'dock@example.com');
+  assert.equal(stop.delivery_instructions, 'Use rear dock');
+  assert.equal(stop.customer_instructions, 'Call before delivery');
+  assert.equal(stop.consignee, 'Acme Logistics');
+  assert.equal(stop.shipper, 'Sender Co');
+  assert.equal(stop.contact_source, 'manifest');
+  assert.deepEqual(stop.raw_contact_metadata, {
+    'Contact Preference': 'Text first'
+  });
+});
+
+test('parseXLSManifest parses FedEx Delivery Manifest stop and package detail tabs', () => {
+  const workbook = XLSX.utils.book_new();
+
+  XLSX.utils.book_append_sheet(
+    workbook,
+    XLSX.utils.aoa_to_sheet([
+      ['Page', 'Delivery Manifest'],
+      ['Date', '05/11/2026'],
+      ['WA#', '828 BRIDGE 01 - EOD'],
+      ['IC/ISP', 'Bridge Transportation Inc'],
+      ['Driver', 'CHAVEZ,MARCO ANTONIO'],
+      ['Vehicle #', '538765']
+    ]),
+    'Header'
+  );
+
+  XLSX.utils.book_append_sheet(
+    workbook,
+    XLSX.utils.aoa_to_sheet([
+      [
+        'ST#',
+        'SID',
+        '# Pkgs',
+        'Recipient',
+        'Contact Name',
+        'Address Line 1',
+        'Address Line 2',
+        'City',
+        'State',
+        'Postal Code',
+        'Stop Instructions',
+        'Phone',
+        'Completed',
+        'DeliveryTimeBegin',
+        'DeliveryTimeEnd'
+      ],
+      [
+        1,
+        '1001',
+        2,
+        'Gloria Claudat',
+        '',
+        '19752 Mount Israel Pl',
+        '',
+        'Escondido',
+        'CA',
+        '92029',
+        'FRONT DOOR:please deliver Friday',
+        '555-111-5913',
+        'N',
+        '10:00',
+        '12:00'
+      ]
+    ]),
+    'Stop Details'
+  );
+
+  XLSX.utils.book_append_sheet(
+    workbook,
+    XLSX.utils.aoa_to_sheet([
+      ['ST#', 'SID', 'Recipient', 'Contact Name', 'Address Line 1', 'Address Line 2', 'City', 'State', 'Postal Code', 'Track ID', 'Prem Svc'],
+      [1, '1001', 'Gloria Claudat', '', '19752 Mount Israel Pl', '', 'Escondido', 'CA', '92029', '794612345678', 'ISIGNRES'],
+      [1, '1001', 'Gloria Claudat', '', '19752 Mount Israel Pl', '', 'Escondido', 'CA', '92029', '794612345679', 'RES']
+    ]),
+    'Package Details'
+  );
+
+  const manifest = parseXLSManifest(XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' }));
+  const [stop] = manifest.stops;
+
+  assert.equal(manifest.manifest_meta.work_area_name, '828');
+  assert.equal(manifest.manifest_meta.driver_name, 'Marco Antonio Chavez');
+  assert.equal(stop.type, 'delivery');
+  assert.equal(stop.contact_name, 'Gloria Claudat');
+  assert.equal(stop.primary_phone, '555-111-5913');
+  assert.equal(stop.delivery_instructions, 'FRONT DOOR:please deliver Friday');
+  assert.equal(stop.ready_time, '10:00');
+  assert.equal(stop.close_time, '12:00');
+  assert.equal(stop.package_count, 2);
+  assert.deepEqual(stop.packages, [
+    {
+      tracking_number: '794612345678',
+      service_code: 'ISIGNRES',
+      requires_signature: true,
+      requires_adult_signature: false,
+      hazmat: false
+    },
+    {
+      tracking_number: '794612345679',
+      service_code: 'RES',
+      requires_signature: false,
+      requires_adult_signature: false,
+      hazmat: false
+    }
+  ]);
+});
+
+test('parseXLSManifest parses FedEx Pickup Manifest pickup rows as pickup stops', () => {
+  const workbook = XLSX.utils.book_new();
+
+  XLSX.utils.book_append_sheet(
+    workbook,
+    XLSX.utils.aoa_to_sheet([
+      ['Page', 'Pickup Manifest'],
+      ['Date', '05/11/2026'],
+      ['SA#', '306902'],
+      ['WA#', '0840'],
+      ['IC/ISP', 'Bridge Transportation Inc'],
+      ['Driver', 'morales,miguel eduar']
+    ]),
+    'Header'
+  );
+
+  XLSX.utils.book_append_sheet(
+    workbook,
+    XLSX.utils.aoa_to_sheet([
+      ['PU List', 'Station', 'WA', 'PUID', 'Type', '# Pkgs', 'Shipper #', 'Shipper Name', 'Address Line 1', 'Address Line 2', 'City', 'State', 'Postal Code', 'Origin Station & WA#', 'Ready', 'Close', 'PU Closed', 'Reas Code', 'Pkgs Picked Up'],
+      ['64325', '919', '0840', '4', 'SCH', '0', '5153213', 'JAMES COFFEE COMPANY', '341-343 E PENNSYLVANIA AVE', 'Back', 'ESCONDIDO', 'CA', '92025', '', '14:00', '15:00', '14:02', '', '0'],
+      ['64325', '919', '0840', '8', 'AUT', '0', '348310', 'DISCOUNT TIRE CAS 0', '550 N BROADWAY', '', 'ESCONDIDO', 'CA', '92025', '', '15:00', '17:00', '', "909-CANCELLED SCH P/U-DON'T PICKUP", '0']
+    ]),
+    'Stop Details'
+  );
+
+  const manifest = parseXLSManifest(XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' }));
+
+  assert.equal(manifest.manifest_meta.work_area_name, '840');
+  assert.equal(manifest.manifest_meta.driver_name, 'Miguel Eduar Morales');
+  assert.equal(manifest.stops.length, 2);
+  assert.equal(manifest.stops[0].type, 'pickup');
+  assert.equal(manifest.stops[0].has_pickup, true);
+  assert.equal(manifest.stops[0].has_delivery, false);
+  assert.equal(manifest.stops[0].contact_name, 'JAMES COFFEE COMPANY');
+  assert.equal(manifest.stops[0].business_name, 'JAMES COFFEE COMPANY');
+  assert.equal(manifest.stops[0].shipper, 'JAMES COFFEE COMPANY');
+  assert.equal(manifest.stops[0].address_line2, 'Back');
+  assert.equal(manifest.stops[0].ready_time, '14:00');
+  assert.equal(manifest.stops[0].close_time, '15:00');
+  assert.equal(manifest.stops[0].pickup_package_count, 0);
+  assert.deepEqual(manifest.stops[0].raw_contact_metadata, {
+    'PU List': '64325',
+    Station: '919',
+    WA: '0840',
+    PUID: '4',
+    Type: 'SCH',
+    'Shipper #': '5153213',
+    'PU Closed': '14:02',
+    'Pkgs Picked Up': '0'
+  });
+  assert.equal(manifest.stops[1].raw_contact_metadata['Reas Code'], "909-CANCELLED SCH P/U-DON'T PICKUP");
+});
+
+test('parseXLSManifest handles customer contact fixture variants without inventing blanks', () => {
+  const manifest = parseXLSManifest(
+    buildContactFixtureWorkbookBuffer([
+      [1, 'Delivery', 'Contact Only', '', '', '', '', '', '', '', '', '', '', '', '', '101 A St', '', 'San Diego', 'CA', '92101', 1, 'SID1'],
+      [2, 'Delivery', 'Phone Customer', '', '', '', '', '555-111-2222', '', '', '', '', '', '', '', '102 B St', '', 'San Diego', 'CA', '92101', 1, 'SID2'],
+      [3, 'Delivery', 'Two Phone Customer', '', '', '', '', '555-111-3333', '', '555-222-3333', '', '', '', '', '', '103 C St', '', 'San Diego', 'CA', '92101', 1, 'SID3'],
+      [4, 'Delivery', '', '', '', 'Business Co', '', '', '', '', '', '', '', '', '', '104 D St', '', 'San Diego', 'CA', '92101', 1, 'SID4'],
+      [5, 'Delivery', '', '', '', '', 'Company LLC', '', '', '', '', '', '', '', '', '105 E St', '', 'San Diego', 'CA', '92101', 1, 'SID5'],
+      [6, 'Delivery', 'Email Customer', '', '', '', '', '', '', '', 'email@example.com', '', '', '', '', '106 F St', '', 'San Diego', 'CA', '92101', 1, 'SID6'],
+      [7, 'Delivery', 'Instruction Customer', '', '', '', '', '', '', '', '', 'Call on arrival', '', '', '', '107 G St', '', 'San Diego', 'CA', '92101', 1, 'SID7'],
+      [8, 'Delivery', 'Delivery Instruction Customer', '', '', '', '', '', '', '', '', '', 'Use rear dock', '', '', '108 H St', '', 'San Diego', 'CA', '92101', 1, 'SID8'],
+      [9, 'Delivery', '', '', '', '', '', '', '', '', '', '', '', '', '', '109 I St', '', 'San Diego', 'CA', '92101', 1, 'SID9'],
+      [10, 'Delivery', '', 'Recipient Alias', '', '', '', '', '(555) 444.5555 x12', '', '', '', '', '', '', '110 J St', '', 'San Diego', 'CA', '92101', 1, 'SID10'],
+      [11, 'Delivery', '', '', '', '', '', '', '', '', '', '', '', 'Consignee Contact', 'Shipper Contact', '111 K St', '', 'San Diego', 'CA', '92101', 1, 'SID11']
+    ])
+  );
+
+  const stopsBySequence = new Map(manifest.stops.map((stop) => [stop.sequence, stop]));
+
+  assert.equal(stopsBySequence.get(1).contact_name, 'Contact Only');
+  assert.equal(stopsBySequence.get(1).contact_source, 'manifest');
+  assert.equal(stopsBySequence.get(2).primary_phone, '555-111-2222');
+  assert.equal(stopsBySequence.get(3).alternate_phone, '555-222-3333');
+  assert.equal(stopsBySequence.get(4).business_name, 'Business Co');
+  assert.equal(stopsBySequence.get(5).company_name, 'Company LLC');
+  assert.equal(stopsBySequence.get(6).email, 'email@example.com');
+  assert.equal(stopsBySequence.get(7).customer_instructions, 'Call on arrival');
+  assert.equal(stopsBySequence.get(8).delivery_instructions, 'Use rear dock');
+  assert.equal(stopsBySequence.get(9).contact_name, null);
+  assert.equal(stopsBySequence.get(9).primary_phone, null);
+  assert.equal(stopsBySequence.get(9).contact_source, null);
+  assert.equal(stopsBySequence.get(10).contact_name, 'Recipient Alias');
+  assert.equal(stopsBySequence.get(10).primary_phone, '(555) 444.5555 x12');
+  assert.equal(stopsBySequence.get(11).contact_name, 'Consignee Contact');
+  assert.equal(stopsBySequence.get(11).shipper, 'Shipper Contact');
 });
 
 test('parseXLSManifest groups combined stops and keeps time commit data accurate', () => {
@@ -162,6 +486,44 @@ test('parseXLSManifest groups combined stops and keeps time commit data accurate
   assert.equal(fedexOfficeStop?.is_business, true);
   assert.equal(fedexOfficeStop?.name, 'FedEx Office # 2699');
   assert.equal(closeOnlyTcStop?.building_label, 'Building C');
+});
+
+test('parseXLSManifest treats explicit pickup service codes as pickup stops', () => {
+  const workbook = XLSX.utils.book_new();
+
+  XLSX.utils.book_append_sheet(
+    workbook,
+    XLSX.utils.aoa_to_sheet([
+      ['Page', 'Combined Manifest'],
+      ['Date', '04/13/2026'],
+      ['WA#', '0810'],
+      ['Driver', 'JIMENEZ,LUIS']
+    ]),
+    'Header'
+  );
+
+  XLSX.utils.book_append_sheet(
+    workbook,
+    XLSX.utils.aoa_to_sheet([
+      ['ST#', 'Service Type', 'Contact Name', 'Address Line 1', 'Address Line 2', 'City', 'State', 'Postal Code', '# Pkgs', 'SID', 'Ready', 'Close'],
+      [1, 'Delivery', 'GOOD STOP', '123 Main St', '', 'Escondido', 'CA', '92025', 1, 'SID1', '', ''],
+      [2, 'PUX', 'PICKUP CUSTOMER', '456 Oak Ave', 'Dock 2', 'Escondido', 'CA', '92029', 3, '', '13:00', '15:00']
+    ]),
+    'Stop Details'
+  );
+
+  const manifest = parseXLSManifest(XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' }));
+  const pickupStop = manifest.stops.find((stop) => stop.stop_number === 2);
+
+  assert.equal(normalizeManifestStopType('PUX'), 'pickup');
+  assert.equal(normalizeManifestStopType('Scheduled Pickup'), 'pickup');
+  assert.equal(manifest.stops.length, 2);
+  assert.equal(pickupStop.type, 'pickup');
+  assert.equal(pickupStop.has_pickup, true);
+  assert.equal(pickupStop.has_delivery, false);
+  assert.equal(pickupStop.is_pickup, true);
+  assert.equal(pickupStop.pickup_ready_time, '13:00');
+  assert.equal(pickupStop.pickup_close_time, '15:00');
 });
 
 test('parseXLSManifest preserves valid zero-number rows and still skips malformed shifted rows', () => {
@@ -408,6 +770,31 @@ test('parseGPXManifest extracts route work area and waypoint stop metadata from 
   assert.equal(manifest.stops[1].close_time, '20:00');
   assert.equal(manifest.stops[1].has_time_commit, true);
   assert.equal(manifest.stops[1].name, '2924 GAIT WAY');
+});
+
+test('parseGPXManifest supports Delivery Manifest GPX delivery time labels', async () => {
+  const manifest = await parseGPXManifest(
+    Buffer.from(
+      `<?xml version="1.0"?>
+      <gpx>
+        <rte>
+          <name>WA 0828</name>
+          <rtept lon="-117.13" lat="33.06">
+            <name>Seq 1:SID 1001:19752 MOUNT ISRAEL PL:DeliveryTimeBegin 10:00:DeliveryTimeEnd 12:00</name>
+          </rtept>
+        </rte>
+      </gpx>`,
+      'utf8'
+    )
+  );
+
+  assert.equal(manifest.manifest_meta.work_area_name, '828');
+  assert.equal(manifest.stops.length, 1);
+  assert.equal(manifest.stops[0].sequence, 1);
+  assert.equal(manifest.stops[0].address, '19752 MOUNT ISRAEL PL');
+  assert.equal(manifest.stops[0].ready_time, '10:00');
+  assert.equal(manifest.stops[0].close_time, '12:00');
+  assert.equal(manifest.stops[0].has_time_commit, true);
 });
 
 test('parseGPXManifest supports standard GPX name tags and coordinate attribute order variants', async () => {

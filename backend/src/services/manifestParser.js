@@ -115,6 +115,66 @@ function formatTimeValue(value) {
   return normalized === '00:00' ? null : normalized;
 }
 
+function normalizeManifestStopType(value) {
+  const normalized = String(value || '')
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+
+  if (!normalized) {
+    return '';
+  }
+
+  const compact = normalized.replace(/\s+/g, '');
+  const pickupValues = new Set(['p', 'pu', 'pux', 'pickup', 'pickupstop', 'scheduledpickup']);
+  const deliveryValues = new Set(['d', 'del', 'delivery', 'deliverystop', 'scheduleddelivery']);
+
+  if (pickupValues.has(compact) || /^pickup\b/.test(normalized) || /\bpickup\b/.test(normalized)) {
+    return 'pickup';
+  }
+
+  if (deliveryValues.has(compact) || /^delivery\b/.test(normalized) || /\bdelivery\b/.test(normalized)) {
+    return 'delivery';
+  }
+
+  return '';
+}
+
+function getManifestRowStopType(record = {}) {
+  const typeFields = ['Delivery/Pickup', 'Stop Type', 'Stop type', 'Service Type', 'Service type', 'Type'];
+
+  for (const field of typeFields) {
+    const stopType = normalizeManifestStopType(record[field]);
+
+    if (stopType) {
+      return stopType;
+    }
+  }
+
+  const pickupFlagFields = ['Pickup', 'Pickup Stop', 'Scheduled Pickup'];
+
+  for (const field of pickupFlagFields) {
+    const value = String(record[field] || '').trim().toLowerCase();
+
+    if (['yes', 'y', 'true', '1', 'pickup', 'pux'].includes(value)) {
+      return 'pickup';
+    }
+  }
+
+  if (
+    record.DeliveryTimeBegin !== undefined ||
+    record.DeliveryTimeEnd !== undefined ||
+    record.Completed !== undefined ||
+    record.Recipient !== undefined
+  ) {
+    return 'delivery';
+  }
+
+  return '';
+}
+
 function normalizeSuspiciousBusinessDeliveryWindow({ type, contact_name, address_line2, ready_time, close_time }) {
   if (type !== 'delivery') {
     return { ready_time, close_time };
@@ -567,6 +627,10 @@ function getStopDetailsSheet(workbook) {
   return workbook.Sheets['Stop Details'] || workbook.Sheets[workbook.SheetNames[1]];
 }
 
+function getPackageDetailsSheet(workbook) {
+  return workbook.Sheets['Package Details'] || null;
+}
+
 function getHeaderLookup(rows) {
   return rows.reduce((lookup, row) => {
     if (!Array.isArray(row) || row.length < 2) {
@@ -583,11 +647,262 @@ function getHeaderLookup(rows) {
   }, {});
 }
 
+function isPickupManifestWorkbook(headerLookup = {}, stopHeaders = []) {
+  const page = String(headerLookup.Page || '').trim();
+  if (/pickup manifest/i.test(page)) {
+    return true;
+  }
+
+  const normalizedHeaders = new Set((stopHeaders || []).map((header) => normalizeHeaderKey(header)));
+  return (
+    normalizedHeaders.has('puid') &&
+    normalizedHeaders.has('shipper name') &&
+    normalizedHeaders.has('pkgs picked up')
+  );
+}
+
+function buildStopPackageKey({ stopNumber, sid, addressLine1 }) {
+  return [
+    String(stopNumber ?? '').trim(),
+    String(sid ?? '').trim(),
+    String(addressLine1 || '').trim().toUpperCase()
+  ].join('|');
+}
+
+function isAdultSignatureService(value) {
+  const normalized = String(value || '').toUpperCase();
+  return /\bA(?:DULT)?SIGN\b/.test(normalized) || normalized.includes('ADULT');
+}
+
+function isSignatureService(value) {
+  const normalized = String(value || '').toUpperCase();
+  return isAdultSignatureService(normalized) || normalized.includes('SIGN');
+}
+
+function buildPackageDetailsByStop(packageDetailsSheet) {
+  if (!packageDetailsSheet) {
+    return new Map();
+  }
+
+  const packageRows = readSheetRows(packageDetailsSheet);
+  if (packageRows.length < 2) {
+    return new Map();
+  }
+
+  const [packageHeaders, ...dataRows] = packageRows;
+  const packagesByStop = new Map();
+
+  for (const row of dataRows) {
+    if (!Array.isArray(row) || row.every((cell) => String(cell || '').trim() === '')) {
+      continue;
+    }
+
+    const record = getStopRowObject(packageHeaders, row);
+    const stopNumber = parseInteger(record['ST#'], null);
+    const sid = String(record.SID ?? '').trim();
+    const addressLine1 = String(record['Address Line 1'] || '').trim();
+    const trackingNumber = String(record['Track ID'] || record['Tracking Number'] || record.Tracking || '').trim();
+
+    if (!trackingNumber) {
+      continue;
+    }
+
+    const serviceCode = normalizeOptionalText(record['Prem Svc'] || record['Service Code'] || record.Service);
+    const key = buildStopPackageKey({ stopNumber, sid, addressLine1 });
+    const existing = packagesByStop.get(key) || [];
+
+    existing.push({
+      tracking_number: trackingNumber,
+      service_code: serviceCode,
+      requires_signature: isSignatureService(serviceCode),
+      requires_adult_signature: isAdultSignatureService(serviceCode),
+      hazmat: false
+    });
+    packagesByStop.set(key, existing);
+  }
+
+  return packagesByStop;
+}
+
 function getStopRowObject(headerRow, row) {
   return headerRow.reduce((record, header, index) => {
     record[String(header || '').trim()] = row[index];
     return record;
   }, {});
+}
+
+function normalizeHeaderKey(value) {
+  return String(value || '')
+    .trim()
+    .toLowerCase()
+    .replace(/[#]/g, ' number ')
+    .replace(/&/g, ' and ')
+    .replace(/[^a-z0-9]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+const CONTACT_FIELD_ALIASES = new Map([
+  ['contact name', 'contact_name'],
+  ['contact', 'contact_name'],
+  ['recipient', 'contact_name'],
+  ['recipient name', 'contact_name'],
+  ['customer', 'contact_name'],
+  ['customer name', 'contact_name'],
+  ['business name', 'business_name'],
+  ['company', 'company_name'],
+  ['company name', 'company_name'],
+  ['phone', 'primary_phone'],
+  ['phone number', 'primary_phone'],
+  ['customer phone', 'primary_phone'],
+  ['contact phone', 'primary_phone'],
+  ['primary phone', 'primary_phone'],
+  ['telephone', 'primary_phone'],
+  ['tel', 'primary_phone'],
+  ['alt phone', 'alternate_phone'],
+  ['alternate phone', 'alternate_phone'],
+  ['secondary phone', 'alternate_phone'],
+  ['email', 'email'],
+  ['email address', 'email'],
+  ['instructions', 'customer_instructions'],
+  ['stop instructions', 'delivery_instructions'],
+  ['customer instructions', 'customer_instructions'],
+  ['delivery instructions', 'delivery_instructions'],
+  ['driver instructions', 'delivery_instructions'],
+  ['notes', 'customer_instructions'],
+  ['consignee', 'consignee'],
+  ['shipper', 'shipper'],
+  ['sender', 'shipper']
+]);
+
+const CONTACT_LIKE_HEADER_PATTERN = /\b(contact|recipient|customer|consignee|business|company|phone|telephone|tel|email|instruction|note|shipper|sender)\b/i;
+const CONTACT_FIELDS = [
+  'contact_name',
+  'business_name',
+  'company_name',
+  'primary_phone',
+  'alternate_phone',
+  'email',
+  'customer_instructions',
+  'delivery_instructions',
+  'consignee',
+  'shipper'
+];
+
+function normalizeOptionalText(value) {
+  const normalized = String(value ?? '').replace(/\s+/g, ' ').trim();
+  return normalized || null;
+}
+
+function normalizePhoneDisplay(value) {
+  const normalized = normalizeOptionalText(value);
+  if (!normalized) {
+    return null;
+  }
+
+  return normalized;
+}
+
+function pickFirstNonEmpty(...values) {
+  for (const value of values) {
+    const normalized = normalizeOptionalText(value);
+    if (normalized) {
+      return normalized;
+    }
+  }
+
+  return null;
+}
+
+function assignContactField(contactData, field, value) {
+  const normalized = field === 'primary_phone' || field === 'alternate_phone'
+    ? normalizePhoneDisplay(value)
+    : normalizeOptionalText(value);
+
+  if (!normalized || contactData[field]) {
+    return;
+  }
+
+  contactData[field] = normalized;
+}
+
+function extractManifestContactFields(record = {}, headerRow = []) {
+  const contactData = {};
+  const rawContactMetadata = {};
+
+  for (const header of headerRow || []) {
+    const originalHeader = String(header || '').trim();
+    if (!originalHeader) {
+      continue;
+    }
+
+    const value = normalizeOptionalText(record[originalHeader]);
+    if (!value) {
+      continue;
+    }
+
+    const normalizedHeader = normalizeHeaderKey(originalHeader);
+    const mappedField = CONTACT_FIELD_ALIASES.get(normalizedHeader);
+
+    if (mappedField) {
+      assignContactField(contactData, mappedField, value);
+      continue;
+    }
+
+    if (CONTACT_LIKE_HEADER_PATTERN.test(originalHeader)) {
+      rawContactMetadata[originalHeader] = value;
+    }
+  }
+
+  if (!contactData.contact_name) {
+    contactData.contact_name = pickFirstNonEmpty(contactData.consignee);
+  }
+
+  if (Object.keys(rawContactMetadata).length) {
+    contactData.raw_contact_metadata = rawContactMetadata;
+  }
+
+  if (CONTACT_FIELDS.some((field) => contactData[field]) || contactData.raw_contact_metadata) {
+    contactData.contact_source = 'manifest';
+  }
+
+  return contactData;
+}
+
+function mergeRawContactMetadata(...metadataEntries) {
+  const merged = {};
+
+  for (const metadata of metadataEntries) {
+    if (!metadata || typeof metadata !== 'object' || Array.isArray(metadata)) {
+      continue;
+    }
+
+    for (const [key, value] of Object.entries(metadata)) {
+      const normalized = normalizeOptionalText(value);
+      if (key && normalized && !merged[key]) {
+        merged[key] = normalized;
+      }
+    }
+  }
+
+  return Object.keys(merged).length ? merged : null;
+}
+
+function mergeStopContactFields(primaryRow = {}, fallbackRow = {}) {
+  const merged = {};
+
+  for (const field of CONTACT_FIELDS) {
+    merged[field] = pickFirstNonEmpty(primaryRow?.[field], fallbackRow?.[field]);
+  }
+
+  const rawContactMetadata = mergeRawContactMetadata(primaryRow?.raw_contact_metadata, fallbackRow?.raw_contact_metadata);
+  if (rawContactMetadata) {
+    merged.raw_contact_metadata = rawContactMetadata;
+  }
+
+  merged.contact_source = pickFirstNonEmpty(primaryRow?.contact_source, fallbackRow?.contact_source);
+
+  return merged;
 }
 
 function normalizeSyntheticStopFingerprint(row) {
@@ -607,8 +922,13 @@ function buildParsedStop(stopNumber, deliveryRow, pickupRow, options = {}) {
   const baseRow = deliveryRow || pickupRow;
   const deliveryPackageCount = deliveryRow ? deliveryRow.package_count : 0;
   const pickupPackageCount = pickupRow ? pickupRow.package_count : 0;
+  const packages = [
+    ...(deliveryRow?.packages || []),
+    ...(pickupRow?.packages || [])
+  ];
   const hasDelivery = Boolean(deliveryRow);
   const hasPickup = Boolean(pickupRow);
+  // Pickup-only and combined pickup/delivery rows are operational stops; pickup totals are a slice of total stops.
   const sequence = Number.isInteger(options.sequence) && options.sequence > 0
     ? options.sequence
     : stopNumber;
@@ -623,6 +943,7 @@ function buildParsedStop(stopNumber, deliveryRow, pickupRow, options = {}) {
   );
   const readyTime = hasDelivery ? deliveryRow.ready_time : pickupRow.ready_time;
   const closeTime = hasDelivery ? deliveryRow.close_time : pickupRow.close_time;
+  const contactFields = mergeStopContactFields(baseRow, hasDelivery ? pickupRow : null);
 
   return {
     stop_number: Number.isInteger(stopNumber) && stopNumber > 0 ? stopNumber : sequence,
@@ -631,7 +952,18 @@ function buildParsedStop(stopNumber, deliveryRow, pickupRow, options = {}) {
     type: hasDelivery && hasPickup ? 'combined' : hasDelivery ? 'delivery' : 'pickup',
     has_pickup: hasPickup,
     has_delivery: hasDelivery,
-    contact_name: baseRow.contact_name,
+    contact_name: contactFields.contact_name,
+    business_name: contactFields.business_name,
+    company_name: contactFields.company_name,
+    primary_phone: contactFields.primary_phone,
+    alternate_phone: contactFields.alternate_phone,
+    email: contactFields.email,
+    customer_instructions: contactFields.customer_instructions,
+    delivery_instructions: contactFields.delivery_instructions,
+    consignee: contactFields.consignee,
+    shipper: contactFields.shipper,
+    contact_source: contactFields.contact_source,
+    raw_contact_metadata: contactFields.raw_contact_metadata,
     address_line1: baseRow.address_line1,
     address_line2: baseRow.address_line2,
     city: baseRow.city,
@@ -642,6 +974,7 @@ function buildParsedStop(stopNumber, deliveryRow, pickupRow, options = {}) {
     package_count: deliveryPackageCount + pickupPackageCount,
     delivery_package_count: deliveryPackageCount,
     pickup_package_count: pickupPackageCount,
+    packages,
     sid: hasDelivery ? deliveryRow.sid : pickupRow.sid,
     ready_time: readyTime,
     close_time: closeTime,
@@ -664,13 +997,126 @@ function buildParsedStop(stopNumber, deliveryRow, pickupRow, options = {}) {
       address_line1: baseRow.address_line1,
       address_line2: baseRow.address_line2,
       address: baseRow.full_address,
-      contact_name: baseRow.contact_name,
+      contact_name: contactFields.contact_name,
       is_business: isBusiness
     }),
     lat: null,
     lng: null,
-    name: baseRow.contact_name || baseRow.full_address || (hasDelivery ? deliveryRow.sid : pickupRow.sid),
+    name: contactFields.contact_name || baseRow.full_address || (hasDelivery ? deliveryRow.sid : pickupRow.sid),
     is_pickup: !hasDelivery && hasPickup
+  };
+}
+
+function parsePickupXLSManifest({ manifestMeta, sheetHeaders, dataRows }) {
+  const stops = [];
+
+  for (const [rowIndex, row] of dataRows.entries()) {
+    if (!Array.isArray(row) || row.every((cell) => String(cell || '').trim() === '')) {
+      continue;
+    }
+
+    const record = getStopRowObject(sheetHeaders, row);
+    const puid = parseInteger(record.PUID, null);
+    const sequence = Number.isInteger(puid) && puid > 0 ? puid : rowIndex + 1;
+    const addressLine1 = String(record['Address Line 1'] || '').trim();
+    const city = String(record.City || '').trim();
+    const state = String(record.State || '').trim();
+    const postalCode = String(record['Postal Code'] || '').trim();
+
+    const hasStreetLikeAddress =
+      /\d/.test(addressLine1) &&
+      /[a-z]/i.test(addressLine1) &&
+      !/^\d{5}(?:-\d{4})?$/.test(addressLine1);
+
+    if (!hasStreetLikeAddress || !city || !state || !postalCode) {
+      continue;
+    }
+
+    const shipperName = normalizeOptionalText(record['Shipper Name']);
+    const scheduledPackageCount = parseInteger(record['# Pkgs'], 0);
+    const pickedUpPackageCount = parseInteger(record['Pkgs Picked Up'], 0);
+    const packageCount = Math.max(scheduledPackageCount, pickedUpPackageCount, 0);
+    const rawContactMetadata = {};
+
+    for (const metadataField of ['PU List', 'Station', 'WA', 'PUID', 'Type', 'Shipper #', 'Origin Station & WA#', 'PU Closed', 'Reas Code', 'Pkgs Picked Up']) {
+      const value = normalizeOptionalText(record[metadataField]);
+      if (value) {
+        rawContactMetadata[metadataField] = value;
+      }
+    }
+
+    const addressLine2 = normalizeSecondaryAddressLine(
+      addressLine1,
+      String(record['Address Line 2'] || '').trim()
+    );
+    const fullAddress = buildAddress(addressLine1, addressLine2, city, state, postalCode);
+    const readyTime = formatTimeValue(record.Ready);
+    const closeTime = formatTimeValue(record.Close);
+    const secondaryAddressType = detectSecondaryAddressType(addressLine2);
+    const unitLabel = extractUnitLikeValue(addressLine2);
+    const buildingLabel = extractBuildingLabel(addressLine2);
+    const floorLabel = extractFloorLabel(addressLine2);
+
+    stops.push({
+      stop_number: sequence,
+      sequence,
+      type: 'pickup',
+      has_pickup: true,
+      has_delivery: false,
+      contact_name: shipperName,
+      business_name: shipperName,
+      company_name: null,
+      primary_phone: null,
+      alternate_phone: null,
+      email: null,
+      customer_instructions: null,
+      delivery_instructions: null,
+      consignee: null,
+      shipper: shipperName,
+      contact_source: shipperName || Object.keys(rawContactMetadata).length ? 'manifest' : null,
+      raw_contact_metadata: Object.keys(rawContactMetadata).length ? rawContactMetadata : null,
+      address_line1: addressLine1,
+      address_line2: addressLine2,
+      city,
+      state,
+      postal_code: postalCode,
+      full_address: fullAddress,
+      address: fullAddress,
+      package_count: packageCount,
+      delivery_package_count: 0,
+      pickup_package_count: packageCount,
+      packages: [],
+      sid: '0',
+      ready_time: readyTime,
+      close_time: closeTime,
+      pickup_ready_time: readyTime,
+      pickup_close_time: closeTime,
+      has_time_commit: Boolean(readyTime || closeTime),
+      is_business: true,
+      is_apartment_unit: false,
+      secondary_address_type: secondaryAddressType,
+      unit_label: secondaryAddressType === 'unit' ? unitLabel : null,
+      suite_label: secondaryAddressType === 'suite' ? unitLabel : null,
+      building_label: buildingLabel,
+      floor_label: floorLabel,
+      location_type: inferLocationType({
+        address_line1: addressLine1,
+        address_line2: addressLine2,
+        address: fullAddress,
+        contact_name: shipperName,
+        is_business: true,
+        type: 'pickup'
+      }),
+      lat: null,
+      lng: null,
+      name: shipperName || fullAddress,
+      is_pickup: true
+    });
+  }
+
+  return {
+    manifest_meta: manifestMeta,
+    stops: stops.sort((left, right) => left.sequence - right.sequence)
   };
 }
 
@@ -705,7 +1151,7 @@ function parseGpxWaypointName(rawName, fallbackSequence) {
   const normalized = String(rawName || '').trim();
   const fallbackAddress = normalized || `Stop ${fallbackSequence}`;
   const structured = normalized.match(
-    /^Seq\s+(\d+)\s*:\s*SID\s+([^:]+)\s*:\s*(.+?)\s*:\s*Ready\s+([0-9:]+)\s*:\s*Close\s+([0-9:]+)\s*$/i
+    /^Seq\s+(\d+)\s*:\s*SID\s+([^:]+)\s*:\s*(.+?)\s*:\s*(?:Ready|DeliveryTimeBegin)\s+([0-9:]+)\s*:\s*(?:Close|DeliveryTimeEnd)\s+([0-9:]+)\s*$/i
   );
 
   if (!structured) {
@@ -822,6 +1268,7 @@ function parseXLSManifest(fileBuffer) {
   const workbook = XLSX.read(fileBuffer, { type: 'buffer', raw: false });
   const headerSheet = getHeaderSheet(workbook);
   const stopDetailsSheet = getStopDetailsSheet(workbook);
+  const packageDetailsByStop = buildPackageDetailsByStop(getPackageDetailsSheet(workbook));
 
   if (!headerSheet || !stopDetailsSheet) {
     throw new Error('FedEx Combined Manifest must contain Header and Stop Details sheets');
@@ -848,6 +1295,10 @@ function parseXLSManifest(fileBuffer) {
   }
 
   const [sheetHeaders, ...dataRows] = stopRows;
+  if (isPickupManifestWorkbook(headerLookup, sheetHeaders)) {
+    return parsePickupXLSManifest({ manifestMeta, sheetHeaders, dataRows });
+  }
+
   const groupedStops = new Map();
   const pendingSyntheticStopKeys = new Map();
   let nextSyntheticSequence = 1;
@@ -859,8 +1310,8 @@ function parseXLSManifest(fileBuffer) {
 
     const record = getStopRowObject(sheetHeaders, row);
     const stopNumber = parseInteger(record['ST#'], null);
-    const type = String(record['Delivery/Pickup'] || '').trim().toLowerCase();
-    if (type !== 'delivery' && type !== 'pickup') {
+    const type = getManifestRowStopType(record);
+    if (!type) {
       continue;
     }
 
@@ -880,10 +1331,23 @@ function parseXLSManifest(fileBuffer) {
       continue;
     }
 
+    const contactFields = extractManifestContactFields(record, sheetHeaders);
+
     const parsedRow = {
       stop_number: stopNumber,
       type,
-      contact_name: String(record['Contact Name'] || '').trim(),
+      contact_name: contactFields.contact_name || '',
+      business_name: contactFields.business_name || null,
+      company_name: contactFields.company_name || null,
+      primary_phone: contactFields.primary_phone || null,
+      alternate_phone: contactFields.alternate_phone || null,
+      email: contactFields.email || null,
+      customer_instructions: contactFields.customer_instructions || null,
+      delivery_instructions: contactFields.delivery_instructions || null,
+      consignee: contactFields.consignee || null,
+      shipper: contactFields.shipper || null,
+      contact_source: contactFields.contact_source || null,
+      raw_contact_metadata: contactFields.raw_contact_metadata || null,
       address_line1: addressLine1,
       address_line2: normalizeSecondaryAddressLine(
         addressLine1,
@@ -894,9 +1358,21 @@ function parseXLSManifest(fileBuffer) {
       postal_code: postalCode,
       package_count: parseInteger(record['# Pkgs'], 0),
       sid: String(record.SID ?? '').trim(),
-      ready_time: formatTimeValue(record.Ready),
-      close_time: formatTimeValue(record.Close)
+      ready_time: formatTimeValue(pickFirstNonEmpty(record.Ready, record.DeliveryTimeBegin)),
+      close_time: formatTimeValue(pickFirstNonEmpty(record.Close, record.DeliveryTimeEnd)),
+      completed: String(record.Completed || '').trim().toUpperCase() === 'Y'
     };
+
+    const packageDetailsKey = buildStopPackageKey({
+      stopNumber,
+      sid: parsedRow.sid,
+      addressLine1: parsedRow.address_line1
+    });
+    const packageDetails = packageDetailsByStop.get(packageDetailsKey) || [];
+    if (packageDetails.length) {
+      parsedRow.packages = packageDetails;
+      parsedRow.package_count = packageDetails.length;
+    }
 
     const normalizedTimeWindow = normalizeSuspiciousBusinessDeliveryWindow(parsedRow);
     parsedRow.ready_time = normalizedTimeWindow.ready_time;
@@ -998,6 +1474,7 @@ module.exports = {
   extractUnitLikeValue,
   extractBuildingLabel,
   extractFloorLabel,
+  normalizeManifestStopType,
   inferLocationType,
   parseGPXManifest,
   parseXLSManifest,
