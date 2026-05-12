@@ -248,11 +248,8 @@ function buildPendingManifestStopKeyWithDuplicateSids(stop, fallbackKey, duplica
   return buildStopAddressAlias(stop) || fallbackKey;
 }
 
-function buildStopAddressAlias(stop, slice = '') {
-  const streetCandidate = String(stop?.address_line1 || stop?.address || '')
-    .split(',')[0]
-    .trim();
-  const normalizedAddress = normalizeComparisonValue(streetCandidate)
+function normalizeStopStreetAlias(value) {
+  return normalizeComparisonValue(value)
     .replace(/\bavenue\b/g, 'ave')
     .replace(/\bstreet\b/g, 'st')
     .replace(/\broad\b/g, 'rd')
@@ -267,6 +264,18 @@ function buildStopAddressAlias(stop, slice = '') {
     .replace(/[^a-z0-9]+/g, ' ')
     .replace(/\s+/g, ' ')
     .trim();
+}
+
+function buildStopAddressAlias(stop, slice = '') {
+  const streetCandidate = String(stop?.address_line1 || stop?.address || '')
+    .split(',')[0]
+    .trim();
+  const includeSecondary = slice !== 'pickup-address';
+  const normalizedAddress = normalizeStopStreetAlias(
+    includeSecondary
+      ? [streetCandidate, stop?.address_line2 || ''].filter(Boolean).join(' ')
+      : streetCandidate
+  );
 
   if (!normalizedAddress) {
     return null;
@@ -421,6 +430,26 @@ function mergePackageDetails(primaryPackages = [], fallbackPackages = []) {
   }
 
   return merged;
+}
+
+function dedupePackageRows(packageRows = []) {
+  const seenTrackingNumbers = new Set();
+  const dedupedRows = [];
+
+  for (const row of packageRows || []) {
+    const trackingNumber = String(row?.tracking_number || '').trim();
+    if (!trackingNumber || seenTrackingNumbers.has(trackingNumber)) {
+      continue;
+    }
+
+    seenTrackingNumbers.add(trackingNumber);
+    dedupedRows.push({
+      ...row,
+      tracking_number: trackingNumber
+    });
+  }
+
+  return dedupedRows;
 }
 
 function mergeLayeredManifestStop(primaryStop = {}, fallbackStop = {}) {
@@ -995,7 +1024,7 @@ function createManifestIngestService(options = {}) {
 
     const stopIdBySequence = new Map(insertedStops.map((stop) => [stop.sequence_order, stop.id]));
 
-    const packageInsertPayload = routeStops.flatMap((stop) => {
+    const packageInsertPayload = dedupePackageRows(routeStops.flatMap((stop) => {
       const explicitPackages = Array.isArray(stop.packages)
         ? stop.packages.filter((pkg) => pkg?.tracking_number)
         : [];
@@ -1025,7 +1054,7 @@ function createManifestIngestService(options = {}) {
         requires_adult_signature: false,
         hazmat: false
       }));
-    });
+    }));
 
     let { error: packagesError } = await supabase
       .from('packages')

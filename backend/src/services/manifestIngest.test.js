@@ -283,3 +283,72 @@ test('mergePendingManifestStops matches duplicate SID stops by address instead o
   assert.equal(merged[1].address, '3086 STARRY NIGHT DR, ESCONDIDO, CA 92029');
   assert.equal(merged[1].primary_phone, '555-111-0002');
 });
+
+test('mergePendingManifestStops keeps same-street delivery suites separate when SIDs repeat', () => {
+  const merged = __private.mergePendingManifestStops(
+    [
+      {
+        id: 'existing-1',
+        sequence: 1,
+        stop_number: 1,
+        type: 'delivery',
+        has_delivery: true,
+        has_pickup: false,
+        address: '124 MARKET PL, ESCONDIDO, CA 92029',
+        address_line1: '124 MARKET PL',
+        address_line2: null,
+        sid: '5006',
+        package_count: 1
+      },
+      {
+        id: 'existing-2',
+        sequence: 2,
+        stop_number: 2,
+        type: 'delivery',
+        has_delivery: true,
+        has_pickup: false,
+        address: '124 MARKET PL, STE 400, ESCONDIDO, CA 92029',
+        address_line1: '124 MARKET PL',
+        address_line2: 'STE 400',
+        sid: '5006',
+        package_count: 1
+      }
+    ],
+    [
+      {
+        sequence: 1,
+        stop_number: 1,
+        type: 'delivery',
+        has_delivery: true,
+        has_pickup: false,
+        address: '124 MARKET PL, ESCONDIDO, CA 92029',
+        address_line1: '124 MARKET PL',
+        address_line2: null,
+        sid: '4597',
+        primary_phone: '555-111-0001',
+        packages: [{ tracking_number: 'TRACK-1' }],
+        package_count: 1
+      },
+      {
+        sequence: 2,
+        stop_number: 2,
+        type: 'delivery',
+        has_delivery: true,
+        has_pickup: false,
+        address: '124 MARKET PL, STE 400, ESCONDIDO, CA 92029',
+        address_line1: '124 MARKET PL',
+        address_line2: 'STE 400',
+        sid: '5006',
+        primary_phone: '555-111-0002',
+        packages: [{ tracking_number: 'TRACK-2' }],
+        package_count: 1
+      }
+    ]
+  );
+
+  assert.equal(merged.length, 2);
+  assert.equal(merged[0].primary_phone, '555-111-0001');
+  assert.equal(merged[0].packages[0].tracking_number, 'TRACK-1');
+  assert.equal(merged[1].primary_phone, '555-111-0002');
+  assert.equal(merged[1].packages[0].tracking_number, 'TRACK-2');
+});
