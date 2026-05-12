@@ -33,13 +33,85 @@ function getStopAddressKey(stop) {
   return normalizeAddressKey(stop?.address_line1 || stop?.address || '');
 }
 
+function buildDuplicateSidSet(stops = []) {
+  const sidCounts = new Map();
+
+  for (const stop of stops || []) {
+    const sid = getStopSid(stop);
+    if (!sid) {
+      continue;
+    }
+
+    sidCounts.set(sid, (sidCounts.get(sid) || 0) + 1);
+  }
+
+  return new Set(
+    [...sidCounts.entries()]
+      .filter(([, count]) => count > 1)
+      .map(([sid]) => sid)
+  );
+}
+
+const CONTACT_FIELDS = [
+  'contact_name',
+  'business_name',
+  'company_name',
+  'primary_phone',
+  'alternate_phone',
+  'email',
+  'customer_instructions',
+  'delivery_instructions',
+  'consignee',
+  'shipper',
+  'contact_source',
+  'contact_last_imported_at'
+];
+
+function hasValue(value) {
+  return value !== null && value !== undefined && String(value).trim() !== '';
+}
+
+function mergeRawContactMetadata(primaryMetadata, fallbackMetadata) {
+  const merged = {};
+
+  for (const metadata of [fallbackMetadata, primaryMetadata]) {
+    if (!metadata || typeof metadata !== 'object' || Array.isArray(metadata)) {
+      continue;
+    }
+
+    for (const [key, value] of Object.entries(metadata)) {
+      if (key && hasValue(value)) {
+        merged[key] = value;
+      }
+    }
+  }
+
+  return Object.keys(merged).length ? merged : null;
+}
+
+function mergeContactFields(primaryStop = {}, fallbackStop = {}) {
+  const merged = {};
+
+  for (const field of CONTACT_FIELDS) {
+    merged[field] = hasValue(primaryStop[field]) ? primaryStop[field] : fallbackStop[field] ?? null;
+  }
+
+  const rawContactMetadata = mergeRawContactMetadata(primaryStop.raw_contact_metadata, fallbackStop.raw_contact_metadata);
+  if (rawContactMetadata) {
+    merged.raw_contact_metadata = rawContactMetadata;
+  }
+
+  return merged;
+}
+
 function buildTrustedSequenceSet(primaryStops = [], gpxBySequence = new Map(), gpxBySid = new Map(), gpxByAddress = new Map()) {
   const explicitMatches = [];
+  const duplicatePrimarySids = buildDuplicateSidSet(primaryStops);
 
   for (const stop of primaryStops) {
     const sid = getStopSid(stop);
     const addressKey = getStopAddressKey(stop);
-    const sidMatch = sid ? gpxBySid.get(sid) : null;
+    const sidMatch = sid && !duplicatePrimarySids.has(sid) ? gpxBySid.get(sid) : null;
     const addressMatch = !sidMatch && addressKey ? gpxByAddress.get(addressKey) : null;
     const match = sidMatch || addressMatch || null;
 
@@ -73,8 +145,11 @@ function mergeManifestStops(primaryStops = [], gpxStops = []) {
   }
 
   const gpxBySequence = new Map();
+  const gpxBySidCandidates = new Map();
   const gpxBySid = new Map();
   const gpxByAddress = new Map();
+  const duplicateGpxSids = buildDuplicateSidSet(gpxStops);
+  const duplicatePrimarySids = buildDuplicateSidSet(primaryStops);
 
   for (const stop of gpxStops) {
     if (Number.isInteger(stop?.sequence)) {
@@ -83,7 +158,9 @@ function mergeManifestStops(primaryStops = [], gpxStops = []) {
 
     const sid = getStopSid(stop);
     if (sid) {
-      gpxBySid.set(sid, stop);
+      const existing = gpxBySidCandidates.get(sid) || [];
+      existing.push(stop);
+      gpxBySidCandidates.set(sid, existing);
     }
 
     const normalizedAddress = normalizeAddressKey(stop?.address_line1 || stop?.address || '');
@@ -92,12 +169,18 @@ function mergeManifestStops(primaryStops = [], gpxStops = []) {
     }
   }
 
+  for (const [sid, candidates] of gpxBySidCandidates.entries()) {
+    if (!duplicateGpxSids.has(sid) && candidates.length === 1) {
+      gpxBySid.set(sid, candidates[0]);
+    }
+  }
+
   const trustedSequenceSet = buildTrustedSequenceSet(primaryStops, gpxBySequence, gpxBySid, gpxByAddress);
 
   return primaryStops.map((stop) => {
     const sid = getStopSid(stop);
     const normalizedAddress = getStopAddressKey(stop);
-    const bySid = sid ? gpxBySid.get(sid) : null;
+    const bySid = sid && !duplicatePrimarySids.has(sid) ? gpxBySid.get(sid) : null;
     const byAddress = !bySid && normalizedAddress ? gpxByAddress.get(normalizedAddress) : null;
     const bySequence = !bySid && !byAddress && trustedSequenceSet.has(stop?.sequence)
       ? gpxBySequence.get(stop.sequence)
@@ -114,6 +197,7 @@ function mergeManifestStops(primaryStops = [], gpxStops = []) {
 
     return {
       ...stop,
+      ...mergeContactFields(stop, match),
       sequence: hasMatchedSequence ? match.sequence : stop.sequence,
       stop_number: hasMatchedSequence ? match.sequence : stop.stop_number,
       uses_synthetic_sequence: hasMatchedSequence ? false : Boolean(stop?.uses_synthetic_sequence),
