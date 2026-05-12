@@ -110,7 +110,17 @@ function createApp(options = {}) {
   app.use(express.json());
 
   app.get('/health', (_req, res) => {
-    res.status(200).json({ status: 'ok', timestamp: new Date() });
+    res.status(200).json({
+      status: 'ok',
+      timestamp: new Date(),
+      release: {
+        commit:
+          process.env.RAILWAY_GIT_COMMIT_SHA ||
+          process.env.SOURCE_COMMIT ||
+          process.env.GIT_COMMIT_SHA ||
+          null
+      }
+    });
   });
 
   app.use('/auth', authRouter);
