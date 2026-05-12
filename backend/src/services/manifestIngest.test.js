@@ -451,3 +451,61 @@ test('validateManifestPackageTracking blocks duplicate package tracking before r
     }
   );
 });
+
+test('applyManifestRouteAtomically calls the database transaction RPC with staged stops and packages', async () => {
+  let rpcCall = null;
+  const supabase = {
+    rpc: async (name, params) => {
+      rpcCall = { name, params };
+      return {
+        data: {
+          route_id: 'route-atomic-1',
+          stop_ids: [{ sequence_order: 1, id: 'stop-atomic-1' }]
+        },
+        error: null
+      };
+    }
+  };
+
+  const result = await __private.applyManifestRouteAtomically({
+    supabase,
+    routeId: 'route-atomic-1',
+    accountId: 'acct-1',
+    existingRoute: { id: 'route-atomic-1' },
+    mergedIntoExistingRoute: true,
+    routePayload: { work_area_name: '829' },
+    stopInsertPayload: [{ sequence_order: 1, address: '101 Main St' }],
+    packageInsertPayload: [{ route_stop_sequence: 1, tracking_number: 'TRACK-1' }]
+  });
+
+  assert.equal(rpcCall.name, 'replace_manifest_route_atomic');
+  assert.equal(rpcCall.params.p_replace_existing, true);
+  assert.equal(rpcCall.params.p_existing_route_id, 'route-atomic-1');
+  assert.deepEqual(rpcCall.params.p_packages, [{ route_stop_sequence: 1, tracking_number: 'TRACK-1' }]);
+  assert.equal(result.appliedAtomically, true);
+  assert.equal(result.insertedStops[0].id, 'stop-atomic-1');
+});
+
+test('applyManifestRouteAtomically falls back when the transaction RPC migration is missing', async () => {
+  const supabase = {
+    rpc: async () => ({
+      data: null,
+      error: {
+        message: 'Could not find the function public.replace_manifest_route_atomic in the schema cache'
+      }
+    })
+  };
+
+  const result = await __private.applyManifestRouteAtomically({
+    supabase,
+    routeId: 'route-1',
+    accountId: 'acct-1',
+    existingRoute: null,
+    mergedIntoExistingRoute: false,
+    routePayload: {},
+    stopInsertPayload: [],
+    packageInsertPayload: []
+  });
+
+  assert.equal(result, null);
+});
