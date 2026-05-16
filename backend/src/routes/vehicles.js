@@ -57,6 +57,22 @@ const DEFAULT_REMINDER_SCHEDULE = {
   document_warning_days: 30
 };
 
+const VEHICLE_STATUS_OPTIONS = new Set([
+  'active',
+  'out_of_service',
+  'at_the_shop',
+  'not_on_schedule_b',
+  'needs_repair'
+]);
+
+const VEHICLE_STATUS_LABELS = {
+  active: 'Active',
+  out_of_service: 'Out of Service',
+  at_the_shop: 'At the shop',
+  not_on_schedule_b: 'Not on Schedule B',
+  needs_repair: 'Needs Repair'
+};
+
 const DEFAULT_CHECKLIST_TEMPLATE_FIELDS = [
   { id: 'date', label: 'Date', detail: 'Inspection date', enabled: true },
   { id: 'company_name', label: 'Company name', detail: 'CSA or company name', enabled: true },
@@ -360,6 +376,29 @@ function toNumeric(value) {
   return Number.isFinite(parsed) ? parsed : null;
 }
 
+function normalizeVehicleStatus(value = 'active') {
+  const normalized = String(value || 'active').trim().toLowerCase().replace(/[\s-]+/g, '_');
+
+  if (!VEHICLE_STATUS_OPTIONS.has(normalized)) {
+    return { error: 'vehicle_status is not supported' };
+  }
+
+  return {
+    vehicle_status: normalized,
+    is_active: normalized === 'active'
+  };
+}
+
+function getVehicleStatusLabel(vehicle = {}) {
+  const normalized = normalizeVehicleStatus(vehicle.vehicle_status || (vehicle.is_active === false ? 'out_of_service' : 'active'));
+
+  if (normalized.error) {
+    return vehicle.is_active === false ? 'Out of Service' : 'Active';
+  }
+
+  return VEHICLE_STATUS_LABELS[normalized.vehicle_status] || 'Active';
+}
+
 function normalizeTruckType({ truckType, customTruckType }) {
   const normalizedTruckType = truckType === null || truckType === undefined || truckType === ''
     ? null
@@ -563,7 +602,7 @@ function buildVehicleReadiness(
   const reasons = [];
 
   if (vehicle.is_active === false) {
-    reasons.push({ type: 'inactive', severity: 'blocked', label: 'Vehicle inactive' });
+    reasons.push({ type: 'inactive', severity: 'blocked', label: getVehicleStatusLabel(vehicle) });
   }
 
   if (maintenanceAlert.status === 'overdue') {
@@ -812,6 +851,8 @@ function createVehiclesRouter(options = {}) {
 
           return {
             ...vehicle,
+            vehicle_status: vehicle.vehicle_status || (vehicle.is_active === false ? 'out_of_service' : 'active'),
+            vehicle_status_label: getVehicleStatusLabel(vehicle),
             latest_maintenance: maintenanceByVehicleId.get(vehicle.id) || null,
             maintenance_alert: maintenanceAlert,
             today_assignment: todayAssignment,
@@ -850,6 +891,51 @@ function createVehiclesRouter(options = {}) {
     } catch (error) {
       console.error('Vehicles due-soon endpoint failed:', error);
       return res.status(500).json({ error: 'Failed to load vehicles due for service' });
+    }
+  });
+
+  router.get('/maintenance-records', requireManager, async (req, res) => {
+    try {
+      const { data: records, error } = await supabase
+        .from('vehicle_maintenance')
+        .select('*')
+        .eq('account_id', req.account.account_id)
+        .order('service_date', { ascending: false })
+        .order('created_at', { ascending: false })
+        .limit(100);
+
+      if (error) {
+        console.error('Vehicle maintenance records lookup failed:', error);
+        return res.status(500).json({ error: 'Failed to load maintenance records' });
+      }
+
+      const vehicleIds = [...new Set((records || []).map((record) => record.vehicle_id).filter(Boolean))];
+      let vehiclesById = new Map();
+
+      if (vehicleIds.length > 0) {
+        const { data: vehicles, error: vehiclesError } = await supabase
+          .from('vehicles')
+          .select('id, name, make, model, year, truck_type, custom_truck_type')
+          .eq('account_id', req.account.account_id)
+          .in('id', vehicleIds);
+
+        if (vehiclesError) {
+          console.error('Vehicle maintenance records vehicle lookup failed:', vehiclesError);
+          return res.status(500).json({ error: 'Failed to load maintenance records' });
+        }
+
+        vehiclesById = new Map((vehicles || []).map((vehicle) => [vehicle.id, vehicle]));
+      }
+
+      return res.status(200).json({
+        maintenance: (records || []).map((record) => ({
+          ...record,
+          vehicle: vehiclesById.get(record.vehicle_id) || null
+        }))
+      });
+    } catch (error) {
+      console.error('Vehicle maintenance records endpoint failed:', error);
+      return res.status(500).json({ error: 'Failed to load maintenance records' });
     }
   });
 
@@ -1314,6 +1400,7 @@ function createVehiclesRouter(options = {}) {
       'registration_expiration',
       'insurance_expiration',
       'current_mileage',
+      'vehicle_status',
       'notes',
       'is_active'
     ];
@@ -1340,6 +1427,21 @@ function createVehiclesRouter(options = {}) {
         }
 
         payload[field] = req.body[field];
+        if (!('vehicle_status' in (req.body || {}))) {
+          payload.vehicle_status = req.body[field] ? 'active' : 'out_of_service';
+        }
+        continue;
+      }
+
+      if (field === 'vehicle_status') {
+        const normalizedStatus = normalizeVehicleStatus(req.body[field]);
+
+        if (normalizedStatus.error) {
+          return res.status(400).json({ error: normalizedStatus.error });
+        }
+
+        payload.vehicle_status = normalizedStatus.vehicle_status;
+        payload.is_active = normalizedStatus.is_active;
         continue;
       }
 
@@ -1349,6 +1451,10 @@ function createVehiclesRouter(options = {}) {
       }
 
       payload[field] = req.body[field] === null ? null : String(req.body[field]).trim();
+    }
+
+    if ('vehicle_status' in payload) {
+      payload.is_active = payload.vehicle_status === 'active';
     }
 
     if (!Object.keys(payload).length) {
