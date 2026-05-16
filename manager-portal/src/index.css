@@ -4678,13 +4678,13 @@ button {
   gap: 14px;
   min-height: 0;
   overflow: auto;
-  padding: 16px 20px 0;
+  padding: 20px 28px 0;
 }
 
 .vehicle-form-section {
   display: grid;
-  gap: 10px;
-  padding-bottom: 14px;
+  gap: 12px;
+  padding-bottom: 18px;
   border-bottom: 1px solid var(--rr-color-border);
 }
 
@@ -4701,11 +4701,35 @@ button {
 .vehicle-form-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 10px;
+  gap: 14px 16px;
 }
 
 .vehicle-registration-grid {
   grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.vehicle-registration-grid .field-label {
+  min-height: 32px;
+}
+
+.vehicle-identity-grid .driver-modal-field,
+.vehicle-registration-grid .driver-modal-field,
+.vehicle-usage-grid .driver-modal-field {
+  min-width: 0;
+}
+
+.vehicle-identity-grid .text-field,
+.vehicle-registration-grid .text-field,
+.vehicle-usage-grid .text-field {
+  width: 100%;
+}
+
+.vehicle-truck-type-field {
+  max-width: none;
+}
+
+.vehicle-usage-grid {
+  align-items: start;
 }
 
 .vehicle-form-wide {
@@ -4713,9 +4737,12 @@ button {
 }
 
 .vehicle-form-helper {
+  display: block;
+  min-height: 18px;
   color: var(--rr-color-warning);
   font-size: 0.72rem;
   font-weight: 780;
+  line-height: 1.25;
 }
 
 .vehicle-form-helper.neutral {
@@ -5811,7 +5838,7 @@ button.manifest-attention-chip {
   display: grid;
   grid-template-columns:
     minmax(126px, 0.9fr)
-    minmax(128px, 0.78fr)
+    158px
     minmax(132px, 0.84fr)
     minmax(112px, 0.72fr)
     minmax(154px, 1fr)
@@ -6158,7 +6185,7 @@ button.manifest-attention-chip {
 .vehicle-detail-drawer {
   display: grid;
   grid-template-rows: auto minmax(0, 1fr);
-  width: min(560px, 100vw);
+  width: min(760px, calc(100vw - 40px));
   height: 100vh;
   background: #ffffff;
   border-left: 1px solid var(--rr-color-border);
@@ -6170,7 +6197,7 @@ button.manifest-attention-chip {
   grid-template-columns: minmax(0, 1fr) auto auto;
   gap: 12px;
   align-items: center;
-  padding: 18px 20px;
+  padding: 20px 28px;
   border-bottom: 1px solid var(--rr-color-border);
   background: #ffffff;
 }
@@ -6280,8 +6307,8 @@ button.manifest-attention-chip {
   flex-wrap: wrap;
   justify-content: flex-end;
   gap: 10px;
-  margin: 0 -20px;
-  padding: 12px 20px 18px;
+  margin: 0 -28px;
+  padding: 14px 28px 20px;
   border-top: 1px solid var(--rr-color-border);
   background: #ffffff;
   box-shadow: 0 -16px 28px rgba(23, 48, 66, 0.06);
@@ -6349,22 +6376,29 @@ button.manifest-attention-chip {
   flex-direction: column;
   align-items: flex-start;
   gap: 4px;
-  min-width: 150px;
+  width: 148px;
+  min-width: 0;
+  justify-self: start;
 }
 
 .vehicle-status-select {
-  width: 100%;
-  min-width: 138px;
-  border: 1px solid transparent;
+  width: 148px;
+  min-width: 0;
+  max-width: 100%;
+  min-height: 30px;
+  border: 1px solid rgba(22, 101, 52, 0.12);
   cursor: pointer;
   appearance: none;
   background-image: linear-gradient(45deg, transparent 50%, currentColor 50%),
     linear-gradient(135deg, currentColor 50%, transparent 50%);
-  background-position: calc(100% - 15px) 13px, calc(100% - 10px) 13px;
+  background-position: calc(100% - 15px) 12px, calc(100% - 10px) 12px;
   background-size: 5px 5px, 5px 5px;
   background-repeat: no-repeat;
-  padding-right: 28px;
-  text-align: center;
+  padding: 0 28px 0 14px;
+  overflow: hidden;
+  text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .vehicle-status-select:focus {
@@ -7145,8 +7179,7 @@ button.manifest-attention-chip {
   }
 
   .vehicle-detail-field-grid,
-  .vehicle-detail-summary-grid,
-  .vehicle-form-grid {
+  .vehicle-detail-summary-grid {
     grid-template-columns: 1fr;
   }
 
@@ -7195,6 +7228,27 @@ button.manifest-attention-chip {
     grid-template-columns: 1fr;
     gap: 8px;
     padding: 12px;
+  }
+}
+
+@media (max-width: 640px) {
+  .vehicle-detail-drawer {
+    width: 100vw;
+  }
+
+  .vehicle-detail-header,
+  .vehicle-form-body {
+    padding-inline: 18px;
+  }
+
+  .vehicle-form-grid,
+  .vehicle-registration-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .vehicle-detail-actions {
+    margin-inline: -18px;
+    padding-inline: 18px;
   }
 }
 
