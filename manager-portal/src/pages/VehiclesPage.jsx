@@ -886,7 +886,7 @@ function VehicleFormSections({ form, mode = 'create', onChange, vehicle }) {
         <div className="vehicle-form-section-heading">
           <span>Truck Identity</span>
         </div>
-        <div className="vehicle-form-grid">
+        <div className="vehicle-form-grid vehicle-identity-grid">
           <label className="driver-modal-field">
             <span className="field-label">Truck Number</span>
             <input className="text-field" onChange={(event) => onChange('name', event.target.value)} placeholder="Truck Number / FedEx ID" value={form.name} />
@@ -903,7 +903,7 @@ function VehicleFormSections({ form, mode = 'create', onChange, vehicle }) {
             <span className="field-label">Year</span>
             <input className="text-field" min="1900" onChange={(event) => onChange('year', event.target.value)} placeholder="Year" type="number" value={form.year} />
           </label>
-          <label className="driver-modal-field">
+          <label className="driver-modal-field vehicle-truck-type-field">
             <span className="field-label">Truck type</span>
             <select className="text-field" onChange={(event) => onChange('truck_type', event.target.value)} value={form.truck_type}>
               <option value="">Select truck type</option>
@@ -969,7 +969,7 @@ function VehicleFormSections({ form, mode = 'create', onChange, vehicle }) {
         <div className="vehicle-form-section-heading">
           <span>Usage and Assignment</span>
         </div>
-        <div className="vehicle-form-grid">
+        <div className="vehicle-form-grid vehicle-usage-grid">
           <label className="driver-modal-field">
             <span className="field-label">Mileage</span>
             <input
