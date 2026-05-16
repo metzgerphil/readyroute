@@ -17,6 +17,7 @@ const emptyVehicleForm = {
   plate: '',
   registration_expiration: '',
   insurance_expiration: '',
+  vehicle_status: 'active',
   current_mileage: '0'
 };
 
@@ -36,6 +37,14 @@ const TRUCK_TYPE_OPTIONS = [
   'Cargo Van',
   'Cutaway',
   'Other'
+];
+
+const VEHICLE_STATUS_OPTIONS = [
+  { value: 'active', label: 'Active' },
+  { value: 'out_of_service', label: 'Out of Service' },
+  { value: 'at_the_shop', label: 'At the shop' },
+  { value: 'not_on_schedule_b', label: 'Not on Schedule B' },
+  { value: 'needs_repair', label: 'Needs Repair' }
 ];
 
 const SERVICE_TYPE_OPTIONS = [
@@ -847,6 +856,7 @@ function getAssignedToLabel(vehicle) {
 function VehicleFormSections({ form, mode = 'create', onChange, vehicle }) {
   const statusMeta = vehicle ? getStatusMeta(vehicle) : null;
   const assignedTo = vehicle ? getAssignedToLabel(vehicle) : 'Not assigned';
+  const showFormHints = mode === 'edit';
   const quietWarnings = [
     !form.truck_type ? 'Missing truck type' : null,
     !form.plate || !form.registration_expiration ? 'Registration not recorded' : null,
@@ -885,7 +895,7 @@ function VehicleFormSections({ form, mode = 'create', onChange, vehicle }) {
                 <option key={option} value={option}>{option}</option>
               ))}
             </select>
-            {!form.truck_type ? <small className="vehicle-form-helper">Missing truck type</small> : null}
+            {showFormHints && !form.truck_type ? <small className="vehicle-form-helper">Missing truck type</small> : null}
           </label>
           {form.truck_type === 'Other' ? (
             <label className="driver-modal-field vehicle-form-wide">
@@ -905,16 +915,16 @@ function VehicleFormSections({ form, mode = 'create', onChange, vehicle }) {
         <div className="vehicle-form-section-heading">
           <span>Registration</span>
         </div>
-        <div className="vehicle-form-grid">
+        <div className="vehicle-form-grid vehicle-registration-grid">
           <label className="driver-modal-field">
-            <span className="field-label">Registration number</span>
+            <span className="field-label">Vehicle ID</span>
             <input
               className="text-field"
               onChange={(event) => onChange('plate', event.target.value.toUpperCase())}
-              placeholder="Registration number"
+              placeholder="Vehicle ID"
               value={form.plate}
             />
-            {!form.plate ? <small className="vehicle-form-helper">Registration not recorded</small> : null}
+            {showFormHints && !form.plate ? <small className="vehicle-form-helper">Vehicle ID not recorded</small> : null}
           </label>
           <label className="driver-modal-field">
             <span className="field-label">Registration expiration date</span>
@@ -924,7 +934,7 @@ function VehicleFormSections({ form, mode = 'create', onChange, vehicle }) {
               type="date"
               value={form.registration_expiration}
             />
-            {!form.registration_expiration ? <small className="vehicle-form-helper">Expiration not recorded</small> : null}
+            {showFormHints && !form.registration_expiration ? <small className="vehicle-form-helper">Expiration not recorded</small> : null}
           </label>
           <label className="driver-modal-field">
             <span className="field-label">Insurance expiration date</span>
@@ -934,7 +944,7 @@ function VehicleFormSections({ form, mode = 'create', onChange, vehicle }) {
               type="date"
               value={form.insurance_expiration}
             />
-            {!form.insurance_expiration ? <small className="vehicle-form-helper">Insurance not recorded</small> : null}
+            {showFormHints && !form.insurance_expiration ? <small className="vehicle-form-helper">Insurance not recorded</small> : null}
           </label>
         </div>
       </section>
@@ -954,13 +964,20 @@ function VehicleFormSections({ form, mode = 'create', onChange, vehicle }) {
               type="number"
               value={form.current_mileage}
             />
-            {!Number(form.current_mileage) ? <small className="vehicle-form-helper">Mileage not recorded</small> : null}
+            {showFormHints && !Number(form.current_mileage) ? <small className="vehicle-form-helper">Mileage not recorded</small> : null}
           </label>
           {mode === 'edit' && statusMeta ? (
-            <div className="vehicle-form-readonly">
-              <span>Status</span>
-              <StatusBadge tone={statusMeta.tone}>{statusMeta.label}</StatusBadge>
-            </div>
+            <label className="driver-modal-field">
+              <span className="field-label">Vehicle status</span>
+              <select className="text-field" onChange={(event) => onChange('vehicle_status', event.target.value)} value={form.vehicle_status || 'active'}>
+                {VEHICLE_STATUS_OPTIONS.map((option) => (
+                  <option key={option.value} value={option.value}>{option.label}</option>
+                ))}
+              </select>
+              <small className="vehicle-form-helper neutral">
+                {form.vehicle_status === 'active' ? 'Available for scheduling when readiness is clear.' : 'Held out of scheduling until set back to Active.'}
+              </small>
+            </label>
           ) : null}
           {mode === 'edit' ? (
             <div className="vehicle-form-readonly vehicle-form-wide">
@@ -989,7 +1006,7 @@ function VehicleFormSections({ form, mode = 'create', onChange, vehicle }) {
         </section>
       ) : null}
 
-      {quietWarnings.length ? (
+      {showFormHints && quietWarnings.length ? (
         <div className="vehicle-form-warning-list">
           {quietWarnings.map((warning) => <span key={warning}>{warning}</span>)}
         </div>
@@ -1204,13 +1221,13 @@ function MaintenanceHistoryModal({ vehicle, open, onClose, selectedCsaId }) {
             </div>
             {historyQuery.data.map((row) => (
               <div className="history-table-row" key={row.id}>
-                <span>{formatDate(row.service_date)}</span>
-                <span>{row.service_type || '—'}</span>
-                <span>{row.description}</span>
-                <span>{row.vendor_name || '—'}</span>
-                <span>{row.mileage_at_service ? formatMileage(row.mileage_at_service) : '—'}</span>
-                <span>{formatCurrency(row.cost)}</span>
-                <span>{row.next_service_date ? formatDate(row.next_service_date) : row.next_service_mileage ? `${formatMileage(row.next_service_mileage)} mi` : '—'}</span>
+                <span data-label="Date">{formatDate(row.service_date)}</span>
+                <span data-label="Type">{row.service_type || '—'}</span>
+                <span className="history-notes-cell" data-label="Notes">{row.description || '—'}</span>
+                <span data-label="Vendor">{row.vendor_name || '—'}</span>
+                <span data-label="Mileage">{row.mileage_at_service ? `${formatMileage(row.mileage_at_service)} mi` : '—'}</span>
+                <span data-label="Cost">{formatCurrency(row.cost)}</span>
+                <span data-label="Next Due">{row.next_service_date ? formatDate(row.next_service_date) : row.next_service_mileage ? `${formatMileage(row.next_service_mileage)} mi` : '—'}</span>
               </div>
             ))}
           </div>
@@ -1223,6 +1240,60 @@ function MaintenanceHistoryModal({ vehicle, open, onClose, selectedCsaId }) {
         </div>
       </div>
     </div>
+  );
+}
+
+function MaintenanceRecordsPanel({ isLoading, records, onViewHistory }) {
+  return (
+    <section className="card vehicles-table-card maintenance-records-card">
+      <div className="vehicles-table-toolbar">
+        <div>
+          <div className="card-title">Maintenance Records</div>
+          <div className="driver-meta">Recent service records, oil changes, tires, brakes, filters, and repairs.</div>
+        </div>
+        <span className="driver-meta">{records.length} record{records.length === 1 ? '' : 's'}</span>
+      </div>
+
+      {isLoading ? (
+        <div className="labor-empty-state">Loading maintenance records...</div>
+      ) : records.length ? (
+        <div className="maintenance-records-table">
+          <div className="maintenance-records-table-header">
+            <span>Date</span>
+            <span>Truck</span>
+            <span>Service</span>
+            <span>Notes</span>
+            <span>Vendor</span>
+            <span>Mileage</span>
+            <span>Next Due</span>
+            <span>Actions</span>
+          </div>
+          {records.map((record) => (
+            <div className="maintenance-records-table-row" key={record.id}>
+              <span>{formatDate(record.service_date)}</span>
+              <span className="vehicles-table-primary">
+                <strong>{record.vehicle?.name || 'Truck not found'}</strong>
+                <span>{record.vehicle ? getVehicleDescription(record.vehicle) : 'Vehicle record unavailable'}</span>
+              </span>
+              <span>{record.service_type || 'Maintenance'}</span>
+              <span>{record.description || '—'}</span>
+              <span>{record.vendor_name || '—'}</span>
+              <span>{record.mileage_at_service ? `${formatMileage(record.mileage_at_service)} mi` : '—'}</span>
+              <span>{record.next_service_date ? formatDate(record.next_service_date) : record.next_service_mileage ? `${formatMileage(record.next_service_mileage)} mi` : '—'}</span>
+              <span>
+                {record.vehicle ? (
+                  <button className="secondary-inline-button" onClick={() => onViewHistory(record.vehicle)} type="button">
+                    History
+                  </button>
+                ) : '—'}
+              </span>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <div className="labor-empty-state">No maintenance records yet. Log maintenance from a truck row to see it here.</div>
+      )}
+    </section>
   );
 }
 
@@ -1408,9 +1479,6 @@ function ChecklistTemplateScreen({
           <p>Default CSA vehicle maintenance inspection checklist.</p>
         </div>
         <div className="checklist-template-actions">
-          <button className="secondary-inline-button checklist-template-disabled-action" disabled type="button">
-            Add custom field coming soon
-          </button>
           <button className="primary-inline-button" disabled={isSaving} onClick={onSave} type="button">
             {isSaving ? 'Saving...' : 'Save Template'}
           </button>
@@ -1418,7 +1486,7 @@ function ChecklistTemplateScreen({
       </div>
 
       <p className="vehicle-settings-helper checklist-template-note">
-        This checklist is used for weekly full inspections in Option 1 and daily full inspections in Option 2.
+        Enable or disable checklist fields for weekly full inspections in Option 1 and daily full inspections in Option 2.
       </p>
 
       {isLoading ? <div className="driver-meta">Loading saved checklist template...</div> : null}
@@ -1611,6 +1679,33 @@ function VehiclePlaceholderPanel({ title, description }) {
   );
 }
 
+function InspectionsPanel() {
+  return (
+    <section className="card inspections-panel">
+      <div>
+        <div className="card-title">Inspections</div>
+        <div className="driver-meta">
+          Inspection review will activate after driver checklist submissions are connected.
+        </div>
+      </div>
+      <div className="inspections-readiness-grid">
+        <div>
+          <strong>Driver submissions</strong>
+          <span>Daily issue notes and completed checklist submissions will appear here.</span>
+        </div>
+        <div>
+          <strong>Weekly inspections</strong>
+          <span>Weekly full inspections will follow the weekday set in Vehicle Settings.</span>
+        </div>
+        <div>
+          <strong>Manager review</strong>
+          <span>Reported issues will route here for manager review before closing.</span>
+        </div>
+      </div>
+    </section>
+  );
+}
+
 export default function VehiclesPage() {
   const [searchParams] = useSearchParams();
   const queryClient = useQueryClient();
@@ -1700,6 +1795,15 @@ export default function VehiclesPage() {
       return response.data?.vehicles || [];
     },
     refetchInterval: 60000
+  });
+
+  const maintenanceRecordsQuery = useQuery({
+    queryKey: ['vehicle-maintenance-records', selectedCsaId],
+    enabled: Boolean(selectedCsaId) && activeVehiclesTab === 'Maintenance',
+    queryFn: async () => {
+      const response = await api.get('/vehicles/maintenance-records');
+      return response.data?.maintenance || [];
+    }
   });
 
   const createVehicleMutation = useMutation({
@@ -1807,6 +1911,7 @@ export default function VehiclesPage() {
       setMaintenanceError('');
       setToastMessage('Maintenance logged');
       await queryClient.invalidateQueries({ queryKey: ['fleet-vehicles', selectedCsaId] });
+      await queryClient.invalidateQueries({ queryKey: ['vehicle-maintenance-records', selectedCsaId] });
       if (historyVehicle) {
         await queryClient.invalidateQueries({ queryKey: ['vehicle-maintenance-history', selectedCsaId, historyVehicle.id] });
       }
@@ -1928,6 +2033,19 @@ export default function VehiclesPage() {
     () => getServiceTypeOptions(activeMaintenanceSettings),
     [activeMaintenanceSettings]
   );
+  const latestVehicleMaintenanceRecords = useMemo(
+    () => vehicles
+      .filter((vehicle) => vehicle.latest_maintenance)
+      .map((vehicle) => ({
+        ...vehicle.latest_maintenance,
+        id: vehicle.latest_maintenance.id || `${vehicle.id}-latest-maintenance`,
+        vehicle
+      })),
+    [vehicles]
+  );
+  const maintenanceRecords = maintenanceRecordsQuery.data?.length
+    ? maintenanceRecordsQuery.data
+    : latestVehicleMaintenanceRecords;
   const readinessCounts = useMemo(
     () => vehicles.reduce((counts, vehicle) => {
       const status = getReadinessMeta(vehicle).filter;
@@ -2342,6 +2460,7 @@ export default function VehiclesPage() {
       plate: vehicle.plate || '',
       registration_expiration: vehicle.registration_expiration || '',
       insurance_expiration: vehicle.insurance_expiration || '',
+      vehicle_status: vehicle.vehicle_status || (vehicle.is_active === false ? 'out_of_service' : 'active'),
       current_mileage: String(vehicle.current_mileage || 0),
       notes: vehicle.notes || ''
     });
@@ -2592,7 +2711,7 @@ export default function VehiclesPage() {
                       <div className="vehicles-table-primary">
                         <strong>{vehicle.name}</strong>
                         <span>{getVehicleDescription(vehicle)}</span>
-                        {!hasTruckType ? <span>Truck type missing</span> : null}
+                        <span>{hasTruckType ? getVehicleTypeLabel(vehicle) : 'Truck type missing'}</span>
                       </div>
                       <StatusBadge className={statusMeta.className} tone={statusMeta.tone}>{statusMeta.label}</StatusBadge>
                       <div className="vehicles-table-primary">
@@ -2662,7 +2781,10 @@ export default function VehiclesPage() {
                           </button>
                         ) : null}
                         <details className="vehicles-row-menu" onClick={(event) => event.stopPropagation()}>
-                          <summary aria-label={`More actions for ${vehicle.name}`}>•••</summary>
+                          <summary aria-label={`More actions for Truck ${vehicle.name}`} title={`More actions for Truck ${vehicle.name}`}>
+                            <span aria-hidden="true">•••</span>
+                            <span className="sr-only">More actions for Truck {vehicle.name}</span>
+                          </summary>
                           <div className="vehicles-row-menu-panel">
                             <button onClick={() => openEditVehicle(vehicle)} type="button">
                               View Details
@@ -2727,18 +2849,16 @@ export default function VehiclesPage() {
             onExpand={() => setIsMaintenanceProgramExpanded(true)}
             onSave={() => saveMaintenanceSettingsMutation.mutate()}
           />
-          <VehiclePlaceholderPanel
-            title="Maintenance Records"
-            description="Service records, upcoming service, oil changes, tires, brakes, filters, and repair records will live here as this section grows."
+          <MaintenanceRecordsPanel
+            isLoading={maintenanceRecordsQuery.isLoading && !latestVehicleMaintenanceRecords.length}
+            onViewHistory={setHistoryVehicle}
+            records={maintenanceRecords}
           />
         </>
       ) : null}
 
       {activeVehiclesTab === 'Inspections' ? (
-        <VehiclePlaceholderPanel
-          title="Inspections"
-          description="Driver submissions, weekly inspections, daily issue notes, completed inspections, and manager review items will live here."
-        />
+        <InspectionsPanel />
       ) : null}
 
       {activeVehiclesTab === 'Settings' && vehicleSettingsView === 'overview' ? (

@@ -471,6 +471,48 @@ test('PUT /vehicles/:id returns 403 when vehicle belongs to a different account'
   }
 });
 
+test('PUT /vehicles/:id saves vehicle status and active state together', async () => {
+  const supabase = new MockSupabase((query) => {
+    if (query.table === 'vehicles' && query.operation === 'select') {
+      return {
+        data: {
+          id: 'vehicle-1',
+          account_id: 'acct-1',
+          truck_type: 'P1000',
+          custom_truck_type: null
+        },
+        error: null
+      };
+    }
+
+    if (query.table === 'vehicles' && query.operation === 'update') {
+      assert.equal(query.payload.vehicle_status, 'at_the_shop');
+      assert.equal(query.payload.is_active, false);
+      return { data: null, error: null };
+    }
+
+    throw new Error(`Unexpected query ${query.table}:${query.operation}:${query.mode}`);
+  });
+
+  const server = await startTestServer(supabase);
+
+  try {
+    const response = await fetch(`${server.baseUrl}/vehicles/vehicle-1`, {
+      method: 'PUT',
+      headers: {
+        Authorization: `Bearer ${signManagerToken()}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({ vehicle_status: 'at_the_shop' })
+    });
+
+    assert.equal(response.status, 200);
+    assert.deepEqual(await response.json(), { ok: true });
+  } finally {
+    await server.close();
+  }
+});
+
 test('POST /vehicles/:id/maintenance saves maintenance and updates the vehicle mileage fields', async () => {
   let vehicleUpdateSeen = false;
 
@@ -801,6 +843,73 @@ test('GET /vehicles/:id/maintenance returns newest-first history for owned vehic
     assert.equal(body.maintenance.length, 2);
     assert.equal(body.maintenance[0].description, 'Tires');
     assert.equal(body.maintenance[0].service_type, 'Brake Pads');
+  } finally {
+    await server.close();
+  }
+});
+
+test('GET /vehicles/maintenance-records returns recent maintenance with truck details', async () => {
+  const supabase = new MockSupabase((query) => {
+    if (query.table === 'vehicle_maintenance' && query.operation === 'select') {
+      assert.deepEqual(query.orders, [
+        { column: 'service_date', options: { ascending: false } },
+        { column: 'created_at', options: { ascending: false } }
+      ]);
+      assert.equal(query.limit, 100);
+      return {
+        data: [
+          {
+            id: 'maint-1',
+            vehicle_id: 'vehicle-1',
+            account_id: 'acct-1',
+            service_date: '2026-05-16',
+            service_type: 'Oil Change',
+            description: 'Completed Oil Change',
+            mileage_at_service: 65000,
+            next_service_mileage: 70000,
+            created_at: '2026-05-16T17:00:00.000Z'
+          }
+        ],
+        error: null
+      };
+    }
+
+    if (query.table === 'vehicles' && query.operation === 'select') {
+      assert.deepEqual(query.filters.find((filter) => filter.column === 'id')?.value, ['vehicle-1']);
+      return {
+        data: [
+          {
+            id: 'vehicle-1',
+            name: '204526',
+            make: 'Ford',
+            model: 'Transit',
+            year: 2022,
+            truck_type: 'P1100',
+            custom_truck_type: null
+          }
+        ],
+        error: null
+      };
+    }
+
+    throw new Error(`Unexpected query ${query.table}:${query.operation}:${query.mode}`);
+  });
+
+  const server = await startTestServer(supabase);
+
+  try {
+    const response = await fetch(`${server.baseUrl}/vehicles/maintenance-records`, {
+      headers: {
+        Authorization: `Bearer ${signManagerToken()}`
+      }
+    });
+
+    assert.equal(response.status, 200);
+    const body = await response.json();
+    assert.equal(body.maintenance.length, 1);
+    assert.equal(body.maintenance[0].service_type, 'Oil Change');
+    assert.equal(body.maintenance[0].vehicle.name, '204526');
+    assert.equal(body.maintenance[0].vehicle.truck_type, 'P1100');
   } finally {
     await server.close();
   }

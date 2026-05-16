@@ -88,6 +88,18 @@ button {
   touch-action: manipulation;
 }
 
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
 #root {
   min-height: 100vh;
 }
@@ -4574,6 +4586,92 @@ button {
   border-top: 1px solid var(--rr-color-border);
 }
 
+.history-modal-card {
+  width: min(920px, calc(100vw - 40px));
+}
+
+.history-table {
+  display: grid;
+  border: 1px solid var(--rr-color-border);
+  border-radius: 14px;
+  overflow-x: auto;
+  background: #ffffff;
+}
+
+.history-table-header,
+.history-table-row {
+  display: grid;
+  grid-template-columns:
+    minmax(96px, 0.78fr)
+    minmax(112px, 0.84fr)
+    minmax(190px, 1.45fr)
+    minmax(120px, 0.95fr)
+    minmax(104px, 0.75fr)
+    minmax(88px, 0.66fr)
+    minmax(112px, 0.82fr);
+  gap: 12px;
+  align-items: start;
+  min-width: 840px;
+  padding: 12px 14px;
+}
+
+.history-table-header {
+  background: var(--rr-color-surface-muted);
+  color: var(--rr-color-text-muted);
+  font-size: 0.7rem;
+  font-weight: 900;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+}
+
+.history-table-row {
+  border-top: 1px solid var(--rr-color-border);
+  color: var(--rr-color-text);
+  font-size: 0.86rem;
+  font-weight: 760;
+  line-height: 1.35;
+}
+
+.history-notes-cell {
+  color: var(--rr-color-text-strong);
+  font-weight: 840;
+}
+
+@media (max-width: 760px) {
+  .history-modal-card {
+    width: min(560px, calc(100vw - 32px));
+  }
+
+  .history-table {
+    overflow-x: visible;
+  }
+
+  .history-table-header {
+    display: none;
+  }
+
+  .history-table-row {
+    grid-template-columns: 1fr;
+    gap: 8px;
+    min-width: 0;
+    padding: 14px;
+  }
+
+  .history-table-row > span {
+    display: grid;
+    gap: 2px;
+  }
+
+  .history-table-row > span::before {
+    content: attr(data-label);
+    color: var(--rr-color-text-muted);
+    font-size: 0.68rem;
+    font-weight: 900;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+  }
+}
+
 .vehicle-form-body {
   display: grid;
   align-content: start;
@@ -4606,6 +4704,10 @@ button {
   gap: 10px;
 }
 
+.vehicle-registration-grid {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
 .vehicle-form-wide {
   grid-column: 1 / -1;
 }
@@ -4614,6 +4716,10 @@ button {
   color: var(--rr-color-warning);
   font-size: 0.72rem;
   font-weight: 780;
+}
+
+.vehicle-form-helper.neutral {
+  color: var(--rr-color-text-muted);
 }
 
 .vehicle-form-readonly {
@@ -5763,6 +5869,55 @@ button.manifest-attention-chip {
   background: #fff8e6;
 }
 
+.maintenance-records-card {
+  gap: 14px;
+}
+
+.maintenance-records-table {
+  display: grid;
+  border: 1px solid var(--rr-color-border);
+  border-radius: 12px;
+  overflow-x: auto;
+  background: #ffffff;
+}
+
+.maintenance-records-table-header,
+.maintenance-records-table-row {
+  display: grid;
+  grid-template-columns:
+    minmax(92px, 0.7fr)
+    minmax(144px, 1fr)
+    minmax(116px, 0.9fr)
+    minmax(160px, 1.2fr)
+    minmax(112px, 0.8fr)
+    minmax(104px, 0.72fr)
+    minmax(112px, 0.78fr)
+    minmax(88px, 0.55fr);
+  gap: 10px;
+  align-items: center;
+  min-width: 960px;
+}
+
+.maintenance-records-table-header {
+  min-height: 34px;
+  padding: 0 12px;
+  background: var(--rr-color-surface-muted);
+  color: var(--rr-color-text-muted);
+  font-size: 0.68rem;
+  font-weight: 900;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+}
+
+.maintenance-records-table-row {
+  min-height: 52px;
+  padding: 8px 12px;
+  border-top: 1px solid var(--rr-color-border);
+  color: var(--rr-color-text);
+  font-size: 0.84rem;
+  font-weight: 760;
+}
+
 .vehicles-table-row.readiness-blocked {
   background: #fff1f1;
 }
@@ -6443,6 +6598,40 @@ button.manifest-attention-chip {
   gap: 6px;
 }
 
+.inspections-panel {
+  display: grid;
+  gap: 16px;
+  padding: 18px;
+}
+
+.inspections-readiness-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.inspections-readiness-grid > div {
+  display: grid;
+  gap: 6px;
+  padding: 14px;
+  border: 1px solid var(--rr-color-border);
+  border-radius: var(--rr-radius-md);
+  background: #ffffff;
+}
+
+.inspections-readiness-grid strong {
+  color: var(--rr-color-text-strong);
+  font-size: 0.94rem;
+  font-weight: 900;
+}
+
+.inspections-readiness-grid span {
+  color: var(--rr-color-text-muted);
+  font-size: 0.84rem;
+  font-weight: 760;
+  line-height: 1.42;
+}
+
 .checklist-template-panel {
   display: grid;
   gap: 16px;
@@ -6943,6 +7132,7 @@ button.manifest-attention-chip {
 
   .maintenance-requirement-options,
   .maintenance-custom-controls,
+  .inspections-readiness-grid,
   .reminder-schedule-grid {
     grid-template-columns: 1fr;
   }
