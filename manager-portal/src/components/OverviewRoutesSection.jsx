@@ -3,8 +3,6 @@ import { useMutation, useQuery } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 
 import api from '../services/api';
-import { useSelectedCsa } from '../context/SelectedCsaContext';
-import { sortRoutesByWorkArea } from '../utils/routeSort';
 import './OverviewRoutesSection.css';
 
 function formatMinutes(minutes) {
@@ -56,46 +54,19 @@ function getPackageTotals(route) {
   };
 }
 
-function getPickupCountFromRoute(route) {
-  const summaryCount = Number(route?.pickup_stops ?? route?.pickup_stop_count ?? route?.total_pickup_stops);
-
-  if (Number.isFinite(summaryCount)) {
-    return summaryCount;
-  }
-
-  return null;
-}
-
-function getStopBreakdown(routeOrStops = []) {
-  const route = Array.isArray(routeOrStops) ? null : routeOrStops;
-  const stops = Array.isArray(routeOrStops) ? routeOrStops : routeOrStops?.stops || [];
-  const isPickupStop = (stop) => (
-    stop?.has_pickup ||
-    stop?.is_pickup ||
-    stop?.stop_type === 'pickup' ||
-    stop?.stop_type === 'combined'
-  );
-  const isDeliveryStop = (stop) => (
-    stop?.has_delivery ||
-    stop?.stop_type === 'delivery' ||
-    stop?.stop_type === 'combined' ||
-    !isPickupStop(stop)
-  );
-  const deliveryStops = stops.filter((stop) => isDeliveryStop(stop));
-  const pickupStops = stops.filter((stop) => isPickupStop(stop));
-  const fallbackPickupTotal = getPickupCountFromRoute(route);
-  const pickupsTotal = pickupStops.length || fallbackPickupTotal || 0;
+function getStopBreakdown(stops = []) {
+  const deliveryStops = stops.filter((stop) => !stop.is_pickup);
+  const pickupStops = stops.filter((stop) => stop.is_pickup);
 
   const countCompleted = (items) => items.filter((stop) => stop.status !== 'pending').length;
-  const pickupsCompleted = countCompleted(pickupStops);
 
   return {
     deliveriesTotal: deliveryStops.length,
     deliveriesCompleted: countCompleted(deliveryStops),
     deliveriesLeft: Math.max(0, deliveryStops.length - countCompleted(deliveryStops)),
-    pickupsTotal,
-    pickupsCompleted,
-    pickupsLeft: Math.max(0, pickupsTotal - pickupsCompleted)
+    pickupsTotal: pickupStops.length,
+    pickupsCompleted: countCompleted(pickupStops),
+    pickupsLeft: Math.max(0, pickupStops.length - countCompleted(pickupStops))
   };
 }
 
@@ -126,7 +97,7 @@ function buildSummary(routes) {
   const totals = routes.reduce(
     (summary, route) => {
       const packageTotals = getPackageTotals(route);
-      const stopBreakdown = getStopBreakdown(route);
+      const stopBreakdown = getStopBreakdown(route.stops || []);
       const driveMinutes = getDriveMinutes(route, now);
 
       summary.driversAssigned += route.driver_id ? 1 : 0;
@@ -208,7 +179,7 @@ function buildSummary(routes) {
 }
 
 function getRouteStats(route) {
-  const stopBreakdown = getStopBreakdown(route);
+  const stopBreakdown = getStopBreakdown(route.stops || []);
   const packageTotals = getPackageTotals(route);
   const driveMinutes = getDriveMinutes(route, new Date());
 
@@ -251,15 +222,6 @@ function MetricIcon({ name }) {
       <svg aria-hidden="true" className="overview-metric-icon" viewBox="0 0 24 24">
         <path d="M12 2.8 20 7.2v9.2l-8 4.8-8-4.8V7.2L12 2.8Z" />
         <path d="M4.5 7.5 12 12l7.5-4.5M12 12v8.5" />
-      </svg>
-    );
-  }
-
-  if (name === 'pickup') {
-    return (
-      <svg aria-hidden="true" className="overview-metric-icon pickup" viewBox="0 0 24 24">
-        <path d="M12 3 20 7.5v8.8l-8 4.7-8-4.7V7.5L12 3Z" />
-        <path d="M4.5 7.8 12 12l7.5-4.2M12 12v8.3M12 5.8v6.1m-3.2-3 3.2-3.2 3.2 3.2" />
       </svg>
     );
   }
@@ -321,7 +283,8 @@ function StatCard({ title, primary, secondary, progress, footer, success = false
 }
 
 function ReassignModal({ drivers, isSaving, onClose, onSave, route }) {
-  const [selectedDriverId, setSelectedDriverId] = useState(route?.driver_id || '');
+  const [selectedDriverOverrides, setSelectedDriverOverrides] = useState({});
+  const selectedDriverId = selectedDriverOverrides[route?.id] ?? route?.driver_id ?? '';
 
   if (!route) {
     return null;
@@ -347,7 +310,7 @@ function ReassignModal({ drivers, isSaving, onClose, onSave, route }) {
           <select
             className="text-field"
             id="overview-driver-select"
-            onChange={(event) => setSelectedDriverId(event.target.value)}
+            onChange={(event) => setSelectedDriverOverrides((current) => ({ ...current, [route.id]: event.target.value }))}
             value={selectedDriverId}
           >
             <option value="">Select driver...</option>
@@ -406,14 +369,19 @@ function SkeletonTable() {
 
 export default function OverviewRoutesSection({ date, routes }) {
   const navigate = useNavigate();
-  const { selectedCsaId } = useSelectedCsa();
-  const [routeDriverOverrides, setRouteDriverOverrides] = useState({});
+  const [routeOverrides, setRouteOverrides] = useState({});
   const [dismissedAlertDate, setDismissedAlertDate] = useState(null);
   const [reassigningRoute, setReassigningRoute] = useState(null);
+  const routeRows = useMemo(() => {
+    if (routes === null || routes === undefined) {
+      return routes;
+    }
+
+    return routes.map((route) => ({ ...route, ...(routeOverrides[route.id] || {}) }));
+  }, [routeOverrides, routes]);
 
   const driversQuery = useQuery({
-    queryKey: ['overview-route-drivers', selectedCsaId],
-    enabled: Boolean(selectedCsaId),
+    queryKey: ['overview-route-drivers'],
     queryFn: async () => {
       const response = await api.get('/manager/drivers');
       return response.data?.drivers || [];
@@ -428,7 +396,7 @@ export default function OverviewRoutesSection({ date, routes }) {
     onSuccess: ({ routeId, driverId }) => {
       const selectedDriver = (driversQuery.data || []).find((driver) => driver.id === driverId) || null;
 
-      setRouteDriverOverrides((current) => ({
+      setRouteOverrides((current) => ({
         ...current,
         [routeId]: {
           driver_id: driverId,
@@ -439,16 +407,6 @@ export default function OverviewRoutesSection({ date, routes }) {
     }
   });
 
-  const routeRows = useMemo(() => {
-    if (routes === null || routes === undefined) {
-      return routes;
-    }
-
-    return sortRoutesByWorkArea(routes.map((route) => {
-      const override = routeDriverOverrides[route.id];
-      return override ? { ...route, ...override } : route;
-    }));
-  }, [routeDriverOverrides, routes]);
   const summary = useMemo(() => buildSummary(routeRows || []), [routeRows]);
   const dueBadAddress = summary.hasBadAddress && dismissedAlertDate !== date;
   const tableColumns = '1fr 1.2fr 1fr 1fr 1fr 0.75fr 1fr 0.85fr 0.8fr 1fr 0.85fr';
@@ -618,7 +576,7 @@ export default function OverviewRoutesSection({ date, routes }) {
                     <div className="overview-driver-cell">
                       <button
                         className="overview-link"
-                        onClick={() => navigate('/drivers')}
+                        onClick={() => navigate(`/drivers/${route.driver_id}`)}
                         type="button"
                       >
                         {route.driver_name || ''}
@@ -642,7 +600,7 @@ export default function OverviewRoutesSection({ date, routes }) {
                   {route.vehicle_id && route.vehicle_name ? (
                     <button
                       className="overview-link"
-                      onClick={() => navigate('/vehicles')}
+                      onClick={() => navigate(`/vehicles/${route.vehicle_id}`)}
                       type="button"
                     >
                       {route.vehicle_name}
@@ -665,15 +623,19 @@ export default function OverviewRoutesSection({ date, routes }) {
                 </div>
 
                 <div className="overview-table-cell col-stops">
-                  <div className="overview-metric-block">
-                    <div className="overview-metric-primary">
-                      <IconMetric icon="pickup">{stats.pickupsCompleted}/{stats.pickupsTotal}</IconMetric>
+                  {stats.pickupsTotal ? (
+                    <div className="overview-metric-block">
+                      <div className="overview-metric-primary">
+                        {stats.pickupsCompleted}/{stats.pickupsTotal}
+                      </div>
+                      <div className="overview-metric-secondary">({stats.pickupsLeft} left)</div>
+                      <div className="overview-progress-track compact">
+                        <div className="overview-progress-fill" style={{ width: `${stats.pickupsProgress}%` }} />
+                      </div>
                     </div>
-                    <div className="overview-metric-secondary">({stats.pickupsLeft} left)</div>
-                    <div className="overview-progress-track compact">
-                      <div className="overview-progress-fill" style={{ width: `${stats.pickupsProgress}%` }} />
-                    </div>
-                  </div>
+                  ) : (
+                    <div className="overview-metric-primary">—</div>
+                  )}
                 </div>
 
                 <div className="overview-table-cell col-tcs">
@@ -741,7 +703,6 @@ export default function OverviewRoutesSection({ date, routes }) {
       <ReassignModal
         drivers={(driversQuery.data || []).map((driver) => ({ id: driver.id, name: driver.name }))}
         isSaving={assignMutation.isPending}
-        key={reassigningRoute?.id || 'closed'}
         onClose={() => setReassigningRoute(null)}
         onSave={(driverId) => assignMutation.mutate({ routeId: reassigningRoute.id, driverId })}
         route={reassigningRoute}

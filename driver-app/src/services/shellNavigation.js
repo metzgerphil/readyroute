@@ -2,85 +2,47 @@ export function getDrawerMenuItems(activeMode) {
   if (activeMode === 'manager') {
     return [
       {
-        icon: 'building',
-        key: 'manager-csa',
-        label: 'CSA',
-        screen: null,
-        subtitle: 'Manage and switch accounts'
+        key: 'manager-overview',
+        label: 'Map View',
+        screen: 'ManagerOverview'
       },
       {
-        icon: 'home',
-        key: 'manager-dashboard',
-        label: 'Dashboard',
-        screen: 'ManagerDashboard',
-        subtitle: 'Live manager overview'
-      },
-      {
-        icon: 'notes',
-        key: 'manager-manifest',
-        label: 'Manifest',
-        screen: 'ManagerManifest',
-        subtitle: 'Manual XLS and GPX upload'
-      },
-      {
-        icon: 'route',
         key: 'manager-routes',
         label: 'Routes',
-        screen: 'ManagerRoutes',
-        subtitle: 'Route list and progress'
+        screen: 'ManagerRoutes'
       },
       {
-        icon: 'drivers',
-        key: 'manager-drivers',
-        label: 'Drivers',
-        screen: 'ManagerDrivers',
-        subtitle: 'Driver management'
+        key: 'manager-notifications',
+        label: 'Notifications',
+        screen: 'ManagerNotifications'
       },
       {
-        icon: 'vehicles',
-        key: 'manager-vehicles',
-        label: 'Vehicles',
-        screen: 'ManagerVehicles',
-        subtitle: 'Fleet and vehicle management'
-      },
-      {
-        icon: 'settings',
         key: 'manager-settings',
         label: 'Settings',
-        screen: 'ManagerSettings',
-        subtitle: 'Mobile manager preferences'
-      },
-      {
-        icon: 'warning',
-        key: 'manager-help',
-        label: 'Help',
-        screen: null,
-        subtitle: 'Support resources'
+        screen: 'ManagerSettings'
       }
     ];
   }
 
   return [
     {
-      icon: 'home',
       key: 'driver-home',
       label: 'Driver Home',
-      screen: 'Home',
-      subtitle: 'Today and next stop'
+      screen: 'Home'
     },
     {
-      icon: 'route',
       key: 'driver-my-drive',
       label: 'My Drive',
-      screen: 'MyDrive',
-      subtitle: 'Map and delivery flow'
+      screen: 'MyDrive'
     },
     {
-      icon: 'notes',
       key: 'driver-manifest',
       label: 'Manifest',
-      screen: 'Manifest',
-      subtitle: 'Stops and packages'
+      screen: 'Manifest'
     }
   ];
+}
+
+export function getModeSwitchLabel(activeMode) {
+  return activeMode === 'manager' ? 'Switch to Driver Mode' : 'Switch to Manager Mode';
 }

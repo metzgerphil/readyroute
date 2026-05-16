@@ -5,12 +5,9 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 
 import MapLegend from '../components/MapLegend';
 import StopListDrawer from '../components/StopListDrawer';
-import { useSelectedCsa } from '../context/SelectedCsaContext';
 import api from '../services/api';
-import { buildTelHref, getStopContactDetails, getStopContactSummaryParts } from '../utils/contactInfo';
 import { getPropertyWorkflowHint } from '../utils/pinWorkflow';
 import { createDriverPositionMarker, createStopMarkerSVG, getMarkerZIndex } from '../utils/stopMarkers';
-import { getCanonicalStopId } from '../utils/stopIdentity';
 import './RoutePage.css';
 
 const GOOGLE_MAPS_KEY = import.meta.env.VITE_GOOGLE_MAPS_KEY;
@@ -18,6 +15,7 @@ const GOOGLE_MAPS_SRC = GOOGLE_MAPS_KEY
   ? `https://maps.googleapis.com/maps/api/js?key=${GOOGLE_MAPS_KEY}&v=weekly`
   : null;
 const GOOGLE_MAPS_PLACEHOLDER_KEYS = new Set(['your_key_here', 'your_production_key']);
+const EMPTY_ARRAY = [];
 
 const ROUTE_STATUS_META = {
   pending: { label: 'Pending', color: '#9ca3af' },
@@ -124,10 +122,6 @@ function getTodayString() {
 function getInitialRouteDate(searchParams) {
   const requestedDate = searchParams.get('date');
   return requestedDate || getTodayString();
-}
-
-function isMobileMapViewport() {
-  return typeof window !== 'undefined' && window.matchMedia('(max-width: 820px)').matches;
 }
 
 function getGoogleMapsErrorMessage(error) {
@@ -409,22 +403,6 @@ function getRouteCentroid(stops = []) {
   };
 }
 
-function getLocationAccuracyMeta(stop) {
-  if (stop?.geocode_source === 'driver_verified') {
-    return { color: '#0891b2', label: 'Driver-verified location' };
-  }
-
-  if (stop?.geocode_source === 'tomtom' && stop?.geocode_accuracy === 'point') {
-    return { color: '#16a34a', label: 'Precise location' };
-  }
-
-  if (stop?.lat && stop?.lng) {
-    return { color: '#6b7280', label: 'Street level' };
-  }
-
-  return { color: '#9ca3af', label: 'No coordinates' };
-}
-
 function buildInfoWindow(stop) {
   const packageCount = getPackageCount(stop);
   const completionBadge = getCompletionBadge(stop);
@@ -439,11 +417,12 @@ function buildInfoWindow(stop) {
     : null;
   const addressLine1 = stop.address || 'No address available';
   const noteText = stop.has_note && stop.notes ? stop.notes : null;
-  const contact = getStopContactDetails(stop);
-  const phoneForPopup = contact.primaryPhone || contact.alternatePhone;
-  const phoneHref = buildTelHref(phoneForPopup);
-  const contactSummary = getStopContactSummaryParts(stop);
-  const locationAccuracy = getLocationAccuracyMeta(stop);
+  const locationAccuracy =
+    stop.geocode_source === 'driver_verified'
+      ? { color: '#0891b2', label: 'Driver-verified location' }
+      : stop.geocode_source === 'tomtom' && stop.geocode_accuracy === 'point'
+      ? { color: '#16a34a', label: 'Precise location' }
+      : { color: '#6b7280', label: 'Street level' };
   const pickupContextCopy =
     stopType === 'pickup'
       ? 'Pickup stop'
@@ -472,22 +451,7 @@ function buildInfoWindow(stop) {
           <span>${packageCount}</span>
         </div>
       </div>
-      ${
-        contactSummary.length
-          ? `<div style="margin-top:12px; padding:9px 10px; border-radius:12px; background:#f0fdfa; border:1px solid #cde8ea;">
-              <div style="color:#0f766e; font-size:11px; font-weight:950; letter-spacing:0.08em; text-transform:uppercase;">Manifest contact</div>
-              ${contact.contactName ? `<div style="margin-top:5px; color:#173042; font-size:16px; line-height:1.2; font-weight:950;">${escapeHtml(contact.contactName)}</div>` : ''}
-              ${contact.businessName ? `<div style="margin-top:3px; color:#51606e; font-size:13px; line-height:1.25; font-weight:800;">${escapeHtml(contact.businessName)}</div>` : ''}
-              ${
-                phoneForPopup
-                  ? `<div style="margin-top:6px; color:#173042; font-size:13px; font-weight:900;">
-                      ${phoneHref ? `<a href="${escapeHtml(phoneHref)}" style="color:#0f766e; text-decoration:none;">${escapeHtml(phoneForPopup)}</a>` : escapeHtml(phoneForPopup)}
-                    </div>`
-                  : ''
-              }
-            </div>`
-          : ''
-      }
+      ${stop.contact_name ? `<div style="margin-top:12px; font-size:18px; line-height:1.15; font-weight:950;">${escapeHtml(stop.contact_name)}</div>` : ''}
       <div style="margin-top:8px; font-size:20px; line-height:1.2; font-weight:950; letter-spacing:-0.02em; color:#173042;">${escapeHtml(addressLine1)}</div>
       ${
         stop.address_line2
@@ -566,9 +530,6 @@ function buildInfoWindow(stop) {
             </div>`
           : ''
       }
-      <button type="button" data-readyroute-open-stop-detail="true" style="margin-top:12px; width:100%; min-height:36px; border:0; border-radius:12px; background:#173042; color:#ffffff; font-size:13px; font-weight:950; cursor:pointer;">
-        Open stop details
-      </button>
     </div>
   `;
 }
@@ -616,18 +577,16 @@ export default function RoutePage() {
   const mapTileWatchdogRef = useRef(null);
   const mapTileRetryCountRef = useRef(0);
   const mapTilesLoadedRef = useRef(false);
-  const mapPaintedRef = useRef(false);
   const [date, setDate] = useState(() => getInitialRouteDate(searchParams));
   const [mapError, setMapError] = useState('');
   const [mapReady, setMapReady] = useState(false);
   const [mapLoading, setMapLoading] = useState(false);
   const [mapRefreshNonce, setMapRefreshNonce] = useState(0);
-  const [mapMountNonce, setMapMountNonce] = useState(0);
   const [mapIsRepainting, setMapIsRepainting] = useState(false);
   const [mapType, setMapType] = useState('roadmap');
   const [selectedStopId, setSelectedStopId] = useState(null);
-  const [showLegend, setShowLegend] = useState(() => !isMobileMapViewport());
-  const [showStopDrawer, setShowStopDrawer] = useState(() => !isMobileMapViewport());
+  const [showLegend, setShowLegend] = useState(true);
+  const [showStopDrawer, setShowStopDrawer] = useState(true);
   const [showExceptions, setShowExceptions] = useState(false);
   const [activeExceptionsTab, setActiveExceptionsTab] = useState('exceptions');
   const [isSavingNote, setIsSavingNote] = useState(false);
@@ -635,7 +594,6 @@ export default function RoutePage() {
   const [noteDraft, setNoteDraft] = useState('');
   const [isSavingPropertyIntel, setIsSavingPropertyIntel] = useState(false);
   const [propertyEditorStopId, setPropertyEditorStopId] = useState(null);
-  const [detailStopId, setDetailStopId] = useState(null);
   const [propertyDraft, setPropertyDraft] = useState({
     property_type: '',
     building: '',
@@ -647,39 +605,7 @@ export default function RoutePage() {
   const [actionError, setActionError] = useState('');
   const [isHeaderCollapsed, setIsHeaderCollapsed] = useState(false);
 
-  const handleMapContainerRef = useCallback((node) => {
-    mapContainerRef.current = node;
-
-    if (node) {
-      setMapMountNonce((value) => value + 1);
-    }
-  }, []);
-
-  useEffect(() => {
-    if (typeof window === 'undefined') {
-      return undefined;
-    }
-
-    const mobileQuery = window.matchMedia('(max-width: 820px)');
-    const handleViewportChange = (event) => {
-      if (event.matches) {
-        setShowLegend(false);
-        setShowStopDrawer(false);
-      }
-    };
-
-    handleViewportChange(mobileQuery);
-
-    if (mobileQuery.addEventListener) {
-      mobileQuery.addEventListener('change', handleViewportChange);
-      return () => mobileQuery.removeEventListener('change', handleViewportChange);
-    }
-
-    mobileQuery.addListener(handleViewportChange);
-    return () => mobileQuery.removeListener(handleViewportChange);
-  }, []);
-
-  function clearMapArtifacts() {
+  const clearMapArtifacts = useCallback(() => {
     stopMarkersRef.current.forEach((marker) => marker.setMap(null));
     stopMarkersRef.current.clear();
 
@@ -702,30 +628,26 @@ export default function RoutePage() {
       territoryBorderRef.current.setMap(null);
       territoryBorderRef.current = null;
     }
-  }
+  }, []);
 
-  function resetMapInstance() {
+  const resetMapInstance = useCallback(() => {
     clearMapArtifacts();
     infoWindowRef.current?.close();
     infoWindowRef.current = null;
     mapInstanceRef.current = null;
     mapTilesLoadedRef.current = false;
-    mapPaintedRef.current = false;
     setMapReady(false);
-  }
-
-  const { selectedCsaId, selectedCsaName } = useSelectedCsa();
+  }, [clearMapArtifacts]);
 
   const routesQuery = useQuery({
-    queryKey: ['route-page-routes', selectedCsaId, date],
-    enabled: Boolean(selectedCsaId),
+    queryKey: ['route-page-routes', date],
     queryFn: async () => {
       const response = await api.get('/manager/routes', { params: { date } });
       return response.data?.routes || [];
     }
   });
 
-  const routeOptions = routesQuery.data || [];
+  const routeOptions = useMemo(() => routesQuery.data || EMPTY_ARRAY, [routesQuery.data]);
 
   useEffect(() => {
     if (!id || routesQuery.isLoading) {
@@ -745,37 +667,37 @@ export default function RoutePage() {
   }, [date, searchParams]);
 
   const routeDetailQuery = useQuery({
-    queryKey: ['route-page-detail', selectedCsaId, id, date],
+    queryKey: ['route-page-detail', id, date],
     queryFn: async () => {
       const response = await api.get(`/manager/routes/${id}/stops`, { params: { date } });
       return response.data;
     },
-    enabled: Boolean(selectedCsaId) && Boolean(id)
+    enabled: Boolean(id)
   });
 
   const driverPositionQuery = useQuery({
-    queryKey: ['route-page-driver-position', selectedCsaId, id],
+    queryKey: ['route-page-driver-position', id],
     queryFn: async () => {
       const response = await api.get(`/manager/routes/${id}/driver-position`);
       return response.data;
     },
-    enabled: Boolean(selectedCsaId) && Boolean(id),
+    enabled: Boolean(id),
     refetchInterval: 30000
   });
 
   const roadFlagsQuery = useQuery({
-    queryKey: ['route-page-road-flags', selectedCsaId, id, date],
+    queryKey: ['route-page-road-flags', id, date],
     queryFn: async () => {
       const response = await api.get(`/manager/routes/${id}/road-flags`, { params: { date } });
       return response.data?.road_flags || [];
     },
-    enabled: Boolean(selectedCsaId) && Boolean(id)
+    enabled: Boolean(id)
   });
 
   const routeDetail = routeDetailQuery.data;
   const route = routeDetail?.route || routeOptions.find((item) => item.id === id) || null;
   const coordinateRecovery = routeDetail?.coordinate_recovery || null;
-  const allStops = routeDetail?.stops || [];
+  const allStops = useMemo(() => routeDetail?.stops || EMPTY_ARRAY, [routeDetail?.stops]);
   const mappableStops = useMemo(
     () =>
       allStops.filter(
@@ -801,7 +723,7 @@ export default function RoutePage() {
     () => allStops.filter((stop) => stop.status === 'incomplete'),
     [allStops]
   );
-  const roadFlags = roadFlagsQuery.data || [];
+  const roadFlags = useMemo(() => roadFlagsQuery.data || EMPTY_ARRAY, [roadFlagsQuery.data]);
   const routeExceptionCount = exceptionStops.length + incompleteStops.length;
   const routeDispatchWarnings = useMemo(
     () => getRouteDispatchWarnings({ route, allStops, roadFlags }),
@@ -818,24 +740,15 @@ export default function RoutePage() {
   const livePosition = driverPositionQuery.data || null;
   const routeDriverName = livePosition?.driver_name || route?.driver_name || 'Unassigned';
   const routeStatusMeta = ROUTE_STATUS_META[route?.status] || ROUTE_STATUS_META.pending;
-  const selectedStop = allStops.find((stop) => getCanonicalStopId(stop) === selectedStopId) || null;
-  const noteEditorStop = allStops.find((stop) => getCanonicalStopId(stop) === noteEditorStopId) || null;
-  const propertyEditorStop = allStops.find((stop) => getCanonicalStopId(stop) === propertyEditorStopId) || null;
-  const detailStop = allStops.find((stop) => getCanonicalStopId(stop) === detailStopId) || null;
+  const selectedStop = allStops.find((stop) => stop.id === selectedStopId) || null;
+  const noteEditorStop = allStops.find((stop) => stop.id === noteEditorStopId) || null;
+  const propertyEditorStop = allStops.find((stop) => stop.id === propertyEditorStopId) || null;
 
   useEffect(() => {
     selectedStopIdRef.current = selectedStopId;
   }, [selectedStopId]);
 
-  useEffect(() => {
-    if (!selectedStopId || allStops.some((stop) => getCanonicalStopId(stop) === selectedStopId)) {
-      return;
-    }
-
-    setSelectedStopId(null);
-  }, [allStops, selectedStopId]);
-
-  function getInfoWindowPixelOffset(marker) {
+  const getInfoWindowPixelOffset = useCallback((marker) => {
     const google = window.google;
     const map = mapInstanceRef.current;
     const position = marker?.getPosition?.();
@@ -854,9 +767,9 @@ export default function RoutePage() {
     const topSafeZone = 250;
 
     return new google.maps.Size(0, markerY < topSafeZone ? topSafeZone - markerY : -8);
-  }
+  }, []);
 
-  function openStopInfoWindow(stop, marker) {
+  const openStopInfoWindow = useCallback((stop, marker) => {
     const infoWindow = infoWindowRef.current;
     const map = mapInstanceRef.current;
 
@@ -869,15 +782,39 @@ export default function RoutePage() {
       infoWindow.setOptions({ pixelOffset });
     }
     infoWindow.setContent(buildInfoWindow(stop));
-    const openDetailListener = window.google?.maps?.event.addListenerOnce(infoWindow, 'domready', () => {
-      const openDetailButton = document.querySelector('[data-readyroute-open-stop-detail="true"]');
-      openDetailButton?.addEventListener('click', () => {
-        openStopDetail(stop);
-      });
-    });
     infoWindow.open({ anchor: marker, map, shouldFocus: false });
-    return openDetailListener;
-  }
+  }, [getInfoWindowPixelOffset]);
+
+  const fitRoute = useCallback(() => {
+    const google = window.google;
+    const map = mapInstanceRef.current;
+
+    if (!google?.maps || !map) {
+      return;
+    }
+
+    const bounds = new google.maps.LatLngBounds();
+
+    orderedStops.forEach((stop) => {
+      bounds.extend({ lat: Number(stop.lat), lng: Number(stop.lng) });
+    });
+
+    if (
+      livePosition?.lat != null &&
+      livePosition?.lng != null &&
+      routeCentroid &&
+      getDistanceMiles(
+        { lat: Number(livePosition.lat), lng: Number(livePosition.lng) },
+        routeCentroid
+      ) <= 50
+    ) {
+      bounds.extend({ lat: Number(livePosition.lat), lng: Number(livePosition.lng) });
+    }
+
+    if (!bounds.isEmpty()) {
+      map.fitBounds(bounds, 72);
+    }
+  }, [livePosition?.lat, livePosition?.lng, orderedStops, routeCentroid]);
 
   useEffect(() => {
     if (!actionMessage) {
@@ -902,7 +839,7 @@ export default function RoutePage() {
     mapTileRetryCountRef.current = 0;
     resetMapInstance();
     setMapRefreshNonce((value) => value + 1);
-  }, [id, date]);
+  }, [id, date, resetMapInstance]);
 
   useEffect(() => {
     if (!showExceptions) {
@@ -944,12 +881,7 @@ export default function RoutePage() {
       clearTileWatchdog();
 
       mapTileWatchdogRef.current = window.setTimeout(() => {
-        if (!active || !mapContainerRef.current || !map) {
-          return;
-        }
-
-        const googleDomPainted = mapPaintedRef.current || Boolean(mapContainerRef.current.querySelector('.gm-style'));
-        if (mapTilesLoadedRef.current && googleDomPainted) {
+        if (!active || mapTilesLoadedRef.current || !mapContainerRef.current || !map) {
           return;
         }
 
@@ -959,16 +891,11 @@ export default function RoutePage() {
           fitRoute();
         }
 
-        if (mapTileRetryCountRef.current < 3) {
+        if (mapTileRetryCountRef.current < 2) {
           mapTileRetryCountRef.current += 1;
           setMapIsRepainting(true);
           window.setTimeout(() => {
-            if (
-              !active ||
-              (mapTilesLoadedRef.current &&
-                mapContainerRef.current &&
-                mapContainerRef.current.querySelector('.gm-style'))
-            ) {
+            if (!active || mapTilesLoadedRef.current) {
               return;
             }
 
@@ -977,13 +904,7 @@ export default function RoutePage() {
           }, 250);
         } else {
           setMapIsRepainting(false);
-          setMapLoading(false);
-          setMapReady(false);
-          setMapError(
-            googleDomPainted
-              ? 'The map loaded but tiles did not paint. Tap Fit to route or refresh this page.'
-              : 'Google Maps did not attach to this route map. Refresh this page or check the Maps JavaScript API key settings.'
-          );
+          setMapError('The map is loaded but tiles did not paint. Tap Recenter map or refresh this page.');
         }
       }, 2600);
     }
@@ -1021,10 +942,8 @@ export default function RoutePage() {
             map.setZoom(11);
           }
 
-          const googleDomPainted = Boolean(mapContainerRef.current?.querySelector?.('.gm-style'));
-          mapPaintedRef.current = googleDomPainted;
-          setMapReady(googleDomPainted);
-          setMapLoading(!googleDomPainted);
+          setMapReady(true);
+          setMapLoading(false);
           startTileWatchdog(google, map);
         }, 180);
       });
@@ -1057,14 +976,11 @@ export default function RoutePage() {
 
         if (shouldCreateFreshMap) {
           resetMapInstance();
-          mapTilesLoadedRef.current = false;
-          mapPaintedRef.current = false;
           mapInstanceRef.current = new google.maps.Map(mapContainerRef.current, {
             center: { lat: 33.1217, lng: -117.0815 },
             zoom: 11,
             mapTypeId: mapType,
             mapTypeControl: false,
-            gestureHandling: isMobileMapViewport() ? 'cooperative' : 'auto',
             streetViewControl: true,
             fullscreenControl: true,
             zoomControl: true
@@ -1083,16 +999,9 @@ export default function RoutePage() {
             stabilizeMap(google, mapInstanceRef.current);
           });
           google.maps.event.addListenerOnce(mapInstanceRef.current, 'tilesloaded', () => {
-            const googleDomPainted = Boolean(mapContainerRef.current?.querySelector?.('.gm-style'));
-            mapTilesLoadedRef.current = googleDomPainted;
-            mapPaintedRef.current = googleDomPainted;
-
-            if (googleDomPainted) {
-              setMapReady(true);
-              setMapLoading(false);
-              setMapIsRepainting(false);
-              clearTileWatchdog();
-            }
+            mapTilesLoadedRef.current = true;
+            setMapIsRepainting(false);
+            clearTileWatchdog();
           });
         } else {
           stabilizeMap(google, mapInstanceRef.current);
@@ -1128,7 +1037,7 @@ export default function RoutePage() {
       resizeObserverRef.current?.disconnect();
       resizeObserverRef.current = null;
     };
-  }, [orderedStops.length, mapRefreshNonce, mapMountNonce]);
+  }, [fitRoute, mapRefreshNonce, mapType, orderedStops.length, resetMapInstance]);
 
   useEffect(() => {
     const google = window.google;
@@ -1170,38 +1079,15 @@ export default function RoutePage() {
     ) {
       setMapError('');
     }
-  }, [allStops.length, coordinateRecovery?.attempted, coordinateRecovery?.recovered, mappableStops.length, route?.total_stops, routeDetailQuery.isLoading]);
-
-  function fitRoute() {
-    const google = window.google;
-    const map = mapInstanceRef.current;
-
-    if (!google?.maps || !map) {
-      return;
-    }
-
-    const bounds = new google.maps.LatLngBounds();
-
-    orderedStops.forEach((stop) => {
-      bounds.extend({ lat: Number(stop.lat), lng: Number(stop.lng) });
-    });
-
-    if (
-      livePosition?.lat != null &&
-      livePosition?.lng != null &&
-      routeCentroid &&
-      getDistanceMiles(
-        { lat: Number(livePosition.lat), lng: Number(livePosition.lng) },
-        routeCentroid
-      ) <= 50
-    ) {
-      bounds.extend({ lat: Number(livePosition.lat), lng: Number(livePosition.lng) });
-    }
-
-    if (!bounds.isEmpty()) {
-      map.fitBounds(bounds, 72);
-    }
-  }
+  }, [
+    allStops.length,
+    coordinateRecovery?.attempted,
+    coordinateRecovery?.recovered,
+    mapError,
+    mappableStops.length,
+    route?.total_stops,
+    routeDetailQuery.isLoading
+  ]);
 
   useEffect(() => {
     const google = window.google;
@@ -1215,23 +1101,17 @@ export default function RoutePage() {
     clearMapArtifacts();
 
     orderedStops.forEach((stop) => {
-      const canonicalStopId = getCanonicalStopId(stop);
-
-      if (!canonicalStopId) {
-        return;
-      }
-
       const marker = new google.maps.Marker({
         map,
         position: { lat: Number(stop.lat), lng: Number(stop.lng) },
         title: getStopMarkerLabel(stop),
-        icon: createStopMarkerSVG(stop, canonicalStopId === selectedStopIdRef.current),
-        zIndex: getMarkerZIndex(stop, canonicalStopId === selectedStopIdRef.current)
+        icon: createStopMarkerSVG(stop, stop.id === selectedStopId),
+        zIndex: getMarkerZIndex(stop, stop.id === selectedStopId)
       });
 
       marker.addListener('click', () => {
-        selectedStopIdRef.current = canonicalStopId;
-        setSelectedStopId(canonicalStopId);
+        selectedStopIdRef.current = stop.id;
+        setSelectedStopId(stop.id);
         setShowStopDrawer(true);
         openStopInfoWindow(stop, marker);
       });
@@ -1242,13 +1122,13 @@ export default function RoutePage() {
       });
 
       marker.addListener('mouseout', () => {
-        if (selectedStopIdRef.current !== canonicalStopId) {
+        if (selectedStopIdRef.current !== stop.id) {
           marker.setIcon(createStopMarkerSVG(stop, false));
           marker.setZIndex(getMarkerZIndex(stop, false));
         }
       });
 
-      stopMarkersRef.current.set(canonicalStopId, marker);
+      stopMarkersRef.current.set(stop.id, marker);
     });
 
     if (orderedStops.length > 1) {
@@ -1338,19 +1218,24 @@ export default function RoutePage() {
     routeDriverName,
     route?.status,
     nextStop,
-    pendingTimeCommitCount
+    clearMapArtifacts,
+    openStopInfoWindow,
+    pendingTimeCommitCount,
+    fitRoute,
+    route,
+    selectedStopId
   ]);
 
   useEffect(() => {
     const google = window.google;
     const map = mapInstanceRef.current;
 
-    if (!google?.maps || !map) {
+    if (!google?.maps || !map || !selectedStopId) {
       return;
     }
 
     stopMarkersRef.current.forEach((marker, stopId) => {
-      const stop = orderedStops.find((item) => getCanonicalStopId(item) === stopId);
+      const stop = orderedStops.find((item) => item.id === stopId);
       if (!stop) {
         return;
       }
@@ -1359,18 +1244,13 @@ export default function RoutePage() {
       marker.setZIndex(getMarkerZIndex(stop, stopId === selectedStopId));
     });
 
-    if (!selectedStopId) {
-      infoWindowRef.current?.close();
-      return;
-    }
-
     const selectedMarker = stopMarkersRef.current.get(selectedStopId);
-    const selectedStop = orderedStops.find((stop) => getCanonicalStopId(stop) === selectedStopId);
+    const selectedStop = orderedStops.find((stop) => stop.id === selectedStopId);
 
     if (selectedMarker && selectedStop) {
       openStopInfoWindow(selectedStop, selectedMarker);
     }
-  }, [orderedStops, selectedStopId]);
+  }, [openStopInfoWindow, orderedStops, selectedStopId]);
 
   function handleRouteChange(nextRouteId) {
     if (!nextRouteId) {
@@ -1386,33 +1266,9 @@ export default function RoutePage() {
   }
 
   function handleStopClick(stop) {
-    const canonicalStopId = getCanonicalStopId(stop);
-
-    if (!canonicalStopId) {
-      return;
-    }
-
-    setSelectedStopId(canonicalStopId);
+    setSelectedStopId(stop.id);
     setShowExceptions(false);
     centerOnStop(stop);
-  }
-
-  function openStopDetail(stop = selectedStop || null) {
-    const canonicalStopId = getCanonicalStopId(stop);
-
-    if (!canonicalStopId) {
-      setActionError('Select a stop first, then open stop details.');
-      return;
-    }
-
-    setSelectedStopId(canonicalStopId);
-    setDetailStopId(canonicalStopId);
-    setShowStopDrawer(true);
-    setShowExceptions(false);
-  }
-
-  function closeStopDetail() {
-    setDetailStopId(null);
   }
 
   function openNoteEditor(stop = selectedStop || nextStop || null) {
@@ -1421,7 +1277,7 @@ export default function RoutePage() {
       return;
     }
 
-    setNoteEditorStopId(getCanonicalStopId(stop));
+    setNoteEditorStopId(stop.id);
     setNoteDraft(stop.notes || '');
     setActionError('');
   }
@@ -1439,7 +1295,7 @@ export default function RoutePage() {
 
     const propertyIntel = stop.property_intel || {};
 
-    setPropertyEditorStopId(getCanonicalStopId(stop));
+    setPropertyEditorStopId(stop.id);
     setPropertyDraft({
       property_type: propertyIntel.location_type || '',
       building: propertyIntel.building || '',
@@ -1463,14 +1319,13 @@ export default function RoutePage() {
 
   function centerOnStop(stop) {
     const map = mapInstanceRef.current;
-    const canonicalStopId = getCanonicalStopId(stop);
-    const marker = canonicalStopId ? stopMarkersRef.current.get(canonicalStopId) : null;
+    const marker = stopMarkersRef.current.get(stop.id);
 
     if (!map || !marker) {
       return;
     }
 
-    setSelectedStopId(canonicalStopId);
+    setSelectedStopId(stop.id);
     map.panTo(marker.getPosition());
   }
 
@@ -1508,8 +1363,8 @@ export default function RoutePage() {
       await api.patch(`/manager/routes/stops/${noteEditorStop.id}/note`, {
         note_text: noteDraft
       });
-      await queryClient.invalidateQueries({ queryKey: ['route-page-detail', selectedCsaId, id, date] });
-      await queryClient.invalidateQueries({ queryKey: ['manager-routes', selectedCsaId, date] });
+      await queryClient.invalidateQueries({ queryKey: ['route-page-detail', id, date] });
+      await queryClient.invalidateQueries({ queryKey: ['manager-routes', date] });
       setActionMessage(`Saved note for stop ${noteEditorStop.sequence_order}. Future deliveries will reuse it.`);
       closeNoteEditor();
     } catch (error) {
@@ -1538,7 +1393,7 @@ export default function RoutePage() {
           .map((flag) => flag.trim().toLowerCase())
           .filter(Boolean)
       });
-      await queryClient.invalidateQueries({ queryKey: ['route-page-detail', selectedCsaId, id, date] });
+      await queryClient.invalidateQueries({ queryKey: ['route-page-detail', id, date] });
       setActionMessage(`Saved building intel for ST#${propertyEditorStop.sequence_order}.`);
       closePropertyEditor();
     } catch (error) {
@@ -1581,7 +1436,7 @@ export default function RoutePage() {
       <header className={`route-page-header ${isHeaderCollapsed ? 'collapsed' : ''}`}>
         <div className="route-page-titlebar">
           <div className="route-page-title-block">
-            <div className="route-page-company-line">{selectedCsaName || 'READYROUTE'} — READYROUTE</div>
+            <div className="route-page-company-line">BRIDGE TRANSPORTATION INC — READYROUTE</div>
             <h1>{`Route ${route.work_area_name} (${route.total_stops}) — ${routeDriverName}`}</h1>
           </div>
 
@@ -1700,7 +1555,7 @@ export default function RoutePage() {
       </header>
 
       <div className="route-map-stage">
-        <div key={`route-map-${mapRefreshNonce}`} ref={handleMapContainerRef} className="route-map-fullscreen" />
+        <div key={`route-map-${mapRefreshNonce}`} ref={mapContainerRef} className="route-map-fullscreen" />
         {mapLoading && !mapReady && !mapError ? (
           <div className="route-map-loading">Loading map...</div>
         ) : null}
@@ -1878,107 +1733,6 @@ export default function RoutePage() {
           onClose={() => setShowStopDrawer(false)}
           onSelectStop={handleStopClick}
         />
-
-        {detailStop ? (
-          <div className="route-note-modal-backdrop" onClick={closeStopDetail}>
-            <div className="route-stop-detail-modal" onClick={(event) => event.stopPropagation()}>
-              {(() => {
-                const contact = getStopContactDetails(detailStop);
-                const packages = Array.isArray(detailStop.packages) ? detailStop.packages : [];
-                const timeCommit = formatTimeCommit(detailStop);
-                const propertyIntel = detailStop.property_intel || {};
-                const locationAccuracy = getLocationAccuracyMeta(detailStop);
-
-                return (
-                  <>
-                    <div className="route-note-modal-header">
-                      <div>
-                        <h2>{`Stop ${detailStop.sequence_order || '—'} Details`}</h2>
-                        <p>{detailStop.address}</p>
-                      </div>
-                      <button type="button" className="route-note-modal-close" onClick={closeStopDetail}>×</button>
-                    </div>
-
-                    <div className="route-stop-detail-grid">
-                      <div className="route-stop-detail-card primary">
-                        <span className="route-stop-detail-label">SID</span>
-                        <strong>{detailStop.sid && detailStop.sid !== '0' ? detailStop.sid : '—'}</strong>
-                        <span>{`${packages.length} package${packages.length === 1 ? '' : 's'}`}</span>
-                      </div>
-                      <div className="route-stop-detail-card">
-                        <span className="route-stop-detail-label">Status</span>
-                        <strong>{detailStop.status || 'pending'}</strong>
-                        <span>{timeCommit ? `Time commit ${timeCommit}` : 'No time commit'}</span>
-                      </div>
-                      <div className="route-stop-detail-card">
-                        <span className="route-stop-detail-label">Map</span>
-                        <strong>{locationAccuracy.label}</strong>
-                        <span>{detailStop.lat && detailStop.lng ? `${Number(detailStop.lat).toFixed(5)}, ${Number(detailStop.lng).toFixed(5)}` : 'No coordinates'}</span>
-                      </div>
-                    </div>
-
-                    <div className="route-stop-detail-section">
-                      <div className="route-stop-detail-section-title">Manifest Contact</div>
-                      {contact.hasAny ? (
-                        <div className="route-stop-detail-lines">
-                          {contact.contactName ? <div><strong>Contact</strong><span>{contact.contactName}</span></div> : null}
-                          {contact.businessName ? <div><strong>Business</strong><span>{contact.businessName}</span></div> : null}
-                          {contact.primaryPhone ? <div><strong>Phone</strong><a href={buildTelHref(contact.primaryPhone) || undefined}>{contact.primaryPhone}</a></div> : null}
-                          {contact.alternatePhone ? <div><strong>Alt phone</strong><a href={buildTelHref(contact.alternatePhone) || undefined}>{contact.alternatePhone}</a></div> : null}
-                          {contact.email ? <div><strong>Email</strong><a href={`mailto:${encodeURIComponent(contact.email)}`}>{contact.email}</a></div> : null}
-                          {contact.consignee ? <div><strong>Consignee</strong><span>{contact.consignee}</span></div> : null}
-                          {contact.shipper ? <div><strong>Shipper</strong><span>{contact.shipper}</span></div> : null}
-                          {contact.instructions ? <div className="wide"><strong>Instructions</strong><span>{contact.instructions}</span></div> : null}
-                        </div>
-                      ) : (
-                        <div className="route-stop-detail-empty">No contact info on manifest.</div>
-                      )}
-                    </div>
-
-                    <div className="route-stop-detail-section">
-                      <div className="route-stop-detail-section-title">Packages</div>
-                      {packages.length ? (
-                        <div className="route-stop-package-list">
-                          {packages.map((pkg, index) => (
-                            <div className="route-stop-package-row" key={pkg.id || pkg.tracking_number || index}>
-                              <strong>{pkg.tracking_number || `Package ${index + 1}`}</strong>
-                              <span>{[pkg.service_code, pkg.requires_adult_signature ? 'Adult signature' : pkg.requires_signature ? 'Signature' : null, pkg.hazmat ? 'Hazmat' : null].filter(Boolean).join(' · ') || 'Package detail'}</span>
-                            </div>
-                          ))}
-                        </div>
-                      ) : (
-                        <div className="route-stop-detail-empty">No package detail loaded for this stop.</div>
-                      )}
-                    </div>
-
-                    {(propertyIntel.access_note || propertyIntel.parking_note || detailStop.notes) ? (
-                      <div className="route-stop-detail-section">
-                        <div className="route-stop-detail-section-title">Manager Notes</div>
-                        <div className="route-stop-detail-lines">
-                          {propertyIntel.access_note ? <div className="wide"><strong>Access</strong><span>{propertyIntel.access_note}</span></div> : null}
-                          {propertyIntel.parking_note ? <div className="wide"><strong>Parking</strong><span>{propertyIntel.parking_note}</span></div> : null}
-                          {detailStop.notes ? <div className="wide"><strong>Address note</strong><span>{detailStop.notes}</span></div> : null}
-                        </div>
-                      </div>
-                    ) : null}
-
-                    <div className="route-stop-detail-actions">
-                      <button type="button" className="route-toolbar-button route-toolbar-secondary" onClick={() => openNoteEditor(detailStop)}>
-                        Edit Address Note
-                      </button>
-                      <button type="button" className="route-toolbar-button route-toolbar-secondary" onClick={() => openPropertyEditor(detailStop)}>
-                        Edit Building Intel
-                      </button>
-                      <button type="button" className="route-toolbar-button route-toolbar-push" onClick={() => centerOnStop(detailStop)}>
-                        Center On Map
-                      </button>
-                    </div>
-                  </>
-                );
-              })()}
-            </div>
-          </div>
-        ) : null}
 
         {noteEditorStop ? (
           <div className="route-note-modal-backdrop" onClick={closeNoteEditor}>

@@ -5,13 +5,10 @@ import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 
 import api from '../services/api';
 import MapView from '../components/MapView';
-import { PageHeader, StatusBadge } from '../components/PortalDesignSystem';
-import { useSelectedCsa } from '../context/SelectedCsaContext';
-import { getStopContactDetails } from '../utils/contactInfo';
 import { getTodayString, loadStoredOperationsDate, saveStoredOperationsDate } from '../utils/operationsDate';
-import { sortRoutesByWorkArea } from '../utils/routeSort';
 
 const MANIFEST_UPLOAD_STORAGE_KEY = 'readyroute:manifest-latest-upload';
+const EMPTY_ARRAY = [];
 
 function formatMorningDate(dateValue) {
   return format(new Date(`${dateValue}T12:00:00`), 'EEEE, MMMM d');
@@ -32,15 +29,6 @@ function formatAuditEventTime(timestamp) {
   }
 
   return format(new Date(timestamp), 'h:mm a');
-}
-
-function safeNumber(value) {
-  const parsed = Number(value);
-  return Number.isFinite(parsed) ? parsed : 0;
-}
-
-function formatCount(value) {
-  return safeNumber(value).toLocaleString();
 }
 
 function getDispatchWindowCopy(routeSyncSettings) {
@@ -392,22 +380,6 @@ function getRouteDispatchSummary(route) {
   return 'This route is staged and ready to dispatch.';
 }
 
-function MorningStepRail({ steps }) {
-  return (
-    <aside className="morning-step-rail" aria-label="Morning setup steps">
-      {steps.map((step) => (
-        <div className={`morning-step-rail-item ${step.status}`} key={step.key}>
-          <div className="morning-step-number">{step.order}</div>
-          <div>
-            <div className="morning-step-label">{step.label}</div>
-            <div className="morning-step-state">{step.state}</div>
-          </div>
-        </div>
-      ))}
-    </aside>
-  );
-}
-
 function createWarningRows(routes, editedWarnings = {}) {
   const warnings = [];
 
@@ -466,11 +438,9 @@ export default function ManifestPage() {
   const today = getTodayString();
   const isPastDate = date < today;
   const forceSyncOpen = searchParams.get('action') === 'sync';
-  const { selectedCsaId } = useSelectedCsa();
 
   const routesQuery = useQuery({
-    queryKey: ['manager-routes', selectedCsaId, date],
-    enabled: Boolean(selectedCsaId),
+    queryKey: ['manager-routes', date],
     queryFn: async () => {
       const response = await api.get('/manager/routes', { params: { date } });
       return response.data;
@@ -478,8 +448,7 @@ export default function ManifestPage() {
   });
 
   const driversQuery = useQuery({
-    queryKey: ['manager-drivers-manifest', selectedCsaId],
-    enabled: Boolean(selectedCsaId),
+    queryKey: ['manager-drivers-manifest'],
     queryFn: async () => {
       const response = await api.get('/manager/drivers');
       return response.data?.drivers || [];
@@ -487,8 +456,7 @@ export default function ManifestPage() {
   });
 
   const vehiclesQuery = useQuery({
-    queryKey: ['manager-vehicles', selectedCsaId],
-    enabled: Boolean(selectedCsaId),
+    queryKey: ['manager-vehicles'],
     queryFn: async () => {
       const response = await api.get('/manager/vehicles');
       return response.data?.vehicles || [];
@@ -496,7 +464,7 @@ export default function ManifestPage() {
   });
 
   const routePayload = routesQuery.data || {};
-  const routeSummaries = useMemo(() => sortRoutesByWorkArea(routePayload.routes || []), [routePayload.routes]);
+  const routeSummaries = useMemo(() => routePayload.routes || EMPTY_ARRAY, [routePayload.routes]);
   const syncStatus = routePayload.sync_status || { routes_today: 0, routes_assigned: 0, last_sync_at: null };
   const routeSyncSettings = routePayload.route_sync_settings || null;
   const fedexConnection = routePayload.fedex_connection || { is_connected: false, terminal_label: null };
@@ -507,12 +475,12 @@ export default function ManifestPage() {
     const allStops = routeSummaries.flatMap((route) => route.stops || []);
     return getRouteCenter(allStops);
   }, [routeSummaries]);
+  const selectedFileName = selectedFile?.name?.toLowerCase() || '';
   const bundleFileList = useMemo(
     () => Object.values(manifestBundleFiles).filter(Boolean),
     [manifestBundleFiles]
   );
   const hasManifestBundleFiles = bundleFileList.length > 0;
-  const selectedFileName = selectedFile?.name?.toLowerCase() || '';
   const hasSelectedFile = Boolean(selectedFile) || hasManifestBundleFiles;
   const isSpreadsheetUpload = selectedFileName.endsWith('.xls') || selectedFileName.endsWith('.xlsx');
   const isManifestBundleUpload = hasManifestBundleFiles;
@@ -529,6 +497,7 @@ export default function ManifestPage() {
   const routesWithSyncWarnings = routeSummaries.filter((route) => route.sync_state === 'staged_changed');
   const routesChangedAfterDispatch = routeSummaries.filter((route) => route.sync_state === 'changed_after_dispatch');
   const routesWithSyncFailures = routeSummaries.filter((route) => route.sync_state === 'sync_failed');
+  const stagedRoutes = routeSummaries.filter((route) => route.dispatch_state !== 'dispatched');
   const dispatchedRoutes = routeSummaries.filter((route) => route.dispatch_state === 'dispatched');
   const blockedDispatchRoutes = routeSummaries.filter((route) => routeBlocksDispatch(route));
   const reviewDispatchRoutes = routeSummaries.filter((route) => routeNeedsDispatchReview(route));
@@ -539,62 +508,6 @@ export default function ManifestPage() {
   const dispatchableRoutes = routeSummaries.filter(
     (route) => route.dispatch_state !== 'dispatched' && !routeBlocksDispatch(route)
   );
-  const routeTotals = useMemo(() => {
-    const totalStops = routeSummaries.reduce((sum, route) => sum + safeNumber(route.total_stops || route.manifest_stop_count), 0);
-    const totalPackages = routeSummaries.reduce((sum, route) => sum + safeNumber(route.total_packages || route.manifest_package_count), 0);
-    const unmappedStops = routeSummaries.reduce((sum, route) => sum + safeNumber(route.missing_stops), 0);
-
-    return { totalStops, totalPackages, unmappedStops };
-  }, [routeSummaries]);
-  const allRoutesHaveVehicles = hasRoutesToday && routeSummaries.every((route) => Boolean(route.vehicle_id));
-  const dispatchReady = hasRoutesToday && allRoutesHaveDrivers && allRoutesHaveVehicles && blockedDispatchRoutes.length === 0;
-  const morningSteps = useMemo(() => [
-    {
-      key: 'load',
-      order: 1,
-      label: 'Load routes',
-      state: hasRoutesToday ? `${routeSummaries.length} loaded` : 'Waiting',
-      status: hasRoutesToday ? 'done' : 'active'
-    },
-    {
-      key: 'review',
-      order: 2,
-      label: 'Review routes',
-      state: !hasRoutesToday
-        ? 'Not started'
-        : routeTotals.unmappedStops > 0 || routesWithWarnings.length > 0
-          ? 'Needs review'
-          : 'Ready',
-      status: !hasRoutesToday ? 'waiting' : routeTotals.unmappedStops > 0 || routesWithWarnings.length > 0 ? 'active' : 'done'
-    },
-    {
-      key: 'assign',
-      order: 3,
-      label: 'Assign drivers and vehicles',
-      state: !hasRoutesToday
-        ? 'Not started'
-        : routesNeedingDrivers.length || routesNeedingVehicles.length
-          ? `${routesNeedingDrivers.length + routesNeedingVehicles.length} open`
-          : 'Ready',
-      status: !hasRoutesToday ? 'waiting' : routesNeedingDrivers.length || routesNeedingVehicles.length ? 'active' : 'done'
-    },
-    {
-      key: 'dispatch',
-      order: 4,
-      label: 'Dispatch to app',
-      state: dispatchedRoutes.length ? `${dispatchedRoutes.length} dispatched` : dispatchReady ? 'Ready' : 'Blocked',
-      status: dispatchedRoutes.length ? 'done' : dispatchReady ? 'active' : 'waiting'
-    }
-  ], [
-    dispatchReady,
-    dispatchedRoutes.length,
-    hasRoutesToday,
-    routeSummaries.length,
-    routeTotals.unmappedStops,
-    routesNeedingDrivers.length,
-    routesNeedingVehicles.length,
-    routesWithWarnings.length
-  ]);
   const isSetupFlow = searchParams.get('source') === 'setup';
   const setupFocus = searchParams.get('focus') || '';
   const setupBanner = useMemo(() => {
@@ -618,15 +531,6 @@ export default function ManifestPage() {
       body: 'Pull from FedEx or upload the manifest here. Once a route lands, onboarding can hand off into live dispatch.'
     };
   }, [date, hasRoutesToday, isSetupFlow, routeSummaries.length, setupFocus]);
-
-  useEffect(() => {
-    const previousTitle = document.title;
-    document.title = 'Morning Setup | ReadyRoute';
-
-    return () => {
-      document.title = previousTitle;
-    };
-  }, []);
 
   useEffect(() => {
     if (forceSyncOpen || !hasRoutesToday) {
@@ -692,33 +596,23 @@ export default function ManifestPage() {
 
   const pullManifestMutation = useMutation({
     mutationFn: async () => {
-      const response = await api.post('/routes/pull-fedex', { date });
+      const response = await api.post('/routes/pull-fedex');
       return response.data;
     },
-    onSuccess: async (data) => {
-      await Promise.all([
-        queryClient.invalidateQueries({ queryKey: ['manager-routes', selectedCsaId, date] }),
-        queryClient.invalidateQueries({ queryKey: ['fleet-map-routes', selectedCsaId, date] }),
-        queryClient.invalidateQueries({ queryKey: ['dashboard-overview-routes', selectedCsaId, date] })
-      ]);
-
-      await queryClient.fetchQuery({
-        queryKey: ['manager-routes', selectedCsaId, date],
+    onSuccess: async () => {
+      const refreshed = await queryClient.fetchQuery({
+        queryKey: ['manager-routes', date],
         queryFn: async () => {
           const response = await api.get('/manager/routes', { params: { date } });
           return response.data;
-        },
-        staleTime: 0
+        }
       });
 
-      if (data?.message) {
-        setLatestUpload(null);
+      if ((refreshed?.routes || []).length > 0) {
+        setSyncPanelExpanded(false);
       }
     }
   });
-  const syncRunStatus = pullManifestMutation.data?.sync_engine_status || pullManifestMutation.data?.run?.run_status || null;
-  const syncRunError = pullManifestMutation.data?.run?.error_summary || null;
-  const syncDidNotComplete = ['failed', 'skipped'].includes(syncRunStatus);
 
   const dispatchRoutesMutation = useMutation({
     mutationFn: async () => {
@@ -730,9 +624,9 @@ export default function ManifestPage() {
     },
     onSuccess: async () => {
       await Promise.all([
-        queryClient.invalidateQueries({ queryKey: ['manager-routes', selectedCsaId, date] }),
-        queryClient.invalidateQueries({ queryKey: ['fleet-map-routes', selectedCsaId, date] }),
-        queryClient.invalidateQueries({ queryKey: ['dashboard-overview-routes', selectedCsaId, date] })
+        queryClient.invalidateQueries({ queryKey: ['manager-routes', date] }),
+        queryClient.invalidateQueries({ queryKey: ['fleet-map-routes', date] }),
+        queryClient.invalidateQueries({ queryKey: ['dashboard-overview-routes', date] })
       ]);
     }
   });
@@ -747,9 +641,9 @@ export default function ManifestPage() {
       saveStoredManifestUpload(date, null);
       setSyncPanelExpanded(true);
       await Promise.all([
-        queryClient.invalidateQueries({ queryKey: ['manager-routes', selectedCsaId, date] }),
-        queryClient.invalidateQueries({ queryKey: ['fleet-map-routes', selectedCsaId, date] }),
-        queryClient.invalidateQueries({ queryKey: ['dashboard-overview-routes', selectedCsaId, date] })
+        queryClient.invalidateQueries({ queryKey: ['manager-routes', date] }),
+        queryClient.invalidateQueries({ queryKey: ['fleet-map-routes', date] }),
+        queryClient.invalidateQueries({ queryKey: ['dashboard-overview-routes', date] })
       ]);
     }
   });
@@ -831,7 +725,7 @@ export default function ManifestPage() {
       }
 
       const routeData = await queryClient.fetchQuery({
-        queryKey: ['manager-routes', selectedCsaId, resolvedDate],
+        queryKey: ['manager-routes', resolvedDate],
         queryFn: async () => {
           const response = await api.get('/manager/routes', { params: { date: resolvedDate } });
           return response.data;
@@ -865,8 +759,8 @@ export default function ManifestPage() {
         driver_id: nextDriverId || null,
         vehicle_id: nextVehicleId || null
       });
-      await queryClient.invalidateQueries({ queryKey: ['manager-routes', selectedCsaId, date] });
-      await queryClient.invalidateQueries({ queryKey: ['manager-dashboard', selectedCsaId, date] });
+      await queryClient.invalidateQueries({ queryKey: ['manager-routes', date] });
+      await queryClient.invalidateQueries({ queryKey: ['manager-dashboard', date] });
     } finally {
       setSavingRouteIds((current) => {
         const next = new Set(current);
@@ -994,16 +888,9 @@ export default function ManifestPage() {
       return [];
     }
 
-    const totalPickupStops = latestUpload.pickup_stop_count ?? latestUpload.total_pickup_stops ?? latestUpload.pickup_count ?? 0;
     const lines = [
-      `${latestUpload.total_stops} stops loaded — ${latestUpload.delivery_count} deliveries, ${totalPickupStops} pickups`
+      `${latestUpload.total_stops} stops loaded — ${latestUpload.delivery_count} deliveries, ${latestUpload.pickup_count} pickups`
     ];
-
-    if (latestUpload.live_route_protected || latestUpload.driver_route_unchanged) {
-      lines.unshift('Driver route left unchanged because this route has already been dispatched');
-    } else if (latestUpload.post_dispatch_change_held) {
-      lines.unshift('Post-dispatch update held for manager review');
-    }
 
     if (latestUpload.merged_into_existing_route) {
       lines.unshift('Existing pending route updated in place with the new manifest upload');
@@ -1036,10 +923,6 @@ export default function ManifestPage() {
 
     return lines;
   }, [latestUpload]);
-  const uploadErrorData = uploadManifestMutation.error?.response?.data || null;
-  const duplicatePackageExamples = Array.isArray(uploadErrorData?.duplicate_packages)
-    ? uploadErrorData.duplicate_packages
-    : [];
 
   const uploadSummaryBadges = useMemo(() => {
     if (!latestUpload) {
@@ -1055,11 +938,8 @@ export default function ManifestPage() {
       latestUpload.merged_into_existing_route
         ? { key: 'merge', label: 'Updated existing route', tone: 'success' }
         : null,
-      latestUpload.live_route_protected || latestUpload.driver_route_unchanged
-        ? { key: 'protected', label: 'Driver route unchanged', tone: 'warning' }
-        : null,
       latestUpload.route_health?.map_status === 'mapped'
-        ? { key: 'map', label: 'Map coverage ready', tone: 'success' }
+        ? { key: 'map', label: 'Dispatch-ready map', tone: 'success' }
         : latestUpload.route_health?.map_status === 'partially_mapped'
           ? { key: 'map', label: 'Partial map coverage', tone: 'warning' }
           : { key: 'map', label: 'Needs pin review', tone: 'urgent' },
@@ -1080,15 +960,16 @@ export default function ManifestPage() {
 
   return (
     <section className="page-section">
-      <PageHeader
-        title="Morning Setup"
-        description={
-          isPastDate
-            ? 'You are viewing historical manifests for this date. Sync and upload are locked, but assignments and review stay available until you archive them.'
-            : 'Pull or upload routes, confirm work areas, assign drivers, and get the day ready to run.'
-        }
-        actions={(
-          <>
+      <div className="page-header">
+        <div>
+          <h1>Morning Setup — {formatMorningDate(date)}</h1>
+          <p>
+            {isPastDate
+              ? 'You are viewing historical manifests for this date. Sync and upload are locked, but assignments and review stay available until you archive them.'
+              : 'Pull or upload routes, confirm work areas, assign drivers, and get the day ready to run.'}
+          </p>
+        </div>
+        <div className="page-header-actions">
           <input
             className="date-field"
             onChange={(event) => setDate(event.target.value)}
@@ -1105,9 +986,8 @@ export default function ManifestPage() {
               {archiveRoutesMutation.isPending ? 'Archiving...' : 'Archive Routes For This Date'}
             </button>
           ) : null}
-          </>
-        )}
-      />
+        </div>
+      </div>
 
       {setupBanner ? (
         <div className={`card setup-continue-banner ${setupBanner.tone}`}>
@@ -1124,17 +1004,13 @@ export default function ManifestPage() {
         </div>
       ) : null}
 
-      <div className="morning-setup-layout">
-        <MorningStepRail steps={morningSteps} />
-        <div className="morning-setup-main">
-      <div className="card manifest-step-card" id="morning-load-routes">
+      <div className="card manifest-step-card">
         <div className="manifest-step-header">
           <div>
-            <div className="setup-next-eyebrow">Step 1</div>
-            <div className="card-title">Load routes</div>
+            <div className="card-title">Step 1 — Sync Panel</div>
             <div className="manifest-step-subtitle">
               {hasRoutesToday
-                ? `${routeSummaries.length} route${routeSummaries.length === 1 ? '' : 's'} loaded for ${formatMorningDate(date)}.`
+                ? `Routes are loaded for ${formatMorningDate(date)}. You can collapse this once setup is complete.`
                 : 'No routes loaded for this day yet.'}
             </div>
           </div>
@@ -1170,40 +1046,34 @@ export default function ManifestPage() {
 
             {activeTab === 'auto' ? (
               <div className="manifest-sync-body">
-                <div className={`fedex-connection-row morning-fcc-card ${fedexConnection.is_connected ? 'connected' : 'not-connected'}`}>
+                <div className="fedex-connection-row">
+                  <span className={fedexConnection.is_connected ? 'status-dot online' : 'status-dot offline'} />
                   <div>
-                    <div className="morning-fcc-title">FedEx Customer Connection</div>
-                    <div className="morning-fcc-meta">
-                      {fedexConnection.default_account_label || fedexConnection.terminal_label || 'No account connected'}
-                    </div>
-                    <div className="morning-fcc-meta">{formatSyncLine(syncStatus.last_sync_at)}</div>
+                    <strong>
+                      {fedexConnection.is_connected
+                        ? `FedEx Connected — ${fedexConnection.default_account_label || fedexConnection.terminal_label || '--'}`
+                        : 'Not connected'}
+                    </strong>
                     {!fedexConnection.is_connected ? (
                       <div>
                         <a className="configure-link" href="/csa?focus=fedex">
-                          Configure FCC connection
+                          Configure
                         </a>
                       </div>
                     ) : null}
                   </div>
-                  <StatusBadge tone={fedexConnection.is_connected ? 'active' : 'warning'}>
-                    {fedexConnection.is_connected ? 'Connected' : 'Not connected'}
-                  </StatusBadge>
                 </div>
+
+                <div className="integration-meta">{formatSyncLine(syncStatus.last_sync_at)}</div>
 
                 <button
                   className="primary-cta manifest-button"
-                  disabled={pullManifestMutation.isPending || isPastDate || !fedexConnection.is_connected}
+                  disabled={pullManifestMutation.isPending || isPastDate}
                   onClick={() => pullManifestMutation.mutate()}
                   type="button"
                 >
-                  {pullManifestMutation.isPending ? 'Pulling routes from FedEx...' : `Sync Routes for ${format(new Date(`${date}T12:00:00`), 'MMM d')}`}
+                  {pullManifestMutation.isPending ? 'Pulling routes from FedEx...' : `Sync Routes For ${format(new Date(`${date}T12:00:00`), 'MMM d')}`}
                 </button>
-
-                {!fedexConnection.is_connected ? (
-                  <div className="info-banner">
-                    FCC connection required. Connect FedEx Customer Connection before auto-syncing routes, or use Upload Manifest.
-                  </div>
-                ) : null}
 
                 {pullManifestMutation.isPending ? <div className="progress-bar"><div className="progress-bar-fill indeterminate" /></div> : null}
 
@@ -1216,16 +1086,7 @@ export default function ManifestPage() {
                   </div>
                 ) : null}
 
-                {pullManifestMutation.data?.message ? (
-                  <div className={syncDidNotComplete ? 'error-banner manifest-error-row' : 'info-banner'}>
-                    <span>{syncRunError || pullManifestMutation.data.message}</span>
-                    {syncDidNotComplete ? (
-                      <button className="secondary-inline-button" onClick={() => pullManifestMutation.mutate()} type="button">
-                        Retry
-                      </button>
-                    ) : null}
-                  </div>
-                ) : null}
+                {pullManifestMutation.data?.message ? <div className="info-banner">{pullManifestMutation.data.message}</div> : null}
 
                 <div className="manifest-note">
                   Make sure ReadyRoute is set as a Vendor under Data Subscriptions in your FCC portal.
@@ -1243,13 +1104,13 @@ export default function ManifestPage() {
                   }}
                   type="button"
                 >
-                  <span className="upload-title">Drag a FedEx Combined, Delivery, or Pickup Manifest (.xls, .xlsx) and optional GPX file here</span>
+                  <span className="upload-title">Drag your FedEx Combined, Delivery, or Pickup Manifest (.xls, .xlsx) and optional GPX file here</span>
                   <span className="upload-subtitle">
                     {hasManifestBundleFiles
                       ? bundleFileList.map((file) => file.name).join(' + ')
                       : hasSelectedFile
                       ? `${selectedFile.name} · ${(selectedFile.size / 1024).toFixed(1)} KB${selectedGpxFile ? ` + ${selectedGpxFile.name}` : ''}`
-                      : 'Upload Combined first, then Delivery or Pickup to enrich the same route. You can select one spreadsheet and its GPX together.'}
+                      : 'Upload Combined, Delivery, Pickup, and GPX files together to merge route pins, contact info, package detail, and service codes.'}
                   </span>
                 </button>
 
@@ -1415,16 +1276,7 @@ export default function ManifestPage() {
                 {uploadManifestMutation.isPending ? <div className="progress-bar"><div className="progress-bar-fill indeterminate" /></div> : null}
                 {uploadManifestMutation.isError ? (
                   <div className="error-banner">
-                    <div>{uploadErrorData?.error || 'Manifest upload failed. Please try again.'}</div>
-                    {duplicatePackageExamples.length ? (
-                      <div className="manifest-error-detail">
-                        Examples: {duplicatePackageExamples.map((pkg) => {
-                          const firstSequence = pkg.first_sequence ? `stop ${pkg.first_sequence}` : 'earlier stop';
-                          const duplicateSequence = pkg.duplicate_sequence ? `stop ${pkg.duplicate_sequence}` : 'later stop';
-                          return `${pkg.tracking_number} (${firstSequence} and ${duplicateSequence})`;
-                        }).join('; ')}
-                      </div>
-                    ) : null}
+                    {uploadManifestMutation.error?.response?.data?.error || 'Manifest upload failed. Please try again.'}
                   </div>
                 ) : null}
               </div>
@@ -1455,43 +1307,28 @@ export default function ManifestPage() {
       </div>
 
       {hasRoutesToday ? (
-        <div className="card manifest-step-card" id="morning-review-routes">
+        <div className="card manifest-step-card">
           <div className="manifest-step-header">
             <div>
-              <div className="setup-next-eyebrow">Steps 2-4</div>
-              <div className="card-title">Review, assign, and dispatch</div>
-              <div className="manifest-step-subtitle">Confirm work areas, clear blockers, assign drivers and vehicles, then dispatch to the driver app.</div>
+              <div className="card-title">{routeSummaries.length} routes loaded for {formatMorningDate(date)}</div>
+              <div className="manifest-step-subtitle">Assign drivers and vehicles, then review routes before drivers head out.</div>
             </div>
-          </div>
-
-          <div className="morning-review-summary">
-            <div className="morning-review-stat">
-              <strong>{formatCount(routeSummaries.length)}</strong>
-              <span>Routes</span>
-            </div>
-            <div className="morning-review-stat">
-              <strong>{formatCount(routeTotals.totalStops)}</strong>
-              <span>Total stops</span>
-            </div>
-            <div className="morning-review-stat">
-              <strong>{formatCount(routeTotals.totalPackages)}</strong>
-              <span>Total packages</span>
-            </div>
-            <div className="morning-review-stat">
-              <strong>{formatCount(routeTotals.unmappedStops)}</strong>
-              <span>Unmapped stops</span>
-            </div>
+            <div className="manifest-note">{allRoutesHaveDrivers ? 'All visible routes have drivers assigned.' : 'Some routes still need driver assignment.'}</div>
           </div>
 
           <div className="manifest-dispatch-board">
             <div className="manifest-dispatch-overview">
               <div>
-                <div className="manifest-dispatch-eyebrow">Dispatch routes</div>
+                <div className="manifest-dispatch-eyebrow">Dispatch board</div>
                 <div className="manifest-dispatch-headline">
-                  Dispatch sends ready routes to driver apps.
+                  {blockedDispatchRoutes.length
+                    ? `${blockedDispatchRoutes.length} route${blockedDispatchRoutes.length === 1 ? '' : 's'} still block dispatch`
+                    : reviewDispatchRoutes.length
+                      ? `${reviewDispatchRoutes.length} route${reviewDispatchRoutes.length === 1 ? '' : 's'} should be reviewed before dispatch`
+                      : `${readyDispatchRoutes.length} route${readyDispatchRoutes.length === 1 ? '' : 's'} are ready to dispatch`}
                 </div>
                 <div className="manifest-step-subtitle">
-                  Routes stay hidden until dispatched.
+                  ReadyRoute is staging FCC route data in the background. Use this board to clear blockers, review changed routes, and dispatch when the day is ready.
                 </div>
                 {routeSyncSettings ? (
                   <div className="manifest-note">
@@ -1499,7 +1336,56 @@ export default function ManifestPage() {
                   </div>
                 ) : null}
               </div>
+              <div className="manifest-dispatch-status-panel">
+                <div className="manifest-dispatch-status-row">
+                  <span className="manifest-dispatch-status-label">Ready now</span>
+                  <span className="manifest-dispatch-status-value">{readyDispatchRoutes.length}</span>
+                </div>
+                <div className="manifest-dispatch-status-row warning">
+                  <span className="manifest-dispatch-status-label">Review before dispatch</span>
+                  <span className="manifest-dispatch-status-value">{reviewDispatchRoutes.length}</span>
+                </div>
+                <div className="manifest-dispatch-status-row urgent">
+                  <span className="manifest-dispatch-status-label">Blocking dispatch</span>
+                  <span className="manifest-dispatch-status-value">{blockedDispatchRoutes.length}</span>
+                </div>
+              </div>
             </div>
+
+            <div className="manifest-dispatch-summary">
+            <div className="manifest-dispatch-card">
+              <div className="manifest-dispatch-value">{routeSummaries.length - routesNeedingDrivers.length}</div>
+              <div className="manifest-dispatch-label">Routes with drivers</div>
+            </div>
+            <div className="manifest-dispatch-card">
+              <div className="manifest-dispatch-value">{stagedRoutes.length}</div>
+              <div className="manifest-dispatch-label">Staged</div>
+            </div>
+            <div className="manifest-dispatch-card">
+              <div className="manifest-dispatch-value">{dispatchedRoutes.length}</div>
+              <div className="manifest-dispatch-label">Dispatched</div>
+            </div>
+            <div className="manifest-dispatch-card warning">
+              <div className="manifest-dispatch-value">{routesNeedingDrivers.length}</div>
+              <div className="manifest-dispatch-label">Need drivers</div>
+            </div>
+            <div className="manifest-dispatch-card warning">
+              <div className="manifest-dispatch-value">{routesNeedingVehicles.length}</div>
+              <div className="manifest-dispatch-label">Need vehicles</div>
+            </div>
+            <div className="manifest-dispatch-card warning">
+              <div className="manifest-dispatch-value">{routesNeedingPins.length + partiallyMappedRoutes.length}</div>
+              <div className="manifest-dispatch-label">Need pin review</div>
+            </div>
+            <div className="manifest-dispatch-card warning">
+              <div className="manifest-dispatch-value">{routesWithWarnings.length}</div>
+              <div className="manifest-dispatch-label">Have address warnings</div>
+            </div>
+            <div className="manifest-dispatch-card warning">
+              <div className="manifest-dispatch-value">{routesWithSyncWarnings.length + routesChangedAfterDispatch.length}</div>
+              <div className="manifest-dispatch-label">Changed manifests</div>
+            </div>
+          </div>
           </div>
 
           {dispatchRoutesMutation.isError ? (
@@ -1513,50 +1399,23 @@ export default function ManifestPage() {
             </div>
           ) : null}
 
-          <div className="morning-dispatch-checklist">
-            <div className="morning-checklist-item done">
-              <span>Routes loaded</span>
-              <StatusBadge tone={hasRoutesToday ? 'active' : 'neutral'}>{hasRoutesToday ? 'Ready' : 'Waiting'}</StatusBadge>
-            </div>
-            <div className={`morning-checklist-item ${allRoutesHaveDrivers ? 'done' : 'warning'}`}>
-              <span>Drivers assigned</span>
-              <StatusBadge tone={allRoutesHaveDrivers ? 'active' : 'warning'}>
-                {allRoutesHaveDrivers ? 'Ready' : `${routesNeedingDrivers.length} open`}
-              </StatusBadge>
-            </div>
-            <div className={`morning-checklist-item ${allRoutesHaveVehicles ? 'done' : 'warning'}`}>
-              <span>Vehicles assigned</span>
-              <StatusBadge tone={allRoutesHaveVehicles ? 'active' : 'warning'}>
-                {allRoutesHaveVehicles ? 'Ready' : `${routesNeedingVehicles.length} open`}
-              </StatusBadge>
-            </div>
-            <div className={`morning-checklist-item ${dispatchReady ? 'done' : 'warning'}`}>
-              <span>Dispatch ready</span>
-              <StatusBadge tone={dispatchReady ? 'active' : 'warning'}>
-                {dispatchReady ? 'Ready' : 'Not ready'}
-              </StatusBadge>
-            </div>
-          </div>
-
           <div className="manifest-route-actions">
-            <div className="manifest-dispatch-action-card">
-              <button
-                className="primary-cta manifest-button"
-                disabled={isPastDate || dispatchRoutesMutation.isPending || selectedDispatchRouteIds.length === 0 || !dispatchReady}
-                onClick={() => dispatchRoutesMutation.mutate()}
-                type="button"
-              >
-                {dispatchRoutesMutation.isPending
-                  ? 'Dispatching…'
-                  : `Dispatch ${selectedDispatchRouteIds.length} route${selectedDispatchRouteIds.length === 1 ? '' : 's'}`}
-              </button>
-              <div className="manifest-note">
-                {blockedDispatchRoutes.length
-                  ? 'Fix blockers before dispatch.'
-                  : reviewDispatchRoutes.length
-                    ? 'Review flagged routes before dispatch.'
-                    : 'Routes stay hidden until dispatched.'}
-              </div>
+            <button
+              className="primary-cta manifest-button"
+              disabled={isPastDate || dispatchRoutesMutation.isPending || selectedDispatchRouteIds.length === 0}
+              onClick={() => dispatchRoutesMutation.mutate()}
+              type="button"
+            >
+              {dispatchRoutesMutation.isPending
+                ? 'Dispatching…'
+                : `Dispatch ${selectedDispatchRouteIds.length} Route${selectedDispatchRouteIds.length === 1 ? '' : 's'}`}
+            </button>
+            <div className="manifest-note">
+              {blockedDispatchRoutes.length
+                ? `${blockedDispatchRoutes.length} route${blockedDispatchRoutes.length === 1 ? '' : 's'} will block dispatch until assignments or sync issues are resolved.`
+                : reviewDispatchRoutes.length
+                  ? `${reviewDispatchRoutes.length} route${reviewDispatchRoutes.length === 1 ? '' : 's'} should be reviewed, but can still dispatch if the lead manager is comfortable sending them.`
+                  : 'Staged routes stay hidden from drivers until dispatch. After dispatch, driver apps pick up the live route for the day.'}
             </div>
           </div>
 
@@ -1650,26 +1509,23 @@ export default function ManifestPage() {
               {
                 key: 'blocked',
                 title: 'Blocking dispatch',
-                subtitle: 'Fix these before dispatch.',
+                subtitle: 'These routes need assignments or sync repair before the day can be dispatched.',
                 className: 'manifest-lane-card urgent',
-                routes: blockedDispatchRoutes,
-                empty: 'No routes blocked.'
+                routes: blockedDispatchRoutes
               },
               {
                 key: 'review',
                 title: 'Review before dispatch',
-                subtitle: 'Review these before sending routes.',
+                subtitle: 'These routes can move forward, but the lead manager should confirm changes, warnings, or pin gaps.',
                 className: 'manifest-lane-card warning',
-                routes: reviewDispatchRoutes,
-                empty: 'No routes need review.'
+                routes: reviewDispatchRoutes
               },
               {
                 key: 'ready',
                 title: 'Ready to dispatch',
-                subtitle: 'Ready for driver apps.',
+                subtitle: 'These routes are staged cleanly and are ready for the driver app once dispatch happens.',
                 className: 'manifest-lane-card success',
-                routes: readyDispatchRoutes,
-                empty: 'No routes ready.'
+                routes: readyDispatchRoutes
               }
             ].map((lane) => (
               <section className={lane.className} key={lane.key}>
@@ -1692,7 +1548,6 @@ export default function ManifestPage() {
                 .filter((stop) => stop.address)
                 .slice(0, 3);
               const attentionItems = getRouteAttentionItems(route);
-              const contactStopCount = (route.stops || []).filter((stop) => getStopContactDetails(stop).hasAny).length;
 
               return (
                 <article
@@ -1757,12 +1612,6 @@ export default function ManifestPage() {
                           {item.label}
                         </span>
                       ))}
-                    </div>
-                  ) : null}
-
-                  {contactStopCount ? (
-                    <div className="manifest-route-contact-summary">
-                      {contactStopCount} stop{contactStopCount === 1 ? '' : 's'} with manifest contact info
                     </div>
                   ) : null}
 
@@ -1834,30 +1683,12 @@ export default function ManifestPage() {
                   <div className="manifest-route-card-addresses">
                     <div className="manifest-address-heading">First stops</div>
                     {upcomingStops.length ? (
-                      upcomingStops.map((stop) => {
-                        const contact = getStopContactDetails(stop);
-                        const contactParts = [
-                          contact.contactName,
-                          contact.businessName,
-                          contact.primaryPhone || contact.alternatePhone,
-                          contact.email
-                        ].filter(Boolean);
-
-                        return (
-                          <div className="manifest-address-row" key={stop.id}>
-                            <span className="manifest-address-seq">ST#{stop.sequence_order}</span>
-                            <span className="manifest-address-text">
-                              <span>{stop.address}</span>
-                              {contact.hasAny ? (
-                                <span className="manifest-address-contact">
-                                  {contactParts.length ? `Contact: ${contactParts.join(' · ')}` : 'Contact info detected'}
-                                  {contact.instructions ? ` · Instructions: ${contact.instructions}` : ''}
-                                </span>
-                              ) : null}
-                            </span>
-                          </div>
-                        );
-                      })
+                      upcomingStops.map((stop) => (
+                        <div className="manifest-address-row" key={stop.id}>
+                          <span className="manifest-address-seq">ST#{stop.sequence_order}</span>
+                          <span className="manifest-address-text">{stop.address}</span>
+                        </div>
+                      ))
                     ) : (
                       <div className="manifest-address-empty">No mapped stops available yet.</div>
                     )}
@@ -1879,7 +1710,7 @@ export default function ManifestPage() {
                   </div>
                 ) : (
                   <div className="manifest-lane-empty">
-                    {lane.empty}
+                    No routes currently belong in this section.
                   </div>
                 )}
               </section>
@@ -1891,7 +1722,7 @@ export default function ManifestPage() {
               <div>
                 <div className="card-title">Route Map</div>
                 <div className="manifest-step-subtitle">
-                  Routes plotted together so you can spot work-area spread before drivers head out.
+                  All visible routes plotted together so you can spot work-area spread before drivers head out.
                 </div>
               </div>
               <div className="manifest-route-key">
@@ -1976,13 +1807,7 @@ export default function ManifestPage() {
             </div>
           </div>
         </div>
-      ) : (
-        <div className="card manifest-step-card morning-empty-routes" id="morning-review-routes">
-          <div className="setup-next-eyebrow">Step 2</div>
-          <div className="card-title">Review routes</div>
-          <div className="manifest-step-subtitle">Routes, stop counts, package totals, and mapping coverage will appear here after routes are loaded.</div>
-        </div>
-      )}
+      ) : null}
 
       {warningRows.length ? (
         <div className="card manifest-step-card">
@@ -2030,8 +1855,6 @@ export default function ManifestPage() {
           ) : null}
         </div>
       ) : null}
-        </div>
-      </div>
     </section>
   );
 }

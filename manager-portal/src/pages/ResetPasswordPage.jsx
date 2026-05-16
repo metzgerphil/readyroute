@@ -11,12 +11,16 @@ export default function ResetPasswordPage() {
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [errorMessage, setErrorMessage] = useState('');
-  const infoMessage =
-    token
-      ? mode === 'invite'
-        ? 'Set your manager password to activate this ReadyRoute invite.'
-        : 'Choose a new password for your manager account.'
-      : 'Open this page from your password reset email.';
+  const infoMessage = useMemo(
+    () => (
+      token
+        ? mode === 'invite'
+          ? 'Set your manager password to activate this ReadyRoute invite.'
+          : 'Choose a new password for your manager account.'
+        : 'Open this page from a reset link, or paste the reset token below.'
+    ),
+    [mode, token]
+  );
   const [manualToken, setManualToken] = useState(token);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -25,7 +29,7 @@ export default function ResetPasswordPage() {
     setErrorMessage('');
 
     if (!manualToken.trim()) {
-      setErrorMessage('Reset code is required.');
+      setErrorMessage('Reset token is required.');
       return;
     }
 
@@ -49,7 +53,7 @@ export default function ResetPasswordPage() {
       navigate(`/login?reset=success${mode === 'invite' ? '&invite=accepted' : ''}`, { replace: true });
     } catch (error) {
       if (!error.response) {
-        setErrorMessage('ReadyRoute is temporarily unavailable. Please try again.');
+        setErrorMessage('Backend server is unavailable. Start the ReadyRoute backend and try again.');
       } else {
         setErrorMessage(error.response?.data?.error || 'Password reset failed. Please try again.');
       }
@@ -69,7 +73,7 @@ export default function ResetPasswordPage() {
 
         {infoMessage ? <div className="info-banner">{infoMessage}</div> : null}
 
-        <label className="field-label" htmlFor="reset-token">Reset code</label>
+        <label className="field-label" htmlFor="reset-token">Reset token</label>
         <textarea
           className="text-field"
           id="reset-token"
