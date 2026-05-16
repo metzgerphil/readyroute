@@ -50,6 +50,13 @@ const DEFAULT_CUSTOM_WEEKLY_REQUIREMENTS = {
   require_manager_review_for_reported_issues: true
 };
 
+const DEFAULT_REMINDER_SCHEDULE = {
+  weekly_inspection_day: 'Monday',
+  maintenance_warning_miles: 1000,
+  maintenance_warning_days: 14,
+  document_warning_days: 30
+};
+
 const DEFAULT_CHECKLIST_TEMPLATE_FIELDS = [
   { id: 'date', label: 'Date', detail: 'Inspection date', enabled: true },
   { id: 'company_name', label: 'Company name', detail: 'CSA or company name', enabled: true },
@@ -82,6 +89,9 @@ function createDefaultMaintenanceRequirementSetting() {
   return {
     maintenance_requirement_mode: 'option_1',
     weekly_inspection_day: 'Monday',
+    maintenance_warning_miles: DEFAULT_REMINDER_SCHEDULE.maintenance_warning_miles,
+    maintenance_warning_days: DEFAULT_REMINDER_SCHEDULE.maintenance_warning_days,
+    document_warning_days: DEFAULT_REMINDER_SCHEDULE.document_warning_days,
     custom_daily_requirements: { ...DEFAULT_CUSTOM_DAILY_REQUIREMENTS },
     custom_weekly_requirements: { ...DEFAULT_CUSTOM_WEEKLY_REQUIREMENTS },
     updated_by_manager_user_id: null,
@@ -101,6 +111,7 @@ function normalizeBooleanMap(value, defaults) {
 function normalizeMaintenanceRequirementSetting(setting = {}) {
   const mode = String(setting.maintenance_requirement_mode || setting.mode || '').trim() || 'option_1';
   const weeklyInspectionDay = String(setting.weekly_inspection_day || '').trim() || 'Monday';
+  const reminderSchedule = normalizeReminderSchedule(setting);
 
   if (!MAINTENANCE_REQUIREMENT_MODES.has(mode)) {
     return { error: 'maintenance_requirement_mode is not supported' };
@@ -110,9 +121,16 @@ function normalizeMaintenanceRequirementSetting(setting = {}) {
     return { error: 'weekly_inspection_day is not supported' };
   }
 
+  if (reminderSchedule.error) {
+    return reminderSchedule;
+  }
+
   return {
     maintenance_requirement_mode: mode,
     weekly_inspection_day: weeklyInspectionDay,
+    maintenance_warning_miles: reminderSchedule.maintenance_warning_miles,
+    maintenance_warning_days: reminderSchedule.maintenance_warning_days,
+    document_warning_days: reminderSchedule.document_warning_days,
     custom_daily_requirements: normalizeBooleanMap(
       setting.custom_daily_requirements,
       DEFAULT_CUSTOM_DAILY_REQUIREMENTS
@@ -122,6 +140,66 @@ function normalizeMaintenanceRequirementSetting(setting = {}) {
       DEFAULT_CUSTOM_WEEKLY_REQUIREMENTS
     )
   };
+}
+
+function normalizeNonnegativeInteger(value, defaultValue, fieldName) {
+  if (value === undefined || value === null || value === '') {
+    return defaultValue;
+  }
+
+  const parsed = Number(value);
+  if (!Number.isInteger(parsed) || parsed < 0) {
+    return { error: `${fieldName} must be a non-negative integer` };
+  }
+
+  return parsed;
+}
+
+function normalizeReminderSchedule(setting = {}) {
+  const source = setting && typeof setting === 'object' ? setting : {};
+  const weeklyInspectionDay = String(source.weekly_inspection_day || '').trim() || DEFAULT_REMINDER_SCHEDULE.weekly_inspection_day;
+
+  if (!WEEKLY_INSPECTION_DAYS.has(weeklyInspectionDay)) {
+    return { error: 'weekly_inspection_day is not supported' };
+  }
+
+  const maintenanceWarningMiles = normalizeNonnegativeInteger(
+    source.maintenance_warning_miles,
+    DEFAULT_REMINDER_SCHEDULE.maintenance_warning_miles,
+    'maintenance_warning_miles'
+  );
+  const maintenanceWarningDays = normalizeNonnegativeInteger(
+    source.maintenance_warning_days,
+    DEFAULT_REMINDER_SCHEDULE.maintenance_warning_days,
+    'maintenance_warning_days'
+  );
+  const documentWarningDays = normalizeNonnegativeInteger(
+    source.document_warning_days,
+    DEFAULT_REMINDER_SCHEDULE.document_warning_days,
+    'document_warning_days'
+  );
+
+  for (const value of [maintenanceWarningMiles, maintenanceWarningDays, documentWarningDays]) {
+    if (value?.error) {
+      return value;
+    }
+  }
+
+  return {
+    weekly_inspection_day: weeklyInspectionDay,
+    maintenance_warning_miles: maintenanceWarningMiles,
+    maintenance_warning_days: maintenanceWarningDays,
+    document_warning_days: documentWarningDays
+  };
+}
+
+function presentReminderSchedule(setting = {}) {
+  const normalized = normalizeReminderSchedule(setting);
+  if (normalized.error) {
+    return { ...DEFAULT_REMINDER_SCHEDULE };
+  }
+
+  return normalized;
 }
 
 function createDefaultChecklistTemplateSetting() {
@@ -356,8 +434,16 @@ function getLatestMaintenanceByVehicleAndType(records = []) {
   }, new Map());
 }
 
-function buildVehicleMaintenanceAlert(vehicle = {}, activeSettings = [], maintenanceByVehicleAndType = new Map(), todayString = getCurrentDateString()) {
+function buildVehicleMaintenanceAlert(
+  vehicle = {},
+  activeSettings = [],
+  maintenanceByVehicleAndType = new Map(),
+  todayString = getCurrentDateString(),
+  reminderSchedule = DEFAULT_REMINDER_SCHEDULE
+) {
   const currentMileage = toInteger(vehicle.current_mileage) || 0;
+  const maintenanceWarningMiles = toInteger(reminderSchedule.maintenance_warning_miles) ?? DEFAULT_REMINDER_SCHEDULE.maintenance_warning_miles;
+  const maintenanceWarningDays = toInteger(reminderSchedule.maintenance_warning_days) ?? DEFAULT_REMINDER_SCHEDULE.maintenance_warning_days;
   const candidates = (activeSettings || [])
     .filter((setting) => setting?.is_enabled)
     .map((setting) => {
@@ -385,14 +471,14 @@ function buildVehicleMaintenanceAlert(vehicle = {}, activeSettings = [], mainten
         ? 'ok'
         : remainingMiles <= 0
           ? 'overdue'
-          : remainingMiles <= 1000
+          : remainingMiles <= maintenanceWarningMiles
             ? 'due_soon'
             : 'ok';
       const dateStatus = remainingDays === null
         ? 'ok'
         : remainingDays < 0
           ? 'overdue'
-          : remainingDays <= 14
+          : remainingDays <= maintenanceWarningDays
             ? 'due_soon'
             : 'ok';
       const status = mileageStatus === 'overdue' || dateStatus === 'overdue'
@@ -447,9 +533,16 @@ function buildVehicleMaintenanceAlert(vehicle = {}, activeSettings = [], mainten
   };
 }
 
-function buildVehicleReadiness(vehicle = {}, maintenanceAlert = {}, todayAssignment = null, todayString = getCurrentDateString()) {
+function buildVehicleReadiness(
+  vehicle = {},
+  maintenanceAlert = {},
+  todayAssignment = null,
+  todayString = getCurrentDateString(),
+  reminderSchedule = DEFAULT_REMINDER_SCHEDULE
+) {
   const registrationDays = differenceInDays(vehicle.registration_expiration, todayString);
   const insuranceDays = differenceInDays(vehicle.insurance_expiration, todayString);
+  const documentWarningDays = toInteger(reminderSchedule.document_warning_days) ?? DEFAULT_REMINDER_SCHEDULE.document_warning_days;
   const maintenanceItem = maintenanceAlert.most_urgent || null;
   const reasons = [];
 
@@ -491,6 +584,24 @@ function buildVehicleReadiness(vehicle = {}, maintenanceAlert = {}, todayAssignm
     });
   }
 
+  if (registrationDays !== null && registrationDays >= 0 && registrationDays <= documentWarningDays) {
+    reasons.push({
+      type: 'registration_soon',
+      severity: 'maintenance_soon',
+      label: 'Registration expiring soon',
+      detail: `${registrationDays} days left`
+    });
+  }
+
+  if (insuranceDays !== null && insuranceDays >= 0 && insuranceDays <= documentWarningDays) {
+    reasons.push({
+      type: 'insurance_soon',
+      severity: 'maintenance_soon',
+      label: 'Insurance expiring soon',
+      detail: `${insuranceDays} days left`
+    });
+  }
+
   if (maintenanceAlert.status === 'due_soon') {
     reasons.push({
       type: 'maintenance_soon',
@@ -500,7 +611,7 @@ function buildVehicleReadiness(vehicle = {}, maintenanceAlert = {}, todayAssignm
         : 'Maintenance soon',
       detail: maintenanceItem?.remaining_miles !== null && maintenanceItem?.remaining_miles <= 1000
         ? `${maintenanceItem.remaining_miles} mi left`
-        : maintenanceItem?.remaining_days !== null && maintenanceItem?.remaining_days <= 14
+        : maintenanceItem?.remaining_days !== null
           ? `${maintenanceItem.remaining_days} days left`
           : null
     });
@@ -583,6 +694,7 @@ function createVehiclesRouter(options = {}) {
       let maintenanceByVehicleAndType = new Map();
       let assignmentsByVehicleId = new Map();
       let activeMaintenanceSettings = [];
+      let reminderSchedule = { ...DEFAULT_REMINDER_SCHEDULE };
 
       const { data: maintenanceSettings, error: maintenanceSettingsError } = await supabase
         .from('vehicle_maintenance_settings')
@@ -598,6 +710,22 @@ function createVehiclesRouter(options = {}) {
       activeMaintenanceSettings = maintenanceSettings?.length
         ? maintenanceSettings
         : createDefaultMaintenanceSettings();
+
+      const { data: checkRequirementSettings, error: checkRequirementError } = await supabase
+        .from('vehicle_check_requirement_settings')
+        .select('weekly_inspection_day, maintenance_warning_miles, maintenance_warning_days, document_warning_days')
+        .eq('account_id', req.account.account_id)
+        .maybeSingle();
+
+      if (checkRequirementError) {
+        const missingReminderColumns = ['42703', 'PGRST204', 'PGRST205'].includes(checkRequirementError.code);
+        if (!missingReminderColumns) {
+          console.error('Vehicle reminder schedule lookup failed:', checkRequirementError);
+          return res.status(500).json({ error: 'Failed to load vehicle reminder schedule' });
+        }
+      } else {
+        reminderSchedule = presentReminderSchedule(checkRequirementSettings);
+      }
 
       if (vehicleIds.length > 0) {
         const { data: maintenanceRows, error: maintenanceError } = await supabase
@@ -659,11 +787,12 @@ function createVehiclesRouter(options = {}) {
             vehicle,
             activeMaintenanceSettings,
             maintenanceByVehicleAndType,
-            today
+            today,
+            reminderSchedule
           );
           const maintenanceServiceDue = ['due_soon', 'overdue'].includes(maintenanceAlert.status);
           const todayAssignment = assignmentsByVehicleId.get(vehicle.id) || null;
-          const readiness = buildVehicleReadiness(vehicle, maintenanceAlert, todayAssignment, today);
+          const readiness = buildVehicleReadiness(vehicle, maintenanceAlert, todayAssignment, today, reminderSchedule);
 
           return {
             ...vehicle,
@@ -864,6 +993,88 @@ function createVehiclesRouter(options = {}) {
     } catch (error) {
       console.error('Vehicle check requirement settings save failed:', error);
       return res.status(500).json({ error: 'Failed to save vehicle check requirements' });
+    }
+  });
+
+  router.get('/settings/reminder-schedule', requireManager, async (req, res) => {
+    try {
+      const { data, error } = await supabase
+        .from('vehicle_check_requirement_settings')
+        .select('*')
+        .eq('account_id', req.account.account_id)
+        .maybeSingle();
+
+      if (error) {
+        console.error('Vehicle reminder schedule lookup failed:', error);
+        return res.status(500).json({ error: 'Failed to load reminder schedule' });
+      }
+
+      return res.status(200).json({
+        schedule: presentReminderSchedule(data)
+      });
+    } catch (error) {
+      console.error('Vehicle reminder schedule endpoint failed:', error);
+      return res.status(500).json({ error: 'Failed to load reminder schedule' });
+    }
+  });
+
+  router.put('/settings/reminder-schedule', requireManager, async (req, res) => {
+    const parsed = normalizeReminderSchedule(req.body || {});
+
+    if (parsed.error) {
+      return res.status(400).json({ error: parsed.error });
+    }
+
+    try {
+      const { data: existing, error: lookupError } = await supabase
+        .from('vehicle_check_requirement_settings')
+        .select('*')
+        .eq('account_id', req.account.account_id)
+        .maybeSingle();
+
+      if (lookupError) {
+        console.error('Vehicle reminder schedule lookup failed:', lookupError);
+        return res.status(500).json({ error: 'Failed to save reminder schedule' });
+      }
+
+      const baseSetting = {
+        ...createDefaultMaintenanceRequirementSetting(),
+        ...(existing || {})
+      };
+      const payload = {
+        account_id: req.account.account_id,
+        maintenance_requirement_mode: baseSetting.maintenance_requirement_mode,
+        weekly_inspection_day: parsed.weekly_inspection_day,
+        maintenance_warning_miles: parsed.maintenance_warning_miles,
+        maintenance_warning_days: parsed.maintenance_warning_days,
+        document_warning_days: parsed.document_warning_days,
+        custom_daily_requirements: normalizeBooleanMap(
+          baseSetting.custom_daily_requirements,
+          DEFAULT_CUSTOM_DAILY_REQUIREMENTS
+        ),
+        custom_weekly_requirements: normalizeBooleanMap(
+          baseSetting.custom_weekly_requirements,
+          DEFAULT_CUSTOM_WEEKLY_REQUIREMENTS
+        ),
+        updated_by_manager_user_id: req.account.manager_user_id || null,
+        updated_at: nowProvider().toISOString()
+      };
+
+      const { error } = await supabase
+        .from('vehicle_check_requirement_settings')
+        .upsert(payload, { onConflict: 'account_id' });
+
+      if (error) {
+        console.error('Vehicle reminder schedule upsert failed:', error);
+        return res.status(500).json({ error: 'Failed to save reminder schedule' });
+      }
+
+      return res.status(200).json({
+        schedule: presentReminderSchedule(payload)
+      });
+    } catch (error) {
+      console.error('Vehicle reminder schedule save failed:', error);
+      return res.status(500).json({ error: 'Failed to save reminder schedule' });
     }
   });
 

@@ -172,6 +172,9 @@ create table if not exists public.vehicle_check_requirement_settings (
   account_id uuid not null references public.accounts(id) on delete cascade,
   maintenance_requirement_mode text not null default 'option_1',
   weekly_inspection_day text not null default 'Monday',
+  maintenance_warning_miles integer not null default 1000,
+  maintenance_warning_days integer not null default 14,
+  document_warning_days integer not null default 30,
   custom_daily_requirements jsonb not null default '{}'::jsonb,
   custom_weekly_requirements jsonb not null default '{}'::jsonb,
   updated_by_manager_user_id uuid references public.manager_users(id) on delete set null,
@@ -180,7 +183,13 @@ create table if not exists public.vehicle_check_requirement_settings (
   constraint vehicle_check_requirement_mode_check
     check (maintenance_requirement_mode in ('option_1', 'option_2', 'custom')),
   constraint vehicle_check_requirement_weekday_check
-    check (weekly_inspection_day in ('Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'))
+    check (weekly_inspection_day in ('Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday')),
+  constraint vehicle_check_requirement_warning_miles_check
+    check (maintenance_warning_miles >= 0),
+  constraint vehicle_check_requirement_warning_days_check
+    check (maintenance_warning_days >= 0),
+  constraint vehicle_check_requirement_document_warning_days_check
+    check (document_warning_days >= 0)
 );
 
 create table if not exists public.vehicle_checklist_template_settings (
