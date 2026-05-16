@@ -167,6 +167,7 @@ describe('auth service helpers', () => {
     ).toEqual({
       fullName: 'Luis Perez',
       companyName: 'Bridge Transportation',
+      managerEmail: null,
       primaryRole: 'Manager',
       roles: {
         driver: true,

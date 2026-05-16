@@ -16,6 +16,7 @@ node_modules/
 .npm-cache/
 .playwright-browsers/
 .tools/
+supabase/.temp/
 
 # build output
 dist/

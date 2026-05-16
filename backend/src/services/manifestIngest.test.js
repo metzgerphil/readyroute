@@ -42,6 +42,60 @@ function buildManifestBuffer({ date = '04/25/2026' } = {}) {
   return XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' });
 }
 
+class QueryStub {
+  constructor(table, handler) {
+    this.table = table;
+    this.handler = handler;
+    this.operation = null;
+    this.payload = null;
+    this.filters = [];
+  }
+
+  select(columns) {
+    this.operation = 'select';
+    this.columns = columns;
+    return this;
+  }
+
+  insert(payload) {
+    this.operation = 'insert';
+    this.payload = payload;
+    return this.handler(this);
+  }
+
+  eq(column, value) {
+    this.filters.push({ type: 'eq', column, value });
+    return this;
+  }
+
+  is(column, value) {
+    this.filters.push({ type: 'is', column, value });
+    return this;
+  }
+
+  in(column, value) {
+    this.filters.push({ type: 'in', column, value });
+    return this;
+  }
+
+  order(column, options) {
+    this.orderBy = { column, options };
+    return this;
+  }
+
+  then(resolve, reject) {
+    return Promise.resolve(this.handler(this)).then(resolve, reject);
+  }
+}
+
+function createSupabaseStub(handler) {
+  return {
+    from(table) {
+      return new QueryStub(table, handler);
+    }
+  };
+}
+
 test('stageManifestArtifacts rejects stale FCC manifests before staging them as the requested day', async () => {
   const service = createManifestIngestService({
     supabase: {
@@ -70,6 +124,72 @@ test('stageManifestArtifacts rejects stale FCC manifests before staging them as 
       return true;
     }
   );
+});
+
+test('stageManifestArtifacts does not mutate a dispatched driver route on later sync', async () => {
+  const events = [];
+  const writes = [];
+  const service = createManifestIngestService({
+    now: () => new Date('2026-04-25T16:00:00.000Z'),
+    supabase: createSupabaseStub((query) => {
+      if (query.table === 'location_corrections' && query.operation === 'select') {
+        return { data: [], error: null };
+      }
+
+      if (query.table === 'routes' && query.operation === 'select') {
+        return {
+          data: [
+            {
+              id: 'route-live-817',
+              work_area_name: '817',
+              status: 'pending',
+              dispatch_state: 'dispatched',
+              dispatched_at: '2026-04-25T15:30:00.000Z',
+              dispatched_by_manager_user_id: 'manager-1',
+              completed_stops: 0,
+              completed_at: null,
+              driver_id: 'driver-1',
+              vehicle_id: 'vehicle-1',
+              manifest_fingerprint: 'previous-live-fingerprint',
+              last_manifest_change_at: '2026-04-25T15:00:00.000Z'
+            }
+          ],
+          error: null
+        };
+      }
+
+      if (query.table === 'route_sync_events' && query.operation === 'insert') {
+        events.push(query.payload);
+        return { data: null, error: null };
+      }
+
+      writes.push(`${query.table}:${query.operation}`);
+      throw new Error(`Unexpected query ${query.table}:${query.operation}`);
+    })
+  });
+
+  const result = await service.stageManifestArtifacts({
+    accountId: 'acct-1',
+    managerUserId: 'manager-1',
+    manifestFile: {
+      originalname: 'combined-manifest.xlsx',
+      buffer: buildManifestBuffer({ date: '04/25/2026' })
+    },
+    requestedDate: '2026-04-25',
+    requestedWorkAreaName: '817',
+    source: 'manifest_upload'
+  });
+
+  assert.equal(result.route_id, 'route-live-817');
+  assert.equal(result.live_route_protected, true);
+  assert.equal(result.driver_route_unchanged, true);
+  assert.equal(result.post_dispatch_change_held, true);
+  assert.equal(result.sync_state, 'changed_after_dispatch');
+  assert.deepEqual(writes, []);
+  assert.equal(events.length, 1);
+  assert.equal(events[0].event_type, 'post_dispatch_change');
+  assert.equal(events[0].details.driver_route_unchanged, true);
+  assert.equal(events[0].details.live_route_protected, true);
 });
 
 test('mergePendingManifestStops layers delivery and pickup manifests without dropping existing route detail', () => {
@@ -423,6 +543,113 @@ test('mergePendingManifestStops keeps same-address pickup and delivery rows from
     '517460036809',
     '797973590997'
   ]);
+});
+
+test('mergePendingManifestStops treats repeated package tracking as a merge key across manifest layers', () => {
+  const merged = __private.mergePendingManifestStops(
+    [
+      {
+        sequence: 1,
+        stop_number: 1,
+        type: 'delivery',
+        has_delivery: true,
+        has_pickup: false,
+        address: '500 W GRAND AVE, ESCONDIDO, CA 92025',
+        address_line1: '500 W GRAND AVE',
+        address_line2: 'STE 100',
+        sid: '1001',
+        contact_name: 'Combined Name',
+        package_count: 2,
+        packages: [
+          { tracking_number: 'TRACK-SHARED-1' },
+          { tracking_number: 'TRACK-ONLY-COMBINED' }
+        ]
+      }
+    ],
+    [
+      {
+        sequence: 8,
+        stop_number: 8,
+        type: 'delivery',
+        has_delivery: true,
+        has_pickup: false,
+        address: '500 GRAND AVENUE, ESCONDIDO, CA 92025',
+        address_line1: '500 GRAND AVENUE',
+        address_line2: 'SUITE 100',
+        sid: '2002',
+        primary_phone: '555-222-3333',
+        delivery_instructions: 'Leave at receiving',
+        package_count: 2,
+        packages: [
+          { tracking_number: 'TRACK-SHARED-1', service_code: 'PRM' },
+          { tracking_number: 'TRACK-ONLY-DELIVERY' }
+        ]
+      }
+    ]
+  );
+
+  assert.equal(merged.length, 1);
+  assert.equal(merged[0].primary_phone, '555-222-3333');
+  assert.equal(merged[0].delivery_instructions, 'Leave at receiving');
+  assert.deepEqual(merged[0].packages.map((pkg) => pkg.tracking_number), [
+    'TRACK-SHARED-1',
+    'TRACK-ONLY-COMBINED',
+    'TRACK-ONLY-DELIVERY'
+  ]);
+  assert.doesNotThrow(() => __private.validateManifestPackageTracking(merged));
+});
+
+test('mergePendingManifestStops collapses final same-package stops before duplicate validation', () => {
+  const merged = __private.mergePendingManifestStops(
+    [],
+    [
+      {
+        sequence: 15,
+        stop_number: 15,
+        type: 'delivery',
+        has_delivery: true,
+        has_pickup: false,
+        address: '1200 INDUSTRIAL RD, ESCONDIDO, CA 92029',
+        address_line1: '1200 INDUSTRIAL RD',
+        address_line2: 'BLDG A',
+        sid: '7001',
+        contact_name: 'Combined Stop',
+        package_count: 2,
+        packages: [
+          { tracking_number: '520577567688' },
+          { tracking_number: '482034495103' }
+        ]
+      },
+      {
+        sequence: 16,
+        stop_number: 16,
+        type: 'delivery',
+        has_delivery: true,
+        has_pickup: false,
+        address: '1200 INDUSTRIAL ROAD, ESCONDIDO, CA 92029',
+        address_line1: '1200 INDUSTRIAL ROAD',
+        address_line2: '',
+        sid: '8002',
+        primary_phone: '555-444-1212',
+        delivery_instructions: 'Use north dock',
+        package_count: 2,
+        packages: [
+          { tracking_number: '520577567688', service_code: 'PRM' },
+          { tracking_number: '482034495103' }
+        ]
+      }
+    ]
+  );
+
+  assert.equal(merged.length, 1);
+  assert.equal(merged[0].sequence, 1);
+  assert.equal(merged[0].primary_phone, '555-444-1212');
+  assert.equal(merged[0].delivery_instructions, 'Use north dock');
+  assert.deepEqual(merged[0].packages.map((pkg) => pkg.tracking_number), [
+    '520577567688',
+    '482034495103'
+  ]);
+  assert.doesNotThrow(() => __private.validateManifestPackageTracking(merged));
 });
 
 test('buildManifestLayers prefers explicit combined delivery pickup layers over legacy file field', () => {

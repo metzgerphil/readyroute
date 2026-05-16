@@ -37,6 +37,19 @@ function splitCommandArgs(value) {
     .filter(Boolean);
 }
 
+async function readManifestFile(filePath, key) {
+  if (!filePath) {
+    return null;
+  }
+
+  const buffer = await fs.readFile(filePath);
+  return {
+    originalname: path.basename(filePath),
+    buffer,
+    source_key: key
+  };
+}
+
 function createCliFedexFccAdapter(options = {}) {
   const defaultExecutable = process.execPath;
   const defaultScriptPath = path.join(__dirname, '../scripts/fccAutomationRunner.js');
@@ -125,12 +138,16 @@ function createCliFedexFccAdapter(options = {}) {
 
       const manifestPairs = await Promise.all(
         manifests.map(async (manifest, index) => {
-          if (!manifest?.xls_path) {
-            throw new Error(`FCC automation manifest ${index + 1} is missing xls_path.`);
+          const primaryXlsPath = manifest?.combined_xls_path || manifest?.xls_path;
+
+          if (!primaryXlsPath && !manifest?.delivery_xls_path && !manifest?.pickup_xls_path) {
+            throw new Error(`FCC automation manifest ${index + 1} is missing manifest XLS paths.`);
           }
 
-          const manifestBuffer = await fs.readFile(manifest.xls_path);
-          const gpxBuffer = manifest.gpx_path ? await fs.readFile(manifest.gpx_path) : null;
+          const combinedManifestFile = await readManifestFile(primaryXlsPath, 'combined');
+          const combinedGpxFile = await readManifestFile(manifest.combined_gpx_path || manifest.gpx_path, 'combined_gpx');
+          const deliveryManifestFile = await readManifestFile(manifest.delivery_xls_path, 'delivery');
+          const pickupManifestFile = await readManifestFile(manifest.pickup_xls_path, 'pickup');
           const identity = parseFccWorkAreaIdentity(manifest.work_area_name || '');
 
           return {
@@ -140,16 +157,14 @@ function createCliFedexFccAdapter(options = {}) {
             date: manifest.date || workDate,
             driver_id: manifest.driver_id || null,
             vehicle_id: manifest.vehicle_id || null,
-            manifest_file: {
-              originalname: path.basename(manifest.xls_path),
-              buffer: manifestBuffer
-            },
-            companion_gpx_file: gpxBuffer
-              ? {
-                  originalname: path.basename(manifest.gpx_path),
-                  buffer: gpxBuffer
-                }
-              : null
+            manifest_file: combinedManifestFile || deliveryManifestFile || pickupManifestFile,
+            companion_gpx_file: combinedGpxFile,
+            combined_manifest_file: combinedManifestFile,
+            combined_gpx_file: combinedGpxFile,
+            delivery_manifest_file: deliveryManifestFile,
+            pickup_manifest_file: pickupManifestFile,
+            download_errors: Array.isArray(manifest.download_errors) ? manifest.download_errors : [],
+            artifact_record_counts: manifest.artifact_record_counts || {}
           };
         })
       );
@@ -163,7 +178,21 @@ function createCliFedexFccAdapter(options = {}) {
           runner: path.basename(command),
           session_state_path: sessionStatePath,
           download_directory: runWorkingDirectory,
-          progress_snapshot_count: Array.isArray(payload?.progress_snapshots) ? payload.progress_snapshots.length : 0
+          progress_snapshot_count: Array.isArray(payload?.progress_snapshots) ? payload.progress_snapshots.length : 0,
+          skipped_manifest_snapshots: Array.isArray(payload?.skipped_manifest_snapshots)
+            ? payload.skipped_manifest_snapshots
+            : [],
+          manifest_artifacts: manifestPairs.map((pair) => ({
+            work_area_name: pair.work_area_name,
+            raw_work_area_name: pair.raw_work_area_name,
+            date: pair.date,
+            has_combined_xls: Boolean(pair.combined_manifest_file),
+            has_combined_gpx: Boolean(pair.combined_gpx_file),
+            has_delivery_xls: Boolean(pair.delivery_manifest_file),
+            has_pickup_xls: Boolean(pair.pickup_manifest_file),
+            download_errors: pair.download_errors,
+            artifact_record_counts: pair.artifact_record_counts
+          }))
         },
         manifest_pairs: manifestPairs
       };

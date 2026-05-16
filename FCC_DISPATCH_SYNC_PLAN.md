@@ -16,6 +16,8 @@ The product goal is to let ReadyRoute prepare routes from FCC with minimal manag
 - We did not find a visible FCC-only `ready`, `finalized`, or `dispatch now` status for manifests.
 - FCC `Service Area Status` appears to be about FORGE/login/pickup assignment conditions, not manifest completion.
 - `Service Area Status` does show a `last updated` timestamp, so FCC does expose refresh timing on some pages.
+- Direct MyBizAccount/FCC browser automation should not run in production without FedEx-approved access.
+- ReadyRoute should pause CSA FedEx password collection until the approved access path is confirmed.
 
 ### GroundCloud observations
 
@@ -53,11 +55,11 @@ This keeps ReadyRoute close to GroundCloud while still reducing manual work.
 
 ### Before dispatch
 
-- ReadyRoute monitors FCC manifests in the background.
-- It fetches both `.xls` and `.gpx` for each route.
+- With FedEx-approved access, ReadyRoute monitors FCC manifests in the background.
+- With FedEx-approved access, it fetches both `.xls` and `.gpx` for each route.
 - It stages route data without making it active in the driver app.
 - It tracks repeated changes over time.
-- Managers do not need to manually upload manifests in the normal flow.
+- Until that access is approved, managers use the manual manifest upload path.
 
 ### Dispatch moment
 
@@ -178,6 +180,7 @@ Until proven otherwise, ReadyRoute should assume:
 
 - FCC does not provide a single trustworthy visible manifest-complete flag.
 - GroundCloud behavior is best approximated by background re-sync plus a manager-controlled dispatch action.
+- Production MyBizAccount/FCC automation needs FedEx permission and should remain disabled by default.
 - The right parity target is:
   - automatic background prep
   - manual dispatch release

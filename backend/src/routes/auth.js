@@ -4,6 +4,7 @@ const crypto = require('crypto');
 const jwt = require('jsonwebtoken');
 
 const defaultSupabase = require('../lib/supabase');
+const { requireManager } = require('../middleware/auth');
 const { createBillingService } = require('../services/billing');
 const { sendManagerPasswordResetEmail: defaultSendManagerPasswordResetEmail } = require('../services/managerInviteEmail');
 
@@ -63,8 +64,12 @@ function createAuthRouter(options = {}) {
     return typeof password === 'string' && password.length >= 10;
   }
 
+  function normalizeEmail(email) {
+    return String(email || '').trim().toLowerCase();
+  }
+
   function isValidEmail(email) {
-    return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(email || '').trim().toLowerCase());
+    return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizeEmail(email));
   }
 
   function normalizeManagerIdentity(row) {
@@ -97,7 +102,7 @@ function createAuthRouter(options = {}) {
     return String(left.account_id || '').localeCompare(String(right.account_id || ''));
   }
 
-  async function findManagerIdentityByEmail(email) {
+  async function findManagerIdentitiesByEmail(email) {
     const normalizedEmail = String(email).trim().toLowerCase();
 
     const managerUserQuery = await supabase
@@ -117,11 +122,11 @@ function createAuthRouter(options = {}) {
     if (Array.isArray(managerUserQuery.data) && managerUserQuery.data.length) {
       return managerUserQuery.data
         .map(normalizeManagerIdentity)
-        .sort(compareManagerIdentityPriority)[0];
+        .sort(compareManagerIdentityPriority);
     }
 
     if (managerUserQuery.data && !Array.isArray(managerUserQuery.data)) {
-      return normalizeManagerIdentity(managerUserQuery.data);
+      return [normalizeManagerIdentity(managerUserQuery.data)];
     }
 
     const legacyAccountQuery = await supabase
@@ -135,10 +140,10 @@ function createAuthRouter(options = {}) {
     }
 
     if (!legacyAccountQuery.data) {
-      return null;
+      return [];
     }
 
-    return {
+    return [{
       id: legacyAccountQuery.data.id,
       account_id: legacyAccountQuery.data.id,
       email: legacyAccountQuery.data.manager_email,
@@ -146,6 +151,70 @@ function createAuthRouter(options = {}) {
       full_name: null,
       is_active: true,
       source: 'legacy_account'
+    }];
+  }
+
+  async function findManagerIdentityByEmail(email) {
+    const identities = await findManagerIdentitiesByEmail(email);
+    return identities[0] || null;
+  }
+
+  async function findManagerIdentityByEmailForAccount(email, accountId) {
+    if (!accountId) {
+      return null;
+    }
+
+    const identities = await findManagerIdentitiesByEmail(email);
+    return identities.find((identity) => identity.account_id === accountId) || null;
+  }
+
+  async function findAuthenticatedManagerIdentity(email, password, accountId = null) {
+    const identities = await findManagerIdentitiesByEmail(email);
+    const activeIdentities = identities.filter((identity) => (
+      identity.password_hash &&
+      identity.is_active !== false &&
+      (!accountId || identity.account_id === accountId)
+    ));
+
+    for (const identity of activeIdentities) {
+      if (await bcrypt.compare(String(password), identity.password_hash)) {
+        return identity;
+      }
+    }
+
+    return null;
+  }
+
+  async function findManagerIdentityByManagerUserId(managerUserId) {
+    if (!managerUserId) {
+      return null;
+    }
+
+    const managerUserQuery = await supabase
+      .from('manager_users')
+      .select('id, account_id, email, password_hash, full_name, is_active')
+      .eq('id', managerUserId)
+      .maybeSingle();
+
+    if (
+      managerUserQuery.error &&
+      !['PGRST116', 'PGRST205', '42P01'].includes(managerUserQuery.error.code)
+    ) {
+      throw managerUserQuery.error;
+    }
+
+    if (!managerUserQuery.data) {
+      return null;
+    }
+
+    return {
+      id: managerUserQuery.data.id,
+      account_id: managerUserQuery.data.account_id,
+      email: managerUserQuery.data.email,
+      password_hash: managerUserQuery.data.password_hash,
+      full_name: managerUserQuery.data.full_name,
+      is_active: managerUserQuery.data.is_active,
+      source: 'manager_user'
     };
   }
 
@@ -207,6 +276,21 @@ function createAuthRouter(options = {}) {
       csa_name: accountSummary?.company_name || null,
       primary_role: 'manager',
       role: 'manager'
+    };
+  }
+
+  function buildManagerDriverModePayload(managerIdentity, accountSummary = null) {
+    return {
+      driver_id: managerIdentity.source === 'manager_user' ? managerIdentity.id : managerIdentity.account_id,
+      account_id: managerIdentity.account_id,
+      name: managerIdentity.full_name || managerIdentity.email,
+      full_name: managerIdentity.full_name || managerIdentity.email,
+      email: managerIdentity.email,
+      company_name: accountSummary?.company_name || null,
+      csa_name: accountSummary?.company_name || null,
+      primary_role: 'driver',
+      role: 'driver',
+      driver_mode_source: 'manager'
     };
   }
 
@@ -355,7 +439,7 @@ function createAuthRouter(options = {}) {
         return res.status(400).json({ error: 'Trial activation link is invalid or expired' });
       }
 
-      const managerIdentity = await findManagerIdentityByEmail(payload.email);
+      const managerIdentity = await findManagerIdentityByEmailForAccount(payload.email, payload.account_id);
 
       if (!managerIdentity || managerIdentity.account_id !== payload.account_id) {
         return res.status(400).json({ error: 'Trial activation link is invalid or expired' });
@@ -484,22 +568,17 @@ function createAuthRouter(options = {}) {
 
   router.post('/manager/login', async (req, res) => {
     const { email, password } = req.body || {};
+    const requestedAccountId = req.body?.account_id ? String(req.body.account_id) : null;
 
     if (!email || !password) {
       return res.status(400).json({ error: 'Email and password are required' });
     }
 
     try {
-      const managerIdentity = await findManagerIdentityByEmail(email);
+      const managerIdentity = await findAuthenticatedManagerIdentity(email, password, requestedAccountId);
       const accountSummary = await getAccountSummary(managerIdentity?.account_id);
 
-      if (!managerIdentity || !managerIdentity.password_hash || managerIdentity.is_active === false) {
-        return res.status(401).json({ error: 'Invalid credentials' });
-      }
-
-      const isValidPassword = await bcrypt.compare(String(password), managerIdentity.password_hash);
-
-      if (!isValidPassword) {
+      if (!managerIdentity) {
         return res.status(401).json({ error: 'Invalid credentials' });
       }
 
@@ -534,22 +613,36 @@ function createAuthRouter(options = {}) {
     }
 
     try {
-      const [driver, managerIdentity] = await Promise.all([
+      const [driver, managerIdentities] = await Promise.all([
         findDriverByEmail(email),
-        findManagerIdentityByEmail(email)
+        findManagerIdentitiesByEmail(email)
       ]);
-      const accountSummary = await getAccountSummary(driver?.account_id || managerIdentity?.account_id);
+      const activeManagerIdentities = managerIdentities.filter((identity) => (
+        identity.password_hash &&
+        identity.is_active !== false
+      ));
+      const driverAccountSummary = await getAccountSummary(driver?.account_id);
 
       let hasDriverAccess = false;
-      let hasManagerAccess = false;
+      let managerIdentity = null;
 
       if (driver?.pin) {
         hasDriverAccess = await bcrypt.compare(secret, driver.pin);
       }
 
-      if (managerIdentity?.password_hash && managerIdentity.is_active !== false) {
-        hasManagerAccess = await bcrypt.compare(secret, managerIdentity.password_hash);
+      const matchingManagerIdentities = [];
+      for (const identity of activeManagerIdentities) {
+        if (await bcrypt.compare(secret, identity.password_hash)) {
+          matchingManagerIdentities.push(identity);
+        }
       }
+
+      managerIdentity = matchingManagerIdentities.find((identity) => (
+        driver?.account_id && identity.account_id === driver.account_id
+      )) || matchingManagerIdentities[0] || null;
+
+      const hasManagerAccess = Boolean(managerIdentity);
+      const managerAccountSummary = await getAccountSummary(managerIdentity?.account_id);
 
       if (!hasDriverAccess && !hasManagerAccess) {
         return res.status(401).json({ error: 'Invalid credentials' });
@@ -575,10 +668,10 @@ function createAuthRouter(options = {}) {
       const grantManagerAccess = hasManagerAccess || (hasDriverAccess && linkedManagerAccess);
 
       const driverToken = grantDriverAccess && driver
-        ? signToken(buildDriverAuthPayload(driver, accountSummary), '12h')
+        ? signToken(buildDriverAuthPayload(driver, driverAccountSummary), '12h')
         : null;
       const managerToken = grantManagerAccess && managerIdentity
-        ? signToken(buildManagerAuthPayload(managerIdentity, accountSummary), '24h')
+        ? signToken(buildManagerAuthPayload(managerIdentity, managerAccountSummary), '24h')
         : null;
 
       const portals = [
@@ -594,12 +687,43 @@ function createAuthRouter(options = {}) {
           account_id: driver?.account_id || managerIdentity?.account_id || null,
           email,
           name: driver?.name || managerIdentity?.full_name || null,
-          company_name: accountSummary?.company_name || null
+          company_name: driverAccountSummary?.company_name || managerAccountSummary?.company_name || null
         }
       });
     } catch (error) {
       console.error('Mobile login failed:', error);
       return res.status(500).json({ error: 'Failed to log in' });
+    }
+  });
+
+  router.post('/mobile/manager-driver-session', requireManager, async (req, res) => {
+    try {
+      const managerIdentity = req.account.manager_user_id
+        ? await findManagerIdentityByManagerUserId(req.account.manager_user_id)
+        : await findManagerIdentityByEmailForAccount(req.account.manager_email, req.account.account_id);
+
+      if (!managerIdentity || managerIdentity.account_id !== req.account.account_id || managerIdentity.is_active === false) {
+        return res.status(403).json({ error: 'Manager access required' });
+      }
+
+      const accountSummary = await getAccountSummary(req.account.account_id);
+      const driver = managerIdentity.email
+        ? await findDriverByEmail(managerIdentity.email)
+        : null;
+      const linkedDriver = driver?.account_id === req.account.account_id && driver?.is_active !== false
+        ? driver
+        : null;
+      const payload = linkedDriver
+        ? buildDriverAuthPayload(linkedDriver, accountSummary)
+        : buildManagerDriverModePayload(managerIdentity, accountSummary);
+
+      return res.status(200).json({
+        driver_token: signToken(payload, '12h'),
+        driver_mode_source: linkedDriver ? 'driver' : 'manager'
+      });
+    } catch (error) {
+      console.error('Manager driver session failed:', error);
+      return res.status(500).json({ error: 'Failed to start driver mode' });
     }
   });
 
@@ -645,15 +769,36 @@ function createAuthRouter(options = {}) {
         throw accountQuery.error;
       }
 
-      const emailDelivery = await sendManagerPasswordResetEmail({
-        to: managerIdentity.email,
-        fullName: managerIdentity.full_name,
-        resetUrl,
-        companyName: accountQuery.data?.company_name
-      });
+      let emailDelivery = {
+        delivered: false,
+        skipped: true,
+        reason: 'Email service is not configured'
+      };
+
+      try {
+        emailDelivery = await sendManagerPasswordResetEmail({
+          to: managerIdentity.email,
+          fullName: managerIdentity.full_name,
+          resetUrl,
+          companyName: accountQuery.data?.company_name
+        });
+      } catch (emailError) {
+        console.error('Manager password reset email delivery failed:', emailError);
+        emailDelivery = {
+          delivered: false,
+          skipped: false,
+          reason: 'Email delivery failed'
+        };
+      }
 
       if (process.env.NODE_ENV === 'production' && emailDelivery?.skipped) {
         return res.status(503).json({ error: 'Password reset email service is not configured yet' });
+      }
+
+      if (process.env.NODE_ENV === 'production' && !emailDelivery?.delivered) {
+        return res.status(503).json({
+          error: 'Password reset email could not be sent. Ask an admin to send a reset from Manager Access.'
+        });
       }
 
       if (process.env.NODE_ENV !== 'production') {
@@ -668,6 +813,52 @@ function createAuthRouter(options = {}) {
     } catch (error) {
       console.error('Manager password reset request failed:', error);
       return res.status(500).json({ error: 'Failed to process password reset request' });
+    }
+  });
+
+  router.post('/manager/change-password', requireManager, async (req, res) => {
+    const currentPassword = String(req.body?.current_password || '');
+    const nextPassword = String(req.body?.new_password || '');
+
+    if (!currentPassword || !nextPassword) {
+      return res.status(400).json({ error: 'Current password and new password are required' });
+    }
+
+    if (!isStrongEnoughPassword(nextPassword)) {
+      return res.status(400).json({ error: 'Password must be at least 10 characters' });
+    }
+
+    if (currentPassword === nextPassword) {
+      return res.status(400).json({ error: 'New password must be different from the current password' });
+    }
+
+    try {
+      const managerIdentity = req.account.manager_user_id
+        ? await findManagerIdentityByManagerUserId(req.account.manager_user_id)
+        : await findManagerIdentityByEmailForAccount(req.account.manager_email, req.account.account_id);
+
+      if (
+        !managerIdentity ||
+        managerIdentity.account_id !== req.account.account_id ||
+        managerIdentity.is_active === false ||
+        !managerIdentity.password_hash
+      ) {
+        return res.status(403).json({ error: 'Manager access required' });
+      }
+
+      const currentPasswordMatches = await bcrypt.compare(currentPassword, managerIdentity.password_hash);
+
+      if (!currentPasswordMatches) {
+        return res.status(401).json({ error: 'Current password is incorrect' });
+      }
+
+      const managerPasswordHash = await bcrypt.hash(nextPassword, 10);
+      await updateManagerIdentityPassword(managerIdentity, managerPasswordHash);
+
+      return res.status(200).json({ message: 'Password updated.' });
+    } catch (error) {
+      console.error('Manager password change failed:', error);
+      return res.status(500).json({ error: 'Failed to update password' });
     }
   });
 
@@ -699,11 +890,14 @@ function createAuthRouter(options = {}) {
         return res.status(400).json({ error: 'Reset link is invalid or expired' });
       }
 
-      const managerIdentity = await findManagerIdentityByEmail(payload.email);
+      const managerIdentity = payload.manager_user_id
+        ? await findManagerIdentityByManagerUserId(payload.manager_user_id)
+        : await findManagerIdentityByEmailForAccount(payload.email, payload.account_id);
 
       if (
         !managerIdentity ||
         managerIdentity.account_id !== payload.account_id ||
+        normalizeEmail(managerIdentity.email) !== normalizeEmail(payload.email) ||
         (payload.manager_user_id && managerIdentity.id !== payload.manager_user_id)
       ) {
         return res.status(400).json({ error: 'Reset link is invalid or expired' });

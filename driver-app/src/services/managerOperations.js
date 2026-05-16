@@ -7,6 +7,168 @@ function getPositionTimestamp(route) {
   return route?.last_position?.timestamp || route?.last_position?.recorded_at || route?.last_position?.created_at || null;
 }
 
+function routeHasStarted(route) {
+  return ['in_progress', 'complete'].includes(String(route?.status || '').toLowerCase());
+}
+
+export const MANAGER_ROUTE_COLOR_PALETTE = [
+  '#ff7a1a',
+  '#2563eb',
+  '#248a57',
+  '#6f53d9',
+  '#cc4b37',
+  '#0f766e',
+  '#b7791f',
+  '#db2777'
+];
+
+function isUsableColor(value) {
+  return /^#[0-9a-f]{6}$/i.test(String(value || '').trim());
+}
+
+function getRouteColorKey(route) {
+  const displayName = getRouteDisplayName(route);
+  return String(route?.id || route?.route_id || displayName || route?.work_area_name || '').trim();
+}
+
+function getStableColorIndex(value) {
+  const key = String(value || '').trim();
+
+  if (!key) {
+    return 0;
+  }
+
+  let hash = 0;
+  for (let index = 0; index < key.length; index += 1) {
+    hash = ((hash << 5) - hash + key.charCodeAt(index)) | 0;
+  }
+
+  return Math.abs(hash) % MANAGER_ROUTE_COLOR_PALETTE.length;
+}
+
+function getRouteSortNumber(value) {
+  const match = String(value || '').match(/\b\d{1,5}\b/);
+  return match ? Number(match[0]) : null;
+}
+
+export function compareManagerRoutes(left, right) {
+  const leftLabel = String(left?.work_area_name || left?.route_number || left?.route_name || left?.route_id || left?.id || '').trim();
+  const rightLabel = String(right?.work_area_name || right?.route_number || right?.route_name || right?.route_id || right?.id || '').trim();
+  const leftNumber = getRouteSortNumber(leftLabel);
+  const rightNumber = getRouteSortNumber(rightLabel);
+
+  if (leftNumber != null && rightNumber != null && leftNumber !== rightNumber) {
+    return leftNumber - rightNumber;
+  }
+
+  if (leftNumber != null && rightNumber == null) {
+    return -1;
+  }
+
+  if (leftNumber == null && rightNumber != null) {
+    return 1;
+  }
+
+  const labelComparison = leftLabel.localeCompare(rightLabel, undefined, { numeric: true, sensitivity: 'base' });
+
+  if (labelComparison !== 0) {
+    return labelComparison;
+  }
+
+  return String(left?.id || '').localeCompare(String(right?.id || ''), undefined, { numeric: true, sensitivity: 'base' });
+}
+
+export function sortManagerRoutes(routes = []) {
+  return [...(routes || [])].sort(compareManagerRoutes);
+}
+
+function getDistinctRouteColor(route, routes = []) {
+  const key = getRouteColorKey(route);
+  const routeKeys = (routes || [])
+    .map((item) => getRouteColorKey(item))
+    .filter(Boolean)
+    .sort((left, right) => left.localeCompare(right));
+
+  if (!key || routeKeys.length <= MANAGER_ROUTE_COLOR_PALETTE.length) {
+    const occupiedIndexes = new Map();
+
+    routeKeys.forEach((routeKey) => {
+      let colorIndex = getStableColorIndex(routeKey);
+      let attempts = 0;
+
+      while (occupiedIndexes.has(colorIndex) && attempts < MANAGER_ROUTE_COLOR_PALETTE.length) {
+        colorIndex = (colorIndex + 1) % MANAGER_ROUTE_COLOR_PALETTE.length;
+        attempts += 1;
+      }
+
+      occupiedIndexes.set(colorIndex, routeKey);
+    });
+
+    const matchedIndex = Array.from(occupiedIndexes.entries()).find(([, routeKey]) => routeKey === key)?.[0];
+
+    if (matchedIndex != null) {
+      return MANAGER_ROUTE_COLOR_PALETTE[matchedIndex];
+    }
+  }
+
+  return MANAGER_ROUTE_COLOR_PALETTE[getStableColorIndex(key)];
+}
+
+export function getRouteColor(route, routes = []) {
+  const existingColor = route?.routeColor || route?.route_color || route?.color;
+
+  if (isUsableColor(existingColor)) {
+    return existingColor;
+  }
+
+  if ((routes || []).length <= 1) {
+    return MANAGER_ROUTE_COLOR_PALETTE[0];
+  }
+
+  return getDistinctRouteColor(route, routes);
+}
+
+export function getStopCanonicalId(stop) {
+  const candidates = [
+    stop?.id,
+    stop?.stop_id,
+    stop?.route_stop_id,
+    stop?.routeStopId,
+    stop?.manifest_stop_id,
+    stop?.manifestStopId,
+    stop?.sequence_id,
+    stop?.sequenceId,
+    stop?.sid
+  ];
+
+  const matched = candidates.find((value) => value != null && String(value).trim());
+
+  if (matched != null) {
+    return String(matched);
+  }
+
+  const sequence = stop?.sequence_order ?? stop?.sequenceOrder;
+  const address = stop?.address || stop?.street_address || stop?.address_line1;
+
+  return sequence != null || address ? `${sequence || ''}:${address || ''}` : '';
+}
+
+export function isPickupStop(stop) {
+  return stop?.stop_type === 'pickup' || stop?.is_pickup === true || stop?.has_pickup === true;
+}
+
+export function getPickupStopCount(route) {
+  if (route?.pickup_stop_count != null) {
+    return Number(route.pickup_stop_count || 0);
+  }
+
+  if (route?.pickup_stops != null && !Array.isArray(route.pickup_stops)) {
+    return Number(route.pickup_stops || 0);
+  }
+
+  return (route?.stops || []).filter((stop) => isPickupStop(stop)).length;
+}
+
 export function toMapCoordinate(point) {
   const latitude = toNumber(point?.lat ?? point?.latitude);
   const longitude = toNumber(point?.lng ?? point?.longitude);
@@ -106,11 +268,29 @@ function createRouteMarker(route, coordinate, { selected = false } = {}) {
     routeId: route.id,
     coordinate,
     selected,
-    workAreaName: route.work_area_name || '--',
+    workAreaName: getRouteDisplayName(route),
     driverName: route.driver_name || 'Unassigned',
     completedStops: Number(route.completed_stops || 0),
     totalStops: Number(route.total_stops || 0)
   };
+}
+
+export function getRouteDisplayName(route) {
+  const rawValue = String(route?.work_area_name || '').trim();
+
+  if (!rawValue) {
+    return '--';
+  }
+
+  const exactMatch = rawValue.match(/\b\d{3,4}\b/);
+
+  if (exactMatch) {
+    return exactMatch[0];
+  }
+
+  const digitsOnly = rawValue.replace(/\D+/g, '');
+
+  return digitsOnly || rawValue;
 }
 
 export function buildRouteClusterMarkers(routes = [], { selectedRouteId = null, clusterRadiusMiles = 1.75 } = {}) {
@@ -204,7 +384,11 @@ export function buildDriverPositionMarkers(routes = []) {
     .filter(Boolean);
 }
 
-export function buildStopMarkers(route) {
+function stopRequiresSignature(stop) {
+  return (stop?.packages || []).some((pkg) => pkg?.requires_signature || pkg?.requires_adult_signature);
+}
+
+export function buildStopMarkers(route, { routeColor = null } = {}) {
   return (route?.stops || [])
     .map((stop) => {
       const coordinate = toMapCoordinate(stop);
@@ -214,11 +398,14 @@ export function buildStopMarkers(route) {
       }
 
       return {
-        key: `stop:${stop.id}`,
-        stopId: stop.id,
+        key: `stop:${getStopCanonicalId(stop)}`,
+        stopId: getStopCanonicalId(stop),
         coordinate,
         sequenceOrder: Number(stop.sequence_order || 0),
         status: stop.status || 'pending',
+        routeColor: routeColor || getRouteColor(route),
+        hasException: Boolean(stop.exception_code) || ['attempted', 'incomplete', 'pickup_attempted'].includes(stop.status),
+        requiresSignature: stopRequiresSignature(stop),
         address: stop.address || 'Stop'
       };
     })
@@ -268,11 +455,20 @@ export function getGpsFreshness(route, nowMs = Date.now()) {
   const timestamp = getPositionTimestamp(route);
 
   if (!timestamp) {
+    if (routeHasStarted(route)) {
+      return {
+        state: 'unavailable',
+        elapsedMinutes: null,
+        label: 'Location permission needed',
+        shortLabel: 'Location needed'
+      };
+    }
+
     return {
       state: 'unavailable',
       elapsedMinutes: null,
-      label: 'GPS unavailable',
-      shortLabel: 'No GPS'
+      label: 'Driver not on route yet',
+      shortLabel: 'Not started'
     };
   }
 
@@ -282,8 +478,8 @@ export function getGpsFreshness(route, nowMs = Date.now()) {
     return {
       state: 'unavailable',
       elapsedMinutes: null,
-      label: 'GPS unavailable',
-      shortLabel: 'No GPS'
+      label: 'Location unavailable',
+      shortLabel: 'No location'
     };
   }
 
@@ -293,7 +489,7 @@ export function getGpsFreshness(route, nowMs = Date.now()) {
     return {
       state: 'live',
       elapsedMinutes,
-      label: elapsedMinutes <= 1 ? 'GPS live now' : `GPS live ${elapsedMinutes}m ago`,
+      label: elapsedMinutes <= 1 ? 'Location live now' : `Location live ${elapsedMinutes}m ago`,
       shortLabel: elapsedMinutes <= 1 ? 'Live' : `${elapsedMinutes}m`
     };
   }
@@ -302,7 +498,7 @@ export function getGpsFreshness(route, nowMs = Date.now()) {
     return {
       state: 'recent',
       elapsedMinutes,
-      label: `GPS recent ${elapsedMinutes}m ago`,
+      label: `Location updated ${elapsedMinutes}m ago`,
       shortLabel: `${elapsedMinutes}m`
     };
   }
@@ -310,8 +506,8 @@ export function getGpsFreshness(route, nowMs = Date.now()) {
   return {
     state: 'stale',
     elapsedMinutes,
-    label: `GPS stale ${elapsedMinutes}m ago`,
-    shortLabel: `${elapsedMinutes}m stale`
+    label: `Location updated ${elapsedMinutes}m ago`,
+    shortLabel: `${elapsedMinutes}m`
   };
 }
 
@@ -339,6 +535,7 @@ export function buildManagerOverviewStats(routes = []) {
       summary.packageSummary.completed += deliveredPackages;
       summary.packageSummary.total += totalPackages;
       summary.packageSummary.pending += Math.max(totalPackages - deliveredPackages, 0);
+      summary.pickupStops += getPickupStopCount(route);
       summary.liveDrivers += liveGps ? 1 : 0;
 
       return summary;
@@ -362,6 +559,7 @@ export function buildManagerOverviewStats(routes = []) {
         total: 0,
         pending: 0
       },
+      pickupStops: 0,
       liveDrivers: 0
     }
   );
@@ -369,8 +567,10 @@ export function buildManagerOverviewStats(routes = []) {
 
 export function buildVisibleStopMarkers(routes = [], { selectedRoute = null, region = null, maxStopMarkers = 80 } = {}) {
   if (selectedRoute) {
+    const routeColor = getRouteColor(selectedRoute, routes);
     return buildStopMarkers(selectedRoute).map((marker) => ({
       ...marker,
+      routeColor,
       routeId: selectedRoute.id
     }));
   }
@@ -380,7 +580,7 @@ export function buildVisibleStopMarkers(routes = [], { selectedRoute = null, reg
   }
 
   return routes
-    .flatMap((route) => buildStopMarkers(route).map((marker) => ({
+    .flatMap((route) => buildStopMarkers(route, { routeColor: getRouteColor(route, routes) }).map((marker) => ({
       ...marker,
       routeId: route.id
     })))
@@ -389,17 +589,15 @@ export function buildVisibleStopMarkers(routes = [], { selectedRoute = null, reg
 
 export function buildManagerMapModel({ routes = [], selectedRouteId = null, region = null } = {}) {
   const selectedRoute = routes.find((route) => route.id === selectedRouteId) || null;
-  const routeMarkers = buildRouteClusterMarkers(routes, {
-    selectedRouteId: selectedRoute?.id || null,
-    clusterRadiusMiles: getClusterRadiusMiles(region)
-  });
+  const routeMarkers = [];
+  const routeCoordinates = routes.map((route) => buildRouteCentroid(route)).filter(Boolean);
   const driverMarkers = buildDriverPositionMarkers(routes);
   const stopMarkers = buildVisibleStopMarkers(routes, {
     selectedRoute,
     region
   });
   const coordinates = [
-    ...routeMarkers.map((marker) => marker.coordinate),
+    ...routeCoordinates,
     ...driverMarkers.map((marker) => marker.coordinate),
     ...stopMarkers.map((marker) => marker.coordinate)
   ].filter(Boolean);

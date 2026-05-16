@@ -2,26 +2,45 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { useFocusEffect } from '@react-navigation/native';
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
 import { createStackNavigator } from '@react-navigation/stack';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import MobileNavigationDrawer from '../components/MobileNavigationDrawer';
 import { usePortalSession } from '../context/PortalSessionContext';
+import api from '../services/api';
+import { saveLastPortalMode, saveSessionTokens } from '../services/auth';
 import HomeScreen from '../screens/HomeScreen';
 import LoginScreen from '../screens/LoginScreen';
-import ManagerNotificationsScreen from '../screens/ManagerNotificationsScreen';
-import ManagerOverviewScreen from '../screens/ManagerOverviewScreen';
+import ManagerDashboardScreen from '../screens/ManagerDashboardScreen';
+import ManagerDriversScreen from '../screens/ManagerDriversScreen';
+import ManagerManifestScreen from '../screens/ManagerManifestScreen';
+import ManagerMapScreen from '../screens/ManagerMapScreen';
 import ManagerRoutesScreen from '../screens/ManagerRoutesScreen';
 import ManagerSettingsScreen from '../screens/ManagerSettingsScreen';
+import ManagerVehiclesScreen from '../screens/ManagerVehiclesScreen';
 import ManifestScreen from '../screens/ManifestScreen';
 import MyDriveScreen from '../screens/MyDriveScreen';
 import PortalEntryScreen from '../screens/PortalEntryScreen';
 import StopDetailScreen from '../screens/StopDetailScreen';
+import appTheme from '../theme/appTheme';
 
 const Stack = createStackNavigator();
+const SHELL_NAVIGATION_SCREENS = new Set([
+  'Home',
+  'Manifest',
+  'ManagerDashboard',
+  'ManagerDrivers',
+  'ManagerManifest',
+  'ManagerMap',
+  'ManagerRoutes',
+  'ManagerSettings',
+  'ManagerVehicles',
+  'MyDrive'
+]);
 
 function LoadingScreen() {
   return (
     <View style={styles.loadingScreen}>
-      <ActivityIndicator color="#1b6b73" size="large" />
+      <ActivityIndicator color={appTheme.colors.orange} size="large" />
     </View>
   );
 }
@@ -30,6 +49,18 @@ function DrawerMenuButton({ onPress }) {
   return (
     <Pressable onPress={onPress} style={({ pressed }) => [styles.menuButton, pressed ? styles.menuButtonPressed : null]}>
       <Text style={styles.menuButtonText}>Menu</Text>
+    </Pressable>
+  );
+}
+
+function BackButton({ onPress, testID }) {
+  return (
+    <Pressable
+      onPress={onPress}
+      style={({ pressed }) => [styles.backButton, pressed ? styles.menuButtonPressed : null]}
+      testID={testID}
+    >
+      <Text style={styles.backButtonText}>←</Text>
     </Pressable>
   );
 }
@@ -45,6 +76,7 @@ function TrackedScreen({ children, navigation, onFocus, screenName }) {
 }
 
 export default function AppNavigator() {
+  const insets = useSafeAreaInsets();
   const {
     activeMode,
     authenticate,
@@ -54,10 +86,13 @@ export default function AppNavigator() {
     isBootstrapping,
     needsModeSelection,
     logout,
-    selectMode
+    selectMode,
+    sessionTokens
   } = usePortalSession();
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
   const [currentRouteName, setCurrentRouteName] = useState(null);
+  const [managerDataVersion, setManagerDataVersion] = useState(0);
+  const [managerWorkspaceVersion, setManagerWorkspaceVersion] = useState(0);
   const navigationRef = useRef(null);
 
   useEffect(() => {
@@ -75,7 +110,7 @@ export default function AppNavigator() {
       return;
     }
 
-    setCurrentRouteName(activeMode === 'manager' ? 'ManagerOverview' : 'Home');
+    setCurrentRouteName(activeMode === 'manager' ? 'ManagerDashboard' : 'Home');
   }, [activeMode, currentRouteName, hasAnyAccess, needsModeSelection]);
 
   if (isBootstrapping) {
@@ -91,6 +126,11 @@ export default function AppNavigator() {
   }
 
   function handleNavigate(screen) {
+    if (!SHELL_NAVIGATION_SCREENS.has(screen)) {
+      closeDrawer();
+      return;
+    }
+
     if (screen === currentRouteName) {
       closeDrawer();
       return;
@@ -101,10 +141,78 @@ export default function AppNavigator() {
     closeDrawer();
   }
 
-  async function handleSelectMode(mode) {
-    await selectMode(mode);
-    setCurrentRouteName(mode === 'manager' ? 'ManagerOverview' : 'Home');
+  function handleManagerBack() {
+    const navigation = navigationRef.current;
+
+    if (navigation?.canGoBack?.()) {
+      navigation.goBack();
+      return;
+    }
+
+    navigation?.navigate?.('ManagerDashboard');
+    setCurrentRouteName('ManagerDashboard');
     closeDrawer();
+  }
+
+  async function handleSelectMode(mode) {
+    if (mode === 'driver' && !availableModes.includes('driver') && sessionTokens?.managerToken) {
+      const response = await api.post('/auth/mobile/manager-driver-session', {}, {
+        authMode: 'manager'
+      });
+      const driverToken = response.data?.driver_token;
+
+      if (driverToken) {
+        const nextTokens = {
+          ...sessionTokens,
+          driverToken
+        };
+
+        await saveSessionTokens(nextTokens);
+        await saveLastPortalMode('driver', nextTokens);
+        await authenticate(nextTokens);
+        setCurrentRouteName('Home');
+        closeDrawer();
+        return;
+      }
+    }
+
+    await selectMode(mode);
+    setCurrentRouteName(mode === 'manager' ? 'ManagerDashboard' : 'Home');
+    closeDrawer();
+  }
+
+  async function handleManagerWorkspaceSwitch(managerToken) {
+    let driverToken = null;
+
+    try {
+      const response = await api.post('/auth/mobile/manager-driver-session', {}, {
+        authMode: 'manager',
+        authToken: managerToken
+      });
+      driverToken = response.data?.driver_token || null;
+    } catch (error) {
+      console.warn('Failed to refresh driver mode for selected CSA:', error?.message || error);
+    }
+
+    const nextTokens = {
+      driverToken,
+      managerToken
+    };
+
+    await saveSessionTokens(nextTokens);
+    await saveLastPortalMode('manager', nextTokens);
+    await authenticate(nextTokens);
+
+    setManagerWorkspaceVersion((current) => current + 1);
+    navigationRef.current?.navigate?.('ManagerDashboard', {
+      csaSwitchAt: Date.now()
+    });
+    setCurrentRouteName('ManagerDashboard');
+    closeDrawer();
+  }
+
+  function handleManagerDataRefresh() {
+    setManagerDataVersion((current) => current + 1);
   }
 
   function attachNavigation(screenName, navigation) {
@@ -125,28 +233,76 @@ export default function AppNavigator() {
           </Stack.Screen>
         ) : activeMode === 'manager' ? (
           <>
-            <Stack.Screen name="ManagerOverview" options={{ headerShown: false }}>
-              {(props) => {
-                return (
-                  <TrackedScreen navigation={props.navigation} onFocus={attachNavigation} screenName="ManagerOverview">
-                    <ManagerOverviewScreen {...props} onLogout={logout} />
-                  </TrackedScreen>
-                );
-              }}
+            <Stack.Screen name="ManagerDashboard" options={{ headerShown: false }}>
+              {(props) => (
+                <TrackedScreen navigation={props.navigation} onFocus={attachNavigation} screenName="ManagerDashboard">
+                  <ManagerDashboardScreen
+                    {...props}
+                    csaWorkspaceVersion={managerWorkspaceVersion + managerDataVersion}
+                    identity={identity}
+                  />
+                </TrackedScreen>
+              )}
             </Stack.Screen>
             <Stack.Screen name="ManagerRoutes" options={{ headerShown: false }}>
               {(props) => (
                 <TrackedScreen navigation={props.navigation} onFocus={attachNavigation} screenName="ManagerRoutes">
-                  <ManagerRoutesScreen {...props} />
+                  <ManagerRoutesScreen
+                    {...props}
+                    csaWorkspaceVersion={managerWorkspaceVersion + managerDataVersion}
+                    identity={identity}
+                    onManagerDataRefresh={handleManagerDataRefresh}
+                  />
                 </TrackedScreen>
               )}
             </Stack.Screen>
-            <Stack.Screen name="ManagerNotifications" options={{ headerShown: false }}>
+            <Stack.Screen name="ManagerManifest" options={{ headerShown: false }}>
               {(props) => (
-                <TrackedScreen navigation={props.navigation} onFocus={attachNavigation} screenName="ManagerNotifications">
-                  <ManagerNotificationsScreen />
+                <TrackedScreen navigation={props.navigation} onFocus={attachNavigation} screenName="ManagerManifest">
+                  <ManagerManifestScreen
+                    {...props}
+                    csaWorkspaceVersion={managerWorkspaceVersion + managerDataVersion}
+                    identity={identity}
+                    onManagerDataRefresh={handleManagerDataRefresh}
+                  />
                 </TrackedScreen>
               )}
+            </Stack.Screen>
+            <Stack.Screen name="ManagerDrivers" options={{ headerShown: false }}>
+              {(props) => (
+                <TrackedScreen navigation={props.navigation} onFocus={attachNavigation} screenName="ManagerDrivers">
+                  <ManagerDriversScreen
+                    {...props}
+                    csaWorkspaceVersion={managerWorkspaceVersion + managerDataVersion}
+                    identity={identity}
+                  />
+                </TrackedScreen>
+              )}
+            </Stack.Screen>
+            <Stack.Screen name="ManagerVehicles" options={{ headerShown: false }}>
+              {(props) => (
+                <TrackedScreen navigation={props.navigation} onFocus={attachNavigation} screenName="ManagerVehicles">
+                  <ManagerVehiclesScreen
+                    {...props}
+                    csaWorkspaceVersion={managerWorkspaceVersion + managerDataVersion}
+                    identity={identity}
+                  />
+                </TrackedScreen>
+              )}
+            </Stack.Screen>
+            <Stack.Screen name="ManagerMap" options={{ headerShown: false }}>
+              {(props) => {
+                return (
+                  <TrackedScreen navigation={props.navigation} onFocus={attachNavigation} screenName="ManagerMap">
+                    <ManagerMapScreen
+                      {...props}
+                      csaWorkspaceVersion={managerWorkspaceVersion + managerDataVersion}
+                      identity={identity}
+                      onLogout={logout}
+                    />
+                  </TrackedScreen>
+                );
+              }}
             </Stack.Screen>
             <Stack.Screen name="ManagerSettings" options={{ headerShown: false }}>
               {(props) => (
@@ -154,6 +310,20 @@ export default function AppNavigator() {
                   <ManagerSettingsScreen availableModes={availableModes} identity={identity} />
                 </TrackedScreen>
               )}
+            </Stack.Screen>
+            <Stack.Screen
+              name="StopDetail"
+              options={{
+                title: 'Stop Detail'
+              }}
+            >
+              {(props) => {
+                return (
+                  <TrackedScreen navigation={props.navigation} onFocus={attachNavigation} screenName="StopDetail">
+                    <StopDetailScreen {...props} />
+                  </TrackedScreen>
+                );
+              }}
             </Stack.Screen>
           </>
         ) : (
@@ -216,8 +386,14 @@ export default function AppNavigator() {
       {hasAnyAccess && !needsModeSelection ? (
         <>
           {currentRouteName === 'Home' || currentRouteName == null || String(currentRouteName || '').startsWith('Manager') ? (
-            <View pointerEvents="box-none" style={styles.menuButtonWrap}>
+            <View pointerEvents="box-none" style={[styles.topLeftControlsWrap, { top: insets.top + 10 }]}>
               <DrawerMenuButton onPress={openDrawer} />
+              {activeMode === 'manager' && currentRouteName === 'ManagerMap' ? (
+                <BackButton
+                  onPress={handleManagerBack}
+                  testID="manager-map-back-button"
+                />
+              ) : null}
             </View>
           ) : null}
 
@@ -227,10 +403,11 @@ export default function AppNavigator() {
             identity={identity}
             isOpen={isDrawerOpen}
             onClose={closeDrawer}
+            onManagerWorkspaceSwitch={handleManagerWorkspaceSwitch}
             onLogout={logout}
             onNavigate={handleNavigate}
             onSwitchMode={() => handleSelectMode(activeMode === 'manager' ? 'driver' : 'manager')}
-            showModeSwitch={availableModes.length > 1}
+            showModeSwitch={availableModes.length > 1 || (activeMode === 'manager' && Boolean(sessionTokens?.managerToken))}
           />
         </>
       ) : null}
@@ -244,30 +421,51 @@ const styles = StyleSheet.create({
   },
   loadingScreen: {
     alignItems: 'center',
-    backgroundColor: '#f4efe6',
+    backgroundColor: appTheme.colors.surfaceTint,
     flex: 1,
     justifyContent: 'center'
   },
-  menuButtonWrap: {
+  topLeftControlsWrap: {
+    alignItems: 'center',
+    columnGap: 10,
+    flexDirection: 'row',
     left: 20,
-    position: 'absolute',
-    top: 58
+    position: 'absolute'
   },
   menuButton: {
     alignItems: 'center',
-    backgroundColor: '#ff7a1a',
-    borderRadius: 999,
+    backgroundColor: appTheme.colors.surface,
+    borderColor: appTheme.colors.border,
+    borderRadius: appTheme.buttons.radius,
+    borderWidth: 1,
     justifyContent: 'center',
-    minHeight: 42,
-    minWidth: 72,
-    paddingHorizontal: 14
+    minHeight: 38,
+    minWidth: 64,
+    paddingHorizontal: 14,
+    ...appTheme.shadows.card
+  },
+  backButton: {
+    alignItems: 'center',
+    backgroundColor: appTheme.colors.surface,
+    borderColor: appTheme.colors.border,
+    borderRadius: appTheme.buttons.radius,
+    borderWidth: 1,
+    height: 38,
+    justifyContent: 'center',
+    width: 38,
+    ...appTheme.shadows.card
+  },
+  backButtonText: {
+    color: appTheme.colors.orangeDeep,
+    fontSize: 18,
+    fontWeight: '800'
   },
   menuButtonPressed: {
     opacity: 0.92
   },
   menuButtonText: {
-    color: '#ffffff',
-    fontSize: 14,
+    color: appTheme.colors.textPrimary,
+    fontSize: 13,
     fontWeight: '800'
-  }
+  },
 });

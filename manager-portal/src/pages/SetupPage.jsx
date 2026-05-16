@@ -2,7 +2,11 @@ import { useEffect, useMemo } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 
+import { PageHeader, RouteCard, StatusBadge } from '../components/PortalDesignSystem';
+import { useSelectedCsa } from '../context/SelectedCsaContext';
 import api from '../services/api';
+
+const FCC_AUTOMATION_PAUSED = true;
 
 function SetupStep({ order, title, body, actionLabel, actionTo, status, detail }) {
   const statusLabel = status === 'done'
@@ -14,34 +18,36 @@ function SetupStep({ order, title, body, actionLabel, actionTo, status, detail }
         : 'Needs setup';
 
   return (
-    <article className={`setup-step-card ${status}`}>
+    <RouteCard className={`setup-step-card ${status}`} tone={status === 'done' ? 'active' : status === 'blocked' ? 'warning' : 'default'}>
       <div className="setup-step-head">
         <div>
           <div className="setup-step-order">Step {order}</div>
           <div className="setup-step-title">{title}</div>
           <div className="setup-step-body">{body}</div>
         </div>
-        <span className={`setup-step-pill ${status}`}>
+        <StatusBadge className={`setup-step-pill ${status}`} tone={status === 'done' ? 'active' : status === 'blocked' ? 'warning' : status === 'ready' ? 'purple' : 'warning'}>
           {statusLabel}
-        </span>
+        </StatusBadge>
       </div>
       {detail ? <div className="setup-step-detail">{detail}</div> : null}
       <Link className="secondary-button setup-step-action" to={actionTo}>
         {actionLabel}
       </Link>
-    </article>
+    </RouteCard>
   );
 }
 
 export default function SetupPage() {
   const [searchParams] = useSearchParams();
+  const { selectedCsaId } = useSelectedCsa();
 
   useEffect(() => {
     document.title = 'Company Setup | ReadyRoute';
   }, []);
 
   const vedrQuery = useQuery({
-    queryKey: ['vedr-settings'],
+    queryKey: ['vedr-settings', selectedCsaId],
+    enabled: Boolean(selectedCsaId),
     queryFn: async () => {
       const response = await api.get('/api/vedr/settings');
       return response.data;
@@ -49,7 +55,8 @@ export default function SetupPage() {
   });
 
   const managerUsersQuery = useQuery({
-    queryKey: ['manager-access'],
+    queryKey: ['manager-access', selectedCsaId],
+    enabled: Boolean(selectedCsaId),
     queryFn: async () => {
       const response = await api.get('/manager/manager-users');
       return response.data?.manager_users || [];
@@ -57,7 +64,8 @@ export default function SetupPage() {
   });
 
   const driverAccessQuery = useQuery({
-    queryKey: ['manager-driver-access'],
+    queryKey: ['manager-driver-access', selectedCsaId],
+    enabled: Boolean(selectedCsaId),
     queryFn: async () => {
       const response = await api.get('/manager/driver-access');
       return response.data || { starter_pin: null };
@@ -65,7 +73,8 @@ export default function SetupPage() {
   });
 
   const driversQuery = useQuery({
-    queryKey: ['setup-drivers'],
+    queryKey: ['setup-drivers', selectedCsaId],
+    enabled: Boolean(selectedCsaId),
     queryFn: async () => {
       const response = await api.get('/manager/drivers');
       return response.data?.drivers || [];
@@ -73,7 +82,8 @@ export default function SetupPage() {
   });
 
   const vehiclesQuery = useQuery({
-    queryKey: ['setup-vehicles'],
+    queryKey: ['setup-vehicles', selectedCsaId],
+    enabled: Boolean(selectedCsaId),
     queryFn: async () => {
       const response = await api.get('/vehicles');
       return response.data?.vehicles || [];
@@ -81,7 +91,8 @@ export default function SetupPage() {
   });
 
   const fedexAccountsQuery = useQuery({
-    queryKey: ['manager-fedex-accounts'],
+    queryKey: ['manager-fedex-accounts', selectedCsaId],
+    enabled: Boolean(selectedCsaId),
     queryFn: async () => {
       const response = await api.get('/manager/fedex-accounts');
       return response.data || { migration_required: false, accounts: [], default_account_id: null, connected_accounts_count: 0 };
@@ -89,7 +100,8 @@ export default function SetupPage() {
   });
 
   const dashboardQuery = useQuery({
-    queryKey: ['manager-dashboard'],
+    queryKey: ['manager-dashboard', selectedCsaId],
+    enabled: Boolean(selectedCsaId),
     queryFn: async () => {
       const response = await api.get('/manager/dashboard');
       return response.data?.dashboard || null;
@@ -150,18 +162,24 @@ export default function SetupPage() {
       {
         order: 4,
         key: 'fedex',
-        title: 'FedEx accounts',
-        body: 'Link one or more FedEx shipping accounts now so ReadyRoute is ready for future auto-sync and label operations.',
-        actionLabel: 'Open CSA FedEx setup',
+        title: 'FedEx integration',
+        body: FCC_AUTOMATION_PAUSED
+          ? 'FedEx/FCC automation is paused while ReadyRoute prepares the approved access path.'
+          : 'Link one or more FedEx shipping accounts now so ReadyRoute is ready for future auto-sync and label operations.',
+        actionLabel: FCC_AUTOMATION_PAUSED ? 'Review integration status' : 'Open CSA FedEx setup',
         actionTo: '/csa?source=setup&focus=fedex',
-        status: fedexMigrationRequired
+        status: FCC_AUTOMATION_PAUSED
+          ? 'done'
+          : fedexMigrationRequired
           ? 'needs-attention'
           : fedexConnectedCount > 0
             ? 'done'
             : fedexAccounts.length > 0
               ? 'ready'
               : 'needs-attention',
-        detail: fedexMigrationRequired
+        detail: FCC_AUTOMATION_PAUSED
+          ? `No CSA FedEx password is required. ${fedexAccounts.length} legacy portal login${fedexAccounts.length === 1 ? '' : 's'} will stay disabled.`
+          : fedexMigrationRequired
           ? 'Run the latest FedEx accounts migration before CSA-level FedEx setup can be saved.'
           : fedexConnectedCount > 0
             ? `${fedexConnectedCount} connected account${fedexConnectedCount === 1 ? '' : 's'}${fedexDefaultLabel ? `. Default: ${fedexDefaultLabel}` : ''}`
@@ -230,12 +248,11 @@ export default function SetupPage() {
     <div className="page">
       <div className="setup-shell">
         <div className="setup-header-card card">
-          <div className="setup-eyebrow">New Company Setup</div>
-          <h1>Bring your CSA into ReadyRoute</h1>
-          <p>
-            This is the shortest path from trial signup to a live operation: lock in driver access, connect VEDR,
-            load the team, add vehicles, and bring in the first routes.
-          </p>
+          <PageHeader
+            description="This is the shortest path from trial signup to a live operation: lock in driver access, connect VEDR, load the team, add vehicles, and bring in the first routes."
+            eyebrow="New Company Setup"
+            title="Bring your CSA into ReadyRoute"
+          />
 
           {searchParams.get('source') === 'trial' ? (
             <div className="info-banner">

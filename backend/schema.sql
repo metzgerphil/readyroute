@@ -129,6 +129,7 @@ create table if not exists public.vehicles (
   year integer,
   plate text,
   registration_expiration date,
+  insurance_expiration date,
   current_mileage integer not null default 0,
   last_service_date date,
   last_service_mileage integer,
@@ -146,6 +147,7 @@ create table if not exists public.vehicle_maintenance (
   service_type text,
   description text not null,
   condition_notes text,
+  vendor_name text,
   cost numeric(10, 2),
   mileage_at_service integer,
   next_service_mileage integer,
@@ -160,6 +162,32 @@ create table if not exists public.vehicle_maintenance_settings (
   is_enabled boolean not null default true,
   default_interval_miles integer,
   default_interval_days integer,
+  notes text,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+create table if not exists public.vehicle_check_requirement_settings (
+  id uuid primary key default gen_random_uuid(),
+  account_id uuid not null references public.accounts(id) on delete cascade,
+  maintenance_requirement_mode text not null default 'option_1',
+  weekly_inspection_day text not null default 'Monday',
+  custom_daily_requirements jsonb not null default '{}'::jsonb,
+  custom_weekly_requirements jsonb not null default '{}'::jsonb,
+  updated_by_manager_user_id uuid references public.manager_users(id) on delete set null,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  constraint vehicle_check_requirement_mode_check
+    check (maintenance_requirement_mode in ('option_1', 'option_2', 'custom')),
+  constraint vehicle_check_requirement_weekday_check
+    check (weekly_inspection_day in ('Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'))
+);
+
+create table if not exists public.vehicle_checklist_template_settings (
+  id uuid primary key default gen_random_uuid(),
+  account_id uuid not null references public.accounts(id) on delete cascade,
+  fields jsonb not null default '[]'::jsonb,
+  updated_by_manager_user_id uuid references public.manager_users(id) on delete set null,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
@@ -200,6 +228,23 @@ create table if not exists public.routes (
   constraint routes_status_check check (status in ('pending', 'ready', 'in_progress', 'complete')),
   constraint routes_dispatch_state_check check (dispatch_state in ('staged', 'dispatched')),
   constraint routes_sync_state_check check (sync_state in ('sync_pending', 'syncing', 'staged_changed', 'staged_stable', 'dispatch_blocked', 'changed_after_dispatch', 'needs_attention', 'sync_failed'))
+);
+
+create table if not exists public.vehicle_odometer_entries (
+  id uuid primary key default gen_random_uuid(),
+  vehicle_id uuid not null references public.vehicles(id) on delete cascade,
+  driver_id uuid references public.drivers(id) on delete set null,
+  manager_user_id uuid references public.manager_users(id) on delete set null,
+  account_id uuid not null references public.accounts(id) on delete cascade,
+  route_id uuid references public.routes(id) on delete set null,
+  old_odometer_reading integer,
+  new_odometer_reading integer not null,
+  odometer_reading integer not null,
+  source text not null default 'driver',
+  notes text,
+  recorded_at timestamptz not null default now(),
+  created_at timestamptz not null default now(),
+  constraint vehicle_odometer_reading_nonnegative check (odometer_reading >= 0)
 );
 
 create table if not exists public.route_sync_events (
@@ -251,6 +296,18 @@ create table if not exists public.stops (
   address text not null,
   address_line2 text,
   contact_name text,
+  business_name text,
+  company_name text,
+  primary_phone text,
+  alternate_phone text,
+  email text,
+  customer_instructions text,
+  delivery_instructions text,
+  consignee text,
+  shipper text,
+  contact_source text,
+  contact_last_imported_at timestamptz,
+  raw_contact_metadata jsonb,
   lat numeric(10, 6),
   lng numeric(10, 6),
   status text not null default 'pending',
@@ -284,11 +341,29 @@ create table if not exists public.packages (
   id uuid primary key default gen_random_uuid(),
   stop_id uuid not null references public.stops(id) on delete cascade,
   tracking_number text not null,
+  service_code text,
   weight numeric(10, 2),
   requires_signature boolean not null default false,
+  requires_adult_signature boolean not null default false,
   hazmat boolean not null default false,
   constraint packages_weight_nonnegative check (weight is null or weight >= 0)
 );
+
+create table if not exists public.fedex_status_codes (
+  id uuid primary key default gen_random_uuid(),
+  code text not null,
+  description text not null,
+  category text not null,
+  category_label text not null,
+  affects_service_score boolean not null default false,
+  requires_warning boolean not null default false,
+  is_pickup_code boolean not null default false,
+  is_exception_code boolean not null default false,
+  created_at timestamptz not null default now()
+);
+
+create unique index if not exists fedex_status_codes_code_idx
+on public.fedex_status_codes(code);
 
 create table if not exists public.road_rules (
   id uuid primary key default gen_random_uuid(),
@@ -521,6 +596,7 @@ alter table public.stops add column if not exists pod_photo_url text;
 alter table public.stops add column if not exists pod_signature_url text;
 alter table public.stops add column if not exists scanned_at timestamptz;
 alter table public.stops add column if not exists completed_at timestamptz;
+alter table public.stops add column if not exists completed_by_driver_id uuid references public.drivers(id) on delete set null;
 alter table public.stops add column if not exists notes text;
 alter table public.stops drop constraint if exists stops_status_check;
 alter table public.stops add constraint stops_status_check
@@ -621,6 +697,13 @@ create index if not exists vehicles_account_id_idx on public.vehicles(account_id
 create index if not exists vehicle_maintenance_vehicle_id_idx on public.vehicle_maintenance(vehicle_id);
 create index if not exists vehicle_maintenance_account_id_idx on public.vehicle_maintenance(account_id);
 create index if not exists vehicle_maintenance_service_date_idx on public.vehicle_maintenance(service_date desc);
+create unique index if not exists vehicle_check_requirement_settings_account_uidx on public.vehicle_check_requirement_settings(account_id);
+create unique index if not exists vehicle_checklist_template_settings_account_uidx on public.vehicle_checklist_template_settings(account_id);
+create index if not exists vehicle_odometer_entries_vehicle_id_idx on public.vehicle_odometer_entries(vehicle_id, created_at desc);
+create index if not exists vehicle_odometer_entries_driver_id_idx on public.vehicle_odometer_entries(driver_id, created_at desc);
+create index if not exists vehicle_odometer_entries_manager_user_id_idx on public.vehicle_odometer_entries(manager_user_id, created_at desc);
+create index if not exists vehicle_odometer_entries_account_id_idx on public.vehicle_odometer_entries(account_id, created_at desc);
+create index if not exists vehicle_odometer_entries_route_id_idx on public.vehicle_odometer_entries(route_id);
 create index if not exists manager_users_account_id_idx on public.manager_users(account_id);
 alter table public.manager_users drop constraint if exists manager_users_email_key;
 drop index if exists public.manager_users_email_uidx;
@@ -641,7 +724,13 @@ create index if not exists routes_archived_at_idx on public.routes(archived_at);
 create unique index if not exists routes_work_area_date_account on public.routes(account_id, work_area_name, date) where archived_at is null;
 create index if not exists stops_route_id_idx on public.stops(route_id);
 create index if not exists stops_status_idx on public.stops(status);
+alter table public.packages drop constraint if exists packages_tracking_number_key;
+alter table public.packages drop constraint if exists packages_tracking_number_idx;
+alter table public.packages drop constraint if exists packages_tracking_number_unique;
+drop index if exists public.packages_tracking_number_key;
+drop index if exists public.packages_tracking_number_idx;
 create index if not exists packages_stop_id_idx on public.packages(stop_id);
+create index if not exists packages_tracking_number_idx on public.packages(tracking_number);
 create index if not exists road_rules_account_id_idx on public.road_rules(account_id);
 create index if not exists road_rules_created_by_idx on public.road_rules(created_by);
 create index if not exists stop_notes_account_id_idx on public.stop_notes(account_id);
@@ -683,6 +772,7 @@ alter table public.accounts enable row level security;
 alter table public.drivers enable row level security;
 alter table public.vehicles enable row level security;
 alter table public.vehicle_maintenance enable row level security;
+alter table public.vehicle_odometer_entries enable row level security;
 alter table public.routes enable row level security;
 alter table public.stops enable row level security;
 alter table public.packages enable row level security;
@@ -722,6 +812,13 @@ with check (account_id = public.readyroute_account_id());
 drop policy if exists vehicle_maintenance_by_account on public.vehicle_maintenance;
 create policy vehicle_maintenance_by_account
 on public.vehicle_maintenance
+for all
+using (account_id = public.readyroute_account_id())
+with check (account_id = public.readyroute_account_id());
+
+drop policy if exists vehicle_odometer_entries_by_account on public.vehicle_odometer_entries;
+create policy vehicle_odometer_entries_by_account
+on public.vehicle_odometer_entries
 for all
 using (account_id = public.readyroute_account_id())
 with check (account_id = public.readyroute_account_id());

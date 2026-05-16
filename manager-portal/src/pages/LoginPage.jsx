@@ -20,6 +20,7 @@ export default function LoginPage() {
   );
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isRequestingReset, setIsRequestingReset] = useState(false);
+  const [showResetForm, setShowResetForm] = useState(false);
   const [resetEmail, setResetEmail] = useState('');
   const [resetMessage, setResetMessage] = useState('');
   const [resetErrorMessage, setResetErrorMessage] = useState('');
@@ -45,7 +46,7 @@ export default function LoginPage() {
       navigate('/', { replace: true });
     } catch (error) {
       if (!error.response) {
-        setErrorMessage('Backend server is unavailable. Start the ReadyRoute backend and try again.');
+        setErrorMessage('ReadyRoute is temporarily unavailable. Please try again.');
       } else if (error.response.status === 401) {
         setErrorMessage('Incorrect email or password. Try again.');
       } else {
@@ -67,18 +68,13 @@ export default function LoginPage() {
       const response = await api.post('/auth/manager/request-password-reset', {
         email: resetEmail
       });
-      const resetUrl = response.data?.reset_url;
 
-      if (resetUrl) {
-        setResetMessage(`Reset link ready for local use: ${resetUrl}`);
-      } else {
-        setResetMessage(response.data?.message || 'If that email exists, a reset link has been prepared.');
-      }
+      setResetMessage(response.data?.message || 'Check your email for reset instructions.');
     } catch (error) {
       if (!error.response) {
-        setResetErrorMessage('Backend server is unavailable. Start the ReadyRoute backend and try again.');
+        setResetErrorMessage('ReadyRoute is temporarily unavailable. Please try again.');
       } else {
-        setResetErrorMessage(error.response?.data?.error || 'Could not prepare a reset link.');
+        setResetErrorMessage(error.response?.data?.error || 'Could not send reset instructions.');
       }
     } finally {
       setIsRequestingReset(false);
@@ -90,28 +86,21 @@ export default function LoginPage() {
       <div className="login-shell">
         <section className="login-hero-panel">
           <div className="login-hero-badge">ReadyRoute Manager Portal</div>
-          <div className="brand login-brand">
-            <span className="brand-ready">ready</span>
-            <span className="brand-route">Route</span>
-          </div>
-          <h1 className="login-hero-title">Operate the manifest. Keep the map. Move faster in the field.</h1>
-          <p className="login-hero-copy">
-            ReadyRoute helps dispatch and drivers execute the day with live route visibility, apartment intelligence,
-            building notes, and manifest-first stop control.
-          </p>
+          <h1 className="login-hero-title">Run today&apos;s routes with confidence.</h1>
+          <p className="login-hero-copy">Load routes, assign drivers, monitor progress, and keep the day moving from one clean operations portal.</p>
 
           <div className="login-hero-points">
             <div className="login-hero-point">
               <strong>Manifest-first</strong>
-              <span>Keep FedEx stop order as the source of truth.</span>
+              <span>Keep the day&apos;s route work centered on the manifest.</span>
             </div>
             <div className="login-hero-point">
               <strong>Map-aware</strong>
-              <span>See every stop pin and the live driver position in one view.</span>
+              <span>See route coverage, stop pins, and driver visibility in one place.</span>
             </div>
             <div className="login-hero-point">
-              <strong>Building intel</strong>
-              <span>Capture gates, units, offices, docks, parking, and repeat-stop knowledge.</span>
+              <strong>Field-ready</strong>
+              <span>Send drivers the stop details, notes, and route information they need.</span>
             </div>
           </div>
         </section>
@@ -122,7 +111,7 @@ export default function LoginPage() {
               <span className="brand-ready">ready</span>
               <span className="brand-route">Route</span>
             </div>
-            <div className="brand-subtitle login-brand-subtitle">Manager sign in</div>
+            <div className="login-card-title">Manager sign in</div>
           </div>
 
           <form className="login-form" onSubmit={handleSubmit}>
@@ -155,6 +144,7 @@ export default function LoginPage() {
               <button
                 className="secondary-button"
                 onClick={() => {
+                  setShowResetForm(true);
                   setResetMessage('');
                   setResetErrorMessage('');
                   setResetEmail(email);
@@ -166,34 +156,33 @@ export default function LoginPage() {
             </div>
           </form>
 
-          <div className="login-helper-card">
-            <div className="login-helper-title">Need a new password?</div>
-            <form className="login-helper-form" onSubmit={handleResetRequest}>
-              <label className="field-label" htmlFor="reset-email">Manager email</label>
-              <input
-                className="text-field"
-                id="reset-email"
-                onChange={(event) => setResetEmail(event.target.value)}
-                type="email"
-                value={resetEmail}
-              />
-              {resetMessage ? <div className="info-banner">{resetMessage}</div> : null}
-              {resetErrorMessage ? <div className="error-banner">{resetErrorMessage}</div> : null}
-              <button className="secondary-button" disabled={isRequestingReset} type="submit">
-                {isRequestingReset ? 'Preparing reset link...' : 'Send reset link'}
-              </button>
-            </form>
-            <div className="login-helper-note">
-              In local development, the reset link appears here and in the backend terminal. In production, ReadyRoute emails the reset link when the mail service is configured.
+          {showResetForm ? (
+            <div className="login-helper-card">
+              <div>
+                <div className="login-helper-title">Reset your password</div>
+                <p className="login-helper-copy">Enter your manager email and we&apos;ll send reset instructions.</p>
+              </div>
+              <form className="login-helper-form" onSubmit={handleResetRequest}>
+                <label className="field-label" htmlFor="reset-email">Manager email</label>
+                <input
+                  className="text-field"
+                  id="reset-email"
+                  onChange={(event) => setResetEmail(event.target.value)}
+                  type="email"
+                  value={resetEmail}
+                />
+                {resetMessage ? <div className="info-banner">Check your email for reset instructions.</div> : null}
+                {resetErrorMessage ? <div className="error-banner">{resetErrorMessage}</div> : null}
+                <button className="secondary-button" disabled={isRequestingReset} type="submit">
+                  {isRequestingReset ? 'Sending reset link...' : 'Send reset link'}
+                </button>
+              </form>
             </div>
-          </div>
+          ) : null}
 
-          <div className="login-helper-note">
-            If you already have a reset link, open it directly or use the <Link to="/reset-password">reset password page</Link>.
-          </div>
-
-          <div className="login-helper-note">
-            New to ReadyRoute? <Link to="/start-trial">Start your free trial</Link>.
+          <div className="login-secondary-links">
+            <Link to="/start-trial">Start free trial</Link>
+            <a href="https://readyroute.org/">Back to ReadyRoute</a>
           </div>
         </div>
       </div>

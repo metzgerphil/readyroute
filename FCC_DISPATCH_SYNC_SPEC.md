@@ -31,6 +31,8 @@ This deliberately avoids a fully automatic publish model.
 - FCC `Combined Manifest` is the primary source for route-day manifest data.
 - Both `.xls` and `.gpx` are required for a complete route import.
 - FCC does not expose a clearly visible, trustworthy manifest-complete flag in the observed portal experience.
+- Direct browser automation against MyBizAccount/FCC must remain disabled until FedEx approves the access path.
+- ReadyRoute should not collect CSA FedEx passwords for production use while that approved path is pending.
 
 ### GroundCloud
 
@@ -228,6 +230,8 @@ The following slices are now implemented:
 
 The backend worker entrypoint is `backend/src/scripts/runFedexSync.js`.
 
+Production FCC automation is intentionally gated by `FEDEX_FCC_AUTOMATION_ENABLED=false` by default. Until FedEx-approved access is in place, worker runs should skip cleanly with `fcc_automation_disabled` instead of attempting a MyBizAccount login or reading saved CSA credentials.
+
 `FEDEX_SYNC_MODE` controls the sync lane:
 
 - `both` runs manifest sync and FCC progress sync.
@@ -242,8 +246,10 @@ The intended production cadence is:
 
 ## Remaining Major Work
 
-The main remaining gap is live FCC hardening:
+The main remaining gap is FedEx-approved integration access:
 
+- confirm the correct FedEx permission/certification path before production automation
+- replace MyBizAccount credential collection with the approved access mechanism
 - validate the runner against real FCC sessions over multiple CSAs
 - harden selectors around FCC UI variations
 - add retry/backoff behavior for FCC login, MFA, and timeout cases

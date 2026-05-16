@@ -8,19 +8,30 @@ import {
   TextInput,
   View
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import Svg, { Path } from 'react-native-svg';
 
 import api from '../services/api';
 import { getPinColorMode, savePinColorMode, subscribePinColorMode } from '../services/auth';
+import appTheme from '../theme/appTheme';
 import { getSidBucketTheme } from '../utils/sidBuckets';
+
+const STOP_FILTERS = [
+  { key: 'all', label: 'All' },
+  { key: 'deliveries', label: 'Deliveries' },
+  { key: 'pickups', label: 'Pickups' }
+];
 
 export function getStatusConfig(status) {
   switch (status) {
     case 'delivered':
       return { label: 'Delivered', dot: styles.statusDelivered };
+    case 'pickup_complete':
+      return { label: 'Picked up', dot: styles.statusDelivered };
     case 'attempted':
       return { label: 'Attempted', dot: styles.statusAttempted };
+    case 'pickup_attempted':
+      return { label: 'Pickup attempted', dot: styles.statusAttempted };
     case 'incomplete':
       return { label: 'Incomplete', dot: styles.statusIncomplete };
     default:
@@ -33,7 +44,11 @@ export function isPriorityStop(stop) {
 }
 
 export function isPickupStop(stop) {
-  return stop.stop_type === 'pickup' || stop.is_pickup === true;
+  return Boolean(stop?.has_pickup || stop?.is_pickup === true || stop?.stop_type === 'pickup' || stop?.stop_type === 'combined');
+}
+
+export function isDeliveryStop(stop) {
+  return Boolean(stop?.has_delivery || stop?.stop_type === 'delivery' || stop?.stop_type === 'combined' || !isPickupStop(stop));
 }
 
 export function isHazmatStop(stop) {
@@ -59,6 +74,39 @@ export function getPostDispatchChangeNotice(route) {
       title: 'Route updated after dispatch',
       body: 'FCC changed this route after it went live. Review stop order and details carefully before making your next move.'
     };
+  }
+
+  return null;
+}
+
+function formatStopSummaryLabel(count, singular, plural = `${singular}s`) {
+  const safeCount = Number(count || 0);
+  return `${safeCount} ${safeCount === 1 ? singular : plural}`;
+}
+
+function getStopPackageCount(stop) {
+  if (Array.isArray(stop?.packages)) {
+    return stop.packages.length;
+  }
+
+  return Number(stop?.package_count || stop?.pkg_count || stop?.pickup_package_count || 0);
+}
+
+function getPickupWindowLabel(stop) {
+  if (!isPickupStop(stop)) {
+    return null;
+  }
+
+  if (stop?.ready_time && stop?.close_time) {
+    return `Pickup ${stop.ready_time}–${stop.close_time}`;
+  }
+
+  if (stop?.close_time) {
+    return `Pickup closes ${stop.close_time}`;
+  }
+
+  if (stop?.ready_time) {
+    return `Pickup ready ${stop.ready_time}`;
   }
 
   return null;
@@ -120,12 +168,21 @@ function OpenBoxIcon({ color = '#6f7d87' }) {
 }
 
 export default function ManifestScreen({ navigation, route }) {
+  const insets = useSafeAreaInsets();
   const [routeData, setRouteData] = useState(null);
   const [driverDay, setDriverDay] = useState({ status: 'unknown' });
   const [search, setSearch] = useState('');
+  const [activeStopFilter, setActiveStopFilter] = useState('all');
   const [isLoading, setIsLoading] = useState(true);
   const [pinColorMode, setPinColorMode] = useState('sid');
   const selectedStopId = route?.params?.selectedStopId;
+  const groupStopIds = useMemo(
+    () => (Array.isArray(route?.params?.groupStopIds) ? route.params.groupStopIds.filter(Boolean) : []),
+    [route?.params?.groupStopIds]
+  );
+  const groupStopIdSet = useMemo(() => new Set(groupStopIds), [groupStopIds]);
+  const groupAddress = route?.params?.groupAddress || '';
+  const isGroupStopList = groupStopIds.length > 0;
   const postDispatchNotice = getPostDispatchChangeNotice(routeData);
 
   useLayoutEffect(() => {
@@ -192,21 +249,35 @@ export default function ManifestScreen({ navigation, route }) {
     });
   }, []);
 
-  const filteredStops = useMemo(() => {
+  const searchedStops = useMemo(() => {
     const normalizedSearch = search.trim().toLowerCase();
-    const stops = routeData?.stops || [];
+    const routeStops = routeData?.stops || [];
+    const stops = groupStopIdSet.size ? routeStops.filter((stop) => groupStopIdSet.has(stop.id)) : routeStops;
 
     if (!normalizedSearch) {
       return stops;
     }
 
     return stops.filter((stop) =>
-      `${stop.address} ${stop.sequence_order} ${stop.address_line2 || ''}`.toLowerCase().includes(normalizedSearch)
+      `${stop.address} ${stop.sequence_order} ${stop.sid || ''} ${stop.contact_name || ''} ${stop.address_line2 || ''}`
+        .toLowerCase()
+        .includes(normalizedSearch)
     );
-  }, [routeData?.stops, search]);
+  }, [groupStopIdSet, routeData?.stops, search]);
 
-  const deliveryStops = filteredStops.filter((stop) => !isPickupStop(stop));
-  const pickupStops = filteredStops.filter((stop) => isPickupStop(stop));
+  const visibleStops = useMemo(() => {
+    if (activeStopFilter === 'deliveries') {
+      return searchedStops.filter((stop) => isDeliveryStop(stop));
+    }
+
+    if (activeStopFilter === 'pickups') {
+      return searchedStops.filter((stop) => isPickupStop(stop));
+    }
+
+    return searchedStops;
+  }, [activeStopFilter, searchedStops]);
+  const pickupStops = searchedStops.filter((stop) => isPickupStop(stop));
+  const completedStopsCount = searchedStops.filter((stop) => stop.status === 'delivered' || stop.status === 'pickup_complete').length;
 
   async function handlePinColorModeChange(nextMode) {
     setPinColorMode(nextMode);
@@ -216,14 +287,18 @@ export default function ManifestScreen({ navigation, route }) {
   function renderStopRow({ item }) {
     const statusConfig = getStatusConfig(item.status);
     const pinTheme = getListPinTheme(item, pinColorMode);
-    const packageCount = (item.packages || []).length;
+    const stopIsPickup = isPickupStop(item);
+    const stopIsDelivery = isDeliveryStop(item);
+    const packageCount = getStopPackageCount(item);
+    const secondaryLine = item.contact_name || item.address_line2 || null;
+    const pickupWindowLabel = getPickupWindowLabel(item);
 
     return (
       <Pressable
         onPress={() => navigation.navigate('StopDetail', { stopId: item.id })}
         style={[styles.row, isPriorityStop(item) ? styles.priorityRow : null, selectedStopId === item.id ? styles.selectedRow : null]}
       >
-        <View style={styles.rowTop}>
+        <View style={styles.rowInner}>
           <View style={styles.rowIdentityWrap}>
             <View
               style={[
@@ -236,41 +311,50 @@ export default function ManifestScreen({ navigation, route }) {
             >
               <Text style={[styles.stopCircleText, { color: pinTheme.text }]}>{item.sequence_order}</Text>
             </View>
-            <Text style={[styles.sidLabel, { color: pinTheme.text }]}>
-              {item.sid ? `SID ${item.sid}` : 'No SID'}
-            </Text>
+            <View style={styles.sidWrap}>
+              <Text style={[styles.sidLabel, { color: pinTheme.text }]}>
+                {item.sid ? `SID ${item.sid}` : 'No SID'}
+              </Text>
+            </View>
           </View>
-          <View style={styles.statusWrap}>
-            {isHazmatStop(item) ? (
-              <View style={styles.hazmatBadge}>
-                <Text style={styles.hazmatText}>HZ</Text>
+
+          <View style={styles.rowBody}>
+            <View style={styles.rowMainCopy}>
+              <Text numberOfLines={2} style={styles.address}>{item.address}</Text>
+              {secondaryLine ? (
+                <Text numberOfLines={1} style={styles.secondaryLine}>{secondaryLine}</Text>
+              ) : null}
+              <View style={styles.stopTypeBadgeRow}>
+                {stopIsPickup ? (
+                  <View style={styles.pickupTypeBadge}>
+                    <Text style={styles.pickupTypeBadgeText}>{stopIsDelivery ? 'Delivery + Pickup' : 'Pickup'}</Text>
+                  </View>
+                ) : null}
+                {pickupWindowLabel ? (
+                  <Text numberOfLines={1} style={styles.pickupWindowText}>{pickupWindowLabel}</Text>
+                ) : null}
               </View>
-            ) : null}
-            <View style={[styles.statusDot, statusConfig.dot]} />
-            <Text style={styles.statusLabel}>{statusConfig.label}</Text>
+            </View>
+
+            <View style={styles.rowMetaRail}>
+              <View style={styles.rowMetaTop}>
+                <View style={styles.packageMetaRow}>
+                  <OpenBoxIcon />
+                  <Text style={styles.packageMetaText}>{packageCount}</Text>
+                </View>
+                <View style={styles.statusWrap}>
+                  <View style={[styles.statusDot, statusConfig.dot]} />
+                  <Text style={styles.statusLabel}>{statusConfig.label}</Text>
+                </View>
+              </View>
+              {item.has_note ? (
+                <View style={[styles.metaBadge, styles.metaBadgeNoteCompact]}>
+                  <Text style={[styles.metaBadgeText, styles.metaBadgeTextNote]}>Has note</Text>
+                </View>
+              ) : null}
+            </View>
+            <Text style={styles.rowChevron}>›</Text>
           </View>
-        </View>
-        <Text style={styles.address}>{item.address}</Text>
-        <View style={styles.metaRow}>
-          {item.is_apartment_unit ? (
-            <View style={[styles.metaBadge, styles.metaBadgeApartment]}>
-              <Text style={[styles.metaBadgeText, styles.metaBadgeTextApartment]}>Apartment</Text>
-            </View>
-          ) : null}
-          {item.is_business ? (
-            <View style={[styles.metaBadge, styles.metaBadgeBusiness]}>
-              <Text style={[styles.metaBadgeText, styles.metaBadgeTextBusiness]}>Business</Text>
-            </View>
-          ) : null}
-          {item.has_note ? (
-            <View style={[styles.metaBadge, styles.metaBadgeNote]}>
-              <Text style={[styles.metaBadgeText, styles.metaBadgeTextNote]}>Has note</Text>
-            </View>
-          ) : null}
-        </View>
-        <View style={styles.packageMetaRow}>
-          <OpenBoxIcon />
-          <Text style={styles.packageMetaText}>{packageCount}</Text>
         </View>
       </Pressable>
     );
@@ -286,7 +370,10 @@ export default function ManifestScreen({ navigation, route }) {
             <View style={styles.pinColorPillRow}>
               <Pressable
                 onPress={() => handlePinColorModeChange('sid')}
-                style={[styles.pinColorPill, pinColorMode === 'sid' ? styles.pinColorPillActive : null]}
+                style={[
+                  styles.pinColorPill,
+                  pinColorMode === 'sid' ? styles.pinColorPillActiveSid : null
+                ]}
                 testID="pin-color-mode-sid"
               >
                 <Text style={[styles.pinColorPillText, pinColorMode === 'sid' ? styles.pinColorPillTextActive : null]}>
@@ -295,7 +382,10 @@ export default function ManifestScreen({ navigation, route }) {
               </Pressable>
               <Pressable
                 onPress={() => handlePinColorModeChange('black')}
-                style={[styles.pinColorPill, pinColorMode === 'black' ? styles.pinColorPillActive : null]}
+                style={[
+                  styles.pinColorPill,
+                  pinColorMode === 'black' ? styles.pinColorPillActiveBlack : null
+                ]}
                 testID="pin-color-mode-black"
               >
                 <Text style={[styles.pinColorPillText, pinColorMode === 'black' ? styles.pinColorPillTextActive : null]}>
@@ -313,6 +403,47 @@ export default function ManifestScreen({ navigation, route }) {
           style={styles.searchInput}
           value={search}
         />
+
+        <View style={styles.stopFilterRow}>
+          {STOP_FILTERS.map((filter) => (
+            <Pressable
+              key={filter.key}
+              onPress={() => setActiveStopFilter(filter.key)}
+              style={[
+                styles.stopFilterChip,
+                activeStopFilter === filter.key ? styles.stopFilterChipActive : null
+              ]}
+            >
+              <Text style={[
+                styles.stopFilterChipText,
+                activeStopFilter === filter.key ? styles.stopFilterChipTextActive : null
+              ]}>
+                {filter.label}
+              </Text>
+            </Pressable>
+          ))}
+        </View>
+
+        <View style={styles.summaryRow}>
+          <Text style={styles.summaryText}>
+            {isGroupStopList
+              ? `${formatStopSummaryLabel(visibleStops.length, 'stop')} at this + pin`
+              : formatStopSummaryLabel(visibleStops.length, 'stop')}
+          </Text>
+          <Text style={styles.summaryDivider}>•</Text>
+          <Text style={styles.summaryText}>{completedStopsCount} completed</Text>
+          <Text style={styles.summaryDivider}>•</Text>
+          <Text style={styles.summaryText}>{pickupStops.length} pickups</Text>
+          {isGroupStopList && groupAddress ? (
+            <Text numberOfLines={1} style={styles.groupAddressText}>
+              {groupAddress}
+            </Text>
+          ) : null}
+          <View style={styles.sortChip}>
+            <Text style={styles.sortChipText}>By Stop #</Text>
+            <Text style={styles.sortChipChevron}>⌄</Text>
+          </View>
+        </View>
 
         {!isLoading && !routeData && driverDay?.status === 'awaiting_dispatch' ? (
           <View style={styles.noticeCard}>
@@ -336,20 +467,15 @@ export default function ManifestScreen({ navigation, route }) {
           </View>
         ) : (
           <FlatList
-            contentContainerStyle={styles.listContent}
-            data={deliveryStops}
+            contentContainerStyle={[styles.listContent, { paddingBottom: appTheme.spacing.xxl + insets.bottom }]}
+            data={visibleStops}
+            getItemLayout={(_, index) => ({
+              index,
+              length: 82,
+              offset: 82 * index
+            })}
             keyExtractor={(item) => item.id}
             ListEmptyComponent={<Text style={styles.emptyText}>No stops match that search.</Text>}
-            ListFooterComponent={
-              pickupStops.length ? (
-                <View style={styles.pickupsSection}>
-                  <Text style={styles.pickupsTitle}>Pickups</Text>
-                  {pickupStops.map((stop) => (
-                    <View key={stop.id}>{renderStopRow({ item: stop })}</View>
-                  ))}
-                </View>
-              ) : null
-            }
             renderItem={renderStopRow}
           />
         )}
@@ -364,86 +490,168 @@ const styles = StyleSheet.create({
   },
   container: {
     flex: 1,
-    backgroundColor: '#fff9f4',
-    paddingHorizontal: 16,
-    paddingTop: 16
+    backgroundColor: appTheme.colors.backgroundWarm,
+    paddingHorizontal: appTheme.spacing.md,
+    paddingTop: appTheme.spacing.sm
   },
   title: {
-    color: '#173042',
-    fontSize: 28,
-    fontWeight: '800',
-    marginBottom: 0
+    color: appTheme.colors.textPrimary,
+    fontSize: appTheme.typography.titleMedium,
+    fontWeight: appTheme.typography.weights.heavy
   },
   titleRow: {
     alignItems: 'flex-start',
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginBottom: 14
+    gap: appTheme.spacing.xs,
+    marginBottom: appTheme.spacing.xs
   },
   pinColorControl: {
-    alignItems: 'flex-end',
-    gap: 6
+    alignItems: 'stretch',
+    gap: appTheme.spacing.xs,
+    width: '100%'
   },
   pinColorLabel: {
-    color: '#6f7d87',
-    fontSize: 11,
-    fontWeight: '700',
+    color: appTheme.colors.textSecondary,
+    fontSize: appTheme.typography.eyebrow,
+    fontWeight: appTheme.typography.weights.bold,
     letterSpacing: 0.6,
     textTransform: 'uppercase'
   },
   pinColorPillRow: {
-    backgroundColor: '#ffffff',
-    borderColor: '#dfdfdf',
-    borderRadius: 999,
+    backgroundColor: appTheme.colors.surface,
+    borderColor: appTheme.colors.border,
+    borderRadius: appTheme.radius.xl,
     borderWidth: 1,
     flexDirection: 'row',
-    padding: 4
+    padding: 3
   },
   pinColorPill: {
-    borderRadius: 999,
-    paddingHorizontal: 10,
-    paddingVertical: 6
+    alignItems: 'center',
+    borderRadius: appTheme.radius.lg,
+    flex: 1,
+    justifyContent: 'center',
+    minHeight: 32,
+    paddingHorizontal: appTheme.spacing.sm,
+    paddingVertical: 4
   },
-  pinColorPillActive: {
-    backgroundColor: '#173042'
+  pinColorPillActiveSid: {
+    backgroundColor: appTheme.colors.purple
+  },
+  pinColorPillActiveBlack: {
+    backgroundColor: appTheme.colors.charcoal
   },
   pinColorPillText: {
-    color: '#51606d',
-    fontSize: 13,
-    fontWeight: '700'
+    color: appTheme.colors.textSecondary,
+    fontSize: appTheme.typography.bodySmall,
+    fontWeight: appTheme.typography.weights.heavy
   },
   pinColorPillTextActive: {
-    color: '#ffffff'
+    color: appTheme.colors.textInverse
   },
   searchInput: {
-    backgroundColor: '#ffffff',
-    borderColor: '#dfdfdf',
-    borderRadius: 14,
+    backgroundColor: appTheme.colors.surface,
+    borderColor: appTheme.colors.border,
+    borderRadius: appTheme.radius.md,
     borderWidth: 1,
-    fontSize: 18,
-    marginBottom: 16,
-    minHeight: 56,
-    paddingHorizontal: 16
+    color: appTheme.colors.textPrimary,
+    fontSize: appTheme.typography.body,
+    marginBottom: appTheme.spacing.xs,
+    minHeight: 40,
+    paddingHorizontal: appTheme.spacing.md
+  },
+  stopFilterRow: {
+    backgroundColor: appTheme.colors.surface,
+    borderColor: appTheme.colors.border,
+    borderRadius: appTheme.radius.xl,
+    borderWidth: 1,
+    flexDirection: 'row',
+    gap: 3,
+    marginBottom: appTheme.spacing.xs,
+    padding: 3
+  },
+  stopFilterChip: {
+    alignItems: 'center',
+    borderRadius: appTheme.radius.lg,
+    flex: 1,
+    justifyContent: 'center',
+    minHeight: 32,
+    paddingHorizontal: appTheme.spacing.xs,
+    paddingVertical: 4
+  },
+  stopFilterChipActive: {
+    backgroundColor: appTheme.colors.orange
+  },
+  stopFilterChipText: {
+    color: appTheme.colors.textSecondary,
+    fontSize: appTheme.typography.bodySmall,
+    fontWeight: appTheme.typography.weights.heavy
+  },
+  stopFilterChipTextActive: {
+    color: appTheme.colors.textInverse
+  },
+  summaryRow: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: appTheme.spacing.xs,
+    marginBottom: appTheme.spacing.xs
+  },
+  summaryText: {
+    color: appTheme.colors.textSecondary,
+    fontSize: appTheme.typography.bodySmall,
+    fontWeight: appTheme.typography.weights.bold
+  },
+  summaryDivider: {
+    color: appTheme.colors.textSecondary,
+    fontSize: appTheme.typography.bodySmall,
+    fontWeight: appTheme.typography.weights.bold
+  },
+  groupAddressText: {
+    color: appTheme.colors.textSecondary,
+    flexBasis: '100%',
+    fontSize: appTheme.typography.caption,
+    fontWeight: appTheme.typography.weights.bold
+  },
+  sortChip: {
+    alignItems: 'center',
+    backgroundColor: appTheme.colors.surface,
+    borderColor: appTheme.colors.border,
+    borderRadius: appTheme.radius.pill,
+    borderWidth: 1,
+    flexDirection: 'row',
+    marginLeft: 'auto',
+    paddingHorizontal: appTheme.spacing.sm,
+    paddingVertical: 4
+  },
+  sortChipText: {
+    color: appTheme.colors.textSecondary,
+    fontSize: appTheme.typography.caption,
+    fontWeight: appTheme.typography.weights.bold
+  },
+  sortChipChevron: {
+    color: appTheme.colors.textSecondary,
+    fontSize: 12,
+    fontWeight: appTheme.typography.weights.bold,
+    marginLeft: 4
   },
   noticeCard: {
-    backgroundColor: '#fff4e8',
-    borderColor: '#ffcfad',
-    borderRadius: 18,
+    backgroundColor: appTheme.colors.warningSoft,
+    borderColor: appTheme.colors.orangeBorder,
+    borderRadius: appTheme.radius.lg,
     borderWidth: 1,
-    marginBottom: 14,
-    paddingHorizontal: 16,
-    paddingVertical: 14
+    marginBottom: appTheme.spacing.md,
+    paddingHorizontal: appTheme.spacing.md,
+    paddingVertical: appTheme.spacing.md
   },
   noticeTitle: {
-    color: '#9a3412',
-    fontSize: 15,
-    fontWeight: '800',
-    marginBottom: 6
+    color: appTheme.colors.warningText,
+    fontSize: appTheme.typography.body,
+    fontWeight: appTheme.typography.weights.heavy,
+    marginBottom: appTheme.spacing.xs
   },
   noticeBody: {
-    color: '#7c4a22',
-    fontSize: 14,
-    lineHeight: 20
+    color: appTheme.colors.infoText,
+    fontSize: appTheme.typography.bodySmall,
+    lineHeight: appTheme.typography.lineHeights.bodySmall
   },
   centered: {
     alignItems: 'center',
@@ -451,159 +659,196 @@ const styles = StyleSheet.create({
     justifyContent: 'center'
   },
   listContent: {
-    paddingBottom: 32
+    paddingBottom: appTheme.spacing.xxxl
   },
   row: {
-    backgroundColor: '#ffffff',
-    borderColor: '#ffffff',
-    borderRadius: 18,
+    ...appTheme.shadows.card,
+    backgroundColor: appTheme.colors.surface,
+    borderColor: appTheme.colors.border,
+    borderRadius: appTheme.radius.md,
     borderWidth: 1,
-    marginBottom: 12,
-    padding: 16
+    marginBottom: appTheme.spacing.xs,
+    minHeight: 72,
+    paddingHorizontal: 12,
+    paddingVertical: 7
   },
   selectedRow: {
-    borderColor: '#173042',
-    shadowColor: '#000000',
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.08,
-    shadowRadius: 10,
-    elevation: 3
+    borderColor: appTheme.colors.charcoalSoft,
+    shadowOpacity: 0.1,
+    shadowRadius: 12,
+    elevation: 4
   },
   priorityRow: {
-    borderLeftColor: '#FF6200',
-    borderLeftWidth: 5
+    borderLeftColor: appTheme.colors.orange,
+    borderLeftWidth: 4
   },
-  rowTop: {
-    alignItems: 'flex-start',
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginBottom: 8
+  rowInner: {
+    alignItems: 'center',
+    flexDirection: 'row'
   },
   rowIdentityWrap: {
     alignItems: 'center',
     flexDirection: 'row',
-    gap: 10
+    flexShrink: 0,
+    marginRight: 8,
+    paddingRight: 8
   },
   stopCircle: {
     alignItems: 'center',
-    borderRadius: 18,
+    borderRadius: appTheme.radius.pill,
     borderWidth: 2,
-    height: 36,
+    height: 28,
     justifyContent: 'center',
-    width: 36
+    width: 28
   },
   stopCircleText: {
-    fontSize: 16,
-    fontWeight: '800'
+    fontSize: 12,
+    fontWeight: appTheme.typography.weights.heavy
+  },
+  sidWrap: {
+    borderLeftColor: appTheme.colors.border,
+    borderLeftWidth: 1,
+    marginLeft: 8,
+    minWidth: 86,
+    paddingLeft: 8
   },
   sidLabel: {
-    fontSize: 16,
-    fontWeight: '800',
+    fontSize: 12,
+    fontWeight: appTheme.typography.weights.heavy,
     letterSpacing: 0.2
+  },
+  rowMetaRail: {
+    alignItems: 'flex-end',
+    gap: 3,
+    justifyContent: 'flex-start',
+    marginLeft: 6,
+    minWidth: 94
+  },
+  rowMetaTop: {
+    alignItems: 'center',
+    columnGap: 6,
+    flexDirection: 'row'
   },
   statusWrap: {
     alignItems: 'center',
+    backgroundColor: appTheme.colors.surfaceMuted,
+    borderColor: appTheme.colors.border,
+    borderRadius: appTheme.radius.pill,
+    borderWidth: 1,
     flexDirection: 'row',
-    gap: 6
+    gap: 4,
+    paddingHorizontal: 7,
+    paddingVertical: 2
   },
   statusDot: {
     borderRadius: 6,
-    height: 12,
-    width: 12
+    height: 10,
+    width: 10
   },
   statusDelivered: {
-    backgroundColor: '#2db55d'
+    backgroundColor: appTheme.colors.green
   },
   statusAttempted: {
-    backgroundColor: '#f3a534'
+    backgroundColor: appTheme.colors.warning
   },
   statusIncomplete: {
-    backgroundColor: '#CC0000'
+    backgroundColor: appTheme.colors.danger
   },
   statusPending: {
-    backgroundColor: '#ffffff',
-    borderColor: '#cfd4d8',
+    backgroundColor: appTheme.colors.surface,
+    borderColor: appTheme.colors.borderStrong,
     borderWidth: 1
   },
   statusLabel: {
-    color: '#56656f',
-    fontSize: 14,
-    fontWeight: '700'
+    color: appTheme.colors.textSecondary,
+    fontSize: appTheme.typography.caption,
+    fontWeight: appTheme.typography.weights.bold
+  },
+  rowBody: {
+    alignItems: 'flex-start',
+    flex: 1,
+    flexDirection: 'row',
+    gap: 6,
+    minWidth: 0
+  },
+  rowMainCopy: {
+    flex: 1,
+    gap: 1,
+    justifyContent: 'center',
+    minWidth: 0
   },
   address: {
-    color: '#173042',
-    fontSize: 18,
-    fontWeight: '700',
-    lineHeight: 24,
-    marginBottom: 6
+    color: appTheme.colors.textPrimary,
+    flex: 1,
+    fontSize: 11,
+    fontWeight: appTheme.typography.weights.heavy,
+    lineHeight: 14
   },
-  metaRow: {
+  secondaryLine: {
+    color: appTheme.colors.textSecondary,
+    fontSize: 10,
+    fontWeight: appTheme.typography.weights.medium
+  },
+  stopTypeBadgeRow: {
+    alignItems: 'center',
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: 8,
-    marginBottom: 6
+    gap: 5,
+    minHeight: 18
+  },
+  pickupTypeBadge: {
+    backgroundColor: '#2980b9',
+    borderRadius: appTheme.radius.pill,
+    paddingHorizontal: 7,
+    paddingVertical: 2
+  },
+  pickupTypeBadgeText: {
+    color: appTheme.colors.textInverse,
+    fontSize: 9,
+    fontWeight: appTheme.typography.weights.heavy
+  },
+  pickupWindowText: {
+    color: '#1e5f8d',
+    flexShrink: 1,
+    fontSize: 10,
+    fontWeight: appTheme.typography.weights.bold
+  },
+  rowChevron: {
+    color: appTheme.colors.textSecondary,
+    fontSize: 18,
+    fontWeight: appTheme.typography.weights.bold
   },
   metaBadge: {
-    borderRadius: 999,
-    paddingHorizontal: 10,
-    paddingVertical: 5
+    borderRadius: appTheme.radius.pill,
+    paddingHorizontal: 8,
+    paddingVertical: 3
   },
-  metaBadgeApartment: {
-    backgroundColor: '#f5f3ff'
-  },
-  metaBadgeBusiness: {
-    backgroundColor: '#111111'
-  },
-  metaBadgeNote: {
-    backgroundColor: '#fff1e7'
+  metaBadgeNoteCompact: {
+    backgroundColor: appTheme.colors.orangeSoft,
+    paddingHorizontal: 8,
+    paddingVertical: 2
   },
   metaBadgeText: {
-    fontSize: 11,
-    fontWeight: '800'
-  },
-  metaBadgeTextApartment: {
-    color: '#6d28d9'
-  },
-  metaBadgeTextBusiness: {
-    color: '#ffffff'
+    fontSize: 10,
+    fontWeight: appTheme.typography.weights.heavy
   },
   metaBadgeTextNote: {
-    color: '#FF6200'
+    color: appTheme.colors.orangeDeep
   },
   packageMetaRow: {
     alignItems: 'center',
     flexDirection: 'row',
-    gap: 6
+    gap: 4
   },
   packageMetaText: {
-    color: '#6f7d87',
-    fontSize: 16,
-    fontWeight: '700'
-  },
-  hazmatBadge: {
-    backgroundColor: '#c92a2a',
-    borderRadius: 999,
-    paddingHorizontal: 8,
-    paddingVertical: 4
-  },
-  hazmatText: {
-    color: '#ffffff',
+    color: appTheme.colors.textSecondary,
     fontSize: 12,
-    fontWeight: '800'
-  },
-  pickupsSection: {
-    marginTop: 10
-  },
-  pickupsTitle: {
-    color: '#173042',
-    fontSize: 22,
-    fontWeight: '800',
-    marginBottom: 12
+    fontWeight: appTheme.typography.weights.heavy
   },
   emptyText: {
-    color: '#6f7d87',
-    fontSize: 18,
-    paddingVertical: 24,
+    color: appTheme.colors.textSecondary,
+    fontSize: appTheme.typography.bodyLarge,
+    paddingVertical: appTheme.spacing.xl,
     textAlign: 'center'
   }
 });

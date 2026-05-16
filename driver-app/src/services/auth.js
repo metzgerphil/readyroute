@@ -193,6 +193,10 @@ export function getSessionIdentity({ activeMode = 'driver', driverToken = null, 
       fallbackPayload?.company_name ||
       fallbackPayload?.csa_name ||
       null,
+    managerEmail:
+      manager?.manager_email ||
+      manager?.email ||
+      null,
     primaryRole: activeMode === 'manager' ? 'Manager' : 'Driver',
     roles: {
       driver: Boolean(driver?.driver_id || driver?.sub || driver?.id),

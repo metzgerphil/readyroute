@@ -1,3 +1,5 @@
+import { getStopCanonicalId } from './managerOperations';
+
 function toMapCoordinate(point) {
   const latitude = Number(point?.lat ?? point?.latitude);
   const longitude = Number(point?.lng ?? point?.longitude);
@@ -18,6 +20,10 @@ function isCompletedStop(stop) {
 
 function isExceptionStop(stop) {
   return Boolean(stop?.exception_code) || stop?.status === 'incomplete';
+}
+
+function stopRequiresSignature(stop) {
+  return (stop?.packages || []).some((pkg) => pkg?.requires_signature || pkg?.requires_adult_signature);
 }
 
 function formatExceptionCode(code) {
@@ -57,13 +63,13 @@ export function getRouteWarnings(stops = []) {
 
 export function formatDriverFreshness(position, nowMs = Date.now()) {
   if (!position?.timestamp) {
-    return 'GPS unavailable';
+    return 'Location unavailable';
   }
 
   const recordedTime = new Date(position.timestamp).getTime();
 
   if (!Number.isFinite(recordedTime)) {
-    return 'GPS unavailable';
+    return 'Location unavailable';
   }
 
   const elapsedMinutes = Math.max(0, Math.round((nowMs - recordedTime) / 60000));
@@ -85,14 +91,14 @@ export function getStopIndicatorLabels(stop) {
     labels.push('Note');
   }
 
-  if (stop?.packages?.some((item) => item.requires_signature)) {
+  if (stopRequiresSignature(stop)) {
     labels.push('Signature');
   }
 
   return labels;
 }
 
-export function buildRouteDetailMapModel({ route = null, stops = [], driverPosition = null } = {}) {
+export function buildRouteDetailMapModel({ route = null, stops = [], driverPosition = null, routeColor = null } = {}) {
   const stopMarkers = (stops || [])
     .map((stop) => {
       const coordinate = toMapCoordinate(stop);
@@ -102,11 +108,15 @@ export function buildRouteDetailMapModel({ route = null, stops = [], driverPosit
       }
 
       return {
-        key: `stop:${stop.id}`,
-        stopId: stop.id,
+        key: `stop:${getStopCanonicalId(stop)}`,
+        stopId: getStopCanonicalId(stop),
+        routeId: route?.id || stop.route_id || null,
         coordinate,
         sequenceOrder: Number(stop.sequence_order || 0),
-        status: stop.status || 'pending'
+        status: stop.status || 'pending',
+        routeColor,
+        hasException: Boolean(stop.exception_code) || stop.status === 'incomplete' || stop.status === 'pickup_attempted',
+        requiresSignature: stopRequiresSignature(stop)
       };
     })
     .filter(Boolean);

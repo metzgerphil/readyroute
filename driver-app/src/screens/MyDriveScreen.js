@@ -3,8 +3,10 @@ import { ActivityIndicator, Alert, Linking, Platform, Pressable, StyleSheet, Tex
 import * as Location from 'expo-location';
 import MapView, { Marker, PROVIDER_GOOGLE } from 'react-native-maps';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import Svg, { Path } from 'react-native-svg';
 
 import api from '../services/api';
+import appTheme from '../theme/appTheme';
 import { getPinColorMode, removeClockInTime, saveClockInTime, subscribePinColorMode } from '../services/auth';
 import { getSidBucketTheme } from '../utils/sidBuckets';
 
@@ -34,6 +36,30 @@ export function hasGrantedLocationPermission(permission) {
 export function shouldPromptForLocationPermission(permission) {
   const status = String(permission?.status || '').toLowerCase();
   return !status || status === 'undetermined';
+}
+
+export function isBlockedLocationPermission(permission) {
+  const status = String(permission?.status || '').toLowerCase();
+  return status === 'denied' && !permission?.canAskAgain;
+}
+
+export function isDeniedLocationPermission(permission) {
+  const status = String(permission?.status || '').toLowerCase();
+  return status === 'denied' || (!status && permission?.granted === false);
+}
+
+export function getLocationRequirementCopy() {
+  return {
+    title: 'Enable location for route tracking',
+    body: 'ReadyRoute uses your location while you are on route so your manager can see route progress, support dispatch decisions, and locate drivers during the workday.',
+    bullets: [
+      'Shows your route location to your manager while you are working.',
+      'Helps dispatch support pickups, rescues, and route progress.',
+      'Keeps the fleet map accurate during the day.'
+    ],
+    secondary: 'You can manage location access later in your device settings.',
+    blocked: 'Location access is required to run a route in ReadyRoute.'
+  };
 }
 
 export function getPostDispatchChangeNotice(route) {
@@ -358,6 +384,21 @@ export function getStopStatusColors(status, isCurrentStop, stopType, stop, pinCo
   }
 }
 
+export function stopRequiresSignature(stop) {
+  return (stop?.packages || []).some((pkg) => pkg?.requires_signature || pkg?.requires_adult_signature);
+}
+
+export function getMapPinSize(stop, isCurrentStop = false, labelOverride = null) {
+  const label = String(labelOverride || stop?.sequence_order || '');
+  const hasLongStopNumber = label.length >= 3;
+
+  if (isCurrentStop) {
+    return hasLongStopNumber ? 38 : 34;
+  }
+
+  return hasLongStopNumber ? 34 : 28;
+}
+
 export function getStopType(stop) {
   if (stop?.stop_type === 'combined' || (stop?.has_delivery && stop?.has_pickup)) {
     return 'combined';
@@ -370,6 +411,60 @@ export function getStopType(stop) {
   return 'delivery';
 }
 
+export function isStopComplete(stop) {
+  return Boolean(
+    stop?.completed_at ||
+      ['delivered', 'attempted', 'incomplete', 'pickup_complete', 'pickup_attempted'].includes(stop?.status)
+  );
+}
+
+export function getStopStatusLabel(stop) {
+  switch (stop?.status) {
+    case 'delivered':
+      return 'Delivered';
+    case 'pickup_complete':
+      return 'Picked up';
+    case 'attempted':
+      return 'Attempted';
+    case 'pickup_attempted':
+      return 'Pickup attempted';
+    case 'incomplete':
+      return 'Incomplete';
+    default:
+      return 'Pending';
+  }
+}
+
+export function getStopTypeLabel(stop) {
+  switch (getStopType(stop)) {
+    case 'pickup':
+      return 'Pickup';
+    case 'combined':
+      return 'Delivery + Pickup';
+    default:
+      return 'Delivery';
+  }
+}
+
+export function getGroupProgressSummary(group) {
+  const groupStops = group?.stops || [];
+  const completedCount = groupStops.filter(isStopComplete).length;
+
+  return {
+    completedCount,
+    totalCount: groupStops.length,
+    label: `${completedCount} of ${groupStops.length} complete`
+  };
+}
+
+export function getStopPackageCount(stop) {
+  if (Array.isArray(stop?.packages)) {
+    return stop.packages.length;
+  }
+
+  return Number(stop?.package_count || stop?.pkg_count || stop?.pickup_package_count || 0);
+}
+
 export function getBannerBadges(stop) {
   const badges = [];
   const stopType = getStopType(stop);
@@ -379,9 +474,9 @@ export function getBannerBadges(stop) {
   }
 
   if (stopType === 'pickup') {
-    badges.push({ label: 'PICKUP', type: 'pickup' });
+    badges.push({ label: 'Pickup', type: 'pickup' });
   } else if (stopType === 'combined') {
-    badges.push({ label: 'DELIVERY + PICKUP', type: 'combined' });
+    badges.push({ label: 'Delivery + Pickup', type: 'combined' });
   }
 
   if (stop?.has_time_commit && stop?.ready_time && stop?.close_time) {
@@ -403,22 +498,55 @@ export function getVisibleBannerBadges(stop) {
   return getBannerBadges(stop).slice(0, 3);
 }
 
-function getSidBadgeStyle(sid, pinColorMode = 'sid') {
-  if (pinColorMode !== 'sid') {
-    return null;
-  }
+function OpenBoxIcon({ color = '#6f7d87', size = 16 }) {
+  return (
+    <Svg height={size} viewBox="0 0 24 24" width={size}>
+      <Path
+        d="M12 9.5L7 12.5V19L12 21.5L17 19V12.5L12 9.5Z"
+        fill="none"
+        stroke={color}
+        strokeLinejoin="round"
+        strokeWidth={1.8}
+      />
+      <Path
+        d="M12 9.5L6.8 7.2L3.8 9.8L9 12M12 9.5L17.2 7.2L20.2 9.8L15 12"
+        fill="none"
+        stroke={color}
+        strokeLinejoin="round"
+        strokeWidth={1.8}
+      />
+      <Path
+        d="M9 12L12 9.5L15 12"
+        fill="none"
+        stroke={color}
+        strokeLinejoin="round"
+        strokeWidth={1.8}
+      />
+      <Path d="M12 9.5V21.5" fill="none" stroke={color} strokeWidth={1.8} />
+    </Svg>
+  );
+}
 
-  const theme = getSidBucketTheme(sid);
-
-  if (!theme) {
-    return null;
-  }
-
-  return {
-    backgroundColor: theme.fill,
-    borderColor: theme.border,
-    textColor: theme.text
-  };
+function SignaturePenIcon({ color = '#ffffff', size = 8 }) {
+  return (
+    <Svg height={size} viewBox="0 0 24 24" width={size}>
+      <Path
+        d="M4 20h4.5L19.2 9.3a2.1 2.1 0 0 0 0-3L17.7 4.8a2.1 2.1 0 0 0-3 0L4 15.5V20Z"
+        fill="none"
+        stroke={color}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth={3}
+      />
+      <Path
+        d="M13.8 5.8l4.4 4.4"
+        fill="none"
+        stroke={color}
+        strokeLinecap="round"
+        strokeWidth={3}
+      />
+    </Svg>
+  );
 }
 
 export function formatWarningFlag(flag) {
@@ -462,7 +590,12 @@ export function getQuickIntel(stop) {
     });
   } else if (stop?.floor_label) {
     intel.push({ key: 'floor-label', label: stop.floor_label, tone: 'building' });
-  } else if (displayLocationType && displayLocationType !== 'house' && displayLocationType !== 'apartment') {
+  } else if (
+    displayLocationType &&
+    displayLocationType !== 'house' &&
+    displayLocationType !== 'apartment' &&
+    !(stop?.is_business && String(displayLocationType).toLowerCase() === 'business')
+  ) {
     intel.push({ key: 'location-type', label: String(displayLocationType).toUpperCase(), tone: 'building' });
   }
 
@@ -627,18 +760,16 @@ function getTimeCommitAlertBadge(stop, now = new Date()) {
 
 function getStopGroupKey(stop) {
   const normalizedAddress = String(stop?.property_intel?.normalized_address || '').trim();
-  const groupedCount = Number(stop?.property_intel?.grouped_stop_count || 0);
-  const isApartmentGroup = Boolean(
-    stop?.is_apartment_unit ||
-      stop?.apartment_intelligence ||
-      stop?.property_intel?.location_type === 'apartment'
-  );
 
-  if (!normalizedAddress || groupedCount <= 1 || !isApartmentGroup) {
-    return null;
+  if (normalizedAddress) {
+    return normalizedAddress.toLowerCase();
   }
 
-  return normalizedAddress;
+  const primaryAddress = getStopPrimaryAddress(stop);
+  const localityLine = getStopLocalityLine(stop);
+  const fallbackAddress = `${primaryAddress}|${localityLine}`.trim();
+
+  return fallbackAddress ? fallbackAddress.toLowerCase() : null;
 }
 
 function getStopPrimaryAddress(stop) {
@@ -689,8 +820,32 @@ function getGroupedStopUnitLabel(stop) {
   return getStopPrimaryAddress(stop);
 }
 
+function hasDistinctLocationDetail(stop) {
+  return Boolean(
+    stop?.apartment_intelligence?.unit_number ||
+      stop?.property_intel?.unit ||
+      stop?.address_line2 ||
+      stop?.is_apartment_unit ||
+      stop?.apartment_intelligence
+  );
+}
+
 function buildMapItems(stops) {
   const sortedStops = [...(stops || [])].sort((a, b) => Number(a.sequence_order || 0) - Number(b.sequence_order || 0));
+  const addressBuckets = new Map();
+
+  for (const stop of sortedStops) {
+    const groupKey = getStopGroupKey(stop);
+
+    if (!groupKey) {
+      continue;
+    }
+
+    const bucket = addressBuckets.get(groupKey) || [];
+    bucket.push(stop);
+    addressBuckets.set(groupKey, bucket);
+  }
+
   const groupedItems = new Map();
   const items = [];
 
@@ -702,8 +857,13 @@ function buildMapItems(stops) {
     }
 
     const groupKey = getStopGroupKey(stop);
+    const stopsAtAddress = groupKey ? addressBuckets.get(groupKey) || [] : [];
+    const shouldGroupAddress =
+      stopsAtAddress.length > 1 &&
+      (stopsAtAddress.some((item) => hasDistinctLocationDetail(item)) ||
+        new Set(stopsAtAddress.map((item) => String(item?.address_line2 || item?.apartment_intelligence?.unit_number || item?.property_intel?.unit || '').trim().toLowerCase()).filter(Boolean)).size > 1);
 
-    if (!groupKey) {
+    if (!groupKey || !shouldGroupAddress) {
       items.push({
         type: 'stop',
         id: `stop:${stop.id}`,
@@ -752,10 +912,10 @@ function buildMapItems(stops) {
       primaryAddress: getStopPrimaryAddress(representativeStop),
       localityLine: getStopLocalityLine(representativeStop),
       packageCount: stopsInGroup.reduce(
-        (sum, stop) => sum + Number(stop?.packages?.length || stop?.package_count || stop?.pkg_count || 0),
+        (sum, stop) => sum + getStopPackageCount(stop),
         0
       ),
-      label: String(representativeStop?.sequence_order || stopsInGroup[0]?.sequence_order || ''),
+      label: '+',
       groupCount: stopsInGroup.length
     };
   });
@@ -767,9 +927,11 @@ function MapPin({ isCurrentStop, now, stop, labelOverride = null, groupCount = 0
   const hasTimeCommit = Boolean(stop.has_time_commit);
   const isApartment = Boolean(stop.is_apartment_unit || stop.apartment_intelligence);
   const hasPickupWork = stopType === 'pickup' || stopType === 'combined';
-  const pinSize = isCurrentStop ? 34 : 28;
-  const ringSize = isCurrentStop ? 44 : 36;
   const mainLabel = labelOverride || String(stop.sequence_order);
+  const hasLongStopNumber = String(mainLabel || '').length >= 3;
+  const pinSize = getMapPinSize(stop, isCurrentStop, labelOverride);
+  const ringSize = Math.max(pinSize + (isCurrentStop ? 10 : 8), isCurrentStop ? 44 : 36);
+  const needsSignature = stopRequiresSignature(stop);
   const urgency = hasTimeCommit ? getTimeCommitUrgency(stop, now) : null;
   const urgencyStyles = getUrgencyStyles(urgency?.level);
 
@@ -796,7 +958,14 @@ function MapPin({ isCurrentStop, now, stop, labelOverride = null, groupCount = 0
             isCurrentStop && styles.currentMarkerCore
           ]}
         >
-          <Text style={[styles.markerLabel, { color: colors.text }, isCurrentStop && styles.currentMarkerLabel]}>
+          <Text
+            style={[
+              styles.markerLabel,
+              hasLongStopNumber && styles.markerLabelLarge,
+              { color: colors.text },
+              isCurrentStop && styles.currentMarkerLabel
+            ]}
+          >
             {mainLabel}
           </Text>
 
@@ -824,7 +993,13 @@ function MapPin({ isCurrentStop, now, stop, labelOverride = null, groupCount = 0
             </View>
           ) : null}
 
-          {groupCount > 1 ? (
+          {needsSignature ? (
+            <View style={styles.signatureBadge} testID={`signature-badge-${stop.id}`}>
+              <SignaturePenIcon />
+            </View>
+          ) : null}
+
+          {groupCount > 1 && !labelOverride ? (
             <View style={styles.groupCountBadge}>
               <Text style={styles.groupCountBadgeText}>{groupCount}</Text>
             </View>
@@ -931,6 +1106,7 @@ export default function MyDriveScreen({ navigation, route: screenRoute }) {
   const lastFittedRouteIdRef = useRef(null);
   const activeBreakTimerRef = useRef(null);
   const markerRefreshTimerRef = useRef(null);
+  const hasInitializedMarkerRefreshRef = useRef(false);
   const [route, setRoute] = useState(null);
   const [stops, setStops] = useState([]);
   const [currentLocation, setCurrentLocation] = useState(null);
@@ -942,13 +1118,16 @@ export default function MyDriveScreen({ navigation, route: screenRoute }) {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isUpdatingClock, setIsUpdatingClock] = useState(false);
   const [isUpdatingBreak, setIsUpdatingBreak] = useState(false);
-  const [hasLocationAccess, setHasLocationAccess] = useState(true);
+  const [hasLocationAccess, setHasLocationAccess] = useState(false);
+  const [isLocationPermissionBlocked, setIsLocationPermissionBlocked] = useState(false);
+  const [isLocationPermissionDenied, setIsLocationPermissionDenied] = useState(false);
+  const [isResolvingLocationPermission, setIsResolvingLocationPermission] = useState(false);
   const [legendExpanded, setLegendExpanded] = useState(false);
   const [selectedMapItemId, setSelectedMapItemId] = useState(null);
   const [currentTime, setCurrentTime] = useState(() => new Date());
   const [loadError, setLoadError] = useState(null);
   const [markersNeedRefresh, setMarkersNeedRefresh] = useState(true);
-  const [markerRefreshVersion, setMarkerRefreshVersion] = useState(0);
+  const [markerRefreshVersion, setMarkerRefreshVersion] = useState(1);
   const [pinColorMode, setPinColorMode] = useState('sid');
 
   const mappableStops = useMemo(() => getMappableStops(stops), [stops]);
@@ -979,12 +1158,18 @@ export default function MyDriveScreen({ navigation, route: screenRoute }) {
   const selectedTimeCommitCallout = getTimeCommitCallout(selectedStop);
   const selectedTimeCommitUrgency = getTimeCommitUrgency(selectedStop, currentTime);
   const selectedUrgencyStyles = getUrgencyStyles(selectedTimeCommitUrgency?.level);
-  const selectedPackageCount = selectedStop?.packages?.length || 0;
+  const selectedPackageCount = getStopPackageCount(selectedStop);
   const selectedExceptionCode = formatFedExExceptionCode(selectedStop?.exception_code);
   const selectedScanTime = formatStopScanTime(selectedStop?.scanned_at || selectedStop?.completed_at);
   const selectedGroupPackageCount = selectedStopGroup?.packageCount || 0;
+  const selectedGroupProgress = getGroupProgressSummary(selectedStopGroup);
+  const selectedGroupAllComplete =
+    selectedGroupProgress.totalCount > 0 && selectedGroupProgress.completedCount >= selectedGroupProgress.totalCount;
   const driverHeading = getDriverHeading(currentLocation);
-  const laborButtonLabel = clockedInAt ? 'Clock Out' : 'Clock In';
+  const locationRequirementCopy = getLocationRequirementCopy();
+  const locationPermissionDenied = isLocationPermissionBlocked || isLocationPermissionDenied;
+  const locationButtonLabel = locationPermissionDenied ? 'Open Settings' : 'Enable Location';
+  const breakButtonLabel = activeBreak ? `End ${formatBreakLabel(activeBreak.break_type)}` : 'Break';
   const initialRegion = useMemo(
     () => getMapRegion({ currentStop: selectedStop || selectedStopGroup?.representativeStop || null, currentLocation, mappableStops }),
     [currentLocation, mappableStops, selectedStop, selectedStopGroup]
@@ -1010,13 +1195,27 @@ export default function MyDriveScreen({ navigation, route: screenRoute }) {
     }
 
     navigation.setOptions({
+      headerTitle: '',
+      headerTransparent: true,
+      headerLeft: () => (
+        <Pressable onPress={() => navigation.goBack()} style={[styles.headerButton, styles.headerButtonSurface]}>
+          <Text style={styles.headerButtonText}>My Drive</Text>
+        </Pressable>
+      ),
       headerRight: () => (
-        <Pressable onPress={() => navigation.navigate('Manifest', { selectedStopId: selectedStop?.id || null })} style={styles.headerButton}>
+        <Pressable
+          onPress={() =>
+            selectedStopGroup
+              ? handleOpenGroupedStops(selectedStopGroup)
+              : navigation.navigate('Manifest', { selectedStopId: selectedStop?.id || null })
+          }
+          style={[styles.headerButton, styles.headerButtonSurface]}
+        >
           <Text style={styles.headerButtonText}>List</Text>
         </Pressable>
       )
     });
-  }, [navigation, selectedStop?.id]);
+  }, [navigation, selectedStop?.id, selectedStopGroup]);
 
   useEffect(() => {
     const timer = setInterval(() => {
@@ -1055,8 +1254,16 @@ export default function MyDriveScreen({ navigation, route: screenRoute }) {
   }, []);
 
   useEffect(() => {
-    setMarkersNeedRefresh(true);
-    setMarkerRefreshVersion((current) => current + 1);
+    if (process.env.NODE_ENV === 'test') {
+      return undefined;
+    }
+
+    if (hasInitializedMarkerRefreshRef.current) {
+      setMarkersNeedRefresh(true);
+      setMarkerRefreshVersion((current) => current + 1);
+    } else {
+      hasInitializedMarkerRefreshRef.current = true;
+    }
 
     if (markerRefreshTimerRef.current) {
       clearTimeout(markerRefreshTimerRef.current);
@@ -1112,13 +1319,12 @@ export default function MyDriveScreen({ navigation, route: screenRoute }) {
     async function bootstrap() {
       try {
         const currentPermission = await Location.getForegroundPermissionsAsync();
-        const permission = shouldPromptForLocationPermission(currentPermission)
-          ? await Location.requestForegroundPermissionsAsync()
-          : currentPermission;
-        const granted = hasGrantedLocationPermission(permission);
+        const granted = hasGrantedLocationPermission(currentPermission);
 
         if (isMounted) {
           setHasLocationAccess(granted);
+          setIsLocationPermissionBlocked(isBlockedLocationPermission(currentPermission));
+          setIsLocationPermissionDenied(!granted && isDeniedLocationPermission(currentPermission));
         }
 
         if (!granted) {
@@ -1133,6 +1339,8 @@ export default function MyDriveScreen({ navigation, route: screenRoute }) {
       } catch (_error) {
         if (isMounted) {
           setHasLocationAccess(false);
+          setIsLocationPermissionBlocked(false);
+          setIsLocationPermissionDenied(false);
         }
       }
 
@@ -1263,16 +1471,17 @@ export default function MyDriveScreen({ navigation, route: screenRoute }) {
 
     try {
       const currentPermission = await Location.getForegroundPermissionsAsync();
-      const permission = shouldPromptForLocationPermission(currentPermission)
-        ? await Location.requestForegroundPermissionsAsync()
-        : currentPermission;
 
-      if (!hasGrantedLocationPermission(permission)) {
+      if (!hasGrantedLocationPermission(currentPermission)) {
         setHasLocationAccess(false);
+        setIsLocationPermissionBlocked(isBlockedLocationPermission(currentPermission));
+        setIsLocationPermissionDenied(isDeniedLocationPermission(currentPermission));
         return;
       }
 
       setHasLocationAccess(true);
+      setIsLocationPermissionBlocked(false);
+      setIsLocationPermissionDenied(false);
       const position = await Location.getCurrentPositionAsync({});
       setCurrentLocation(position);
 
@@ -1283,6 +1492,37 @@ export default function MyDriveScreen({ navigation, route: screenRoute }) {
       });
     } catch (_error) {
       // Keep the driver flow resilient and retry later.
+    }
+  }
+
+  async function handleEnableLocation() {
+    if (locationPermissionDenied) {
+      Linking.openSettings?.().catch(() => {});
+      return;
+    }
+
+    setIsResolvingLocationPermission(true);
+
+    try {
+      const permission = await Location.requestForegroundPermissionsAsync();
+      const granted = hasGrantedLocationPermission(permission);
+
+      setHasLocationAccess(granted);
+      setIsLocationPermissionBlocked(isBlockedLocationPermission(permission));
+      setIsLocationPermissionDenied(!granted && isDeniedLocationPermission(permission));
+
+      if (!granted) {
+        return;
+      }
+
+      const position = await Location.getCurrentPositionAsync({});
+      setCurrentLocation(position);
+      await postCurrentPosition();
+    } catch (_error) {
+      setHasLocationAccess(false);
+      setIsLocationPermissionDenied(false);
+    } finally {
+      setIsResolvingLocationPermission(false);
     }
   }
 
@@ -1316,31 +1556,18 @@ export default function MyDriveScreen({ navigation, route: screenRoute }) {
     }
   }
 
-  function handleLaborAction() {
+  function handleBreakToggle() {
     if (!clockedInAt) {
-      handleClockToggle();
+      Alert.alert('Clock in first', 'Drivers need to clock in before starting a break or lunch.');
       return;
     }
 
     if (activeBreak) {
-      Alert.alert('Manage labor', 'Choose what you want to do next.', [
-        {
-          text: `End ${formatBreakLabel(activeBreak.break_type)}`,
-          onPress: () => endActiveBreak()
-        },
-        {
-          text: 'Clock Out',
-          onPress: () => handleClockToggle()
-        },
-        {
-          text: 'Cancel',
-          style: 'cancel'
-        }
-      ]);
+      endActiveBreak();
       return;
     }
 
-    Alert.alert('Manage labor', 'Choose what you want to do next.', [
+    Alert.alert('Start break', 'Choose the type of break you are taking.', [
       {
         text: 'Break',
         onPress: () => startBreak('rest')
@@ -1348,10 +1575,6 @@ export default function MyDriveScreen({ navigation, route: screenRoute }) {
       {
         text: 'Lunch',
         onPress: () => startBreak('lunch')
-      },
-      {
-        text: 'Clock Out',
-        onPress: () => handleClockToggle()
       },
       {
         text: 'Cancel',
@@ -1405,12 +1628,88 @@ export default function MyDriveScreen({ navigation, route: screenRoute }) {
     }
   }
 
+  async function handleSaveGroupPin(group) {
+    const representativeStop = group?.representativeStop || group?.stops?.[0];
+
+    if (!representativeStop?.id) {
+      return;
+    }
+
+    try {
+      const permission = await Location.requestForegroundPermissionsAsync();
+
+      if (!hasGrantedLocationPermission(permission)) {
+        Alert.alert('Location needed', 'Allow location access to save the corrected pin for this address.');
+        return;
+      }
+
+      const location = await Location.getCurrentPositionAsync({});
+      await api.patch(`/routes/stops/${representativeStop.id}/correct-location`, {
+        lat: location.coords.latitude,
+        lng: location.coords.longitude,
+        label: 'Driver verified grouped address pin'
+      });
+      setCurrentLocation(location);
+      await refreshRoute({ allowStateUpdate: true, showAlert: false });
+      Alert.alert('Pin saved', 'This corrected pin was saved for this address.');
+    } catch (error) {
+      const message = error.response?.data?.error || 'Unable to save this pin right now.';
+      Alert.alert('Save failed', message);
+    }
+  }
+
+  async function handleFlagGroupRoad(group) {
+    const representativeStop = group?.representativeStop || group?.stops?.[0];
+    const stopCoordinate = toCoordinate(representativeStop);
+
+    if (!representativeStop?.id || !stopCoordinate) {
+      Alert.alert('Stop pin unavailable', 'This grouped address does not have a usable pin yet.');
+      return;
+    }
+
+    try {
+      const permission = await Location.requestForegroundPermissionsAsync();
+
+      if (!hasGrantedLocationPermission(permission)) {
+        Alert.alert('Location needed', 'Allow location access to flag the road from your current position.');
+        return;
+      }
+
+      const location = await Location.getCurrentPositionAsync({});
+      await api.post(`/routes/stops/${representativeStop.id}/flag-road`, {
+        lat_start: location.coords.latitude,
+        lng_start: location.coords.longitude,
+        lat_end: stopCoordinate.latitude,
+        lng_end: stopCoordinate.longitude,
+        flag_type: 'problem',
+        notes: 'Road flagged from grouped address view'
+      });
+      setCurrentLocation(location);
+      Alert.alert('Road flagged', 'Your route team will see this address-level issue.');
+    } catch (error) {
+      const message = error.response?.data?.error || 'Unable to flag this road right now.';
+      Alert.alert('Flag failed', message);
+    }
+  }
+
   function handleOpenStopDetail(stopId) {
     if (!navigation || !stopId) {
       return;
     }
 
     navigation.navigate('StopDetail', { stopId });
+  }
+
+  function handleOpenGroupedStops(group) {
+    if (!navigation || !group?.stops?.length) {
+      return;
+    }
+
+    navigation.navigate('Manifest', {
+      groupAddress: group.primaryAddress,
+      groupStopIds: group.stops.map((stop) => stop.id),
+      selectedStopId: group.stops[0]?.id || null
+    });
   }
 
   function handleSelectMapItem(itemId) {
@@ -1501,42 +1800,57 @@ export default function MyDriveScreen({ navigation, route: screenRoute }) {
     );
   }
 
-  async function handleCompleteStop() {
-    if (!selectedStop || isSubmitting) {
+  function updateCompletedStopState(stopId, updates) {
+    setStops((previousStops) =>
+      previousStops.map((stop) =>
+        stop.id === stopId
+          ? {
+              ...stop,
+              ...updates
+            }
+          : stop
+      )
+    );
+  }
+
+  function incrementRouteCompletedStops() {
+    setRoute((previousRoute) =>
+      previousRoute
+        ? {
+            ...previousRoute,
+            completed_stops: Number(previousRoute.completed_stops || 0) + 1
+          }
+        : previousRoute
+    );
+  }
+
+  async function completeIndividualStop(stopToComplete, extraPayload = {}) {
+    if (!stopToComplete || isSubmitting) {
       return;
     }
 
-    const stopId = selectedStop.id;
-    const nextStatus = getStopType(selectedStop) === 'pickup' ? 'pickup_complete' : 'delivered';
+    const stopId = stopToComplete.id;
+    const nextStatus = extraPayload.status || (getStopType(stopToComplete) === 'pickup' ? 'pickup_complete' : 'delivered');
+    const wasComplete = isStopComplete(stopToComplete);
 
     setIsSubmitting(true);
 
     try {
       await api.patch(`/routes/stops/${stopId}/complete`, {
+        ...extraPayload,
         status: nextStatus
       });
 
-      setStops((previousStops) =>
-        previousStops.map((stop) =>
-          stop.id === stopId
-            ? {
-                ...stop,
-                status: nextStatus,
-                completed_at: new Date().toISOString()
-              }
-            : stop
-        )
-      );
+      updateCompletedStopState(stopId, {
+        status: nextStatus,
+        completed_at: new Date().toISOString(),
+        delivery_type_code: extraPayload.delivery_type_code !== undefined ? extraPayload.delivery_type_code : stopToComplete.delivery_type_code,
+        exception_code: extraPayload.exception_code !== undefined ? extraPayload.exception_code : stopToComplete.exception_code
+      });
 
-      setRoute((previousRoute) =>
-        previousRoute
-          ? {
-              ...previousRoute,
-              completed_stops: Number(previousRoute.completed_stops || 0) + 1
-            }
-          : previousRoute
-      );
-      setSelectedMapItemId(null);
+      if (!wasComplete) {
+        incrementRouteCompletedStops();
+      }
 
       await refreshRoute({ allowStateUpdate: true, showAlert: true });
     } catch (error) {
@@ -1545,6 +1859,89 @@ export default function MyDriveScreen({ navigation, route: screenRoute }) {
     } finally {
       setIsSubmitting(false);
     }
+  }
+
+  async function handleCompleteStop() {
+    await completeIndividualStop(selectedStop);
+    setSelectedMapItemId(null);
+  }
+
+  function promptForStopCode(stopToCode, codeType) {
+    if (!stopToCode || isSubmitting) {
+      return;
+    }
+
+    const isException = codeType === 'exception';
+    const title = isException ? 'Add exception code' : 'Add delivery code';
+    const message = isException
+      ? 'Enter the exception code for this stop only.'
+      : 'Enter the delivery code for this stop only.';
+    const submitLabel = isException ? 'Save exception' : 'Save delivery code';
+
+    if (typeof Alert.prompt === 'function') {
+      Alert.prompt(
+        title,
+        message,
+        [
+          { text: 'Cancel', style: 'cancel' },
+          {
+            text: submitLabel,
+            onPress: (value) => handleApplyStopCode(stopToCode, codeType, value)
+          }
+        ],
+        'plain-text'
+      );
+      return;
+    }
+
+    Alert.alert(title, 'Open stop details to add this code on devices that do not support inline code entry.', [
+      { text: 'Cancel', style: 'cancel' },
+      { text: 'Open details', onPress: () => handleOpenStopDetail(stopToCode.id) }
+    ]);
+  }
+
+  function handleAddGroupedStopCode(stopToCode) {
+    if (!stopToCode || isSubmitting) {
+      return;
+    }
+
+    Alert.alert('Add code', 'Apply a code to this stop only.', [
+      {
+        text: 'Delivery code',
+        onPress: () => promptForStopCode(stopToCode, 'delivery')
+      },
+      {
+        text: 'Exception code',
+        onPress: () => promptForStopCode(stopToCode, 'exception')
+      },
+      {
+        text: 'Cancel',
+        style: 'cancel'
+      }
+    ]);
+  }
+
+  async function handleApplyStopCode(stopToCode, codeType, rawCode) {
+    const code = String(rawCode || '').trim();
+
+    if (!code) {
+      Alert.alert('Code required', 'Enter a code before saving.');
+      return;
+    }
+
+    if (codeType === 'exception') {
+      await completeIndividualStop(stopToCode, {
+        status: getStopType(stopToCode) === 'pickup' ? 'pickup_attempted' : 'attempted',
+        exception_code: code
+      });
+      return;
+    }
+
+    await completeIndividualStop(stopToCode, {
+      status: getStopType(stopToCode) === 'pickup' ? 'pickup_complete' : 'delivered',
+      delivery_type_code: code,
+      exception_code: null
+    });
   }
 
   if (isLoading) {
@@ -1603,15 +2000,29 @@ export default function MyDriveScreen({ navigation, route: screenRoute }) {
           <View pointerEvents="box-none" style={styles.topOverlay}>
             {!hasLocationAccess ? (
               <View style={styles.locationNoticeCard}>
-                <Text style={styles.locationNoticeTitle}>Location sharing required</Text>
-                <Text style={styles.locationNoticeBody}>
-                  ReadyRoute needs live location access so managers can track active drivers while you are using the app.
+                <Text style={styles.locationNoticeTitle}>{locationRequirementCopy.title}</Text>
+                <Text style={styles.locationNoticeBody}>{locationRequirementCopy.body}</Text>
+                <View style={styles.locationNoticeBullets}>
+                  {locationRequirementCopy.bullets.map((bullet) => (
+                    <View key={bullet} style={styles.locationNoticeBulletRow}>
+                      <Text style={styles.locationNoticeBulletDot}>•</Text>
+                      <Text style={styles.locationNoticeBulletText}>{bullet}</Text>
+                    </View>
+                  ))}
+                </View>
+                <Text style={styles.locationNoticeSecondary}>
+                  {locationPermissionDenied ? locationRequirementCopy.blocked : locationRequirementCopy.secondary}
                 </Text>
                 <Pressable
-                  onPress={() => Linking.openSettings?.().catch(() => {})}
-                  style={styles.locationNoticeButton}
+                  disabled={isResolvingLocationPermission}
+                  onPress={handleEnableLocation}
+                  style={[styles.locationNoticeButton, isResolvingLocationPermission ? styles.buttonDisabled : null]}
                 >
-                  <Text style={styles.locationNoticeButtonText}>Open Settings</Text>
+                  {isResolvingLocationPermission ? (
+                    <ActivityIndicator color="#ffffff" />
+                  ) : (
+                    <Text style={styles.locationNoticeButtonText}>{locationButtonLabel}</Text>
+                  )}
                 </Pressable>
               </View>
             ) : null}
@@ -1696,112 +2107,202 @@ export default function MyDriveScreen({ navigation, route: screenRoute }) {
         </View>
 
         <View pointerEvents="box-none" style={styles.bottomOverlay}>
-          {selectedStopGroup ? (
-            <View style={styles.selectedStopCard}>
-              <View style={styles.calloutHeaderRow}>
-                <View style={styles.groupedCardHeading}>
-                  <Text style={styles.groupedCardTitle}>{selectedStopGroup.primaryAddress}</Text>
-                  {selectedStopGroup.localityLine ? (
-                    <Text style={styles.groupedCardSubtitle}>{selectedStopGroup.localityLine}</Text>
-                  ) : null}
-                </View>
-                <Pressable onPress={() => handleOpenNavigationForStop(selectedStopGroup.representativeStop)} style={styles.calloutNavButton}>
-                  <Text style={styles.calloutNavButtonText}>Nav</Text>
-                </Pressable>
-              </View>
-              <Text style={styles.groupedCardCount}>
-                {selectedStopGroup.stops.length} apartment deliveries
-                {selectedGroupPackageCount ? ` · ${selectedGroupPackageCount} ${selectedGroupPackageCount === 1 ? 'package' : 'packages'}` : ''}
-              </Text>
-              <View style={styles.groupedStopTable}>
-                {selectedStopGroup.stops.map((stop) => {
-                  const sidBadgeStyle = getSidBadgeStyle(stop.sid, pinColorMode);
+	          {selectedStopGroup ? (
+	            <View style={[styles.selectedStopCard, selectedGroupAllComplete ? styles.groupedCardComplete : null]}>
+	              <View style={styles.calloutHeaderRow}>
+	                <View style={styles.groupedCardHeading}>
+	                  <Text style={styles.groupedCardTitle}>{selectedStopGroup.primaryAddress}</Text>
+	                  {selectedStopGroup.localityLine ? (
+	                    <Text style={styles.groupedCardSubtitle}>{selectedStopGroup.localityLine}</Text>
+	                  ) : null}
+	                  <Text style={styles.groupedCardHelperText}>Same address, separate stops</Text>
+	                </View>
+	                <View style={styles.groupedCardActions}>
+	                  <Pressable
+	                    accessibilityLabel="Close selected stop"
+	                    onPress={() => setSelectedMapItemId(null)}
+                    style={styles.calloutCloseButton}
+                    testID="selected-stop-close-button"
+                  >
+	                    <Text style={styles.calloutCloseButtonText}>×</Text>
+	                  </Pressable>
+	                </View>
+	              </View>
+	              <View style={styles.groupedCardSummaryRow}>
+	                <View style={styles.groupedCardCountPill}>
+	                  <Text style={styles.groupedCardCountPillText}>{selectedStopGroup.stops.length} stops at this address</Text>
+	                </View>
+	                <View style={[styles.groupedCardProgressPill, selectedGroupAllComplete ? styles.groupedCardProgressPillDone : null]}>
+	                  <Text style={styles.groupedCardProgressText}>{selectedGroupProgress.label}</Text>
+	                </View>
+	                <View style={styles.groupedCardPackagePill}>
+	                  <OpenBoxIcon color={appTheme.colors.orangeDeep} size={16} />
+	                  <Text style={styles.groupedCardPackageText}>{`Total packages: ${selectedGroupPackageCount}`}</Text>
+	                </View>
+	              </View>
+	              <View style={styles.groupedSharedActions}>
+	                <Pressable onPress={() => handleOpenNavigationForStop(selectedStopGroup.representativeStop)} style={styles.groupedSharedActionButton}>
+	                  <Text style={styles.groupedSharedActionButtonText}>Navigate</Text>
+	                </Pressable>
+	                <Pressable onPress={() => handleSaveGroupPin(selectedStopGroup)} style={styles.groupedSharedActionButton}>
+	                  <Text style={styles.groupedSharedActionButtonText}>Save pin</Text>
+	                </Pressable>
+	                <Pressable onPress={() => handleFlagGroupRoad(selectedStopGroup)} style={styles.groupedSharedActionButton}>
+	                  <Text style={styles.groupedSharedActionButtonText}>Flag road</Text>
+	                </Pressable>
+	                <Pressable onPress={() => handleOpenStopDetail(selectedStopGroup.representativeStop?.id)} style={styles.groupedSharedActionButton}>
+	                  <Text style={styles.groupedSharedActionButtonText}>Delivery intel</Text>
+	                </Pressable>
+	              </View>
+	              <View style={styles.groupedStopActionList}>
+	                {selectedStopGroup.stops.map((groupedStop) => {
+                  const groupedStopPackages = getStopPackageCount(groupedStop);
+                  const groupedStopDeliveryCode = groupedStop.delivery_type_code
+                    ? `Delivery ${groupedStop.delivery_type_code}`
+                    : null;
+                  const groupedStopExceptionCode = formatFedExExceptionCode(groupedStop.exception_code);
+                  const groupedStopStatus = getStopStatusLabel(groupedStop);
+                  const groupedStopComplete = isStopComplete(groupedStop);
+                  const groupedStopNeedsSignature = stopRequiresSignature(groupedStop);
 
                   return (
-                    <Pressable
-                      key={stop.id}
-                      onPress={() => handleOpenStopDetail(stop.id)}
-                      style={styles.groupedStopRow}
-                    >
-                      <View
-                        style={[
-                          styles.groupedStopSequenceBadge,
-                          sidBadgeStyle
-                            ? {
-                                backgroundColor: sidBadgeStyle.backgroundColor,
-                                borderColor: sidBadgeStyle.borderColor
-                              }
-                            : null
-                        ]}
-                      >
-                        <Text
+	                    <View key={groupedStop.id} style={styles.groupedStopActionCard} testID={`grouped-stop-card-${groupedStop.id}`}>
+	                      <View style={styles.groupedStopActionHeader}>
+	                        <View style={styles.groupedStopActionIdentity}>
+	                          <Text style={styles.groupedStopActionTitle}>
+	                            {groupedStop.sid ? `SID ${groupedStop.sid}` : `Stop ${groupedStop.sequence_order}`}
+	                          </Text>
+                          <Text style={styles.groupedStopActionSubtitle}>
+                            {[
+                              groupedStop.sequence_order ? `#${groupedStop.sequence_order}` : null,
+                              getGroupedStopUnitLabel(groupedStop),
+                              groupedStop.contact_name || null
+                            ].filter(Boolean).join(' · ')}
+                          </Text>
+                        </View>
+	                        <View style={[styles.groupedStopStatusPill, groupedStopComplete ? styles.groupedStopStatusPillDone : null]}>
+	                          <Text style={[styles.groupedStopStatusText, groupedStopComplete ? styles.groupedStopStatusTextDone : null]}>
+	                            {groupedStopStatus}
+	                          </Text>
+	                        </View>
+                      </View>
+                      <View style={styles.groupedStopActionMetaRow}>
+                        <View style={styles.groupedStopMetaPill}>
+                          <OpenBoxIcon color={appTheme.colors.orangeDeep} size={14} />
+                          <Text style={styles.groupedStopMetaText}>{groupedStopPackages}</Text>
+                        </View>
+                        {groupedStopNeedsSignature ? (
+                          <Text style={styles.signatureRequiredText}>Signature required</Text>
+                        ) : null}
+                        <View style={styles.groupedStopMetaPill}>
+                          <Text style={styles.groupedStopMetaText}>{getStopTypeLabel(groupedStop)}</Text>
+                        </View>
+                        {groupedStopDeliveryCode ? (
+                          <View style={styles.groupedStopCodePill}>
+                            <Text style={styles.groupedStopCodeText}>{groupedStopDeliveryCode}</Text>
+                          </View>
+                        ) : null}
+                        {groupedStopExceptionCode ? (
+                          <View style={styles.groupedStopCodePill}>
+                            <Text style={styles.groupedStopCodeText}>{groupedStopExceptionCode}</Text>
+                          </View>
+                        ) : null}
+                      </View>
+                      <View style={styles.groupedStopActionButtonRow}>
+	                        <Pressable
+	                          disabled={isSubmitting || groupedStopComplete}
+	                          onPress={() => completeIndividualStop(groupedStop)}
                           style={[
-                            styles.groupedStopSequenceBadgeText,
-                            sidBadgeStyle ? { color: sidBadgeStyle.textColor } : null
+                            styles.groupedStopPrimaryButton,
+                            (isSubmitting || groupedStopComplete) && styles.buttonDisabled
                           ]}
-                        >
-                          {stop.sid || stop.sequence_order}
-                        </Text>
-                      </View>
-                      <View style={styles.groupedStopMain}>
-                        <Text style={styles.groupedStopUnitLabel}>{getGroupedStopUnitLabel(stop)}</Text>
-                        <Text style={styles.groupedStopMeta}>
-                          {stop.contact_name ? stop.contact_name : 'No contact name'}
-                          {(stop.packages?.length || stop.package_count || stop.pkg_count) ? ` · ${Number(stop.packages?.length || stop.package_count || stop.pkg_count)} pkg` : ''}
-                        </Text>
-                      </View>
-                      <View style={[styles.groupedStopStatusPill, styles[`groupedStopStatusPill_${stop.status}`]]}>
-                        <Text style={[styles.groupedStopStatusText, styles[`groupedStopStatusText_${stop.status}`]]}>
-                          {stop.status === 'pickup_complete'
-                            ? 'Done'
-                            : stop.status === 'delivered'
-                              ? 'Done'
-                              : stop.status === 'attempted'
-                                ? 'Attempted'
-                                : stop.status === 'incomplete'
-                                  ? 'Issue'
-                                  : 'Pending'}
-                        </Text>
-                      </View>
-                    </Pressable>
-                  );
+                          testID={`grouped-stop-complete-${groupedStop.id}`}
+	                        >
+	                          <Text style={styles.groupedStopPrimaryButtonText}>{groupedStopComplete ? 'Complete' : 'Complete'}</Text>
+	                        </Pressable>
+	                        <Pressable
+	                          disabled={isSubmitting}
+	                          onPress={() => handleAddGroupedStopCode(groupedStop)}
+	                          style={[styles.groupedStopSecondaryButton, isSubmitting && styles.buttonDisabled]}
+	                          testID={`grouped-stop-add-code-${groupedStop.id}`}
+	                        >
+	                          <Text style={styles.groupedStopSecondaryButtonText}>Add code</Text>
+	                        </Pressable>
+	                        <Pressable onPress={() => handleOpenStopDetail(groupedStop.id)} style={styles.groupedStopSecondaryButton}>
+	                          <Text style={styles.groupedStopSecondaryButtonText}>{groupedStop.has_note ? 'Edit note' : 'Add note'}</Text>
+	                        </Pressable>
+	                      </View>
+	                    </View>
+	                  );
                 })}
               </View>
+              <Pressable onPress={() => handleOpenGroupedStops(selectedStopGroup)} style={styles.groupedStopsListButton}>
+                <Text style={styles.groupedStopsListButtonText}>View stops at this + pin</Text>
+              </Pressable>
             </View>
           ) : selectedStop ? (
             <View style={styles.selectedStopCard}>
               <View style={styles.calloutHeaderRow}>
-                <View
-                  style={[
-                    styles.calloutTitleBadge,
-                    pinColorMode === 'sid' && getSidBucketTheme(selectedStop.sid)
-                      ? {
-                          backgroundColor: getSidBucketTheme(selectedStop.sid).fill,
-                          borderColor: getSidBucketTheme(selectedStop.sid).border
-                        }
-                      : null
-                  ]}
-                >
-                  <Text
+                <View style={styles.selectedStopHeaderLeft}>
+                  <View
                     style={[
-                      styles.calloutTitle,
+                      styles.calloutTitleBadge,
                       pinColorMode === 'sid' && getSidBucketTheme(selectedStop.sid)
-                        ? { color: getSidBucketTheme(selectedStop.sid).text }
+                        ? {
+                            backgroundColor: getSidBucketTheme(selectedStop.sid).fill,
+                            borderColor: getSidBucketTheme(selectedStop.sid).border
+                          }
                         : null
                     ]}
                   >
-                    {selectedStop.sid ? `SID ${selectedStop.sid}` : `Stop ${selectedStop.sequence_order}`}
-                  </Text>
+                    <Text
+                      style={[
+                        styles.calloutTitle,
+                        pinColorMode === 'sid' && getSidBucketTheme(selectedStop.sid)
+                          ? { color: getSidBucketTheme(selectedStop.sid).text }
+                          : null
+                      ]}
+                    >
+                      {selectedStop.sid ? `SID ${selectedStop.sid}` : `Stop ${selectedStop.sequence_order}`}
+                    </Text>
+                  </View>
                 </View>
-                <Pressable onPress={() => handleOpenNavigationForStop(selectedStop)} style={styles.calloutNavButton}>
-                  <Text style={styles.calloutNavButtonText}>Nav</Text>
+                <Pressable
+                  accessibilityLabel="Close selected stop"
+                  onPress={() => setSelectedMapItemId(null)}
+                  style={styles.calloutCloseButton}
+                  testID="selected-stop-close-button"
+                >
+                  <Text style={styles.calloutCloseButtonText}>×</Text>
                 </Pressable>
               </View>
-              <Pressable onPress={() => handleOpenStopDetail(selectedStop.id)} style={styles.selectedStopCardPressable}>
+              <Pressable
+                onPress={() => handleOpenStopDetail(selectedStop.id)}
+                style={styles.selectedStopCardPressable}
+                testID="selected-stop-card-action"
+              >
                 <Text numberOfLines={2} style={styles.calloutAddress}>
                   {selectedStop.address}
                 </Text>
-                {selectedStop.contact_name ? <Text style={styles.calloutContact}>Attn: {selectedStop.contact_name}</Text> : null}
+                {selectedStop.contact_name ? <Text style={styles.calloutContact}>{selectedStop.contact_name}</Text> : null}
+                <View style={styles.calloutPackageInfoRow}>
+                  <View style={styles.calloutPackageInfoLeft}>
+                    <View style={styles.calloutPackageRow}>
+                      <OpenBoxIcon color={appTheme.colors.orangeDeep} size={18} />
+                      <Text style={styles.calloutPackageCount}>{selectedPackageCount}</Text>
+                    </View>
+                    {stopRequiresSignature(selectedStop) ? (
+                      <Text style={styles.signatureRequiredText}>Signature required</Text>
+                    ) : null}
+                  </View>
+                  <Pressable
+                    onPress={() => handleOpenNavigationForStop(selectedStop)}
+                    style={styles.calloutNavButton}
+                    testID="selected-stop-nav-button"
+                  >
+                    <Text style={styles.calloutNavButtonText}>Nav</Text>
+                  </Pressable>
+                </View>
                 {selectedStopBadges.length || selectedTimeCommitAlertBadge ? (
                   <View style={styles.calloutBadgeRow}>
                     {selectedStopBadges.map((badge) => (
@@ -1834,12 +2335,7 @@ export default function MyDriveScreen({ navigation, route: screenRoute }) {
                       <Text style={[styles.calloutWindowSubtitle, selectedUrgencyStyles.calloutTextStyle]}>{selectedTimeCommitCallout.subtitle}</Text>
                     ) : null}
                   </>
-                ) : (
-                  <Text style={styles.calloutWindowSubtitle}>Tap to open stop details</Text>
-                )}
-                <Text style={styles.calloutPackages}>
-                  {selectedPackageCount} {selectedPackageCount === 1 ? 'package' : 'packages'}
-                </Text>
+                ) : null}
                 {selectedExceptionCode || selectedScanTime ? (
                   <View style={styles.calloutScanRow}>
                     {selectedExceptionCode ? (
@@ -1854,46 +2350,71 @@ export default function MyDriveScreen({ navigation, route: screenRoute }) {
             </View>
           ) : null}
 
-          <View style={styles.bottomBar}>
-            <View style={styles.bottomStatsRow}>
-              <View style={styles.bottomStatColumn}>
-                <Text style={styles.bottomStatLabel}>Stops/hr</Text>
-                <Text style={styles.bottomStatValue}>{stopsPerHourLabel}</Text>
+          <View style={styles.driverControlPanel}>
+            <View style={styles.bottomBar}>
+              <View style={styles.bottomStatsRow}>
+                <View style={styles.bottomStatColumn}>
+                  <Text style={styles.bottomStatLabel}>Stops/hr</Text>
+                  <Text style={styles.bottomStatValue}>{stopsPerHourLabel}</Text>
+                </View>
+                <View style={styles.bottomStatColumn}>
+                  <Text style={styles.bottomStatLabel}>Delivered</Text>
+                  <Text style={styles.bottomStatValue}>{completionSummaryLabel}</Text>
+                </View>
               </View>
-              <View style={styles.bottomStatColumn}>
-                <Text style={styles.bottomStatLabel}>Delivered</Text>
-                <Text style={styles.bottomStatValue}>{completionSummaryLabel}</Text>
-              </View>
+              {selectedStopGroup ? (
+                <View style={styles.groupedBottomHint}>
+                  <Text style={styles.groupedBottomHintText}>Complete stops individually above.</Text>
+                </View>
+              ) : (
+                <Pressable
+                  disabled={isSubmitting || !selectedStop}
+                  onPress={handleCompleteStop}
+                  style={[styles.completeButton, isSubmitting && styles.buttonDisabled]}
+                >
+                  {isSubmitting ? (
+                    <ActivityIndicator color="#ffffff" />
+                  ) : (
+                    <Text style={styles.completeButtonText}>Complete</Text>
+                  )}
+                </Pressable>
+              )}
             </View>
-            <Pressable
-              disabled={isSubmitting || !selectedStop}
-              onPress={handleCompleteStop}
-              style={[styles.completeButton, isSubmitting && styles.buttonDisabled]}
-            >
-              {isSubmitting ? (
-                <ActivityIndicator color="#ffffff" />
-              ) : (
-                <Text style={styles.completeButtonText}>Complete</Text>
-              )}
-            </Pressable>
-          </View>
 
-          <View style={styles.laborActionRow}>
-            <Pressable
-              disabled={isUpdatingClock || isUpdatingBreak || (!route && !clockedInAt)}
-              onPress={handleLaborAction}
-              style={[
-                styles.laborActionButton,
-                styles.clockButton,
-                (isUpdatingClock || isUpdatingBreak || (!route && !clockedInAt)) && styles.buttonDisabled
-              ]}
-            >
-              {isUpdatingClock || isUpdatingBreak ? (
-                <ActivityIndicator color="#ffffff" />
-              ) : (
-                <Text style={styles.laborActionButtonText}>{laborButtonLabel}</Text>
-              )}
-            </Pressable>
+            <View style={styles.laborActionRow}>
+              <Pressable
+                disabled={isUpdatingClock || (!route && !clockedInAt)}
+                onPress={handleClockToggle}
+                style={[
+                  styles.laborActionButton,
+                  styles.clockButton,
+                  (isUpdatingClock || (!route && !clockedInAt)) && styles.buttonDisabled
+                ]}
+              >
+                {isUpdatingClock ? (
+                  <ActivityIndicator color="#ffffff" />
+                ) : (
+                  <Text style={styles.laborActionButtonText}>{clockedInAt ? 'Clock Out' : 'Clock In'}</Text>
+                )}
+              </Pressable>
+              <Pressable
+                disabled={isUpdatingBreak || !clockedInAt}
+                onPress={handleBreakToggle}
+                style={[
+                  styles.laborActionButton,
+                  activeBreak ? styles.breakButtonActive : styles.breakButtonIdle,
+                  (isUpdatingBreak || !clockedInAt) && styles.buttonDisabled
+                ]}
+              >
+                {isUpdatingBreak ? (
+                  <ActivityIndicator color="#ffffff" />
+                ) : (
+                  <Text style={[styles.laborActionButtonText, activeBreak ? styles.breakButtonTextActive : styles.breakButtonTextIdle]}>
+                    {breakButtonLabel}
+                  </Text>
+                )}
+              </Pressable>
+            </View>
           </View>
 
         </View>
@@ -1905,7 +2426,7 @@ export default function MyDriveScreen({ navigation, route: screenRoute }) {
 const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
-    backgroundColor: '#ffffff'
+    backgroundColor: appTheme.colors.surface
   },
   container: {
     flex: 1,
@@ -1913,72 +2434,100 @@ const styles = StyleSheet.create({
   },
   topOverlay: {
     left: 0,
-    paddingHorizontal: 12,
-    paddingTop: 6,
+    paddingHorizontal: appTheme.spacing.sm,
+    paddingTop: appTheme.spacing.xs,
     position: 'absolute',
     right: 0,
     top: 0,
     zIndex: 10
   },
   dispatchNoticeCard: {
-    backgroundColor: 'rgba(255, 244, 232, 0.97)',
-    borderColor: '#ffcfad',
-    borderRadius: 18,
+    backgroundColor: appTheme.colors.warningSoft,
+    borderColor: appTheme.colors.orangeBorder,
+    borderRadius: appTheme.radius.md,
     borderWidth: 1,
-    paddingHorizontal: 14,
-    paddingVertical: 12
+    paddingHorizontal: appTheme.spacing.md,
+    paddingVertical: appTheme.spacing.sm
   },
   locationNoticeCard: {
-    backgroundColor: 'rgba(255, 241, 230, 0.98)',
-    borderColor: '#ffbf8c',
-    borderRadius: 18,
+    backgroundColor: appTheme.colors.orangeSoft,
+    borderColor: appTheme.colors.orangeBorder,
+    borderRadius: appTheme.radius.md,
     borderWidth: 1,
-    marginBottom: 8,
-    paddingHorizontal: 14,
-    paddingVertical: 12
+    marginBottom: appTheme.spacing.xs,
+    paddingHorizontal: appTheme.spacing.md,
+    paddingVertical: appTheme.spacing.sm
   },
   locationNoticeTitle: {
-    color: '#173042',
-    fontSize: 14,
-    fontWeight: '800',
-    marginBottom: 4
+    color: appTheme.colors.textPrimary,
+    fontSize: appTheme.typography.bodySmall,
+    fontWeight: appTheme.typography.weights.heavy,
+    marginBottom: appTheme.spacing.xxs
   },
   locationNoticeBody: {
-    color: '#6a4a2a',
-    fontSize: 13,
+    color: appTheme.colors.infoText,
+    fontSize: appTheme.typography.caption,
     lineHeight: 18
+  },
+  locationNoticeBullets: {
+    gap: appTheme.spacing.xs,
+    marginTop: appTheme.spacing.sm
+  },
+  locationNoticeBulletRow: {
+    alignItems: 'flex-start',
+    flexDirection: 'row',
+    gap: appTheme.spacing.xs
+  },
+  locationNoticeBulletDot: {
+    color: appTheme.colors.orange,
+    fontSize: appTheme.typography.caption,
+    fontWeight: appTheme.typography.weights.heavy,
+    lineHeight: 18
+  },
+  locationNoticeBulletText: {
+    color: appTheme.colors.textSecondary,
+    flex: 1,
+    fontSize: appTheme.typography.caption,
+    lineHeight: 18
+  },
+  locationNoticeSecondary: {
+    color: appTheme.colors.textSecondary,
+    fontSize: appTheme.typography.caption,
+    lineHeight: 18,
+    marginTop: appTheme.spacing.sm
   },
   locationNoticeButton: {
     alignItems: 'center',
     alignSelf: 'flex-start',
-    backgroundColor: '#ff7a1a',
-    borderRadius: 10,
+    backgroundColor: appTheme.colors.orange,
+    borderRadius: appTheme.radius.sm,
     justifyContent: 'center',
-    marginTop: 10,
+    marginTop: appTheme.spacing.sm,
     minHeight: 34,
     paddingHorizontal: 12
   },
   locationNoticeButtonText: {
-    color: '#ffffff',
-    fontSize: 12,
-    fontWeight: '800'
+    color: appTheme.colors.textInverse,
+    fontSize: appTheme.typography.caption,
+    fontWeight: appTheme.typography.weights.heavy
   },
   dispatchNoticeTitle: {
-    color: '#9a3412',
-    fontSize: 14,
-    fontWeight: '800',
-    marginBottom: 4
+    color: appTheme.colors.warningText,
+    fontSize: appTheme.typography.bodySmall,
+    fontWeight: appTheme.typography.weights.heavy,
+    marginBottom: appTheme.spacing.xxs
   },
   dispatchNoticeBody: {
-    color: '#7c4a22',
-    fontSize: 13,
+    color: appTheme.colors.infoText,
+    fontSize: appTheme.typography.caption,
     lineHeight: 18
   },
   bottomOverlay: {
     bottom: 0,
+    gap: appTheme.spacing.sm,
     left: 0,
-    paddingBottom: 10,
-    paddingHorizontal: 12,
+    paddingBottom: appTheme.spacing.sm,
+    paddingHorizontal: appTheme.spacing.sm,
     position: 'absolute',
     right: 0,
     zIndex: 10
@@ -1990,31 +2539,31 @@ const styles = StyleSheet.create({
     paddingHorizontal: 24
   },
   emptyTitle: {
-    color: '#173042',
-    fontSize: 22,
-    fontWeight: '800',
-    marginBottom: 10
+    color: appTheme.colors.textPrimary,
+    fontSize: appTheme.typography.titleMedium,
+    fontWeight: appTheme.typography.weights.heavy,
+    marginBottom: appTheme.spacing.sm
   },
   emptyText: {
-    color: '#65727d',
-    fontSize: 16,
-    lineHeight: 22,
+    color: appTheme.colors.textSecondary,
+    fontSize: appTheme.typography.body,
+    lineHeight: appTheme.typography.lineHeights.body,
     textAlign: 'center'
   },
   retryButton: {
     alignItems: 'center',
-    backgroundColor: '#173042',
-    borderRadius: 18,
+    backgroundColor: appTheme.colors.charcoal,
+    borderRadius: appTheme.radius.md,
     justifyContent: 'center',
-    marginTop: 18,
+    marginTop: appTheme.spacing.lg,
     minHeight: 48,
     minWidth: 132,
-    paddingHorizontal: 18
+    paddingHorizontal: appTheme.spacing.lg
   },
   retryButtonText: {
-    color: '#ffffff',
-    fontSize: 16,
-    fontWeight: '800'
+    color: appTheme.colors.textInverse,
+    fontSize: appTheme.typography.body,
+    fontWeight: appTheme.typography.weights.heavy
   },
   banner: {
     backgroundColor: 'rgba(255,255,255,0.96)',
@@ -2311,35 +2860,28 @@ const styles = StyleSheet.create({
     width: 4
   },
   mapControlStack: {
-    gap: 10,
+    gap: appTheme.spacing.sm,
     position: 'absolute',
-    right: 12,
-    top: 112,
+    right: appTheme.spacing.sm,
+    top: 116,
     zIndex: 9
   },
   mapControlButton: {
+    ...appTheme.shadows.card,
     alignItems: 'center',
-    backgroundColor: 'rgba(255,255,255,0.96)',
-    borderColor: '#e7e2da',
-    borderRadius: 14,
+    backgroundColor: appTheme.colors.mapOverlaySurface,
+    borderColor: appTheme.colors.mapOverlayBorder,
+    borderRadius: appTheme.radius.md,
     borderWidth: 1,
     justifyContent: 'center',
-    minHeight: 38,
-    minWidth: 72,
-    paddingHorizontal: 12,
-    shadowColor: '#0f172a',
-    shadowOffset: {
-      width: 0,
-      height: 6
-    },
-    shadowOpacity: 0.1,
-    shadowRadius: 14,
-    elevation: 5
+    minHeight: 36,
+    minWidth: 68,
+    paddingHorizontal: appTheme.spacing.sm
   },
   mapControlButtonText: {
-    color: '#173042',
-    fontSize: 13,
-    fontWeight: '800'
+    color: appTheme.colors.textPrimary,
+    fontSize: appTheme.typography.caption,
+    fontWeight: appTheme.typography.weights.heavy
   },
   markerWrap: {
     alignItems: 'center',
@@ -2382,19 +2924,25 @@ const styles = StyleSheet.create({
     elevation: 4
   },
   currentMarkerCore: {
+    borderColor: appTheme.colors.orange,
+    borderWidth: 3,
     shadowOpacity: 0.24,
-    shadowRadius: 4
+    shadowRadius: 8
   },
   currentMarkerRing: {
-    borderColor: '#111111',
+    backgroundColor: appTheme.colors.orangeSoft,
+    borderColor: appTheme.colors.orange,
     borderWidth: 3
   },
   markerLabel: {
     fontSize: 12,
     fontWeight: '800'
   },
+  markerLabelLarge: {
+    fontSize: 12
+  },
   currentMarkerLabel: {
-    fontSize: 13
+    fontSize: 14
   },
   businessBadge: {
     alignItems: 'center',
@@ -2482,6 +3030,19 @@ const styles = StyleSheet.create({
     fontSize: 8,
     fontWeight: '900'
   },
+  signatureBadge: {
+    alignItems: 'center',
+    backgroundColor: '#173042',
+    borderColor: '#ffffff',
+    borderRadius: 7,
+    borderWidth: 1,
+    height: 14,
+    justifyContent: 'center',
+    position: 'absolute',
+    bottom: -4,
+    left: -4,
+    width: 14
+  },
   groupCountBadge: {
     alignItems: 'center',
     backgroundColor: '#173042',
@@ -2514,46 +3075,78 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     flexDirection: 'row',
     justifyContent: 'space-between',
-    gap: 10
+    gap: appTheme.spacing.md
+  },
+  selectedStopHeaderLeft: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    flexShrink: 1,
+    flexWrap: 'wrap',
+    gap: appTheme.spacing.sm,
+    paddingRight: appTheme.spacing.sm
   },
   calloutTitle: {
-    color: '#173042',
-    fontSize: 13,
-    fontWeight: '800'
+    color: appTheme.colors.orangeDeep,
+    fontSize: appTheme.typography.bodySmall,
+    fontWeight: appTheme.typography.weights.heavy
   },
   calloutTitleBadge: {
     alignItems: 'center',
-    backgroundColor: '#f8fafc',
-    borderColor: '#d7e0e8',
-    borderRadius: 999,
+    backgroundColor: appTheme.colors.orangeSoft,
+    borderColor: appTheme.colors.orangeBorder,
+    borderRadius: appTheme.radius.pill,
     borderWidth: 1,
     justifyContent: 'center',
-    minHeight: 30,
-    paddingHorizontal: 10
+    minHeight: 32,
+    paddingHorizontal: appTheme.spacing.sm
   },
   calloutNavButton: {
+    ...appTheme.shadows.lifted,
     alignItems: 'center',
-    backgroundColor: '#FF6200',
-    borderRadius: 10,
+    backgroundColor: appTheme.colors.orange,
+    borderRadius: appTheme.radius.md,
+    display: 'flex',
+    height: 44,
     justifyContent: 'center',
-    minHeight: 30,
-    minWidth: 54,
-    paddingHorizontal: 10
+    minHeight: 44,
+    minWidth: 72,
+    paddingHorizontal: appTheme.spacing.md
   },
   calloutNavButtonText: {
-    color: '#ffffff',
-    fontSize: 12,
-    fontWeight: '800'
+    color: appTheme.colors.textInverse,
+    fontSize: appTheme.typography.body,
+    fontWeight: appTheme.typography.weights.heavy,
+    includeFontPadding: false,
+    lineHeight: appTheme.typography.lineHeights.body,
+    textAlign: 'center',
+    textAlignVertical: 'center'
+  },
+  calloutCloseButton: {
+    alignItems: 'center',
+    backgroundColor: appTheme.colors.surfaceMuted,
+    borderColor: appTheme.colors.border,
+    borderRadius: appTheme.radius.pill,
+    borderWidth: 1,
+    height: 44,
+    justifyContent: 'center',
+    width: 44
+  },
+  calloutCloseButtonText: {
+    color: appTheme.colors.textPrimary,
+    fontSize: 24,
+    fontWeight: appTheme.typography.weights.bold,
+    lineHeight: 26
   },
   calloutAddress: {
-    color: '#5f6b76',
-    fontSize: 12,
-    marginTop: 3
+    color: appTheme.colors.textPrimary,
+    fontSize: appTheme.typography.titleSmall,
+    fontWeight: appTheme.typography.weights.heavy,
+    lineHeight: appTheme.typography.lineHeights.titleSmall
   },
   calloutContact: {
-    color: '#7a848d',
-    fontSize: 11,
-    marginTop: 4
+    color: appTheme.colors.textSecondary,
+    fontSize: appTheme.typography.bodySmall,
+    fontWeight: appTheme.typography.weights.semibold
   },
   calloutBadgeRow: {
     flexDirection: 'row',
@@ -2618,11 +3211,42 @@ const styles = StyleSheet.create({
     color: '#991b1b',
     fontWeight: '800'
   },
-  calloutPackages: {
-    color: '#65727d',
-    fontSize: 11,
-    fontWeight: '700',
-    marginTop: 8
+  calloutPackageRow: {
+    alignItems: 'center',
+    alignSelf: 'flex-start',
+    backgroundColor: appTheme.colors.surfaceTint,
+    borderColor: appTheme.colors.orangeBorder,
+    borderRadius: appTheme.radius.pill,
+    borderWidth: 1,
+    flexDirection: 'row',
+    gap: appTheme.spacing.xs,
+    paddingHorizontal: appTheme.spacing.sm,
+    paddingVertical: appTheme.spacing.xs
+  },
+  calloutPackageInfoRow: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: appTheme.spacing.sm,
+    justifyContent: 'space-between',
+    marginTop: appTheme.spacing.sm
+  },
+  calloutPackageInfoLeft: {
+    alignItems: 'center',
+    flex: 1,
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: appTheme.spacing.sm,
+    paddingRight: appTheme.spacing.sm
+  },
+  calloutPackageCount: {
+    color: appTheme.colors.orangeDeep,
+    fontSize: appTheme.typography.body,
+    fontWeight: appTheme.typography.weights.heavy
+  },
+  signatureRequiredText: {
+    color: appTheme.colors.textPrimary,
+    fontSize: appTheme.typography.bodySmall,
+    fontWeight: appTheme.typography.weights.heavy
   },
   calloutScanRow: {
     alignItems: 'center',
@@ -2650,28 +3274,30 @@ const styles = StyleSheet.create({
     fontWeight: '900'
   },
   selectedStopCard: {
-    backgroundColor: 'rgba(255,255,255,0.97)',
-    borderColor: '#e7e2da',
-    borderRadius: 18,
+    ...appTheme.shadows.sheet,
+    backgroundColor: appTheme.colors.mapOverlaySurface,
+    borderColor: appTheme.colors.mapOverlayBorder,
+    borderRadius: appTheme.radius.lg,
     borderWidth: 1,
-    marginBottom: 8,
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-    shadowColor: '#0f172a',
-    shadowOffset: {
-      width: 0,
-      height: 8
-    },
-    shadowOpacity: 0.14,
-    shadowRadius: 18,
-    elevation: 8
+    paddingHorizontal: appTheme.spacing.md,
+    paddingTop: appTheme.spacing.sm,
+    paddingBottom: appTheme.spacing.md
+  },
+  groupedCardComplete: {
+    borderColor: '#86efac'
   },
   selectedStopCardPressable: {
-    marginTop: 8
+    gap: appTheme.spacing.xs,
+    marginTop: appTheme.spacing.sm
   },
   groupedCardHeading: {
     flex: 1,
     gap: 2
+  },
+  groupedCardActions: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: appTheme.spacing.xs
   },
   groupedCardTitle: {
     color: '#173042',
@@ -2683,103 +3309,247 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '600'
   },
-  groupedCardCount: {
-    color: '#65727d',
-    fontSize: 13,
-    fontWeight: '700',
-    marginTop: 10
+  groupedCardHelperText: {
+    color: appTheme.colors.orangeDeep,
+    fontSize: 12,
+    fontWeight: appTheme.typography.weights.heavy,
+    marginTop: 2
   },
-  groupedStopTable: {
-    gap: 8,
-    marginTop: 10
-  },
-  groupedStopRow: {
+  groupedCardSummaryRow: {
     alignItems: 'center',
-    backgroundColor: '#f8fafc',
-    borderColor: '#e2e8f0',
-    borderRadius: 14,
-    borderWidth: 1,
     flexDirection: 'row',
-    gap: 10,
-    paddingHorizontal: 10,
-    paddingVertical: 10
+    flexWrap: 'wrap',
+    gap: appTheme.spacing.xs,
+    marginTop: appTheme.spacing.sm
   },
-  groupedStopSequenceBadge: {
+  groupedCardCountPill: {
+    backgroundColor: appTheme.colors.orangeSoft,
+    borderRadius: appTheme.radius.pill,
+    paddingHorizontal: appTheme.spacing.sm,
+    paddingVertical: 5
+  },
+  groupedCardCountPillText: {
+    color: appTheme.colors.orangeDeep,
+    fontSize: 12,
+    fontWeight: appTheme.typography.weights.heavy
+  },
+  groupedCardProgressPill: {
+    backgroundColor: '#ecfdf5',
+    borderColor: '#bbf7d0',
+    borderRadius: appTheme.radius.pill,
+    borderWidth: 1,
+    paddingHorizontal: appTheme.spacing.sm,
+    paddingVertical: 5
+  },
+  groupedCardProgressPillDone: {
+    backgroundColor: '#dcfce7',
+    borderColor: '#86efac'
+  },
+  groupedCardProgressText: {
+    color: '#166534',
+    fontSize: 12,
+    fontWeight: appTheme.typography.weights.heavy
+  },
+  groupedCardPackagePill: {
     alignItems: 'center',
-    backgroundColor: '#e0f2fe',
-    borderColor: '#e0f2fe',
-    borderRadius: 10,
+    backgroundColor: appTheme.colors.surfaceMuted,
+    borderRadius: appTheme.radius.pill,
+    flexDirection: 'row',
+    gap: 5,
+    paddingHorizontal: appTheme.spacing.sm,
+    paddingVertical: 5
+  },
+  groupedCardPackageText: {
+    color: appTheme.colors.textPrimary,
+    fontSize: 12,
+    fontWeight: appTheme.typography.weights.heavy
+  },
+  groupedSharedActions: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: appTheme.spacing.xs,
+    marginTop: appTheme.spacing.sm
+  },
+  groupedSharedActionButton: {
+    alignItems: 'center',
+    backgroundColor: appTheme.colors.surfaceMuted,
+    borderColor: appTheme.colors.border,
+    borderRadius: appTheme.radius.md,
     borderWidth: 1,
     justifyContent: 'center',
     minHeight: 34,
-    minWidth: 56,
-    paddingHorizontal: 8
+    paddingHorizontal: appTheme.spacing.sm
   },
-  groupedStopSequenceBadgeText: {
-    color: '#0f4c81',
+  groupedSharedActionButtonText: {
+    color: appTheme.colors.textPrimary,
     fontSize: 12,
-    fontWeight: '800'
+    fontWeight: appTheme.typography.weights.heavy
   },
-  groupedStopMain: {
+  groupedStopPreview: {
+    backgroundColor: appTheme.colors.surfaceMuted,
+    borderColor: appTheme.colors.border,
+    borderRadius: appTheme.radius.md,
+    borderWidth: 1,
+    gap: 6,
+    marginTop: appTheme.spacing.sm,
+    paddingHorizontal: appTheme.spacing.sm,
+    paddingVertical: appTheme.spacing.sm
+  },
+  groupedStopPreviewRow: {
+    gap: 2
+  },
+  groupedStopPreviewUnit: {
+    color: appTheme.colors.textPrimary,
+    fontSize: 13,
+    fontWeight: appTheme.typography.weights.heavy
+  },
+  groupedStopPreviewMeta: {
+    color: appTheme.colors.textSecondary,
+    fontSize: 12,
+    fontWeight: appTheme.typography.weights.bold
+  },
+  groupedStopPreviewMore: {
+    color: appTheme.colors.orangeDeep,
+    fontSize: 12,
+    fontWeight: appTheme.typography.weights.heavy
+  },
+  groupedStopActionList: {
+    gap: appTheme.spacing.sm,
+    marginTop: appTheme.spacing.sm
+  },
+  groupedStopActionCard: {
+    backgroundColor: appTheme.colors.surface,
+    borderColor: appTheme.colors.border,
+    borderRadius: appTheme.radius.md,
+    borderWidth: 1,
+    gap: appTheme.spacing.sm,
+    padding: appTheme.spacing.sm
+  },
+  groupedStopActionHeader: {
+    alignItems: 'flex-start',
+    flexDirection: 'row',
+    gap: appTheme.spacing.sm,
+    justifyContent: 'space-between'
+  },
+  groupedStopActionIdentity: {
     flex: 1,
-    gap: 3
+    gap: 2
   },
-  groupedStopUnitLabel: {
-    color: '#173042',
-    fontSize: 15,
-    fontWeight: '800'
+  groupedStopActionTitle: {
+    color: appTheme.colors.textPrimary,
+    fontSize: appTheme.typography.body,
+    fontWeight: appTheme.typography.weights.heavy
   },
-  groupedStopMeta: {
-    color: '#6b7782',
-    fontSize: 12,
-    fontWeight: '600'
+  groupedStopActionSubtitle: {
+    color: appTheme.colors.textSecondary,
+    fontSize: appTheme.typography.caption,
+    fontWeight: appTheme.typography.weights.bold
   },
   groupedStopStatusPill: {
-    alignItems: 'center',
-    borderRadius: 999,
-    justifyContent: 'center',
-    minHeight: 26,
-    paddingHorizontal: 10
+    backgroundColor: appTheme.colors.surfaceMuted,
+    borderColor: appTheme.colors.border,
+    borderRadius: appTheme.radius.pill,
+    borderWidth: 1,
+    paddingHorizontal: appTheme.spacing.sm,
+    paddingVertical: 5
   },
-  groupedStopStatusPill_pending: {
-    backgroundColor: '#eef2f7'
-  },
-  groupedStopStatusPill_delivered: {
-    backgroundColor: '#dcfce7'
-  },
-  groupedStopStatusPill_pickup_complete: {
-    backgroundColor: '#dcfce7'
-  },
-  groupedStopStatusPill_attempted: {
-    backgroundColor: '#fef3c7'
-  },
-  groupedStopStatusPill_incomplete: {
-    backgroundColor: '#fee2e2'
+  groupedStopStatusPillDone: {
+    backgroundColor: '#dcfce7',
+    borderColor: '#bbf7d0'
   },
   groupedStopStatusText: {
+    color: appTheme.colors.textSecondary,
     fontSize: 11,
-    fontWeight: '800'
+    fontWeight: appTheme.typography.weights.heavy
   },
-  groupedStopStatusText_pending: {
-    color: '#475569'
-  },
-  groupedStopStatusText_delivered: {
+  groupedStopStatusTextDone: {
     color: '#166534'
   },
-  groupedStopStatusText_pickup_complete: {
-    color: '#166534'
+  groupedStopActionMetaRow: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: appTheme.spacing.xs
   },
-  groupedStopStatusText_attempted: {
-    color: '#92400e'
+  groupedStopMetaPill: {
+    alignItems: 'center',
+    backgroundColor: appTheme.colors.surfaceMuted,
+    borderRadius: appTheme.radius.pill,
+    flexDirection: 'row',
+    gap: 5,
+    paddingHorizontal: appTheme.spacing.sm,
+    paddingVertical: 5
   },
-  groupedStopStatusText_incomplete: {
-    color: '#b91c1c'
+  groupedStopMetaText: {
+    color: appTheme.colors.textPrimary,
+    fontSize: 11,
+    fontWeight: appTheme.typography.weights.heavy
+  },
+  groupedStopCodePill: {
+    backgroundColor: '#fff7ed',
+    borderColor: '#fed7aa',
+    borderRadius: appTheme.radius.pill,
+    borderWidth: 1,
+    paddingHorizontal: appTheme.spacing.sm,
+    paddingVertical: 5
+  },
+  groupedStopCodeText: {
+    color: '#c2410c',
+    fontSize: 11,
+    fontWeight: appTheme.typography.weights.heavy
+  },
+  groupedStopActionButtonRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: appTheme.spacing.xs
+  },
+  groupedStopPrimaryButton: {
+    alignItems: 'center',
+    backgroundColor: appTheme.colors.green,
+    borderRadius: appTheme.radius.md,
+    justifyContent: 'center',
+    minHeight: 36,
+    paddingHorizontal: appTheme.spacing.sm
+  },
+  groupedStopPrimaryButtonText: {
+    color: appTheme.colors.textInverse,
+    fontSize: 12,
+    fontWeight: appTheme.typography.weights.heavy
+  },
+  groupedStopSecondaryButton: {
+    alignItems: 'center',
+    backgroundColor: appTheme.colors.surfaceMuted,
+    borderColor: appTheme.colors.border,
+    borderRadius: appTheme.radius.md,
+    borderWidth: 1,
+    justifyContent: 'center',
+    minHeight: 36,
+    paddingHorizontal: appTheme.spacing.sm
+  },
+  groupedStopSecondaryButtonText: {
+    color: appTheme.colors.textPrimary,
+    fontSize: 12,
+    fontWeight: appTheme.typography.weights.heavy
+  },
+  groupedStopsListButton: {
+    alignItems: 'center',
+    backgroundColor: appTheme.colors.orange,
+    borderRadius: appTheme.radius.lg,
+    justifyContent: 'center',
+    marginTop: appTheme.spacing.sm,
+    minHeight: 44,
+    paddingHorizontal: appTheme.spacing.md
+  },
+  groupedStopsListButtonText: {
+    color: appTheme.colors.textInverse,
+    fontSize: appTheme.typography.bodySmall,
+    fontWeight: appTheme.typography.weights.heavy
   },
   legendContainer: {
     alignItems: 'flex-end',
-    bottom: 168,
+    bottom: 182,
     position: 'absolute',
-    right: 12,
+    right: appTheme.spacing.sm,
     zIndex: 9
   },
   legendPanel: {
@@ -2969,45 +3739,57 @@ const styles = StyleSheet.create({
     fontWeight: '800'
   },
   bottomBar: {
-    backgroundColor: 'rgba(255,255,255,0.96)',
-    borderRadius: 20,
-    marginTop: 8,
-    paddingBottom: 12,
-    paddingHorizontal: 12,
-    paddingTop: 8,
-    shadowColor: '#0f172a',
-    shadowOffset: {
-      width: 0,
-      height: 8
-    },
-    shadowOpacity: 0.14,
-    shadowRadius: 18,
-    elevation: 8
+    paddingTop: appTheme.spacing.xxs
+  },
+  driverControlPanel: {
+    ...appTheme.shadows.sheet,
+    backgroundColor: appTheme.colors.mapOverlaySurface,
+    borderColor: appTheme.colors.mapOverlayBorder,
+    borderRadius: appTheme.radius.xl,
+    borderWidth: 1,
+    paddingHorizontal: appTheme.spacing.md,
+    paddingTop: appTheme.spacing.md,
+    paddingBottom: appTheme.spacing.sm
   },
   laborActionRow: {
     alignItems: 'center',
-    marginTop: 10
+    flexDirection: 'row',
+    gap: appTheme.spacing.sm,
+    justifyContent: 'center',
+    marginTop: appTheme.spacing.sm
   },
   laborActionButton: {
     alignItems: 'center',
-    borderRadius: 18,
+    borderRadius: appTheme.radius.md,
     justifyContent: 'center',
-    minHeight: 52,
-    paddingHorizontal: 18,
-    width: '68%'
+    minHeight: 48,
+    paddingHorizontal: appTheme.spacing.md,
+    width: '44%'
   },
   laborActionButtonText: {
-    color: '#ffffff',
-    fontSize: 18,
-    fontWeight: '800'
+    color: appTheme.colors.textInverse,
+    fontSize: appTheme.typography.body,
+    fontWeight: appTheme.typography.weights.heavy
   },
   clockButton: {
-    backgroundColor: '#2f2f2f'
+    backgroundColor: appTheme.colors.charcoal
+  },
+  breakButtonIdle: {
+    backgroundColor: appTheme.colors.purple
+  },
+  breakButtonActive: {
+    backgroundColor: '#5838bf'
+  },
+  breakButtonTextIdle: {
+    color: '#ffffff'
+  },
+  breakButtonTextActive: {
+    color: '#ffffff'
   },
   bottomStatsRow: {
     flexDirection: 'row',
-    gap: 12,
-    marginBottom: 8
+    gap: appTheme.spacing.sm,
+    marginBottom: appTheme.spacing.sm
   },
   bottomStatColumn: {
     alignItems: 'center',
@@ -3015,44 +3797,70 @@ const styles = StyleSheet.create({
     justifyContent: 'center'
   },
   bottomStatLabel: {
-    color: '#7a8792',
-    fontSize: 12,
-    fontWeight: '700',
-    marginBottom: 4,
+    color: appTheme.colors.textTertiary,
+    fontSize: appTheme.typography.caption,
+    fontWeight: appTheme.typography.weights.bold,
+    marginBottom: appTheme.spacing.xxs,
     textTransform: 'uppercase'
   },
   bottomStatValue: {
-    color: '#173042',
-    fontSize: 16,
-    fontWeight: '700',
+    color: appTheme.colors.textPrimary,
+    fontSize: appTheme.typography.bodyLarge,
+    fontWeight: appTheme.typography.weights.heavy,
     textAlign: 'center'
   },
   completeButton: {
+    ...appTheme.shadows.card,
     alignItems: 'center',
     alignSelf: 'center',
-    backgroundColor: '#27AE60',
-    borderRadius: 16,
+    backgroundColor: appTheme.colors.green,
+    borderRadius: appTheme.radius.md,
     justifyContent: 'center',
-    minHeight: 54,
-    width: '68%'
+    minHeight: 50,
+    width: '72%'
   },
   completeButtonText: {
-    color: '#ffffff',
-    fontSize: 17,
-    fontWeight: '800'
+    color: appTheme.colors.textInverse,
+    fontSize: appTheme.typography.body,
+    fontWeight: appTheme.typography.weights.heavy
+  },
+  groupedBottomHint: {
+    alignItems: 'center',
+    alignSelf: 'center',
+    backgroundColor: appTheme.colors.surfaceMuted,
+    borderColor: appTheme.colors.border,
+    borderRadius: appTheme.radius.md,
+    borderWidth: 1,
+    justifyContent: 'center',
+    minHeight: 50,
+    paddingHorizontal: appTheme.spacing.md,
+    width: '72%'
+  },
+  groupedBottomHintText: {
+    color: appTheme.colors.textSecondary,
+    fontSize: appTheme.typography.bodySmall,
+    fontWeight: appTheme.typography.weights.heavy,
+    textAlign: 'center'
   },
   buttonDisabled: {
     opacity: 0.6
   },
   headerButton: {
     justifyContent: 'center',
-    minHeight: 40,
-    paddingHorizontal: 10
+    minHeight: 38,
+    paddingHorizontal: appTheme.spacing.md
+  },
+  headerButtonSurface: {
+    ...appTheme.shadows.card,
+    backgroundColor: appTheme.colors.mapOverlaySurface,
+    borderColor: appTheme.colors.mapOverlayBorder,
+    borderRadius: appTheme.radius.md,
+    borderWidth: 1
   },
   headerButtonText: {
-    color: '#173042',
-    fontSize: 16,
-    fontWeight: '700'
+    color: appTheme.colors.textPrimary,
+    fontSize: appTheme.typography.body,
+    fontWeight: appTheme.typography.weights.bold
   },
   stopPin: {
     alignItems: 'center',

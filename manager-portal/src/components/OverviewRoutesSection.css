@@ -351,6 +351,10 @@
   stroke: none;
 }
 
+.overview-metric-icon.pickup {
+  color: #ff6200;
+}
+
 .overview-metric-primary.bold {
   font-weight: 800;
 }

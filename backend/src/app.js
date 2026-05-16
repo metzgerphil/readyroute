@@ -16,6 +16,8 @@ const { createVedrRouter } = require('./routes/vedr');
 const routeRoutes = require('./routes/routes');
 const { createRoutesRouter } = require('./routes/routes');
 const { createInternalSyncRouter } = require('./routes/internalSync');
+const waitlistRoutes = require('./routes/waitlist');
+const { createWaitlistRouter } = require('./routes/waitlist');
 
 function createApp(options = {}) {
   const app = express();
@@ -23,12 +25,37 @@ function createApp(options = {}) {
   const allowedOrigins = [
     'http://localhost:5173',
     'http://127.0.0.1:5173',
+    'http://localhost:5174',
+    'http://127.0.0.1:5174',
+    'http://localhost:4179',
+    'http://127.0.0.1:4179',
+    'https://readyroute.org',
+    'https://www.readyroute.org',
     'https://app.readyroute.app',
     'https://portal.readyroute.org',
     process.env.VITE_MANAGER_PORTAL_URL,
     process.env.VERCEL_MANAGER_PORTAL_URL,
     process.env.MANAGER_PORTAL_URL
   ].filter(Boolean);
+  function isAllowedCorsOrigin(origin) {
+    if (!origin) {
+      return true;
+    }
+
+    if (allowedOrigins.includes(origin)) {
+      return true;
+    }
+
+    try {
+      const { hostname, protocol } = new URL(origin);
+      return (
+        protocol === 'https:' &&
+        (hostname === 'readyroute.org' || hostname.endsWith('.readyroute.org'))
+      );
+    } catch (_error) {
+      return false;
+    }
+  }
   const authRouter = options.supabase || options.jwtSecret
     ? createAuthRouter({
         supabase: options.supabase,
@@ -63,6 +90,7 @@ function createApp(options = {}) {
         now: options.now,
         jwtSecret: options.jwtSecret,
         sendManagerInviteEmail: options.sendManagerInviteEmail,
+        sendManagerPasswordResetEmail: options.sendManagerPasswordResetEmail,
         stripeClient: options.stripeClient,
         stripePriceId: options.stripePriceId,
         trialDays: options.trialDays,
@@ -85,6 +113,9 @@ function createApp(options = {}) {
     fedexFccAdapter: options.fedexFccAdapter,
     workerSecret: options.fedexSyncWorkerSecret
   });
+  const waitlistRouter = options.supabase
+    ? createWaitlistRouter({ supabase: options.supabase })
+    : waitlistRoutes;
   const requireActiveSubscription = options.enforceBilling === false || (Boolean(options.supabase) && options.enforceBilling !== true)
     ? (_req, _res, next) => next()
     : createRequireActiveSubscription({ supabase: options.supabase });
@@ -92,11 +123,7 @@ function createApp(options = {}) {
   app.use(
     cors({
       origin(origin, callback) {
-        if (!origin) {
-          return callback(null, true);
-        }
-
-        if (allowedOrigins.includes(origin) || origin.startsWith('exp://')) {
+        if (isAllowedCorsOrigin(origin) || origin.startsWith('exp://')) {
           return callback(null, true);
         }
 
@@ -124,6 +151,7 @@ function createApp(options = {}) {
   });
 
   app.use('/auth', authRouter);
+  app.use('/waitlist', waitlistRouter);
   app.use('/internal', internalSyncRouter);
   app.use('/manager', requireManager, requireActiveSubscription, managerRouter);
   app.use('/api/vedr', requireManager, requireActiveSubscription, vedrRouter);

@@ -1,9 +1,26 @@
-import { useEffect, useState } from 'react';
-import { ActivityIndicator, FlatList, Pressable, StyleSheet, Text, View } from 'react-native';
+import { useEffect, useMemo, useState } from 'react';
+import { FlatList, Modal, Pressable, StyleSheet, Switch, Text, TextInput, View } from 'react-native';
 
 import ManagerSectionLayout from '../components/ManagerSectionLayout';
+import AppButton from '../components/ui/AppButton';
+import AppCard from '../components/ui/AppCard';
+import ErrorState from '../components/ui/ErrorState';
+import ManagerManifestUploadPanel from '../components/ManagerManifestUploadPanel';
 import RouteMetricIcon from '../components/RouteMetricIcon';
+import StatusBadge from '../components/ui/StatusBadge';
 import api from '../services/api';
+import {
+  getFileExtension,
+  getPickedAsset,
+  getSupportedRouteFileKind,
+  isSupportedRouteFile
+} from '../services/managerManifestUpload';
+import { getPickupStopCount, getRouteColor, getRouteDisplayName, sortManagerRoutes } from '../services/managerOperations';
+import appTheme from '../theme/appTheme';
+
+const ACTIVE_ROUTE_STATUSES = new Set(['active', 'enabled', 'in_progress', 'dispatched']);
+const SYNC_STATUS_KEYS = ['sync_status', 'syncStatus', 'manifest_status', 'upload_status', 'route_sync_status'];
+const VISIBLE_SYNC_STATUSES = new Set(['enabled', 'staged', 'uploaded', 'available']);
 
 function getTodayDateParam() {
   return new Intl.DateTimeFormat('en-CA', {
@@ -13,48 +30,56 @@ function getTodayDateParam() {
   }).format(new Date());
 }
 
-function getRouteStatusTone(status) {
-  if (status === 'in_progress') {
-    return styles.statusInProgress;
+function formatStatusLabel(status) {
+  const normalized = String(status || '')
+    .trim()
+    .replace(/_/g, ' ')
+    .toLowerCase();
+
+  if (!normalized) {
+    return '';
   }
 
-  if (status === 'complete') {
-    return styles.statusComplete;
-  }
-
-  return styles.statusPending;
+  return normalized.charAt(0).toUpperCase() + normalized.slice(1);
 }
 
-function formatStopsPerHour(value) {
-  if (value == null) {
-    return '-- stops/hr';
+function getStatusTone(status) {
+  const normalized = String(status || '').toLowerCase();
+
+  if (['active', 'enabled', 'in_progress', 'dispatched', 'uploaded', 'available'].includes(normalized)) {
+    return 'active';
   }
 
-  return `${Number(value).toFixed(1).replace(/\.0$/, '')} stops/hr`;
+  if (normalized === 'complete') {
+    return 'complete';
+  }
+
+  return 'pending';
 }
 
-function formatGpsFreshness(route) {
-  if (!route?.last_position?.timestamp) {
-    return 'GPS unavailable';
-  }
-
-  const timestamp = new Date(route.last_position.timestamp);
-
-  if (Number.isNaN(timestamp.getTime())) {
-    return 'GPS unavailable';
-  }
-
-  const elapsedMinutes = Math.max(0, Math.round((Date.now() - timestamp.getTime()) / 60000));
-
-  if (route.is_online) {
-    return elapsedMinutes <= 1 ? 'GPS live now' : `GPS live ${elapsedMinutes}m ago`;
-  }
-
-  return `GPS stale ${elapsedMinutes}m ago`;
+function getRouteNumber(route) {
+  return route?.work_area_name ? getRouteDisplayName(route) : 'Unlabeled';
 }
 
-function getGpsTone(route) {
-  return route?.is_online ? styles.connectivityLive : styles.connectivityStale;
+function getTerminalLabel(route) {
+  return route?.terminal_name || route?.terminal || route?.terminal_label || route?.station_code || route?.station || '';
+}
+
+function getCurrentDayLabel(route, fallbackDate = getTodayDateParam()) {
+  return route?.current_day || route?.service_day || route?.route_date || route?.date || fallbackDate;
+}
+
+function getSyncStatus(route) {
+  for (const key of SYNC_STATUS_KEYS) {
+    const value = route?.[key];
+    const normalized = String(value || '').trim().toLowerCase();
+
+    if (VISIBLE_SYNC_STATUSES.has(normalized)) {
+      return normalized;
+    }
+  }
+
+  return '';
 }
 
 function getExceptionCount(route) {
@@ -68,381 +93,613 @@ function getExceptionCount(route) {
   ).length;
 }
 
-function RouteMetric({ icon, label, value }) {
+function getPickupProgress(route) {
+  const total = getPickupStopCount(route);
+  const completed = Number(route?.pickup_stops_completed || route?.completed_pickup_stops || 0);
+
+  return {
+    completed,
+    total
+  };
+}
+
+function routeMatchesSearch(route, searchTerm) {
+  const normalizedSearch = String(searchTerm || '').trim().toLowerCase();
+
+  if (!normalizedSearch) {
+    return true;
+  }
+
+  return [
+    getRouteNumber(route),
+    getTerminalLabel(route),
+    route?.driver_name,
+    getCurrentDayLabel(route),
+    getSyncStatus(route)
+  ].some((value) => String(value || '').toLowerCase().includes(normalizedSearch));
+}
+
+function isActiveRoute(route) {
+  return ACTIVE_ROUTE_STATUSES.has(String(route?.status || '').toLowerCase());
+}
+
+function buildTerminalOptions(routes = []) {
+  return [...new Set(routes.map(getTerminalLabel).filter(Boolean))].sort();
+}
+
+function filterRoutes(routes = [], { onlyActive = false, searchTerm = '', terminal = '' } = {}) {
+  return routes.filter((route) => {
+    if (onlyActive && !isActiveRoute(route)) {
+      return false;
+    }
+
+    if (terminal && getTerminalLabel(route) !== terminal) {
+      return false;
+    }
+
+    return routeMatchesSearch(route, searchTerm);
+  });
+}
+
+function RouteMetaItem({ children, label, style }) {
   return (
-    <View accessibilityLabel={`${label}: ${value}`} style={styles.routeMetric}>
-      <RouteMetricIcon color="#ffffff" name={icon} size={18} />
-      <Text style={styles.routeMetricValue}>{value}</Text>
+    <View style={[styles.metaItem, style]}>
+      <Text style={styles.metaLabel}>{label}</Text>
+      {children}
     </View>
   );
 }
 
-function RouteCard({ onOpenRoute, route }) {
-  const completedStops = Number(route.completed_stops || 0);
-  const totalStops = Number(route.total_stops || 0);
-  const deliveredPackages = Number(route.delivered_packages || 0);
-  const totalPackages = Number(route.total_packages || 0);
-  const exceptionCount = getExceptionCount(route);
-  const progressPercent = totalStops > 0 ? Math.min(100, Math.max(0, (completedStops / totalStops) * 100)) : 0;
-
+function IconButton({ color = appTheme.colors.orangeDeep, icon, label, onPress }) {
   return (
-    <Pressable onPress={() => onOpenRoute?.(route)} style={styles.routeCard}>
-      <View style={styles.routeHeader}>
-        <View style={styles.routeTitleBlock}>
-          <Text style={styles.routeTitle}>
-            {route.work_area_name ? `Route ${route.work_area_name}` : 'Unlabeled route'}
-          </Text>
-          <Text style={styles.routeMeta}>
-            {route.driver_name || 'Unassigned'} • {route.vehicle_name || 'No vehicle'}
-          </Text>
-        </View>
-
-        <View style={styles.routeHeaderActions}>
-          <View style={[styles.statusBadge, getRouteStatusTone(route.status)]}>
-            <Text style={styles.statusBadgeText}>{route.status || 'pending'}</Text>
-          </View>
-          <Pressable accessibilityLabel={`Route ${route.work_area_name || route.id} actions`} style={styles.overflowButton}>
-            <Text style={styles.overflowText}>...</Text>
-          </Pressable>
-        </View>
-      </View>
-
-      <View style={styles.metricsRow}>
-        <RouteMetric icon="stop" label="Stops" value={`${completedStops}/${totalStops}`} />
-        <RouteMetric icon="package" label="Packages" value={`${deliveredPackages}/${totalPackages}`} />
-        <RouteMetric icon="stopwatch" label="Stops per hour" value={formatStopsPerHour(route.stops_per_hour)} />
-        <RouteMetric icon="warning" label="Exceptions" value={exceptionCount} />
-      </View>
-
-      <View accessibilityLabel={`${Math.round(progressPercent)} percent of route stops completed`} style={styles.routeProgressTrack}>
-        <View style={[styles.routeProgressFill, { width: `${progressPercent}%` }]} />
-      </View>
-
-      <View style={styles.footerRow}>
-        <Text style={styles.routeRate}>{exceptionCount ? `${exceptionCount} exception${exceptionCount === 1 ? '' : 's'}` : 'No scanner exceptions'}</Text>
-        <View style={[styles.connectivityPill, getGpsTone(route)]}>
-          <Text style={styles.connectivityText}>{formatGpsFreshness(route)}</Text>
-        </View>
-      </View>
+    <Pressable
+      accessibilityLabel={label}
+      onPress={onPress}
+      style={({ pressed }) => [styles.iconButton, pressed ? styles.pressed : null]}
+    >
+      <RouteMetricIcon color={color} name={icon} size={20} />
     </Pressable>
   );
 }
 
-export default function ManagerRoutesScreen({ navigation }) {
+function RouteRow({ date, onEditRoute, onViewRoute, route, routes }) {
+  const syncStatus = getSyncStatus(route);
+  const exceptionCount = getExceptionCount(route);
+  const pickupProgress = getPickupProgress(route);
+  const routeColor = getRouteColor(route, routes);
+
+  return (
+    <AppCard style={styles.routeRow}>
+      <View style={[styles.routeRowAccent, { backgroundColor: routeColor }]} />
+      <View style={styles.routeRowTop}>
+        <View style={styles.routeTitleBlock}>
+          <View style={styles.routeTitleLine}>
+            <Text numberOfLines={1} style={[styles.routeNumber, { color: routeColor }]}>
+              {getRouteNumber(route)}
+            </Text>
+            <Text numberOfLines={1} style={styles.inlineDriverName}>
+              {route.driver_name || 'Unassigned'}
+            </Text>
+          </View>
+          {exceptionCount > 0 ? <Text style={styles.exceptionText}>{exceptionCount} exceptions</Text> : null}
+        </View>
+        <View style={styles.actionGroup}>
+          <IconButton icon="eye" label={`View ${getRouteNumber(route)} on map`} onPress={() => onViewRoute(route)} />
+          <IconButton color={appTheme.colors.charcoalSoft} icon="edit" label={`Edit ${getRouteNumber(route)}`} onPress={() => onEditRoute(route)} />
+        </View>
+      </View>
+
+      <View style={styles.routeMetaGrid}>
+        <RouteMetaItem label="Terminal">
+          <Text numberOfLines={1} style={styles.metaValue}>{getTerminalLabel(route) || 'Not set'}</Text>
+        </RouteMetaItem>
+        <RouteMetaItem label="Date">
+          <Text numberOfLines={1} style={styles.metaValue}>{getCurrentDayLabel(route, date)}</Text>
+        </RouteMetaItem>
+        <RouteMetaItem label="Sync">
+          {syncStatus ? (
+            <StatusBadge label={formatStatusLabel(syncStatus)} tone={getStatusTone(syncStatus)} />
+          ) : (
+            <Text numberOfLines={1} style={styles.metaValueMuted}>Not provided</Text>
+          )}
+        </RouteMetaItem>
+        {pickupProgress.total > 0 ? (
+          <RouteMetaItem label="Pickups">
+            <Text numberOfLines={1} style={styles.metaValue}>
+              {pickupProgress.completed} / {pickupProgress.total}
+            </Text>
+          </RouteMetaItem>
+        ) : null}
+      </View>
+    </AppCard>
+  );
+}
+
+function LoadingRouteRow() {
+  return (
+    <AppCard style={styles.routeRow}>
+      <View style={styles.skeletonTitle} />
+      <View style={styles.skeletonGrid}>
+        <View style={styles.skeletonCell} />
+        <View style={styles.skeletonCell} />
+        <View style={styles.skeletonCell} />
+        <View style={styles.skeletonCell} />
+      </View>
+    </AppCard>
+  );
+}
+
+function EmptyRoutesState() {
+  return (
+    <AppCard style={styles.emptyStateCard}>
+      <Text style={styles.emptyStateTitle}>No routes available.</Text>
+      <Text style={styles.emptyStateBody}>Upload routes manually to start reviewing today’s work areas.</Text>
+    </AppCard>
+  );
+}
+
+export default function ManagerRoutesScreen({ csaWorkspaceVersion = 0, identity, navigation, onManagerDataRefresh }) {
   const [isLoading, setIsLoading] = useState(true);
-  const [isRefreshing, setIsRefreshing] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
   const [payload, setPayload] = useState(null);
+  const [onlyActiveRoutes, setOnlyActiveRoutes] = useState(false);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [isStopSearchVisible, setIsStopSearchVisible] = useState(false);
+  const [selectedTerminal, setSelectedTerminal] = useState('');
+  const [editingRoute, setEditingRoute] = useState(null);
+  const [isAddRoutesVisible, setIsAddRoutesVisible] = useState(false);
+  const date = getTodayDateParam();
 
-  async function loadRoutes({ isRefresh = false } = {}) {
-    if (isRefresh) {
-      setIsRefreshing(true);
-    }
+  async function loadRoutes() {
+    setIsLoading(true);
 
     try {
       const response = await api.get('/manager/routes', {
         authMode: 'manager',
-        params: {
-          date: getTodayDateParam()
-        }
+        params: { date }
       });
 
       setPayload(response.data || null);
       setErrorMessage('');
-    } catch (error) {
-      setErrorMessage(error.response?.data?.error || 'Unable to load manager routes right now.');
+    } catch (_error) {
+      setErrorMessage('Unable to load manager routes right now.');
     } finally {
       setIsLoading(false);
-      setIsRefreshing(false);
     }
   }
 
   useEffect(() => {
     loadRoutes();
-  }, []);
+  }, [csaWorkspaceVersion]);
 
-  const routes = payload?.routes || [];
-  const syncStatus = payload?.sync_status || {};
+  const routes = useMemo(() => sortManagerRoutes(payload?.routes || []), [payload?.routes]);
+  const workspaceName = payload?.account?.company_name || identity?.companyName || 'Manager routes';
+  const terminalOptions = useMemo(() => buildTerminalOptions(routes), [routes]);
+  const filteredRoutes = useMemo(
+    () => filterRoutes(routes, {
+      onlyActive: onlyActiveRoutes,
+      searchTerm,
+      terminal: selectedTerminal
+    }),
+    [onlyActiveRoutes, routes, searchTerm, selectedTerminal]
+  );
 
-  function openRouteDetail(routeItem) {
-    navigation?.navigate('ManagerOverview', {
-      selectedRouteId: routeItem.id,
-      date: getTodayDateParam()
+  function openRouteMap(routeItem) {
+    navigation?.navigate('ManagerMap', {
+      date,
+      selectedRouteId: routeItem.id
     });
   }
 
-  if (isLoading) {
-    return (
-      <View style={styles.loadingScreen}>
-        <ActivityIndicator color="#1b6b73" size="large" />
-      </View>
-    );
+  function openAddRoutesFlow() {
+    setIsAddRoutesVisible(true);
+  }
+
+  function closeAddRoutesFlow() {
+    setIsAddRoutesVisible(false);
+  }
+
+  async function handleRoutesUploaded() {
+    await loadRoutes();
+    onManagerDataRefresh?.();
   }
 
   const header = (
-    <>
-      {errorMessage ? (
-        <View style={styles.errorCard}>
-          <Text style={styles.errorTitle}>Routes unavailable</Text>
-          <Text style={styles.errorBody}>{errorMessage}</Text>
-          <Pressable onPress={() => loadRoutes()} style={styles.retryButton}>
-            <Text style={styles.retryButtonText}>Retry</Text>
-          </Pressable>
+    <View style={styles.headerStack}>
+      <View style={styles.actionRow}>
+        <AppButton
+          label="Stop Search"
+          onPress={() => setIsStopSearchVisible((current) => {
+            if (current) {
+              setSearchTerm('');
+            }
+
+            return !current;
+          })}
+          style={styles.actionButton}
+          variant="outline"
+        />
+        <AppButton label="Add Routes" onPress={openAddRoutesFlow} style={styles.actionButton} />
+      </View>
+
+      {isStopSearchVisible ? (
+        <View style={styles.searchCard}>
+          <TextInput
+            autoCapitalize="none"
+            onChangeText={setSearchTerm}
+            placeholder="Search route, terminal, driver, or status"
+            placeholderTextColor={appTheme.colors.textTertiary}
+            style={styles.searchInput}
+            value={searchTerm}
+          />
         </View>
-      ) : (
-        <>
-          <View style={styles.summaryRow}>
-            <View style={styles.summaryCard}>
-              <Text style={styles.summaryLabel}>Routes</Text>
-              <Text style={styles.summaryValue}>{syncStatus.routes_today || 0}</Text>
-            </View>
-            <View style={styles.summaryCard}>
-              <Text style={styles.summaryLabel}>Assigned</Text>
-              <Text style={styles.summaryValue}>{syncStatus.routes_assigned || 0}</Text>
-            </View>
-          </View>
-          <Pressable onPress={() => loadRoutes({ isRefresh: true })} style={styles.refreshButton}>
-            <Text style={styles.refreshButtonText}>{isRefreshing ? 'Refreshing...' : 'Refresh Routes'}</Text>
+      ) : null}
+
+      {terminalOptions.length > 0 ? (
+        <View style={styles.terminalRow}>
+          <Pressable
+            onPress={() => setSelectedTerminal('')}
+            style={[styles.terminalChip, !selectedTerminal ? styles.terminalChipActive : null]}
+          >
+            <Text style={[styles.terminalChipText, !selectedTerminal ? styles.terminalChipTextActive : null]}>All terminals</Text>
           </Pressable>
-        </>
-      )}
-    </>
+          {terminalOptions.map((terminal) => (
+            <Pressable
+              key={terminal}
+              onPress={() => setSelectedTerminal(terminal)}
+              style={[styles.terminalChip, selectedTerminal === terminal ? styles.terminalChipActive : null]}
+            >
+              <Text numberOfLines={1} style={[styles.terminalChipText, selectedTerminal === terminal ? styles.terminalChipTextActive : null]}>
+                {terminal}
+              </Text>
+            </Pressable>
+          ))}
+        </View>
+      ) : null}
+
+      <View style={styles.toggleRow}>
+        <View>
+          <Text style={styles.toggleLabel}>Only Active Routes</Text>
+          <Text style={styles.toggleMeta}>{filteredRoutes.length} of {routes.length} shown</Text>
+        </View>
+        <Switch
+          onValueChange={setOnlyActiveRoutes}
+          thumbColor={onlyActiveRoutes ? appTheme.colors.orange : appTheme.colors.surface}
+          trackColor={{ false: appTheme.colors.borderStrong, true: appTheme.colors.orangeSoft }}
+          value={onlyActiveRoutes}
+        />
+      </View>
+
+      {!isLoading && errorMessage ? (
+        <ErrorState
+          body="Check your connection and try again."
+          onAction={loadRoutes}
+          title="Couldn’t load routes"
+        />
+      ) : null}
+    </View>
   );
 
   return (
-    <ManagerSectionLayout
-      eyebrow="Manager Routes"
-      scrollEnabled={false}
-      subtitle={`Assigned ${syncStatus.routes_assigned || 0} of ${syncStatus.routes_today || 0} routes today`}
-      title="Active routes"
-    >
-      <FlatList
-        ListEmptyComponent={!errorMessage ? <Text style={styles.emptyText}>No routes are loaded for today yet.</Text> : null}
-        ListHeaderComponent={header}
-        contentContainerStyle={styles.listContent}
-        data={errorMessage ? [] : routes}
-        keyExtractor={(item) => item.id}
-        renderItem={({ item }) => <RouteCard onOpenRoute={openRouteDetail} route={item} />}
-        showsVerticalScrollIndicator={false}
-      />
-    </ManagerSectionLayout>
+    <>
+      <ManagerSectionLayout
+        compact
+        eyebrow="ReadyRoute"
+        scrollEnabled={false}
+        subtitle={workspaceName}
+        title="Routes"
+        tone="light"
+      >
+        <FlatList
+          ListEmptyComponent={!errorMessage ? (
+            isLoading ? (
+              <View style={styles.loadingList}>
+                <LoadingRouteRow />
+                <LoadingRouteRow />
+                <LoadingRouteRow />
+              </View>
+            ) : (
+              <EmptyRoutesState />
+            )
+          ) : null}
+          ListHeaderComponent={header}
+          contentContainerStyle={styles.listContent}
+          data={!isLoading && !errorMessage ? filteredRoutes : []}
+          keyExtractor={(item, index) => String(item.id || item.route_id || item.work_area_name || index)}
+          renderItem={({ item }) => (
+            <RouteRow
+              date={date}
+              onEditRoute={setEditingRoute}
+              onViewRoute={openRouteMap}
+              route={item}
+              routes={routes}
+            />
+          )}
+          showsVerticalScrollIndicator={false}
+        />
+      </ManagerSectionLayout>
+
+      <Modal animationType="fade" onRequestClose={() => setEditingRoute(null)} transparent visible={Boolean(editingRoute)}>
+        <Pressable onPress={() => setEditingRoute(null)} style={styles.modalBackdrop}>
+          <Pressable style={styles.modalCard}>
+            <Text style={styles.modalTitle}>Route options</Text>
+            <Text style={styles.modalBody}>More route tools are coming soon.</Text>
+            <AppButton label="Close" onPress={() => setEditingRoute(null)} style={styles.modalButton} />
+          </Pressable>
+        </Pressable>
+      </Modal>
+
+      <Modal animationType="fade" onRequestClose={closeAddRoutesFlow} transparent visible={isAddRoutesVisible}>
+        <Pressable onPress={closeAddRoutesFlow} style={styles.modalBackdrop}>
+          <Pressable style={styles.modalCard}>
+            <Text style={styles.modalTitle}>Add Routes</Text>
+            <ManagerManifestUploadPanel
+              failureMessage="Could not upload routes. Check the file and try again."
+              onUploaded={handleRoutesUploaded}
+              submitLabel="Upload Routes"
+              successMessage="Routes uploaded successfully."
+            />
+            <AppButton label="View Routes" onPress={closeAddRoutesFlow} style={styles.modalButton} variant="outline" />
+          </Pressable>
+        </Pressable>
+      </Modal>
+    </>
   );
 }
 
+export {
+  buildTerminalOptions,
+  filterRoutes,
+  formatStatusLabel,
+  getCurrentDayLabel,
+  getExceptionCount,
+  getFileExtension,
+  getPickedAsset,
+  getSyncStatus,
+  getTerminalLabel,
+  getTodayDateParam,
+  getSupportedRouteFileKind,
+  isActiveRoute,
+  isSupportedRouteFile,
+  routeMatchesSearch
+};
+
 const styles = StyleSheet.create({
-  loadingScreen: {
-    alignItems: 'center',
-    backgroundColor: '#edf3f6',
-    flex: 1,
-    justifyContent: 'center'
-  },
   listContent: {
-    paddingBottom: 24
+    flexGrow: 1,
+    paddingBottom: appTheme.spacing.xl
   },
-  errorCard: {
-    backgroundColor: '#fff1ed',
-    borderColor: '#f4cbc2',
-    borderRadius: 22,
-    borderWidth: 1,
-    marginBottom: 14,
-    padding: 18
+  headerStack: {
+    gap: appTheme.spacing.xs,
+    marginBottom: appTheme.spacing.xs
   },
-  errorTitle: {
-    color: '#9b271f',
-    fontSize: 18,
-    fontWeight: '800',
-    marginBottom: 8
-  },
-  errorBody: {
-    color: '#6f4a45',
-    fontSize: 15,
-    lineHeight: 22
-  },
-  retryButton: {
-    alignItems: 'center',
-    alignSelf: 'flex-start',
-    backgroundColor: '#173042',
-    borderRadius: 999,
-    marginTop: 16,
-    minHeight: 40,
-    justifyContent: 'center',
-    paddingHorizontal: 14
-  },
-  retryButtonText: {
-    color: '#ffffff',
-    fontSize: 14,
-    fontWeight: '700'
-  },
-  summaryRow: {
+  actionRow: {
     flexDirection: 'row',
-    gap: 12,
-    marginBottom: 12
+    gap: appTheme.spacing.xs
   },
-  summaryCard: {
-    backgroundColor: '#ffffff',
-    borderColor: '#d8e2e8',
-    borderRadius: 22,
+  actionButton: {
+    flex: 1
+  },
+  searchCard: {
+    backgroundColor: appTheme.colors.surface,
+    borderColor: appTheme.colors.border,
+    borderRadius: appTheme.radius.md,
     borderWidth: 1,
-    flex: 1,
-    padding: 18
-  },
-  summaryLabel: {
-    color: '#667784',
-    fontSize: 14,
-    fontWeight: '700',
-    marginBottom: 8
-  },
-  summaryValue: {
-    color: '#173042',
-    fontSize: 28,
-    fontWeight: '800'
-  },
-  refreshButton: {
-    alignItems: 'center',
-    alignSelf: 'flex-start',
-    backgroundColor: '#dfecef',
-    borderRadius: 999,
+    minHeight: 46,
     justifyContent: 'center',
-    marginBottom: 12,
-    minHeight: 38,
-    paddingHorizontal: 14
+    paddingHorizontal: appTheme.spacing.md
   },
-  refreshButtonText: {
-    color: '#173042',
-    fontSize: 13,
-    fontWeight: '800'
+  searchInput: {
+    color: appTheme.colors.textPrimary,
+    fontSize: appTheme.typography.body,
+    fontWeight: appTheme.typography.weights.semibold,
+    minHeight: 44
   },
-  routeCard: {
-    backgroundColor: '#111820',
-    borderColor: '#24313a',
-    borderRadius: 22,
+  terminalRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: appTheme.spacing.xs
+  },
+  terminalChip: {
+    backgroundColor: appTheme.colors.surface,
+    borderColor: appTheme.colors.borderStrong,
+    borderRadius: appTheme.radius.pill,
     borderWidth: 1,
-    marginBottom: 10,
-    paddingHorizontal: 14,
-    paddingVertical: 14
+    justifyContent: 'center',
+    minHeight: 30,
+    maxWidth: 180,
+    paddingHorizontal: 12
   },
-  routeHeader: {
-    alignItems: 'flex-start',
+  terminalChipActive: {
+    backgroundColor: appTheme.colors.orangeSoft,
+    borderColor: appTheme.colors.orange
+  },
+  terminalChipText: {
+    color: appTheme.colors.textSecondary,
+    fontSize: appTheme.typography.bodySmall,
+    fontWeight: appTheme.typography.weights.semibold
+  },
+  terminalChipTextActive: {
+    color: appTheme.colors.orangeDeep
+  },
+  toggleRow: {
+    alignItems: 'center',
+    backgroundColor: appTheme.colors.surface,
+    borderColor: appTheme.colors.border,
+    borderRadius: appTheme.radius.md,
+    borderWidth: 1,
     flexDirection: 'row',
     justifyContent: 'space-between',
-    marginBottom: 8
+    minHeight: 52,
+    paddingHorizontal: appTheme.spacing.md,
+    paddingVertical: appTheme.spacing.xs
+  },
+  toggleLabel: {
+    color: appTheme.colors.textPrimary,
+    fontSize: appTheme.typography.body,
+    fontWeight: appTheme.typography.weights.heavy
+  },
+  toggleMeta: {
+    color: appTheme.colors.textSecondary,
+    fontSize: appTheme.typography.caption,
+    marginTop: 2
+  },
+  loadingList: {
+    gap: appTheme.spacing.xs
+  },
+  routeRow: {
+    gap: 8,
+    marginBottom: 8,
+    paddingHorizontal: appTheme.spacing.md,
+    paddingVertical: 10,
+    position: 'relative'
+  },
+  routeRowAccent: {
+    borderBottomLeftRadius: appTheme.radius.md,
+    borderTopLeftRadius: appTheme.radius.md,
+    bottom: 10,
+    left: 0,
+    position: 'absolute',
+    top: 10,
+    width: 4
+  },
+  routeRowTop: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    justifyContent: 'space-between'
   },
   routeTitleBlock: {
     flex: 1,
-    paddingRight: 10
+    minWidth: 0,
+    paddingRight: appTheme.spacing.sm
   },
-  routeHeaderActions: {
-    alignItems: 'flex-end',
+  routeTitleLine: {
+    alignItems: 'baseline',
+    flexDirection: 'row',
+    minWidth: 0
+  },
+  routeNumber: {
+    color: appTheme.colors.orangeDeep,
+    flexShrink: 0,
+    fontSize: appTheme.typography.titleSmall,
+    fontWeight: appTheme.typography.weights.heavy
+  },
+  inlineDriverName: {
+    color: appTheme.colors.textPrimary,
+    flex: 1,
+    fontSize: appTheme.typography.body,
+    fontWeight: appTheme.typography.weights.heavy,
+    marginLeft: 10,
+    minWidth: 0
+  },
+  exceptionText: {
+    color: appTheme.colors.warningText,
+    fontSize: appTheme.typography.caption,
+    fontWeight: appTheme.typography.weights.heavy,
+    marginTop: 2
+  },
+  actionGroup: {
+    flexDirection: 'row',
     gap: 8
   },
-  routeTitle: {
-    color: '#ffffff',
-    fontSize: 18,
-    fontWeight: '800',
-    marginBottom: 2
-  },
-  routeMeta: {
-    color: '#c5d0d8',
-    fontSize: 12,
-    lineHeight: 16
-  },
-  statusBadge: {
-    borderRadius: 999,
-    paddingHorizontal: 9,
-    paddingVertical: 6
-  },
-  statusBadgeText: {
-    color: '#173042',
-    fontSize: 10,
-    fontWeight: '800',
-    textTransform: 'capitalize'
-  },
-  overflowButton: {
+  iconButton: {
     alignItems: 'center',
-    backgroundColor: '#f2c94c',
-    borderRadius: 999,
+    backgroundColor: appTheme.colors.surface,
+    borderColor: appTheme.colors.border,
+    borderRadius: appTheme.radius.pill,
+    borderWidth: 1,
+    height: 34,
     justifyContent: 'center',
-    minHeight: 30,
-    minWidth: 30
+    width: 34
   },
-  overflowText: {
-    color: '#111820',
-    fontSize: 18,
-    fontWeight: '800',
-    lineHeight: 18
-  },
-  metricsRow: {
-    alignItems: 'center',
+  routeMetaGrid: {
+    columnGap: 10,
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: 14,
-    marginBottom: 12
+    rowGap: 5
   },
-  routeMetric: {
+  metaItem: {
     alignItems: 'center',
     flexDirection: 'row',
-    gap: 6
+    maxWidth: '48%',
+    minHeight: 20
   },
-  routeMetricValue: {
-    color: '#ffffff',
-    fontSize: 15,
-    fontWeight: '800'
+  metaLabel: {
+    color: appTheme.colors.textTertiary,
+    fontSize: appTheme.typography.caption,
+    fontWeight: appTheme.typography.weights.heavy,
+    marginRight: 4
   },
-  routeProgressTrack: {
-    backgroundColor: '#123840',
-    borderRadius: 999,
-    height: 7,
-    marginBottom: 10,
-    overflow: 'hidden'
+  metaValue: {
+    color: appTheme.colors.textPrimary,
+    fontSize: appTheme.typography.bodySmall,
+    fontWeight: appTheme.typography.weights.semibold
   },
-  routeProgressFill: {
-    backgroundColor: '#14b8c9',
-    borderRadius: 999,
-    height: '100%'
+  metaValueMuted: {
+    color: appTheme.colors.textSecondary,
+    fontSize: appTheme.typography.bodySmall,
+    fontWeight: appTheme.typography.weights.semibold
   },
-  footerRow: {
+  emptyStateCard: {
+    gap: appTheme.spacing.xs,
+    padding: appTheme.spacing.lg
+  },
+  emptyStateTitle: {
+    color: appTheme.colors.textPrimary,
+    fontSize: appTheme.typography.titleSmall,
+    fontWeight: appTheme.typography.weights.heavy
+  },
+  emptyStateBody: {
+    color: appTheme.colors.textSecondary,
+    fontSize: appTheme.typography.body,
+    lineHeight: appTheme.typography.lineHeights.body
+  },
+  modalBackdrop: {
     alignItems: 'center',
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    gap: 10
-  },
-  routeRate: {
-    color: '#c5d0d8',
+    backgroundColor: 'rgba(12, 23, 31, 0.42)',
     flex: 1,
-    fontSize: 12,
-    fontWeight: '700'
+    justifyContent: 'center',
+    padding: appTheme.spacing.lg
   },
-  connectivityPill: {
-    borderRadius: 999,
-    paddingHorizontal: 9,
-    paddingVertical: 6
+  modalCard: {
+    backgroundColor: appTheme.colors.surface,
+    borderRadius: appTheme.radius.lg,
+    maxWidth: 420,
+    padding: appTheme.spacing.lg,
+    width: '100%'
   },
-  connectivityLive: {
-    backgroundColor: '#dff3eb'
+  modalTitle: {
+    color: appTheme.colors.textPrimary,
+    fontSize: appTheme.typography.titleSmall,
+    fontWeight: appTheme.typography.weights.heavy,
+    marginBottom: appTheme.spacing.xs
   },
-  connectivityStale: {
-    backgroundColor: '#f2ece4'
+  modalBody: {
+    color: appTheme.colors.textSecondary,
+    fontSize: appTheme.typography.body,
+    lineHeight: appTheme.typography.lineHeights.body
   },
-  connectivityText: {
-    color: '#173042',
-    fontSize: 10,
-    fontWeight: '800'
+  modalButton: {
+    marginTop: appTheme.spacing.md
   },
-  statusPending: {
-    backgroundColor: '#e8eef2'
+  skeletonTitle: {
+    backgroundColor: appTheme.colors.border,
+    borderRadius: appTheme.radius.pill,
+    height: 20,
+    width: '58%'
   },
-  statusInProgress: {
-    backgroundColor: '#dff3eb'
+  skeletonGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8
   },
-  statusComplete: {
-    backgroundColor: '#efe6ff'
+  skeletonCell: {
+    backgroundColor: appTheme.colors.surfaceTint,
+    borderRadius: appTheme.radius.pill,
+    height: 18,
+    width: '30%'
   },
-  emptyText: {
-    color: '#667784',
-    fontSize: 15,
-    lineHeight: 22,
-    marginTop: 8
+  pressed: {
+    opacity: 0.86
   }
 });
-
-export { formatGpsFreshness, formatStopsPerHour, getTodayDateParam };

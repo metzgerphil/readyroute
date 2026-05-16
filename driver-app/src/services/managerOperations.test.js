@@ -1,13 +1,17 @@
 import {
   buildManagerMapModel,
   buildManagerOverviewStats,
+  buildStopMarkers,
   buildRouteClusterMarkers,
   clampSheetOffset,
   getClusterRadiusMiles,
   getGpsFreshness,
+  getRouteColor,
   getSheetSnapLayout,
+  getStopCanonicalId,
   isMapZoomedIn,
-  resolveNearestSheetSnap
+  resolveNearestSheetSnap,
+  sortManagerRoutes
 } from './managerOperations';
 
 describe('managerOperations helpers', () => {
@@ -83,9 +87,70 @@ describe('managerOperations helpers', () => {
     });
 
     expect(model.selectedRoute.id).toBe('route-1');
+    expect(model.routeMarkers).toHaveLength(0);
     expect(model.driverMarkers).toHaveLength(1);
     expect(model.stopMarkers).toHaveLength(1);
+    expect(model.stopMarkers[0].routeColor).toBe('#ff7a1a');
     expect(model.region.latitude).toBeCloseTo(33.115, 2);
+  });
+
+  it('uses canonical stop ids for map pin to list synchronization', () => {
+    expect(getStopCanonicalId({ manifestStopId: 'manifest-36', sequence_order: 36 })).toBe('manifest-36');
+    expect(getStopCanonicalId({ route_stop_id: 'route-stop-87', sequence_order: 87 })).toBe('route-stop-87');
+    expect(getStopCanonicalId({ sequence_order: 36, address: '100 Main St' })).toBe('36:100 Main St');
+
+    const markers = buildStopMarkers({
+      id: 'route-1',
+      stops: [
+        {
+          manifestStopId: 'manifest-36',
+          sequence_order: 36,
+          lat: 33.11,
+          lng: -117.09,
+          packages: [{ id: 'pkg-1', requires_adult_signature: true }]
+        }
+      ]
+    });
+
+    expect(markers[0]).toMatchObject({
+      key: 'stop:manifest-36',
+      stopId: 'manifest-36',
+      sequenceOrder: 36,
+      requiresSignature: true
+    });
+  });
+
+  it('sorts manager routes by their numeric work area', () => {
+    const routes = sortManagerRoutes([
+      { id: 'route-847', work_area_name: '847' },
+      { id: 'route-811', work_area_name: '811' },
+      { id: 'route-823', work_area_name: 'OCEA - 823 BRIDGE' },
+      { id: 'route-alpha', work_area_name: 'Alpha' },
+      { id: 'route-810', work_area_name: '810' }
+    ]);
+
+    expect(routes.map((route) => route.work_area_name)).toEqual([
+      '810',
+      '811',
+      'OCEA - 823 BRIDGE',
+      '847',
+      'Alpha'
+    ]);
+  });
+
+  it('assigns stable manager route colors without mutating route data', () => {
+    const routes = [
+      { id: 'route-1', work_area_name: '910' },
+      { id: 'route-2', work_area_name: '911' },
+      { id: 'route-3', work_area_name: '912' }
+    ];
+
+    expect(getRouteColor(routes[0], [routes[0]])).toBe('#ff7a1a');
+    expect(getRouteColor(routes[1], routes)).toBe(getRouteColor(routes[1], routes));
+    expect(getRouteColor(routes[1], [...routes].reverse())).toBe(getRouteColor(routes[1], routes));
+    expect(new Set(routes.map((route) => getRouteColor(route, routes))).size).toBe(routes.length);
+    expect(getRouteColor({ id: 'route-custom', routeColor: '#123abc' }, routes)).toBe('#123abc');
+    expect(routes[1].routeColor).toBeUndefined();
   });
 
   it('keeps stop pins hidden until the map is zoomed in or a route is selected', () => {
@@ -122,7 +187,7 @@ describe('managerOperations helpers', () => {
     expect(zoomedInModel.stopMarkers).toHaveLength(1);
   });
 
-  it('derives zoom thresholds, cluster radius, and gps freshness safely', () => {
+  it('derives zoom thresholds, cluster radius, and location freshness safely', () => {
     expect(isMapZoomedIn({ latitudeDelta: 0.08, longitudeDelta: 0.08 })).toBe(true);
     expect(isMapZoomedIn({ latitudeDelta: 0.22, longitudeDelta: 0.22 })).toBe(false);
     expect(getClusterRadiusMiles({ latitudeDelta: 0.04, longitudeDelta: 0.04 })).toBeLessThan(
@@ -142,6 +207,32 @@ describe('managerOperations helpers', () => {
     ).toMatchObject({
       state: 'live',
       shortLabel: 'Live'
+    });
+
+    expect(
+      getGpsFreshness(
+        {
+          status: 'in_progress',
+          last_position: null
+        },
+        new Date('2026-04-23T15:30:00.000Z').getTime()
+      )
+    ).toMatchObject({
+      label: 'Location permission needed',
+      shortLabel: 'Location needed'
+    });
+
+    expect(
+      getGpsFreshness(
+        {
+          status: 'pending',
+          last_position: null
+        },
+        new Date('2026-04-23T15:30:00.000Z').getTime()
+      )
+    ).toMatchObject({
+      label: 'Driver not on route yet',
+      shortLabel: 'Not started'
     });
 
     expect(
@@ -205,7 +296,7 @@ describe('managerOperations helpers', () => {
           timestamp: '2026-04-23T15:10:00.000Z'
         },
         stops: [
-          { id: 'stop-3', status: 'pending' }
+          { id: 'stop-3', status: 'pending', stop_type: 'pickup' }
         ]
       }
     ]);
@@ -228,6 +319,7 @@ describe('managerOperations helpers', () => {
       total: 76,
       pending: 19
     });
+    expect(summary.pickupStops).toBe(1);
     expect(summary.liveDrivers).toBe(1);
   });
 });

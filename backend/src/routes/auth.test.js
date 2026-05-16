@@ -144,6 +144,46 @@ test('manager login supports manager_users records', async () => {
   assert.equal(response.body.user.email, 'vlad@example.com');
 });
 
+test('manager login authenticates the matching CSA instead of the first email match', async () => {
+  const firstHash = await bcrypt.hash('FirstPass!2026', 10);
+  const secondHash = await bcrypt.hash('SecondPass!2026', 10);
+  const supabase = createSupabaseStub({
+    manager_email: 'owner@example.com',
+    manager_password_hash: await bcrypt.hash('OwnerPass!2026', 10),
+    manager_users: [
+      {
+        id: 'manager-user-1',
+        account_id: 'account-1',
+        email: 'vlad@example.com',
+        password_hash: firstHash,
+        full_name: 'Vlad Fedoryshyn',
+        is_active: true
+      },
+      {
+        id: 'manager-user-2',
+        account_id: 'account-2',
+        email: 'vlad@example.com',
+        password_hash: secondHash,
+        full_name: 'Vlad Fedoryshyn',
+        is_active: true
+      }
+    ]
+  });
+  const app = createApp({ supabase, jwtSecret: 'test-secret', enforceBilling: false });
+
+  const response = await request(app)
+    .post('/auth/manager/login')
+    .send({ email: 'vlad@example.com', password: 'SecondPass!2026' });
+
+  assert.equal(response.status, 200);
+  assert.equal(response.body.user.account_id, 'account-2');
+  assert.equal(response.body.user.manager_user_id, 'manager-user-2');
+
+  const payload = jwt.verify(response.body.token, 'test-secret');
+  assert.equal(payload.account_id, 'account-2');
+  assert.equal(payload.manager_user_id, 'manager-user-2');
+});
+
 test('mobile login returns both portal tokens for a linked manager-driver identity', async () => {
   const secret = '2468';
   const driverPinHash = await bcrypt.hash(secret, 10);
@@ -185,6 +225,93 @@ test('mobile login returns both portal tokens for a linked manager-driver identi
   assert.equal(driverPayload.email, 'vlad@example.com');
   assert.equal(managerPayload.manager_user_id, 'manager-user-1');
   assert.equal(managerPayload.role, 'manager');
+});
+
+test('manager session can request driver mode even before a route is assigned', async () => {
+  const originalJwtSecret = process.env.JWT_SECRET;
+  process.env.JWT_SECRET = 'test-secret';
+  const managerPasswordHash = await bcrypt.hash('VladPass!2026', 10);
+
+  try {
+    const supabase = createSupabaseStub({
+      manager_email: 'owner@example.com',
+      manager_password_hash: await bcrypt.hash('OwnerPass!2026', 10),
+      manager_user: {
+        id: 'manager-user-1',
+        account_id: 'account-1',
+        email: 'vlad@example.com',
+        password_hash: managerPasswordHash,
+        full_name: 'Vlad Fedoryshyn',
+        is_active: true
+      }
+    });
+    const app = createApp({ supabase, jwtSecret: 'test-secret', enforceBilling: false });
+
+    const loginResponse = await request(app)
+      .post('/auth/manager/login')
+      .send({ email: 'vlad@example.com', password: 'VladPass!2026' });
+
+    const response = await request(app)
+      .post('/auth/mobile/manager-driver-session')
+      .set('Authorization', `Bearer ${loginResponse.body.token}`)
+      .send({});
+
+    assert.equal(response.status, 200);
+    assert.equal(response.body.driver_mode_source, 'manager');
+
+    const driverPayload = jwt.verify(response.body.driver_token, 'test-secret');
+    assert.equal(driverPayload.driver_id, 'manager-user-1');
+    assert.equal(driverPayload.account_id, 'account-1');
+    assert.equal(driverPayload.role, 'driver');
+    assert.equal(driverPayload.driver_mode_source, 'manager');
+  } finally {
+    if (originalJwtSecret === undefined) {
+      delete process.env.JWT_SECRET;
+    } else {
+      process.env.JWT_SECRET = originalJwtSecret;
+    }
+  }
+});
+
+test('manager requests reject a selected CSA id that does not match the token workspace', async () => {
+  const originalJwtSecret = process.env.JWT_SECRET;
+  process.env.JWT_SECRET = 'test-secret';
+  const managerPasswordHash = await bcrypt.hash('VladPass!2026', 10);
+
+  try {
+    const supabase = createSupabaseStub({
+      manager_email: 'owner@example.com',
+      manager_password_hash: await bcrypt.hash('OwnerPass!2026', 10),
+      manager_user: {
+        id: 'manager-user-1',
+        account_id: 'account-1',
+        email: 'vlad@example.com',
+        password_hash: managerPasswordHash,
+        full_name: 'Vlad Fedoryshyn',
+        is_active: true
+      }
+    });
+    const app = createApp({ supabase, jwtSecret: 'test-secret', enforceBilling: false });
+
+    const loginResponse = await request(app)
+      .post('/auth/manager/login')
+      .send({ email: 'vlad@example.com', password: 'VladPass!2026' });
+
+    const response = await request(app)
+      .post('/auth/mobile/manager-driver-session')
+      .set('Authorization', `Bearer ${loginResponse.body.token}`)
+      .set('X-ReadyRoute-CSA-Id', 'account-2')
+      .send({});
+
+    assert.equal(response.status, 409);
+    assert.match(response.body.error, /selected csa/i);
+  } finally {
+    if (originalJwtSecret === undefined) {
+      delete process.env.JWT_SECRET;
+    } else {
+      process.env.JWT_SECRET = originalJwtSecret;
+    }
+  }
 });
 
 test('manager password reset request returns a reset URL in non-production', async () => {
@@ -296,6 +423,35 @@ test('manager password reset request fails honestly in production when email del
   assert.match(response.body.error, /not configured/i);
 });
 
+test('manager password reset request fails clearly in production when email delivery throws', async () => {
+  const hash = await bcrypt.hash('OldPassword!123', 10);
+  const supabase = createSupabaseStub({ manager_password_hash: hash });
+  const originalNodeEnv = process.env.NODE_ENV;
+  process.env.NODE_ENV = 'production';
+
+  let response;
+
+  try {
+    const app = createApp({
+      supabase,
+      jwtSecret: 'test-secret',
+      enforceBilling: false,
+      sendManagerPasswordResetEmail: async () => {
+        throw new Error('Resend email failed: domain not verified');
+      }
+    });
+
+    response = await request(app)
+      .post('/auth/manager/request-password-reset')
+      .send({ email: 'phillovesjoy@gmail.com' });
+  } finally {
+    process.env.NODE_ENV = originalNodeEnv;
+  }
+
+  assert.equal(response.status, 503);
+  assert.match(response.body.error, /could not be sent/i);
+});
+
 test('manager password reset updates the password and invalidates the old one', async () => {
   const oldPassword = 'OldPassword!123';
   const newPassword = 'TempReset!2026';
@@ -325,6 +481,76 @@ test('manager password reset updates the password and invalidates the old one', 
     tokenPayload.pwdv,
     require('crypto').createHash('sha256').update(supabase.account.manager_password_hash).digest('hex').slice(0, 16)
   );
+});
+
+test('authenticated manager can change their password from settings', async () => {
+  const oldPassword = 'OldPassword!123';
+  const newPassword = 'SettingsPass!2026';
+  const hash = await bcrypt.hash(oldPassword, 10);
+  const supabase = createSupabaseStub({ manager_password_hash: hash });
+  const originalJwtSecret = process.env.JWT_SECRET;
+  process.env.JWT_SECRET = 'test-secret';
+  const app = createApp({ supabase, jwtSecret: 'test-secret', enforceBilling: false });
+
+  try {
+    const loginResponse = await request(app)
+      .post('/auth/manager/login')
+      .send({ email: 'phillovesjoy@gmail.com', password: oldPassword });
+
+    assert.equal(loginResponse.status, 200);
+
+    const response = await request(app)
+      .post('/auth/manager/change-password')
+      .set('Authorization', `Bearer ${loginResponse.body.token}`)
+      .send({
+        current_password: oldPassword,
+        new_password: newPassword
+      });
+
+    assert.equal(response.status, 200);
+    assert.match(response.body.message, /password updated/i);
+    assert.equal(await bcrypt.compare(oldPassword, supabase.account.manager_password_hash), false);
+    assert.equal(await bcrypt.compare(newPassword, supabase.account.manager_password_hash), true);
+  } finally {
+    if (originalJwtSecret === undefined) {
+      delete process.env.JWT_SECRET;
+    } else {
+      process.env.JWT_SECRET = originalJwtSecret;
+    }
+  }
+});
+
+test('authenticated manager password change rejects an incorrect current password', async () => {
+  const oldPassword = 'OldPassword!123';
+  const hash = await bcrypt.hash(oldPassword, 10);
+  const supabase = createSupabaseStub({ manager_password_hash: hash });
+  const originalJwtSecret = process.env.JWT_SECRET;
+  process.env.JWT_SECRET = 'test-secret';
+  const app = createApp({ supabase, jwtSecret: 'test-secret', enforceBilling: false });
+
+  try {
+    const loginResponse = await request(app)
+      .post('/auth/manager/login')
+      .send({ email: 'phillovesjoy@gmail.com', password: oldPassword });
+
+    const response = await request(app)
+      .post('/auth/manager/change-password')
+      .set('Authorization', `Bearer ${loginResponse.body.token}`)
+      .send({
+        current_password: 'WrongPassword!123',
+        new_password: 'SettingsPass!2026'
+      });
+
+    assert.equal(response.status, 401);
+    assert.match(response.body.error, /current password/i);
+    assert.equal(await bcrypt.compare(oldPassword, supabase.account.manager_password_hash), true);
+  } finally {
+    if (originalJwtSecret === undefined) {
+      delete process.env.JWT_SECRET;
+    } else {
+      process.env.JWT_SECRET = originalJwtSecret;
+    }
+  }
 });
 
 test('manager password reset rejects short passwords', async () => {

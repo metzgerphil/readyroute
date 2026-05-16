@@ -23,6 +23,11 @@ export default function LoginScreen({ onAuthenticated }) {
   const [secret, setSecret] = useState('');
   const [loading, setLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
+  const [showPasswordReset, setShowPasswordReset] = useState(false);
+  const [resetEmail, setResetEmail] = useState('');
+  const [resetLoading, setResetLoading] = useState(false);
+  const [resetMessage, setResetMessage] = useState('');
+  const [resetErrorMessage, setResetErrorMessage] = useState('');
 
   const formWidth = Math.min(width - 32, 460);
 
@@ -70,6 +75,39 @@ export default function LoginScreen({ onAuthenticated }) {
       }
     } finally {
       setLoading(false);
+    }
+  }
+
+  function openPasswordReset() {
+    setShowPasswordReset(true);
+    setResetEmail((current) => current || email.trim());
+    setResetMessage('');
+    setResetErrorMessage('');
+  }
+
+  async function handlePasswordReset() {
+    const requestedEmail = resetEmail.trim() || email.trim();
+
+    if (!requestedEmail) {
+      setResetErrorMessage('Enter your manager email first.');
+      return;
+    }
+
+    Keyboard.dismiss();
+    setResetLoading(true);
+    setResetMessage('');
+    setResetErrorMessage('');
+
+    try {
+      const response = await api.post('/auth/manager/request-password-reset', {
+        email: requestedEmail
+      });
+      setResetEmail(requestedEmail);
+      setResetMessage(response.data?.message || 'Check your email for reset instructions.');
+    } catch (error) {
+      setResetErrorMessage(error.response?.data?.error || 'Could not send reset instructions.');
+    } finally {
+      setResetLoading(false);
     }
   }
 
@@ -140,6 +178,58 @@ export default function LoginScreen({ onAuthenticated }) {
                     <Text style={styles.buttonText}>Sign In</Text>
                   )}
                 </Pressable>
+                <Pressable
+                  accessibilityRole="button"
+                  disabled={resetLoading}
+                  onPress={openPasswordReset}
+                  style={({ pressed }) => [
+                    styles.forgotPasswordLink,
+                    pressed && !resetLoading ? styles.forgotPasswordLinkPressed : null
+                  ]}
+                >
+                  <Text style={styles.forgotPasswordText}>Forgot manager password?</Text>
+                </Pressable>
+                {showPasswordReset ? (
+                  <View style={styles.resetPanel}>
+                    <Text style={styles.resetHelperText}>
+                      Enter your manager email and we&apos;ll send reset instructions.
+                    </Text>
+                    <TextInput
+                      autoCapitalize="none"
+                      autoCorrect={false}
+                      keyboardType="email-address"
+                      onChangeText={(value) => {
+                        setResetEmail(value);
+                        if (resetErrorMessage) {
+                          setResetErrorMessage('');
+                        }
+                      }}
+                      placeholder="Manager email"
+                      placeholderTextColor="#8b8b8b"
+                      returnKeyType="send"
+                      onSubmitEditing={handlePasswordReset}
+                      style={styles.resetInput}
+                      value={resetEmail}
+                    />
+                    <Pressable
+                      disabled={resetLoading}
+                      onPress={handlePasswordReset}
+                      style={({ pressed }) => [
+                        styles.resetButton,
+                        resetLoading && styles.buttonDisabled,
+                        pressed && !resetLoading ? styles.buttonPressed : null
+                      ]}
+                    >
+                      {resetLoading ? (
+                        <ActivityIndicator color="#ffffff" />
+                      ) : (
+                        <Text style={styles.resetButtonText}>Send reset link</Text>
+                      )}
+                    </Pressable>
+                    {resetMessage ? <Text style={styles.resetSuccessText}>{resetMessage}</Text> : null}
+                    {resetErrorMessage ? <Text style={styles.resetErrorText}>{resetErrorMessage}</Text> : null}
+                  </View>
+                ) : null}
                 {errorMessage ? <Text style={styles.errorText}>{errorMessage}</Text> : null}
               </View>
             </View>
@@ -228,6 +318,70 @@ const styles = StyleSheet.create({
     color: '#ffffff',
     fontSize: 18,
     fontWeight: '700'
+  },
+  forgotPasswordLink: {
+    alignSelf: 'center',
+    marginTop: -2,
+    paddingHorizontal: 10,
+    paddingVertical: 6
+  },
+  forgotPasswordLinkPressed: {
+    opacity: 0.7
+  },
+  forgotPasswordText: {
+    color: '#5f6f7c',
+    fontSize: 14,
+    fontWeight: '700',
+    lineHeight: 18,
+    textAlign: 'center'
+  },
+  resetPanel: {
+    gap: 10,
+    marginTop: 2
+  },
+  resetHelperText: {
+    color: '#5f6f7c',
+    fontSize: 14,
+    lineHeight: 20,
+    textAlign: 'center'
+  },
+  resetInput: {
+    backgroundColor: '#ffffff',
+    borderColor: '#d2d2d2',
+    borderRadius: 12,
+    borderWidth: 1,
+    color: '#222222',
+    fontSize: 16,
+    minHeight: 48,
+    paddingHorizontal: 14,
+    paddingVertical: 12
+  },
+  resetButton: {
+    alignItems: 'center',
+    alignSelf: 'center',
+    backgroundColor: '#FF6200',
+    borderRadius: 12,
+    justifyContent: 'center',
+    minHeight: 44,
+    minWidth: 170,
+    paddingHorizontal: 16
+  },
+  resetButtonText: {
+    color: '#ffffff',
+    fontSize: 15,
+    fontWeight: '700'
+  },
+  resetSuccessText: {
+    color: '#166534',
+    fontSize: 14,
+    lineHeight: 20,
+    textAlign: 'center'
+  },
+  resetErrorText: {
+    color: '#d92d20',
+    fontSize: 14,
+    lineHeight: 20,
+    textAlign: 'center'
   },
   errorText: {
     color: '#d92d20',

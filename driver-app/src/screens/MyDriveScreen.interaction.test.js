@@ -1,5 +1,5 @@
 import React from 'react';
-import { Alert, Linking, Pressable, Text, View } from 'react-native';
+import { Alert, Linking, Pressable, StyleSheet, Text, View } from 'react-native';
 import { act, fireEvent, render, waitFor } from '@testing-library/react-native';
 
 import MyDriveScreen from './MyDriveScreen';
@@ -112,14 +112,14 @@ describe('MyDriveScreen interactions', () => {
                 },
                 {
                   id: 'stop-2',
-                  sequence_order: 2,
+                  sequence_order: 100,
                   address: '200 Oak St, Escondido, CA',
                   lat: 33.2,
                   lng: -117.3,
                   status: 'pending',
                   stop_type: 'delivery',
                   contact_name: 'Alex Driver',
-                  packages: [{ id: 'pkg-1' }]
+                  packages: [{ id: 'pkg-1', requires_signature: true }]
                 }
               ]
             }
@@ -169,11 +169,13 @@ describe('MyDriveScreen interactions', () => {
     fireEvent.press(screen.getByTestId('stop-marker-stop:stop-2'));
 
     await screen.findByText(/Alex Driver/);
+    expect(screen.getByTestId('signature-badge-stop-2')).toBeTruthy();
+    expect(screen.getByText('Signature required')).toBeTruthy();
 
     expect(mockMapMethods.animateCamera).not.toHaveBeenCalled();
     expect(mockMapMethods.animateToRegion).not.toHaveBeenCalled();
 
-    fireEvent.press(screen.getByText('Tap to open stop details'));
+    fireEvent.press(screen.getByTestId('selected-stop-card-action'));
 
     expect(navigation.navigate).toHaveBeenCalledWith('StopDetail', {
       stopId: 'stop-2'
@@ -241,6 +243,61 @@ describe('MyDriveScreen interactions', () => {
 
     await waitFor(() => {
       expect(api.patch).toHaveBeenCalledWith('/routes/stops/stop-2/complete', {
+        status: 'delivered'
+      });
+    });
+
+    openURLSpy.mockRestore();
+    canOpenURLSpy.mockRestore();
+  });
+
+  it('dismisses the selected stop card and keeps map actions working after another stop is selected', async () => {
+    const canOpenURLSpy = jest.spyOn(Linking, 'canOpenURL').mockResolvedValue(true);
+    const openURLSpy = jest.spyOn(Linking, 'openURL').mockResolvedValue();
+
+    api.patch.mockResolvedValue({ data: {} });
+
+    const screen = await renderAndFlush();
+
+    fireEvent.press(screen.getByTestId('stop-marker-stop:stop-2'));
+    await screen.findByText('Alex Driver');
+    const fitCallCountBeforeClose = mockMapMethods.fitToCoordinates.mock.calls.length;
+    const animateCameraCallCountBeforeClose = mockMapMethods.animateCamera.mock.calls.length;
+    const animateToRegionCallCountBeforeClose = mockMapMethods.animateToRegion.mock.calls.length;
+    const navButtonStyle = StyleSheet.flatten(screen.getByTestId('selected-stop-nav-button').props.style);
+    const closeButtonStyle = StyleSheet.flatten(screen.getByTestId('selected-stop-close-button').props.style);
+
+    expect(navButtonStyle.minHeight).toBeGreaterThanOrEqual(44);
+    expect(closeButtonStyle.height).toBeGreaterThanOrEqual(44);
+    expect(closeButtonStyle.width).toBeGreaterThanOrEqual(44);
+
+    fireEvent.press(screen.getByTestId('selected-stop-close-button'));
+
+    await waitFor(() => {
+      expect(screen.queryByText('Alex Driver')).toBeNull();
+      expect(screen.queryByText('Nav')).toBeNull();
+    });
+    expect(openURLSpy).not.toHaveBeenCalled();
+    expect(api.patch).not.toHaveBeenCalled();
+    expect(mockMapMethods.fitToCoordinates).toHaveBeenCalledTimes(fitCallCountBeforeClose);
+    expect(mockMapMethods.animateCamera).toHaveBeenCalledTimes(animateCameraCallCountBeforeClose);
+    expect(mockMapMethods.animateToRegion).toHaveBeenCalledTimes(animateToRegionCallCountBeforeClose);
+
+    fireEvent.press(screen.getByTestId('stop-marker-stop:stop-1'));
+    await screen.findByText('100 Main St, Escondido, CA');
+
+    fireEvent.press(screen.getByTestId('selected-stop-nav-button'));
+
+    await waitFor(() => {
+      expect(openURLSpy).toHaveBeenCalledWith(
+        'comgooglemaps://?daddr=100%20Main%20St%2C%20Escondido%2C%20CA&directionsmode=driving'
+      );
+    });
+
+    fireEvent.press(screen.getByText('Complete'));
+
+    await waitFor(() => {
+      expect(api.patch).toHaveBeenCalledWith('/routes/stops/stop-1/complete', {
         status: 'delivered'
       });
     });
@@ -323,6 +380,260 @@ describe('MyDriveScreen interactions', () => {
         status: 'pickup_complete'
       });
     });
+  });
+
+  it('opens a grouped pin as individual actionable stop cards and completes only the selected stop', async () => {
+    const canOpenURLSpy = jest.spyOn(Linking, 'canOpenURL').mockResolvedValue(true);
+    const openURLSpy = jest.spyOn(Linking, 'openURL').mockResolvedValue();
+    const groupedStops = [
+      {
+        id: 'group-stop-1',
+        sequence_order: 12,
+        sid: 'A12',
+        address: '500 Same St, Escondido, CA',
+        address_line2: 'Unit 1',
+        lat: 33.3,
+        lng: -117.4,
+        status: 'pending',
+        stop_type: 'delivery',
+        contact_name: 'First Receiver',
+        property_intel: {
+          normalized_address: '500 same st'
+        },
+        packages: [{ id: 'pkg-a', requires_signature: true }]
+      },
+      {
+        id: 'group-stop-2',
+        sequence_order: 13,
+        sid: 'B13',
+        address: '500 Same St, Escondido, CA',
+        address_line2: 'Unit 2',
+        lat: 33.3001,
+        lng: -117.4001,
+        status: 'pending',
+        stop_type: 'delivery',
+        contact_name: 'Second Receiver',
+        property_intel: {
+          normalized_address: '500 same st'
+        },
+        packages: [{ id: 'pkg-b' }, { id: 'pkg-c' }]
+      }
+    ];
+
+    api.get.mockImplementation((url) => {
+      if (url === '/routes/today') {
+        return Promise.resolve({
+          data: {
+            route: {
+              id: 'route-1',
+              completed_stops: groupedStops.filter((stop) => stop.completed_at).length,
+              total_stops: groupedStops.length,
+              stops_per_hour: 12,
+              stops: groupedStops.map((stop) => ({ ...stop }))
+            }
+          }
+        });
+      }
+
+      if (url === '/timecards/status') {
+        return Promise.resolve({
+          data: {
+            clock_in_at: null,
+            active_break: null
+          }
+        });
+      }
+
+      return Promise.reject(new Error(`Unexpected GET ${url}`));
+    });
+
+    api.patch.mockImplementation((url, payload) => {
+      if (url === '/routes/stops/group-stop-1/complete') {
+        Object.assign(groupedStops[0], {
+          status: payload.status,
+          completed_at: '2026-05-14T18:00:00.000Z'
+        });
+        return Promise.resolve({ data: {} });
+      }
+
+      return Promise.reject(new Error(`Unexpected PATCH ${url}`));
+    });
+
+    const screen = await renderAndFlush();
+
+    fireEvent.press(screen.getByTestId('stop-marker-group:500 same st'));
+
+    await screen.findByTestId('grouped-stop-card-group-stop-1');
+    expect(screen.getByTestId('grouped-stop-card-group-stop-2')).toBeTruthy();
+    expect(screen.getByText('Same address, separate stops')).toBeTruthy();
+    expect(screen.getByText('Signature required')).toBeTruthy();
+    expect(screen.getByText('2 stops at this address')).toBeTruthy();
+    expect(screen.getByText('0 of 2 complete')).toBeTruthy();
+    expect(screen.getByText('Total packages: 3')).toBeTruthy();
+    expect(screen.getByText('Navigate')).toBeTruthy();
+    expect(screen.getByText('Save pin')).toBeTruthy();
+    expect(screen.getByText('Flag road')).toBeTruthy();
+    expect(screen.getByText('Delivery intel')).toBeTruthy();
+    expect(screen.getByText('Complete stops individually above.')).toBeTruthy();
+
+    fireEvent.press(screen.getByText('Navigate'));
+    await waitFor(() => {
+      expect(openURLSpy).toHaveBeenCalledWith(
+        'comgooglemaps://?daddr=500%20Same%20St%2C%20Escondido%2C%20CA&directionsmode=driving'
+      );
+    });
+
+    fireEvent.press(screen.getByText('Delivery intel'));
+    expect(navigation.navigate).toHaveBeenCalledWith('StopDetail', {
+      stopId: 'group-stop-1'
+    });
+
+    fireEvent.press(screen.getByTestId('grouped-stop-complete-group-stop-1'));
+
+    await waitFor(() => {
+      expect(api.patch).toHaveBeenCalledWith('/routes/stops/group-stop-1/complete', {
+        status: 'delivered'
+      });
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText('1 of 2 complete')).toBeTruthy();
+    });
+    expect(screen.getByTestId('grouped-stop-card-group-stop-2')).toBeTruthy();
+    expect(api.patch).not.toHaveBeenCalledWith('/routes/stops/group-stop-2/complete', expect.anything());
+
+    openURLSpy.mockRestore();
+    canOpenURLSpy.mockRestore();
+  });
+
+  it('adds grouped delivery and exception codes to the individual selected stop id', async () => {
+    Alert.prompt = Alert.prompt || jest.fn();
+    const alertSpy = jest.spyOn(Alert, 'alert').mockImplementation((_title, _message, buttons) => {
+      if (Array.isArray(buttons)) {
+        const codeButton = buttons.find((button) => button.text === 'Delivery code') || buttons.find((button) => button.text === 'Exception code');
+        codeButton?.onPress?.();
+      }
+    });
+    const promptSpy = jest.spyOn(Alert, 'prompt').mockImplementation((_title, _message, buttons) => {
+      buttons[1].onPress(_title.includes('exception') ? '07' : '013');
+    });
+
+    const groupedStops = [
+      {
+        id: 'code-stop-1',
+        sequence_order: 21,
+        sid: 'C21',
+        address: '600 Code St, Escondido, CA',
+        address_line2: 'Unit 1',
+        lat: 33.31,
+        lng: -117.41,
+        status: 'pending',
+        stop_type: 'delivery',
+        property_intel: {
+          normalized_address: '600 code st'
+        },
+        packages: []
+      },
+      {
+        id: 'code-stop-2',
+        sequence_order: 22,
+        sid: 'C22',
+        address: '600 Code St, Escondido, CA',
+        address_line2: 'Unit 2',
+        lat: 33.3101,
+        lng: -117.4101,
+        status: 'pending',
+        stop_type: 'delivery',
+        property_intel: {
+          normalized_address: '600 code st'
+        },
+        packages: []
+      }
+    ];
+
+    api.get.mockImplementation((url) => {
+      if (url === '/routes/today') {
+        return Promise.resolve({
+          data: {
+            route: {
+              id: 'route-1',
+              completed_stops: 0,
+              total_stops: groupedStops.length,
+              stops_per_hour: 12,
+              stops: groupedStops.map((stop) => ({ ...stop }))
+            }
+          }
+        });
+      }
+
+      if (url === '/timecards/status') {
+        return Promise.resolve({
+          data: {
+            clock_in_at: null,
+            active_break: null
+          }
+        });
+      }
+
+      return Promise.reject(new Error(`Unexpected GET ${url}`));
+    });
+
+    api.patch.mockImplementation((url, payload) => {
+      if (url === '/routes/stops/code-stop-1/complete') {
+        Object.assign(groupedStops[0], {
+          status: payload.status,
+          delivery_type_code: payload.delivery_type_code,
+          exception_code: payload.exception_code,
+          completed_at: '2026-05-14T18:10:00.000Z'
+        });
+        return Promise.resolve({ data: {} });
+      }
+
+      if (url === '/routes/stops/code-stop-2/complete') {
+        Object.assign(groupedStops[1], {
+          status: payload.status,
+          exception_code: payload.exception_code,
+          completed_at: '2026-05-14T18:12:00.000Z'
+        });
+        return Promise.resolve({ data: {} });
+      }
+
+      return Promise.reject(new Error(`Unexpected PATCH ${url}`));
+    });
+
+    const screen = await renderAndFlush();
+
+    fireEvent.press(screen.getByTestId('stop-marker-group:600 code st'));
+    await screen.findByTestId('grouped-stop-card-code-stop-1');
+
+    fireEvent.press(screen.getByTestId('grouped-stop-add-code-code-stop-1'));
+    await waitFor(() => {
+      expect(api.patch).toHaveBeenCalledWith('/routes/stops/code-stop-1/complete', {
+        status: 'delivered',
+        delivery_type_code: '013',
+        exception_code: null
+      });
+    });
+    await waitFor(() => {
+      expect(screen.getByText('1 of 2 complete')).toBeTruthy();
+    });
+
+    alertSpy.mockImplementation((_title, _message, buttons) => {
+      if (Array.isArray(buttons)) {
+        buttons.find((button) => button.text === 'Exception code')?.onPress?.();
+      }
+    });
+    fireEvent.press(screen.getByTestId('grouped-stop-add-code-code-stop-2'));
+
+    await waitFor(() => {
+      expect(api.patch).toHaveBeenCalledWith('/routes/stops/code-stop-2/complete', {
+        status: 'attempted',
+        exception_code: '07'
+      });
+    });
+
+    promptSpy.mockRestore();
+    alertSpy.mockRestore();
   });
 
   it('falls back to web Google Maps when native app is unavailable', async () => {
@@ -467,7 +778,7 @@ describe('MyDriveScreen interactions', () => {
     expect(await screen.findByText('Clock Out')).toBeTruthy();
   });
 
-  it('offers break, lunch, or clock out from the single labor button after clock-in', async () => {
+  it('offers break and lunch from the break button after clock-in', async () => {
     const alertSpy = jest.spyOn(Alert, 'alert').mockImplementation(() => {});
     api.post.mockImplementation((url) => {
       if (url === '/timecards/clock-in') {
@@ -498,16 +809,16 @@ describe('MyDriveScreen interactions', () => {
     fireEvent.press(screen.getByText('Clock In'));
     await screen.findByText('Clock Out');
 
-    fireEvent.press(screen.getByText('Clock Out'));
+    fireEvent.press(screen.getByText('Break'));
 
     await waitFor(() => {
       expect(alertSpy).toHaveBeenCalledWith(
-        'Manage labor',
-        'Choose what you want to do next.',
+        'Start break',
+        'Choose the type of break you are taking.',
         expect.arrayContaining([
           expect.objectContaining({ text: 'Break' }),
           expect.objectContaining({ text: 'Lunch' }),
-          expect.objectContaining({ text: 'Clock Out' })
+          expect.objectContaining({ text: 'Cancel' })
         ])
       );
     });

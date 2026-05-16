@@ -1,5 +1,7 @@
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
+import appTheme from '../theme/appTheme';
+
 export default function PortalModeBar({ activeMode, availableModes, onSelectMode, title }) {
   if (!availableModes?.length) {
     return null;
@@ -40,40 +42,42 @@ export default function PortalModeBar({ activeMode, availableModes, onSelectMode
 
 const styles = StyleSheet.create({
   wrap: {
-    marginBottom: 16
+    marginBottom: appTheme.spacing.md
   },
   headerRow: {
-    gap: 12
+    gap: appTheme.spacing.sm
   },
   title: {
-    color: '#173042',
-    fontSize: 16,
-    fontWeight: '700'
+    color: appTheme.colors.textPrimary,
+    fontSize: appTheme.typography.label,
+    fontWeight: appTheme.typography.weights.bold
   },
   segmentedControl: {
     alignSelf: 'flex-start',
-    backgroundColor: '#f2e8dd',
-    borderRadius: 999,
+    backgroundColor: appTheme.colors.surfaceTint,
+    borderColor: appTheme.colors.border,
+    borderRadius: appTheme.radius.pill,
+    borderWidth: 1,
     flexDirection: 'row',
-    padding: 4
+    padding: appTheme.spacing.xxs
   },
   segmentButton: {
-    borderRadius: 999,
-    paddingHorizontal: 14,
-    paddingVertical: 10
+    borderRadius: appTheme.radius.pill,
+    paddingHorizontal: appTheme.spacing.md,
+    paddingVertical: appTheme.spacing.sm
   },
   segmentButtonActive: {
-    backgroundColor: '#173042'
+    backgroundColor: appTheme.colors.charcoal
   },
   segmentButtonPressed: {
     opacity: 0.9
   },
   segmentLabel: {
-    color: '#6a625d',
-    fontSize: 14,
-    fontWeight: '700'
+    color: appTheme.colors.textSecondary,
+    fontSize: appTheme.typography.bodySmall,
+    fontWeight: appTheme.typography.weights.bold
   },
   segmentLabelActive: {
-    color: '#ffffff'
+    color: appTheme.colors.textInverse
   }
 });

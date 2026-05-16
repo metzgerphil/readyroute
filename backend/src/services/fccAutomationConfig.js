@@ -33,6 +33,8 @@ function resolveFccAutomationConfig(env = process.env) {
       env.FEDEX_FCC_RELATED_WORK_AREA_ITEM_SELECTOR || 'xpath=//*[contains(normalize-space(),"Related Work Areas")]/following::*[self::li or self::div or self::span][normalize-space()]'
     ).trim(),
     searchButtonSelector: String(env.FEDEX_FCC_SEARCH_BUTTON_SELECTOR || 'button:has-text("Search"), input[value="Search"]').trim(),
+    pickupManifestTabSelector: String(env.FEDEX_FCC_PICKUP_TAB_SELECTOR || 'text=Pickup Manifest').trim(),
+    deliveryManifestTabSelector: String(env.FEDEX_FCC_DELIVERY_TAB_SELECTOR || 'text=Delivery Manifest').trim(),
     combinedManifestTabSelector: String(env.FEDEX_FCC_COMBINED_TAB_SELECTOR || 'text=Combined Manifest').trim(),
     recordsFoundSelector: String(env.FEDEX_FCC_RECORDS_FOUND_SELECTOR || 'text=/records found/i').trim(),
     exportXlsSelector: String(

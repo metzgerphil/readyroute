@@ -148,12 +148,13 @@ function signManagerToken(overrides = {}) {
   );
 }
 
-async function startTestServer({ supabase, now, sendManagerInviteEmail, stripeClient, billingService }) {
+async function startTestServer({ supabase, now, sendManagerInviteEmail, sendManagerPasswordResetEmail, stripeClient, billingService }) {
   const app = createApp({
     supabase,
     jwtSecret: process.env.JWT_SECRET,
     now,
     sendManagerInviteEmail,
+    sendManagerPasswordResetEmail,
     stripeClient,
     billingService
   });
@@ -235,7 +236,7 @@ test('GET /manager/dashboard returns stops_per_hour using the first-scan formula
           { id: 'stop-2', route_id: 'route-1', sequence_order: 2, address: '200 Main St', status: 'delivered', completed_at: '2026-04-08T16:30:00.000Z', delivery_type_code: '014', has_time_commit: false, exception_code: null },
           { id: 'stop-3', route_id: 'route-1', sequence_order: 3, address: '300 Main St', status: 'incomplete', completed_at: '2026-04-08T17:00:00.000Z', delivery_type_code: '021', has_time_commit: true, exception_code: '07' },
           { id: 'stop-4', route_id: 'route-1', sequence_order: 4, address: '400 Main St', status: 'delivered', completed_at: '2026-04-08T17:15:00.000Z', delivery_type_code: '013', has_time_commit: false, exception_code: null },
-          { id: 'stop-5', route_id: 'route-1', sequence_order: 5, address: '500 Main St', status: 'pending', completed_at: null, delivery_type_code: null, has_time_commit: true, exception_code: null }
+          { id: 'stop-5', route_id: 'route-1', sequence_order: 5, address: '500 Main St', status: 'pending', completed_at: null, delivery_type_code: null, has_time_commit: true, exception_code: null, stop_type: 'pickup', has_pickup: true, has_delivery: false, is_pickup: true }
         ],
         error: null
       };
@@ -322,6 +323,9 @@ test('GET /manager/dashboard returns stops_per_hour using the first-scan formula
     const body = await response.json();
     assert.equal(body.total_stops, 10);
     assert.equal(body.completed_stops, 4);
+    assert.equal(body.total_pickup_stops, 1);
+    assert.equal(body.pickup_stops, 1);
+    assert.equal(body.pickup_stops_completed, 0);
     assert.equal(body.time_commits_total, 3);
     assert.equal(body.time_commits_completed, 2);
     assert.equal(body.route_summary.completed, 0);
@@ -342,12 +346,17 @@ test('GET /manager/dashboard returns stops_per_hour using the first-scan formula
     assert.equal(body.sync_status.routes_today, 1);
     assert.equal(body.sync_status.routes_assigned, 1);
     assert.equal(body.sync_status.drivers_on_road, 1);
+    assert.equal(body.sync_status.total_pickup_stops, 1);
     assert.equal(body.sync_status.last_sync_at, '2026-04-08T17:45:00.000Z');
     assert.equal(body.drivers[0].work_area_name, '810');
     assert.equal(body.drivers[0].vehicle_name, 'Van 1');
     assert.equal(body.drivers[0].vehicle_plate, '8WAI675');
     assert.equal(body.drivers[0].time_commits_total, 3);
     assert.equal(body.drivers[0].time_commits_completed, 2);
+    assert.equal(body.drivers[0].pickup_stops, 1);
+    assert.equal(body.drivers[0].pickup_stops_completed, 0);
+    assert.equal(body.drivers[0].pickup_stop_count, 1);
+    assert.equal(body.drivers[0].driver_pickup_stops, 1);
     assert.equal(body.drivers[0].stops_per_hour, 2);
     assert.equal(body.drivers[0].current_stop_number, 5);
     assert.equal(body.drivers[0].current_stop_address, '500 Main St');
@@ -511,6 +520,7 @@ test('GET /manager/drivers returns the driver list for the manager account', asy
             account_id: 'acct-1',
             name: 'Alex Driver',
             email: 'alex@example.com',
+            fedex_driver_id: 'FX123',
             phone: '555-1234',
             hourly_rate: 22.5,
             is_active: true
@@ -536,6 +546,7 @@ test('GET /manager/drivers returns the driver list for the manager account', asy
     const body = await response.json();
     assert.equal(body.drivers.length, 1);
     assert.equal(body.drivers[0].name, 'Alex Driver');
+    assert.equal(body.drivers[0].fedex_driver_id, 'FX123');
     assert.equal(body.drivers[0].is_active, true);
   } finally {
     await server.close();
@@ -567,8 +578,9 @@ test('POST /manager/drivers creates a driver with a hashed PIN', async () => {
       assert.equal(query.payload.account_id, 'acct-1');
       assert.equal(query.payload.name, 'Alex Driver');
       assert.equal(query.payload.email, 'alex@example.com');
+      assert.equal(query.payload.fedex_driver_id, 'FX123');
       assert.equal(query.payload.phone, '555-1234');
-      assert.equal(query.payload.hourly_rate, 22.5);
+      assert.equal(query.payload.hourly_rate, 0);
       assert.equal(query.payload.is_active, true);
       assert.notEqual(query.payload.pin, '1234');
       return {
@@ -592,8 +604,8 @@ test('POST /manager/drivers creates a driver with a hashed PIN', async () => {
       body: JSON.stringify({
         name: 'Alex Driver',
         email: 'Alex@Example.com',
+        fedex_driver_id: 'FX123',
         phone: '555-1234',
-        hourly_rate: 22.5,
         pin: '1234'
       })
     });
@@ -609,7 +621,8 @@ test('POST /manager/drivers creates a driver with a hashed PIN', async () => {
   }
 });
 
-test('POST /manager/drivers creates a driver without phone or hourly rate', async () => {
+test('POST /manager/drivers creates a driver without phone and falls back when FedEx Driver ID column is missing', async () => {
+  let insertAttempts = 0;
   const supabase = new MockSupabase((query) => {
     if (query.table === 'accounts' && query.operation === 'select') {
       return {
@@ -617,25 +630,36 @@ test('POST /manager/drivers creates a driver without phone or hourly rate', asyn
           id: 'acct-1',
           company_name: 'ReadyRoute Test',
           manager_email: 'manager@example.com',
-          driver_starter_pin: '2468'
+          driver_starter_pin: '1234'
         },
         error: null
       };
     }
 
     if (query.table === 'drivers' && query.operation === 'select') {
-      return { data: null, error: null };
+      return {
+        data: null,
+        error: null
+      };
     }
 
     if (query.table === 'drivers' && query.operation === 'insert') {
-      assert.equal(query.payload.name, 'No Phone Driver');
-      assert.equal(query.payload.email, 'nophone@example.com');
-      assert.equal(query.payload.fedex_driver_id, 'FX456');
-      assert.equal(query.payload.phone, null);
-      assert.equal(query.payload.hourly_rate, 0);
-      assert.equal(query.payload.is_active, true);
-      assert.notEqual(query.payload.pin, '2468');
+      insertAttempts += 1;
 
+      if (insertAttempts === 1) {
+        assert.equal(query.payload.fedex_driver_id, 'FX456');
+        assert.equal(query.payload.phone, null);
+        return {
+          data: null,
+          error: {
+            code: 'PGRST204',
+            message: "Could not find the 'fedex_driver_id' column of 'drivers' in the schema cache"
+          }
+        };
+      }
+
+      assert.equal(typeof query.payload.fedex_driver_id, 'undefined');
+      assert.equal(query.payload.phone, null);
       return {
         data: { id: 'driver-100' },
         error: null
@@ -663,6 +687,60 @@ test('POST /manager/drivers creates a driver without phone or hourly rate', asyn
 
     assert.equal(response.status, 201);
     assert.deepEqual(await response.json(), { driver_id: 'driver-100', starter_pin_applied: true });
+    assert.equal(insertAttempts, 2);
+  } finally {
+    await server.close();
+  }
+});
+
+test('GET /manager/drivers falls back when FedEx Driver ID column is missing', async () => {
+  let selectAttempts = 0;
+  const supabase = new MockSupabase((query) => {
+    if (query.table === 'drivers' && query.operation === 'select') {
+      selectAttempts += 1;
+
+      if (selectAttempts === 1) {
+        return {
+          data: null,
+          error: {
+            code: 'PGRST204',
+            message: "Could not find the 'fedex_driver_id' column of 'drivers' in the schema cache"
+          }
+        };
+      }
+
+      return {
+        data: [
+          {
+            id: 'driver-1',
+            account_id: 'acct-1',
+            name: 'Alex Driver',
+            email: 'alex@example.com',
+            phone: null,
+            hourly_rate: 0,
+            is_active: true
+          }
+        ],
+        error: null
+      };
+    }
+
+    throw new Error(`Unexpected query ${query.table}:${query.operation}`);
+  });
+
+  const server = await startTestServer({ supabase });
+
+  try {
+    const response = await fetch(`${server.baseUrl}/manager/drivers`, {
+      headers: {
+        Authorization: `Bearer ${signManagerToken()}`
+      }
+    });
+
+    assert.equal(response.status, 200);
+    const body = await response.json();
+    assert.equal(body.drivers[0].fedex_driver_id, null);
+    assert.equal(selectAttempts, 2);
   } finally {
     await server.close();
   }
@@ -980,7 +1058,10 @@ test('POST /manager/csas/switch returns a new token for an accessible CSA', asyn
 
     if (query.table === 'accounts' && query.operation === 'select') {
       return {
-        data: null,
+        data: {
+          id: 'acct-2',
+          company_name: 'PV Delivery'
+        },
         error: null
       };
     }
@@ -1007,6 +1088,163 @@ test('POST /manager/csas/switch returns a new token for an accessible CSA', asyn
     const payload = jwt.verify(body.token, process.env.JWT_SECRET);
     assert.equal(payload.account_id, 'acct-2');
     assert.equal(payload.manager_user_id, 'manager-2');
+    assert.equal(payload.company_name, 'PV Delivery');
+    assert.equal(payload.csa_name, 'PV Delivery');
+    assert.equal(body.company_name, 'PV Delivery');
+  } finally {
+    await server.close();
+  }
+});
+
+test('DELETE /manager/csas/:accountId/access unlinks non-current CSA access when another manager remains', async () => {
+  let deactivatedManagerUserId = null;
+  const supabase = new MockSupabase((query) => {
+    if (query.table === 'accounts' && query.operation === 'select') {
+      const idFilter = query.filters.find((filter) => filter.column === 'id' && filter.op === 'eq');
+      const idInFilter = query.filters.find((filter) => filter.column === 'id' && filter.op === 'in');
+      const managerEmailFilter = query.filters.find((filter) => filter.column === 'manager_email');
+
+      if (idFilter?.value === 'acct-2') {
+        return {
+          data: {
+            id: 'acct-2',
+            company_name: 'North County Routes',
+            manager_email: 'owner@example.com',
+            driver_starter_pin: '1234'
+          },
+          error: null
+        };
+      }
+
+      if (idInFilter) {
+        return {
+          data: [
+            {
+              id: 'acct-1',
+              company_name: 'Bridge Transportation',
+              manager_email: 'phillovesjoy@gmail.com',
+              created_at: '2026-04-01T00:00:00.000Z',
+              operations_timezone: 'America/Los_Angeles',
+              dispatch_window_start_hour: 6,
+              dispatch_window_end_hour: 11,
+              manifest_sync_interval_minutes: 15
+            }
+          ],
+          error: null
+        };
+      }
+
+      if (managerEmailFilter) {
+        return { data: [], error: null };
+      }
+    }
+
+    if (query.table === 'manager_users' && query.operation === 'select') {
+      const emailFilter = query.filters.find((filter) => filter.column === 'email');
+      const accountFilter = query.filters.find((filter) => filter.column === 'account_id' && filter.op === 'eq');
+      const accountInFilter = query.filters.find((filter) => filter.column === 'account_id' && filter.op === 'in');
+
+      if (accountFilter?.value === 'acct-2' && emailFilter) {
+        return {
+          data: {
+            id: 'manager-2',
+            account_id: 'acct-2',
+            email: 'phillovesjoy@gmail.com',
+            is_active: true
+          },
+          error: null
+        };
+      }
+
+      if (accountFilter?.value === 'acct-2') {
+        return {
+          data: [
+            { id: 'manager-2', email: 'phillovesjoy@gmail.com', is_active: true },
+            { id: 'manager-owner', email: 'owner@example.com', is_active: true }
+          ],
+          error: null
+        };
+      }
+
+      if (emailFilter) {
+        return {
+          data: [
+            { account_id: 'acct-1', is_active: true },
+            { account_id: 'acct-2', is_active: false }
+          ],
+          error: null
+        };
+      }
+
+      if (accountInFilter) {
+        return {
+          data: [
+            { account_id: 'acct-1', id: 'manager-1', is_active: true, email: 'phillovesjoy@gmail.com' }
+          ],
+          error: null
+        };
+      }
+    }
+
+    if (query.table === 'manager_users' && query.operation === 'update') {
+      deactivatedManagerUserId = query.filters.find((filter) => filter.column === 'id')?.value;
+      assert.deepEqual(query.payload, { is_active: false });
+      return { data: null, error: null };
+    }
+
+    if (query.table === 'drivers' && query.operation === 'select') {
+      return { data: [], error: null };
+    }
+
+    if (query.table === 'vehicles' && query.operation === 'select') {
+      return { data: [], error: null };
+    }
+
+    if (query.table === 'routes' && query.operation === 'select') {
+      return { data: [], error: null };
+    }
+
+    throw new Error(`Unexpected query ${query.table}:${query.operation}`);
+  });
+
+  const server = await startTestServer({ supabase, now: () => new Date('2026-04-20T18:00:00.000Z') });
+
+  try {
+    const response = await fetch(`${server.baseUrl}/manager/csas/acct-2/access`, {
+      method: 'DELETE',
+      headers: {
+        Authorization: `Bearer ${signManagerToken()}`
+      }
+    });
+
+    assert.equal(response.status, 200);
+    const body = await response.json();
+    assert.equal(body.success, true);
+    assert.equal(body.unlinked_account_id, 'acct-2');
+    assert.equal(deactivatedManagerUserId, 'manager-2');
+    assert.deepEqual(body.csas.map((csa) => csa.id), ['acct-1']);
+  } finally {
+    await server.close();
+  }
+});
+
+test('DELETE /manager/csas/:accountId/access requires switching away from the current CSA first', async () => {
+  const supabase = new MockSupabase((query) => {
+    throw new Error(`Unexpected query ${query.table}:${query.operation}`);
+  });
+  const server = await startTestServer({ supabase });
+
+  try {
+    const response = await fetch(`${server.baseUrl}/manager/csas/acct-1/access`, {
+      method: 'DELETE',
+      headers: {
+        Authorization: `Bearer ${signManagerToken()}`
+      }
+    });
+
+    assert.equal(response.status, 409);
+    const body = await response.json();
+    assert.equal(body.error, 'Switch to another CSA before unlinking the current one.');
   } finally {
     await server.close();
   }
@@ -1237,7 +1475,7 @@ test('GET /manager/route-sync-settings returns the CSA timezone and dispatch win
 
   const server = await startTestServer({
     supabase,
-    now: () => new Date('2026-04-24T13:30:00.000Z')
+    now: () => new Date('2026-04-24T14:30:00.000Z')
   });
 
   try {
@@ -1250,7 +1488,8 @@ test('GET /manager/route-sync-settings returns the CSA timezone and dispatch win
     assert.equal(response.status, 200);
     const body = await response.json();
     assert.equal(body.route_sync_settings.operations_timezone, 'America/Chicago');
-    assert.equal(body.route_sync_settings.dispatch_window_start_hour, 5);
+    assert.equal(body.route_sync_settings.dispatch_window_start_hour, 9);
+    assert.equal(body.route_sync_settings.configured_dispatch_window_start_hour, 5);
     assert.equal(body.route_sync_settings.dispatch_window_end_hour, 10);
     assert.equal(body.route_sync_settings.manifest_sync_interval_minutes, 20);
     assert.equal(body.route_sync_settings.dispatch_window_state, 'active_window');
@@ -1282,7 +1521,7 @@ test('PATCH /manager/route-sync-settings updates CSA timezone and dispatch windo
 
   const server = await startTestServer({
     supabase,
-    now: () => new Date('2026-04-24T13:30:00.000Z')
+    now: () => new Date('2026-04-24T14:30:00.000Z')
   });
 
   try {
@@ -1304,7 +1543,8 @@ test('PATCH /manager/route-sync-settings updates CSA timezone and dispatch windo
     const body = await response.json();
     assert.equal(body.ok, true);
     assert.equal(body.route_sync_settings.operations_timezone, 'America/New_York');
-    assert.equal(body.route_sync_settings.dispatch_window_label, '7:00 AM - 12:00 PM');
+    assert.equal(body.route_sync_settings.dispatch_window_label, '9:00 AM - 12:00 PM');
+    assert.equal(body.route_sync_settings.configured_dispatch_window_start_hour, 7);
     assert.equal(body.route_sync_settings.manifest_sync_interval_minutes, 10);
   } finally {
     await server.close();
@@ -1447,44 +1687,12 @@ test('POST /manager/fedex-accounts creates the first FedEx account as default', 
   }
 });
 
-test('POST /manager/fedex-accounts accepts FCC portal credentials without billing details', async () => {
-  const originalCredentialKey = process.env.FEDEX_SYNC_CREDENTIALS_KEY;
-  process.env.FEDEX_SYNC_CREDENTIALS_KEY = 'test-fcc-credential-key';
+test('POST /manager/fedex-accounts rejects FCC portal credentials while automation is paused', async () => {
+  const originalAutomationEnabled = process.env.FEDEX_FCC_AUTOMATION_ENABLED;
+  process.env.FEDEX_FCC_AUTOMATION_ENABLED = 'false';
 
   const supabase = new MockSupabase((query) => {
-    if (query.table === 'fedex_accounts' && query.operation === 'select') {
-      return {
-        data: [],
-        error: null
-      };
-    }
-
-    if (query.table === 'fedex_accounts' && query.operation === 'update') {
-      return { data: null, error: null };
-    }
-
-    if (query.table === 'fedex_accounts' && query.operation === 'insert') {
-      assert.equal(query.payload.nickname, 'FCC Portal Access');
-      assert.match(query.payload.account_number, /^FCC[A-F0-9]{12}$/);
-      assert.equal(query.payload.billing_address_line1, 'FCC Portal Credential');
-      assert.equal(query.payload.connection_status, 'connected');
-      assert.equal(query.payload.fcc_username, 'bridge@example.com');
-      assert.ok(query.payload.fcc_password_encrypted);
-      return {
-        data: {
-          id: 'fx-portal-1',
-          account_id: 'acct-1',
-          ...query.payload,
-          fcc_password_encrypted: query.payload.fcc_password_encrypted,
-          created_at: '2026-04-22T14:00:00.000Z',
-          updated_at: '2026-04-22T14:00:00.000Z',
-          disconnected_at: null
-        },
-        error: null
-      };
-    }
-
-    throw new Error(`Unexpected query ${query.table}:${query.operation}`);
+    throw new Error(`Paused FCC credential collection should not query ${query.table}:${query.operation}`);
   });
 
   const server = await startTestServer({ supabase });
@@ -1502,14 +1710,15 @@ test('POST /manager/fedex-accounts accepts FCC portal credentials without billin
       })
     });
 
-    assert.equal(response.status, 201);
+    assert.equal(response.status, 403);
     const body = await response.json();
-    assert.equal(body.account.nickname, 'FCC Portal Access');
-    assert.equal(body.account.fcc_username, 'bridge@example.com');
-    assert.equal(body.account.has_saved_fcc_password, true);
-    assert.equal(body.account.connection_status, 'connected');
+    assert.equal(body.error, 'FCC/MyBizAccount credential collection is paused pending FedEx-approved access.');
   } finally {
-    process.env.FEDEX_SYNC_CREDENTIALS_KEY = originalCredentialKey;
+    if (originalAutomationEnabled === undefined) {
+      delete process.env.FEDEX_FCC_AUTOMATION_ENABLED;
+    } else {
+      process.env.FEDEX_FCC_AUTOMATION_ENABLED = originalAutomationEnabled;
+    }
     await server.close();
   }
 });
@@ -1605,7 +1814,7 @@ test('POST /manager/fedex-accounts/:id/default promotes the selected account', a
   }
 });
 
-test('POST /manager/drivers uses the CSA starter PIN when no driver PIN is provided', async () => {
+test('POST /manager/drivers uses the default 1234 PIN when no driver PIN is provided', async () => {
   const supabase = new MockSupabase((query) => {
     if (query.table === 'accounts' && query.operation === 'select') {
       return {
@@ -1613,7 +1822,7 @@ test('POST /manager/drivers uses the CSA starter PIN when no driver PIN is provi
           id: 'acct-1',
           company_name: 'ReadyRoute Test',
           manager_email: 'manager@example.com',
-          driver_starter_pin: '1234'
+          driver_starter_pin: '2468'
         },
         error: null
       };
@@ -1734,8 +1943,9 @@ test('PUT /manager/drivers/:id updates driver profile fields', async () => {
 
     if (query.table === 'drivers' && query.operation === 'update') {
       assert.equal(query.payload.name, 'Updated Driver');
+      assert.equal(query.payload.fedex_driver_id, 'FX999');
       assert.equal(query.payload.phone, '555-8888');
-      assert.equal(query.payload.hourly_rate, 25.5);
+      assert.equal(typeof query.payload.hourly_rate, 'undefined');
       assert.equal(typeof query.payload.pin, 'undefined');
       return { data: null, error: null };
     }
@@ -1754,8 +1964,8 @@ test('PUT /manager/drivers/:id updates driver profile fields', async () => {
       },
       body: JSON.stringify({
         name: 'Updated Driver',
-        phone: '555-8888',
-        hourly_rate: 25.5
+        fedex_driver_id: 'FX999',
+        phone: '555-8888'
       })
     });
 
@@ -2783,6 +2993,16 @@ test('GET /manager/routes returns sync status and fedex connection metadata', as
             address: '100 Main St',
             lat: 32.7,
             lng: -117.1,
+            contact_name: 'Acme Receiving',
+            business_name: 'Acme Warehouse',
+            company_name: 'Acme Corp',
+            primary_phone: '555-111-2222',
+            alternate_phone: null,
+            email: 'dock@example.com',
+            customer_instructions: 'Call first',
+            delivery_instructions: 'Use dock',
+            consignee: 'Acme Logistics',
+            shipper: 'Sender Co',
             status: 'pending',
             notes: null,
             exception_code: null,
@@ -2794,7 +3014,11 @@ test('GET /manager/routes returns sync status and fedex connection metadata', as
             pod_signature_url: null,
             scanned_at: null,
             completed_at: null,
-            has_time_commit: true
+            has_time_commit: true,
+            stop_type: 'pickup',
+            has_pickup: true,
+            has_delivery: false,
+            is_pickup: true
           },
           {
             id: 'stop-2',
@@ -2814,7 +3038,11 @@ test('GET /manager/routes returns sync status and fedex connection metadata', as
             pod_signature_url: null,
             scanned_at: '2026-04-09T13:15:00.000Z',
             completed_at: '2026-04-09T13:15:00.000Z',
-            has_time_commit: false
+            has_time_commit: false,
+            stop_type: 'delivery',
+            has_pickup: false,
+            has_delivery: true,
+            is_pickup: false
           }
         ],
         error: null
@@ -2864,7 +3092,7 @@ test('GET /manager/routes returns sync status and fedex connection metadata', as
 
   const server = await startTestServer({
     supabase,
-    now: () => new Date('2026-04-09T13:30:00.000Z')
+    now: () => new Date('2026-04-09T14:30:00.000Z')
   });
 
   try {
@@ -2883,7 +3111,7 @@ test('GET /manager/routes returns sync status and fedex connection metadata', as
     assert.equal(body.sync_status.routes_blocked, 1);
     assert.equal(body.sync_status.last_sync_at, '2026-04-09T12:47:00.000Z');
     assert.equal(body.route_sync_settings.operations_timezone, 'America/Chicago');
-    assert.equal(body.route_sync_settings.dispatch_window_label, '5:00 AM - 10:00 AM');
+    assert.equal(body.route_sync_settings.dispatch_window_label, '9:00 AM - 10:00 AM');
     assert.equal(body.route_sync_settings.dispatch_window_state, 'active_window');
     assert.equal(body.route_sync_settings.manifest_sync_interval_minutes, 20);
     assert.equal(body.fedex_connection.is_connected, true);
@@ -2894,14 +3122,21 @@ test('GET /manager/routes returns sync status and fedex connection metadata', as
     assert.equal(body.routes[0].vehicle_plate, '8WAI675');
     assert.equal(body.routes[0].time_commits_total, 1);
     assert.equal(body.routes[0].time_commits_completed, 0);
+    assert.equal(body.routes[0].pickup_stops, 1);
+    assert.equal(body.routes[0].pickup_stops_completed, 0);
+    assert.equal(body.routes[0].pickup_stop_count, 1);
     assert.equal(body.routes[0].delivered_packages, 2);
     assert.equal(body.routes[0].total_packages, 3);
-    assert.equal(body.routes[0].stops_per_hour, 4);
+    assert.equal(body.routes[0].stops_per_hour, 0.8);
     assert.equal(body.routes[0].is_online, false);
     assert.equal(body.routes[0].last_position, null);
     assert.equal(body.routes[0].dispatch_state, 'staged');
     assert.equal(body.routes[0].sync_state, 'dispatch_blocked');
     assert.equal(body.routes[0].stops[0].delivery_type_code, '009');
+    assert.equal(body.routes[0].stops[0].has_contact_info, true);
+    assert.equal(body.routes[0].stops[0].primary_phone, undefined);
+    assert.equal(body.routes[0].stops[0].email, undefined);
+    assert.equal(body.routes[0].stops[0].business_name, undefined);
   } finally {
     await server.close();
   }
@@ -3479,6 +3714,15 @@ test('GET /manager/routes/:route_id/stops returns full stop detail for the selec
             address: '100 Main St, Escondido, CA 92029',
             address_line2: 'Suite 100',
             contact_name: 'Acme Receiving',
+            business_name: 'Acme Warehouse',
+            company_name: 'Acme Corp',
+            primary_phone: '555-111-2222',
+            alternate_phone: '555-222-3333',
+            email: 'dock@example.com',
+            customer_instructions: 'Call before arrival',
+            delivery_instructions: 'Use rear dock',
+            consignee: 'Acme Logistics',
+            shipper: 'Sender Co',
             lat: 33.12,
             lng: -117.08,
             status: 'pending',
@@ -3610,10 +3854,24 @@ test('GET /manager/routes/:route_id/stops returns full stop detail for the selec
     assert.equal(body.route.driver_name, 'Adrian Morales');
     assert.equal(body.route.vehicle_name, '204526');
     assert.equal(body.route.stops_per_hour, 2);
+    assert.equal(body.route.pickup_stops, 1);
+    assert.equal(body.route.pickup_stop_count, 1);
+    assert.equal(body.route.pickup_stops_completed, 1);
     assert.equal(body.route.sa_number, '919');
     assert.equal(body.route.contractor_name, 'Bridge Transportation Inc');
     assert.equal(body.stops.length, 2);
     assert.equal(body.stops[0].contact_name, 'Acme Receiving');
+    assert.equal(body.stops[0].has_contact_info, true);
+    assert.equal(body.stops[0].business_name, 'Acme Warehouse');
+    assert.equal(body.stops[0].company_name, 'Acme Corp');
+    assert.equal(body.stops[0].primary_phone, '555-111-2222');
+    assert.equal(body.stops[0].alternate_phone, '555-222-3333');
+    assert.equal(body.stops[0].email, 'dock@example.com');
+    assert.equal(body.stops[0].customer_instructions, 'Call before arrival');
+    assert.equal(body.stops[0].delivery_instructions, 'Use rear dock');
+    assert.equal(body.stops[0].consignee, 'Acme Logistics');
+    assert.equal(body.stops[0].shipper, 'Sender Co');
+    assert.equal(body.stops[0].raw_contact_metadata, undefined);
     assert.equal(body.stops[0].address_line2, 'Suite 100');
     assert.equal(body.stops[0].has_time_commit, true);
     assert.equal(body.stops[0].is_business, true);
@@ -4136,6 +4394,129 @@ test('POST /manager/manager-users/invite links an existing manager from another 
     assert.equal(body.invite_url, null);
     assert.equal(body.manager_user.status, 'active');
     assert.equal(insertedManagerUser.email, 'ignacioservin94@yahoo.com');
+  } finally {
+    await server.close();
+  }
+});
+
+test('POST /manager/manager-users/:id/password-reset sends a manager reset link', async () => {
+  const sentResets = [];
+  const managerPasswordHash = await bcrypt.hash('OldPass!2026', 10);
+  const supabase = new MockSupabase((query) => {
+    if (query.table === 'accounts' && query.operation === 'select') {
+      return {
+        data: {
+          id: 'acct-1',
+          company_name: 'Bridge Transportation Inc',
+          manager_email: 'owner@example.com'
+        },
+        error: null
+      };
+    }
+
+    if (query.table === 'manager_users' && query.operation === 'select') {
+      return {
+        data: {
+          id: 'manager-2',
+          account_id: 'acct-1',
+          email: 'vladfed0801@gmail.com',
+          full_name: 'Vlad Fedoryshyn',
+          password_hash: managerPasswordHash,
+          is_active: true,
+          invited_at: '2026-04-17T10:15:00.000Z',
+          accepted_at: '2026-04-17T10:20:00.000Z'
+        },
+        error: null
+      };
+    }
+
+    throw new Error(`Unexpected query ${query.table}:${query.operation}`);
+  });
+
+  const server = await startTestServer({
+    supabase,
+    sendManagerPasswordResetEmail: async (payload) => {
+      sentResets.push(payload);
+      return { delivered: true, skipped: false, provider_id: 'email-reset-1' };
+    }
+  });
+
+  try {
+    const response = await fetch(`${server.baseUrl}/manager/manager-users/manager-2/password-reset`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${signManagerToken()}`
+      }
+    });
+
+    assert.equal(response.status, 200);
+    const body = await response.json();
+    assert.equal(body.email_delivery, 'sent');
+    assert.equal(body.reset_url, null);
+    assert.match(body.message, /Password reset email sent/i);
+    assert.equal(sentResets.length, 1);
+    assert.equal(sentResets[0].to, 'vladfed0801@gmail.com');
+    assert.match(sentResets[0].resetUrl, /\/reset-password\?token=/);
+  } finally {
+    await server.close();
+  }
+});
+
+test('POST /manager/manager-users/:id/password-reset falls back to a shareable link when email delivery is unavailable', async () => {
+  const managerPasswordHash = await bcrypt.hash('OldPass!2026', 10);
+  const supabase = new MockSupabase((query) => {
+    if (query.table === 'accounts' && query.operation === 'select') {
+      return {
+        data: {
+          id: 'acct-1',
+          company_name: 'Bridge Transportation Inc',
+          manager_email: 'owner@example.com'
+        },
+        error: null
+      };
+    }
+
+    if (query.table === 'manager_users' && query.operation === 'select') {
+      return {
+        data: {
+          id: 'manager-2',
+          account_id: 'acct-1',
+          email: 'vladfed0801@gmail.com',
+          full_name: 'Vlad Fedoryshyn',
+          password_hash: managerPasswordHash,
+          is_active: true,
+          invited_at: '2026-04-17T10:15:00.000Z',
+          accepted_at: '2026-04-17T10:20:00.000Z'
+        },
+        error: null
+      };
+    }
+
+    throw new Error(`Unexpected query ${query.table}:${query.operation}`);
+  });
+
+  const server = await startTestServer({
+    supabase,
+    sendManagerPasswordResetEmail: async () => ({
+      delivered: false,
+      skipped: true,
+      reason: 'Email service is not configured'
+    })
+  });
+
+  try {
+    const response = await fetch(`${server.baseUrl}/manager/manager-users/manager-2/password-reset`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${signManagerToken()}`
+      }
+    });
+
+    assert.equal(response.status, 200);
+    const body = await response.json();
+    assert.equal(body.email_delivery, 'not_configured');
+    assert.match(body.reset_url, /\/reset-password\?token=/);
+    assert.equal(body.manager_user.email, 'vladfed0801@gmail.com');
   } finally {
     await server.close();
   }

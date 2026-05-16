@@ -94,12 +94,12 @@ describe('StopDetailScreen interactions', () => {
     expect(api.get).toHaveBeenCalledWith('/routes/stops/stop-1');
   });
 
-  it('saves the current GPS location as the corrected pin', async () => {
+  it('saves the current location as the corrected pin', async () => {
     const alertSpy = jest.spyOn(Alert, 'alert').mockImplementation(() => {});
     const screen = await renderAndFlush();
 
-    await screen.findByText('Save current GPS as correct pin');
-    fireEvent.press(screen.getByText('Save current GPS as correct pin'));
+    await screen.findByText('Save current location as correct pin');
+    fireEvent.press(screen.getByText('Save current location as correct pin'));
 
     await waitFor(() => {
       expect(api.patch).toHaveBeenCalledWith('/routes/stops/stop-1/correct-location', {
@@ -189,6 +189,62 @@ describe('StopDetailScreen interactions', () => {
     alertSpy.mockRestore();
   });
 
+  it('shows manifest contact details with call and email actions', async () => {
+    const openURLSpy = jest.spyOn(Linking, 'openURL').mockResolvedValue(true);
+    api.get.mockResolvedValueOnce({
+      data: {
+        stop: {
+          ...stopPayload,
+          contact_name: 'Acme Receiving',
+          business_name: 'Acme Warehouse',
+          company_name: 'Acme Logistics',
+          primary_phone: '(555) 111-2222 ext. 9',
+          alternate_phone: '555-333-4444',
+          email: 'dock@example.com',
+          customer_instructions: 'Call before arrival',
+          delivery_instructions: 'Use rear dock'
+        }
+      }
+    });
+
+    const screen = await renderAndFlush();
+
+    await screen.findByText('CUSTOMER CONTACT');
+    expect(screen.getByText('Acme Receiving')).toBeTruthy();
+    expect(screen.getByText('Acme Warehouse')).toBeTruthy();
+    expect(screen.getByText('(555) 111-2222 ext. 9')).toBeTruthy();
+    expect(screen.getByText('555-333-4444')).toBeTruthy();
+    expect(screen.getByText('dock@example.com')).toBeTruthy();
+    expect(screen.getByText('Call before arrival')).toBeTruthy();
+
+    fireEvent.press(screen.getAllByText('Call')[0]);
+    expect(openURLSpy).toHaveBeenCalledWith('tel:5551112222,9');
+
+    fireEvent.press(screen.getByLabelText('Email dock@example.com'));
+    expect(openURLSpy).toHaveBeenCalledWith('mailto:dock%40example.com');
+
+    openURLSpy.mockRestore();
+  });
+
+  it('keeps contact-name-only stops clean and shows the no-phone hint', async () => {
+    api.get.mockResolvedValueOnce({
+      data: {
+        stop: {
+          ...stopPayload,
+          contact_name: 'Name Only Customer'
+        }
+      }
+    });
+
+    const screen = await renderAndFlush();
+
+    await screen.findByText('CUSTOMER CONTACT');
+    expect(screen.getByText('Name Only Customer')).toBeTruthy();
+    expect(screen.getByText('No phone on manifest.')).toBeTruthy();
+    expect(screen.queryByText('Primary phone')).toBeNull();
+    expect(screen.queryByText('Alternate phone')).toBeNull();
+  });
+
   it('prevents invalid floor values from submitting', async () => {
     const screen = await renderAndFlush();
 
@@ -215,8 +271,8 @@ describe('StopDetailScreen interactions', () => {
     Location.requestForegroundPermissionsAsync.mockResolvedValue({ granted: false });
     const screen = await renderAndFlush();
 
-    await screen.findByText('Save current GPS as correct pin');
-    fireEvent.press(screen.getByText('Save current GPS as correct pin'));
+    await screen.findByText('Save current location as correct pin');
+    fireEvent.press(screen.getByText('Save current location as correct pin'));
 
     await waitFor(() => {
       expect(alertSpy).toHaveBeenCalledWith(

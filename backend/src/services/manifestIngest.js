@@ -441,6 +441,16 @@ function mergePackageDetails(primaryPackages = [], fallbackPackages = []) {
   return merged;
 }
 
+function getStopPackageTrackingNumbers(stop = {}) {
+  if (!Array.isArray(stop?.packages)) {
+    return [];
+  }
+
+  return stop.packages
+    .map((pkg) => String(pkg?.tracking_number || '').trim())
+    .filter(Boolean);
+}
+
 function dedupePackageRows(packageRows = []) {
   const seenTrackingNumbers = new Set();
   const dedupedRows = [];
@@ -546,12 +556,26 @@ function mergePendingManifestStops(existingStops = [], incomingStops = []) {
         aliasToPrimaryKey.set(`delivery:${deliveryAlias}`, primaryKey);
       }
     }
+
+    for (const trackingNumber of getStopPackageTrackingNumbers(stop)) {
+      const trackingAlias = `package:${trackingNumber}`;
+      if (!aliasToPrimaryKey.has(trackingAlias)) {
+        aliasToPrimaryKey.set(trackingAlias, primaryKey);
+      }
+    }
   }
 
   function findExistingPrimaryKey(stop, fallbackKey) {
     const primaryKey = buildPendingManifestStopKeyWithDuplicateSids(stop, fallbackKey, duplicateSids);
     if (mergedStops.has(primaryKey)) {
       return primaryKey;
+    }
+
+    for (const trackingNumber of getStopPackageTrackingNumbers(stop)) {
+      const matchedPrimaryKey = aliasToPrimaryKey.get(`package:${trackingNumber}`);
+      if (matchedPrimaryKey && mergedStops.has(matchedPrimaryKey)) {
+        return matchedPrimaryKey;
+      }
     }
 
     const hasPickup = Boolean(stop?.has_pickup || stop?.is_pickup || stop?.type === 'pickup' || stop?.stop_type === 'pickup' || stop?.type === 'combined' || stop?.stop_type === 'combined');
@@ -1241,7 +1265,7 @@ function createManifestIngestService(options = {}) {
     const addressWarnings = [];
     const correctedStops = await applyLocationCorrectionsToStops(supabase, accountId, manifestStops);
     const geocodedManifest = await enrichManifestStopsWithGeocoding(supabase, accountId, correctedStops);
-    let routeStops = normalizeMergedStopSequences(geocodedManifest.stops);
+    let routeStops = mergePendingManifestStops([], normalizeMergedStopSequences(geocodedManifest.stops));
     validateManifestPackageTracking(routeStops);
     const coordinateHealth = summarizeCoordinateHealth(routeStops);
     const coordinateIntegrity = detectSuspiciousCoordinateClusters(routeStops);
@@ -1264,6 +1288,81 @@ function createManifestIngestService(options = {}) {
 
     if (existingRouteError) {
       throw new Error('Failed to check for an existing route before upload');
+    }
+
+    if (existingRoute?.dispatch_state === 'dispatched') {
+      const syncedAt = nowProvider().toISOString();
+      const protectedRouteSyncMetadata = buildRouteSyncMetadata({
+        manifestMeta,
+        routeStops,
+        previousRoute: existingRoute,
+        syncedAt
+      });
+      const manifestChanged = protectedRouteSyncMetadata.manifest_fingerprint !== existingRoute.manifest_fingerprint;
+
+      await recordRouteSyncEvent(supabase, {
+        accountId,
+        routeId: existingRoute.id,
+        workDate: resolvedDate,
+        eventType: manifestChanged ? 'post_dispatch_change' : 'manifest_updated',
+        eventStatus: manifestChanged ? 'warning' : 'info',
+        summary: manifestChanged
+          ? `Post-dispatch manifest sync held for route ${resolvedWorkAreaName}`
+          : `Post-dispatch manifest sync matched live route ${resolvedWorkAreaName}`,
+        details: {
+          live_route_protected: true,
+          driver_route_unchanged: true,
+          sync_state: manifestChanged ? 'changed_after_dispatch' : 'staged_stable',
+          existing_route_id: existingRoute.id,
+          incoming_manifest_stop_count: routeStops.length,
+          incoming_manifest_package_count: protectedRouteSyncMetadata.manifest_package_count,
+          existing_manifest_fingerprint: existingRoute.manifest_fingerprint || null,
+          incoming_manifest_fingerprint: protectedRouteSyncMetadata.manifest_fingerprint,
+          manifest_layers: manifestLayerSummary,
+          auto_matched_driver: autoMatchedDriver,
+          auto_matched_vehicle: autoMatchedVehicle
+        },
+        managerUserId
+      });
+
+      const deliveryCount = routeStops.filter((stop) => stop.type === 'delivery').length;
+      const pickupCount = routeStops.filter((stop) => stop.type === 'pickup').length;
+      const combinedCount = routeStops.filter((stop) => stop.type === 'combined').length;
+      const pickupStopCount = routeStops.filter((stop) => stop.has_pickup || stop.type === 'pickup' || stop.type === 'combined').length;
+      const timeCommitCount = routeStops.filter((stop) => stop.has_time_commit).length;
+
+      return {
+        route_id: existingRoute.id,
+        total_stops: routeStops.length,
+        delivery_count: deliveryCount,
+        pickup_count: pickupCount,
+        pickup_stop_count: pickupStopCount,
+        total_pickup_stops: pickupStopCount,
+        combined_count: combinedCount,
+        time_commit_count: timeCommitCount,
+        merged_into_existing_route: false,
+        live_route_protected: true,
+        driver_route_unchanged: true,
+        post_dispatch_change_held: manifestChanged,
+        auto_matched_driver: autoMatchedDriver,
+        ...(matchedDriverName ? { matched_driver_name: matchedDriverName } : {}),
+        ...(unmatchedDriverName ? { unmatched_driver_name: unmatchedDriverName } : {}),
+        auto_matched_vehicle: autoMatchedVehicle,
+        manifest_meta: manifestMeta,
+        manifest_layers: manifestLayerSummary,
+        geocoding: {
+          status: geocodedManifest.summary.status,
+          attempted: geocodedManifest.summary.attempted,
+          geocoded: geocodedManifest.summary.geocoded,
+          failed: geocodedManifest.summary.failed
+        },
+        route_health: coordinateHealth,
+        coordinate_integrity: coordinateIntegrity,
+        address_warnings: addressWarnings,
+        manifest_stop_count: protectedRouteSyncMetadata.manifest_stop_count,
+        manifest_package_count: protectedRouteSyncMetadata.manifest_package_count,
+        sync_state: manifestChanged ? 'changed_after_dispatch' : 'staged_stable'
+      };
     }
 
     let routeId = null;

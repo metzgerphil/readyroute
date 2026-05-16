@@ -16,11 +16,15 @@ test('createCliFedexFccAdapter falls back to the in-repo FCC runner by default',
 
 test('pullDailyManifests decrypts credentials and returns manifest buffers from the runner output', async () => {
   const tempDir = await fs.mkdtemp(path.join('/tmp', 'readyroute-fcc-test-'));
-  const xlsPath = path.join(tempDir, 'route-810.xls');
-  const gpxPath = path.join(tempDir, 'route-810.gpx');
+  const xlsPath = path.join(tempDir, 'route-810-combined.xls');
+  const gpxPath = path.join(tempDir, 'route-810-combined.gpx');
+  const deliveryXlsPath = path.join(tempDir, 'route-810-delivery.xls');
+  const pickupXlsPath = path.join(tempDir, 'route-810-pickup.xls');
 
   await fs.writeFile(xlsPath, Buffer.from('xls-body'));
   await fs.writeFile(gpxPath, Buffer.from('gpx-body'));
+  await fs.writeFile(deliveryXlsPath, Buffer.from('delivery-body'));
+  await fs.writeFile(pickupXlsPath, Buffer.from('pickup-body'));
 
   let receivedEnv = null;
   const adapter = createCliFedexFccAdapter({
@@ -35,8 +39,10 @@ test('pullDailyManifests decrypts credentials and returns manifest buffers from 
             {
               work_area_name: '810',
               date: '2026-04-24',
-              xls_path: xlsPath,
-              gpx_path: gpxPath
+              combined_xls_path: xlsPath,
+              combined_gpx_path: gpxPath,
+              delivery_xls_path: deliveryXlsPath,
+              pickup_xls_path: pickupXlsPath
             }
           ]
         }),
@@ -73,6 +79,80 @@ test('pullDailyManifests decrypts credentials and returns manifest buffers from 
   assert.equal(result.manifest_pairs[0].work_area_name, '810');
   assert.equal(String(result.manifest_pairs[0].manifest_file.buffer), 'xls-body');
   assert.equal(String(result.manifest_pairs[0].companion_gpx_file.buffer), 'gpx-body');
+  assert.equal(String(result.manifest_pairs[0].combined_manifest_file.buffer), 'xls-body');
+  assert.equal(String(result.manifest_pairs[0].combined_gpx_file.buffer), 'gpx-body');
+  assert.equal(String(result.manifest_pairs[0].delivery_manifest_file.buffer), 'delivery-body');
+  assert.equal(String(result.manifest_pairs[0].pickup_manifest_file.buffer), 'pickup-body');
+  assert.deepEqual(result.details.manifest_artifacts[0], {
+    work_area_name: '810',
+    raw_work_area_name: '810',
+    date: '2026-04-24',
+    has_combined_xls: true,
+    has_combined_gpx: true,
+    has_delivery_xls: true,
+    has_pickup_xls: true,
+    download_errors: [],
+    artifact_record_counts: {}
+  });
+});
+
+test('pullDailyManifests accepts delivery-only FCC manifests when combined XLS is unavailable', async () => {
+  const tempDir = await fs.mkdtemp(path.join('/tmp', 'readyroute-fcc-test-'));
+  const deliveryXlsPath = path.join(tempDir, 'route-847-delivery.xls');
+
+  await fs.writeFile(deliveryXlsPath, Buffer.from('delivery-only-body'));
+
+  const adapter = createCliFedexFccAdapter({
+    command: '/usr/bin/fake-runner',
+    async runCommand() {
+      return {
+        stdout: JSON.stringify({
+          summary: 'Pulled 1 FCC manifest.',
+          manifests: [
+            {
+              work_area_name: '847',
+              date: '2026-04-24',
+              delivery_xls_path: deliveryXlsPath,
+              download_errors: [{ artifact: 'combined_xls', message: 'No combined XLS available.' }],
+              artifact_record_counts: { delivery: 40, combined_xls: null }
+            }
+          ]
+        }),
+        stderr: ''
+      };
+    }
+  });
+
+  const result = await adapter.pullDailyManifests({
+    account: {
+      id: 'acct-1',
+      operations_timezone: 'America/Los_Angeles'
+    },
+    fedexAccount: {
+      id: 'fx-1',
+      account_number: '123456789',
+      connection_reference: 'bridge-fcc',
+      fcc_username: 'bridge@example.com',
+      fcc_password_encrypted: encryptFedexSecret('super-secret-password')
+    },
+    workDate: '2026-04-24',
+    routeSyncSettings: {
+      operations_timezone: 'America/Los_Angeles'
+    },
+    triggerSource: 'manual'
+  });
+
+  assert.equal(result.manifest_count, 1);
+  assert.equal(result.manifest_pairs[0].work_area_name, '847');
+  assert.equal(String(result.manifest_pairs[0].manifest_file.buffer), 'delivery-only-body');
+  assert.equal(String(result.manifest_pairs[0].delivery_manifest_file.buffer), 'delivery-only-body');
+  assert.equal(result.manifest_pairs[0].combined_manifest_file, null);
+  assert.equal(result.details.manifest_artifacts[0].has_combined_xls, false);
+  assert.equal(result.details.manifest_artifacts[0].has_delivery_xls, true);
+  assert.deepEqual(result.details.manifest_artifacts[0].artifact_record_counts, {
+    delivery: 40,
+    combined_xls: null
+  });
 });
 
 test('pullRouteProgress returns parsed FCC progress snapshots from the runner output', async () => {

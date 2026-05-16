@@ -60,11 +60,12 @@ describe('managerRouteDetail helpers', () => {
       },
       stops: [
         {
-          id: 'stop-1',
+          routeStopId: 'route-stop-1',
           sequence_order: 1,
           lat: 33.11,
           lng: -117.09,
-          status: 'pending'
+          status: 'pending',
+          packages: [{ id: 'pkg-1', requires_signature: true }]
         }
       ]
     });
@@ -72,6 +73,8 @@ describe('managerRouteDetail helpers', () => {
     expect(model.routeMarker.workAreaName).toBe('816');
     expect(model.driverMarker.driverName).toBe('Luis');
     expect(model.stopMarkers).toHaveLength(1);
+    expect(model.stopMarkers[0].stopId).toBe('route-stop-1');
+    expect(model.stopMarkers[0].requiresSignature).toBe(true);
     expect(model.region.latitude).toBeCloseTo(33.115, 2);
   });
 });
