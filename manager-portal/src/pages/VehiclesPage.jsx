@@ -47,6 +47,14 @@ const VEHICLE_STATUS_OPTIONS = [
   { value: 'needs_repair', label: 'Needs Repair' }
 ];
 
+const VEHICLE_STATUS_TONES = {
+  active: 'ready',
+  out_of_service: 'blocked',
+  at_the_shop: 'maintenance-soon',
+  not_on_schedule_b: 'assigned',
+  needs_repair: 'blocked'
+};
+
 const SERVICE_TYPE_OPTIONS = [
   'Inspection',
   'Oil Change',
@@ -737,6 +745,14 @@ function getReadinessMeta(vehicle) {
   }
 
   return { label: 'Ready', className: 'vehicle-status-badge ready', tone: 'active', filter: 'ready', rowClassName: 'readiness-ready' };
+}
+
+function getVehicleStatusValue(vehicle) {
+  return vehicle.vehicle_status || (vehicle.is_active === false ? 'out_of_service' : 'active');
+}
+
+function getVehicleStatusOption(value) {
+  return VEHICLE_STATUS_OPTIONS.find((option) => option.value === value) || VEHICLE_STATUS_OPTIONS[0];
 }
 
 function getStatusMeta(vehicle) {
@@ -1870,6 +1886,23 @@ export default function VehiclesPage() {
     }
   });
 
+  const updateVehicleStatusMutation = useMutation({
+    mutationFn: async ({ vehicleId, vehicleStatus }) => {
+      const response = await api.put(`/vehicles/${vehicleId}`, {
+        vehicle_status: vehicleStatus
+      });
+      return response.data;
+    },
+    onSuccess: async (_, variables) => {
+      const option = getVehicleStatusOption(variables.vehicleStatus);
+      setToastMessage(`Vehicle status updated to ${option.label}`);
+      await queryClient.invalidateQueries({ queryKey: ['fleet-vehicles', selectedCsaId] });
+    },
+    onError: () => {
+      setToastMessage('Unable to update vehicle status.');
+    }
+  });
+
   const updateOdometerMutation = useMutation({
     mutationFn: async () => {
       const response = await api.post(`/vehicles/${odometerVehicle.id}/odometer`, {
@@ -2692,6 +2725,8 @@ export default function VehiclesPage() {
                   );
                   const latestIssue = getLatestIssueLabel(vehicle, Number(activeReminderScheduleDraft.document_warning_days));
                   const hasTruckType = Boolean(vehicle.truck_type || vehicle.custom_truck_type);
+                  const vehicleStatusValue = getVehicleStatusValue(vehicle);
+                  const vehicleStatusTone = VEHICLE_STATUS_TONES[vehicleStatusValue] || 'ready';
 
                   return (
                     <div
@@ -2713,7 +2748,31 @@ export default function VehiclesPage() {
                         <span>{getVehicleDescription(vehicle)}</span>
                         <span>{hasTruckType ? getVehicleTypeLabel(vehicle) : 'Truck type missing'}</span>
                       </div>
-                      <StatusBadge className={statusMeta.className} tone={statusMeta.tone}>{statusMeta.label}</StatusBadge>
+                      <div className="vehicle-status-select-wrap" onClick={(event) => event.stopPropagation()}>
+                        <select
+                          aria-label={`Vehicle status for Truck ${vehicle.name}`}
+                          className={`vehicle-status-select vehicle-status-badge ${vehicleStatusTone}`}
+                          disabled={updateVehicleStatusMutation.isPending}
+                          onChange={(event) => {
+                            event.stopPropagation();
+                            updateVehicleStatusMutation.mutate({
+                              vehicleId: vehicle.id,
+                              vehicleStatus: event.target.value
+                            });
+                          }}
+                          onKeyDown={(event) => event.stopPropagation()}
+                          value={vehicleStatusValue}
+                        >
+                          {VEHICLE_STATUS_OPTIONS.map((option) => (
+                            <option key={option.value} value={option.value}>
+                              {option.label}
+                            </option>
+                          ))}
+                        </select>
+                        {statusMeta.filter !== 'ready' ? (
+                          <span className="vehicle-readiness-note">{statusMeta.label}</span>
+                        ) : null}
+                      </div>
                       <div className="vehicles-table-primary">
                         <strong>{getAssignedToLabel(vehicle)}</strong>
                         <span>{vehicle.today_assignment?.work_area_name ? `Route ${vehicle.today_assignment.work_area_name}` : 'No route today'}</span>
