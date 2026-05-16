@@ -242,6 +242,18 @@ test('GET /vehicles returns vehicles with latest maintenance, today assignment, 
       };
     }
 
+    if (query.table === 'vehicle_check_requirement_settings' && query.operation === 'select') {
+      return {
+        data: {
+          weekly_inspection_day: 'Wednesday',
+          maintenance_warning_miles: 750,
+          maintenance_warning_days: 10,
+          document_warning_days: 21
+        },
+        error: null
+      };
+    }
+
     if (query.table === 'routes' && query.operation === 'select') {
       return {
         data: [
@@ -911,6 +923,9 @@ test('GET /vehicles/settings/maintenance-requirements returns option 1 defaults'
     const body = await response.json();
     assert.equal(body.setting.maintenance_requirement_mode, 'option_1');
     assert.equal(body.setting.weekly_inspection_day, 'Monday');
+    assert.equal(body.setting.maintenance_warning_miles, 1000);
+    assert.equal(body.setting.maintenance_warning_days, 14);
+    assert.equal(body.setting.document_warning_days, 30);
     assert.equal(body.setting.custom_daily_requirements.require_truck_confirmation, true);
     assert.equal(body.setting.custom_weekly_requirements.require_full_checklist_weekly, true);
   } finally {
@@ -924,6 +939,9 @@ test('PUT /vehicles/settings/maintenance-requirements persists selected mode and
       assert.equal(query.payload.account_id, 'acct-1');
       assert.equal(query.payload.maintenance_requirement_mode, 'custom');
       assert.equal(query.payload.weekly_inspection_day, 'Thursday');
+      assert.equal(query.payload.maintenance_warning_miles, 1000);
+      assert.equal(query.payload.maintenance_warning_days, 14);
+      assert.equal(query.payload.document_warning_days, 30);
       assert.equal(query.payload.custom_daily_requirements.require_truck_confirmation, true);
       assert.equal(query.payload.custom_daily_requirements.require_full_checklist_daily, true);
       assert.equal(query.payload.custom_weekly_requirements.require_full_checklist_weekly, false);
@@ -966,6 +984,104 @@ test('PUT /vehicles/settings/maintenance-requirements persists selected mode and
     const body = await response.json();
     assert.equal(body.setting.maintenance_requirement_mode, 'custom');
     assert.equal(body.setting.weekly_inspection_day, 'Thursday');
+  } finally {
+    await server.close();
+  }
+});
+
+test('GET /vehicles/settings/reminder-schedule returns default reminder windows', async () => {
+  const supabase = new MockSupabase((query) => {
+    if (query.table === 'vehicle_check_requirement_settings' && query.operation === 'select') {
+      assert.equal(query.filters.find((filter) => filter.column === 'account_id')?.value, 'acct-1');
+      return { data: null, error: null };
+    }
+
+    throw new Error(`Unexpected query ${query.table}:${query.operation}:${query.mode}`);
+  });
+
+  const server = await startTestServer(supabase);
+
+  try {
+    const response = await fetch(`${server.baseUrl}/vehicles/settings/reminder-schedule`, {
+      headers: {
+        Authorization: `Bearer ${signManagerToken()}`
+      }
+    });
+
+    assert.equal(response.status, 200);
+    const body = await response.json();
+    assert.equal(body.schedule.weekly_inspection_day, 'Monday');
+    assert.equal(body.schedule.maintenance_warning_miles, 1000);
+    assert.equal(body.schedule.maintenance_warning_days, 14);
+    assert.equal(body.schedule.document_warning_days, 30);
+  } finally {
+    await server.close();
+  }
+});
+
+test('PUT /vehicles/settings/reminder-schedule persists warning windows without replacing requirements', async () => {
+  const supabase = new MockSupabase((query) => {
+    if (query.table === 'vehicle_check_requirement_settings' && query.operation === 'select') {
+      return {
+        data: {
+          maintenance_requirement_mode: 'custom',
+          weekly_inspection_day: 'Monday',
+          custom_daily_requirements: {
+            require_truck_confirmation: true,
+            require_odometer_entry: true,
+            show_issue_note_box: false,
+            require_full_checklist_daily: true
+          },
+          custom_weekly_requirements: {
+            require_full_checklist_weekly: false,
+            require_manager_review_for_reported_issues: true
+          }
+        },
+        error: null
+      };
+    }
+
+    if (query.table === 'vehicle_check_requirement_settings' && query.operation === 'upsert') {
+      assert.equal(query.payload.account_id, 'acct-1');
+      assert.equal(query.payload.maintenance_requirement_mode, 'custom');
+      assert.equal(query.payload.weekly_inspection_day, 'Friday');
+      assert.equal(query.payload.maintenance_warning_miles, 1500);
+      assert.equal(query.payload.maintenance_warning_days, 21);
+      assert.equal(query.payload.document_warning_days, 45);
+      assert.equal(query.payload.custom_daily_requirements.show_issue_note_box, false);
+      assert.equal(query.payload.custom_weekly_requirements.require_full_checklist_weekly, false);
+      assert.equal(query.payload.updated_by_manager_user_id, 'manager-1');
+      assert.equal(query.payload.updated_at, '2026-04-12T16:00:00.000Z');
+      assert.equal(query.upsertOptions.onConflict, 'account_id');
+      return { data: null, error: null };
+    }
+
+    throw new Error(`Unexpected query ${query.table}:${query.operation}:${query.mode}`);
+  });
+
+  const server = await startTestServer(supabase);
+
+  try {
+    const response = await fetch(`${server.baseUrl}/vehicles/settings/reminder-schedule`, {
+      method: 'PUT',
+      headers: {
+        Authorization: `Bearer ${signManagerToken()}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        weekly_inspection_day: 'Friday',
+        maintenance_warning_miles: 1500,
+        maintenance_warning_days: 21,
+        document_warning_days: 45
+      })
+    });
+
+    assert.equal(response.status, 200);
+    const body = await response.json();
+    assert.equal(body.schedule.weekly_inspection_day, 'Friday');
+    assert.equal(body.schedule.maintenance_warning_miles, 1500);
+    assert.equal(body.schedule.maintenance_warning_days, 21);
+    assert.equal(body.schedule.document_warning_days, 45);
   } finally {
     await server.close();
   }

@@ -63,8 +63,7 @@ const VEHICLE_SETTINGS_CARDS = [
   {
     title: 'Reminder Schedule',
     description: 'Set weekly inspection day and maintenance warning windows.',
-    actionLabel: 'Coming soon',
-    disabled: true
+    actionLabel: 'Set'
   }
 ];
 
@@ -83,6 +82,13 @@ const DEFAULT_MAINTENANCE_REQUIREMENTS = {
     require_full_checklist_weekly: true,
     require_manager_review_for_reported_issues: true
   }
+};
+
+const DEFAULT_REMINDER_SCHEDULE = {
+  weekly_inspection_day: 'Monday',
+  maintenance_warning_miles: 1000,
+  maintenance_warning_days: 14,
+  document_warning_days: 30
 };
 
 const MAINTENANCE_REQUIREMENT_OPTIONS = [
@@ -174,6 +180,17 @@ function normalizeMaintenanceRequirementSetting(setting) {
       ...DEFAULT_MAINTENANCE_REQUIREMENTS.custom_weekly_requirements,
       ...(setting?.custom_weekly_requirements || {})
     }
+  };
+}
+
+function normalizeReminderSchedule(schedule) {
+  return {
+    ...DEFAULT_REMINDER_SCHEDULE,
+    ...(schedule || {}),
+    weekly_inspection_day: schedule?.weekly_inspection_day || DEFAULT_REMINDER_SCHEDULE.weekly_inspection_day,
+    maintenance_warning_miles: schedule?.maintenance_warning_miles ?? DEFAULT_REMINDER_SCHEDULE.maintenance_warning_miles,
+    maintenance_warning_days: schedule?.maintenance_warning_days ?? DEFAULT_REMINDER_SCHEDULE.maintenance_warning_days,
+    document_warning_days: schedule?.document_warning_days ?? DEFAULT_REMINDER_SCHEDULE.document_warning_days
   };
 }
 
@@ -609,7 +626,7 @@ function getVehicleTypeLabel(vehicle) {
   return vehicle.truck_type || 'Truck type not recorded';
 }
 
-function getRegistrationStatus(vehicle) {
+function getRegistrationStatus(vehicle, warningDays = DEFAULT_REMINDER_SCHEDULE.document_warning_days) {
   if (!vehicle.registration_expiration) {
     return {
       label: 'Registration not recorded',
@@ -629,7 +646,7 @@ function getRegistrationStatus(vehicle) {
     };
   }
 
-  if (daysRemaining <= 30) {
+  if (daysRemaining <= warningDays) {
     return {
       label: `Expires ${formatDate(vehicle.registration_expiration)}`,
       className: 'vehicle-registration-row warning',
@@ -644,7 +661,7 @@ function getRegistrationStatus(vehicle) {
   };
 }
 
-function getExpirationStatus(value, label) {
+function getExpirationStatus(value, label, warningDays = DEFAULT_REMINDER_SCHEDULE.document_warning_days) {
   if (!value) {
     return {
       label: `${label} not recorded`,
@@ -664,7 +681,7 @@ function getExpirationStatus(value, label) {
     };
   }
 
-  if (daysRemaining <= 30) {
+  if (daysRemaining <= warningDays) {
     return {
       label: `Expires ${formatDate(value)}`,
       className: 'vehicle-registration-row warning',
@@ -768,7 +785,7 @@ function getMaintenanceAlertMeta(vehicle) {
         ? mostUrgent.remaining_miles !== null && mostUrgent.remaining_miles !== undefined
           ? `${formatMileage(mostUrgent.remaining_miles)} mi left`
           : `${mostUrgent.remaining_days} days left`
-        : 'Less than 1,000 mi left'
+        : 'Inside warning window'
     };
   }
 
@@ -779,7 +796,7 @@ function getMaintenanceAlertMeta(vehicle) {
     itemLabel: mostUrgent?.service_type || 'No upcoming service',
     detailLabel: mostUrgent
       ? `${formatMileage(mostUrgent.remaining_miles)} mi left`
-      : 'More than 1,000 mi to next service'
+      : 'No active warning'
   };
 }
 
@@ -797,7 +814,7 @@ function getNextServiceLabel(vehicle) {
   return alert;
 }
 
-function getLatestIssueLabel(vehicle) {
+function getLatestIssueLabel(vehicle, warningDays = DEFAULT_REMINDER_SCHEDULE.document_warning_days) {
   const reason = vehicle.readiness?.primary_reason;
   if (reason?.label) {
     return {
@@ -806,12 +823,12 @@ function getLatestIssueLabel(vehicle) {
     };
   }
 
-  const registration = getExpirationStatus(vehicle.registration_expiration, 'Registration');
+  const registration = getExpirationStatus(vehicle.registration_expiration, 'Registration', warningDays);
   if (registration.className.includes('expired') || registration.className.includes('warning')) {
     return { label: registration.metaLabel, detail: registration.label };
   }
 
-  const insurance = getExpirationStatus(vehicle.insurance_expiration, 'Insurance');
+  const insurance = getExpirationStatus(vehicle.insurance_expiration, 'Insurance', warningDays);
   if (insurance.className.includes('expired') || insurance.className.includes('warning')) {
     return { label: insurance.metaLabel, detail: insurance.label };
   }
@@ -1228,7 +1245,13 @@ function VehicleTabs({ activeTab, onChange }) {
   );
 }
 
-function VehicleSettingsPanel({ maintenanceRequirements, onOpenChecklistTemplate, onOpenMaintenanceRequirements }) {
+function VehicleSettingsPanel({
+  maintenanceRequirements,
+  onOpenChecklistTemplate,
+  onOpenMaintenanceRequirements,
+  onOpenReminderSchedule,
+  reminderSchedule
+}) {
   return (
     <section className="card vehicle-settings-panel" aria-labelledby="vehicle-settings-title">
       <div className="vehicle-settings-heading">
@@ -1249,6 +1272,11 @@ function VehicleSettingsPanel({ maintenanceRequirements, onOpenChecklistTemplate
                   Current: {getMaintenanceRequirementModeLabel(maintenanceRequirements.maintenance_requirement_mode)}
                 </div>
               ) : null}
+              {card.title === 'Reminder Schedule' ? (
+                <div className="vehicle-settings-card-summary">
+                  Weekly: {reminderSchedule.weekly_inspection_day} • {reminderSchedule.maintenance_warning_miles} mi / {reminderSchedule.maintenance_warning_days} days
+                </div>
+              ) : null}
             </div>
             <button
               className={card.disabled ? 'secondary-inline-button vehicle-settings-disabled-action' : 'primary-inline-button'}
@@ -1258,7 +1286,9 @@ function VehicleSettingsPanel({ maintenanceRequirements, onOpenChecklistTemplate
                   ? onOpenMaintenanceRequirements
                   : card.title === 'Checklist Template'
                     ? onOpenChecklistTemplate
-                    : undefined
+                    : card.title === 'Reminder Schedule'
+                      ? onOpenReminderSchedule
+                      : undefined
               }
               type="button"
             >
@@ -1271,6 +1301,91 @@ function VehicleSettingsPanel({ maintenanceRequirements, onOpenChecklistTemplate
       <p className="vehicle-settings-helper">
         Vehicle blocking is handled automatically through vehicle readiness status, overdue maintenance, expired documents, and unresolved serious issues.
       </p>
+    </section>
+  );
+}
+
+function ReminderScheduleScreen({
+  draft,
+  errorMessage,
+  isLoading,
+  isSaving,
+  onBack,
+  onChange,
+  onSave
+}) {
+  return (
+    <section className="card reminder-schedule-panel" aria-labelledby="reminder-schedule-title">
+      <div className="maintenance-requirements-header">
+        <div>
+          <button className="secondary-inline-button" onClick={onBack} type="button">Back to Settings</button>
+          <h2 id="reminder-schedule-title">Reminder Schedule</h2>
+          <p>Set the weekly inspection day and warning windows for vehicle readiness.</p>
+        </div>
+        <button className="primary-inline-button" disabled={isSaving} onClick={onSave} type="button">
+          {isSaving ? 'Saving...' : 'Save Schedule'}
+        </button>
+      </div>
+
+      {isLoading ? <div className="driver-meta">Loading reminder schedule...</div> : null}
+
+      <div className="reminder-schedule-grid">
+        <label className="driver-modal-field">
+          <span className="field-label">Weekly inspection day</span>
+          <select
+            className="text-field"
+            onChange={(event) => onChange('weekly_inspection_day', event.target.value)}
+            value={draft.weekly_inspection_day}
+          >
+            {WEEKLY_INSPECTION_DAYS.map((day) => (
+              <option key={day} value={day}>{day}</option>
+            ))}
+          </select>
+          <small className="vehicle-form-helper">Used for weekly full inspections in Option 1 and Custom.</small>
+        </label>
+
+        <label className="driver-modal-field">
+          <span className="field-label">Maintenance mileage warning</span>
+          <input
+            className="text-field"
+            min="0"
+            onChange={(event) => onChange('maintenance_warning_miles', event.target.value)}
+            type="number"
+            value={draft.maintenance_warning_miles}
+          />
+          <small className="vehicle-form-helper">Show maintenance soon when a truck is within this many miles.</small>
+        </label>
+
+        <label className="driver-modal-field">
+          <span className="field-label">Maintenance day warning</span>
+          <input
+            className="text-field"
+            min="0"
+            onChange={(event) => onChange('maintenance_warning_days', event.target.value)}
+            type="number"
+            value={draft.maintenance_warning_days}
+          />
+          <small className="vehicle-form-helper">Show maintenance soon when scheduled service is within this many days.</small>
+        </label>
+
+        <label className="driver-modal-field">
+          <span className="field-label">Document expiration warning</span>
+          <input
+            className="text-field"
+            min="0"
+            onChange={(event) => onChange('document_warning_days', event.target.value)}
+            type="number"
+            value={draft.document_warning_days}
+          />
+          <small className="vehicle-form-helper">Show registration or insurance attention before expiration.</small>
+        </label>
+      </div>
+
+      <p className="vehicle-settings-helper maintenance-requirements-apply-note">
+        Reminder windows update vehicle readiness and manager warnings. Expired documents and overdue maintenance still block vehicles automatically.
+      </p>
+
+      {errorMessage ? <div className="error-banner">{errorMessage}</div> : null}
     </section>
   );
 }
@@ -1525,6 +1640,8 @@ export default function VehiclesPage() {
   const [maintenanceRequirementsError, setMaintenanceRequirementsError] = useState('');
   const [checklistTemplateDraft, setChecklistTemplateDraft] = useState(null);
   const [checklistTemplateError, setChecklistTemplateError] = useState('');
+  const [reminderScheduleDraft, setReminderScheduleDraft] = useState(null);
+  const [reminderScheduleError, setReminderScheduleError] = useState('');
   const vehicleImportInputRef = useRef(null);
   const [maintenanceForm, setMaintenanceForm] = useState({
     service_date: getTodayString(),
@@ -1563,6 +1680,15 @@ export default function VehiclesPage() {
     queryFn: async () => {
       const response = await api.get('/vehicles/settings/checklist-template');
       return normalizeChecklistTemplateFields(response.data?.template?.fields);
+    }
+  });
+
+  const reminderScheduleQuery = useQuery({
+    queryKey: ['vehicle-reminder-schedule', selectedCsaId],
+    enabled: Boolean(selectedCsaId),
+    queryFn: async () => {
+      const response = await api.get('/vehicles/settings/reminder-schedule');
+      return normalizeReminderSchedule(response.data?.schedule);
     }
   });
 
@@ -1720,10 +1846,13 @@ export default function VehiclesPage() {
     },
     onSuccess: async (setting) => {
       setMaintenanceRequirementsDraft(setting);
+      setReminderScheduleDraft(normalizeReminderSchedule(setting));
       setMaintenanceRequirementsError('');
       setToastMessage('Maintenance requirements saved');
       queryClient.setQueryData(['vehicle-maintenance-requirements', selectedCsaId], setting);
+      queryClient.setQueryData(['vehicle-reminder-schedule', selectedCsaId], normalizeReminderSchedule(setting));
       await queryClient.invalidateQueries({ queryKey: ['vehicle-maintenance-requirements', selectedCsaId] });
+      await queryClient.invalidateQueries({ queryKey: ['vehicle-reminder-schedule', selectedCsaId] });
     },
     onError: (error) => {
       setMaintenanceRequirementsError(error.response?.data?.error || 'Unable to save maintenance requirements.');
@@ -1749,6 +1878,37 @@ export default function VehiclesPage() {
     }
   });
 
+  const saveReminderScheduleMutation = useMutation({
+    mutationFn: async () => {
+      const response = await api.put('/vehicles/settings/reminder-schedule', {
+        weekly_inspection_day: activeReminderScheduleDraft.weekly_inspection_day,
+        maintenance_warning_miles: Number(activeReminderScheduleDraft.maintenance_warning_miles),
+        maintenance_warning_days: Number(activeReminderScheduleDraft.maintenance_warning_days),
+        document_warning_days: Number(activeReminderScheduleDraft.document_warning_days)
+      });
+      return normalizeReminderSchedule(response.data?.schedule);
+    },
+    onSuccess: async (schedule) => {
+      setReminderScheduleDraft(schedule);
+      setReminderScheduleError('');
+      setMaintenanceRequirementsDraft((current) => normalizeMaintenanceRequirementSetting({
+        ...(current || activeMaintenanceRequirementsDraft),
+        weekly_inspection_day: schedule.weekly_inspection_day,
+        maintenance_warning_miles: schedule.maintenance_warning_miles,
+        maintenance_warning_days: schedule.maintenance_warning_days,
+        document_warning_days: schedule.document_warning_days
+      }));
+      setToastMessage('Reminder schedule saved');
+      queryClient.setQueryData(['vehicle-reminder-schedule', selectedCsaId], schedule);
+      await queryClient.invalidateQueries({ queryKey: ['vehicle-reminder-schedule', selectedCsaId] });
+      await queryClient.invalidateQueries({ queryKey: ['vehicle-maintenance-requirements', selectedCsaId] });
+      await queryClient.invalidateQueries({ queryKey: ['fleet-vehicles', selectedCsaId] });
+    },
+    onError: (error) => {
+      setReminderScheduleError(error.response?.data?.error || 'Unable to save reminder schedule.');
+    }
+  });
+
   const vehicles = useMemo(() => vehiclesQuery.data || [], [vehiclesQuery.data]);
   const normalizedMaintenanceSettings = useMemo(
     () =>
@@ -1762,6 +1922,8 @@ export default function VehiclesPage() {
     || normalizeMaintenanceRequirementSetting(maintenanceRequirementsQuery.data);
   const activeChecklistTemplateFields = checklistTemplateDraft
     || normalizeChecklistTemplateFields(checklistTemplateQuery.data);
+  const activeReminderScheduleDraft = reminderScheduleDraft
+    || normalizeReminderSchedule(reminderScheduleQuery.data || activeMaintenanceRequirementsDraft);
   const serviceTypeOptions = useMemo(
     () => getServiceTypeOptions(activeMaintenanceSettings),
     [activeMaintenanceSettings]
@@ -1784,10 +1946,10 @@ export default function VehiclesPage() {
   );
   const registrationAttentionVehicles = useMemo(
     () => vehicles.filter((vehicle) => {
-      const registration = getRegistrationStatus(vehicle);
+      const registration = getRegistrationStatus(vehicle, Number(activeReminderScheduleDraft.document_warning_days));
       return registration.className.includes('warning') || registration.className.includes('expired');
     }),
-    [vehicles]
+    [activeReminderScheduleDraft.document_warning_days, vehicles]
   );
   const onRoadCount = useMemo(
     () => vehicles.filter((vehicle) => vehicle.today_assignment?.route_status === 'in_progress').length,
@@ -1805,13 +1967,13 @@ export default function VehiclesPage() {
         getVehicleTypeLabel(vehicle),
         vehicle.plate,
         getAssignedToLabel(vehicle),
-        getLatestIssueLabel(vehicle).label,
-        getLatestIssueLabel(vehicle).detail
+        getLatestIssueLabel(vehicle, Number(activeReminderScheduleDraft.document_warning_days)).label,
+        getLatestIssueLabel(vehicle, Number(activeReminderScheduleDraft.document_warning_days)).detail
       ].filter(Boolean).join(' ').toLowerCase();
 
       return statusMatches && (!query || searchableText.includes(query));
     });
-  }, [vehicleSearch, vehicleStatusFilter, vehicles]);
+  }, [activeReminderScheduleDraft.document_warning_days, vehicleSearch, vehicleStatusFilter, vehicles]);
   const isSetupFlow = searchParams.get('source') === 'setup';
   const setupFocus = searchParams.get('focus') || '';
   const setupBanner = useMemo(() => {
@@ -2127,6 +2289,22 @@ export default function VehiclesPage() {
     setChecklistTemplateError('');
   }
 
+  function updateReminderScheduleField(field, value) {
+    setReminderScheduleDraft((current) => ({
+      ...normalizeReminderSchedule(current || activeReminderScheduleDraft),
+      [field]: value
+    }));
+
+    if (field === 'weekly_inspection_day') {
+      setMaintenanceRequirementsDraft((current) => ({
+        ...normalizeMaintenanceRequirementSetting(current || activeMaintenanceRequirementsDraft),
+        weekly_inspection_day: value
+      }));
+    }
+
+    setReminderScheduleError('');
+  }
+
   function deleteMaintenanceItem(index) {
     setMaintenanceSettingsDraft((current) => (
       (current || activeMaintenanceSettings).filter((_, settingIndex) => settingIndex !== index)
@@ -2300,7 +2478,12 @@ export default function VehiclesPage() {
           <div className="vehicles-stat-grid">
             <StatCard label="Ready" value={readinessCounts.ready || 0} detail="No active warnings" tone="active" />
             <StatCard label="Assigned" value={readinessCounts.assigned || 0} detail="Driver or route today" tone="purple" />
-            <StatCard label="Maintenance Soon" value={readinessCounts.maintenance_soon || 0} detail="Within 1,000 mi or 14 days" tone="warning" />
+            <StatCard
+              label="Maintenance Soon"
+              value={readinessCounts.maintenance_soon || 0}
+              detail={`Within ${formatMileage(activeReminderScheduleDraft.maintenance_warning_miles)} mi or ${activeReminderScheduleDraft.maintenance_warning_days} days`}
+              tone="warning"
+            />
             <StatCard label="Blocked" value={readinessCounts.blocked || 0} detail="Overdue or expired" tone="urgent" />
           </div>
 
@@ -2378,9 +2561,17 @@ export default function VehiclesPage() {
                 {filteredVehicles.map((vehicle) => {
                   const statusMeta = getReadinessMeta(vehicle);
                   const maintenanceAlert = getNextServiceLabel(vehicle);
-                  const registration = getExpirationStatus(vehicle.registration_expiration, 'Registration');
-                  const insurance = getExpirationStatus(vehicle.insurance_expiration, 'Insurance');
-                  const latestIssue = getLatestIssueLabel(vehicle);
+                  const registration = getExpirationStatus(
+                    vehicle.registration_expiration,
+                    'Registration',
+                    Number(activeReminderScheduleDraft.document_warning_days)
+                  );
+                  const insurance = getExpirationStatus(
+                    vehicle.insurance_expiration,
+                    'Insurance',
+                    Number(activeReminderScheduleDraft.document_warning_days)
+                  );
+                  const latestIssue = getLatestIssueLabel(vehicle, Number(activeReminderScheduleDraft.document_warning_days));
                   const hasTruckType = Boolean(vehicle.truck_type || vehicle.custom_truck_type);
 
                   return (
@@ -2503,8 +2694,8 @@ export default function VehiclesPage() {
                 <div className="labor-empty-state">No vehicles match the current search or status filter.</div>
               ) : null}
               <div className="maintenance-alert-legend">
-                <span><strong>OK:</strong> More than 1,000 miles to next service</span>
-                <span><strong>Due Soon:</strong> Less than 1,000 miles to next service</span>
+                <span><strong>OK:</strong> Outside reminder windows</span>
+                <span><strong>Due Soon:</strong> Within {formatMileage(activeReminderScheduleDraft.maintenance_warning_miles)} miles or {activeReminderScheduleDraft.maintenance_warning_days} days</span>
                 <span><strong>Overdue:</strong> Service interval exceeded</span>
               </div>
             </>
@@ -2555,6 +2746,8 @@ export default function VehiclesPage() {
           maintenanceRequirements={activeMaintenanceRequirementsDraft}
           onOpenChecklistTemplate={() => setVehicleSettingsView('checklist-template')}
           onOpenMaintenanceRequirements={() => setVehicleSettingsView('maintenance-requirements')}
+          onOpenReminderSchedule={() => setVehicleSettingsView('reminder-schedule')}
+          reminderSchedule={activeReminderScheduleDraft}
         />
       ) : null}
 
@@ -2582,6 +2775,18 @@ export default function VehiclesPage() {
           onBack={() => setVehicleSettingsView('overview')}
           onSave={() => saveChecklistTemplateMutation.mutate()}
           onToggleField={updateChecklistTemplateField}
+        />
+      ) : null}
+
+      {activeVehiclesTab === 'Settings' && vehicleSettingsView === 'reminder-schedule' ? (
+        <ReminderScheduleScreen
+          draft={activeReminderScheduleDraft}
+          errorMessage={reminderScheduleError}
+          isLoading={reminderScheduleQuery.isLoading}
+          isSaving={saveReminderScheduleMutation.isPending}
+          onBack={() => setVehicleSettingsView('overview')}
+          onChange={updateReminderScheduleField}
+          onSave={() => saveReminderScheduleMutation.mutate()}
         />
       ) : null}
 

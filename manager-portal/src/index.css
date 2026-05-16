@@ -2272,6 +2272,11 @@ button {
     padding: 24px;
   }
 
+  .main-content:not(.sidebar-hidden) .vehicles-page {
+    width: calc(100% - var(--rr-sidebar-width));
+    margin-left: var(--rr-sidebar-width);
+  }
+
   .login-page {
     padding: 20px;
     align-items: stretch;
@@ -6583,6 +6588,12 @@ button.manifest-attention-chip {
   padding: 18px;
 }
 
+.reminder-schedule-panel {
+  display: grid;
+  gap: 16px;
+  padding: 18px;
+}
+
 .maintenance-requirements-header {
   display: flex;
   align-items: flex-start;
@@ -6725,6 +6736,12 @@ button.manifest-attention-chip {
 .maintenance-requirements-controls {
   display: grid;
   gap: 14px;
+}
+
+.reminder-schedule-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
 }
 
 .maintenance-weekday-field {
@@ -6925,7 +6942,8 @@ button.manifest-attention-chip {
   }
 
   .maintenance-requirement-options,
-  .maintenance-custom-controls {
+  .maintenance-custom-controls,
+  .reminder-schedule-grid {
     grid-template-columns: 1fr;
   }
 
