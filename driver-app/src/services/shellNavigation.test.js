@@ -14,6 +14,7 @@ describe('shellNavigation helpers', () => {
       'Map View',
       'Routes',
       'Notifications',
+      'Vehicles',
       'Settings'
     ]);
   });

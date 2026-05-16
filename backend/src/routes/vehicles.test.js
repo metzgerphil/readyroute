@@ -206,7 +206,20 @@ test('GET /vehicles returns vehicles with latest maintenance, today assignment, 
             service_date: '2026-03-01',
             service_type: 'Oil Change',
             mileage_at_service: 14500,
+            next_service_mileage: 5000,
+            created_at: '2026-03-01T10:00:00.000Z',
             description: 'Oil change'
+          },
+          {
+            id: 'maint-1-repaired',
+            vehicle_id: 'vehicle-1',
+            account_id: 'acct-1',
+            service_date: '2026-03-01',
+            service_type: 'Oil Change',
+            mileage_at_service: 14500,
+            next_service_mileage: 19500,
+            created_at: '2026-03-01T11:00:00.000Z',
+            description: 'Oil change repaired'
           },
           {
             id: 'maint-2',
@@ -215,6 +228,7 @@ test('GET /vehicles returns vehicles with latest maintenance, today assignment, 
             service_date: '2026-04-01',
             service_type: 'Brake Pads',
             mileage_at_service: 19000,
+            created_at: '2026-04-01T10:00:00.000Z',
             description: 'Tires'
           }
         ],
@@ -606,6 +620,75 @@ test('POST /vehicles/:id/maintenance calculates next due mileage from the mainte
 
     assert.equal(response.status, 201);
     assert.deepEqual(await response.json(), { maintenance_id: 'maint-calculated' });
+  } finally {
+    await server.close();
+  }
+});
+
+test('POST /vehicles/:id/maintenance repairs a stale next due mileage from the service interval', async () => {
+  const supabase = new MockSupabase((query) => {
+    if (query.table === 'vehicles' && query.operation === 'select') {
+      return {
+        data: {
+          id: 'vehicle-1',
+          account_id: 'acct-1',
+          current_mileage: 0,
+          last_service_mileage: null
+        },
+        error: null
+      };
+    }
+
+    if (query.table === 'vehicle_maintenance_settings' && query.operation === 'select') {
+      return {
+        data: {
+          service_type: 'Oil Change',
+          is_enabled: true,
+          default_interval_miles: 5000,
+          default_interval_days: 180
+        },
+        error: null
+      };
+    }
+
+    if (query.table === 'vehicle_maintenance' && query.operation === 'insert') {
+      assert.equal(query.payload.mileage_at_service, 65000);
+      assert.equal(query.payload.next_service_mileage, 70000);
+      return {
+        data: { id: 'maint-repaired' },
+        error: null
+      };
+    }
+
+    if (query.table === 'vehicles' && query.operation === 'update') {
+      assert.equal(query.payload.last_service_mileage, 65000);
+      assert.equal(query.payload.next_service_mileage, 70000);
+      assert.equal(query.payload.current_mileage, 65000);
+      return { data: null, error: null };
+    }
+
+    throw new Error(`Unexpected query ${query.table}:${query.operation}:${query.mode}`);
+  });
+
+  const server = await startTestServer(supabase);
+
+  try {
+    const response = await fetch(`${server.baseUrl}/vehicles/vehicle-1/maintenance`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${signManagerToken()}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        service_date: '2026-05-16',
+        service_type: 'Oil Change',
+        mileage_at_service: 65000,
+        next_service_mileage: 5000
+      })
+    });
+
+    assert.equal(response.status, 201);
+    assert.deepEqual(await response.json(), { maintenance_id: 'maint-repaired' });
   } finally {
     await server.close();
   }

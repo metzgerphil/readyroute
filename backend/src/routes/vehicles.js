@@ -400,7 +400,14 @@ function mapLatestMaintenance(records) {
   return (records || []).reduce((map, record) => {
     const existing = map.get(record.vehicle_id);
 
-    if (!existing || String(record.service_date) > String(existing.service_date)) {
+    if (
+      !existing ||
+      String(record.service_date || '') > String(existing.service_date || '') ||
+      (
+        String(record.service_date || '') === String(existing.service_date || '') &&
+        String(record.created_at || '') > String(existing.created_at || '')
+      )
+    ) {
       map.set(record.vehicle_id, record);
     }
 
@@ -425,7 +432,16 @@ function getLatestMaintenanceByVehicleAndType(records = []) {
     if (
       !existing ||
       (mileageAtService !== null && (existingMileage === null || mileageAtService > existingMileage)) ||
-      ((mileageAtService === existingMileage || mileageAtService === null) && String(record.service_date || '') > String(existing.service_date || ''))
+      (
+        (mileageAtService === existingMileage || mileageAtService === null) &&
+        (
+          String(record.service_date || '') > String(existing.service_date || '') ||
+          (
+            String(record.service_date || '') === String(existing.service_date || '') &&
+            String(record.created_at || '') > String(existing.created_at || '')
+          )
+        )
+      )
     ) {
       map.set(key, record);
     }
@@ -1537,11 +1553,20 @@ function createVehiclesRouter(options = {}) {
       }
 
       const intervalMiles = toInteger(serviceSetting?.default_interval_miles);
-      const resolvedNextServiceMileage = parsedNextServiceMileage !== null
+      const intervalNextServiceMileage = parsedMileageAtService !== null && intervalMiles !== null && intervalMiles > 0
+        ? parsedMileageAtService + intervalMiles
+        : null;
+      const submittedNextServiceMileageIsBehindService = parsedNextServiceMileage !== null &&
+        parsedMileageAtService !== null &&
+        parsedNextServiceMileage <= parsedMileageAtService;
+      const resolvedNextServiceMileage = parsedNextServiceMileage !== null && !submittedNextServiceMileageIsBehindService
         ? parsedNextServiceMileage
-        : parsedMileageAtService !== null && intervalMiles !== null && intervalMiles > 0
-          ? parsedMileageAtService + intervalMiles
-          : null;
+        : intervalNextServiceMileage;
+
+      if (submittedNextServiceMileageIsBehindService && resolvedNextServiceMileage === null) {
+        return res.status(400).json({ error: 'next_service_mileage must be greater than mileage_at_service' });
+      }
+
       const resolvedDescription = description && String(description).trim()
         ? String(description).trim()
         : `Completed ${String(serviceType).trim()}`;

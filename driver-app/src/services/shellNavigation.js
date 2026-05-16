@@ -17,6 +17,11 @@ export function getDrawerMenuItems(activeMode) {
         screen: 'ManagerNotifications'
       },
       {
+        key: 'manager-vehicles',
+        label: 'Vehicles',
+        screen: 'ManagerVehicles'
+      },
+      {
         key: 'manager-settings',
         label: 'Settings',
         screen: 'ManagerSettings'
