@@ -173,6 +173,14 @@ function getManifestSchemaError(error) {
   return null;
 }
 
+function isMissingColumnError(error, columnName) {
+  const message = String(error?.message || error?.details || error?.hint || '');
+  return (
+    new RegExp(columnName, 'i').test(message) &&
+    /column|schema cache|could not find/i.test(message)
+  );
+}
+
 function getManifestUploadError(error, { workAreaName, date }) {
   const schemaError = getManifestSchemaError(error);
 
@@ -224,6 +232,15 @@ function toNumber(value) {
   return Number.isFinite(parsed) ? parsed : null;
 }
 
+function toInteger(value) {
+  if (value === undefined || value === null || value === '') {
+    return null;
+  }
+
+  const parsed = Number(value);
+  return Number.isInteger(parsed) ? parsed : null;
+}
+
 function createAddressHash(address) {
   return crypto
     .createHash('md5')
@@ -239,10 +256,45 @@ function normalizePackageRows(packages) {
   return (packages || []).map((pkg) => ({
     id: pkg.id,
     tracking_number: pkg.tracking_number,
+    service_code: pkg.service_code,
     requires_signature: pkg.requires_signature,
     requires_adult_signature: pkg.requires_adult_signature,
     hazmat: pkg.hazmat
   }));
+}
+
+function isOptionalPackageDetailColumnError(error) {
+  const message = String(error?.message || error?.details || error?.hint || '');
+  return /service_code/i.test(message) || /requires_adult_signature/i.test(message) || /schema cache/i.test(message);
+}
+
+async function selectPackagesForStops(queryBuilder) {
+  const withDetails = await queryBuilder('id, stop_id, tracking_number, service_code, requires_signature, requires_adult_signature, hazmat');
+
+  if (!withDetails.error || !isOptionalPackageDetailColumnError(withDetails.error)) {
+    return withDetails;
+  }
+
+  return queryBuilder('id, stop_id, tracking_number, requires_signature, hazmat');
+}
+
+const STOP_CONTACT_INFO_FIELDS = [
+  'primary_phone',
+  'alternate_phone',
+  'email',
+  'business_name',
+  'company_name',
+  'customer_instructions',
+  'delivery_instructions',
+  'consignee',
+  'shipper'
+];
+
+function hasStopContactInfo(stop = {}) {
+  return STOP_CONTACT_INFO_FIELDS.some((field) => {
+    const value = stop?.[field];
+    return value !== null && value !== undefined && String(value).trim() !== '';
+  });
 }
 
 function getStoredStopStatus(status) {
@@ -339,6 +391,7 @@ function presentStopStatus(stop) {
   const floorLabel = extractFloorLabel(stop.address_line2);
   const enrichedStop = {
     ...stop,
+    has_contact_info: hasStopContactInfo(stop),
     is_business:
       stop.is_business != null
         ? derivedIsBusiness
@@ -417,7 +470,7 @@ function isMissingBucketError(error) {
 async function loadDriverRoute(supabase, { driverId, accountId, routeId, date }) {
   let query = supabase
     .from('routes')
-    .select('id, date, work_area_name, status, dispatch_state, dispatched_at, sync_state, last_manifest_change_at, total_stops, completed_stops, completed_at')
+    .select('id, date, work_area_name, status, dispatch_state, dispatched_at, sync_state, last_manifest_change_at, total_stops, completed_stops, completed_at, vehicle_id')
     .eq('driver_id', driverId)
     .eq('account_id', accountId)
     .eq('dispatch_state', 'dispatched');
@@ -611,6 +664,18 @@ function toManifestStopFromExistingRouteStop(stop, packageCount = 1) {
     address: stop?.address || '',
     address_line2: stop?.address_line2 || null,
     contact_name: stop?.contact_name || null,
+    business_name: stop?.business_name || null,
+    company_name: stop?.company_name || null,
+    primary_phone: stop?.primary_phone || null,
+    alternate_phone: stop?.alternate_phone || null,
+    email: stop?.email || null,
+    customer_instructions: stop?.customer_instructions || null,
+    delivery_instructions: stop?.delivery_instructions || null,
+    consignee: stop?.consignee || null,
+    shipper: stop?.shipper || null,
+    contact_source: stop?.contact_source || null,
+    contact_last_imported_at: stop?.contact_last_imported_at || null,
+    raw_contact_metadata: stop?.raw_contact_metadata || null,
     lat: toNumber(stop?.lat),
     lng: toNumber(stop?.lng),
     is_pickup: Boolean(stop?.is_pickup),
@@ -626,6 +691,37 @@ function toManifestStopFromExistingRouteStop(stop, packageCount = 1) {
     geocode_accuracy: stop?.geocode_accuracy || 'manifest',
     package_count: Math.max(1, Number(packageCount || 1))
   };
+}
+
+function isPickupStop(stop) {
+  return Boolean(
+    stop?.has_pickup ||
+    stop?.is_pickup ||
+    stop?.stop_type === 'pickup' ||
+    stop?.stop_type === 'combined'
+  );
+}
+
+function getPickupStopSummary(stops = []) {
+  return (stops || []).reduce(
+    (summary, stop) => {
+      if (!isPickupStop(stop)) {
+        return summary;
+      }
+
+      summary.total += 1;
+
+      if (stop.completed_at || ['delivered', 'attempted', 'incomplete', 'pickup_complete', 'pickup_attempted'].includes(stop.status)) {
+        summary.completed += 1;
+      }
+
+      return summary;
+    },
+    {
+      completed: 0,
+      total: 0
+    }
+  );
 }
 
 function mergePendingManifestStops(existingStops = [], incomingStops = []) {
@@ -716,7 +812,14 @@ function createRoutesRouter(options = {}) {
       return res.status(403).json({ error: 'Invalid inbound ingest secret.' });
     }
 
-    if (!req.file) {
+    const hasManifestFile = Boolean(
+      req.file ||
+      req.files?.combined_manifest_file ||
+      req.files?.delivery_manifest_file ||
+      req.files?.pickup_manifest_file
+    );
+
+    if (!hasManifestFile) {
       return res.status(400).json({ error: 'Manifest file is required' });
     }
 
@@ -755,6 +858,11 @@ function createRoutesRouter(options = {}) {
         managerUserId: req.account.manager_user_id || null,
         manifestFile: req.file,
         companionGpxFile: req.files?.gpx_file || null,
+        combinedManifestFile: req.files?.combined_manifest_file || null,
+        combinedGpxFile: req.files?.combined_gpx_file || null,
+        deliveryManifestFile: req.files?.delivery_manifest_file || null,
+        deliveryGpxFile: req.files?.delivery_gpx_file || null,
+        pickupManifestFile: req.files?.pickup_manifest_file || null,
         requestedDriverId,
         requestedVehicleId,
         requestedDate: date,
@@ -775,6 +883,10 @@ function createRoutesRouter(options = {}) {
 
       if (error?.coordinate_integrity) {
         response.coordinate_integrity = error.coordinate_integrity;
+      }
+
+      if (error?.duplicate_packages) {
+        response.duplicate_packages = error.duplicate_packages;
       }
 
       if (statusCode >= 500 && process.env.NODE_ENV !== 'production') {
@@ -890,7 +1002,7 @@ function createRoutesRouter(options = {}) {
       const { data: codes, error } = await supabase
         .from('fedex_status_codes')
         .select(
-          'id, code, description, category, category_label, affects_service_score, requires_warning, is_pickup_code, created_at'
+          'id, code, description, category, category_label, affects_service_score, requires_warning, is_pickup_code, is_exception_code, created_at'
         )
         .order('category')
         .order('code');
@@ -959,7 +1071,7 @@ function createRoutesRouter(options = {}) {
       const { data: stops, error: stopsError } = await supabase
         .from('stops')
         .select(
-          'id, route_id, sequence_order, address, contact_name, address_line2, sid, ready_time, close_time, has_time_commit, stop_type, has_pickup, has_delivery, is_business, has_note, geocode_source, geocode_accuracy, lat, lng, status, exception_code, delivery_type_code, signer_name, signature_url, age_confirmed, is_pickup, pod_photo_url, pod_signature_url, scanned_at, completed_at'
+          'id, route_id, sequence_order, address, contact_name, address_line2, business_name, company_name, primary_phone, alternate_phone, email, customer_instructions, delivery_instructions, consignee, shipper, sid, ready_time, close_time, has_time_commit, stop_type, has_pickup, has_delivery, is_business, has_note, geocode_source, geocode_accuracy, lat, lng, status, exception_code, delivery_type_code, signer_name, signature_url, age_confirmed, is_pickup, pod_photo_url, pod_signature_url, scanned_at, completed_at'
         )
         .eq('route_id', route.id)
         .order('sequence_order');
@@ -973,11 +1085,13 @@ function createRoutesRouter(options = {}) {
       let packagesByStopId = new Map();
 
       if (stopIds.length > 0) {
-        const { data: packages, error: packagesError } = await supabase
-          .from('packages')
-          .select('id, stop_id, tracking_number, requires_signature, requires_adult_signature, hazmat')
-          .in('stop_id', stopIds)
-          .order('id');
+        const { data: packages, error: packagesError } = await selectPackagesForStops((selectClause) =>
+          supabase
+            .from('packages')
+            .select(selectClause)
+            .in('stop_id', stopIds)
+            .order('id')
+        );
 
         if (packagesError) {
           console.error('Today package lookup failed:', packagesError);
@@ -986,12 +1100,7 @@ function createRoutesRouter(options = {}) {
 
         packagesByStopId = (packages || []).reduce((map, pkg) => {
           const current = map.get(pkg.stop_id) || [];
-          current.push({
-            id: pkg.id,
-            tracking_number: pkg.tracking_number,
-            requires_signature: pkg.requires_signature,
-            hazmat: pkg.hazmat
-          });
+          current.push(pkg);
           map.set(pkg.stop_id, current);
           return map;
         }, new Map());
@@ -1022,6 +1131,44 @@ function createRoutesRouter(options = {}) {
         apartmentStops
       );
       const postDispatchChangePolicy = getPostDispatchChangePolicy(route);
+      const pickupStopSummary = getPickupStopSummary(routeStops);
+      let vehicle = null;
+      let odometerEntry = null;
+
+      if (route.vehicle_id) {
+        const { data: vehicleRow, error: vehicleError } = await supabase
+          .from('vehicles')
+          .select('id, name, current_mileage')
+          .eq('id', route.vehicle_id)
+          .eq('account_id', req.driver.account_id)
+          .maybeSingle();
+
+        if (vehicleError) {
+          console.error('Today vehicle lookup failed:', vehicleError);
+          return res.status(500).json({ error: 'Failed to load route vehicle' });
+        }
+
+        vehicle = vehicleRow || null;
+
+        const { data: odometerRows, error: odometerError } = await supabase
+          .from('vehicle_odometer_entries')
+          .select('id, odometer_reading, created_at')
+          .eq('account_id', req.driver.account_id)
+          .eq('driver_id', req.driver.driver_id)
+          .eq('vehicle_id', route.vehicle_id)
+          .eq('route_id', route.id)
+          .order('created_at', { ascending: false })
+          .limit(1);
+
+        if (odometerError) {
+          console.error('Today odometer lookup failed:', odometerError);
+          return res.status(500).json({ error: 'Failed to load odometer status' });
+        }
+
+        odometerEntry = (odometerRows || [])[0] || null;
+      }
+
+      const lastRecordedOdometer = toInteger(vehicle?.current_mileage) || 0;
 
       return res.status(200).json({
         route: {
@@ -1037,6 +1184,19 @@ function createRoutesRouter(options = {}) {
           post_dispatch_change_policy: postDispatchChangePolicy,
           total_stops: Number(route.total_stops || 0),
           completed_stops: Number(route.completed_stops || 0),
+          vehicle_id: route.vehicle_id || null,
+          vehicle_name: vehicle?.name || null,
+          vehicle: vehicle
+            ? {
+                id: vehicle.id,
+                name: vehicle.name || null,
+                current_mileage: lastRecordedOdometer
+              }
+            : null,
+          pickup_stops: pickupStopSummary.total,
+          pickup_stops_completed: pickupStopSummary.completed,
+          pickup_stop_count: pickupStopSummary.total,
+          driver_pickup_stops: pickupStopSummary.total,
           stops_per_hour: getStopsPerHour({
             completedStops: Number(route.completed_stops || 0),
             firstScan: (stops || [])
@@ -1065,7 +1225,28 @@ function createRoutesRouter(options = {}) {
           manifest_changed_after_dispatch: hasRouteChangedAfterDispatch(route),
           post_dispatch_change_policy: postDispatchChangePolicy,
           dispatched_at: route.dispatched_at || null,
-          last_manifest_change_at: route.last_manifest_change_at || null
+          last_manifest_change_at: route.last_manifest_change_at || null,
+          odometer_requirement: route.vehicle_id
+            ? {
+                required: true,
+                submitted: Boolean(odometerEntry),
+                vehicle_id: route.vehicle_id,
+                vehicle_name: vehicle?.name || null,
+                last_recorded_odometer: lastRecordedOdometer,
+                minimum_odometer: lastRecordedOdometer,
+                maximum_odometer: lastRecordedOdometer + 300,
+                latest_entry: odometerEntry
+                  ? {
+                      id: odometerEntry.id,
+                      odometer_reading: Number(odometerEntry.odometer_reading),
+                      created_at: odometerEntry.created_at || null
+                    }
+                  : null
+              }
+            : {
+                required: false,
+                submitted: true
+              }
         }
       });
     } catch (error) {
@@ -1119,6 +1300,113 @@ function createRoutesRouter(options = {}) {
     } catch (error) {
       console.error('Driver position endpoint failed:', error);
       return res.status(500).json({ error: 'Failed to save driver position' });
+    }
+  });
+
+  router.post('/odometer', requireDriver, async (req, res) => {
+    const {
+      vehicle_id: vehicleId,
+      route_id: routeId,
+      odometer_reading: odometerReading
+    } = req.body || {};
+    const parsedOdometer = toInteger(odometerReading);
+
+    if (!vehicleId || parsedOdometer === null) {
+      return res.status(400).json({ error: 'vehicle_id and odometer_reading are required' });
+    }
+
+    try {
+      if (routeId) {
+        const { data: route, error: routeError } = await loadDriverRoute(supabase, {
+          driverId: req.driver.driver_id,
+          accountId: req.driver.account_id,
+          routeId
+        });
+
+        if (routeError) {
+          console.error('Driver odometer route lookup failed:', routeError);
+          return res.status(500).json({ error: 'Failed to validate driver route' });
+        }
+
+        if (!route) {
+          return res.status(403).json({ error: 'Route not assigned to this driver' });
+        }
+
+        if (route.vehicle_id && route.vehicle_id !== vehicleId) {
+          return res.status(400).json({ error: 'Vehicle does not match this route' });
+        }
+      }
+
+      const { data: vehicle, error: vehicleError } = await supabase
+        .from('vehicles')
+        .select('id, account_id, current_mileage')
+        .eq('id', vehicleId)
+        .eq('account_id', req.driver.account_id)
+        .maybeSingle();
+
+      if (vehicleError) {
+        console.error('Driver odometer vehicle lookup failed:', vehicleError);
+        return res.status(500).json({ error: 'Failed to validate vehicle' });
+      }
+
+      if (!vehicle) {
+        return res.status(403).json({ error: 'Vehicle does not belong to this CSA' });
+      }
+
+      const lastRecordedOdometer = toInteger(vehicle.current_mileage) || 0;
+      const maximumOdometer = lastRecordedOdometer + 300;
+
+      if (parsedOdometer < lastRecordedOdometer || parsedOdometer > maximumOdometer) {
+        return res.status(400).json({
+          error: 'Odometer reading is outside the allowed range. Please recheck the truck odometer or contact your manager.',
+          minimum_odometer: lastRecordedOdometer,
+          maximum_odometer: maximumOdometer
+        });
+      }
+
+      const recordedAt = getUtcTimestamp();
+      const { data: entry, error: insertError } = await supabase
+        .from('vehicle_odometer_entries')
+        .insert({
+          vehicle_id: vehicleId,
+          driver_id: req.driver.driver_id,
+          account_id: req.driver.account_id,
+          route_id: routeId || null,
+          old_odometer_reading: lastRecordedOdometer,
+          new_odometer_reading: parsedOdometer,
+          odometer_reading: parsedOdometer,
+          source: 'driver',
+          recorded_at: recordedAt
+        })
+        .select('id, odometer_reading, recorded_at')
+        .single();
+
+      if (insertError) {
+        console.error('Driver odometer insert failed:', insertError);
+        return res.status(500).json({ error: 'Failed to save odometer reading' });
+      }
+
+      const { error: updateError } = await supabase
+        .from('vehicles')
+        .update({ current_mileage: parsedOdometer })
+        .eq('id', vehicleId)
+        .eq('account_id', req.driver.account_id);
+
+      if (updateError) {
+        console.error('Driver odometer vehicle update failed:', updateError);
+        return res.status(500).json({ error: 'Failed to update vehicle odometer' });
+      }
+
+      return res.status(201).json({
+        entry,
+        vehicle: {
+          id: vehicleId,
+          current_mileage: parsedOdometer
+        }
+      });
+    } catch (error) {
+      console.error('Driver odometer endpoint failed:', error);
+      return res.status(500).json({ error: 'Failed to save odometer reading' });
     }
   });
 
@@ -1185,7 +1473,7 @@ function createRoutesRouter(options = {}) {
       const { data: stopRecord, error: recordError } = await supabase
         .from('stops')
         .select(
-          'id, route_id, sequence_order, address, contact_name, address_line2, sid, ready_time, close_time, has_time_commit, stop_type, has_pickup, has_delivery, lat, lng, status, notes, exception_code, delivery_type_code, signer_name, signature_url, age_confirmed, is_pickup, pod_photo_url, pod_signature_url, scanned_at, completed_at'
+          'id, route_id, sequence_order, address, contact_name, address_line2, business_name, company_name, primary_phone, alternate_phone, email, customer_instructions, delivery_instructions, consignee, shipper, sid, ready_time, close_time, has_time_commit, stop_type, has_pickup, has_delivery, lat, lng, status, notes, exception_code, delivery_type_code, signer_name, signature_url, age_confirmed, is_pickup, pod_photo_url, pod_signature_url, scanned_at, completed_at'
         )
         .eq('id', stopId)
         .maybeSingle();
@@ -1195,11 +1483,13 @@ function createRoutesRouter(options = {}) {
         return res.status(500).json({ error: 'Failed to load stop detail' });
       }
 
-      const { data: packages, error: packagesError } = await supabase
-        .from('packages')
-        .select('id, stop_id, tracking_number, requires_signature, requires_adult_signature, hazmat')
-        .eq('stop_id', stopId)
-        .order('id');
+      const { data: packages, error: packagesError } = await selectPackagesForStops((selectClause) =>
+        supabase
+          .from('packages')
+          .select(selectClause)
+          .eq('stop_id', stopId)
+          .order('id')
+      );
 
       if (packagesError) {
         console.error('Stop detail package lookup failed:', packagesError);
@@ -1217,7 +1507,7 @@ function createRoutesRouter(options = {}) {
 
       const { data: siblingStops, error: siblingStopsError } = await supabase
         .from('stops')
-        .select('id, route_id, sequence_order, address, contact_name, address_line2, status, notes')
+        .select('id, route_id, sequence_order, address, contact_name, address_line2, status, notes, sid, stop_type, has_pickup, has_delivery, is_pickup, exception_code, delivery_type_code, scanned_at, completed_at')
         .eq('route_id', stopRecord.route_id)
         .order('sequence_order');
 
@@ -1431,7 +1721,8 @@ function createRoutesRouter(options = {}) {
       const stopUpdate = {
         status: storedStatus,
         exception_code: exceptionCode || null,
-        completed_at: completedAt
+        completed_at: completedAt,
+        completed_by_driver_id: req.driver.driver_id
       };
 
       if (deliveryTypeCode !== undefined) {
@@ -1459,10 +1750,19 @@ function createRoutesRouter(options = {}) {
         stopUpdate.scanned_at = scannedAt || null;
       }
 
-      const { error: updateStopError } = await supabase
+      let { error: updateStopError } = await supabase
         .from('stops')
         .update(stopUpdate)
         .eq('id', stopId);
+
+      if (updateStopError && isMissingColumnError(updateStopError, 'completed_by_driver_id')) {
+        const { completed_by_driver_id: _completedByDriverId, ...fallbackStopUpdate } = stopUpdate;
+        const fallbackResult = await supabase
+          .from('stops')
+          .update(fallbackStopUpdate)
+          .eq('id', stopId);
+        updateStopError = fallbackResult.error;
+      }
 
       if (updateStopError) {
         console.error('Stop completion update failed:', updateStopError);
@@ -1687,19 +1987,33 @@ function createRoutesRouter(options = {}) {
         return res.status(403).json({ error: 'Stop not assigned to this driver' });
       }
 
-      const { data: insertedRule, error: insertError } = await supabase
+      const roadRulePayload = {
+        account_id: req.driver.account_id,
+        lat_start: parsedLatStart,
+        lng_start: parsedLngStart,
+        lat_end: parsedLatEnd,
+        lng_end: parsedLngEnd,
+        flag_type: normalizeRoadFlagType(flagType),
+        notes: notes || `Driver-selected flag: ${flagType}`,
+        created_by: req.driver.driver_id
+      };
+
+      let { data: insertedRule, error: insertError } = await supabase
         .from('road_rules')
-        .insert({
-          account_id: req.driver.account_id,
-          lat_start: parsedLatStart,
-          lng_start: parsedLngStart,
-          lat_end: parsedLatEnd,
-          lng_end: parsedLngEnd,
-          flag_type: normalizeRoadFlagType(flagType),
-          notes: notes || `Driver-selected flag: ${flagType}`
-        })
+        .insert(roadRulePayload)
         .select('id')
         .single();
+
+      if (insertError && isMissingColumnError(insertError, 'created_by')) {
+        const { created_by: _createdBy, ...fallbackRoadRulePayload } = roadRulePayload;
+        const fallbackResult = await supabase
+          .from('road_rules')
+          .insert(fallbackRoadRulePayload)
+          .select('id')
+          .single();
+        insertedRule = fallbackResult.data;
+        insertError = fallbackResult.error;
+      }
 
       if (insertError) {
         console.error('Road flag insert failed:', insertError);

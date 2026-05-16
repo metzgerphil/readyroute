@@ -1,0 +1,23 @@
+#!/bin/zsh
+set -euo pipefail
+
+ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
+
+echo "==> Verifying landing page files"
+test -f "$ROOT_DIR/landing-page/index.html"
+test -f "$ROOT_DIR/landing-page/vercel.json"
+
+echo "==> Linting manager portal"
+npm --prefix "$ROOT_DIR/manager-portal" run lint
+
+echo "==> Building manager portal"
+VITE_API_URL="${VITE_API_URL:-https://readyroute-backend-production.up.railway.app}" \
+  npm --prefix "$ROOT_DIR/manager-portal" run build
+
+echo "==> Running backend unit tests"
+SUPABASE_URL="${SUPABASE_URL:-https://example.supabase.co}" \
+SUPABASE_SERVICE_KEY="${SUPABASE_SERVICE_KEY:-test-service-role-key}" \
+JWT_SECRET="${JWT_SECRET:-test-secret}" \
+  npm --prefix "$ROOT_DIR/backend" run test:unit
+
+echo "==> Verify complete"

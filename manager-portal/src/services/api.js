@@ -1,6 +1,6 @@
 import axios from 'axios';
 
-import { clearManagerToken, getManagerToken } from './auth';
+import { clearManagerToken, getManagerAccountId, getManagerToken, getSelectedCsaId } from './auth';
 
 const LOCAL_API_URL = import.meta.env.VITE_API_URL_LOCAL || 'http://localhost:3001';
 const PRODUCTION_API_URL = import.meta.env.VITE_API_URL || 'https://api.readyroute.app';
@@ -15,6 +15,12 @@ api.interceptors.request.use((config) => {
 
   if (token) {
     config.headers.Authorization = `Bearer ${token}`;
+  }
+
+  const selectedCsaId = getSelectedCsaId();
+  const tokenAccountId = getManagerAccountId();
+  if (selectedCsaId && tokenAccountId && selectedCsaId === tokenAccountId) {
+    config.headers['X-ReadyRoute-CSA-Id'] = selectedCsaId;
   }
 
   return config;

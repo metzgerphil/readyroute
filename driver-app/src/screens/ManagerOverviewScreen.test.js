@@ -73,7 +73,7 @@ describe('ManagerOverviewScreen', () => {
     expect(shiftOperationsDate('2026-04-23', 1)).toBe('2026-04-24');
   });
 
-  it('loads the manager routes map with manager auth mode and opens a route from the map marker', async () => {
+  it('loads the manager routes map with manager auth mode and opens a route from the route card', async () => {
     api.get.mockImplementation((url) => {
       if (url === '/manager/routes') {
         return Promise.resolve({
@@ -93,6 +93,7 @@ describe('ManagerOverviewScreen', () => {
                 completed_stops: 9,
                 delivered_packages: 55,
                 total_packages: 71,
+                pickup_stop_count: 2,
                 status: 'in_progress',
                 stops_per_hour: 14,
                 is_online: true,
@@ -202,15 +203,16 @@ describe('ManagerOverviewScreen', () => {
       return Promise.reject(new Error(`Unexpected GET ${url}`));
     });
 
+    const navigation = { navigate: jest.fn() };
     const screen = render(
       <ManagerOverviewScreen
-        navigation={{ navigate: jest.fn() }}
+        navigation={navigation}
         onLogout={jest.fn()}
       />
     );
 
     await waitFor(() => {
-      expect(screen.getByText('Total routes')).toBeTruthy();
+      expect(screen.getByText('Operational progress')).toBeTruthy();
     });
 
     expect(api.get).toHaveBeenCalledWith('/manager/routes', {
@@ -220,13 +222,20 @@ describe('ManagerOverviewScreen', () => {
       }
     });
     expect(screen.getByTestId('manager-operations-map')).toBeTruthy();
-    expect(screen.getByTestId('route-marker-route-1')).toBeTruthy();
+    expect(screen.queryByTestId('route-marker-route-1')).toBeNull();
     expect(screen.getByTestId('driver-marker-route-1')).toBeTruthy();
     expect(screen.queryByTestId('stop-marker-stop-1')).toBeNull();
-    expect(screen.getByText('Total routes')).toBeTruthy();
-    expect(screen.getByText('Package status')).toBeTruthy();
+    expect(screen.getByText('Routes')).toBeTruthy();
+    expect(screen.getByText('Drivers')).toBeTruthy();
+    expect(screen.getByText('Exceptions')).toBeTruthy();
+    expect(screen.getByText('Stops progress')).toBeTruthy();
+    expect(screen.getByText('Packages progress')).toBeTruthy();
+    expect(screen.getByText('Pickups progress')).toBeTruthy();
+    expect(screen.getByText('View All Routes')).toBeTruthy();
+    expect(screen.getByText(/assigned/)).toBeTruthy();
+    expect(screen.getByText('2 pickups')).toBeTruthy();
 
-    fireEvent.press(screen.getByTestId('route-marker-route-1'));
+    fireEvent.press(screen.getByText('Route 816'));
 
     await waitFor(() => {
       expect(screen.getByTestId('stop-marker-stop-1')).toBeTruthy();
@@ -238,16 +247,29 @@ describe('ManagerOverviewScreen', () => {
         date: getTodayOperationsDate()
       }
     });
-    expect(screen.getByText('Stops on route')).toBeTruthy();
+    expect(screen.getByText(/Stops on/)).toBeTruthy();
     expect(screen.getByText('100 Main St')).toBeTruthy();
-    expect(screen.getByText(/GPS live now|Driver seen/)).toBeTruthy();
-    expect(screen.getByText(/Exceptions 0/)).toBeTruthy();
+    expect(screen.getAllByText(/Location live now|Driver seen/).length).toBeGreaterThan(0);
+    expect(screen.getByText('Exceptions')).toBeTruthy();
+    expect(screen.getAllByText('0').length).toBeGreaterThan(0);
 
     fireEvent.press(screen.getByTestId('stop-marker-stop-2'));
 
     await waitFor(() => {
       expect(screen.getByTestId('selected-stop-card-stop-2')).toBeTruthy();
     });
+
+    expect(navigation.navigate).not.toHaveBeenCalledWith('StopDetail', expect.anything());
+
+    fireEvent.press(screen.getByTestId('stop-card-stop-1'));
+
+    expect(navigation.navigate).toHaveBeenCalledWith('StopDetail', expect.objectContaining({
+      authMode: 'manager',
+      stopId: 'stop-1',
+      stop: expect.objectContaining({
+        address: '100 Main St'
+      })
+    }));
   });
 
   it('ignores a stale route date when entering manager overview without a selected route', async () => {

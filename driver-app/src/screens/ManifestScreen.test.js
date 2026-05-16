@@ -17,6 +17,22 @@ jest.mock('../services/auth', () => ({
   subscribePinColorMode: jest.fn(() => jest.fn())
 }));
 
+jest.mock('react-native-safe-area-context', () => {
+  const React = require('react');
+  const { View } = require('react-native');
+
+  return {
+    __esModule: true,
+    SafeAreaView: ({ children }) => <View>{children}</View>,
+    useSafeAreaInsets: () => ({
+      top: 0,
+      right: 0,
+      bottom: 0,
+      left: 0
+    })
+  };
+});
+
 import React from 'react';
 import { fireEvent, render, waitFor } from '@testing-library/react-native';
 import api from '../services/api';
@@ -25,6 +41,7 @@ import {
   getPostDispatchChangeNotice,
   getPinColorModeLabel,
   getStatusConfig,
+  isDeliveryStop,
   isPriorityStop,
   isPickupStop,
   isHazmatStop
@@ -46,7 +63,12 @@ describe('ManifestScreen helpers', () => {
 
     expect(isPickupStop({ stop_type: 'pickup' })).toBe(true);
     expect(isPickupStop({ is_pickup: true })).toBe(true);
+    expect(isPickupStop({ stop_type: 'combined' })).toBe(true);
+    expect(isPickupStop({ has_pickup: true })).toBe(true);
     expect(isPickupStop({ stop_type: 'delivery' })).toBe(false);
+    expect(isDeliveryStop({ stop_type: 'combined' })).toBe(true);
+    expect(isDeliveryStop({ has_delivery: true })).toBe(true);
+    expect(isDeliveryStop({ stop_type: 'pickup', has_delivery: false })).toBe(false);
   });
 
   it('detects hazmat stops from package payloads', () => {
@@ -155,5 +177,62 @@ describe('ManifestScreen helpers', () => {
     fireEvent.press(screen.getByText('508 E Mission Ave, Escondido, CA'));
 
     expect(navigation.navigate).toHaveBeenCalledWith('StopDetail', { stopId: 'stop-1' });
+  });
+
+  it('lets drivers filter today’s route list to pickups with pickup details visible', async () => {
+    auth.getPinColorMode.mockResolvedValue('sid');
+    api.get.mockResolvedValue({
+      data: {
+        route: {
+          id: 'route-1',
+          stops: [
+            {
+              id: 'stop-1',
+              sequence_order: 1,
+              sid: '1061',
+              address: '508 E Mission Ave, Escondido, CA',
+              contact_name: 'Delivery Customer',
+              status: 'pending',
+              stop_type: 'delivery',
+              packages: [{ id: 'pkg-1' }]
+            },
+            {
+              id: 'stop-2',
+              sequence_order: 2,
+              sid: 'P200',
+              address: '351 W Felicita Ave, Escondido, CA',
+              contact_name: 'Starbucks',
+              status: 'pending',
+              stop_type: 'pickup',
+              ready_time: '13:00',
+              close_time: '14:00',
+              package_count: 1,
+              has_time_commit: true
+            }
+          ]
+        }
+      }
+    });
+
+    const navigation = {
+      navigate: jest.fn(),
+      setOptions: jest.fn(),
+      addListener: jest.fn(() => jest.fn())
+    };
+
+    const screen = render(<ManifestScreen navigation={navigation} route={{ params: {} }} />);
+
+    await waitFor(() => {
+      expect(screen.getByText('351 W Felicita Ave, Escondido, CA')).toBeTruthy();
+    });
+
+    expect(screen.getByText('Pickup')).toBeTruthy();
+    expect(screen.getByText('Pickup 13:00–14:00')).toBeTruthy();
+    expect(screen.getByText('1 pickups')).toBeTruthy();
+
+    fireEvent.press(screen.getByText('Pickups'));
+
+    expect(screen.queryByText('508 E Mission Ave, Escondido, CA')).toBeNull();
+    expect(screen.getByText('351 W Felicita Ave, Escondido, CA')).toBeTruthy();
   });
 });

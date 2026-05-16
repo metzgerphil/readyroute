@@ -1,15 +1,16 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 
 const GOOGLE_MAPS_KEY = import.meta.env.VITE_GOOGLE_MAPS_KEY;
 const GOOGLE_MAPS_SRC = GOOGLE_MAPS_KEY
   ? `https://maps.googleapis.com/maps/api/js?key=${GOOGLE_MAPS_KEY}&v=weekly`
   : null;
+const GOOGLE_MAPS_PLACEHOLDER_KEYS = new Set(['your_key_here', 'your_production_key']);
 
 let googleMapsScriptPromise = null;
 let googleMapsScriptFailed = false;
 
 function loadGoogleMapsScript() {
-  if (!GOOGLE_MAPS_KEY || GOOGLE_MAPS_KEY === 'your_key_here') {
+  if (!GOOGLE_MAPS_KEY || GOOGLE_MAPS_PLACEHOLDER_KEYS.has(GOOGLE_MAPS_KEY)) {
     return Promise.reject(new Error('missing_google_maps_key'));
   }
 
@@ -94,6 +95,15 @@ export default function MapView({ center, markers = [] }) {
   const markerInstancesRef = useRef([]);
   const infoWindowRef = useRef(null);
   const [errorMessage, setErrorMessage] = useState('');
+  const [mapMountNonce, setMapMountNonce] = useState(0);
+
+  const handleMapRef = useCallback((node) => {
+    mapRef.current = node;
+
+    if (node) {
+      setMapMountNonce((value) => value + 1);
+    }
+  }, []);
 
   useEffect(() => {
     let isMounted = true;
@@ -191,11 +201,11 @@ export default function MapView({ center, markers = [] }) {
     return () => {
       isMounted = false;
     };
-  }, [center, markers]);
+  }, [center, markers, mapMountNonce]);
 
   return (
     <div className="map-panel">
-      {errorMessage ? <div className="map-fallback">{errorMessage}</div> : <div className="map-canvas" ref={mapRef} />}
+      {errorMessage ? <div className="map-fallback">{errorMessage}</div> : <div className="map-canvas" ref={handleMapRef} />}
     </div>
   );
 }

@@ -265,12 +265,92 @@ test('applyRouteProgress stores FCC exception scans with code and timestamp', as
   assert.equal(result.routes[0].exception_updates, 1);
   assert.equal(result.has_changes, true);
   assert.equal(stops[1].status, 'attempted');
-  assert.equal(stops[1].exception_code, '07');
+  assert.equal(stops[1].exception_code, '007');
   assert.equal(stops[1].scanned_at, '2026-04-24T17:28:00.000Z');
   assert.equal(stops[1].completed_at, '2026-04-24T17:28:00.000Z');
   assert.equal(route.completed_stops, 1);
   assert.equal(route.status, 'in_progress');
   assert.equal(routeEvents[0].details.exception_updates, 1);
+});
+
+test('applyRouteProgress treats tracked FedEx status codes as exceptions without an explicit exception flag', async () => {
+  const route = {
+    id: 'route-823',
+    account_id: 'acct-1',
+    work_area_name: '823',
+    date: '2026-04-24',
+    status: 'pending',
+    total_stops: 3,
+    completed_stops: 0,
+    dispatch_state: 'dispatched',
+    driver_id: 'driver-1',
+    completed_at: null
+  };
+  const stops = [
+    { id: 'stop-1', route_id: 'route-823', sequence_order: 1, sid: '1001', address: '818 N JUNIPER ST', address_line2: null, status: 'pending', exception_code: null, completed_at: null, scanned_at: null },
+    { id: 'stop-2', route_id: 'route-823', sequence_order: 2, sid: '1002', address: '508 E MISSION AVE', address_line2: null, status: 'pending', exception_code: null, completed_at: null, scanned_at: null },
+    { id: 'stop-3', route_id: 'route-823', sequence_order: 3, sid: '1003', address: '300 E MISSION AVE', address_line2: null, status: 'pending', exception_code: null, completed_at: null, scanned_at: null }
+  ];
+  const routeEvents = [];
+
+  const supabase = new MockSupabase((query) => {
+    if (query.table === 'routes' && query.operation === 'select') {
+      return { data: [route], error: null };
+    }
+
+    if (query.table === 'stops' && query.operation === 'select') {
+      return { data: stops, error: null };
+    }
+
+    if (query.table === 'stops' && query.operation === 'update') {
+      const stopId = query.filters.find((filter) => filter.column === 'id')?.value;
+      const stop = stops.find((entry) => entry.id === stopId);
+      Object.assign(stop, query.payload);
+      return { data: stop, error: null };
+    }
+
+    if (query.table === 'routes' && query.operation === 'update') {
+      Object.assign(route, query.payload);
+      return { data: route, error: null };
+    }
+
+    if (query.table === 'route_sync_events' && query.operation === 'insert') {
+      routeEvents.push(query.payload);
+      return { data: query.payload, error: null };
+    }
+
+    throw new Error(`Unexpected query ${query.table}:${query.operation}:${query.mode}`);
+  });
+
+  const service = createFccProgressSyncService({
+    supabase,
+    now: () => new Date('2026-04-24T18:45:00.000Z')
+  });
+
+  const result = await service.applyRouteProgress({
+    accountId: 'acct-1',
+    workDate: '2026-04-24',
+    progressSnapshots: [
+      {
+        work_area_name: '823 BRIDGE',
+        record_count: 3,
+        rows: [
+          { sid: '1001', stop_number: 1, address: '818 N JUNIPER ST', status_code: '012' },
+          { sid: '1002', stop_number: 2, address: '508 E MISSION AVE', status_code: '014' },
+          { sid: '1003', stop_number: 3, address: '300 E MISSION AVE', delivery_pickup: 'Pickup', scan_code: '26' }
+        ]
+      }
+    ]
+  });
+
+  assert.equal(result.routes[0].exception_updates, 2);
+  assert.equal(stops[0].status, 'attempted');
+  assert.equal(stops[0].exception_code, '012');
+  assert.equal(stops[1].status, 'pending');
+  assert.equal(stops[1].exception_code, null);
+  assert.equal(stops[2].status, 'attempted');
+  assert.equal(stops[2].exception_code, 'P26');
+  assert.equal(routeEvents[0].details.exception_updates, 2);
 });
 
 test('applyRouteProgress assigns an unassigned route to the FCC driver when names match', async () => {

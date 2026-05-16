@@ -7,12 +7,14 @@ import {
   ScrollView,
   StyleSheet,
   Text,
+  TextInput,
   View
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import * as Location from 'expo-location';
 
 import api from '../services/api';
+import appTheme from '../theme/appTheme';
 import {
   removeClockInTime,
   removeToken,
@@ -234,11 +236,41 @@ export function getRouteSummary(route) {
     return [];
   }
 
+  const pickupStopCount = Number(route.pickup_stop_count || route.pickup_stops || route.driver_pickup_stops || 0);
+  const completedPickups = Number(route.pickup_stops_completed || route.completed_pickup_stops || 0);
+
   return [
     route.work_area_name ? `Route ${route.work_area_name}` : null,
     route.vehicle_name || route.vehicle_id ? `Vehicle ${route.vehicle_name || route.vehicle_id}` : null,
-    route.stops_per_hour != null ? `${route.stops_per_hour} stops/hr` : null
+    route.stops_per_hour != null ? `${route.stops_per_hour} stops/hr` : null,
+    pickupStopCount > 0 ? `${completedPickups}/${pickupStopCount} pickups` : null
   ].filter(Boolean);
+}
+
+export function formatMileage(value) {
+  const parsed = Number(value || 0);
+  return Number.isFinite(parsed) ? parsed.toLocaleString('en-US') : '0';
+}
+
+export function getOdometerRequirement(driverDay, route) {
+  const requirement = driverDay?.odometer_requirement || null;
+
+  if (!route || !requirement?.required || requirement.submitted) {
+    return null;
+  }
+
+  const lastRecorded = Number(requirement.last_recorded_odometer ?? route.vehicle?.current_mileage ?? 0);
+  const minimum = Number(requirement.minimum_odometer ?? lastRecorded);
+  const maximum = Number(requirement.maximum_odometer ?? minimum + 300);
+
+  return {
+    ...requirement,
+    vehicle_id: requirement.vehicle_id || route.vehicle_id || route.vehicle?.id || null,
+    vehicle_name: requirement.vehicle_name || route.vehicle_name || route.vehicle?.name || null,
+    last_recorded_odometer: Number.isFinite(lastRecorded) ? lastRecorded : 0,
+    minimum_odometer: Number.isFinite(minimum) ? minimum : 0,
+    maximum_odometer: Number.isFinite(maximum) ? maximum : 300
+  };
 }
 
 export function getDriverDayStatus(driverDay, route) {
@@ -291,14 +323,31 @@ export function hasGrantedLocationPermission(permission) {
 
 export function getLocationRequirementCopy() {
   return {
-    title: 'Share location to use ReadyRoute',
-    body: 'ReadyRoute requires live location sharing while drivers are using the app so managers can track active drivers and support routes in real time.'
+    title: 'Enable location for route tracking',
+    body: 'ReadyRoute uses your location while you are on route so your manager can see route progress, support dispatch decisions, and locate drivers during the workday.',
+    bullets: [
+      'Shows your route location to your manager while you are working.',
+      'Helps dispatch support pickups, rescues, and route progress.',
+      'Keeps the fleet map accurate during the day.'
+    ],
+    secondary: 'You can manage location access later in your device settings.',
+    blocked: 'Location access is required to run a route in ReadyRoute.'
   };
 }
 
 export function shouldPromptForLocationPermission(permission) {
   const status = String(permission?.status || '').toLowerCase();
   return !status || status === 'undetermined';
+}
+
+export function isBlockedLocationPermission(permission) {
+  const status = String(permission?.status || '').toLowerCase();
+  return status === 'denied' && !permission?.canAskAgain;
+}
+
+export function isDeniedLocationPermission(permission) {
+  const status = String(permission?.status || '').toLowerCase();
+  return status === 'denied' || (!status && permission?.granted === false);
 }
 
 function isUnauthorizedError(error) {
@@ -313,11 +362,16 @@ export default function HomeScreen({ navigation, onLogout }) {
   const [activeBreak, setActiveBreak] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isStartingRoute, setIsStartingRoute] = useState(false);
+  const [isSubmittingOdometer, setIsSubmittingOdometer] = useState(false);
+  const [odometerInput, setOdometerInput] = useState('');
+  const [odometerError, setOdometerError] = useState('');
   const [isUpdatingClock, setIsUpdatingClock] = useState(false);
   const [isUpdatingBreak, setIsUpdatingBreak] = useState(false);
   const [isRetryingLoad, setIsRetryingLoad] = useState(false);
   const [isResolvingLocationPermission, setIsResolvingLocationPermission] = useState(false);
-  const [hasLocationAccess, setHasLocationAccess] = useState(true);
+  const [hasLocationAccess, setHasLocationAccess] = useState(false);
+  const [isLocationPermissionBlocked, setIsLocationPermissionBlocked] = useState(false);
+  const [isLocationPermissionDenied, setIsLocationPermissionDenied] = useState(false);
   const [loadError, setLoadError] = useState(null);
   const [driverDay, setDriverDay] = useState({ status: 'unknown' });
 
@@ -330,13 +384,17 @@ export default function HomeScreen({ navigation, onLogout }) {
         ? await Location.requestForegroundPermissionsAsync()
         : currentPermission;
       const granted = hasGrantedLocationPermission(permission);
+      const blocked = isBlockedLocationPermission(permission);
 
       if (isMountedRef.current) {
         setHasLocationAccess(granted);
+        setIsLocationPermissionBlocked(blocked);
+        setIsLocationPermissionDenied(!granted && isDeniedLocationPermission(permission));
       }
 
       if (!granted && showAlert) {
-        Alert.alert('Location required', getLocationRequirementCopy().body, [
+        const copy = getLocationRequirementCopy();
+        Alert.alert('Location required', copy.blocked, [
           {
             text: 'Not now',
             style: 'cancel'
@@ -354,16 +412,36 @@ export default function HomeScreen({ navigation, onLogout }) {
     } catch (_error) {
       if (isMountedRef.current) {
         setHasLocationAccess(false);
+        setIsLocationPermissionBlocked(false);
+        setIsLocationPermissionDenied(false);
       }
 
       if (showAlert) {
-        Alert.alert('Location required', getLocationRequirementCopy().body);
+        Alert.alert('Location required', getLocationRequirementCopy().blocked);
       }
 
       return false;
     } finally {
       if (isMountedRef.current) {
         setIsResolvingLocationPermission(false);
+      }
+    }
+  }
+
+  async function checkLocationPermission() {
+    try {
+      const currentPermission = await Location.getForegroundPermissionsAsync();
+
+      if (isMountedRef.current) {
+        setHasLocationAccess(hasGrantedLocationPermission(currentPermission));
+        setIsLocationPermissionBlocked(isBlockedLocationPermission(currentPermission));
+        setIsLocationPermissionDenied(isDeniedLocationPermission(currentPermission));
+      }
+    } catch (_error) {
+      if (isMountedRef.current) {
+        setHasLocationAccess(false);
+        setIsLocationPermissionBlocked(false);
+        setIsLocationPermissionDenied(false);
       }
     }
   }
@@ -404,9 +482,7 @@ export default function HomeScreen({ navigation, onLogout }) {
         Promise.resolve(removeClockInTime()).catch(() => {});
       }
 
-      Promise.resolve(loadStatusCodes()).catch((error) => {
-        console.warn('FedEx status code preload failed:', error?.message || error);
-      });
+      Promise.resolve(loadStatusCodes()).catch(() => {});
     } catch (error) {
       if (!isMountedRef.current) {
         return;
@@ -433,7 +509,7 @@ export default function HomeScreen({ navigation, onLogout }) {
   }
 
   useEffect(() => {
-    ensureLocationPermission({ showAlert: false });
+    checkLocationPermission();
     loadHomeData();
 
     return () => {
@@ -512,14 +588,8 @@ export default function HomeScreen({ navigation, onLogout }) {
     onLogout();
   }
 
-  async function handleRouteAction() {
+  async function continueIntoRouteWorkflow() {
     if (!route) {
-      return;
-    }
-
-    const hasPermission = await ensureLocationPermission({ showAlert: true });
-
-    if (!hasPermission) {
       return;
     }
 
@@ -551,6 +621,90 @@ export default function HomeScreen({ navigation, onLogout }) {
       Alert.alert('Could not start route', message);
     } finally {
       setIsStartingRoute(false);
+    }
+  }
+
+  async function handleRouteAction() {
+    if (!route) {
+      return;
+    }
+
+    const hasPermission = await ensureLocationPermission({ showAlert: true });
+
+    if (!hasPermission) {
+      return;
+    }
+
+    const requirement = getOdometerRequirement(driverDay, route);
+    if (requirement) {
+      setOdometerError('Enter the current truck odometer before continuing.');
+      return;
+    }
+
+    await continueIntoRouteWorkflow();
+  }
+
+  async function handleSubmitOdometer() {
+    if (!route) {
+      return;
+    }
+
+    const requirement = getOdometerRequirement(driverDay, route);
+    if (!requirement) {
+      await continueIntoRouteWorkflow();
+      return;
+    }
+
+    const parsedOdometer = Number(odometerInput);
+
+    if (!Number.isInteger(parsedOdometer)) {
+      setOdometerError('Enter the current odometer reading as a whole number.');
+      return;
+    }
+
+    if (parsedOdometer < requirement.minimum_odometer || parsedOdometer > requirement.maximum_odometer) {
+      setOdometerError('Odometer reading is outside the allowed range. Please recheck the truck odometer or contact your manager.');
+      return;
+    }
+
+    setIsSubmittingOdometer(true);
+    setOdometerError('');
+
+    try {
+      await api.post('/routes/odometer', {
+        vehicle_id: requirement.vehicle_id,
+        route_id: route.id,
+        odometer_reading: parsedOdometer
+      });
+
+      setDriverDay((current) => ({
+        ...current,
+        odometer_requirement: {
+          ...(current?.odometer_requirement || {}),
+          submitted: true,
+          latest_entry: {
+            odometer_reading: parsedOdometer
+          }
+        }
+      }));
+      setRoute((current) => current
+        ? {
+            ...current,
+            vehicle: current.vehicle
+              ? { ...current.vehicle, current_mileage: parsedOdometer }
+              : current.vehicle,
+            vehicle_current_mileage: parsedOdometer
+          }
+        : current);
+      setOdometerInput('');
+      await continueIntoRouteWorkflow();
+    } catch (error) {
+      setOdometerError(
+        error.response?.data?.error ||
+        'Odometer reading is outside the allowed range. Please recheck the truck odometer or contact your manager.'
+      );
+    } finally {
+      setIsSubmittingOdometer(false);
     }
   }
 
@@ -655,7 +809,11 @@ export default function HomeScreen({ navigation, onLogout }) {
   const driverDayStatus = getDriverDayStatus(driverDay, route);
   const waitingCopy = getDriverWaitingCopy(driverDay);
   const postDispatchNotice = getPostDispatchChangeNotice(route);
+  const odometerRequirement = getOdometerRequirement(driverDay, route);
   const locationRequirementCopy = getLocationRequirementCopy();
+  const showLocationGate = Boolean(route && !hasLocationAccess);
+  const locationPermissionDenied = isLocationPermissionBlocked || isLocationPermissionDenied;
+  const locationButtonLabel = locationPermissionDenied ? 'Open Settings' : 'Enable Location';
   const breakButtonLabel = activeBreak ? `End ${formatBreakLabel(activeBreak.break_type)}` : 'Break';
   const dailyReminder = useMemo(() => getDailySafetyReminder(new Date()), []);
 
@@ -663,7 +821,7 @@ export default function HomeScreen({ navigation, onLogout }) {
     return (
       <SafeAreaView style={styles.safeArea}>
         <View style={styles.loadingContainer}>
-          <ActivityIndicator color="#FF6200" size="large" />
+          <ActivityIndicator color={appTheme.colors.orange} size="large" />
         </View>
       </SafeAreaView>
     );
@@ -713,12 +871,30 @@ export default function HomeScreen({ navigation, onLogout }) {
               </Pressable>
             </View>
 
-            {!hasLocationAccess ? (
+            {showLocationGate ? (
               <View style={styles.locationGateCard}>
                 <Text style={styles.locationGateTitle}>{locationRequirementCopy.title}</Text>
                 <Text style={styles.locationGateBody}>{locationRequirementCopy.body}</Text>
+                <View style={styles.locationGateBullets}>
+                  {locationRequirementCopy.bullets.map((bullet) => (
+                    <View key={bullet} style={styles.locationGateBulletRow}>
+                      <Text style={styles.locationGateBulletDot}>•</Text>
+                      <Text style={styles.locationGateBulletText}>{bullet}</Text>
+                    </View>
+                  ))}
+                </View>
+                <Text style={styles.locationGateSecondary}>
+                  {locationPermissionDenied ? locationRequirementCopy.blocked : locationRequirementCopy.secondary}
+                </Text>
                 <Pressable
-                  onPress={() => ensureLocationPermission({ showAlert: true })}
+                  onPress={() => {
+                    if (locationPermissionDenied) {
+                      Linking.openSettings?.().catch(() => {});
+                      return;
+                    }
+
+                    ensureLocationPermission({ showAlert: true });
+                  }}
                   style={({ pressed }) => [
                     styles.locationGateButton,
                     isResolvingLocationPermission && styles.buttonDisabled,
@@ -728,7 +904,7 @@ export default function HomeScreen({ navigation, onLogout }) {
                   {isResolvingLocationPermission ? (
                     <ActivityIndicator color="#ffffff" />
                   ) : (
-                    <Text style={styles.locationGateButtonText}>Enable Location</Text>
+                    <Text style={styles.locationGateButtonText}>{locationButtonLabel}</Text>
                   )}
                 </Pressable>
               </View>
@@ -780,7 +956,57 @@ export default function HomeScreen({ navigation, onLogout }) {
               </View>
             ) : null}
 
-            {routePresentation?.actionLabel ? (
+            {odometerRequirement && hasLocationAccess ? (
+              <View style={styles.odometerCard}>
+                <Text style={styles.odometerEyebrow}>Required before route start</Text>
+                <Text style={styles.odometerTitle}>Enter truck odometer</Text>
+                <Text style={styles.odometerBody}>
+                  {odometerRequirement.vehicle_name || odometerRequirement.vehicle_id || 'Selected vehicle'}
+                </Text>
+                <View style={styles.odometerDetailGrid}>
+                  <View style={styles.odometerDetail}>
+                    <Text style={styles.odometerDetailLabel}>Last recorded</Text>
+                    <Text style={styles.odometerDetailValue}>{formatMileage(odometerRequirement.last_recorded_odometer)}</Text>
+                  </View>
+                  <View style={styles.odometerDetail}>
+                    <Text style={styles.odometerDetailLabel}>Acceptable range</Text>
+                    <Text style={styles.odometerDetailValue}>
+                      {formatMileage(odometerRequirement.minimum_odometer)} to {formatMileage(odometerRequirement.maximum_odometer)}
+                    </Text>
+                  </View>
+                </View>
+                <TextInput
+                  keyboardType="number-pad"
+                  onChangeText={(value) => {
+                    setOdometerInput(value.replace(/[^\d]/g, ''));
+                    setOdometerError('');
+                  }}
+                  placeholder="Current odometer reading"
+                  placeholderTextColor={appTheme.colors.textMuted}
+                  style={styles.odometerInput}
+                  value={odometerInput}
+                />
+                {odometerError ? <Text style={styles.odometerError}>{odometerError}</Text> : null}
+                <Pressable
+                  disabled={isSubmittingOdometer}
+                  onPress={handleSubmitOdometer}
+                  style={({ pressed }) => [
+                    styles.primaryButton,
+                    styles.startRouteButton,
+                    isSubmittingOdometer && styles.buttonDisabled,
+                    pressed && !isSubmittingOdometer ? styles.buttonPressed : null
+                  ]}
+                >
+                  {isSubmittingOdometer ? (
+                    <ActivityIndicator color="#ffffff" />
+                  ) : (
+                    <Text style={styles.primaryButtonText}>Continue</Text>
+                  )}
+                </Pressable>
+              </View>
+            ) : null}
+
+            {routePresentation?.actionLabel && !odometerRequirement ? (
               <Pressable
                 disabled={isStartingRoute || !hasLocationAccess}
                 onPress={handleRouteAction}
@@ -861,19 +1087,20 @@ export default function HomeScreen({ navigation, onLogout }) {
 const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
-    backgroundColor: '#fff8f2'
+    backgroundColor: appTheme.colors.backgroundWarm
   },
   contentContainer: {
-    flexGrow: 1
+    flexGrow: 1,
+    paddingBottom: appTheme.spacing.lg
   },
   container: {
     flex: 1,
-    paddingHorizontal: 20,
-    paddingTop: 16,
-    paddingBottom: 20
+    paddingHorizontal: appTheme.spacing.lg,
+    paddingTop: appTheme.spacing.sm,
+    paddingBottom: appTheme.spacing.lg
   },
   mainContent: {
-    gap: 14
+    gap: appTheme.spacing.md
   },
   loadingContainer: {
     alignItems: 'center',
@@ -887,330 +1114,426 @@ const styles = StyleSheet.create({
     paddingHorizontal: 32
   },
   emptyTitle: {
-    color: '#173042',
-    fontSize: 20,
-    fontWeight: '700',
-    marginBottom: 10
+    color: appTheme.colors.textPrimary,
+    fontSize: appTheme.typography.titleSmall,
+    fontWeight: appTheme.typography.weights.heavy,
+    marginBottom: appTheme.spacing.sm
   },
   emptyText: {
-    color: '#666666',
-    fontSize: 16,
-    lineHeight: 22,
+    color: appTheme.colors.textSecondary,
+    fontSize: appTheme.typography.body,
+    lineHeight: appTheme.typography.lineHeights.body,
     textAlign: 'center'
   },
   topRow: {
     alignItems: 'center',
     flexDirection: 'row',
     justifyContent: 'space-between',
-    gap: 12,
-    marginBottom: 10,
-    marginTop: 74
+    gap: appTheme.spacing.sm,
+    marginBottom: appTheme.spacing.xs,
+    marginTop: 56
   },
   topRowText: {
     flex: 1,
     flexShrink: 1,
-    paddingRight: 8
+    paddingRight: appTheme.spacing.sm
   },
   dateText: {
-    color: '#173042',
-    fontSize: 16,
-    fontWeight: '700',
-    lineHeight: 22,
-    marginTop: 0
+    color: appTheme.colors.textPrimary,
+    fontSize: appTheme.typography.body,
+    fontWeight: appTheme.typography.weights.bold,
+    lineHeight: appTheme.typography.lineHeights.body
   },
   logoutButton: {
     alignSelf: 'flex-start',
     flexShrink: 0,
     minHeight: 44,
     justifyContent: 'center',
-    paddingHorizontal: 8,
-    paddingVertical: 8
+    paddingHorizontal: appTheme.spacing.xs,
+    paddingVertical: appTheme.spacing.xs
   },
   logoutText: {
-    color: '#173042',
-    fontSize: 16,
-    fontWeight: '700'
+    color: appTheme.colors.dangerText,
+    fontSize: appTheme.typography.bodySmall,
+    fontWeight: appTheme.typography.weights.bold
   },
   locationGateCard: {
-    backgroundColor: '#fff1e6',
-    borderColor: '#ffbf8c',
-    borderRadius: 24,
+    ...appTheme.shadows.card,
+    backgroundColor: appTheme.colors.warningSoft,
+    borderColor: appTheme.colors.orangeBorder,
+    borderRadius: appTheme.radius.lg,
     borderWidth: 1,
-    padding: 18
+    padding: appTheme.spacing.lg
   },
   locationGateTitle: {
-    color: '#173042',
-    fontSize: 19,
-    fontWeight: '800',
-    marginBottom: 8
+    color: appTheme.colors.textPrimary,
+    fontSize: appTheme.typography.titleSmall,
+    fontWeight: appTheme.typography.weights.heavy,
+    marginBottom: appTheme.spacing.xs
   },
   locationGateBody: {
-    color: '#5d6973',
-    fontSize: 15,
-    lineHeight: 22
+    color: appTheme.colors.textSecondary,
+    fontSize: appTheme.typography.body,
+    lineHeight: appTheme.typography.lineHeights.body
+  },
+  locationGateBullets: {
+    gap: appTheme.spacing.xs,
+    marginTop: appTheme.spacing.sm
+  },
+  locationGateBulletRow: {
+    alignItems: 'flex-start',
+    flexDirection: 'row',
+    gap: appTheme.spacing.xs
+  },
+  locationGateBulletDot: {
+    color: appTheme.colors.orange,
+    fontSize: appTheme.typography.bodySmall,
+    fontWeight: appTheme.typography.weights.heavy,
+    lineHeight: appTheme.typography.lineHeights.bodySmall
+  },
+  locationGateBulletText: {
+    color: appTheme.colors.textSecondary,
+    flex: 1,
+    fontSize: appTheme.typography.bodySmall,
+    lineHeight: appTheme.typography.lineHeights.bodySmall
+  },
+  locationGateSecondary: {
+    color: appTheme.colors.textSecondary,
+    fontSize: appTheme.typography.caption,
+    lineHeight: 18,
+    marginTop: appTheme.spacing.sm
   },
   locationGateButton: {
     alignItems: 'center',
     alignSelf: 'flex-start',
-    backgroundColor: '#ff7a1a',
-    borderRadius: 999,
+    backgroundColor: appTheme.colors.orange,
+    borderRadius: appTheme.buttons.radius,
     justifyContent: 'center',
-    marginTop: 14,
-    minHeight: 42,
-    paddingHorizontal: 16
+    marginTop: appTheme.spacing.md,
+    minHeight: appTheme.buttons.height,
+    paddingHorizontal: appTheme.buttons.horizontalPadding
   },
   locationGateButtonText: {
-    color: '#ffffff',
-    fontSize: 14,
-    fontWeight: '800'
+    color: appTheme.colors.textInverse,
+    fontSize: appTheme.typography.bodySmall,
+    fontWeight: appTheme.typography.weights.heavy
+  },
+  odometerCard: {
+    ...appTheme.shadows.card,
+    backgroundColor: appTheme.colors.surface,
+    borderColor: appTheme.colors.orangeBorder,
+    borderRadius: appTheme.radius.xl,
+    borderWidth: 1,
+    gap: appTheme.spacing.sm,
+    padding: appTheme.spacing.lg
+  },
+  odometerEyebrow: {
+    color: appTheme.colors.orangeDeep,
+    fontSize: appTheme.typography.eyebrow,
+    fontWeight: appTheme.typography.weights.heavy,
+    letterSpacing: 0.8,
+    textTransform: 'uppercase'
+  },
+  odometerTitle: {
+    color: appTheme.colors.textPrimary,
+    fontSize: appTheme.typography.titleSmall,
+    fontWeight: appTheme.typography.weights.heavy
+  },
+  odometerBody: {
+    color: appTheme.colors.textSecondary,
+    fontSize: appTheme.typography.body,
+    lineHeight: appTheme.typography.lineHeights.body
+  },
+  odometerDetailGrid: {
+    gap: appTheme.spacing.sm
+  },
+  odometerDetail: {
+    backgroundColor: appTheme.colors.backgroundWarm,
+    borderColor: appTheme.colors.border,
+    borderRadius: appTheme.radius.md,
+    borderWidth: 1,
+    padding: appTheme.spacing.sm
+  },
+  odometerDetailLabel: {
+    color: appTheme.colors.textMuted,
+    fontSize: appTheme.typography.caption,
+    fontWeight: appTheme.typography.weights.bold,
+    marginBottom: 2,
+    textTransform: 'uppercase'
+  },
+  odometerDetailValue: {
+    color: appTheme.colors.textPrimary,
+    fontSize: appTheme.typography.body,
+    fontWeight: appTheme.typography.weights.heavy
+  },
+  odometerInput: {
+    backgroundColor: appTheme.colors.surface,
+    borderColor: appTheme.colors.border,
+    borderRadius: appTheme.radius.md,
+    borderWidth: 1,
+    color: appTheme.colors.textPrimary,
+    fontSize: appTheme.typography.body,
+    fontWeight: appTheme.typography.weights.bold,
+    minHeight: 52,
+    paddingHorizontal: appTheme.spacing.md
+  },
+  odometerError: {
+    color: appTheme.colors.dangerText,
+    fontSize: appTheme.typography.bodySmall,
+    fontWeight: appTheme.typography.weights.bold,
+    lineHeight: appTheme.typography.lineHeights.bodySmall
   },
   safetyCard: {
-    backgroundColor: '#FFF3CD',
-    borderColor: '#f4d2b8',
-    borderRadius: 26,
+    ...appTheme.shadows.card,
+    backgroundColor: appTheme.colors.surface,
+    borderColor: appTheme.colors.border,
+    borderRadius: appTheme.radius.xl,
     borderWidth: 1,
+    borderLeftColor: appTheme.colors.orange,
+    borderLeftWidth: 4,
     minHeight: 0,
-    padding: 22
+    padding: appTheme.spacing.lg
   },
   safetyCardHeader: {
     alignItems: 'center',
     flexDirection: 'row',
-    marginBottom: 10
+    marginBottom: appTheme.spacing.sm
   },
   safetyEyebrow: {
-    color: '#8a5b2c',
-    fontSize: 13,
-    fontWeight: '800',
-    letterSpacing: 1,
+    color: appTheme.colors.orangeDeep,
+    fontSize: appTheme.typography.eyebrow,
+    fontWeight: appTheme.typography.weights.heavy,
+    letterSpacing: 0.8,
     textTransform: 'uppercase'
   },
   safetyTitle: {
-    color: '#173042',
-    fontSize: 29,
-    fontWeight: '800',
-    lineHeight: 36,
-    marginBottom: 10
+    color: appTheme.colors.textPrimary,
+    fontSize: 26,
+    fontWeight: appTheme.typography.weights.heavy,
+    lineHeight: 32,
+    marginBottom: appTheme.spacing.sm
   },
   safetySource: {
-    color: '#6f655d',
-    fontSize: 14,
-    lineHeight: 20,
-    marginBottom: 14
+    color: appTheme.colors.textSecondary,
+    fontSize: appTheme.typography.bodySmall,
+    lineHeight: appTheme.typography.lineHeights.bodySmall,
+    marginBottom: appTheme.spacing.md
   },
   safetyBulletList: {
-    gap: 12
+    gap: appTheme.spacing.sm
   },
   safetyBulletRow: {
     flexDirection: 'row',
     alignItems: 'flex-start',
-    gap: 10
+    gap: appTheme.spacing.sm
   },
   retryButton: {
     alignItems: 'center',
-    backgroundColor: '#FF6200',
-    borderRadius: 18,
+    backgroundColor: appTheme.colors.orange,
+    borderRadius: appTheme.radius.md,
     justifyContent: 'center',
-    marginTop: 18,
+    marginTop: appTheme.spacing.lg,
     minHeight: 48,
     minWidth: 140,
-    paddingHorizontal: 18
+    paddingHorizontal: appTheme.spacing.lg
   },
   retryButtonText: {
-    color: '#ffffff',
-    fontSize: 16,
-    fontWeight: '800'
+    color: appTheme.colors.textInverse,
+    fontSize: appTheme.typography.body,
+    fontWeight: appTheme.typography.weights.heavy
   },
   safetyBulletDot: {
-    color: '#c75d14',
-    fontSize: 20,
-    fontWeight: '800',
-    lineHeight: 24
+    color: appTheme.colors.orange,
+    fontSize: 18,
+    fontWeight: appTheme.typography.weights.heavy,
+    lineHeight: 22
   },
   safetyBullet: {
-    color: '#344754',
+    color: appTheme.colors.textSecondary,
     flex: 1,
-    fontSize: 16,
-    lineHeight: 24
+    fontSize: appTheme.typography.body,
+    lineHeight: appTheme.typography.lineHeights.body
   },
   badgeBase: {
-    borderRadius: 999,
+    borderRadius: appTheme.radius.pill,
     paddingHorizontal: 12,
     paddingVertical: 8
   },
   badgeTextBase: {
-    fontSize: 14,
-    fontWeight: '700'
+    fontSize: appTheme.typography.label,
+    fontWeight: appTheme.typography.weights.bold
   },
   badgeReady: {
-    backgroundColor: '#e2f7e8'
+    backgroundColor: appTheme.colors.greenSoft
   },
   badgeReadyText: {
-    color: '#1e8a44'
+    color: appTheme.colors.greenText
   },
   badgeInProgress: {
-    backgroundColor: '#ffe6d6'
+    backgroundColor: appTheme.colors.orangeSoft
   },
   badgeInProgressText: {
-    color: '#c75d14'
+    color: appTheme.colors.orangeDeep
   },
   badgeComplete: {
-    backgroundColor: '#ececec'
+    backgroundColor: appTheme.colors.grayBadge
   },
   badgeCompleteText: {
-    color: '#676767'
+    color: appTheme.colors.grayBadgeText
   },
   routeMetaRow: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: 8,
-    marginTop: 16
+    gap: appTheme.spacing.xs,
+    marginTop: appTheme.spacing.md
   },
   routeMetaChip: {
-    backgroundColor: '#f8fafc',
-    borderColor: '#e4ebf0',
-    borderRadius: 16,
+    backgroundColor: appTheme.colors.orangeSoft,
+    borderColor: appTheme.colors.orangeBorder,
+    borderRadius: appTheme.radius.md,
     borderWidth: 1,
-    minHeight: 36,
+    minHeight: 34,
     justifyContent: 'center',
     paddingHorizontal: 12,
-    paddingVertical: 8
+    paddingVertical: 7
   },
   routeMetaSecondary: {
-    color: '#365067',
-    fontSize: 13,
-    fontWeight: '700'
+    color: appTheme.colors.orangeDeep,
+    fontSize: appTheme.typography.bodySmall,
+    fontWeight: appTheme.typography.weights.bold
   },
   inlineEmptyState: {
-    backgroundColor: '#ffffff',
-    borderColor: '#ece6df',
-    borderRadius: 18,
+    backgroundColor: appTheme.colors.surfaceMuted,
+    borderColor: appTheme.colors.border,
+    borderRadius: appTheme.radius.md,
     borderWidth: 1,
-    marginTop: 20,
-    padding: 16
+    marginTop: appTheme.spacing.lg,
+    padding: appTheme.spacing.md
   },
   inlineEmptyTitle: {
-    color: '#173042',
-    fontSize: 16,
-    fontWeight: '700',
-    marginBottom: 6
+    color: appTheme.colors.textPrimary,
+    fontSize: appTheme.typography.bodyLarge,
+    fontWeight: appTheme.typography.weights.bold,
+    marginBottom: appTheme.spacing.xxs
   },
   inlineEmptyBody: {
-    color: '#666666',
-    fontSize: 14,
-    lineHeight: 20
+    color: appTheme.colors.textSecondary,
+    fontSize: appTheme.typography.bodySmall,
+    lineHeight: appTheme.typography.lineHeights.bodySmall
   },
   inlineNoticeState: {
-    backgroundColor: '#fff4e8',
-    borderColor: '#ffcfad',
-    borderRadius: 18,
+    backgroundColor: appTheme.colors.warningSoft,
+    borderColor: appTheme.colors.orangeBorder,
+    borderRadius: appTheme.radius.md,
     borderWidth: 1,
-    padding: 16
+    padding: appTheme.spacing.md
   },
   inlineNoticeTitle: {
-    color: '#9a3412',
-    fontSize: 16,
-    fontWeight: '700',
-    marginBottom: 6
+    color: appTheme.colors.warningText,
+    fontSize: appTheme.typography.bodyLarge,
+    fontWeight: appTheme.typography.weights.bold,
+    marginBottom: appTheme.spacing.xxs
   },
   inlineNoticeBody: {
-    color: '#7c4a22',
-    fontSize: 14,
-    lineHeight: 20
+    color: appTheme.colors.infoText,
+    fontSize: appTheme.typography.bodySmall,
+    lineHeight: appTheme.typography.lineHeights.bodySmall
   },
   primaryButton: {
+    ...appTheme.shadows.card,
     alignItems: 'center',
-    backgroundColor: '#FF6200',
-    borderRadius: 16,
+    backgroundColor: appTheme.colors.orange,
+    borderRadius: appTheme.radius.md,
     justifyContent: 'center',
-    minHeight: 56,
-    paddingHorizontal: 16
+    minHeight: 52,
+    paddingHorizontal: appTheme.spacing.md
   },
   startRouteButton: {
-    marginTop: 4
+    marginTop: appTheme.spacing.xxs
   },
   primaryButtonText: {
-    color: '#ffffff',
-    fontSize: 17,
-    fontWeight: '700'
+    color: appTheme.colors.textInverse,
+    fontSize: appTheme.typography.bodyLarge,
+    fontWeight: appTheme.typography.weights.bold
   },
   actionRow: {
     flexDirection: 'row',
-    gap: 12,
-    marginTop: 2
+    gap: appTheme.spacing.sm,
+    marginTop: appTheme.spacing.xs
   },
   actionButton: {
     flex: 1
   },
   clockButton: {
     alignItems: 'center',
-    borderRadius: 16,
+    borderRadius: appTheme.radius.md,
     justifyContent: 'center',
-    minHeight: 56,
-    paddingHorizontal: 16
+    minHeight: 50,
+    paddingHorizontal: appTheme.spacing.md
   },
   clockButtonIdle: {
-    backgroundColor: '#3f3f3f'
+    backgroundColor: appTheme.colors.charcoal
   },
   clockButtonActive: {
-    backgroundColor: '#3f3f3f'
+    backgroundColor: appTheme.colors.charcoal
   },
   clockButtonPressed: {
     opacity: 0.9
   },
   clockButtonText: {
-    fontSize: 17,
-    fontWeight: '700'
+    fontSize: appTheme.typography.bodyLarge,
+    fontWeight: appTheme.typography.weights.bold
   },
   clockButtonTextIdle: {
-    color: '#ffffff'
+    color: appTheme.colors.textInverse
   },
   clockButtonTextActive: {
-    color: '#ffffff'
+    color: appTheme.colors.textInverse
   },
   breakButton: {
     alignItems: 'center',
-    borderRadius: 16,
+    borderRadius: appTheme.radius.md,
     justifyContent: 'center',
-    minHeight: 56,
-    paddingHorizontal: 16
+    minHeight: 50,
+    paddingHorizontal: appTheme.spacing.md
   },
   breakButtonIdle: {
-    backgroundColor: '#4d148c'
+    backgroundColor: appTheme.colors.purple
   },
   breakButtonActive: {
-    backgroundColor: '#3c0f6f'
+    backgroundColor: '#5838bf'
   },
   breakButtonPressed: {
     opacity: 0.9
   },
   breakButtonText: {
-    fontSize: 17,
-    fontWeight: '700'
+    fontSize: appTheme.typography.bodyLarge,
+    fontWeight: appTheme.typography.weights.bold
   },
   breakButtonTextIdle: {
-    color: '#ffffff'
+    color: appTheme.colors.textInverse
   },
   breakButtonTextActive: {
-    color: '#ffffff'
+    color: appTheme.colors.textInverse
   },
   timeStatusCard: {
-    backgroundColor: '#ffffff',
-    borderColor: '#ece6df',
-    borderRadius: 18,
+    backgroundColor: appTheme.colors.surface,
+    borderColor: appTheme.colors.border,
+    borderRadius: appTheme.radius.md,
     borderWidth: 1,
-    marginTop: 12,
-    paddingHorizontal: 16,
-    paddingVertical: 12
+    marginTop: appTheme.spacing.sm,
+    paddingHorizontal: appTheme.spacing.md,
+    paddingVertical: appTheme.spacing.sm
   },
   timeStatusText: {
-    color: '#173042',
-    fontSize: 14,
-    fontWeight: '700'
+    color: appTheme.colors.textPrimary,
+    fontSize: appTheme.typography.bodySmall,
+    fontWeight: appTheme.typography.weights.bold
   },
   timeStatusSubtext: {
-    color: '#61727d',
-    fontSize: 13,
-    marginTop: 6
+    color: appTheme.colors.textSecondary,
+    fontSize: appTheme.typography.caption,
+    marginTop: appTheme.spacing.xxs
   },
   buttonDisabled: {
     opacity: 0.65

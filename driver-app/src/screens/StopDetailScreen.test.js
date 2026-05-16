@@ -13,8 +13,10 @@ jest.mock('expo-location', () => ({
 }));
 
 import {
+  buildDialUrl,
   formatSecondaryAddressDetails,
   formatWarningFlag,
+  getStopContactDetails,
   getPrimaryAddressLine,
   getStatusConfig,
   getStopTypeMeta,
@@ -59,7 +61,56 @@ describe('StopDetailScreen helpers', () => {
     });
 
     expect(badges.map((badge) => badge.label)).toEqual(
-      expect.arrayContaining(['BUSINESS', 'PICKUP', 'DELIVERY'])
+      expect.arrayContaining(['BUSINESS', 'Pickup', 'DELIVERY'])
     );
+  });
+
+  it('builds dial links while preserving phone extensions', () => {
+    expect(buildDialUrl('(555) 111-2222 ext. 9')).toBe('tel:5551112222,9');
+    expect(buildDialUrl('555.333.4444')).toBe('tel:5553334444');
+    expect(buildDialUrl('   ')).toBe('');
+  });
+
+  it('derives stop contact details from manifest contact fields', () => {
+    expect(
+      getStopContactDetails({
+        contact_name: 'Acme Receiving',
+        business_name: '',
+        company_name: 'Acme Warehouse',
+        primary_phone: '555-111-2222',
+        alternate_phone: '',
+        email: 'dock@example.com',
+        customer_instructions: 'Call before arrival',
+        delivery_instructions: 'Use rear dock'
+      })
+    ).toEqual({
+      contactName: 'Acme Receiving',
+      businessName: 'Acme Warehouse',
+      primaryPhone: '555-111-2222',
+      alternatePhone: '',
+      email: 'dock@example.com',
+      instructions: 'Call before arrival',
+      hasPhone: true,
+      hasAny: true
+    });
+
+    expect(
+      getStopContactDetails({
+        contact_name: 'Dock Contact',
+        business_name: '   ',
+        company_name: 'Fallback Company',
+        customer_instructions: '   ',
+        delivery_instructions: 'Use rear dock'
+      })
+    ).toEqual({
+      contactName: 'Dock Contact',
+      businessName: 'Fallback Company',
+      primaryPhone: '',
+      alternatePhone: '',
+      email: '',
+      instructions: 'Use rear dock',
+      hasPhone: false,
+      hasAny: true
+    });
   });
 });

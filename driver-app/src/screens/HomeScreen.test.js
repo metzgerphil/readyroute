@@ -26,7 +26,9 @@ import {
   getLocationRequirementCopy,
   getPostDispatchChangeNotice,
   getDriverWaitingCopy,
+  getOdometerRequirement,
   hasGrantedLocationPermission,
+  isDeniedLocationPermission,
   shouldPromptForLocationPermission,
   formatBreakLabel,
   getGreetingByTime,
@@ -79,9 +81,32 @@ describe('HomeScreen helpers', () => {
       getRouteSummary({
         work_area_name: '816',
         vehicle_name: '418666',
-        stops_per_hour: 12.4
+        stops_per_hour: 12.4,
+        pickup_stops: 3,
+        pickup_stops_completed: 1
       })
-    ).toEqual(['Route 816', 'Vehicle 418666', '12.4 stops/hr']);
+    ).toEqual(['Route 816', 'Vehicle 418666', '12.4 stops/hr', '1/3 pickups']);
+  });
+
+  it('derives the odometer gate range from driver day data', () => {
+    expect(getOdometerRequirement({ odometer_requirement: { required: false } }, { id: 'route-1' })).toBeNull();
+    expect(
+      getOdometerRequirement(
+        {
+          odometer_requirement: {
+            required: true,
+            submitted: false,
+            vehicle_id: 'vehicle-1',
+            last_recorded_odometer: 54250
+          }
+        },
+        { id: 'route-1', vehicle_id: 'vehicle-1' }
+      )
+    ).toMatchObject({
+      vehicle_id: 'vehicle-1',
+      minimum_odometer: 54250,
+      maximum_odometer: 54550
+    });
   });
 
   it('derives the staged waiting state for drivers before dispatch', () => {
@@ -121,6 +146,11 @@ describe('HomeScreen helpers', () => {
     expect(hasGrantedLocationPermission({ granted: false })).toBe(false);
     expect(shouldPromptForLocationPermission({ status: 'undetermined' })).toBe(true);
     expect(shouldPromptForLocationPermission({ status: 'denied' })).toBe(false);
-    expect(getLocationRequirementCopy().title).toBe('Share location to use ReadyRoute');
+    expect(isDeniedLocationPermission({ status: 'denied', granted: false, canAskAgain: true })).toBe(true);
+    expect(isDeniedLocationPermission({ status: 'undetermined', granted: false })).toBe(false);
+    expect(getLocationRequirementCopy().title).toBe('Enable location for route tracking');
+    expect(getLocationRequirementCopy().blocked).toBe('Location access is required to run a route in ReadyRoute.');
+    expect(getLocationRequirementCopy().bullets).toHaveLength(3);
+    expect(getLocationRequirementCopy().bullets[0]).toMatch(/\.$/);
   });
 });

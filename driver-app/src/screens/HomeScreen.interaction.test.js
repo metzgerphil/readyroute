@@ -134,6 +134,78 @@ describe('HomeScreen interactions', () => {
     expect(navigation.navigate).toHaveBeenCalledWith('MyDrive');
   });
 
+  it('requires a valid odometer reading before starting the route', async () => {
+    api.get.mockImplementation((url) => {
+      if (url === '/routes/today') {
+        return Promise.resolve({
+          data: {
+            route: {
+              id: 'route-1',
+              status: 'pending',
+              vehicle_id: 'vehicle-1',
+              vehicle_name: 'Truck 12',
+              stops: [{ id: 'stop-1' }]
+            },
+            driver_day: {
+              status: 'dispatched',
+              odometer_requirement: {
+                required: true,
+                submitted: false,
+                vehicle_id: 'vehicle-1',
+                vehicle_name: 'Truck 12',
+                last_recorded_odometer: 54250,
+                minimum_odometer: 54250,
+                maximum_odometer: 54550
+              }
+            }
+          }
+        });
+      }
+
+      if (url === '/timecards/status') {
+        return Promise.resolve({
+          data: {
+            active_timecard: null,
+            active_break: null
+          }
+        });
+      }
+
+      return Promise.reject(new Error(`Unexpected GET ${url}`));
+    });
+    api.post.mockResolvedValue({ data: { vehicle: { current_mileage: 54300 } } });
+    api.patch.mockResolvedValue({ data: {} });
+
+    const screen = await renderAndFlush();
+
+    await waitFor(() => {
+      expect(screen.getByText('Enter truck odometer')).toBeTruthy();
+      expect(screen.getByText('54,250 to 54,550')).toBeTruthy();
+    });
+
+    fireEvent.changeText(screen.getByPlaceholderText('Current odometer reading'), '54600');
+    fireEvent.press(screen.getByText('Continue'));
+
+    expect(await screen.findByText('Odometer reading is outside the allowed range. Please recheck the truck odometer or contact your manager.')).toBeTruthy();
+    expect(api.post).not.toHaveBeenCalledWith('/routes/odometer', expect.anything());
+    expect(navigation.navigate).not.toHaveBeenCalledWith('MyDrive');
+
+    fireEvent.changeText(screen.getByPlaceholderText('Current odometer reading'), '54300');
+    fireEvent.press(screen.getByText('Continue'));
+
+    await waitFor(() => {
+      expect(api.post).toHaveBeenCalledWith('/routes/odometer', {
+        vehicle_id: 'vehicle-1',
+        route_id: 'route-1',
+        odometer_reading: 54300
+      });
+      expect(api.patch).toHaveBeenCalledWith('/routes/route-1/status', {
+        status: 'in_progress'
+      });
+      expect(navigation.navigate).toHaveBeenCalledWith('MyDrive');
+    });
+  });
+
   it('shows a waiting-for-dispatch state when a staged route is assigned but not yet live', async () => {
     api.get.mockImplementation((url) => {
       if (url === '/routes/today') {
@@ -177,8 +249,8 @@ describe('HomeScreen interactions', () => {
     const screen = await renderAndFlush();
 
     await waitFor(() => {
-      expect(screen.getByText('Share location to use ReadyRoute')).toBeTruthy();
-      expect(screen.getByText('Enable Location')).toBeTruthy();
+      expect(screen.getByText('Enable location for route tracking')).toBeTruthy();
+      expect(screen.getByText('Open Settings')).toBeTruthy();
     });
   });
 

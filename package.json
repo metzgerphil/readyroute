@@ -2,7 +2,13 @@
   "name": "readyroute",
   "private": true,
   "scripts": {
+    "verify": "zsh ./scripts/verify.sh",
+    "deploy:backend": "zsh ./scripts/release-backend.sh",
+    "deploy:landing": "zsh ./scripts/release-landing.sh",
+    "deploy:portal": "zsh ./scripts/release-portal.sh",
+    "smoke": "zsh ./scripts/release-smoke.sh",
     "release:backend": "zsh ./scripts/release-backend.sh",
+    "release:landing": "zsh ./scripts/release-landing.sh",
     "release:portal": "zsh ./scripts/release-portal.sh",
     "release:smoke": "zsh ./scripts/release-smoke.sh",
     "release:app:prep": "cd driver-app && npm run release:prep"

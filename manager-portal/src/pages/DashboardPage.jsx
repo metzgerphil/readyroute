@@ -1,12 +1,21 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { format, isValid, parseISO } from 'date-fns';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 
 import DriverRow from '../components/DriverRow';
 import OverviewRoutesSection from '../components/OverviewRoutesSection';
+import {
+  ActionBanner,
+  PageHeader,
+  StatCard,
+  StatusBadge,
+  TableToolbar
+} from '../components/PortalDesignSystem';
+import { useSelectedCsa } from '../context/SelectedCsaContext';
 import api from '../services/api';
 import { getTodayString, saveStoredOperationsDate } from '../utils/operationsDate';
+import { compareRouteLabels, sortRoutesByWorkArea } from '../utils/routeSort';
 
 const GOOGLE_MAPS_KEY = import.meta.env.VITE_GOOGLE_MAPS_KEY;
 const GOOGLE_MAPS_SRC = GOOGLE_MAPS_KEY
@@ -105,27 +114,25 @@ function loadGoogleMapsScript() {
   return googleMapsScriptPromise;
 }
 
-function getRemainingStops(dashboard) {
-  return Math.max(0, Number(dashboard?.total_stops || 0) - Number(dashboard?.completed_stops || 0));
+function safeNumber(value) {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : 0;
 }
 
-function getFleetStopsPerHour(routeRows) {
-  const activeValues = (routeRows || [])
-    .filter((row) => Boolean(row.name))
-    .map((row) => row.stops_per_hour)
-    .filter((value) => value !== null && value !== undefined);
-
-  if (!activeValues.length) {
-    return '--';
-  }
-
-  const average = activeValues.reduce((sum, value) => sum + Number(value || 0), 0) / activeValues.length;
-  return average.toFixed(1);
+function formatCount(value) {
+  return safeNumber(value).toLocaleString();
 }
 
 function buildFallbackDriverRows(routes) {
-  return (routes || []).map((route) => {
+  return sortRoutesByWorkArea(routes).map((route) => {
     const pendingStop = (route.stops || []).find((stop) => stop.status === 'pending') || null;
+    const pickupStopCount = safeNumber(route.pickup_stops ?? route.pickup_stop_count ?? route.total_pickup_stops) ||
+      (route.stops || []).filter((stop) => (
+        stop?.has_pickup ||
+        stop?.is_pickup ||
+        stop?.stop_type === 'pickup' ||
+        stop?.stop_type === 'combined'
+      )).length;
 
     return {
       driver_id: route.driver_id || null,
@@ -140,6 +147,9 @@ function buildFallbackDriverRows(routes) {
       current_stop_address: pendingStop?.address || null,
       total_stops: Number(route.total_stops || 0),
       completed_stops: Number(route.completed_stops || 0),
+      pickup_stops: pickupStopCount,
+      pickup_stop_count: pickupStopCount,
+      driver_pickup_stops: pickupStopCount,
       time_commits_total: Number(route.time_commits_total || 0),
       time_commits_completed: Number(route.time_commits_completed || 0),
       stops_per_hour: route.stops_per_hour ?? null,
@@ -150,12 +160,25 @@ function buildFallbackDriverRows(routes) {
 }
 
 function buildFallbackDashboard(routes, date) {
-  const safeRoutes = routes || [];
+  const safeRoutes = sortRoutesByWorkArea(routes);
+  const pickupStops = safeRoutes.reduce((sum, route) => (
+    sum + (
+      safeNumber(route.pickup_stops ?? route.pickup_stop_count ?? route.total_pickup_stops) ||
+      (route.stops || []).filter((stop) => (
+        stop?.has_pickup ||
+        stop?.is_pickup ||
+        stop?.stop_type === 'pickup' ||
+        stop?.stop_type === 'combined'
+      )).length
+    )
+  ), 0);
 
   return {
     date,
     total_stops: safeRoutes.reduce((sum, route) => sum + Number(route.total_stops || 0), 0),
     completed_stops: safeRoutes.reduce((sum, route) => sum + Number(route.completed_stops || 0), 0),
+    total_pickup_stops: pickupStops,
+    pickup_stops: pickupStops,
     sync_status: {
       routes_today: safeRoutes.length,
       routes_assigned: safeRoutes.filter((route) => Boolean(route.driver_id)).length,
@@ -377,6 +400,15 @@ function DashboardFleetMap({ center, markers = [], boundsPoints = [] }) {
   const markerInstancesRef = useRef([]);
   const infoWindowRef = useRef(null);
   const [errorMessage, setErrorMessage] = useState('');
+  const [mapMountNonce, setMapMountNonce] = useState(0);
+
+  const handleMapRef = useCallback((node) => {
+    mapRef.current = node;
+
+    if (node) {
+      setMapMountNonce((value) => value + 1);
+    }
+  }, []);
 
   useEffect(() => {
     let isMounted = true;
@@ -528,11 +560,11 @@ function DashboardFleetMap({ center, markers = [], boundsPoints = [] }) {
     return () => {
       isMounted = false;
     };
-  }, [boundsPoints, center, markers]);
+  }, [boundsPoints, center, markers, mapMountNonce]);
 
   return (
     <div className="map-panel">
-      {errorMessage ? <div className="map-fallback">{errorMessage}</div> : <div className="map-canvas" ref={mapRef} />}
+      {errorMessage ? <div className="map-fallback">{errorMessage}</div> : <div className="map-canvas" ref={handleMapRef} />}
     </div>
   );
 }
@@ -553,7 +585,8 @@ const ROUTE_COLOR_PALETTE = [
 ];
 
 function getRouteColorMap(routes) {
-  const uniqueWorkAreas = [...new Set((routes || []).map((route) => route.work_area_name).filter(Boolean))].sort();
+  const uniqueWorkAreas = [...new Set((routes || []).map((route) => route.work_area_name).filter(Boolean))]
+    .sort(compareRouteLabels);
   return uniqueWorkAreas.reduce((map, workAreaName, index) => {
     map.set(workAreaName, ROUTE_COLOR_PALETTE[index % ROUTE_COLOR_PALETTE.length]);
     return map;
@@ -586,40 +619,6 @@ function formatSyncTimestamp(value) {
   }
 
   return `Last sync: ${format(parsed, 'p')} — ${format(parsed, 'MMM d')}`;
-}
-
-function getMissingRoutesState(syncStatus, dateValue) {
-  const routeCount = Number(syncStatus?.routes_today || 0);
-
-  if (routeCount > 0) {
-    return {
-      title: 'Today\'s routes are ready.',
-      detail: formatSyncTimestamp(syncStatus?.last_sync_at)
-    };
-  }
-
-  const parsedSync = syncStatus?.last_sync_at
-    ? (typeof syncStatus.last_sync_at === 'string' ? parseISO(syncStatus.last_sync_at) : new Date(syncStatus.last_sync_at))
-    : null;
-  const parsedDashboardDate = dateValue ? new Date(`${dateValue}T12:00:00`) : null;
-  const isSameDay =
-    parsedSync &&
-    isValid(parsedSync) &&
-    parsedDashboardDate &&
-    isValid(parsedDashboardDate) &&
-    format(parsedSync, 'yyyy-MM-dd') === format(parsedDashboardDate, 'yyyy-MM-dd');
-
-  if (isSameDay) {
-    return {
-      title: 'No routes are scheduled for this CSA yet.',
-      detail: `${formatSyncTimestamp(syncStatus?.last_sync_at)}. Once FedEx routes sync in, the dashboard and CSA map will populate automatically.`
-    };
-  }
-
-  return {
-    title: 'Today\'s routes are not loaded yet.',
-    detail: `${formatSyncTimestamp(syncStatus?.last_sync_at)}. Once FedEx routes sync in, the dashboard and CSA map will populate automatically.`
-  };
 }
 
 function getDispatchHealthSummary(routes = []) {
@@ -664,6 +663,47 @@ function getBannerState(syncStatus, dispatchHealth) {
   return 'active';
 }
 
+function getTodayMetrics({ dashboard, overviewRoutes = [], routeRows = [] }) {
+  const packageSummary = dashboard?.package_status_summary || {};
+  const stopStatusSummary = dashboard?.stop_status_summary || {};
+  const totalStops = safeNumber(dashboard?.total_stops || overviewRoutes.reduce((sum, route) => sum + safeNumber(route.total_stops), 0));
+  const completedStops = safeNumber(dashboard?.completed_stops || routeRows.reduce((sum, row) => sum + safeNumber(row.completed_stops), 0));
+  const stopsPerHourValues = routeRows
+    .map((row) => Number(row.stops_per_hour))
+    .filter((value) => Number.isFinite(value) && value > 0);
+  const packageTotalFromRoutes = overviewRoutes.reduce((sum, route) => (
+    sum + safeNumber(route.total_packages ?? route.manifest_package_count)
+  ), 0);
+  const exceptionCount = safeNumber(stopStatusSummary.exception)
+    || safeNumber(packageSummary.exception)
+    || overviewRoutes.reduce((sum, route) => sum + safeNumber(route.exception_count || route.exceptions), 0);
+  const pickupStopsFromRoutes = overviewRoutes.reduce((sum, route) => (
+    sum + safeNumber(route.pickup_stops ?? route.pickup_stop_count ?? route.total_pickup_stops)
+  ), 0);
+  const pickupStopsFromDrivers = routeRows.reduce((sum, row) => (
+    sum + safeNumber(row.pickup_stops ?? row.pickup_stop_count ?? row.driver_pickup_stops)
+  ), 0);
+  const pickupStops =
+    dashboard?.total_pickup_stops ??
+    dashboard?.pickup_stops ??
+    (pickupStopsFromRoutes || pickupStopsFromDrivers);
+  const driversOnRoad = routeRows.filter((row) => row.name && row.route_status === 'in_progress').length;
+
+  return {
+    routes: safeNumber(dashboard?.sync_status?.routes_today || overviewRoutes.length),
+    stops: totalStops,
+    completedStops,
+    remainingStops: Math.max(0, totalStops - completedStops),
+    fleetStopsPerHour: stopsPerHourValues.length
+      ? stopsPerHourValues.reduce((sum, value) => sum + value, 0) / stopsPerHourValues.length
+      : null,
+    driversOnRoad,
+    packages: safeNumber(packageSummary.total || packageTotalFromRoutes),
+    exceptions: exceptionCount,
+    pickupStops: safeNumber(pickupStops)
+  };
+}
+
 function getMapCoverageSummary({
   totalRoutes = 0,
   mappableRouteDetails = [],
@@ -688,10 +728,149 @@ function getMapCoverageSummary({
 
 function SkeletonCard() {
   return (
-    <div className="stat-card skeleton-card">
-      <div className="skeleton-line skeleton-label" />
-      <div className="skeleton-line skeleton-value" />
-    </div>
+    <StatCard
+      className="skeleton-card"
+      label={<span className="skeleton-line skeleton-label" />}
+      value={<span className="skeleton-line skeleton-value" />}
+    />
+  );
+}
+
+function DashboardIcon({ type }) {
+  switch (type) {
+    case 'sync':
+      return (
+        <svg aria-hidden="true" viewBox="0 0 24 24">
+          <path d="M20 7v5h-5M4 17v-5h5M18.2 9A7 7 0 0 0 6.1 6.9M5.8 15a7 7 0 0 0 12.1 2.1" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+      );
+    case 'drivers':
+      return (
+        <svg aria-hidden="true" viewBox="0 0 24 24">
+          <path d="M16 19a4 4 0 0 0-8 0M12 13a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7z" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+      );
+    case 'vehicles':
+      return (
+        <svg aria-hidden="true" viewBox="0 0 24 24">
+          <path d="M5 16l1.2-4.8A2 2 0 0 1 8.1 9h7.8a2 2 0 0 1 1.9 2.2L19 16M4 16h16v3H4zM7 19.5h.01M17 19.5h.01" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+      );
+    case 'pickup':
+      return (
+        <svg aria-hidden="true" viewBox="0 0 24 24">
+          <path d="M12 3 20 7.5v8.8l-8 4.7-8-4.7V7.5L12 3Z" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" />
+          <path d="M4.5 7.8 12 12l7.5-4.2M12 12v8.3M12 5.8v6.1m-3.2-3 3.2-3.2 3.2 3.2" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+      );
+    case 'dispatch':
+      return (
+        <svg aria-hidden="true" viewBox="0 0 24 24">
+          <path d="M4 12h10M10 6l6 6-6 6M17 5h3v14h-3" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+      );
+    case 'upload':
+      return (
+        <svg aria-hidden="true" viewBox="0 0 24 24">
+          <path d="M12 16V4m0 0 4 4m-4-4L8 8M5 16v3h14v-3" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+      );
+    default:
+      return null;
+  }
+}
+
+function DashboardErrorCard({ onRetry }) {
+  return (
+    <section className="card dashboard-error-card">
+      <div>
+        <div className="card-title">Couldn&apos;t load today&apos;s dashboard</div>
+        <p>Check your connection and try again.</p>
+      </div>
+      <button className="primary-cta" onClick={onRetry} type="button">
+        Try again
+      </button>
+    </section>
+  );
+}
+
+function DispatchBanner({
+  bannerState,
+  syncStatus,
+  metrics,
+  fedexConnection,
+  onAssignDrivers,
+  onManualUpload,
+  onSyncRoutes
+}) {
+  if (bannerState === 'loading') {
+    return null;
+  }
+
+  const fccConnected = fedexConnection?.is_connected === true;
+  const isReady = bannerState === 'active';
+  const summaryParts = [
+    metrics.driversOnRoad > 0 ? `${formatCount(metrics.driversOnRoad)} driver${metrics.driversOnRoad === 1 ? '' : 's'} on road` : null,
+    metrics.routes > 0 ? `${formatCount(metrics.routes)} route${metrics.routes === 1 ? '' : 's'}` : null,
+    metrics.remainingStops > 0 ? `${formatCount(metrics.remainingStops)} remaining` : null
+  ].filter(Boolean);
+  const summary = summaryParts.length ? summaryParts.join(' · ') : formatSyncTimestamp(syncStatus?.last_sync_at);
+
+  if (bannerState === 'missing') {
+    return (
+      <section className={`sync-banner dashboard-command-banner missing${fccConnected ? '' : ' fcc-required'}`}>
+        <div>
+          <h2>Today&apos;s routes need attention</h2>
+          <p>{fccConnected ? 'Routes have not loaded yet.' : 'FCC connection required before auto-syncing routes.'}</p>
+          {!fccConnected ? (
+            <div className="dashboard-fcc-note">
+              <strong>FCC connection required</strong>
+              <span>Connect FedEx Customer Connection before auto-syncing routes.</span>
+            </div>
+          ) : null}
+        </div>
+        <div className="dashboard-banner-actions">
+          <button className="primary-cta" disabled={!fccConnected} onClick={onSyncRoutes} type="button">
+            Sync FedEx Routes
+          </button>
+          <button className="secondary-button" onClick={onManualUpload} type="button">
+            Upload Manifest
+          </button>
+        </div>
+      </section>
+    );
+  }
+
+  if (bannerState === 'needs-attention') {
+    return (
+      <ActionBanner
+        className="sync-banner dashboard-command-banner needs-attention"
+        title="Today's routes need attention"
+        description={summary}
+        tone="warning"
+        action={(
+          <button className="sync-banner-button" onClick={onAssignDrivers} type="button">
+            Open Morning Setup
+          </button>
+        )}
+      />
+    );
+  }
+
+  return (
+    <ActionBanner
+      className="sync-banner dashboard-command-banner active"
+      tone="active"
+    >
+      <div className="dashboard-loaded-banner">
+        <div>
+          <h2>{isReady ? 'Routes ready' : "Today's routes need attention"}</h2>
+        </div>
+        <div className="dashboard-loaded-metrics">
+          <span>{summary}</span>
+        </div>
+      </div>
+    </ActionBanner>
   );
 }
 
@@ -700,10 +879,10 @@ export default function DashboardPage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const queryClient = useQueryClient();
   const [viewMode, setViewMode] = useState('map');
-  const [isCompactBanner, setIsCompactBanner] = useState(false);
   const [vehiclePickerRouteId, setVehiclePickerRouteId] = useState(null);
   const dashboardDate = searchParams.get('date') || getTodayString();
   const isSelectedDateToday = dashboardDate === getTodayString();
+  const { selectedCsaId } = useSelectedCsa();
 
   useEffect(() => {
     saveStoredOperationsDate(dashboardDate);
@@ -720,7 +899,8 @@ export default function DashboardPage() {
   }, [dashboardDate, searchParams, setSearchParams]);
 
   const dashboardQuery = useQuery({
-    queryKey: ['manager-dashboard', dashboardDate],
+    queryKey: ['manager-dashboard', selectedCsaId, dashboardDate],
+    enabled: Boolean(selectedCsaId),
     queryFn: async () => {
       const response = await api.get('/manager/dashboard', {
         params: {
@@ -733,7 +913,8 @@ export default function DashboardPage() {
   });
 
   const vehiclesQuery = useQuery({
-    queryKey: ['fleet-vehicles'],
+    queryKey: ['fleet-vehicles', selectedCsaId],
+    enabled: Boolean(selectedCsaId),
     queryFn: async () => {
       const response = await api.get('/vehicles');
       return response.data?.vehicles || [];
@@ -741,18 +922,24 @@ export default function DashboardPage() {
   });
 
   const routesOverviewQuery = useQuery({
-    queryKey: ['dashboard-overview-routes', dashboardDate],
+    queryKey: ['dashboard-overview-routes', selectedCsaId, dashboardDate],
+    enabled: Boolean(selectedCsaId),
     queryFn: async () => {
       const response = await api.get('/manager/routes', { params: { date: dashboardDate } });
-      return response.data?.routes || [];
+      return response.data || { routes: [], fedex_connection: null, sync_status: null };
     }
   });
 
-  const overviewRoutes = routesOverviewQuery.data || [];
+  const overviewRoutes = useMemo(
+    () => sortRoutesByWorkArea(routesOverviewQuery.data?.routes || []),
+    [routesOverviewQuery.data?.routes]
+  );
+  const fedexConnection = routesOverviewQuery.data?.fedex_connection || null;
   const overviewRouteIdsKey = overviewRoutes.map((route) => route.id).join(',');
 
   const routeDetailMapQuery = useQuery({
-    queryKey: ['dashboard-route-detail-map', dashboardDate, overviewRouteIdsKey],
+    queryKey: ['dashboard-route-detail-map', selectedCsaId, dashboardDate, overviewRouteIdsKey],
+    enabled: Boolean(selectedCsaId) && overviewRoutes.length > 0,
     queryFn: async () => {
       const responses = await Promise.allSettled(
         overviewRoutes.map(async (route) => {
@@ -771,8 +958,7 @@ export default function DashboardPage() {
       }
 
       return fulfilled;
-    },
-    enabled: overviewRoutes.length > 0
+    }
   });
 
   const assignVehicleMutation = useMutation({
@@ -782,7 +968,7 @@ export default function DashboardPage() {
     },
     onSuccess: ({ routeId, vehicleId }) => {
       const vehicle = (vehiclesQuery.data || []).find((entry) => entry.id === vehicleId) || null;
-      queryClient.setQueryData(['manager-dashboard', dashboardDate], (current) => {
+      queryClient.setQueryData(['manager-dashboard', selectedCsaId, dashboardDate], (current) => {
         if (!current) {
           return current;
         }
@@ -815,31 +1001,19 @@ export default function DashboardPage() {
     [overviewRoutes]
   );
   const activeDashboard = isSelectedDateToday ? (dashboard || fallbackDashboard) : fallbackDashboard;
-  const routeRows = activeDashboard?.drivers || [];
+  const routeRows = useMemo(
+    () => sortRoutesByWorkArea(activeDashboard?.drivers || []),
+    [activeDashboard?.drivers]
+  );
   const syncStatus = activeDashboard?.sync_status;
   const bannerState =
     dashboardQuery.isLoading && overviewRoutes.length === 0
       ? 'loading'
       : getBannerState(syncStatus, dispatchHealth);
-  const missingRoutesState = useMemo(
-    () => getMissingRoutesState(syncStatus, dashboard?.date || dashboardDate),
-    [dashboard?.date, dashboardDate, syncStatus]
+  const todayMetrics = useMemo(
+    () => getTodayMetrics({ dashboard: activeDashboard, overviewRoutes, routeRows }),
+    [activeDashboard, overviewRoutes, routeRows]
   );
-
-  useEffect(() => {
-    setIsCompactBanner(false);
-
-    if (bannerState !== 'active') {
-      return undefined;
-    }
-
-    const timeoutId = window.setTimeout(() => {
-      setIsCompactBanner(true);
-    }, 10000);
-
-    return () => window.clearTimeout(timeoutId);
-  }, [bannerState, syncStatus?.routes_today, syncStatus?.routes_assigned]);
-
   const routeDetailsById = useMemo(
     () =>
       new Map(
@@ -969,65 +1143,30 @@ export default function DashboardPage() {
     navigate(`/manifest?date=${dashboardDate}`);
   }
 
+  function handleRetryDashboard() {
+    dashboardQuery.refetch();
+    routesOverviewQuery.refetch();
+  }
+
   return (
-    <section className="page-section">
-      {bannerState !== 'loading' ? <div className={`sync-banner ${bannerState}${bannerState === 'active' && isCompactBanner ? ' compact' : ''}`}>
-        {bannerState === 'missing' ? (
-          <>
-            <div>
-              <h2>{missingRoutesState.title}</h2>
-              <p>{missingRoutesState.detail}</p>
-            </div>
-            <button className="sync-banner-button" onClick={handleSyncRoutes} type="button">
-              Sync FedEx Routes Now
-            </button>
-          </>
-        ) : null}
+    <section className="page-section dashboard-command-center">
+      <PageHeader
+        actions={(
+          <button className="secondary-button dashboard-refresh-button" disabled={dashboardQuery.isFetching} onClick={handleRetryDashboard} type="button">
+            {dashboardQuery.isFetching ? 'Refreshing...' : 'Refresh'}
+          </button>
+        )}
+        description={getFriendlyDashboardDate(dashboard?.date || dashboardDate)}
+        eyebrow="Command Center"
+        title="Dashboard"
+      />
 
-        {bannerState === 'needs-attention' ? (
-          <>
-            <div>
-              <h2>
-                {dispatchHealth.dispatchReadyRoutes.length} of {syncStatus?.routes_today || 0} routes dispatch-ready
-              </h2>
-              <p>
-                {Math.max(0, Number(syncStatus?.routes_today || 0) - Number(syncStatus?.routes_assigned || 0))} need driver assignment
-                {' · '}
-                {dispatchHealth.routesNeedingPinReview.length} need pin review
-                {' · '}
-                {dispatchHealth.missingPinStops} missing stop pins
-              </p>
-            </div>
-            <button className="sync-banner-button" onClick={handleAssignDrivers} type="button">
-              Open Morning Setup
-            </button>
-          </>
-        ) : null}
-
-        {bannerState === 'active' ? (
-          <div className="sync-banner-status">
-            <strong>All {syncStatus?.routes_today || 0} routes dispatch-ready</strong>
-            <span>{syncStatus?.drivers_on_road || 0} drivers on road</span>
-          </div>
-        ) : null}
-      </div> : null}
-
-      <div className="page-header">
-        <div>
-          <h1>Dashboard</h1>
-          <p>{getFriendlyDashboardDate(dashboard?.date)}</p>
-        </div>
-      </div>
-
-      {dashboardQuery.isLoading && bannerState !== 'missing' ? <div className="card">Loading dashboard...</div> : null}
       {dashboardQuery.isError ? (
-        <div className="card">
-          {dashboardQuery.error?.response?.data?.error || 'Dashboard failed to load. Refresh and try again.'}
-        </div>
+        <DashboardErrorCard onRetry={handleRetryDashboard} />
       ) : null}
 
       {dashboardQuery.isLoading ? (
-        <div className="stats-grid">
+        <div className="dashboard-glance-grid">
           <SkeletonCard />
           <SkeletonCard />
           <SkeletonCard />
@@ -1035,251 +1174,160 @@ export default function DashboardPage() {
         </div>
       ) : null}
 
-      {bannerState === 'missing' && !dashboardQuery.isLoading ? (
-        <div className="card empty-routes-card">
-          <div className="empty-routes-card-copy">
-            <div className="card-title">Waiting For Route Sync</div>
-            <p>
-              ReadyRoute will show today&apos;s stop counts, dispatch readiness, and CSA map coverage here as soon as
-              the day&apos;s FedEx routes are available.
-            </p>
-          </div>
-          <div className="empty-routes-card-grid">
-            <div className="empty-routes-stat">
-              <strong>{syncStatus?.last_sync_at ? formatSyncTimestamp(syncStatus.last_sync_at) : 'No sync recorded yet'}</strong>
-              <span>Most recent route sync</span>
-            </div>
-            <div className="empty-routes-stat">
-              <strong>Automatic when routes are loaded</strong>
-              <span>Dashboard cards and CSA map</span>
-            </div>
-            <div className="empty-routes-stat">
-              <strong>Manual fallback available</strong>
-              <span>Upload XLS, GPX, or both from Manifest</span>
-            </div>
-          </div>
-          <div className="empty-routes-actions">
-            <button className="primary-cta" onClick={handleSyncRoutes} type="button">
-              Open Route Sync
-            </button>
-            <button className="secondary-button" onClick={() => navigate(`/fleet-map?date=${dashboardDate}`)} type="button">
-              View Fleet Map
-            </button>
-          </div>
-        </div>
-      ) : null}
-
-      {activeDashboard && bannerState !== 'missing' ? (
+      {!dashboardQuery.isLoading && !dashboardQuery.isError ? (
         <>
-          <div className="stats-grid">
-            <div className="stat-card">
-              <div className="stat-label">Total Stops Today</div>
-              <div className="stat-value">{activeDashboard.total_stops ?? 0}</div>
-            </div>
-            <div className="stat-card">
-              <div className="stat-label">Completed Stops</div>
-              <div className="stat-value">{activeDashboard.completed_stops ?? 0}</div>
-            </div>
-            <div className="stat-card">
-              <div className="stat-label">Remaining Stops</div>
-              <div className="stat-value">{getRemainingStops(activeDashboard)}</div>
-            </div>
-            <div className="stat-card">
-              <div className="stat-label">Fleet Stops/Hr</div>
-              <div className="stat-value">{getFleetStopsPerHour(routeRows)}</div>
-            </div>
+          <DispatchBanner
+            bannerState={bannerState}
+            fedexConnection={fedexConnection}
+            metrics={todayMetrics}
+            onAssignDrivers={handleAssignDrivers}
+            onManualUpload={handleAssignDrivers}
+            onSyncRoutes={handleSyncRoutes}
+            syncStatus={syncStatus}
+          />
+
+          <div className="dashboard-glance-grid">
+            <StatCard label="Total stops today" value={formatCount(todayMetrics.stops)} />
+            <StatCard label="Completed stops" tone={todayMetrics.completedStops > 0 ? 'active' : 'neutral'} value={formatCount(todayMetrics.completedStops)} />
+            <StatCard label="Remaining stops" tone={todayMetrics.remainingStops > 0 ? 'warning' : 'active'} value={formatCount(todayMetrics.remainingStops)} />
+            <StatCard
+              label={(
+                <span className="dashboard-stat-label-icon">
+                  <DashboardIcon type="pickup" />
+                  Pickup stops
+                </span>
+              )}
+              value={formatCount(todayMetrics.pickupStops)}
+            />
           </div>
 
-          <div className="card dispatch-health-card">
-            <div className="dispatch-health-header">
-              <div className="card-title">Dispatch Readiness</div>
-              <div className="driver-meta">
-                {dispatchHealth.dispatchReadyRoutes.length} of {dispatchHealth.totalRoutes} routes ready to roll
-              </div>
-            </div>
-            <div className="dispatch-health-grid">
-              <div className="dispatch-health-stat">
-                <div className="dispatch-health-value">{dispatchHealth.dispatchReadyRoutes.length}</div>
-                <div className="dispatch-health-label">Dispatch-ready</div>
-              </div>
-              <div className="dispatch-health-stat">
-                <div className="dispatch-health-value">{dispatchHealth.routesNeedingAssignment.length}</div>
-                <div className="dispatch-health-label">Need driver</div>
-              </div>
-              <div className="dispatch-health-stat">
-                <div className="dispatch-health-value">{dispatchHealth.routesNeedingVehicle.length}</div>
-                <div className="dispatch-health-label">Need vehicle</div>
-              </div>
-              <div className="dispatch-health-stat">
-                <div className="dispatch-health-value">{dispatchHealth.routesNeedingPinReview.length}</div>
-                <div className="dispatch-health-label">Need pin review</div>
-              </div>
-              <div className="dispatch-health-stat">
-                <div className="dispatch-health-value">{dispatchHealth.routesWithWarnings.length}</div>
-                <div className="dispatch-health-label">Route warnings</div>
-              </div>
-            </div>
-            {dispatchHealth.routesNeedingAssignment.length > 0 ||
-            dispatchHealth.routesNeedingVehicle.length > 0 ||
-            dispatchHealth.routesNeedingPinReview.length > 0 ||
-            dispatchHealth.routesWithWarnings.length > 0 ? (
-              <div className="dispatch-health-route-list">
-                {dispatchHealth.routesNeedingAssignment.map((route) => (
-                  <button
-                    className="dispatch-health-chip assignment"
-                    key={`assignment-${route.id}`}
-                    onClick={() => navigate(`/manifest?date=${dashboardDate}`)}
-                    type="button"
+          {bannerState !== 'missing' && todayMetrics.routes > 0 ? (
+            <details className="dashboard-secondary-details">
+              <summary>Route detail and map preview</summary>
+              <div className="dashboard-secondary-details-inner">
+                <div className="card">
+                  <TableToolbar
+                    actions={(
+                      <button className="secondary-inline-button" onClick={() => navigate(`/fleet-map?date=${dashboardDate}`)} type="button">
+                        Open Fleet Map
+                      </button>
+                    )}
+                    title={(
+                      <button className="dashboard-fleet-view-title-button" onClick={() => navigate(`/fleet-map?date=${dashboardDate}`)} type="button">
+                        Fleet View
+                      </button>
+                    )}
                   >
-                    {route.work_area_name}: assign driver
-                  </button>
-                ))}
-                {dispatchHealth.routesNeedingVehicle.map((route) => (
-                  <button
-                    className="dispatch-health-chip vehicle"
-                    key={`vehicle-${route.id}`}
-                    onClick={() => navigate(`/manifest?date=${dashboardDate}`)}
-                    type="button"
-                  >
-                    {route.work_area_name}: assign vehicle
-                  </button>
-                ))}
-                {dispatchHealth.routesNeedingPinReview.map((route) => (
-                  <button
-                    className={`dispatch-health-chip ${route.map_status === 'needs_pins' ? 'pins' : 'partial'}`}
-                    key={`pins-${route.id}`}
-                    onClick={() => navigate(`/routes/${route.id}?date=${dashboardDate}`)}
-                    type="button"
-                  >
-                    {route.work_area_name}: {route.map_status === 'needs_pins' ? 'needs pins' : `${route.missing_stops || 0} pins missing`}
-                  </button>
-                ))}
-                {dispatchHealth.routesWithWarnings.map((route) => (
-                  <button
-                    className="dispatch-health-chip warning"
-                    key={`warning-${route.id}`}
-                    onClick={() => navigate(`/routes/${route.id}?date=${dashboardDate}`)}
-                    type="button"
-                  >
-                    {route.work_area_name}: review route warnings
-                  </button>
-                ))}
-              </div>
-            ) : (
-              <div className="success-banner">All visible routes have drivers, vehicles, and usable map coverage.</div>
-            )}
-          </div>
-
-          <div className="card">
-            <div className="dashboard-toolbar">
-              <div className="card-title">Fleet View</div>
-              <div className="toggle-group">
-                <button
-                  className={viewMode === 'map' ? 'toggle-button active' : 'toggle-button'}
-                  onClick={() => setViewMode('map')}
-                  type="button"
-                >
-                  Map View
-                </button>
-                <button
-                  className={viewMode === 'list' ? 'toggle-button active' : 'toggle-button'}
-                  onClick={() => setViewMode('list')}
-                  type="button"
-                >
-                  List View
-                </button>
-              </div>
-            </div>
-
-            {viewMode === 'list' ? (
-              <div className="driver-table">
-                <div className="driver-table-header">
-                  <span>Route</span>
-                  <span>Vehicle</span>
-                  <span>Driver</span>
-                  <span>Status</span>
-                  <span>Completed</span>
-                  <span>Remaining</span>
-                  <span>Stops/Hr</span>
-                  <span>Last Ping</span>
-                  <span>Online</span>
-                </div>
-                <div className="driver-table-body">
-                  {routeRows.map((driver) => (
-                    <DriverRow
-                      driver={driver}
-                      key={driver.route_id || `${driver.work_area_name}-${driver.driver_id || 'unassigned'}`}
-                      onAssign={handleAssignDrivers}
-                      onAssignVehicle={(vehicleId, openPicker = false) => {
-                        if (openPicker) {
-                          setVehiclePickerRouteId(driver.route_id);
-                          return;
-                        }
-
-                        if (!vehicleId || !driver.route_id) {
-                          return;
-                        }
-
-                        assignVehicleMutation.mutate({ routeId: driver.route_id, vehicleId });
-                      }}
-                      onClick={() => driver.name && driver.route_id && navigate(`/routes/${driver.route_id}?date=${dashboardDate}`)}
-                      showVehiclePicker={vehiclePickerRouteId === driver.route_id}
-                      vehicles={(vehiclesQuery.data || []).filter((vehicle) => vehicle.is_active !== false)}
-                    />
-                  ))}
-                </div>
-              </div>
-            ) : (
-              <div className="dashboard-map-shell">
-                <div className="dashboard-map-meta">
-                  <div>
-                    <div className="card-title">CSA Map</div>
-                    <div className="driver-meta">
-                      {driverPositionMarkers.length > 0
-                        ? `Showing live driver markers for ${mapCoverageSummary.liveMarkerCount} route${mapCoverageSummary.liveMarkerCount === 1 ? '' : 's'} and route footprints for ${mapCoverageSummary.footprintCount} mapped route${mapCoverageSummary.footprintCount === 1 ? '' : 's'}`
-                        : `Showing route footprints for ${mapCoverageSummary.footprintCount} mapped route${mapCoverageSummary.footprintCount === 1 ? '' : 's'} until drivers come online`}
+                    <div className="toggle-group">
+                      <button
+                        className={viewMode === 'map' ? 'toggle-button active' : 'toggle-button'}
+                        onClick={() => setViewMode('map')}
+                        type="button"
+                      >
+                        Map View
+                      </button>
+                      <button
+                        className={viewMode === 'list' ? 'toggle-button active' : 'toggle-button'}
+                        onClick={() => setViewMode('list')}
+                        type="button"
+                      >
+                        List View
+                      </button>
                     </div>
-                  </div>
-                  {routeLegendItems.length > 0 ? (
-                    <div className="dashboard-map-legend">
-                      {routeLegendItems.map((item) => (
-                        <div className={`dashboard-map-legend-item ${item.mapStatus === 'needs_pins' ? 'muted' : ''}`} key={item.workAreaName}>
-                          <span className="dashboard-map-legend-dot" style={{ background: item.color }} />
-                          <span>
-                            {item.workAreaName}
-                            {item.mapStatus === 'partially_mapped' ? ` · ${item.missingStops} missing` : ''}
-                            {item.mapStatus === 'needs_pins' ? ' · needs pins' : ''}
-                          </span>
+                  </TableToolbar>
+
+                  {viewMode === 'list' ? (
+                    <div className="driver-table">
+                      <div className="driver-table-header">
+                        <span>Route</span>
+                        <span>Vehicle</span>
+                        <span>Driver</span>
+                        <span>Status</span>
+                        <span>Completed</span>
+                        <span>Remaining</span>
+                        <span>Stops/Hr</span>
+                        <span>Last Ping</span>
+                        <span>Online</span>
+                      </div>
+                      <div className="driver-table-body">
+                        {routeRows.map((driver) => (
+                          <DriverRow
+                            driver={driver}
+                            key={driver.route_id || `${driver.work_area_name}-${driver.driver_id || 'unassigned'}`}
+                            onAssign={handleAssignDrivers}
+                            onAssignVehicle={(vehicleId, openPicker = false) => {
+                              if (openPicker) {
+                                setVehiclePickerRouteId(driver.route_id);
+                                return;
+                              }
+
+                              if (!vehicleId || !driver.route_id) {
+                                return;
+                              }
+
+                              assignVehicleMutation.mutate({ routeId: driver.route_id, vehicleId });
+                            }}
+                            onClick={() => driver.name && driver.route_id && navigate(`/routes/${driver.route_id}?date=${dashboardDate}`)}
+                            showVehiclePicker={vehiclePickerRouteId === driver.route_id}
+                            vehicles={(vehiclesQuery.data || []).filter((vehicle) => vehicle.is_active !== false)}
+                          />
+                        ))}
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="dashboard-map-shell">
+                      <div className="dashboard-map-meta">
+                        <div>
+                          <div className="card-title">CSA Map</div>
+                          <div className="driver-meta">
+                            {driverPositionMarkers.length > 0
+                              ? `Showing live driver markers for ${mapCoverageSummary.liveMarkerCount} route${mapCoverageSummary.liveMarkerCount === 1 ? '' : 's'} and route footprints for ${mapCoverageSummary.footprintCount} mapped route${mapCoverageSummary.footprintCount === 1 ? '' : 's'}`
+                              : `Showing route footprints for ${mapCoverageSummary.footprintCount} mapped route${mapCoverageSummary.footprintCount === 1 ? '' : 's'} until drivers come online`}
+                          </div>
                         </div>
-                      ))}
+                        {routeLegendItems.length > 0 ? (
+                          <div className="dashboard-map-legend">
+                            {routeLegendItems.map((item) => (
+                              <div className={`dashboard-map-legend-item ${item.mapStatus === 'needs_pins' ? 'muted' : ''}`} key={item.workAreaName}>
+                                <span className="dashboard-map-legend-dot" style={{ background: item.color }} />
+                                <span>
+                                  {item.workAreaName}
+                                  {item.mapStatus === 'partially_mapped' ? ` · ${item.missingStops} missing` : ''}
+                                  {item.mapStatus === 'needs_pins' ? ' · needs pins' : ''}
+                                </span>
+                              </div>
+                            ))}
+                          </div>
+                        ) : null}
+                      </div>
+                      {mapCoverageSummary.excludedRouteCount > 0 ? (
+                        <div className="info-banner dashboard-map-health-banner">
+                          {mapCoverageSummary.excludedRouteCount} route{mapCoverageSummary.excludedRouteCount === 1 ? '' : 's'} excluded from the map until pins are available:
+                          {' '}
+                          {mapCoverageSummary.excludedRoutes.map((route) => route.work_area_name).join(', ')}
+                        </div>
+                      ) : null}
+                      {driverPositionMarkers.length > 0 ? (
+                        <div className="info-banner dashboard-map-health-banner">
+                          Live driver pings are only shown when they stay close to the actual route footprint. Everything else falls back to stop-based route centers to keep the CSA map truthful.
+                        </div>
+                      ) : null}
+                      <DashboardFleetMap
+                        center={activeMapMarkers[0] ? { lat: Number(activeMapMarkers[0].lat), lng: Number(activeMapMarkers[0].lng) } : null}
+                        boundsPoints={dashboardBoundsPoints}
+                        markers={activeMapMarkers}
+                      />
                     </div>
-                  ) : null}
+                  )}
                 </div>
-                {mapCoverageSummary.excludedRouteCount > 0 ? (
-                  <div className="info-banner dashboard-map-health-banner">
-                    {mapCoverageSummary.excludedRouteCount} route{mapCoverageSummary.excludedRouteCount === 1 ? '' : 's'} excluded from the map until pins are available:
-                    {' '}
-                    {mapCoverageSummary.excludedRoutes.map((route) => route.work_area_name).join(', ')}
-                  </div>
-                ) : null}
-                {driverPositionMarkers.length > 0 ? (
-                  <div className="info-banner dashboard-map-health-banner">
-                    Live driver pings are only shown when they stay close to the actual route footprint. Everything else falls back to stop-based route centers to keep the CSA map truthful.
-                  </div>
-                ) : null}
-                <DashboardFleetMap
-                  center={activeMapMarkers[0] ? { lat: Number(activeMapMarkers[0].lat), lng: Number(activeMapMarkers[0].lng) } : null}
-                  boundsPoints={dashboardBoundsPoints}
-                  markers={activeMapMarkers}
+
+                <OverviewRoutesSection
+                  date={dashboardDate}
+                  routes={routesOverviewQuery.isLoading ? null : overviewRoutes}
                 />
               </div>
-            )}
-          </div>
-
-          <OverviewRoutesSection
-            date={dashboardDate}
-            routes={routesOverviewQuery.isLoading ? null : overviewRoutes}
-          />
+            </details>
+          ) : null}
         </>
       ) : null}
     </section>

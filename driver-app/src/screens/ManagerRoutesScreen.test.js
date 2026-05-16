@@ -1,70 +1,107 @@
 import React from 'react';
-import { act, fireEvent, render, waitFor } from '@testing-library/react-native';
+import { fireEvent, render, waitFor } from '@testing-library/react-native';
 
-import ManagerRoutesScreen, { formatGpsFreshness, formatStopsPerHour, getTodayDateParam } from './ManagerRoutesScreen';
+import ManagerRoutesScreen, {
+  buildTerminalOptions,
+  filterRoutes,
+  formatStatusLabel,
+  getSyncStatus,
+  getTerminalLabel,
+  getTodayDateParam,
+  getSupportedRouteFileKind,
+  isActiveRoute
+} from './ManagerRoutesScreen';
 import api from '../services/api';
+import * as DocumentPicker from 'expo-document-picker';
 
 jest.mock('../services/api', () => ({
   __esModule: true,
   default: {
-    get: jest.fn()
+    get: jest.fn(),
+    post: jest.fn()
   }
 }));
+
+jest.mock('expo-document-picker', () => ({
+  getDocumentAsync: jest.fn()
+}));
+
+jest.mock('react-native-safe-area-context', () => {
+  const React = require('react');
+  const { View } = require('react-native');
+
+  return {
+    __esModule: true,
+    SafeAreaView: ({ children }) => <View>{children}</View>,
+    useSafeAreaInsets: () => ({
+      top: 0,
+      right: 0,
+      bottom: 0,
+      left: 0
+    })
+  };
+});
 
 describe('ManagerRoutesScreen', () => {
   beforeEach(() => {
     jest.clearAllMocks();
   });
 
-  it('formats the current date for the routes query', () => {
+  it('formats route list values only when route data provides them', () => {
+    const route = {
+      status: 'in_progress',
+      sync_status: 'uploaded',
+      terminal_name: 'SAN'
+    };
+
     expect(getTodayDateParam()).toMatch(/^\d{4}-\d{2}-\d{2}$/);
-    expect(formatStopsPerHour(null)).toBe('-- stops/hr');
-    expect(formatStopsPerHour(12)).toBe('12 stops/hr');
-    expect(
-      formatGpsFreshness({
-        is_online: false,
-        last_position: null
-      })
-    ).toBe('GPS unavailable');
+    expect(formatStatusLabel('in_progress')).toBe('In progress');
+    expect(getSyncStatus(route)).toBe('uploaded');
+    expect(getSyncStatus({ sync_status: 'unknown' })).toBe('');
+    expect(getTerminalLabel(route)).toBe('SAN');
+    expect(getSupportedRouteFileKind('manifest.xls')).toBe('xls');
+    expect(getSupportedRouteFileKind('manifest.xlsx')).toBe('xls');
+    expect(getSupportedRouteFileKind('route.gpx')).toBe('gpx');
+    expect(getSupportedRouteFileKind('route.pdf')).toBe('');
+    expect(isActiveRoute(route)).toBe(true);
+    expect(buildTerminalOptions([route, { terminal_name: 'SAN' }, { terminal_name: 'LAX' }])).toEqual(['LAX', 'SAN']);
   });
 
-  it('loads route cards with manager auth mode', async () => {
+  it('loads compact route rows and opens the route map from the eye action', async () => {
     api.get.mockResolvedValue({
       data: {
-        sync_status: {
-          routes_today: 3,
-          routes_assigned: 2
-        },
         routes: [
           {
             id: 'route-1',
             work_area_name: '816',
+            terminal_name: 'SAN',
             driver_name: 'Luis Perez',
-            vehicle_name: 'Truck 12',
-            completed_stops: 8,
-            total_stops: 14,
-            delivered_packages: 23,
-            total_packages: 31,
-            stops_per_hour: 11.5,
-            time_commits_completed: 2,
-            time_commits_total: 3,
+            current_day: '2026-05-08',
+            sync_status: 'enabled',
             status: 'in_progress',
-            is_online: true,
-            last_position: {
-              timestamp: new Date().toISOString()
-            }
+            exception_count: 1,
+            pickup_stop_count: 2,
+            pickup_stops_completed: 1
           }
-        ]
+        ],
+        sync_status: {
+          routes_today: 1
+        }
       }
     });
 
     const navigation = {
       navigate: jest.fn()
     };
-    const screen = render(<ManagerRoutesScreen navigation={navigation} />);
+    const screen = render(
+      <ManagerRoutesScreen
+        identity={{ companyName: 'Bridge Transportation Inc.' }}
+        navigation={navigation}
+      />
+    );
 
     await waitFor(() => {
-      expect(screen.getByText('Route 816')).toBeTruthy();
+      expect(screen.getByText('816')).toBeTruthy();
     });
 
     expect(api.get).toHaveBeenCalledWith('/manager/routes', {
@@ -73,38 +110,171 @@ describe('ManagerRoutesScreen', () => {
         date: getTodayDateParam()
       }
     });
-    expect(screen.getByText('Refresh Routes')).toBeTruthy();
-    expect(screen.getByText('23/31')).toBeTruthy();
-    expect(screen.getByText('11.5 stops/hr')).toBeTruthy();
-    expect(screen.getByText(/GPS live/)).toBeTruthy();
-    expect(screen.getByLabelText('Route 816 actions')).toBeTruthy();
+    expect(screen.getByText('ReadyRoute')).toBeTruthy();
+    expect(screen.getByText('Bridge Transportation Inc.')).toBeTruthy();
+    expect(screen.getByText('Stop Search')).toBeTruthy();
+    expect(screen.getAllByText('Add Routes').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('SAN').length).toBeGreaterThan(0);
+    expect(screen.getByText('Luis Perez')).toBeTruthy();
+    expect(screen.getByText('2026-05-08')).toBeTruthy();
+    expect(screen.getByText('Enabled')).toBeTruthy();
+    expect(screen.getByText('1 exceptions')).toBeTruthy();
+    expect(screen.getByText('Pickups')).toBeTruthy();
+    expect(screen.getByText('1 / 2')).toBeTruthy();
+    fireEvent.press(screen.getByLabelText('View 816 on map'));
 
-    fireEvent.press(screen.getByText('Route 816'));
-    expect(navigation.navigate).toHaveBeenCalledWith('ManagerOverview', {
+    expect(navigation.navigate).toHaveBeenCalledWith('ManagerMap', {
       selectedRouteId: 'route-1',
       date: getTodayDateParam()
     });
   });
 
-  it('retries when the routes request fails', async () => {
-    api.get.mockRejectedValue({
-      response: {
-        data: {
-          error: 'Failed to load routes'
-        }
+  it('shows a safe route options modal from the edit action', async () => {
+    api.get.mockResolvedValue({
+      data: {
+        routes: [
+          {
+            id: 'route-1',
+            work_area_name: '816',
+            driver_name: 'Luis Perez',
+            status: 'pending'
+          }
+        ]
       }
     });
 
     const screen = render(<ManagerRoutesScreen />);
 
     await waitFor(() => {
-      expect(screen.getByText('Routes unavailable')).toBeTruthy();
+      expect(screen.getByText('816')).toBeTruthy();
     });
 
-    await act(async () => {
-      fireEvent.press(screen.getByText('Retry'));
+    fireEvent.press(screen.getByLabelText('Edit 816'));
+
+    expect(screen.getByText('Route options')).toBeTruthy();
+    expect(screen.getByText('More route tools are coming soon.')).toBeTruthy();
+  });
+
+  it('uploads selected XLS and GPX files through the manual manifest endpoint', async () => {
+    api.get.mockResolvedValue({
+      data: {
+        routes: []
+      }
+    });
+    api.post.mockResolvedValue({
+      data: {
+        route_id: 'route-1'
+      }
+    });
+    DocumentPicker.getDocumentAsync
+      .mockResolvedValueOnce({
+        canceled: false,
+        assets: [
+          {
+            mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            name: 'manifest.xlsx',
+            uri: 'file:///manifest.xlsx'
+          }
+        ]
+      })
+      .mockResolvedValueOnce({
+        canceled: false,
+        assets: [
+          {
+            mimeType: 'application/gpx+xml',
+            name: 'route.gpx',
+            uri: 'file:///route.gpx'
+          }
+        ]
+      });
+    const onManagerDataRefresh = jest.fn();
+
+    const screen = render(<ManagerRoutesScreen onManagerDataRefresh={onManagerDataRefresh} />);
+
+    await waitFor(() => {
+      expect(screen.getByText('No routes available.')).toBeTruthy();
     });
 
-    expect(api.get).toHaveBeenCalledTimes(2);
+    fireEvent.press(screen.getAllByText('Add Routes')[0]);
+
+    expect(screen.getByText('Upload today’s route files. ReadyRoute will use them to build routes, stops, packages, pickups, customer contact detail, and map pins.')).toBeTruthy();
+    expect(screen.getByText('For best results, attach Combined, Delivery, Pickup, and the matching GPX files together so ReadyRoute can merge route pins, package detail, service codes, and customer contact data in one pass.')).toBeTruthy();
+    expect(screen.queryByText(/FCC/i)).toBeNull();
+
+    fireEvent.press(screen.getByText('Combined XLS'));
+    await waitFor(() => {
+      expect(screen.getByText('manifest.xlsx')).toBeTruthy();
+    });
+
+    fireEvent.press(screen.getByText('Combined GPX'));
+    await waitFor(() => {
+      expect(screen.getByText('route.gpx')).toBeTruthy();
+    });
+
+    fireEvent.press(screen.getByText('Upload Routes'));
+
+    await waitFor(() => {
+      expect(api.post).toHaveBeenCalledWith('/routes/upload-manifest', expect.any(FormData), expect.objectContaining({
+        authMode: 'manager',
+        headers: {
+          'Content-Type': 'multipart/form-data'
+        }
+      }));
+      expect(screen.getByText('Routes uploaded successfully.')).toBeTruthy();
+      expect(onManagerDataRefresh).toHaveBeenCalled();
+    });
+  });
+
+  it('shows clean unsupported file errors before upload', async () => {
+    api.get.mockResolvedValue({
+      data: {
+        routes: []
+      }
+    });
+    DocumentPicker.getDocumentAsync.mockResolvedValue({
+      canceled: false,
+      assets: [
+        {
+          mimeType: 'application/pdf',
+          name: 'route.pdf',
+          uri: 'file:///route.pdf'
+        }
+      ]
+    });
+
+    const screen = render(<ManagerRoutesScreen />);
+
+    await waitFor(() => {
+      expect(screen.getByText('No routes available.')).toBeTruthy();
+    });
+
+    fireEvent.press(screen.getAllByText('Add Routes')[0]);
+    fireEvent.press(screen.getByText('Combined XLS'));
+
+    await waitFor(() => {
+      expect(screen.getByText('This file type is not supported. Upload an XLS or GPX file.')).toBeTruthy();
+    });
+    expect(api.post).not.toHaveBeenCalled();
+  });
+
+  it('filters routes by active status, terminal, and search text', () => {
+    const routes = [
+      {
+        work_area_name: '816',
+        terminal_name: 'SAN',
+        driver_name: 'Luis Perez',
+        status: 'in_progress'
+      },
+      {
+        work_area_name: '912',
+        terminal_name: 'LAX',
+        driver_name: 'Ana Cruz',
+        status: 'pending'
+      }
+    ];
+
+    expect(filterRoutes(routes, { onlyActive: true })).toEqual([routes[0]]);
+    expect(filterRoutes(routes, { terminal: 'LAX' })).toEqual([routes[1]]);
+    expect(filterRoutes(routes, { searchTerm: 'luis' })).toEqual([routes[0]]);
   });
 });

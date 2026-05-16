@@ -1,4 +1,4 @@
-import { getDrawerMenuItems, getModeSwitchLabel } from './shellNavigation';
+import { getDrawerMenuItems } from './shellNavigation';
 
 describe('shellNavigation helpers', () => {
   it('returns driver navigation items for driver mode', () => {
@@ -10,16 +10,20 @@ describe('shellNavigation helpers', () => {
   });
 
   it('returns manager navigation items for manager mode', () => {
-    expect(getDrawerMenuItems('manager').map((item) => item.label)).toEqual([
-      'Manager Overview',
-      'Routes',
-      'Notifications',
-      'Settings'
-    ]);
-  });
+    const items = getDrawerMenuItems('manager');
 
-  it('builds the correct role switch label', () => {
-    expect(getModeSwitchLabel('driver')).toBe('Switch to Manager Mode');
-    expect(getModeSwitchLabel('manager')).toBe('Switch to Driver Mode');
+    expect(items.map((item) => item.label)).toEqual([
+      'CSA',
+      'Dashboard',
+      'Manifest',
+      'Routes',
+      'Drivers',
+      'Vehicles',
+      'Settings',
+      'Help'
+    ]);
+    expect(items.find((item) => item.label === 'Manifest')?.screen).toBe('ManagerManifest');
+    expect(items.find((item) => item.label === 'Drivers')?.screen).toBe('ManagerDrivers');
+    expect(items.find((item) => item.label === 'Vehicles')?.screen).toBe('ManagerVehicles');
   });
 });

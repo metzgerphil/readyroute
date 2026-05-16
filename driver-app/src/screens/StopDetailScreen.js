@@ -23,8 +23,12 @@ export function getStatusConfig(status) {
   switch (status) {
     case 'delivered':
       return { label: 'Delivered', style: styles.statusDelivered };
+    case 'pickup_complete':
+      return { label: 'Picked up', style: styles.statusDelivered };
     case 'attempted':
       return { label: 'Attempted', style: styles.statusAttempted };
+    case 'pickup_attempted':
+      return { label: 'Pickup attempted', style: styles.statusAttempted };
     case 'incomplete':
       return { label: 'Incomplete', style: styles.statusIncomplete };
     case 'complete':
@@ -47,14 +51,19 @@ export function getStopTypeMeta(stopType) {
 
 export function getTypeBadges(stop) {
   const badges = [];
-  const stopType = stop?.stop_type;
+  const stopType =
+    stop?.stop_type === 'combined' || (stop?.has_delivery && stop?.has_pickup)
+      ? 'combined'
+      : stop?.stop_type === 'pickup' || stop?.is_pickup || stop?.has_pickup
+        ? 'pickup'
+        : stop?.stop_type;
 
   if (stop?.is_business) {
     badges.push({ key: 'business', label: 'BUSINESS', style: styles.stopTypeBusinessBadge, textStyle: styles.stopTypeBusinessBadgeText });
   }
 
   if (stopType === 'pickup' || stopType === 'combined') {
-    badges.push({ key: 'pickup', label: 'PICKUP', style: styles.stopTypePickupBadge, textStyle: styles.stopTypePickupBadgeText });
+    badges.push({ key: 'pickup', label: 'Pickup', style: styles.stopTypePickupBadge, textStyle: styles.stopTypePickupBadgeText });
   }
 
   if (stopType === 'delivery' || stopType === 'combined' || !stopType) {
@@ -62,6 +71,14 @@ export function getTypeBadges(stop) {
   }
 
   return badges;
+}
+
+export function getStopPackageCount(stop) {
+  if (Array.isArray(stop?.packages)) {
+    return stop.packages.length;
+  }
+
+  return Number(stop?.package_count || stop?.pkg_count || stop?.pickup_package_count || 0);
 }
 
 export function getPrimaryAddressLine(stop) {
@@ -156,6 +173,61 @@ export function buildGoogleNavigationUrls(address) {
   };
 }
 
+function normalizeContactText(value) {
+  const normalized = String(value || '').replace(/\s+/g, ' ').trim();
+  return normalized || '';
+}
+
+function firstContactText(...values) {
+  return values.map(normalizeContactText).find(Boolean) || '';
+}
+
+export function buildDialUrl(phone) {
+  const displayValue = normalizeContactText(phone);
+
+  if (!displayValue) {
+    return '';
+  }
+
+  const extensionMatch = displayValue.match(/\b(?:ext\.?|extension|x)\s*([0-9]+)\b/i);
+  const extensionDigits = extensionMatch?.[1] || '';
+  const baseValue = extensionMatch
+    ? displayValue.slice(0, extensionMatch.index).trim()
+    : displayValue;
+  const dialableBase = baseValue.replace(/[^\d+]/g, '');
+
+  if (!dialableBase) {
+    return '';
+  }
+
+  return `tel:${dialableBase}${extensionDigits ? `,${extensionDigits}` : ''}`;
+}
+
+export function getStopContactDetails(stop) {
+  const businessName = firstContactText(stop?.business_name, stop?.company_name);
+  const primaryPhone = normalizeContactText(stop?.primary_phone);
+  const alternatePhone = normalizeContactText(stop?.alternate_phone);
+  const email = normalizeContactText(stop?.email);
+  const instructions = firstContactText(stop?.customer_instructions, stop?.delivery_instructions);
+
+  return {
+    contactName: normalizeContactText(stop?.contact_name),
+    businessName,
+    primaryPhone,
+    alternatePhone,
+    email,
+    instructions,
+    hasAny:
+      Boolean(normalizeContactText(stop?.contact_name)) ||
+      Boolean(businessName) ||
+      Boolean(primaryPhone) ||
+      Boolean(alternatePhone) ||
+      Boolean(email) ||
+      Boolean(instructions),
+    hasPhone: Boolean(primaryPhone || alternatePhone)
+  };
+}
+
 function getGroupedStopUnitLabel(stop) {
   if (stop?.apartment_intelligence?.unit_number) {
     return `Unit ${stop.apartment_intelligence.unit_number}`;
@@ -172,24 +244,66 @@ function getGroupedStopUnitLabel(stop) {
   return getPrimaryAddressLine(stop) || 'Unit details unavailable';
 }
 
+function getPackageDisplayTitle(pkg, index) {
+  const trackingNumber = normalizeContactText(pkg?.tracking_number);
+
+  return trackingNumber || `Package ${index + 1}`;
+}
+
+function getPackageDetailLine(pkg) {
+  const details = [];
+
+  if (pkg?.service_code) {
+    details.push(`Service ${pkg.service_code}`);
+  }
+
+  if (pkg?.requires_adult_signature) {
+    details.push('Adult signature required');
+  } else if (pkg?.requires_signature) {
+    details.push('Signature required');
+  } else {
+    details.push('Standard delivery');
+  }
+
+  if (pkg?.hazmat) {
+    details.push('Hazmat');
+  }
+
+  return details.join(' · ');
+}
+
 export default function StopDetailScreen({ navigation, route }) {
   const stopId = route.params?.stopId;
-  const [stop, setStop] = useState(null);
-  const [noteDraft, setNoteDraft] = useState('');
-  const [floorDraft, setFloorDraft] = useState('');
+  const authMode = route.params?.authMode === 'manager' ? 'manager' : 'driver';
+  const isManagerMode = authMode === 'manager';
+  const initialStop = route.params?.stop || null;
+  const [stop, setStop] = useState(initialStop);
+  const [noteDraft, setNoteDraft] = useState(initialStop?.note_text || '');
+  const [floorDraft, setFloorDraft] = useState(
+    initialStop?.apartment_intelligence?.floor != null ? String(initialStop.apartment_intelligence.floor) : ''
+  );
   const [isEditingNote, setIsEditingNote] = useState(false);
   const [isSavingNote, setIsSavingNote] = useState(false);
   const [isSavingFloor, setIsSavingFloor] = useState(false);
   const [isSavingLocation, setIsSavingLocation] = useState(false);
   const [isFlagModalVisible, setIsFlagModalVisible] = useState(false);
-  const [isLoading, setIsLoading] = useState(true);
+  const [isLoading, setIsLoading] = useState(!initialStop);
+
+  function getStopDetailPath() {
+    return isManagerMode ? `/manager/routes/stops/${stopId}` : `/routes/stops/${stopId}`;
+  }
+
+  async function fetchStopDetail() {
+    const path = getStopDetailPath();
+    return isManagerMode ? api.get(path, { authMode }) : api.get(path);
+  }
 
   useEffect(() => {
     let isMounted = true;
 
     async function loadStop() {
       try {
-        const response = await api.get(`/routes/stops/${stopId}`);
+        const response = await fetchStopDetail();
 
         if (isMounted) {
           setStop(response.data?.stop || null);
@@ -227,7 +341,7 @@ export default function StopDetailScreen({ navigation, route }) {
 
   async function refreshStop({ silent = false } = {}) {
     try {
-      const response = await api.get(`/routes/stops/${stopId}`);
+      const response = await fetchStopDetail();
       setStop(response.data?.stop || null);
       setNoteDraft(response.data?.stop?.note_text || '');
       setFloorDraft(
@@ -284,9 +398,16 @@ export default function StopDetailScreen({ navigation, route }) {
     setIsSavingNote(true);
 
     try {
-      await api.patch(`/routes/stops/${stopId}/note`, {
+      const notePath = isManagerMode ? `/manager/routes/stops/${stopId}/note` : `/routes/stops/${stopId}/note`;
+      const notePayload = {
         note_text: noteDraft.trim()
-      });
+      };
+
+      if (isManagerMode) {
+        await api.patch(notePath, notePayload, { authMode });
+      } else {
+        await api.patch(notePath, notePayload);
+      }
 
       const refreshed = await refreshStop({ silent: true });
       setIsEditingNote(false);
@@ -347,6 +468,18 @@ export default function StopDetailScreen({ navigation, route }) {
     }
   }
 
+  async function handleOpenContactUrl(url, fallbackTitle, fallbackMessage) {
+    if (!url) {
+      return;
+    }
+
+    try {
+      await Linking.openURL(url);
+    } catch (_error) {
+      Alert.alert(fallbackTitle, fallbackMessage);
+    }
+  }
+
   async function handleSaveCurrentLocation() {
     setIsSavingLocation(true);
 
@@ -402,10 +535,12 @@ export default function StopDetailScreen({ navigation, route }) {
 
   const statusConfig = getStatusConfig(stop.status);
   const typeBadges = getTypeBadges(stop);
+  const hasPickupWork = typeBadges.some((badge) => badge.key === 'pickup');
   const primaryAddressLine = getPrimaryAddressLine(stop);
   const addressLine2 = String(stop.address_line2 || '').trim();
   const hasSignatureRequired = (stop.packages || []).some((pkg) => pkg.requires_signature);
   const hasHazmat = (stop.packages || []).some((pkg) => pkg.hazmat);
+  const packageCount = getStopPackageCount(stop);
   const hasVisibleNote = Boolean(stop.has_note && stop.note_text);
   const apartmentIntel = stop.apartment_intelligence;
   const propertyIntel = stop.property_intel;
@@ -424,7 +559,7 @@ export default function StopDetailScreen({ navigation, route }) {
       status: stop.status,
       sid: stop.sid,
       contact_name: stop.contact_name,
-      package_count: stop.packages?.length || 0,
+      package_count: packageCount,
       address_line2: stop.address_line2,
       apartment_intelligence: apartmentIntel,
       property_intel: propertyIntel
@@ -432,6 +567,7 @@ export default function StopDetailScreen({ navigation, route }) {
     ...groupedStops
   ].sort((a, b) => Number(a.sequence_order || 0) - Number(b.sequence_order || 0));
   const warningFlags = propertyIntel?.warning_flags || [];
+  const contactDetails = getStopContactDetails(stop);
   const hasPropertyIntel = Boolean(
     propertyIntel?.location_type ||
       propertyIntel?.building ||
@@ -484,7 +620,7 @@ export default function StopDetailScreen({ navigation, route }) {
         {stop.has_time_commit && (stop.ready_time || stop.close_time) ? (
           <View style={styles.timeCommitBox}>
             <Text style={styles.timeCommitLabel}>TIME COMMIT WINDOW</Text>
-            {stop.stop_type === 'pickup' ? (
+            {hasPickupWork ? (
               <>
                 {stop.ready_time ? <Text style={styles.timeCommitText}>Ready for pickup: {stop.ready_time}</Text> : null}
                 {stop.close_time ? <Text style={styles.timeCommitSubtext}>Business closes: {stop.close_time}</Text> : null}
@@ -506,10 +642,82 @@ export default function StopDetailScreen({ navigation, route }) {
           </View>
         ) : null}
 
-        {stop.contact_name ? (
-          <View style={styles.contactBlock}>
-            <Text style={styles.contactLabel}>CONTACT</Text>
-            <Text style={styles.contactValue}>{stop.contact_name}</Text>
+        {contactDetails.hasAny ? (
+          <View style={styles.customerContactCard}>
+            <Text style={styles.contactLabel}>CUSTOMER CONTACT</Text>
+            {contactDetails.contactName ? <Text style={styles.contactValue}>{contactDetails.contactName}</Text> : null}
+            {contactDetails.businessName ? <Text style={styles.contactSubvalue}>{contactDetails.businessName}</Text> : null}
+
+            {contactDetails.primaryPhone ? (
+              <Pressable
+                accessibilityLabel={`Call ${contactDetails.primaryPhone}`}
+                onPress={() =>
+                  handleOpenContactUrl(
+                    buildDialUrl(contactDetails.primaryPhone),
+                    'Call unavailable',
+                    'Unable to open the phone app for this number.'
+                  )
+                }
+                style={styles.contactActionRow}
+              >
+                <View style={styles.contactActionMain}>
+                  <Text style={styles.contactActionLabel}>Primary phone</Text>
+                  <Text style={styles.contactActionValue}>{contactDetails.primaryPhone}</Text>
+                </View>
+                <Text style={styles.contactActionButtonText}>Call</Text>
+              </Pressable>
+            ) : null}
+
+            {contactDetails.alternatePhone ? (
+              <Pressable
+                accessibilityLabel={`Call alternate ${contactDetails.alternatePhone}`}
+                onPress={() =>
+                  handleOpenContactUrl(
+                    buildDialUrl(contactDetails.alternatePhone),
+                    'Call unavailable',
+                    'Unable to open the phone app for this number.'
+                  )
+                }
+                style={styles.contactActionRow}
+              >
+                <View style={styles.contactActionMain}>
+                  <Text style={styles.contactActionLabel}>Alternate phone</Text>
+                  <Text style={styles.contactActionValue}>{contactDetails.alternatePhone}</Text>
+                </View>
+                <Text style={styles.contactActionButtonText}>Call</Text>
+              </Pressable>
+            ) : null}
+
+            {contactDetails.email ? (
+              <Pressable
+                accessibilityLabel={`Email ${contactDetails.email}`}
+                onPress={() =>
+                  handleOpenContactUrl(
+                    `mailto:${encodeURIComponent(contactDetails.email)}`,
+                    'Email unavailable',
+                    'Unable to open an email app for this address.'
+                  )
+                }
+                style={styles.contactActionRow}
+              >
+                <View style={styles.contactActionMain}>
+                  <Text style={styles.contactActionLabel}>Email</Text>
+                  <Text style={styles.contactActionValue}>{contactDetails.email}</Text>
+                </View>
+                <Text style={styles.contactActionButtonText}>Email</Text>
+              </Pressable>
+            ) : null}
+
+            {!contactDetails.hasPhone && contactDetails.contactName ? (
+              <Text style={styles.contactEmptyHint}>No phone on manifest.</Text>
+            ) : null}
+
+            {contactDetails.instructions ? (
+              <View style={styles.contactInstructionsBox}>
+                <Text style={styles.contactActionLabel}>Instructions</Text>
+                <Text style={styles.contactInstructionsText}>{contactDetails.instructions}</Text>
+              </View>
+            ) : null}
           </View>
         ) : null}
 
@@ -536,21 +744,25 @@ export default function StopDetailScreen({ navigation, route }) {
             ) : (
               <Text style={styles.apartmentFloorText}>Floor not known yet</Text>
             )}
-            <TextInput
-              keyboardType="number-pad"
-              onChangeText={setFloorDraft}
-              placeholder="Confirm actual floor"
-              placeholderTextColor="#8b8b8b"
-              style={styles.floorInput}
-              value={floorDraft}
-            />
-            <Pressable
-              disabled={isSavingFloor || !isFloorDraftValid}
-              onPress={handleConfirmFloor}
-              style={[styles.secondaryButton, (isSavingFloor || !isFloorDraftValid) && styles.buttonDisabled]}
-            >
-              {isSavingFloor ? <ActivityIndicator color="#173042" /> : <Text style={styles.secondaryButtonText}>Confirm floor</Text>}
-            </Pressable>
+            {!isManagerMode ? (
+              <>
+                <TextInput
+                  keyboardType="number-pad"
+                  onChangeText={setFloorDraft}
+                  placeholder="Confirm actual floor"
+                  placeholderTextColor="#8b8b8b"
+                  style={styles.floorInput}
+                  value={floorDraft}
+                />
+                <Pressable
+                  disabled={isSavingFloor || !isFloorDraftValid}
+                  onPress={handleConfirmFloor}
+                  style={[styles.secondaryButton, (isSavingFloor || !isFloorDraftValid) && styles.buttonDisabled]}
+                >
+                  {isSavingFloor ? <ActivityIndicator color="#173042" /> : <Text style={styles.secondaryButtonText}>Confirm floor</Text>}
+                </Pressable>
+              </>
+            ) : null}
           </View>
         ) : null}
 
@@ -682,6 +894,9 @@ export default function StopDetailScreen({ navigation, route }) {
 
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Packages</Text>
+          <Text style={styles.packageCountSummary}>
+            {packageCount} {packageCount === 1 ? 'package' : 'packages'}
+          </Text>
           <View style={styles.packageAlertRow}>
             {hasSignatureRequired ? (
               <View style={styles.packageAlertBadge}>
@@ -697,10 +912,8 @@ export default function StopDetailScreen({ navigation, route }) {
           {(stop.packages || []).map((pkg, index) => (
             <View key={pkg.id} style={styles.packageRow}>
               <View>
-                <Text style={styles.packageTracking}>Package {index + 1}</Text>
-                <Text style={styles.packageMeta}>
-                  {pkg.requires_signature ? 'Signature required' : 'Standard delivery'}
-                </Text>
+                <Text style={styles.packageTracking}>{getPackageDisplayTitle(pkg, index)}</Text>
+                <Text style={styles.packageMeta}>{getPackageDetailLine(pkg)}</Text>
               </View>
               {pkg.hazmat ? (
                 <View style={styles.hazmatBadge}>
@@ -745,21 +958,25 @@ export default function StopDetailScreen({ navigation, route }) {
         </View>
 
         <View style={styles.actionSection}>
-          <Pressable onPress={handleNavigate} style={styles.primaryButton}>
-            <Text style={styles.primaryButtonText}>Navigate</Text>
-          </Pressable>
+          {!isManagerMode ? (
+            <>
+              <Pressable onPress={handleNavigate} style={styles.primaryButton}>
+                <Text style={styles.primaryButtonText}>Navigate</Text>
+              </Pressable>
 
-          <Pressable disabled={isSavingLocation} onPress={handleSaveCurrentLocation} style={styles.secondaryButton}>
-            {isSavingLocation ? (
-              <ActivityIndicator color="#173042" />
-            ) : (
-              <Text style={styles.secondaryButtonText}>Save current GPS as correct pin</Text>
-            )}
-          </Pressable>
+              <Pressable disabled={isSavingLocation} onPress={handleSaveCurrentLocation} style={styles.secondaryButton}>
+                {isSavingLocation ? (
+                  <ActivityIndicator color="#173042" />
+                ) : (
+                  <Text style={styles.secondaryButtonText}>Save current location as correct pin</Text>
+                )}
+              </Pressable>
 
-          <Pressable onPress={() => setIsFlagModalVisible(true)} style={styles.warningButton}>
-            <Text style={styles.warningButtonText}>Flag this road as problematic</Text>
-          </Pressable>
+              <Pressable onPress={() => setIsFlagModalVisible(true)} style={styles.warningButton}>
+                <Text style={styles.warningButtonText}>Flag this road as problematic</Text>
+              </Pressable>
+            </>
+          ) : null}
 
           {!isEditingNote ? (
             <Pressable onPress={() => setIsEditingNote(true)} style={styles.secondaryButton}>
@@ -912,6 +1129,15 @@ const styles = StyleSheet.create({
   contactBlock: {
     marginBottom: 14
   },
+  customerContactCard: {
+    backgroundColor: '#f8fafc',
+    borderColor: '#d8dfe3',
+    borderRadius: 16,
+    borderWidth: 1,
+    gap: 10,
+    marginBottom: 16,
+    padding: 14
+  },
   contactLabel: {
     color: '#7a848d',
     fontSize: 11,
@@ -928,6 +1154,60 @@ const styles = StyleSheet.create({
     color: '#51606e',
     fontSize: 13,
     fontWeight: '700',
+    marginTop: 4
+  },
+  contactActionRow: {
+    alignItems: 'center',
+    backgroundColor: '#ffffff',
+    borderColor: '#e2e8f0',
+    borderRadius: 14,
+    borderWidth: 1,
+    flexDirection: 'row',
+    gap: 12,
+    justifyContent: 'space-between',
+    minHeight: 58,
+    paddingHorizontal: 12,
+    paddingVertical: 10
+  },
+  contactActionLabel: {
+    color: '#7a848d',
+    fontSize: 11,
+    fontWeight: '800',
+    letterSpacing: 0.8,
+    textTransform: 'uppercase'
+  },
+  contactActionMain: {
+    flex: 1
+  },
+  contactActionValue: {
+    color: '#173042',
+    fontSize: 15,
+    fontWeight: '800',
+    marginTop: 3
+  },
+  contactActionButtonText: {
+    color: '#ff6200',
+    fontSize: 14,
+    fontWeight: '900'
+  },
+  contactEmptyHint: {
+    color: '#61717d',
+    fontSize: 13,
+    fontWeight: '700'
+  },
+  contactInstructionsBox: {
+    backgroundColor: '#ffffff',
+    borderColor: '#e2e8f0',
+    borderRadius: 14,
+    borderWidth: 1,
+    paddingHorizontal: 12,
+    paddingVertical: 10
+  },
+  contactInstructionsText: {
+    color: '#173042',
+    fontSize: 14,
+    fontWeight: '700',
+    lineHeight: 20,
     marginTop: 4
   },
   apartmentBox: {
@@ -1169,6 +1449,12 @@ const styles = StyleSheet.create({
     color: '#173042',
     fontSize: 20,
     fontWeight: '800',
+    marginBottom: 10
+  },
+  packageCountSummary: {
+    color: '#66737c',
+    fontSize: 14,
+    fontWeight: '700',
     marginBottom: 10
   },
   packageAlertRow: {

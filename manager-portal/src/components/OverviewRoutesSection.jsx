@@ -1,9 +1,10 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useMutation, useQuery } from '@tanstack/react-query';
-import { format } from 'date-fns';
 import { useNavigate } from 'react-router-dom';
 
 import api from '../services/api';
+import { useSelectedCsa } from '../context/SelectedCsaContext';
+import { sortRoutesByWorkArea } from '../utils/routeSort';
 import './OverviewRoutesSection.css';
 
 function formatMinutes(minutes) {
@@ -55,19 +56,46 @@ function getPackageTotals(route) {
   };
 }
 
-function getStopBreakdown(stops = []) {
-  const deliveryStops = stops.filter((stop) => !stop.is_pickup);
-  const pickupStops = stops.filter((stop) => stop.is_pickup);
+function getPickupCountFromRoute(route) {
+  const summaryCount = Number(route?.pickup_stops ?? route?.pickup_stop_count ?? route?.total_pickup_stops);
+
+  if (Number.isFinite(summaryCount)) {
+    return summaryCount;
+  }
+
+  return null;
+}
+
+function getStopBreakdown(routeOrStops = []) {
+  const route = Array.isArray(routeOrStops) ? null : routeOrStops;
+  const stops = Array.isArray(routeOrStops) ? routeOrStops : routeOrStops?.stops || [];
+  const isPickupStop = (stop) => (
+    stop?.has_pickup ||
+    stop?.is_pickup ||
+    stop?.stop_type === 'pickup' ||
+    stop?.stop_type === 'combined'
+  );
+  const isDeliveryStop = (stop) => (
+    stop?.has_delivery ||
+    stop?.stop_type === 'delivery' ||
+    stop?.stop_type === 'combined' ||
+    !isPickupStop(stop)
+  );
+  const deliveryStops = stops.filter((stop) => isDeliveryStop(stop));
+  const pickupStops = stops.filter((stop) => isPickupStop(stop));
+  const fallbackPickupTotal = getPickupCountFromRoute(route);
+  const pickupsTotal = pickupStops.length || fallbackPickupTotal || 0;
 
   const countCompleted = (items) => items.filter((stop) => stop.status !== 'pending').length;
+  const pickupsCompleted = countCompleted(pickupStops);
 
   return {
     deliveriesTotal: deliveryStops.length,
     deliveriesCompleted: countCompleted(deliveryStops),
     deliveriesLeft: Math.max(0, deliveryStops.length - countCompleted(deliveryStops)),
-    pickupsTotal: pickupStops.length,
-    pickupsCompleted: countCompleted(pickupStops),
-    pickupsLeft: Math.max(0, pickupStops.length - countCompleted(pickupStops))
+    pickupsTotal,
+    pickupsCompleted,
+    pickupsLeft: Math.max(0, pickupsTotal - pickupsCompleted)
   };
 }
 
@@ -98,7 +126,7 @@ function buildSummary(routes) {
   const totals = routes.reduce(
     (summary, route) => {
       const packageTotals = getPackageTotals(route);
-      const stopBreakdown = getStopBreakdown(route.stops || []);
+      const stopBreakdown = getStopBreakdown(route);
       const driveMinutes = getDriveMinutes(route, now);
 
       summary.driversAssigned += route.driver_id ? 1 : 0;
@@ -180,7 +208,7 @@ function buildSummary(routes) {
 }
 
 function getRouteStats(route) {
-  const stopBreakdown = getStopBreakdown(route.stops || []);
+  const stopBreakdown = getStopBreakdown(route);
   const packageTotals = getPackageTotals(route);
   const driveMinutes = getDriveMinutes(route, new Date());
 
@@ -223,6 +251,15 @@ function MetricIcon({ name }) {
       <svg aria-hidden="true" className="overview-metric-icon" viewBox="0 0 24 24">
         <path d="M12 2.8 20 7.2v9.2l-8 4.8-8-4.8V7.2L12 2.8Z" />
         <path d="M4.5 7.5 12 12l7.5-4.5M12 12v8.5" />
+      </svg>
+    );
+  }
+
+  if (name === 'pickup') {
+    return (
+      <svg aria-hidden="true" className="overview-metric-icon pickup" viewBox="0 0 24 24">
+        <path d="M12 3 20 7.5v8.8l-8 4.7-8-4.7V7.5L12 3Z" />
+        <path d="M4.5 7.8 12 12l7.5-4.2M12 12v8.3M12 5.8v6.1m-3.2-3 3.2-3.2 3.2 3.2" />
       </svg>
     );
   }
@@ -285,10 +322,6 @@ function StatCard({ title, primary, secondary, progress, footer, success = false
 
 function ReassignModal({ drivers, isSaving, onClose, onSave, route }) {
   const [selectedDriverId, setSelectedDriverId] = useState(route?.driver_id || '');
-
-  useEffect(() => {
-    setSelectedDriverId(route?.driver_id || '');
-  }, [route?.driver_id, route?.id]);
 
   if (!route) {
     return null;
@@ -373,20 +406,14 @@ function SkeletonTable() {
 
 export default function OverviewRoutesSection({ date, routes }) {
   const navigate = useNavigate();
-  const [routeRows, setRouteRows] = useState(routes ?? null);
-  const [isAlertDismissed, setIsAlertDismissed] = useState(false);
+  const { selectedCsaId } = useSelectedCsa();
+  const [routeDriverOverrides, setRouteDriverOverrides] = useState({});
+  const [dismissedAlertDate, setDismissedAlertDate] = useState(null);
   const [reassigningRoute, setReassigningRoute] = useState(null);
 
-  useEffect(() => {
-    setRouteRows(routes ?? null);
-  }, [routes]);
-
-  useEffect(() => {
-    setIsAlertDismissed(false);
-  }, [date]);
-
   const driversQuery = useQuery({
-    queryKey: ['overview-route-drivers'],
+    queryKey: ['overview-route-drivers', selectedCsaId],
+    enabled: Boolean(selectedCsaId),
     queryFn: async () => {
       const response = await api.get('/manager/drivers');
       return response.data?.drivers || [];
@@ -401,23 +428,29 @@ export default function OverviewRoutesSection({ date, routes }) {
     onSuccess: ({ routeId, driverId }) => {
       const selectedDriver = (driversQuery.data || []).find((driver) => driver.id === driverId) || null;
 
-      setRouteRows((current) =>
-        (current || []).map((route) =>
-          route.id === routeId
-            ? {
-                ...route,
-                driver_id: driverId,
-                driver_name: selectedDriver?.name || route.driver_name || null
-              }
-            : route
-        )
-      );
+      setRouteDriverOverrides((current) => ({
+        ...current,
+        [routeId]: {
+          driver_id: driverId,
+          driver_name: selectedDriver?.name || null
+        }
+      }));
       setReassigningRoute(null);
     }
   });
 
+  const routeRows = useMemo(() => {
+    if (routes === null || routes === undefined) {
+      return routes;
+    }
+
+    return sortRoutesByWorkArea(routes.map((route) => {
+      const override = routeDriverOverrides[route.id];
+      return override ? { ...route, ...override } : route;
+    }));
+  }, [routeDriverOverrides, routes]);
   const summary = useMemo(() => buildSummary(routeRows || []), [routeRows]);
-  const dueBadAddress = summary.hasBadAddress && !isAlertDismissed;
+  const dueBadAddress = summary.hasBadAddress && dismissedAlertDate !== date;
   const tableColumns = '1fr 1.2fr 1fr 1fr 1fr 0.75fr 1fr 0.85fr 0.8fr 1fr 0.85fr';
 
   if (routeRows === null || routeRows === undefined) {
@@ -463,7 +496,7 @@ export default function OverviewRoutesSection({ date, routes }) {
         {dueBadAddress ? (
           <div className="overview-alert-banner">
             <div>One or more routes contains a bad address. Review your manifest.</div>
-            <button className="overview-alert-dismiss" onClick={() => setIsAlertDismissed(true)} type="button">
+            <button className="overview-alert-dismiss" onClick={() => setDismissedAlertDate(date)} type="button">
               Dismiss
             </button>
           </div>
@@ -585,7 +618,7 @@ export default function OverviewRoutesSection({ date, routes }) {
                     <div className="overview-driver-cell">
                       <button
                         className="overview-link"
-                        onClick={() => navigate(`/drivers/${route.driver_id}`)}
+                        onClick={() => navigate('/drivers')}
                         type="button"
                       >
                         {route.driver_name || ''}
@@ -609,7 +642,7 @@ export default function OverviewRoutesSection({ date, routes }) {
                   {route.vehicle_id && route.vehicle_name ? (
                     <button
                       className="overview-link"
-                      onClick={() => navigate(`/vehicles/${route.vehicle_id}`)}
+                      onClick={() => navigate('/vehicles')}
                       type="button"
                     >
                       {route.vehicle_name}
@@ -632,19 +665,15 @@ export default function OverviewRoutesSection({ date, routes }) {
                 </div>
 
                 <div className="overview-table-cell col-stops">
-                  {stats.pickupsTotal ? (
-                    <div className="overview-metric-block">
-                      <div className="overview-metric-primary">
-                        {stats.pickupsCompleted}/{stats.pickupsTotal}
-                      </div>
-                      <div className="overview-metric-secondary">({stats.pickupsLeft} left)</div>
-                      <div className="overview-progress-track compact">
-                        <div className="overview-progress-fill" style={{ width: `${stats.pickupsProgress}%` }} />
-                      </div>
+                  <div className="overview-metric-block">
+                    <div className="overview-metric-primary">
+                      <IconMetric icon="pickup">{stats.pickupsCompleted}/{stats.pickupsTotal}</IconMetric>
                     </div>
-                  ) : (
-                    <div className="overview-metric-primary">—</div>
-                  )}
+                    <div className="overview-metric-secondary">({stats.pickupsLeft} left)</div>
+                    <div className="overview-progress-track compact">
+                      <div className="overview-progress-fill" style={{ width: `${stats.pickupsProgress}%` }} />
+                    </div>
+                  </div>
                 </div>
 
                 <div className="overview-table-cell col-tcs">
@@ -712,6 +741,7 @@ export default function OverviewRoutesSection({ date, routes }) {
       <ReassignModal
         drivers={(driversQuery.data || []).map((driver) => ({ id: driver.id, name: driver.name }))}
         isSaving={assignMutation.isPending}
+        key={reassigningRoute?.id || 'closed'}
         onClose={() => setReassigningRoute(null)}
         onSave={(driverId) => assignMutation.mutate({ routeId: reassigningRoute.id, driverId })}
         route={reassigningRoute}

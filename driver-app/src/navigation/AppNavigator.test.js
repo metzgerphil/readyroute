@@ -4,10 +4,15 @@ import renderer, { act } from 'react-test-renderer';
 
 import AppNavigator from './AppNavigator';
 import { usePortalSession } from '../context/PortalSessionContext';
+import api from '../services/api';
+import { saveLastPortalMode, saveSessionTokens } from '../services/auth';
 
 jest.setTimeout(30000);
 
-jest.mock('../components/MobileNavigationDrawer', () => function MockMobileNavigationDrawer() {
+const mockDrawerProps = { current: null };
+
+jest.mock('../components/MobileNavigationDrawer', () => function MockMobileNavigationDrawer(props) {
+  mockDrawerProps.current = props;
   return null;
 });
 
@@ -38,8 +43,36 @@ jest.mock('@react-navigation/native', () => ({
   }
 }));
 
+jest.mock('react-native-safe-area-context', () => {
+  const React = require('react');
+  const { View } = require('react-native');
+
+  return {
+    __esModule: true,
+    SafeAreaView: ({ children }) => <View>{children}</View>,
+    useSafeAreaInsets: () => ({
+      top: 0,
+      right: 0,
+      bottom: 0,
+      left: 0
+    })
+  };
+});
+
 jest.mock('../context/PortalSessionContext', () => ({
   usePortalSession: jest.fn()
+}));
+
+jest.mock('../services/auth', () => ({
+  saveLastPortalMode: jest.fn(),
+  saveSessionTokens: jest.fn()
+}));
+
+jest.mock('../services/api', () => ({
+  __esModule: true,
+  default: {
+    post: jest.fn()
+  }
 }));
 
 jest.mock('../screens/HomeScreen', () => function MockHomeScreen() {
@@ -52,24 +85,39 @@ jest.mock('../screens/LoginScreen', () => function MockLoginScreen() {
   return <MockText>LoginScreen</MockText>;
 });
 
+jest.mock('../screens/ManagerDashboardScreen', () => function MockManagerDashboardScreen() {
+  const { Text: MockText } = require('react-native');
+  return <MockText>ManagerDashboardScreen</MockText>;
+});
+
+jest.mock('../screens/ManagerDriversScreen', () => function MockManagerDriversScreen() {
+  const { Text: MockText } = require('react-native');
+  return <MockText>ManagerDriversScreen</MockText>;
+});
+
+jest.mock('../screens/ManagerManifestScreen', () => function MockManagerManifestScreen() {
+  const { Text: MockText } = require('react-native');
+  return <MockText>ManagerManifestScreen</MockText>;
+});
+
 jest.mock('../screens/ManifestScreen', () => function MockManifestScreen() {
   const { Text: MockText } = require('react-native');
   return <MockText>ManifestScreen</MockText>;
 });
 
-jest.mock('../screens/ManagerOverviewScreen', () => function MockManagerOverviewScreen() {
+jest.mock('../screens/ManagerMapScreen', () => function MockManagerMapScreen() {
   const { Text: MockText } = require('react-native');
-  return <MockText>ManagerOverviewScreen</MockText>;
-});
-
-jest.mock('../screens/ManagerNotificationsScreen', () => function MockManagerNotificationsScreen() {
-  const { Text: MockText } = require('react-native');
-  return <MockText>ManagerNotificationsScreen</MockText>;
+  return <MockText>ManagerMapScreen</MockText>;
 });
 
 jest.mock('../screens/ManagerRoutesScreen', () => function MockManagerRoutesScreen() {
   const { Text: MockText } = require('react-native');
   return <MockText>ManagerRoutesScreen</MockText>;
+});
+
+jest.mock('../screens/ManagerVehiclesScreen', () => function MockManagerVehiclesScreen() {
+  const { Text: MockText } = require('react-native');
+  return <MockText>ManagerVehiclesScreen</MockText>;
 });
 
 jest.mock('../screens/ManagerSettingsScreen', () => function MockManagerSettingsScreen() {
@@ -99,6 +147,7 @@ describe('AppNavigator', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
+    mockDrawerProps.current = null;
     usePortalSession.mockReturnValue({
       activeMode: null,
       authenticate,
@@ -184,7 +233,7 @@ describe('AppNavigator', () => {
     expect(screenLabels).not.toContain('PortalEntryScreen');
   });
 
-  it('sends a manager-only user straight into the manager overview flow', async () => {
+  it('sends a manager-only user straight into the manager dashboard flow', async () => {
     usePortalSession.mockReturnValue({
       activeMode: 'manager',
       authenticate,
@@ -207,10 +256,14 @@ describe('AppNavigator', () => {
     });
 
     const screenLabels = tree.root.findAllByType(Text).map((node) => node.props.children);
-    expect(screenLabels).toContain('ManagerOverviewScreen');
+    expect(screenLabels).toContain('ManagerDashboardScreen');
+    expect(screenLabels).toContain('ManagerDriversScreen');
+    expect(screenLabels).toContain('ManagerManifestScreen');
+    expect(screenLabels).toContain('ManagerMapScreen');
     expect(screenLabels).toContain('ManagerRoutesScreen');
-    expect(screenLabels).toContain('ManagerNotificationsScreen');
+    expect(screenLabels).toContain('ManagerVehiclesScreen');
     expect(screenLabels).toContain('ManagerSettingsScreen');
+    expect(screenLabels).not.toContain('Routes');
     expect(screenLabels).not.toContain('HomeScreen');
     expect(screenLabels).not.toContain('PortalEntryScreen');
   });
@@ -238,5 +291,104 @@ describe('AppNavigator', () => {
     });
 
     expect(tree.root.findAllByType(Text)).toHaveLength(0);
+  });
+
+  it('refreshes driver mode for the selected CSA when a manager switches workspaces', async () => {
+    api.post.mockResolvedValueOnce({
+      data: {
+        driver_token: 'driver-token-for-account-2'
+      }
+    });
+    usePortalSession.mockReturnValue({
+      activeMode: 'manager',
+      authenticate,
+      availableModes: ['driver', 'manager'],
+      hasAnyAccess: true,
+      identity: {
+        fullName: 'Vlad Fedoryshyn',
+        companyName: 'Bridge Transportation',
+        primaryRole: 'Manager'
+      },
+      isBootstrapping: false,
+      logout,
+      needsModeSelection: false,
+      selectMode,
+      sessionTokens: {
+        driverToken: 'old-driver-token-for-account-1',
+        managerToken: 'old-manager-token-for-account-1'
+      }
+    });
+
+    await act(async () => {
+      renderer.create(<AppNavigator />);
+    });
+
+    await act(async () => {
+      await mockDrawerProps.current.onManagerWorkspaceSwitch('new-manager-token-for-account-2');
+    });
+
+    expect(api.post).toHaveBeenCalledWith('/auth/mobile/manager-driver-session', {}, {
+      authMode: 'manager',
+      authToken: 'new-manager-token-for-account-2'
+    });
+    expect(saveSessionTokens).toHaveBeenCalledWith({
+      driverToken: 'driver-token-for-account-2',
+      managerToken: 'new-manager-token-for-account-2'
+    });
+    expect(saveLastPortalMode).toHaveBeenCalledWith('manager', {
+      driverToken: 'driver-token-for-account-2',
+      managerToken: 'new-manager-token-for-account-2'
+    });
+    expect(authenticate).toHaveBeenCalledWith({
+      driverToken: 'driver-token-for-account-2',
+      managerToken: 'new-manager-token-for-account-2'
+    });
+  });
+
+  it('clears the old driver token if driver mode cannot be refreshed after a CSA switch', async () => {
+    const warnSpy = jest.spyOn(console, 'warn').mockImplementation(() => {});
+    api.post.mockRejectedValueOnce(new Error('network unavailable'));
+    usePortalSession.mockReturnValue({
+      activeMode: 'manager',
+      authenticate,
+      availableModes: ['driver', 'manager'],
+      hasAnyAccess: true,
+      identity: {
+        fullName: 'Vlad Fedoryshyn',
+        companyName: 'Bridge Transportation',
+        primaryRole: 'Manager'
+      },
+      isBootstrapping: false,
+      logout,
+      needsModeSelection: false,
+      selectMode,
+      sessionTokens: {
+        driverToken: 'old-driver-token-for-account-1',
+        managerToken: 'old-manager-token-for-account-1'
+      }
+    });
+
+    await act(async () => {
+      renderer.create(<AppNavigator />);
+    });
+
+    await act(async () => {
+      await mockDrawerProps.current.onManagerWorkspaceSwitch('new-manager-token-for-account-2');
+    });
+
+    expect(saveSessionTokens).toHaveBeenCalledWith({
+      driverToken: null,
+      managerToken: 'new-manager-token-for-account-2'
+    });
+    expect(saveLastPortalMode).toHaveBeenCalledWith('manager', {
+      driverToken: null,
+      managerToken: 'new-manager-token-for-account-2'
+    });
+    expect(authenticate).toHaveBeenCalledWith({
+      driverToken: null,
+      managerToken: 'new-manager-token-for-account-2'
+    });
+
+    warnSpy.mockRestore();
   });
 });

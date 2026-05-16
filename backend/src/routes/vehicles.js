@@ -2,6 +2,8 @@ const express = require('express');
 
 const defaultSupabase = require('../lib/supabase');
 const { requireManager } = require('../middleware/auth');
+const { parseMultipartForm } = require('../middleware/multipart');
+const { parseVehicleImportRows } = require('../services/resourceImport');
 
 const ALLOWED_TRUCK_TYPES = new Set([
   'P700',
@@ -25,22 +27,133 @@ const ALLOWED_SERVICE_TYPES = new Set([
   'Other'
 ]);
 
+const MAINTENANCE_REQUIREMENT_MODES = new Set(['option_1', 'option_2', 'custom']);
+const WEEKLY_INSPECTION_DAYS = new Set([
+  'Monday',
+  'Tuesday',
+  'Wednesday',
+  'Thursday',
+  'Friday',
+  'Saturday',
+  'Sunday'
+]);
+
+const DEFAULT_CUSTOM_DAILY_REQUIREMENTS = {
+  require_truck_confirmation: true,
+  require_odometer_entry: true,
+  show_issue_note_box: true,
+  require_full_checklist_daily: false
+};
+
+const DEFAULT_CUSTOM_WEEKLY_REQUIREMENTS = {
+  require_full_checklist_weekly: true,
+  require_manager_review_for_reported_issues: true
+};
+
+const DEFAULT_CHECKLIST_TEMPLATE_FIELDS = [
+  { id: 'date', label: 'Date', detail: 'Inspection date', enabled: true },
+  { id: 'company_name', label: 'Company name', detail: 'CSA or company name', enabled: true },
+  { id: 'truck_number', label: 'Truck Number', detail: 'Truck identifier for the inspection', enabled: true },
+  { id: 'driver_name', label: 'Driver first and last name', detail: 'Driver completing the inspection', enabled: true },
+  { id: 'tires', label: 'Tires, front, rear inner, rear outer', detail: 'Tire condition across front and rear positions', enabled: true },
+  { id: 'check_engine_light', label: 'Check engine light', detail: 'On or Off', enabled: true },
+  { id: 'coolant', label: 'Coolant', detail: 'Good or Needs Added', enabled: true },
+  { id: 'engine_oil', label: 'Engine oil', detail: 'Good, Needs Added, or Needs Full Change', enabled: true },
+  { id: 'brake_fluid', label: 'Brake fluid', detail: 'Good or Needs Added', enabled: true },
+  { id: 'windshield_fluid', label: 'Windshield fluid', detail: 'Good or Needs Added', enabled: true },
+  { id: 'wipers', label: 'Wipers', detail: 'Good, Left Bad, Right Bad, or Both Bad', enabled: true },
+  { id: 'lights', label: 'Lights', detail: 'Headlights, stop lights, and turning signals', enabled: true },
+  { id: 'truck_cleanliness', label: 'Truck cleanliness', detail: 'Good or Bad', enabled: true },
+  { id: 'driver_notes', label: 'Driver notes', detail: 'Free-text notes from the driver', enabled: true }
+];
+
 function createDefaultMaintenanceSettings() {
   return [
-    { service_type: 'Inspection', is_enabled: true, default_interval_miles: null, default_interval_days: 365 },
-    { service_type: 'Oil Change', is_enabled: true, default_interval_miles: 5000, default_interval_days: 180 },
-    { service_type: 'Air Filter', is_enabled: true, default_interval_miles: 10000, default_interval_days: 365 },
-    { service_type: 'Brake Pads', is_enabled: true, default_interval_miles: null, default_interval_days: 180 },
-    { service_type: 'General Repair', is_enabled: true, default_interval_miles: null, default_interval_days: null },
-    { service_type: 'Other', is_enabled: false, default_interval_miles: null, default_interval_days: null }
+    { service_type: 'Inspection', is_enabled: true, default_interval_miles: null, default_interval_days: 365, notes: null },
+    { service_type: 'Oil Change', is_enabled: true, default_interval_miles: 5000, default_interval_days: 180, notes: null },
+    { service_type: 'Air Filter', is_enabled: true, default_interval_miles: 10000, default_interval_days: 365, notes: null },
+    { service_type: 'Brake Pads', is_enabled: true, default_interval_miles: null, default_interval_days: 180, notes: null },
+    { service_type: 'General Repair', is_enabled: true, default_interval_miles: null, default_interval_days: null, notes: null },
+    { service_type: 'Other', is_enabled: false, default_interval_miles: null, default_interval_days: null, notes: null }
   ];
+}
+
+function createDefaultMaintenanceRequirementSetting() {
+  return {
+    maintenance_requirement_mode: 'option_1',
+    weekly_inspection_day: 'Monday',
+    custom_daily_requirements: { ...DEFAULT_CUSTOM_DAILY_REQUIREMENTS },
+    custom_weekly_requirements: { ...DEFAULT_CUSTOM_WEEKLY_REQUIREMENTS },
+    updated_by_manager_user_id: null,
+    updated_at: null
+  };
+}
+
+function normalizeBooleanMap(value, defaults) {
+  const source = value && typeof value === 'object' && !Array.isArray(value) ? value : {};
+
+  return Object.entries(defaults).reduce((normalized, [key, defaultValue]) => ({
+    ...normalized,
+    [key]: typeof source[key] === 'boolean' ? source[key] : defaultValue
+  }), {});
+}
+
+function normalizeMaintenanceRequirementSetting(setting = {}) {
+  const mode = String(setting.maintenance_requirement_mode || setting.mode || '').trim() || 'option_1';
+  const weeklyInspectionDay = String(setting.weekly_inspection_day || '').trim() || 'Monday';
+
+  if (!MAINTENANCE_REQUIREMENT_MODES.has(mode)) {
+    return { error: 'maintenance_requirement_mode is not supported' };
+  }
+
+  if (!WEEKLY_INSPECTION_DAYS.has(weeklyInspectionDay)) {
+    return { error: 'weekly_inspection_day is not supported' };
+  }
+
+  return {
+    maintenance_requirement_mode: mode,
+    weekly_inspection_day: weeklyInspectionDay,
+    custom_daily_requirements: normalizeBooleanMap(
+      setting.custom_daily_requirements,
+      DEFAULT_CUSTOM_DAILY_REQUIREMENTS
+    ),
+    custom_weekly_requirements: normalizeBooleanMap(
+      setting.custom_weekly_requirements,
+      DEFAULT_CUSTOM_WEEKLY_REQUIREMENTS
+    )
+  };
+}
+
+function createDefaultChecklistTemplateSetting() {
+  return {
+    fields: DEFAULT_CHECKLIST_TEMPLATE_FIELDS.map((field) => ({ ...field })),
+    updated_by_manager_user_id: null,
+    updated_at: null
+  };
+}
+
+function normalizeChecklistTemplateFields(fields = []) {
+  const submittedById = new Map(
+    (Array.isArray(fields) ? fields : [])
+      .filter((field) => field && typeof field === 'object')
+      .map((field) => [String(field.id || '').trim(), field])
+      .filter(([id]) => Boolean(id))
+  );
+
+  return DEFAULT_CHECKLIST_TEMPLATE_FIELDS.map((defaultField) => {
+    const submitted = submittedById.get(defaultField.id);
+    return {
+      ...defaultField,
+      enabled: typeof submitted?.enabled === 'boolean' ? submitted.enabled : defaultField.enabled
+    };
+  });
 }
 
 function normalizeMaintenanceSetting(setting = {}) {
   const serviceType = String(setting.service_type || '').trim();
 
-  if (!ALLOWED_SERVICE_TYPES.has(serviceType)) {
-    return { error: `Unsupported service type: ${serviceType || 'missing'}` };
+  if (!serviceType) {
+    return { error: 'service_type is required' };
   }
 
   const isEnabled = typeof setting.is_enabled === 'boolean' ? setting.is_enabled : true;
@@ -63,7 +176,53 @@ function normalizeMaintenanceSetting(setting = {}) {
     service_type: serviceType,
     is_enabled: isEnabled,
     default_interval_miles: intervalMiles,
-    default_interval_days: intervalDays
+    default_interval_days: intervalDays,
+    notes: setting.notes ? String(setting.notes).trim() : null
+  };
+}
+
+async function isAllowedMaintenanceServiceType(supabase, { accountId, serviceType }) {
+  const normalizedServiceType = String(serviceType || '').trim();
+
+  if (ALLOWED_SERVICE_TYPES.has(normalizedServiceType)) {
+    return { allowed: true };
+  }
+
+  const { data, error } = await supabase
+    .from('vehicle_maintenance_settings')
+    .select('service_type')
+    .eq('account_id', accountId)
+    .eq('service_type', normalizedServiceType)
+    .maybeSingle();
+
+  if (error) {
+    return { error };
+  }
+
+  return { allowed: Boolean(data) };
+}
+
+async function getMaintenanceSettingForServiceType(supabase, { accountId, serviceType }) {
+  const normalizedServiceType = String(serviceType || '').trim();
+  const { data, error } = await supabase
+    .from('vehicle_maintenance_settings')
+    .select('*')
+    .eq('account_id', accountId)
+    .eq('service_type', normalizedServiceType)
+    .maybeSingle();
+
+  if (error) {
+    return { error };
+  }
+
+  if (data) {
+    return { setting: data };
+  }
+
+  return {
+    setting: createDefaultMaintenanceSettings().find(
+      (setting) => setting.service_type.toLowerCase() === normalizedServiceType.toLowerCase()
+    ) || null
   };
 }
 
@@ -74,6 +233,35 @@ function getCurrentDateString(now = new Date(), timeZone = process.env.APP_TIME_
     month: '2-digit',
     day: '2-digit'
   }).format(now);
+}
+
+function addDaysToDateString(dateString, days) {
+  if (!dateString || !Number.isInteger(days)) {
+    return null;
+  }
+
+  const date = new Date(`${dateString}T00:00:00.000Z`);
+  if (Number.isNaN(date.getTime())) {
+    return null;
+  }
+
+  date.setUTCDate(date.getUTCDate() + days);
+  return date.toISOString().slice(0, 10);
+}
+
+function differenceInDays(dateString, todayString) {
+  if (!dateString || !todayString) {
+    return null;
+  }
+
+  const date = new Date(`${dateString}T00:00:00.000Z`);
+  const today = new Date(`${todayString}T00:00:00.000Z`);
+
+  if (Number.isNaN(date.getTime()) || Number.isNaN(today.getTime())) {
+    return null;
+  }
+
+  return Math.round((date.getTime() - today.getTime()) / 86400000);
 }
 
 function toInteger(value) {
@@ -142,6 +330,205 @@ function mapLatestMaintenance(records) {
   }, new Map());
 }
 
+function getLatestMaintenanceByVehicleAndType(records = []) {
+  return (records || []).reduce((map, record) => {
+    const vehicleId = record.vehicle_id;
+    const serviceType = String(record.service_type || '').trim();
+    const mileageAtService = toInteger(record.mileage_at_service);
+
+    if (!vehicleId || !serviceType || (mileageAtService === null && !record.service_date)) {
+      return map;
+    }
+
+    const key = `${vehicleId}:${serviceType.toLowerCase()}`;
+    const existing = map.get(key);
+    const existingMileage = toInteger(existing?.mileage_at_service);
+
+    if (
+      !existing ||
+      (mileageAtService !== null && (existingMileage === null || mileageAtService > existingMileage)) ||
+      ((mileageAtService === existingMileage || mileageAtService === null) && String(record.service_date || '') > String(existing.service_date || ''))
+    ) {
+      map.set(key, record);
+    }
+
+    return map;
+  }, new Map());
+}
+
+function buildVehicleMaintenanceAlert(vehicle = {}, activeSettings = [], maintenanceByVehicleAndType = new Map(), todayString = getCurrentDateString()) {
+  const currentMileage = toInteger(vehicle.current_mileage) || 0;
+  const candidates = (activeSettings || [])
+    .filter((setting) => setting?.is_enabled)
+    .map((setting) => {
+      const intervalMiles = toInteger(setting.default_interval_miles);
+      const intervalDays = toInteger(setting.default_interval_days);
+      const serviceType = String(setting.service_type || '').trim();
+
+      if (!serviceType) {
+        return null;
+      }
+
+      const latestService = maintenanceByVehicleAndType.get(`${vehicle.id}:${serviceType.toLowerCase()}`) || null;
+      const lastCompletedMileage = toInteger(latestService?.mileage_at_service);
+      const nextServiceMileage = toInteger(latestService?.next_service_mileage);
+      const nextDueMileage = nextServiceMileage !== null
+        ? nextServiceMileage
+        : lastCompletedMileage !== null && intervalMiles !== null && intervalMiles > 0
+          ? lastCompletedMileage + intervalMiles
+          : null;
+      const remainingMiles = nextDueMileage !== null ? nextDueMileage - currentMileage : null;
+      const nextDueDate = latestService?.next_service_date ||
+        addDaysToDateString(latestService?.service_date, intervalDays);
+      const remainingDays = differenceInDays(nextDueDate, todayString);
+      const mileageStatus = remainingMiles === null
+        ? 'ok'
+        : remainingMiles <= 0
+          ? 'overdue'
+          : remainingMiles <= 1000
+            ? 'due_soon'
+            : 'ok';
+      const dateStatus = remainingDays === null
+        ? 'ok'
+        : remainingDays < 0
+          ? 'overdue'
+          : remainingDays <= 14
+            ? 'due_soon'
+            : 'ok';
+      const status = mileageStatus === 'overdue' || dateStatus === 'overdue'
+        ? 'overdue'
+        : mileageStatus === 'due_soon' || dateStatus === 'due_soon'
+          ? 'due_soon'
+          : 'ok';
+
+      if (lastCompletedMileage === null && !latestService?.service_date && nextDueMileage === null && !nextDueDate) {
+        return null;
+      }
+
+      return {
+        service_type: serviceType,
+        status,
+        last_completed_mileage: lastCompletedMileage,
+        interval_miles: intervalMiles,
+        interval_days: intervalDays,
+        next_due_mileage: nextDueMileage,
+        remaining_miles: remainingMiles,
+        next_due_date: nextDueDate,
+        remaining_days: remainingDays,
+        last_service_date: latestService?.service_date || null
+      };
+    })
+    .filter(Boolean)
+    .sort((left, right) => {
+      const statusPriority = { overdue: 0, due_soon: 1, ok: 2 };
+      const statusDifference = statusPriority[left.status] - statusPriority[right.status];
+
+      if (statusDifference !== 0) {
+        return statusDifference;
+      }
+
+      const leftMileage = left.remaining_miles ?? Number.POSITIVE_INFINITY;
+      const rightMileage = right.remaining_miles ?? Number.POSITIVE_INFINITY;
+      const mileageDifference = leftMileage - rightMileage;
+
+      if (Number.isFinite(mileageDifference) && mileageDifference !== 0) {
+        return mileageDifference;
+      }
+
+      return (left.remaining_days ?? Number.POSITIVE_INFINITY) - (right.remaining_days ?? Number.POSITIVE_INFINITY);
+    });
+
+  const mostUrgent = candidates[0] || null;
+
+  return {
+    status: mostUrgent?.status || 'ok',
+    most_urgent: mostUrgent,
+    items: candidates
+  };
+}
+
+function buildVehicleReadiness(vehicle = {}, maintenanceAlert = {}, todayAssignment = null, todayString = getCurrentDateString()) {
+  const registrationDays = differenceInDays(vehicle.registration_expiration, todayString);
+  const insuranceDays = differenceInDays(vehicle.insurance_expiration, todayString);
+  const maintenanceItem = maintenanceAlert.most_urgent || null;
+  const reasons = [];
+
+  if (vehicle.is_active === false) {
+    reasons.push({ type: 'inactive', severity: 'blocked', label: 'Vehicle inactive' });
+  }
+
+  if (maintenanceAlert.status === 'overdue') {
+    const overdueByMileage = maintenanceItem?.remaining_miles !== null && maintenanceItem?.remaining_miles <= 0;
+    reasons.push({
+      type: 'maintenance_overdue',
+      severity: 'blocked',
+      label: maintenanceItem?.service_type
+        ? `${maintenanceItem.service_type} overdue`
+        : 'Maintenance overdue',
+      detail: overdueByMileage
+        ? `${Math.abs(maintenanceItem.remaining_miles)} mi overdue`
+        : maintenanceItem?.remaining_days !== null && maintenanceItem?.remaining_days < 0
+          ? `${Math.abs(maintenanceItem.remaining_days)} days overdue`
+          : null
+    });
+  }
+
+  if (registrationDays !== null && registrationDays < 0) {
+    reasons.push({
+      type: 'registration_expired',
+      severity: 'blocked',
+      label: 'Registration expired',
+      detail: vehicle.registration_expiration
+    });
+  }
+
+  if (insuranceDays !== null && insuranceDays < 0) {
+    reasons.push({
+      type: 'insurance_expired',
+      severity: 'blocked',
+      label: 'Insurance expired',
+      detail: vehicle.insurance_expiration
+    });
+  }
+
+  if (maintenanceAlert.status === 'due_soon') {
+    reasons.push({
+      type: 'maintenance_soon',
+      severity: 'maintenance_soon',
+      label: maintenanceItem?.service_type
+        ? `${maintenanceItem.service_type} soon`
+        : 'Maintenance soon',
+      detail: maintenanceItem?.remaining_miles !== null && maintenanceItem?.remaining_miles <= 1000
+        ? `${maintenanceItem.remaining_miles} mi left`
+        : maintenanceItem?.remaining_days !== null && maintenanceItem?.remaining_days <= 14
+          ? `${maintenanceItem.remaining_days} days left`
+          : null
+    });
+  }
+
+  const hasBlockedReason = reasons.some((reason) => reason.severity === 'blocked');
+  const hasMaintenanceSoonReason = reasons.some((reason) => reason.severity === 'maintenance_soon');
+  const status = hasBlockedReason
+    ? 'blocked'
+    : hasMaintenanceSoonReason
+      ? 'maintenance_soon'
+      : todayAssignment
+        ? 'assigned'
+        : 'ready';
+
+  return {
+    status,
+    label: {
+      ready: 'Ready',
+      assigned: 'Assigned',
+      maintenance_soon: 'Maintenance Soon',
+      blocked: 'Blocked'
+    }[status],
+    reasons,
+    primary_reason: reasons[0] || null
+  };
+}
+
 function buildAssignmentMap(routes, driversById) {
   return (routes || []).reduce((map, route) => {
     if (!route.vehicle_id) {
@@ -193,7 +580,24 @@ function createVehiclesRouter(options = {}) {
 
       const vehicleIds = (vehicles || []).map((vehicle) => vehicle.id);
       let maintenanceByVehicleId = new Map();
+      let maintenanceByVehicleAndType = new Map();
       let assignmentsByVehicleId = new Map();
+      let activeMaintenanceSettings = [];
+
+      const { data: maintenanceSettings, error: maintenanceSettingsError } = await supabase
+        .from('vehicle_maintenance_settings')
+        .select('*')
+        .eq('account_id', req.account.account_id)
+        .order('service_type');
+
+      if (maintenanceSettingsError) {
+        console.error('Vehicle maintenance settings lookup failed:', maintenanceSettingsError);
+        return res.status(500).json({ error: 'Failed to load vehicle maintenance settings' });
+      }
+
+      activeMaintenanceSettings = maintenanceSettings?.length
+        ? maintenanceSettings
+        : createDefaultMaintenanceSettings();
 
       if (vehicleIds.length > 0) {
         const { data: maintenanceRows, error: maintenanceError } = await supabase
@@ -209,6 +613,7 @@ function createVehiclesRouter(options = {}) {
         }
 
         maintenanceByVehicleId = mapLatestMaintenance(maintenanceRows);
+        maintenanceByVehicleAndType = getLatestMaintenanceByVehicleAndType(maintenanceRows);
 
         const { data: routeAssignments, error: assignmentsError } = await supabase
           .from('routes')
@@ -250,12 +655,24 @@ function createVehiclesRouter(options = {}) {
           const serviceDue = Number.isInteger(nextServiceMileage)
             ? currentMileage >= nextServiceMileage - 500
             : false;
+          const maintenanceAlert = buildVehicleMaintenanceAlert(
+            vehicle,
+            activeMaintenanceSettings,
+            maintenanceByVehicleAndType,
+            today
+          );
+          const maintenanceServiceDue = ['due_soon', 'overdue'].includes(maintenanceAlert.status);
+          const todayAssignment = assignmentsByVehicleId.get(vehicle.id) || null;
+          const readiness = buildVehicleReadiness(vehicle, maintenanceAlert, todayAssignment, today);
 
           return {
             ...vehicle,
             latest_maintenance: maintenanceByVehicleId.get(vehicle.id) || null,
-            today_assignment: assignmentsByVehicleId.get(vehicle.id) || null,
-            service_due: serviceDue
+            maintenance_alert: maintenanceAlert,
+            today_assignment: todayAssignment,
+            readiness,
+            readiness_status: readiness.status,
+            service_due: serviceDue || maintenanceServiceDue
           };
         })
       });
@@ -338,6 +755,34 @@ function createVehiclesRouter(options = {}) {
     }
 
     try {
+      const { data: existingSettings, error: existingSettingsError } = await supabase
+        .from('vehicle_maintenance_settings')
+        .select('service_type')
+        .eq('account_id', req.account.account_id);
+
+      if (existingSettingsError) {
+        console.error('Vehicle maintenance settings existing lookup failed:', existingSettingsError);
+        return res.status(500).json({ error: 'Failed to save maintenance settings' });
+      }
+
+      const nextServiceTypes = new Set(normalized.map((setting) => setting.service_type));
+      const deletedServiceTypes = (existingSettings || [])
+        .map((setting) => setting.service_type)
+        .filter((serviceType) => !nextServiceTypes.has(serviceType));
+
+      if (deletedServiceTypes.length) {
+        const { error: deleteError } = await supabase
+          .from('vehicle_maintenance_settings')
+          .delete()
+          .eq('account_id', req.account.account_id)
+          .in('service_type', deletedServiceTypes);
+
+        if (deleteError) {
+          console.error('Vehicle maintenance settings delete failed:', deleteError);
+          return res.status(500).json({ error: 'Failed to save maintenance settings' });
+        }
+      }
+
       const { error } = await supabase
         .from('vehicle_maintenance_settings')
         .upsert(normalized, { onConflict: 'account_id,service_type' });
@@ -354,6 +799,136 @@ function createVehiclesRouter(options = {}) {
     }
   });
 
+  router.get('/settings/maintenance-requirements', requireManager, async (req, res) => {
+    try {
+      const { data, error } = await supabase
+        .from('vehicle_check_requirement_settings')
+        .select('*')
+        .eq('account_id', req.account.account_id)
+        .maybeSingle();
+
+      if (error) {
+        console.error('Vehicle check requirement settings lookup failed:', error);
+        return res.status(500).json({ error: 'Failed to load vehicle check requirements' });
+      }
+
+      if (!data) {
+        return res.status(200).json({ setting: createDefaultMaintenanceRequirementSetting() });
+      }
+
+      return res.status(200).json({
+        setting: {
+          ...createDefaultMaintenanceRequirementSetting(),
+          ...data,
+          custom_daily_requirements: normalizeBooleanMap(
+            data.custom_daily_requirements,
+            DEFAULT_CUSTOM_DAILY_REQUIREMENTS
+          ),
+          custom_weekly_requirements: normalizeBooleanMap(
+            data.custom_weekly_requirements,
+            DEFAULT_CUSTOM_WEEKLY_REQUIREMENTS
+          )
+        }
+      });
+    } catch (error) {
+      console.error('Vehicle check requirement settings endpoint failed:', error);
+      return res.status(500).json({ error: 'Failed to load vehicle check requirements' });
+    }
+  });
+
+  router.put('/settings/maintenance-requirements', requireManager, async (req, res) => {
+    const parsed = normalizeMaintenanceRequirementSetting(req.body || {});
+
+    if (parsed.error) {
+      return res.status(400).json({ error: parsed.error });
+    }
+
+    const payload = {
+      account_id: req.account.account_id,
+      ...parsed,
+      updated_by_manager_user_id: req.account.manager_user_id || null,
+      updated_at: nowProvider().toISOString()
+    };
+
+    try {
+      const { error } = await supabase
+        .from('vehicle_check_requirement_settings')
+        .upsert(payload, { onConflict: 'account_id' });
+
+      if (error) {
+        console.error('Vehicle check requirement settings upsert failed:', error);
+        return res.status(500).json({ error: 'Failed to save vehicle check requirements' });
+      }
+
+      return res.status(200).json({ setting: payload });
+    } catch (error) {
+      console.error('Vehicle check requirement settings save failed:', error);
+      return res.status(500).json({ error: 'Failed to save vehicle check requirements' });
+    }
+  });
+
+  router.get('/settings/checklist-template', requireManager, async (req, res) => {
+    try {
+      const { data, error } = await supabase
+        .from('vehicle_checklist_template_settings')
+        .select('*')
+        .eq('account_id', req.account.account_id)
+        .maybeSingle();
+
+      if (error) {
+        console.error('Vehicle checklist template lookup failed:', error);
+        return res.status(500).json({ error: 'Failed to load checklist template' });
+      }
+
+      if (!data) {
+        return res.status(200).json({ template: createDefaultChecklistTemplateSetting() });
+      }
+
+      return res.status(200).json({
+        template: {
+          fields: normalizeChecklistTemplateFields(data.fields),
+          updated_by_manager_user_id: data.updated_by_manager_user_id || null,
+          updated_at: data.updated_at || null
+        }
+      });
+    } catch (error) {
+      console.error('Vehicle checklist template endpoint failed:', error);
+      return res.status(500).json({ error: 'Failed to load checklist template' });
+    }
+  });
+
+  router.put('/settings/checklist-template', requireManager, async (req, res) => {
+    const fields = normalizeChecklistTemplateFields(req.body?.fields);
+    const payload = {
+      account_id: req.account.account_id,
+      fields,
+      updated_by_manager_user_id: req.account.manager_user_id || null,
+      updated_at: nowProvider().toISOString()
+    };
+
+    try {
+      const { error } = await supabase
+        .from('vehicle_checklist_template_settings')
+        .upsert(payload, { onConflict: 'account_id' });
+
+      if (error) {
+        console.error('Vehicle checklist template upsert failed:', error);
+        return res.status(500).json({ error: 'Failed to save checklist template' });
+      }
+
+      return res.status(200).json({
+        template: {
+          fields,
+          updated_by_manager_user_id: payload.updated_by_manager_user_id,
+          updated_at: payload.updated_at
+        }
+      });
+    } catch (error) {
+      console.error('Vehicle checklist template save failed:', error);
+      return res.status(500).json({ error: 'Failed to save checklist template' });
+    }
+  });
+
   router.post('/', requireManager, async (req, res) => {
     const {
       name,
@@ -364,6 +939,7 @@ function createVehiclesRouter(options = {}) {
       year,
       plate,
       registration_expiration: registrationExpiration,
+      insurance_expiration: insuranceExpiration,
       current_mileage: currentMileage
     } = req.body || {};
 
@@ -392,6 +968,7 @@ function createVehiclesRouter(options = {}) {
           year: parsedYear,
           plate: String(plate).trim(),
           registration_expiration: registrationExpiration || null,
+          insurance_expiration: insuranceExpiration || null,
           current_mileage: parsedCurrentMileage
         })
         .select('id')
@@ -409,6 +986,94 @@ function createVehiclesRouter(options = {}) {
     }
   });
 
+  router.post('/import', requireManager, parseMultipartForm, async (req, res) => {
+    if (!req.file) {
+      return res.status(400).json({ error: 'Vehicle import file is required' });
+    }
+
+    try {
+      const rows = parseVehicleImportRows(req.file);
+      const { data: existingVehicles, error: existingVehiclesError } = await supabase
+        .from('vehicles')
+        .select('id, name')
+        .eq('account_id', req.account.account_id);
+
+      if (existingVehiclesError) {
+        console.error('Vehicle import duplicate lookup failed:', existingVehiclesError);
+        return res.status(500).json({ error: 'Failed to validate vehicle import' });
+      }
+
+      const existingNames = new Set((existingVehicles || []).map((vehicle) => String(vehicle.name || '').trim().toLowerCase()));
+      const seenNames = new Set();
+      const result = {
+        total: rows.length,
+        created: 0,
+        skipped: 0,
+        errors: []
+      };
+
+      for (const row of rows) {
+        const parsedYear = toInteger(row.year);
+        const parsedCurrentMileage = row.current_mileage === '' ? 0 : toInteger(row.current_mileage);
+        const normalizedTruckType = normalizeTruckType({
+          truckType: row.truck_type,
+          customTruckType: row.custom_truck_type
+        });
+        const name = String(row.name || '').trim();
+        const nameKey = name.toLowerCase();
+
+        if (!name || !row.make || !row.model || parsedYear === null || !row.plate || parsedCurrentMileage === null) {
+          result.errors.push({ row: row.row_number, error: 'Vehicle ID, make, model, year, and plate are required.' });
+          continue;
+        }
+
+        if (normalizedTruckType.error) {
+          result.errors.push({ row: row.row_number, error: normalizedTruckType.error });
+          continue;
+        }
+
+        if (existingNames.has(nameKey) || seenNames.has(nameKey)) {
+          result.skipped += 1;
+          continue;
+        }
+
+        const { error } = await supabase
+          .from('vehicles')
+          .insert({
+            account_id: req.account.account_id,
+            name,
+            truck_type: normalizedTruckType.truck_type,
+            custom_truck_type: normalizedTruckType.custom_truck_type,
+            make: String(row.make).trim(),
+            model: String(row.model).trim(),
+            year: parsedYear,
+            plate: String(row.plate).trim(),
+            registration_expiration: row.registration_expiration || null,
+            insurance_expiration: row.insurance_expiration || null,
+            current_mileage: parsedCurrentMileage,
+            notes: row.notes || null
+          })
+          .select('id')
+          .single();
+
+        if (error) {
+          console.error('Vehicle import row failed:', error);
+          result.errors.push({ row: row.row_number, error: 'Could not create vehicle.' });
+          continue;
+        }
+
+        seenNames.add(nameKey);
+        existingNames.add(nameKey);
+        result.created += 1;
+      }
+
+      return res.status(200).json(result);
+    } catch (error) {
+      console.error('Vehicle import failed:', error);
+      return res.status(400).json({ error: error?.message || 'Could not import vehicles.' });
+    }
+  });
+
   router.put('/:id', requireManager, async (req, res) => {
     const vehicleId = req.params.id;
     const allowedFields = [
@@ -420,6 +1085,7 @@ function createVehiclesRouter(options = {}) {
       'year',
       'plate',
       'registration_expiration',
+      'insurance_expiration',
       'current_mileage',
       'notes',
       'is_active'
@@ -450,7 +1116,7 @@ function createVehiclesRouter(options = {}) {
         continue;
       }
 
-      if (field === 'registration_expiration') {
+      if (field === 'registration_expiration' || field === 'insurance_expiration') {
         payload[field] = req.body[field] || null;
         continue;
       }
@@ -508,6 +1174,81 @@ function createVehiclesRouter(options = {}) {
     }
   });
 
+  router.post('/:id/odometer', requireManager, async (req, res) => {
+    const vehicleId = req.params.id;
+    const {
+      odometer_reading: odometerReading,
+      notes
+    } = req.body || {};
+    const parsedOdometer = toInteger(odometerReading);
+
+    if (parsedOdometer === null || parsedOdometer < 0) {
+      return res.status(400).json({ error: 'odometer_reading must be a nonnegative integer' });
+    }
+
+    try {
+      const { data: vehicle, error: vehicleError } = await loadOwnedVehicle(supabase, {
+        vehicleId,
+        accountId: req.account.account_id
+      });
+
+      if (vehicleError) {
+        console.error('Manager odometer vehicle lookup failed:', vehicleError);
+        return res.status(500).json({ error: 'Failed to validate vehicle' });
+      }
+
+      if (!vehicle) {
+        return res.status(403).json({ error: 'Vehicle does not belong to this account' });
+      }
+
+      const oldOdometer = toInteger(vehicle.current_mileage) || 0;
+      const recordedAt = nowProvider().toISOString();
+      const { data: entry, error: insertError } = await supabase
+        .from('vehicle_odometer_entries')
+        .insert({
+          vehicle_id: vehicleId,
+          manager_user_id: req.account.manager_user_id || null,
+          account_id: req.account.account_id,
+          route_id: null,
+          old_odometer_reading: oldOdometer,
+          new_odometer_reading: parsedOdometer,
+          odometer_reading: parsedOdometer,
+          source: 'manager',
+          notes: notes ? String(notes).trim() : null,
+          recorded_at: recordedAt
+        })
+        .select('id, old_odometer_reading, new_odometer_reading, odometer_reading, recorded_at, source, notes')
+        .single();
+
+      if (insertError) {
+        console.error('Manager odometer insert failed:', insertError);
+        return res.status(500).json({ error: 'Failed to save odometer update' });
+      }
+
+      const { error: updateError } = await supabase
+        .from('vehicles')
+        .update({ current_mileage: parsedOdometer })
+        .eq('id', vehicleId)
+        .eq('account_id', req.account.account_id);
+
+      if (updateError) {
+        console.error('Manager odometer vehicle update failed:', updateError);
+        return res.status(500).json({ error: 'Failed to update vehicle odometer' });
+      }
+
+      return res.status(200).json({
+        entry,
+        vehicle: {
+          id: vehicleId,
+          current_mileage: parsedOdometer
+        }
+      });
+    } catch (error) {
+      console.error('Manager odometer endpoint failed:', error);
+      return res.status(500).json({ error: 'Failed to save odometer update' });
+    }
+  });
+
   router.post('/:id/maintenance', requireManager, async (req, res) => {
     const vehicleId = req.params.id;
     const {
@@ -515,6 +1256,8 @@ function createVehiclesRouter(options = {}) {
       service_type: serviceType,
       description,
       condition_notes: conditionNotes,
+      vendor_name: vendorName,
+      shop_name: shopName,
       cost,
       mileage_at_service: mileageAtService,
       next_service_mileage: nextServiceMileage,
@@ -527,12 +1270,8 @@ function createVehiclesRouter(options = {}) {
       ? null
       : toInteger(nextServiceMileage);
 
-    if (!serviceDate || !serviceType || !description) {
-      return res.status(400).json({ error: 'service_date, service_type, and description are required' });
-    }
-
-    if (!ALLOWED_SERVICE_TYPES.has(String(serviceType).trim())) {
-      return res.status(400).json({ error: 'service_type is not supported' });
+    if (!serviceDate || !serviceType) {
+      return res.status(400).json({ error: 'service_date and service_type are required' });
     }
 
     if (cost !== undefined && parsedCost === null) {
@@ -548,6 +1287,20 @@ function createVehiclesRouter(options = {}) {
     }
 
     try {
+      const serviceTypeStatus = await isAllowedMaintenanceServiceType(supabase, {
+        accountId: req.account.account_id,
+        serviceType
+      });
+
+      if (serviceTypeStatus.error) {
+        console.error('Vehicle maintenance service type lookup failed:', serviceTypeStatus.error);
+        return res.status(500).json({ error: 'Failed to validate service type' });
+      }
+
+      if (!serviceTypeStatus.allowed) {
+        return res.status(400).json({ error: 'service_type is not supported' });
+      }
+
       const { data: vehicle, error: vehicleError } = await loadOwnedVehicle(supabase, {
         vehicleId,
         accountId: req.account.account_id
@@ -562,16 +1315,39 @@ function createVehiclesRouter(options = {}) {
         return res.status(403).json({ error: 'Vehicle does not belong to this account' });
       }
 
+      const { setting: serviceSetting, error: serviceSettingError } = await getMaintenanceSettingForServiceType(supabase, {
+        accountId: req.account.account_id,
+        serviceType
+      });
+
+      if (serviceSettingError) {
+        console.error('Vehicle maintenance setting lookup failed:', serviceSettingError);
+        return res.status(500).json({ error: 'Failed to load service interval' });
+      }
+
+      const intervalMiles = toInteger(serviceSetting?.default_interval_miles);
+      const resolvedNextServiceMileage = parsedNextServiceMileage !== null
+        ? parsedNextServiceMileage
+        : parsedMileageAtService !== null && intervalMiles !== null && intervalMiles > 0
+          ? parsedMileageAtService + intervalMiles
+          : null;
+      const resolvedDescription = description && String(description).trim()
+        ? String(description).trim()
+        : `Completed ${String(serviceType).trim()}`;
+      const resolvedVendorName = vendorName || shopName
+        ? String(vendorName || shopName).trim()
+        : null;
       const insertPayload = {
         vehicle_id: vehicleId,
         account_id: req.account.account_id,
         service_date: serviceDate,
         service_type: String(serviceType).trim(),
-        description: String(description).trim(),
+        description: resolvedDescription,
         condition_notes: conditionNotes ? String(conditionNotes).trim() : null,
+        vendor_name: resolvedVendorName,
         cost: parsedCost,
         mileage_at_service: parsedMileageAtService,
-        next_service_mileage: parsedNextServiceMileage,
+        next_service_mileage: resolvedNextServiceMileage,
         next_service_date: nextServiceDate || null
       };
 
@@ -596,7 +1372,7 @@ function createVehiclesRouter(options = {}) {
       ) {
         updatePayload.last_service_date = serviceDate;
         updatePayload.last_service_mileage = parsedMileageAtService;
-        updatePayload.next_service_mileage = parsedNextServiceMileage;
+        updatePayload.next_service_mileage = resolvedNextServiceMileage;
       }
 
       if (parsedMileageAtService !== null && parsedMileageAtService > currentMileage) {

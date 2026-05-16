@@ -1,5 +1,7 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 
+import { buildTelHref, getStopContactDetails } from '../utils/contactInfo';
+import { getCanonicalStopId } from '../utils/stopIdentity';
 import './StopListDrawer.css';
 
 function getStopType(stop) {
@@ -169,6 +171,11 @@ function filterStops(stops, activeFilter, searchTerm) {
     return (
       String(stop.sequence_order || '').includes(needle) ||
       String(stop.contact_name || '').toLowerCase().includes(needle) ||
+      String(stop.business_name || '').toLowerCase().includes(needle) ||
+      String(stop.company_name || '').toLowerCase().includes(needle) ||
+      String(stop.primary_phone || '').toLowerCase().includes(needle) ||
+      String(stop.alternate_phone || '').toLowerCase().includes(needle) ||
+      String(stop.email || '').toLowerCase().includes(needle) ||
       String(stop.address || '').toLowerCase().includes(needle) ||
       String(stop.address_line2 || '').toLowerCase().includes(needle)
     );
@@ -186,6 +193,7 @@ export default function StopListDrawer({
 }) {
   const [searchTerm, setSearchTerm] = useState('');
   const [focusedIndex, setFocusedIndex] = useState(-1);
+  const rowRefs = useRef(new Map());
 
   const visibleStops = useMemo(
     () => filterStops(stops, 'all', searchTerm),
@@ -200,6 +208,15 @@ export default function StopListDrawer({
     return { delivered, pending, exceptions };
   }, [visibleStops]);
   const routeStats = useMemo(() => getStopStats(stops), [stops]);
+
+  useEffect(() => {
+    if (!open || !selectedStopId) {
+      return;
+    }
+
+    const selectedRow = rowRefs.current.get(String(selectedStopId));
+    selectedRow?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  }, [open, selectedStopId, visibleStops]);
 
   function handleKeyDown(event) {
     if (!open || !visibleStops.length) {
@@ -291,18 +308,34 @@ export default function StopListDrawer({
       <div className="stop-list-drawer-body">
         {visibleStops.length ? (
           visibleStops.map((stop, index) => {
+            const canonicalStopId = getCanonicalStopId(stop);
             const type = getStopType(stop);
             const status = getStatusConfig(stop);
             const timeCommit = formatTimeCommit(stop);
-            const isHighlighted = selectedStopId === stop.id;
+            const isHighlighted = Boolean(selectedStopId && canonicalStopId && String(selectedStopId) === canonicalStopId);
             const isFocused = focusedIndex === index;
             const propertyIntel = stop.property_intel;
             const completionTime = formatCompletionTime(stop);
             const packageCount = getPackageCount(stop);
+            const contact = getStopContactDetails(stop);
+            const phoneHref = buildTelHref(contact.primaryPhone);
+            const alternatePhoneHref = buildTelHref(contact.alternatePhone);
 
             return (
               <button
-                key={stop.id}
+                key={canonicalStopId || stop.id || `${stop.sequence_order}:${stop.address}`}
+                ref={(element) => {
+                  if (!canonicalStopId) {
+                    return;
+                  }
+
+                  if (element) {
+                    rowRefs.current.set(canonicalStopId, element);
+                    return;
+                  }
+
+                  rowRefs.current.delete(canonicalStopId);
+                }}
                 type="button"
                 className={`stop-list-row ${isHighlighted ? 'highlighted' : ''} ${isFocused ? 'focused' : ''}`}
                 onClick={() => onSelectStop(stop)}
@@ -369,11 +402,52 @@ export default function StopListDrawer({
                     {type === 'combined' ? <span className="stop-mini-badge combined">COMBINED</span> : null}
                     {propertyIntel?.grouped_stops?.length ? <span className="stop-mini-badge apartment">GROUPED</span> : null}
                     {timeCommit ? <span className="stop-mini-badge time-commit">{timeCommit}</span> : null}
+                    {contact.hasAny ? <span className="stop-mini-badge contact">CONTACT</span> : null}
                     {(propertyIntel?.warning_flags || []).slice(0, 2).map((flag) => (
                       <span key={flag} className="stop-mini-badge time-commit">{formatWarningFlag(flag)}</span>
                     ))}
                     {stop.has_note ? <span className="stop-note-dot" /> : null}
                   </div>
+                  {isHighlighted ? (
+                    <div className="stop-contact-detail" onClick={(event) => event.stopPropagation()}>
+                      {contact.hasAny ? (
+                        <>
+                          <div className="stop-contact-detail-title">Manifest contact</div>
+                          {contact.contactName ? <div className="stop-contact-detail-line"><strong>Contact</strong><span>{contact.contactName}</span></div> : null}
+                          {contact.businessName ? <div className="stop-contact-detail-line"><strong>Business</strong><span>{contact.businessName}</span></div> : null}
+                          {contact.primaryPhone ? (
+                            <div className="stop-contact-detail-line">
+                              <strong>Phone</strong>
+                              {phoneHref ? <a href={phoneHref}>{contact.primaryPhone}</a> : <span>{contact.primaryPhone}</span>}
+                            </div>
+                          ) : null}
+                          {contact.alternatePhone ? (
+                            <div className="stop-contact-detail-line">
+                              <strong>Alt phone</strong>
+                              {alternatePhoneHref ? <a href={alternatePhoneHref}>{contact.alternatePhone}</a> : <span>{contact.alternatePhone}</span>}
+                            </div>
+                          ) : null}
+                          {contact.email ? (
+                            <div className="stop-contact-detail-line">
+                              <strong>Email</strong>
+                              <a href={`mailto:${encodeURIComponent(contact.email)}`}>{contact.email}</a>
+                            </div>
+                          ) : null}
+                          {contact.consignee ? <div className="stop-contact-detail-line"><strong>Consignee</strong><span>{contact.consignee}</span></div> : null}
+                          {contact.shipper ? <div className="stop-contact-detail-line"><strong>Shipper</strong><span>{contact.shipper}</span></div> : null}
+                          {contact.instructions ? (
+                            <div className="stop-contact-instructions">
+                              <strong>Instructions</strong>
+                              <span>{contact.instructions}</span>
+                            </div>
+                          ) : null}
+                          {!contact.hasPhone && contact.contactName ? <div className="stop-contact-empty">No phone on manifest.</div> : null}
+                        </>
+                      ) : (
+                        <div className="stop-contact-empty">No contact info on manifest.</div>
+                      )}
+                    </div>
+                  ) : null}
                   {stop.has_note && stop.notes ? (
                     <div className="stop-list-row-note-preview">
                       <span className="stop-list-row-note-label">

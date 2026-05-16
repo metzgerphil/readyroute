@@ -7,6 +7,8 @@ import {
   VEDR_PROVIDER_CONFIG,
   VEDR_PROVIDERS
 } from '../config/constants';
+import { PageHeader, StatusBadge } from '../components/PortalDesignSystem';
+import { useSelectedCsa } from '../context/SelectedCsaContext';
 import api from '../services/api';
 
 function createEmptySettings() {
@@ -41,26 +43,35 @@ function getProviderLaunchUrl(settings, providerKey) {
 
 const AVAILABLE_PROVIDER_KEYS = Object.values(VEDR_PROVIDERS);
 
-function ProviderCard({ providerKey, isSubmitting, onConnect }) {
+function ProviderRow({ isActive, isSubmitting, onConnect, onManage, providerKey }) {
   const provider = VEDR_PROVIDER_CONFIG[providerKey];
 
   return (
-    <article className="card vedr-provider-card">
-      <div className="vedr-provider-card-content">
-        <div className="vedr-provider-eyebrow">VEDR Provider</div>
-        <h2>{provider.brandName}</h2>
-        <p>{provider.description}</p>
+    <div className={`vedr-provider-table-row${isActive ? ' active' : ''}`}>
+      <div className="vedr-provider-name-cell">
+        <div>
+          <strong>{provider.brandName}</strong>
+          {isActive ? <span>Current provider</span> : null}
+        </div>
       </div>
 
-      <button
-        className="primary-cta vedr-provider-button"
-        disabled={isSubmitting}
-        onClick={() => onConnect(providerKey)}
-        type="button"
-      >
-        {isSubmitting ? 'Connecting...' : provider.connectLabel}
-      </button>
-    </article>
+      <div className="vedr-provider-action-cell">
+        {isActive ? (
+          <button className="secondary-button vedr-provider-button" onClick={() => onManage(providerKey)} type="button">
+            Manage
+          </button>
+        ) : (
+          <button
+            className="primary-cta vedr-provider-button"
+            disabled={isSubmitting}
+            onClick={() => onConnect(providerKey)}
+            type="button"
+          >
+            {isSubmitting ? 'Connecting...' : 'Connect'}
+          </button>
+        )}
+      </div>
+    </div>
   );
 }
 
@@ -115,9 +126,12 @@ export default function VedrPage() {
   const [helperMessage, setHelperMessage] = useState('');
   const [isSwitchConfirming, setIsSwitchConfirming] = useState(false);
   const [switchingPreviousSettings, setSwitchingPreviousSettings] = useState(null);
+  const [comingSoonProviderKey, setComingSoonProviderKey] = useState(null);
+  const { selectedCsaId } = useSelectedCsa();
 
   const settingsQuery = useQuery({
-    queryKey: ['vedr-settings'],
+    queryKey: ['vedr-settings', selectedCsaId],
+    enabled: Boolean(selectedCsaId),
     queryFn: async () => {
       const response = await api.get('/api/vedr/settings');
       return response.data || createEmptySettings();
@@ -130,7 +144,7 @@ export default function VedrPage() {
       return response.data || createEmptySettings();
     },
     onSuccess: (updatedSettings) => {
-      queryClient.setQueryData(['vedr-settings'], updatedSettings);
+      queryClient.setQueryData(['vedr-settings', selectedCsaId], updatedSettings);
     }
   });
 
@@ -140,7 +154,7 @@ export default function VedrPage() {
       return response.data || createEmptySettings();
     },
     onSuccess: (updatedSettings) => {
-      queryClient.setQueryData(['vedr-settings'], updatedSettings);
+      queryClient.setQueryData(['vedr-settings', selectedCsaId], updatedSettings);
     }
   });
 
@@ -196,6 +210,12 @@ export default function VedrPage() {
 
   function handleConnectProvider(providerKey) {
     const provider = VEDR_PROVIDER_CONFIG[providerKey];
+    const launchUrl = getProviderLaunchUrl(null, providerKey);
+
+    if (!launchUrl) {
+      setComingSoonProviderKey(providerKey);
+      return;
+    }
 
     saveSettingsMutation.mutate({
       provider: providerKey,
@@ -235,6 +255,15 @@ export default function VedrPage() {
     openInNewTab(getProviderLaunchUrl(effectiveSettings, providerKey));
   }
 
+  function handleManageProvider(providerKey) {
+    if (providerKey === activeProviderKey) {
+      handleOpenDashboard(providerKey);
+      return;
+    }
+
+    handleConnectProvider(providerKey);
+  }
+
   function handleSwitchProvider() {
     setSwitchingPreviousSettings(effectiveSettings);
     setLocalSettings(createEmptySettings());
@@ -260,7 +289,6 @@ export default function VedrPage() {
         setIsSwitchConfirming(false);
         setSwitchingPreviousSettings(null);
         setHelperMessage('');
-        setAccessMessage('');
       }
     });
   }
@@ -286,12 +314,19 @@ export default function VedrPage() {
 
   return (
     <section className="page-section vedr-page">
-      <div className="page-header">
+      <PageHeader
+        description="Connect video safety, telematics, and fleet risk providers."
+        title="VEDR Providers"
+      />
+
+      <div className="card vedr-explainer-card">
         <div>
-          <div className="vedr-provider-eyebrow">Operations / VEDR</div>
-          <h1>VEDR</h1>
-          <p>Connect your company&apos;s camera provider once, then jump back into their safety tools any time.</p>
+          <div className="card-title">Video and telematics integrations</div>
+          <p>
+            Connect your video event data recorder or telematics provider to support safety review, coaching, and fleet visibility.
+          </p>
         </div>
+        <StatusBadge tone="integration">Integrations</StatusBadge>
       </div>
 
       {setupBanner ? (
@@ -356,47 +391,55 @@ export default function VedrPage() {
             </>
           ) : null}
         </div>
-      ) : (
-        <div className="card vedr-setup-shell">
-          <div className="vedr-setup-header">
-            <div className="vedr-provider-eyebrow">First-time setup</div>
-            <h2>Choose Your VEDR Provider</h2>
-            <p>Select the camera system your company uses. You only need to do this once.</p>
-          </div>
+      ) : null}
 
-      {isSwitchConfirming ? (
-            <div className="vedr-confirm-banner">
-              <strong>Are you sure you want to switch providers?</strong>
-              <span>Your current selection will be removed.</span>
-              <div className="vedr-confirm-actions">
-                <button className="secondary-button" disabled={isSubmittingProvider} onClick={cancelSwitchProvider} type="button">
-                  Keep current provider
-                </button>
-                <button className="primary-cta" disabled={isSubmittingProvider} onClick={confirmSwitchProvider} type="button">
-                  {isSubmittingProvider ? 'Removing...' : 'Remove provider'}
-                </button>
-              </div>
-            </div>
-          ) : null}
-
-          {stateOneHelper}
-
-          <div className="vedr-provider-grid">
-            {AVAILABLE_PROVIDER_KEYS.map((providerKey) => (
-              <ProviderCard
-                isSubmitting={isSubmittingProvider}
-                key={providerKey}
-                onConnect={handleConnectProvider}
-                providerKey={providerKey}
-              />
-            ))}
-          </div>
-
-          <div className="vedr-muted-note">
-            Not sure which one you use? Check with your DSP operations team and choose the same camera or telematics platform they already use today.
+      <div className="card vedr-setup-shell">
+        <div className="vedr-setup-header">
+          <div>
+            <div className="vedr-provider-eyebrow">Provider marketplace</div>
+            <h2>{activeProviderKey ? 'Available providers' : 'Choose your VEDR provider'}</h2>
+            <p>Select the camera, video safety, or telematics platform your CSA uses.</p>
           </div>
         </div>
-      )}
+
+        {isSwitchConfirming ? (
+          <div className="vedr-confirm-banner">
+            <strong>Are you sure you want to switch providers?</strong>
+            <span>Your current selection will be removed.</span>
+            <div className="vedr-confirm-actions">
+              <button className="secondary-button" disabled={isSubmittingProvider} onClick={cancelSwitchProvider} type="button">
+                Keep current provider
+              </button>
+              <button className="primary-cta" disabled={isSubmittingProvider} onClick={confirmSwitchProvider} type="button">
+                {isSubmittingProvider ? 'Removing...' : 'Remove provider'}
+              </button>
+            </div>
+          </div>
+        ) : null}
+
+        {stateOneHelper}
+
+        <div className="vedr-provider-table">
+          <div className="vedr-provider-table-header">
+            <span>Company</span>
+            <span>Connect</span>
+          </div>
+          {AVAILABLE_PROVIDER_KEYS.map((providerKey) => (
+            <ProviderRow
+              isActive={activeProviderKey === providerKey}
+              isSubmitting={isSubmittingProvider}
+              key={providerKey}
+              onConnect={activeProviderKey ? handleSwitchProvider : handleConnectProvider}
+              onManage={handleManageProvider}
+              providerKey={providerKey}
+            />
+          ))}
+        </div>
+
+        <div className="vedr-muted-note">
+          Not sure which one you use? Check with your DSP operations team and choose the same camera or telematics platform they already use today.
+        </div>
+      </div>
 
       {isSwitchConfirming && switchingPreviousSettings?.provider ? (
         <div className="modal-backdrop">
@@ -424,6 +467,25 @@ export default function VedrPage() {
 
       {activeProviderKey ? (
         null
+      ) : null}
+
+      {comingSoonProviderKey ? (
+        <div className="modal-backdrop">
+          <div className="modal-card vedr-coming-soon-modal">
+            <div className="modal-header">
+              <div className="card-title">Integration coming soon</div>
+              <button className="icon-button" onClick={() => setComingSoonProviderKey(null)} type="button">×</button>
+            </div>
+            <div className="vedr-switch-modal-copy">
+              {`${VEDR_PROVIDER_CONFIG[comingSoonProviderKey]?.brandName || 'This provider'} integration is not connected yet.`}
+            </div>
+            <div className="modal-actions">
+              <button className="primary-inline-button" onClick={() => setComingSoonProviderKey(null)} type="button">
+                Got it
+              </button>
+            </div>
+          </div>
+        </div>
       ) : null}
     </section>
   );

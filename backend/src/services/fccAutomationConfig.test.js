@@ -23,6 +23,9 @@ test('resolveFccAutomationConfig pulls selectors and flags from env', () => {
     FEDEX_FCC_PORTAL_URL: 'https://fcc.example.com/portal',
     FEDEX_FCC_MANIFEST_URL: 'https://fcc.example.com/manifest?date={workDate}',
     FEDEX_FCC_MANIFEST_ROW_SELECTOR: 'table tbody tr',
+    FEDEX_FCC_PICKUP_TAB_SELECTOR: 'text=Pickups',
+    FEDEX_FCC_DELIVERY_TAB_SELECTOR: 'text=Deliveries',
+    FEDEX_FCC_COMBINED_TAB_SELECTOR: 'text=Combined',
     READYROUTE_FCC_ROUTE_FILTER: '810,811',
     FEDEX_FCC_HEADLESS: 'false',
     FEDEX_FCC_SLOW_MO_MS: '125'
@@ -31,6 +34,9 @@ test('resolveFccAutomationConfig pulls selectors and flags from env', () => {
   assert.equal(config.loginUrl, 'https://fcc.example.com/login');
   assert.equal(config.portalUrl, 'https://fcc.example.com/portal');
   assert.equal(config.manifestRowSelector, 'table tbody tr');
+  assert.equal(config.pickupManifestTabSelector, 'text=Pickups');
+  assert.equal(config.deliveryManifestTabSelector, 'text=Deliveries');
+  assert.equal(config.combinedManifestTabSelector, 'text=Combined');
   assert.deepEqual(config.routeFilter, ['810', '811']);
   assert.equal(config.headless, false);
   assert.equal(config.slowMoMs, 125);

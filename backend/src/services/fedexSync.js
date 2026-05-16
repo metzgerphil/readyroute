@@ -1,9 +1,18 @@
 const DEFAULT_ROUTE_SYNC_SETTINGS = Object.freeze({
   operations_timezone: process.env.APP_TIME_ZONE || 'America/Los_Angeles',
-  dispatch_window_start_hour: 6,
+  dispatch_window_start_hour: 9,
   dispatch_window_end_hour: 11,
   manifest_sync_interval_minutes: 15
 });
+
+const FCC_AUTOMATION_DISABLED_SUMMARY = 'FedEx/FCC automation is paused pending FedEx-approved access.';
+const FCC_SYNC_BEFORE_WINDOW_SUMMARY = 'FCC sync is blocked until the morning manifest window opens.';
+const MIN_FCC_SYNC_START_HOUR = 9;
+
+function isFccAutomationEnabled(options = {}) {
+  const value = options.fccAutomationEnabled ?? process.env.FEDEX_FCC_AUTOMATION_ENABLED;
+  return String(value || '').trim().toLowerCase() === 'true';
+}
 
 function getCurrentDateString(now = new Date(), timeZone = process.env.APP_TIME_ZONE || 'America/Los_Angeles') {
   return new Intl.DateTimeFormat('en-CA', {
@@ -35,7 +44,10 @@ function getTimeZoneDateParts(now, timeZone) {
 
 function presentRouteSyncSettings(account, selectedDate, now = new Date()) {
   const operationsTimezone = account?.operations_timezone || DEFAULT_ROUTE_SYNC_SETTINGS.operations_timezone;
-  const dispatchWindowStartHour = Number(account?.dispatch_window_start_hour ?? DEFAULT_ROUTE_SYNC_SETTINGS.dispatch_window_start_hour);
+  const configuredDispatchWindowStartHour = Number(
+    account?.dispatch_window_start_hour ?? DEFAULT_ROUTE_SYNC_SETTINGS.dispatch_window_start_hour
+  );
+  const dispatchWindowStartHour = Math.max(configuredDispatchWindowStartHour, MIN_FCC_SYNC_START_HOUR);
   const dispatchWindowEndHour = Number(account?.dispatch_window_end_hour ?? DEFAULT_ROUTE_SYNC_SETTINGS.dispatch_window_end_hour);
   const manifestSyncIntervalMinutes = Number(
     account?.manifest_sync_interval_minutes ?? DEFAULT_ROUTE_SYNC_SETTINGS.manifest_sync_interval_minutes
@@ -59,11 +71,16 @@ function presentRouteSyncSettings(account, selectedDate, now = new Date()) {
   return {
     operations_timezone: operationsTimezone,
     dispatch_window_start_hour: dispatchWindowStartHour,
+    configured_dispatch_window_start_hour: configuredDispatchWindowStartHour,
     dispatch_window_end_hour: dispatchWindowEndHour,
     manifest_sync_interval_minutes: manifestSyncIntervalMinutes,
     local_today: localNow.date,
     dispatch_window_state: dispatchWindowState
   };
+}
+
+function shouldBlockFccSyncBeforeWindow(routeSyncSettings) {
+  return routeSyncSettings?.dispatch_window_state === 'before_window';
 }
 
 async function loadAccountForSync(supabase, accountId) {
@@ -189,6 +206,7 @@ function createFedexSyncService(options = {}) {
   const { supabase, adapter = null, logger = console, manifestIngestService = null } = options;
   const fccProgressSyncService = options.fccProgressSyncService || null;
   const nowProvider = options.now || (() => new Date());
+  const fccAutomationEnabled = isFccAutomationEnabled(options);
 
   if (!supabase) {
     throw new Error('createFedexSyncService requires a Supabase client');
@@ -198,11 +216,10 @@ function createFedexSyncService(options = {}) {
     const now = nowProvider();
     const resolvedWorkDate = workDate || getCurrentDateString(now, account.operations_timezone || DEFAULT_ROUTE_SYNC_SETTINGS.operations_timezone);
     const routeSyncSettings = presentRouteSyncSettings(account, resolvedWorkDate, now);
-    const fedexAccount = await loadConnectedFedexAccount(supabase, account.id);
 
     let run = await insertSyncRun(supabase, {
       account_id: account.id,
-      fedex_account_id: fedexAccount?.id || null,
+      fedex_account_id: null,
       work_date: resolvedWorkDate,
       trigger_source: triggerSource,
       run_status: 'queued',
@@ -210,7 +227,8 @@ function createFedexSyncService(options = {}) {
       initiated_by_manager_user_id: managerUserId,
       details: {
         route_sync_settings: routeSyncSettings,
-        adapter_configured: Boolean(adapter?.pullDailyManifests)
+        adapter_configured: Boolean(adapter?.pullDailyManifests),
+        fcc_automation_enabled: fccAutomationEnabled
       }
     });
 
@@ -218,6 +236,49 @@ function createFedexSyncService(options = {}) {
       run_status: 'running',
       started_at: now.toISOString()
     });
+
+    if (shouldBlockFccSyncBeforeWindow(routeSyncSettings)) {
+      run = await updateSyncRun(supabase, run.id, {
+        run_status: 'skipped',
+        error_summary: FCC_SYNC_BEFORE_WINDOW_SUMMARY,
+        details: {
+          ...run.details,
+          reason: 'before_manifest_sync_window',
+          route_sync_settings: routeSyncSettings
+        },
+        finished_at: nowProvider().toISOString()
+      });
+
+      run.summary = `${FCC_SYNC_BEFORE_WINDOW_SUMMARY} Earliest sync is ${routeSyncSettings.dispatch_window_start_hour}:00 ${routeSyncSettings.operations_timezone}.`;
+      return buildSyncResponse({
+        triggerSource,
+        run,
+        backgroundSyncEnabled: false
+      });
+    }
+
+    if (!fccAutomationEnabled) {
+      run = await updateSyncRun(supabase, run.id, {
+        run_status: 'skipped',
+        error_summary: FCC_AUTOMATION_DISABLED_SUMMARY,
+        details: {
+          ...run.details,
+          reason: 'fcc_automation_disabled',
+          route_sync_settings: routeSyncSettings,
+          fcc_automation_enabled: false
+        },
+        finished_at: nowProvider().toISOString()
+      });
+
+      run.summary = FCC_AUTOMATION_DISABLED_SUMMARY;
+      return buildSyncResponse({
+        triggerSource,
+        run,
+        backgroundSyncEnabled: false
+      });
+    }
+
+    const fedexAccount = await loadConnectedFedexAccount(supabase, account.id);
 
     if (!fedexAccount) {
       run = await updateSyncRun(supabase, run.id, {
@@ -242,6 +303,7 @@ function createFedexSyncService(options = {}) {
     if (!fedexAccount.fcc_username || !fedexAccount.fcc_password_encrypted) {
       run = await updateSyncRun(supabase, run.id, {
         run_status: 'skipped',
+        fedex_account_id: fedexAccount.id,
         error_summary: 'FCC credentials are missing for the default FedEx account.',
         details: {
           ...run.details,
@@ -263,6 +325,7 @@ function createFedexSyncService(options = {}) {
     if (typeof adapter?.pullDailyManifests !== 'function') {
       run = await updateSyncRun(supabase, run.id, {
         run_status: 'skipped',
+        fedex_account_id: fedexAccount.id,
         error_summary: 'FedEx sync adapter is not configured yet.',
         details: {
           ...run.details,
@@ -301,6 +364,10 @@ function createFedexSyncService(options = {}) {
               accountId: account.id,
               manifestFile: pair.manifest_file,
               companionGpxFile: pair.companion_gpx_file || null,
+              combinedManifestFile: pair.combined_manifest_file || null,
+              combinedGpxFile: pair.combined_gpx_file || null,
+              deliveryManifestFile: pair.delivery_manifest_file || null,
+              pickupManifestFile: pair.pickup_manifest_file || null,
               requestedDriverId: pair.driver_id || null,
               requestedDriverName: pair.driver_name || null,
               requestedVehicleId: pair.vehicle_id || null,
@@ -339,6 +406,7 @@ function createFedexSyncService(options = {}) {
 
       run = await updateSyncRun(supabase, run.id, {
         run_status: runStatus,
+        fedex_account_id: fedexAccount.id,
         manifest_count: manifestCount,
         changed_route_count: changedRouteCount,
         details: {
@@ -346,12 +414,19 @@ function createFedexSyncService(options = {}) {
           route_sync_settings: routeSyncSettings,
           adapter_result: adapterResult?.details || {},
           progress_result: progressResult || null,
-          ingest_results: ingestResults.map((result) => ({
-            route_id: result.route_id,
-            total_stops: result.total_stops,
-            sync_state: result.sync_state,
-            merged_into_existing_route: result.merged_into_existing_route
-          }))
+          ingest_results: ingestResults.map((result, index) => {
+            const pair = adapterResult.manifest_pairs[index] || {};
+
+            return {
+              route_id: result.route_id,
+              requested_work_area_name: pair.work_area_name || null,
+              total_stops: result.total_stops,
+              sync_state: result.sync_state,
+              merged_into_existing_route: result.merged_into_existing_route,
+              artifact_record_counts: pair.artifact_record_counts || {},
+              download_errors: Array.isArray(pair.download_errors) ? pair.download_errors : []
+            };
+          })
         },
         finished_at: nowProvider().toISOString()
       });
@@ -367,6 +442,7 @@ function createFedexSyncService(options = {}) {
 
       run = await updateSyncRun(supabase, run.id, {
         run_status: 'failed',
+        fedex_account_id: fedexAccount.id,
         error_summary: String(error?.message || 'FedEx sync failed.'),
         details: {
           ...run.details,
@@ -389,11 +465,10 @@ function createFedexSyncService(options = {}) {
     const now = nowProvider();
     const resolvedWorkDate = workDate || getCurrentDateString(now, account.operations_timezone || DEFAULT_ROUTE_SYNC_SETTINGS.operations_timezone);
     const routeSyncSettings = presentRouteSyncSettings(account, resolvedWorkDate, now);
-    const fedexAccount = await loadConnectedFedexAccount(supabase, account.id);
 
     let run = await insertSyncRun(supabase, {
       account_id: account.id,
-      fedex_account_id: fedexAccount?.id || null,
+      fedex_account_id: null,
       work_date: resolvedWorkDate,
       trigger_source: 'progress_sync',
       run_status: 'queued',
@@ -402,7 +477,8 @@ function createFedexSyncService(options = {}) {
       details: {
         route_sync_settings: routeSyncSettings,
         progress_only: true,
-        adapter_configured: Boolean(adapter?.pullRouteProgress)
+        adapter_configured: Boolean(adapter?.pullRouteProgress),
+        fcc_automation_enabled: fccAutomationEnabled
       }
     });
 
@@ -410,6 +486,43 @@ function createFedexSyncService(options = {}) {
       run_status: 'running',
       started_at: now.toISOString()
     });
+
+    if (shouldBlockFccSyncBeforeWindow(routeSyncSettings)) {
+      run = await updateSyncRun(supabase, run.id, {
+        run_status: 'skipped',
+        error_summary: FCC_SYNC_BEFORE_WINDOW_SUMMARY,
+        details: {
+          ...run.details,
+          reason: 'before_manifest_sync_window',
+          route_sync_settings: routeSyncSettings,
+          progress_only: true
+        },
+        finished_at: nowProvider().toISOString()
+      });
+
+      run.summary = `${FCC_SYNC_BEFORE_WINDOW_SUMMARY} Earliest sync is ${routeSyncSettings.dispatch_window_start_hour}:00 ${routeSyncSettings.operations_timezone}.`;
+      return buildSyncResponse({ triggerSource: 'progress_sync', run, backgroundSyncEnabled: false });
+    }
+
+    if (!fccAutomationEnabled) {
+      run = await updateSyncRun(supabase, run.id, {
+        run_status: 'skipped',
+        error_summary: FCC_AUTOMATION_DISABLED_SUMMARY,
+        details: {
+          ...run.details,
+          reason: 'fcc_automation_disabled',
+          route_sync_settings: routeSyncSettings,
+          progress_only: true,
+          fcc_automation_enabled: false
+        },
+        finished_at: nowProvider().toISOString()
+      });
+
+      run.summary = FCC_AUTOMATION_DISABLED_SUMMARY;
+      return buildSyncResponse({ triggerSource: 'progress_sync', run, backgroundSyncEnabled: false });
+    }
+
+    const fedexAccount = await loadConnectedFedexAccount(supabase, account.id);
 
     if (!fedexAccount) {
       run = await updateSyncRun(supabase, run.id, {
@@ -425,6 +538,7 @@ function createFedexSyncService(options = {}) {
     if (!fedexAccount.fcc_username || !fedexAccount.fcc_password_encrypted) {
       run = await updateSyncRun(supabase, run.id, {
         run_status: 'skipped',
+        fedex_account_id: fedexAccount.id,
         error_summary: 'FCC credentials are missing for the default FedEx account.',
         details: {
           ...run.details,
@@ -442,6 +556,7 @@ function createFedexSyncService(options = {}) {
     if (typeof adapter?.pullRouteProgress !== 'function' || !fccProgressSyncService) {
       run = await updateSyncRun(supabase, run.id, {
         run_status: 'skipped',
+        fedex_account_id: fedexAccount.id,
         error_summary: 'FedEx progress sync is not configured yet.',
         finished_at: nowProvider().toISOString()
       });
@@ -469,6 +584,7 @@ function createFedexSyncService(options = {}) {
       const runStatus = progressResult.has_changes ? 'completed_with_changes' : 'completed';
       run = await updateSyncRun(supabase, run.id, {
         run_status: runStatus,
+        fedex_account_id: fedexAccount.id,
         manifest_count: Number(adapterProgressResult.route_count || 0),
         changed_route_count: Number(progressResult.completed_updates || 0),
         details: {
@@ -488,6 +604,7 @@ function createFedexSyncService(options = {}) {
 
       run = await updateSyncRun(supabase, run.id, {
         run_status: 'failed',
+        fedex_account_id: fedexAccount.id,
         error_summary: String(error?.message || 'FedEx progress sync failed.'),
         details: {
           ...run.details,
@@ -719,8 +836,12 @@ function createFedexSyncService(options = {}) {
 
 module.exports = {
   DEFAULT_ROUTE_SYNC_SETTINGS,
+  FCC_AUTOMATION_DISABLED_SUMMARY,
+  FCC_SYNC_BEFORE_WINDOW_SUMMARY,
   createFedexSyncService,
   getCurrentDateString,
   getTimeZoneDateParts,
-  presentRouteSyncSettings
+  isFccAutomationEnabled,
+  presentRouteSyncSettings,
+  shouldBlockFccSyncBeforeWindow
 };

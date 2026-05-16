@@ -51,6 +51,11 @@ class MockQueryBuilder {
     return this;
   }
 
+  delete() {
+    this.operation = 'delete';
+    return this;
+  }
+
   eq(column, value) {
     this.state.filters.push({ op: 'eq', column, value });
     return this;
@@ -115,6 +120,7 @@ function signManagerToken(overrides = {}) {
   return jwt.sign(
     {
       account_id: overrides.account_id || 'acct-1',
+      manager_user_id: overrides.manager_user_id || 'manager-1',
       role: 'manager'
     },
     process.env.JWT_SECRET,
@@ -198,6 +204,8 @@ test('GET /vehicles returns vehicles with latest maintenance, today assignment, 
             vehicle_id: 'vehicle-1',
             account_id: 'acct-1',
             service_date: '2026-03-01',
+            service_type: 'Oil Change',
+            mileage_at_service: 14500,
             description: 'Oil change'
           },
           {
@@ -205,7 +213,29 @@ test('GET /vehicles returns vehicles with latest maintenance, today assignment, 
             vehicle_id: 'vehicle-1',
             account_id: 'acct-1',
             service_date: '2026-04-01',
+            service_type: 'Brake Pads',
+            mileage_at_service: 19000,
             description: 'Tires'
+          }
+        ],
+        error: null
+      };
+    }
+
+    if (query.table === 'vehicle_maintenance_settings' && query.operation === 'select') {
+      return {
+        data: [
+          {
+            service_type: 'Oil Change',
+            is_enabled: true,
+            default_interval_miles: 5000,
+            default_interval_days: null
+          },
+          {
+            service_type: 'Air Filter',
+            is_enabled: true,
+            default_interval_miles: 10000,
+            default_interval_days: null
           }
         ],
         error: null
@@ -255,9 +285,16 @@ test('GET /vehicles returns vehicles with latest maintenance, today assignment, 
     assert.equal(body.vehicles[0].today_assignment.driver_name, 'Luis Jimenez');
     assert.equal(body.vehicles[0].latest_maintenance.description, 'Tires');
     assert.equal(body.vehicles[0].service_due, true);
+    assert.equal(body.vehicles[0].maintenance_alert.status, 'overdue');
+    assert.equal(body.vehicles[0].maintenance_alert.most_urgent.service_type, 'Oil Change');
+    assert.equal(body.vehicles[0].maintenance_alert.most_urgent.next_due_mileage, 19500);
+    assert.equal(body.vehicles[0].readiness_status, 'blocked');
+    assert.equal(body.vehicles[0].readiness.label, 'Blocked');
     assert.equal(body.vehicles[0].truck_type, 'P1000');
     assert.equal(body.vehicles[1].today_assignment, null);
     assert.equal(body.vehicles[1].service_due, false);
+    assert.equal(body.vehicles[1].maintenance_alert.status, 'ok');
+    assert.equal(body.vehicles[1].readiness_status, 'ready');
     assert.equal(body.vehicles[1].custom_truck_type, 'Box Truck P700');
   } finally {
     await server.close();
@@ -431,6 +468,7 @@ test('POST /vehicles/:id/maintenance saves maintenance and updates the vehicle m
       assert.equal(query.payload.service_type, 'Oil Change');
       assert.equal(query.payload.description, 'Oil change');
       assert.equal(query.payload.condition_notes, 'Clean oil, 3,000 miles remaining on pads');
+      assert.equal(query.payload.vendor_name, 'Ready Shop');
       assert.equal(query.payload.mileage_at_service, 18550);
       assert.equal(query.payload.next_service_mileage, 23500);
       assert.equal(query.payload.next_service_date, '2026-07-10');
@@ -447,6 +485,13 @@ test('POST /vehicles/:id/maintenance saves maintenance and updates the vehicle m
       assert.equal(query.payload.next_service_mileage, 23500);
       assert.equal(query.payload.current_mileage, 18550);
       return { data: null, error: null };
+    }
+
+    if (query.table === 'vehicle_maintenance_settings' && query.operation === 'select') {
+      return {
+        data: null,
+        error: null
+      };
     }
 
     throw new Error(`Unexpected query ${query.table}:${query.operation}:${query.mode}`);
@@ -466,6 +511,7 @@ test('POST /vehicles/:id/maintenance saves maintenance and updates the vehicle m
         service_type: 'Oil Change',
         description: 'Oil change',
         condition_notes: 'Clean oil, 3,000 miles remaining on pads',
+        vendor_name: 'Ready Shop',
         cost: 149.99,
         mileage_at_service: 18550,
         next_service_mileage: 23500,
@@ -476,6 +522,148 @@ test('POST /vehicles/:id/maintenance saves maintenance and updates the vehicle m
     assert.equal(response.status, 201);
     assert.deepEqual(await response.json(), { maintenance_id: 'maint-new' });
     assert.equal(vehicleUpdateSeen, true);
+  } finally {
+    await server.close();
+  }
+});
+
+test('POST /vehicles/:id/maintenance calculates next due mileage from the maintenance item interval', async () => {
+  const supabase = new MockSupabase((query) => {
+    if (query.table === 'vehicles' && query.operation === 'select') {
+      return {
+        data: {
+          id: 'vehicle-1',
+          account_id: 'acct-1',
+          current_mileage: 55100,
+          last_service_mileage: 50000
+        },
+        error: null
+      };
+    }
+
+    if (query.table === 'vehicle_maintenance_settings' && query.operation === 'select') {
+      return {
+        data: {
+          service_type: 'Oil Change',
+          is_enabled: true,
+          default_interval_miles: 5000,
+          default_interval_days: 180
+        },
+        error: null
+      };
+    }
+
+    if (query.table === 'vehicle_maintenance' && query.operation === 'insert') {
+      assert.equal(query.payload.service_type, 'Oil Change');
+      assert.equal(query.payload.description, 'Completed Oil Change');
+      assert.equal(query.payload.vendor_name, 'Ready Shop');
+      assert.equal(query.payload.mileage_at_service, 55100);
+      assert.equal(query.payload.next_service_mileage, 60100);
+      return {
+        data: { id: 'maint-calculated' },
+        error: null
+      };
+    }
+
+    if (query.table === 'vehicles' && query.operation === 'update') {
+      assert.equal(query.payload.last_service_mileage, 55100);
+      assert.equal(query.payload.next_service_mileage, 60100);
+      assert.equal(query.payload.current_mileage, undefined);
+      return { data: null, error: null };
+    }
+
+    throw new Error(`Unexpected query ${query.table}:${query.operation}:${query.mode}`);
+  });
+
+  const server = await startTestServer(supabase);
+
+  try {
+    const response = await fetch(`${server.baseUrl}/vehicles/vehicle-1/maintenance`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${signManagerToken()}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        service_date: '2026-05-12',
+        service_type: 'Oil Change',
+        vendor_name: 'Ready Shop',
+        mileage_at_service: 55100
+      })
+    });
+
+    assert.equal(response.status, 201);
+    assert.deepEqual(await response.json(), { maintenance_id: 'maint-calculated' });
+  } finally {
+    await server.close();
+  }
+});
+
+test('POST /vehicles/:id/odometer saves a manager override audit row and updates mileage', async () => {
+  const supabase = new MockSupabase((query) => {
+    if (query.table === 'vehicles' && query.operation === 'select') {
+      return {
+        data: {
+          id: 'vehicle-1',
+          account_id: 'acct-1',
+          current_mileage: 54250
+        },
+        error: null
+      };
+    }
+
+    if (query.table === 'vehicle_odometer_entries' && query.operation === 'insert') {
+      assert.equal(query.payload.vehicle_id, 'vehicle-1');
+      assert.equal(query.payload.manager_user_id, 'manager-1');
+      assert.equal(query.payload.account_id, 'acct-1');
+      assert.equal(query.payload.old_odometer_reading, 54250);
+      assert.equal(query.payload.new_odometer_reading, 54000);
+      assert.equal(query.payload.odometer_reading, 54000);
+      assert.equal(query.payload.source, 'manager');
+      assert.equal(query.payload.notes, 'Correcting bad entry');
+      return {
+        data: {
+          id: 'odo-manager-1',
+          old_odometer_reading: 54250,
+          new_odometer_reading: 54000,
+          odometer_reading: 54000,
+          recorded_at: query.payload.recorded_at,
+          source: 'manager',
+          notes: 'Correcting bad entry'
+        },
+        error: null
+      };
+    }
+
+    if (query.table === 'vehicles' && query.operation === 'update') {
+      assert.equal(query.payload.current_mileage, 54000);
+      assert.equal(query.filters.find((filter) => filter.column === 'id')?.value, 'vehicle-1');
+      assert.equal(query.filters.find((filter) => filter.column === 'account_id')?.value, 'acct-1');
+      return { data: null, error: null };
+    }
+
+    throw new Error(`Unexpected query ${query.table}:${query.operation}:${query.mode}`);
+  });
+
+  const server = await startTestServer(supabase);
+
+  try {
+    const response = await fetch(`${server.baseUrl}/vehicles/vehicle-1/odometer`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${signManagerToken({ manager_user_id: 'manager-1' })}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        odometer_reading: 54000,
+        notes: 'Correcting bad entry'
+      })
+    });
+
+    assert.equal(response.status, 200);
+    const body = await response.json();
+    assert.equal(body.vehicle.current_mileage, 54000);
+    assert.equal(body.entry.source, 'manager');
   } finally {
     await server.close();
   }
@@ -587,6 +775,22 @@ test('GET /vehicles/settings/maintenance returns defaults when no account settin
 
 test('PUT /vehicles/settings/maintenance upserts account maintenance settings', async () => {
   const supabase = new MockSupabase((query) => {
+    if (query.table === 'vehicle_maintenance_settings' && query.operation === 'select') {
+      return {
+        data: [
+          { service_type: 'Oil Change' },
+          { service_type: 'Brake Pads' },
+          { service_type: 'Air Filter' }
+        ],
+        error: null
+      };
+    }
+
+    if (query.table === 'vehicle_maintenance_settings' && query.operation === 'delete') {
+      assert.deepEqual(query.filters.find((filter) => filter.op === 'in')?.value, ['Air Filter']);
+      return { data: null, error: null };
+    }
+
     if (query.table === 'vehicle_maintenance_settings' && query.operation === 'update') {
       throw new Error('Unexpected update');
     }
@@ -602,6 +806,7 @@ test('PUT /vehicles/settings/maintenance upserts account maintenance settings', 
       assert.equal(query.payload[0].default_interval_miles, 6000);
       assert.equal(query.payload[1].service_type, 'Brake Pads');
       assert.equal(query.payload[1].default_interval_days, 120);
+      assert.equal(query.upsertOptions.onConflict, 'account_id,service_type');
       return { data: null, error: null };
     }
 
@@ -628,6 +833,211 @@ test('PUT /vehicles/settings/maintenance upserts account maintenance settings', 
     assert.equal(response.status, 200);
     const body = await response.json();
     assert.equal(body.settings.length, 2);
+  } finally {
+    await server.close();
+  }
+});
+
+test('PUT /vehicles/settings/maintenance accepts custom maintenance items', async () => {
+  const supabase = new MockSupabase((query) => {
+    if (query.table === 'vehicle_maintenance_settings' && query.operation === 'select') {
+      return { data: [], error: null };
+    }
+
+    if (query.table === 'vehicle_maintenance_settings' && query.operation === 'upsert') {
+      assert.equal(query.payload.length, 1);
+      assert.equal(query.payload[0].account_id, 'acct-1');
+      assert.equal(query.payload[0].service_type, 'Lift Gate Service');
+      assert.equal(query.payload[0].default_interval_miles, null);
+      assert.equal(query.payload[0].default_interval_days, 90);
+      assert.equal(query.payload[0].notes, 'Check wiring and switch.');
+      return { data: null, error: null };
+    }
+
+    throw new Error(`Unexpected query ${query.table}:${query.operation}:${query.mode}`);
+  });
+
+  const server = await startTestServer(supabase);
+
+  try {
+    const response = await fetch(`${server.baseUrl}/vehicles/settings/maintenance`, {
+      method: 'PUT',
+      headers: {
+        Authorization: `Bearer ${signManagerToken()}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        settings: [
+          {
+            service_type: 'Lift Gate Service',
+            is_enabled: true,
+            default_interval_miles: null,
+            default_interval_days: 90,
+            notes: 'Check wiring and switch.'
+          }
+        ]
+      })
+    });
+
+    assert.equal(response.status, 200);
+    const body = await response.json();
+    assert.equal(body.settings[0].service_type, 'Lift Gate Service');
+    assert.equal(body.settings[0].notes, 'Check wiring and switch.');
+  } finally {
+    await server.close();
+  }
+});
+
+test('GET /vehicles/settings/maintenance-requirements returns option 1 defaults', async () => {
+  const supabase = new MockSupabase((query) => {
+    if (query.table === 'vehicle_check_requirement_settings' && query.operation === 'select') {
+      assert.equal(query.filters.find((filter) => filter.column === 'account_id')?.value, 'acct-1');
+      return { data: null, error: null };
+    }
+
+    throw new Error(`Unexpected query ${query.table}:${query.operation}:${query.mode}`);
+  });
+
+  const server = await startTestServer(supabase);
+
+  try {
+    const response = await fetch(`${server.baseUrl}/vehicles/settings/maintenance-requirements`, {
+      headers: {
+        Authorization: `Bearer ${signManagerToken()}`
+      }
+    });
+
+    assert.equal(response.status, 200);
+    const body = await response.json();
+    assert.equal(body.setting.maintenance_requirement_mode, 'option_1');
+    assert.equal(body.setting.weekly_inspection_day, 'Monday');
+    assert.equal(body.setting.custom_daily_requirements.require_truck_confirmation, true);
+    assert.equal(body.setting.custom_weekly_requirements.require_full_checklist_weekly, true);
+  } finally {
+    await server.close();
+  }
+});
+
+test('PUT /vehicles/settings/maintenance-requirements persists selected mode and custom requirements', async () => {
+  const supabase = new MockSupabase((query) => {
+    if (query.table === 'vehicle_check_requirement_settings' && query.operation === 'upsert') {
+      assert.equal(query.payload.account_id, 'acct-1');
+      assert.equal(query.payload.maintenance_requirement_mode, 'custom');
+      assert.equal(query.payload.weekly_inspection_day, 'Thursday');
+      assert.equal(query.payload.custom_daily_requirements.require_truck_confirmation, true);
+      assert.equal(query.payload.custom_daily_requirements.require_full_checklist_daily, true);
+      assert.equal(query.payload.custom_weekly_requirements.require_full_checklist_weekly, false);
+      assert.equal(query.payload.custom_weekly_requirements.require_manager_review_for_reported_issues, true);
+      assert.equal(query.payload.updated_by_manager_user_id, 'manager-1');
+      assert.equal(query.payload.updated_at, '2026-04-12T16:00:00.000Z');
+      assert.equal(query.upsertOptions.onConflict, 'account_id');
+      return { data: null, error: null };
+    }
+
+    throw new Error(`Unexpected query ${query.table}:${query.operation}:${query.mode}`);
+  });
+
+  const server = await startTestServer(supabase);
+
+  try {
+    const response = await fetch(`${server.baseUrl}/vehicles/settings/maintenance-requirements`, {
+      method: 'PUT',
+      headers: {
+        Authorization: `Bearer ${signManagerToken()}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        maintenance_requirement_mode: 'custom',
+        weekly_inspection_day: 'Thursday',
+        custom_daily_requirements: {
+          require_truck_confirmation: true,
+          require_odometer_entry: true,
+          show_issue_note_box: false,
+          require_full_checklist_daily: true
+        },
+        custom_weekly_requirements: {
+          require_full_checklist_weekly: false,
+          require_manager_review_for_reported_issues: true
+        }
+      })
+    });
+
+    assert.equal(response.status, 200);
+    const body = await response.json();
+    assert.equal(body.setting.maintenance_requirement_mode, 'custom');
+    assert.equal(body.setting.weekly_inspection_day, 'Thursday');
+  } finally {
+    await server.close();
+  }
+});
+
+test('GET /vehicles/settings/checklist-template returns default checklist fields', async () => {
+  const supabase = new MockSupabase((query) => {
+    if (query.table === 'vehicle_checklist_template_settings' && query.operation === 'select') {
+      assert.equal(query.filters.find((filter) => filter.column === 'account_id')?.value, 'acct-1');
+      return { data: null, error: null };
+    }
+
+    throw new Error(`Unexpected query ${query.table}:${query.operation}:${query.mode}`);
+  });
+
+  const server = await startTestServer(supabase);
+
+  try {
+    const response = await fetch(`${server.baseUrl}/vehicles/settings/checklist-template`, {
+      headers: {
+        Authorization: `Bearer ${signManagerToken()}`
+      }
+    });
+
+    assert.equal(response.status, 200);
+    const body = await response.json();
+    assert.equal(body.template.fields.length, 14);
+    assert.equal(body.template.fields[2].id, 'truck_number');
+    assert.equal(body.template.fields[2].label, 'Truck Number');
+    assert.equal(body.template.fields.every((field) => field.enabled), true);
+  } finally {
+    await server.close();
+  }
+});
+
+test('PUT /vehicles/settings/checklist-template persists enabled checklist fields', async () => {
+  const supabase = new MockSupabase((query) => {
+    if (query.table === 'vehicle_checklist_template_settings' && query.operation === 'upsert') {
+      assert.equal(query.payload.account_id, 'acct-1');
+      assert.equal(query.payload.fields.length, 14);
+      assert.equal(query.payload.fields.find((field) => field.id === 'coolant').enabled, false);
+      assert.equal(query.payload.fields.find((field) => field.id === 'truck_number').label, 'Truck Number');
+      assert.equal(query.payload.updated_by_manager_user_id, 'manager-1');
+      assert.equal(query.payload.updated_at, '2026-04-12T16:00:00.000Z');
+      assert.equal(query.upsertOptions.onConflict, 'account_id');
+      return { data: null, error: null };
+    }
+
+    throw new Error(`Unexpected query ${query.table}:${query.operation}:${query.mode}`);
+  });
+
+  const server = await startTestServer(supabase);
+
+  try {
+    const response = await fetch(`${server.baseUrl}/vehicles/settings/checklist-template`, {
+      method: 'PUT',
+      headers: {
+        Authorization: `Bearer ${signManagerToken()}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        fields: [
+          { id: 'coolant', enabled: false },
+          { id: 'driver_notes', enabled: true }
+        ]
+      })
+    });
+
+    assert.equal(response.status, 200);
+    const body = await response.json();
+    assert.equal(body.template.fields.find((field) => field.id === 'coolant').enabled, false);
+    assert.equal(body.template.fields.find((field) => field.id === 'driver_notes').enabled, true);
   } finally {
     await server.close();
   }
@@ -666,6 +1076,10 @@ test('POST /vehicles/:id/maintenance returns 403 when vehicle belongs to a diffe
 
 test('POST /vehicles/:id/maintenance validates service type', async () => {
   const supabase = new MockSupabase((query) => {
+    if (query.table === 'vehicle_maintenance_settings' && query.operation === 'select') {
+      return { data: null, error: null };
+    }
+
     if (query.table === 'vehicles' && query.operation === 'select') {
       return {
         data: {

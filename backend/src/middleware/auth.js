@@ -72,8 +72,16 @@ function requireManager(req, res, next) {
       return res.status(403).json({ error: 'Manager access required' });
     }
 
+    const requestedCsaId = String(req.headers['x-readyroute-csa-id'] || '').trim();
+    if (requestedCsaId && requestedCsaId !== payload.account_id) {
+      return res.status(409).json({
+        error: 'Selected CSA does not match the authenticated workspace. Switch CSA and try again.'
+      });
+    }
+
     req.account = {
       account_id: payload.account_id,
+      selected_csa_id: requestedCsaId || payload.account_id,
       manager_user_id: payload.manager_user_id || null,
       manager_email: payload.manager_email || null,
       manager_name: payload.manager_name || null,

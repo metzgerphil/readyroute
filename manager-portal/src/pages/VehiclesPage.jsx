@@ -1,9 +1,11 @@
 import { addDays, differenceInCalendarDays, format, parseISO } from 'date-fns';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link, useSearchParams } from 'react-router-dom';
 
 import api from '../services/api';
+import { PageHeader, StatCard, StatusBadge } from '../components/PortalDesignSystem';
+import { useSelectedCsa } from '../context/SelectedCsaContext';
 
 const emptyVehicleForm = {
   name: '',
@@ -14,7 +16,13 @@ const emptyVehicleForm = {
   year: '',
   plate: '',
   registration_expiration: '',
+  insurance_expiration: '',
   current_mileage: '0'
+};
+
+const emptyEditVehicleForm = {
+  ...emptyVehicleForm,
+  notes: ''
 };
 
 const TRUCK_TYPE_OPTIONS = [
@@ -38,6 +46,170 @@ const SERVICE_TYPE_OPTIONS = [
   'General Repair',
   'Other'
 ];
+
+const VEHICLE_TABS = ['Fleet', 'Maintenance', 'Inspections', 'Settings'];
+
+const VEHICLE_SETTINGS_CARDS = [
+  {
+    title: 'Maintenance Requirements',
+    description: 'Choose Option 1, Option 2, or Custom driver requirements.',
+    actionLabel: 'Open'
+  },
+  {
+    title: 'Checklist Template',
+    description: 'Edit tires, fluids, lights, wipers, cleanliness, and driver notes.',
+    actionLabel: 'Edit'
+  },
+  {
+    title: 'Reminder Schedule',
+    description: 'Set weekly inspection day and maintenance warning windows.',
+    actionLabel: 'Coming soon',
+    disabled: true
+  }
+];
+
+const WEEKLY_INSPECTION_DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+
+const DEFAULT_MAINTENANCE_REQUIREMENTS = {
+  maintenance_requirement_mode: 'option_1',
+  weekly_inspection_day: 'Monday',
+  custom_daily_requirements: {
+    require_truck_confirmation: true,
+    require_odometer_entry: true,
+    show_issue_note_box: true,
+    require_full_checklist_daily: false
+  },
+  custom_weekly_requirements: {
+    require_full_checklist_weekly: true,
+    require_manager_review_for_reported_issues: true
+  }
+};
+
+const MAINTENANCE_REQUIREMENT_OPTIONS = [
+  {
+    id: 'option_1',
+    optionLabel: 'Option 1',
+    title: 'Daily Odometer + Issue Note',
+    badge: 'Recommended',
+    badgeClassName: 'recommended',
+    description: 'Drivers confirm their truck, enter the odometer, and can report any vehicle issues noticed that day. A full vehicle inspection is required once per week.',
+    dailyRequirements: ['Confirm truck', 'Enter odometer', 'Report any noticed issue'],
+    weeklyRequirements: ['Full vehicle inspection on selected weekday']
+  },
+  {
+    id: 'option_2',
+    optionLabel: 'Option 2',
+    title: 'Daily Odometer + Full Inspection',
+    badge: 'Stricter',
+    badgeClassName: 'stricter',
+    description: 'Drivers confirm their truck, enter the odometer, and complete the full vehicle inspection every day.',
+    dailyRequirements: ['Confirm truck', 'Enter odometer', 'Complete full vehicle inspection'],
+    weeklyRequirements: ['No separate weekly inspection required']
+  },
+  {
+    id: 'custom',
+    optionLabel: 'Option 3',
+    title: 'Custom',
+    description: 'Managers choose the exact daily and weekly vehicle check requirements.',
+    dailyRequirements: ['Choose daily truck checks below'],
+    weeklyRequirements: ['Choose weekly vehicle check requirements below']
+  }
+];
+
+const DEFAULT_CHECKLIST_TEMPLATE_FIELDS = [
+  { id: 'date', label: 'Date', detail: 'Inspection date', enabled: true },
+  { id: 'company_name', label: 'Company name', detail: 'CSA or company name', enabled: true },
+  { id: 'truck_number', label: 'Truck Number', detail: 'Truck identifier for the inspection', enabled: true },
+  { id: 'driver_name', label: 'Driver first and last name', detail: 'Driver completing the inspection', enabled: true },
+  { id: 'tires', label: 'Tires, front, rear inner, rear outer', detail: 'Tire condition across front and rear positions', enabled: true },
+  { id: 'check_engine_light', label: 'Check engine light', detail: 'On or Off', enabled: true },
+  { id: 'coolant', label: 'Coolant', detail: 'Good or Needs Added', enabled: true },
+  { id: 'engine_oil', label: 'Engine oil', detail: 'Good, Needs Added, or Needs Full Change', enabled: true },
+  { id: 'brake_fluid', label: 'Brake fluid', detail: 'Good or Needs Added', enabled: true },
+  { id: 'windshield_fluid', label: 'Windshield fluid', detail: 'Good or Needs Added', enabled: true },
+  { id: 'wipers', label: 'Wipers', detail: 'Good, Left Bad, Right Bad, or Both Bad', enabled: true },
+  { id: 'lights', label: 'Lights', detail: 'Headlights, stop lights, and turning signals', enabled: true },
+  { id: 'truck_cleanliness', label: 'Truck cleanliness', detail: 'Good or Bad', enabled: true },
+  { id: 'driver_notes', label: 'Driver notes', detail: 'Free-text notes from the driver', enabled: true }
+];
+
+const emptyMaintenanceItemForm = {
+  service_type: '',
+  default_interval_miles: '',
+  default_interval_days: '',
+  notes: ''
+};
+
+const emptyOdometerForm = {
+  odometer_reading: '',
+  notes: '',
+  confirmedLower: false
+};
+
+function getMaintenanceSettingKey(setting, index) {
+  return setting.id || `${setting.service_type || 'maintenance-item'}-${index}`;
+}
+
+function normalizeMaintenanceSettingForDraft(setting) {
+  return {
+    ...setting,
+    is_enabled: typeof setting.is_enabled === 'boolean' ? setting.is_enabled : true,
+    default_interval_miles: setting.default_interval_miles ?? '',
+    default_interval_days: setting.default_interval_days ?? '',
+    notes: setting.notes || ''
+  };
+}
+
+function normalizeMaintenanceRequirementSetting(setting) {
+  return {
+    ...DEFAULT_MAINTENANCE_REQUIREMENTS,
+    ...(setting || {}),
+    maintenance_requirement_mode: setting?.maintenance_requirement_mode || DEFAULT_MAINTENANCE_REQUIREMENTS.maintenance_requirement_mode,
+    weekly_inspection_day: setting?.weekly_inspection_day || DEFAULT_MAINTENANCE_REQUIREMENTS.weekly_inspection_day,
+    custom_daily_requirements: {
+      ...DEFAULT_MAINTENANCE_REQUIREMENTS.custom_daily_requirements,
+      ...(setting?.custom_daily_requirements || {})
+    },
+    custom_weekly_requirements: {
+      ...DEFAULT_MAINTENANCE_REQUIREMENTS.custom_weekly_requirements,
+      ...(setting?.custom_weekly_requirements || {})
+    }
+  };
+}
+
+function getMaintenanceRequirementModeLabel(mode) {
+  return MAINTENANCE_REQUIREMENT_OPTIONS.find((option) => option.id === mode)?.title
+    || MAINTENANCE_REQUIREMENT_OPTIONS[0].title;
+}
+
+function normalizeChecklistTemplateFields(fields = []) {
+  const submittedById = new Map(
+    (Array.isArray(fields) ? fields : [])
+      .filter((field) => field && typeof field === 'object')
+      .map((field) => [String(field.id || '').trim(), field])
+      .filter(([id]) => Boolean(id))
+  );
+
+  return DEFAULT_CHECKLIST_TEMPLATE_FIELDS.map((defaultField) => {
+    const submitted = submittedById.get(defaultField.id);
+    return {
+      ...defaultField,
+      enabled: typeof submitted?.enabled === 'boolean' ? submitted.enabled : defaultField.enabled
+    };
+  });
+}
+
+function getServiceTypeOptions(settings = []) {
+  const options = new Set(SERVICE_TYPE_OPTIONS);
+
+  for (const setting of settings || []) {
+    if (setting?.service_type) {
+      options.add(setting.service_type);
+    }
+  }
+
+  return Array.from(options);
+}
 
 function findMaintenanceSetting(settings, serviceType) {
   return (settings || []).find((setting) => setting.service_type === serviceType) || null;
@@ -87,6 +259,7 @@ function buildMaintenanceForm({ vehicle, settings, serviceType = 'Oil Change', s
     service_type: serviceType,
     description: '',
     condition_notes: '',
+    vendor_name: '',
     cost: '',
     mileage_at_service: resolvedMileageAtService,
     next_service_mileage: autofill.next_service_mileage,
@@ -108,7 +281,21 @@ function formatProgramSummary(setting) {
   return `${setting.service_type}${parts.length ? `: ${parts.join(' / ')}` : ''}`;
 }
 
-function MaintenanceSettingsCard({ draft, isExpanded, isLoading, isSaving, onChange, onCollapse, onExpand, onSave }) {
+function MaintenanceSettingsCard({
+  draft,
+  editingIndex,
+  isExpanded,
+  isLoading,
+  isSaving,
+  onAddItem,
+  onChange,
+  onCollapse,
+  onDeleteItem,
+  onEditInline,
+  onEditItem,
+  onExpand,
+  onSave
+}) {
   const enabledSettings = useMemo(
     () => (draft || []).filter((setting) => setting.is_enabled),
     [draft]
@@ -124,14 +311,17 @@ function MaintenanceSettingsCard({ draft, isExpanded, isLoading, isSaving, onCha
           <div>
             <div className="card-title">Maintenance Program</div>
             <div className="driver-meta">
-              {enabledSettings.length} tracked categories
+              Choose which service categories this CSA tracks and set default reminder rules.
             </div>
           </div>
           <button className="secondary-inline-button" onClick={onExpand} type="button">
-            Edit Program
+            View Maintenance
           </button>
         </div>
-        <div className="maintenance-settings-summary">{summaryText}</div>
+        <div className="maintenance-settings-summary">
+          <strong>{enabledSettings.length} tracked categories</strong>
+          <span>{summaryText}</span>
+        </div>
       </div>
     );
   }
@@ -144,6 +334,9 @@ function MaintenanceSettingsCard({ draft, isExpanded, isLoading, isSaving, onCha
           <div className="driver-meta">Choose which service categories this CSA tracks and set default reminder rules.</div>
         </div>
         <div className="maintenance-settings-actions">
+          <button className="secondary-inline-button" onClick={onAddItem} type="button">
+            Add Maintenance Item
+          </button>
           <button className="secondary-inline-button" onClick={onCollapse} type="button">
             Collapse
           </button>
@@ -157,36 +350,222 @@ function MaintenanceSettingsCard({ draft, isExpanded, isLoading, isSaving, onCha
         <div className="driver-meta">Loading maintenance settings...</div>
       ) : (
         <div className="maintenance-settings-list">
-          {draft.map((setting) => (
-            <div className="maintenance-settings-row" key={setting.service_type}>
+          <div className="maintenance-settings-header">
+            <span>Category</span>
+            <span>Mileage interval</span>
+            <span>Days interval</span>
+            <span>Actions</span>
+          </div>
+          {draft.map((setting, index) => (
+            <div className="maintenance-settings-row" key={getMaintenanceSettingKey(setting, index)}>
               <label className="maintenance-settings-toggle">
                 <input
                   checked={setting.is_enabled}
-                  onChange={(event) => onChange(setting.service_type, 'is_enabled', event.target.checked)}
+                  onChange={(event) => onChange(index, 'is_enabled', event.target.checked)}
                   type="checkbox"
                 />
                 <span>{setting.service_type}</span>
               </label>
-              <input
-                className="text-field maintenance-settings-input"
-                min="0"
-                onChange={(event) => onChange(setting.service_type, 'default_interval_miles', event.target.value)}
-                placeholder="Miles"
-                type="number"
-                value={setting.default_interval_miles}
-              />
-              <input
-                className="text-field maintenance-settings-input"
-                min="0"
-                onChange={(event) => onChange(setting.service_type, 'default_interval_days', event.target.value)}
-                placeholder="Days"
-                type="number"
-                value={setting.default_interval_days}
-              />
+              {editingIndex === index ? (
+                <input
+                  className="text-field maintenance-settings-input"
+                  min="0"
+                  onChange={(event) => onChange(index, 'default_interval_miles', event.target.value)}
+                  placeholder="Miles"
+                  type="number"
+                  value={setting.default_interval_miles}
+                />
+              ) : (
+                <span className="maintenance-settings-value">
+                  {setting.default_interval_miles ? `${formatMileage(setting.default_interval_miles)} mi` : 'No mileage rule'}
+                </span>
+              )}
+              {editingIndex === index ? (
+                <input
+                  className="text-field maintenance-settings-input"
+                  min="0"
+                  onChange={(event) => onChange(index, 'default_interval_days', event.target.value)}
+                  placeholder="Days"
+                  type="number"
+                  value={setting.default_interval_days}
+                />
+              ) : (
+                <span className="maintenance-settings-value">
+                  {setting.default_interval_days ? `${setting.default_interval_days} days` : 'No day rule'}
+                </span>
+              )}
+              <div className="maintenance-settings-row-actions">
+                <button className="secondary-inline-button" onClick={() => onEditInline(editingIndex === index ? null : index)} type="button">
+                  {editingIndex === index ? 'Done' : 'Edit Intervals'}
+                </button>
+                <button className="secondary-inline-button" onClick={() => onEditItem(index)} type="button">
+                  Details
+                </button>
+                <button className="secondary-inline-button" onClick={() => onDeleteItem(index)} type="button">
+                  Delete
+                </button>
+              </div>
             </div>
           ))}
         </div>
       )}
+    </div>
+  );
+}
+
+function MaintenanceItemModal({ errorMessage, form, isOpen, mode, onChange, onClose, onSubmit }) {
+  if (!isOpen) {
+    return null;
+  }
+
+  return (
+    <div className="modal-backdrop">
+      <div className="modal-card">
+        <div className="modal-header">
+          <div>
+            <div className="card-title">{mode === 'edit' ? 'Edit Maintenance Item' : 'Add Maintenance Item'}</div>
+            <div className="driver-meta">Custom maintenance tracking for this CSA.</div>
+          </div>
+          <button className="icon-button" onClick={onClose} type="button">×</button>
+        </div>
+
+        <form className="form-card modal-form" onSubmit={onSubmit}>
+          <label>
+            <span className="field-label">Item Name</span>
+            <input
+              className="text-field"
+              onChange={(event) => onChange('service_type', event.target.value)}
+              placeholder="Lift Gate Service"
+              value={form.service_type}
+            />
+          </label>
+          <label>
+            <span className="field-label">Mileage Interval</span>
+            <input
+              className="text-field"
+              min="0"
+              onChange={(event) => onChange('default_interval_miles', event.target.value)}
+              placeholder="Miles"
+              type="number"
+              value={form.default_interval_miles}
+            />
+          </label>
+          <label>
+            <span className="field-label">Days Interval</span>
+            <input
+              className="text-field"
+              min="0"
+              onChange={(event) => onChange('default_interval_days', event.target.value)}
+              placeholder="Days"
+              type="number"
+              value={form.default_interval_days}
+            />
+          </label>
+          <label>
+            <span className="field-label">Optional Notes</span>
+            <textarea
+              className="text-field maintenance-item-notes"
+              onChange={(event) => onChange('notes', event.target.value)}
+              placeholder="What should the manager check?"
+              value={form.notes}
+            />
+          </label>
+
+          {errorMessage ? <div className="error-banner">{errorMessage}</div> : null}
+
+          <div className="modal-actions">
+            <button className="secondary-inline-button" onClick={onClose} type="button">Cancel</button>
+            <button className="primary-inline-button" type="submit">
+              {mode === 'edit' ? 'Save Item' : 'Add Item'}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+function OdometerModal({ errorMessage, form, isSaving, onChange, onClose, onConfirmLower, onSubmit, vehicle }) {
+  if (!vehicle) {
+    return null;
+  }
+
+  const currentMileage = Number(vehicle.current_mileage || 0);
+  const nextMileage = Number(form.odometer_reading || 0);
+  const showLowerWarning = form.odometer_reading !== '' && nextMileage < currentMileage;
+  const canSave = !showLowerWarning || form.confirmedLower;
+
+  return (
+    <div className="modal-backdrop">
+      <div className="modal-card">
+        <div className="modal-header">
+          <div>
+            <div className="card-title">Edit Odometer</div>
+            <div className="driver-meta">{vehicle.name || 'Vehicle'}</div>
+          </div>
+          <button className="icon-button" onClick={onClose} type="button">×</button>
+        </div>
+
+        <form className="form-card modal-form" onSubmit={onSubmit}>
+          <div className="odometer-summary-card">
+            <div>
+              <span>Truck Number</span>
+              <strong>{vehicle.name || 'Not recorded'}</strong>
+            </div>
+            <div>
+              <span>Description</span>
+              <strong>{getVehicleDescription(vehicle)}</strong>
+            </div>
+            <div>
+              <span>Current odometer</span>
+              <strong>{formatMileage(vehicle.current_mileage)} miles</strong>
+            </div>
+          </div>
+          <label>
+            <span className="field-label">New odometer reading</span>
+            <input
+              className="text-field"
+              min="0"
+              onChange={(event) => onChange('odometer_reading', event.target.value)}
+              placeholder="Current mileage"
+              type="number"
+              value={form.odometer_reading}
+            />
+          </label>
+          <label>
+            <span className="field-label">Optional Notes</span>
+            <textarea
+              className="text-field maintenance-item-notes"
+              onChange={(event) => onChange('notes', event.target.value)}
+              placeholder="Reason for manager override"
+              value={form.notes}
+            />
+          </label>
+
+          {showLowerWarning ? (
+            <div className="warning-banner odometer-warning">
+              This is lower than the current odometer reading. Only continue if you are correcting an error.
+              <label className="odometer-confirm-row">
+                <input
+                  checked={form.confirmedLower}
+                  onChange={(event) => onConfirmLower(event.target.checked)}
+                  type="checkbox"
+                />
+                <span>I understand and want to save this correction.</span>
+              </label>
+            </div>
+          ) : null}
+
+          {errorMessage ? <div className="error-banner">{errorMessage}</div> : null}
+
+          <div className="modal-actions">
+            <button className="secondary-inline-button" onClick={onClose} type="button">Cancel</button>
+            <button className="primary-inline-button" disabled={isSaving || !canSave} type="submit">
+              {isSaving ? 'Saving...' : 'Save'}
+            </button>
+          </div>
+        </form>
+      </div>
     </div>
   );
 }
@@ -216,6 +595,10 @@ function formatCurrency(value) {
 
 function formatMileage(value) {
   return new Intl.NumberFormat('en-US').format(Number(value || 0));
+}
+
+function getVehicleDescription(vehicle) {
+  return [vehicle.make, vehicle.model, vehicle.year].filter(Boolean).join(' ') || 'Description not recorded';
 }
 
 function getVehicleTypeLabel(vehicle) {
@@ -261,94 +644,361 @@ function getRegistrationStatus(vehicle) {
   };
 }
 
-function getStatusMeta(vehicle) {
-  if (vehicle.service_due) {
-    return { label: 'Service Due', className: 'vehicle-status-badge service-due' };
+function getExpirationStatus(value, label) {
+  if (!value) {
+    return {
+      label: `${label} not recorded`,
+      className: 'vehicle-registration-row missing',
+      metaLabel: label
+    };
   }
 
-  if (vehicle.today_assignment?.route_status === 'in_progress') {
-    return { label: 'On Road', className: 'vehicle-status-badge on-road' };
+  const expirationDate = parseISO(value);
+  const daysRemaining = differenceInCalendarDays(expirationDate, new Date());
+
+  if (daysRemaining < 0) {
+    return {
+      label: `Expired ${formatDate(value)}`,
+      className: 'vehicle-registration-row expired',
+      metaLabel: label
+    };
+  }
+
+  if (daysRemaining <= 30) {
+    return {
+      label: `Expires ${formatDate(value)}`,
+      className: 'vehicle-registration-row warning',
+      metaLabel: label
+    };
+  }
+
+  return {
+    label: formatDate(value),
+    className: 'vehicle-registration-row',
+    metaLabel: label
+  };
+}
+
+function getReadinessMeta(vehicle) {
+  const status = vehicle.readiness_status || vehicle.readiness?.status;
+
+  if (status === 'blocked') {
+    return { label: 'Blocked', className: 'vehicle-status-badge blocked', tone: 'error', filter: 'blocked', rowClassName: 'readiness-blocked' };
+  }
+
+  if (status === 'maintenance_soon') {
+    return { label: 'Maintenance Soon', className: 'vehicle-status-badge maintenance-soon', tone: 'warning', filter: 'maintenance_soon', rowClassName: 'readiness-maintenance-soon' };
+  }
+
+  if (status === 'assigned') {
+    return { label: 'Assigned', className: 'vehicle-status-badge assigned', tone: 'purple', filter: 'assigned', rowClassName: 'readiness-assigned' };
+  }
+
+  if (status === 'ready') {
+    return { label: 'Ready', className: 'vehicle-status-badge ready', tone: 'active', filter: 'ready', rowClassName: 'readiness-ready' };
+  }
+
+  if (vehicle.service_due || vehicle.maintenance_alert?.status === 'due_soon') {
+    return { label: 'Maintenance Soon', className: 'vehicle-status-badge maintenance-soon', tone: 'warning', filter: 'maintenance_soon', rowClassName: 'readiness-maintenance-soon' };
+  }
+
+  if (vehicle.maintenance_alert?.status === 'overdue') {
+    return { label: 'Blocked', className: 'vehicle-status-badge blocked', tone: 'danger', filter: 'blocked', rowClassName: 'readiness-blocked' };
   }
 
   if (vehicle.today_assignment) {
-    return { label: 'Assigned', className: 'vehicle-status-badge assigned' };
+    return { label: 'Assigned', className: 'vehicle-status-badge assigned', tone: 'purple', filter: 'assigned', rowClassName: 'readiness-assigned' };
   }
 
-  return { label: 'Available', className: 'vehicle-status-badge available' };
+  return { label: 'Ready', className: 'vehicle-status-badge ready', tone: 'active', filter: 'ready', rowClassName: 'readiness-ready' };
 }
 
-function getServiceProgress(vehicle) {
-  const current = Number(vehicle.current_mileage || 0);
-  const next = Number(vehicle.next_service_mileage || 0);
-
-  if (!Number.isFinite(next) || next <= 0) {
-    return null;
+function getStatusMeta(vehicle) {
+  const readiness = getReadinessMeta(vehicle);
+  if (vehicle.readiness_status || vehicle.readiness?.status) {
+    return readiness;
   }
 
-  const fill = Math.max(0, Math.min(100, (current / next) * 100));
-  const milesRemaining = next - current;
+  const hasMissingInfo = !vehicle.registration_expiration || !vehicle.make || !vehicle.model || !vehicle.year || !vehicle.plate;
+
+  if (vehicle.service_due) {
+    return { label: 'Maintenance', className: 'vehicle-status-badge service-due', tone: 'warning' };
+  }
+
+  if (vehicle.today_assignment?.route_status === 'in_progress') {
+    return { label: 'On road', className: 'vehicle-status-badge on-road', tone: 'warning' };
+  }
+
+  if (vehicle.today_assignment) {
+    return { label: 'Assigned', className: 'vehicle-status-badge assigned', tone: 'purple' };
+  }
+
+  if (hasMissingInfo) {
+    return { label: 'Missing info', className: 'vehicle-status-badge missing-info', tone: 'neutral' };
+  }
+
+  return { label: 'Available', className: 'vehicle-status-badge available', tone: 'active' };
+}
+
+function getMaintenanceAlertMeta(vehicle) {
+  const alert = vehicle.maintenance_alert || {};
+  const mostUrgent = alert.most_urgent || null;
+
+  if (alert.status === 'overdue') {
+    return {
+      label: 'Overdue',
+      tone: 'warning',
+      rowClassName: 'maintenance-overdue',
+      itemLabel: mostUrgent?.service_type || 'Maintenance',
+      detailLabel: mostUrgent
+        ? mostUrgent.remaining_miles !== null && mostUrgent.remaining_miles !== undefined
+          ? `${formatMileage(Math.abs(mostUrgent.remaining_miles))} mi overdue`
+          : `${Math.abs(mostUrgent.remaining_days || 0)} days overdue`
+        : 'Service interval exceeded'
+    };
+  }
+
+  if (alert.status === 'due_soon') {
+    return {
+      label: 'Due Soon',
+      tone: 'warning',
+      rowClassName: 'maintenance-due-soon',
+      itemLabel: mostUrgent?.service_type || 'Maintenance',
+      detailLabel: mostUrgent
+        ? mostUrgent.remaining_miles !== null && mostUrgent.remaining_miles !== undefined
+          ? `${formatMileage(mostUrgent.remaining_miles)} mi left`
+          : `${mostUrgent.remaining_days} days left`
+        : 'Less than 1,000 mi left'
+    };
+  }
 
   return {
-    fill,
-    milesRemaining
+    label: 'OK',
+    tone: 'active',
+    rowClassName: 'maintenance-ok',
+    itemLabel: mostUrgent?.service_type || 'No upcoming service',
+    detailLabel: mostUrgent
+      ? `${formatMileage(mostUrgent.remaining_miles)} mi left`
+      : 'More than 1,000 mi to next service'
   };
+}
+
+function getNextServiceLabel(vehicle) {
+  const alert = getMaintenanceAlertMeta(vehicle);
+  const dueDate = vehicle.maintenance_alert?.most_urgent?.next_due_date;
+
+  if (dueDate) {
+    return {
+      itemLabel: alert.itemLabel,
+      detailLabel: `${alert.detailLabel} · due ${formatDate(dueDate)}`
+    };
+  }
+
+  return alert;
+}
+
+function getLatestIssueLabel(vehicle) {
+  const reason = vehicle.readiness?.primary_reason;
+  if (reason?.label) {
+    return {
+      label: reason.label,
+      detail: reason.detail || 'Needs review'
+    };
+  }
+
+  const registration = getExpirationStatus(vehicle.registration_expiration, 'Registration');
+  if (registration.className.includes('expired') || registration.className.includes('warning')) {
+    return { label: registration.metaLabel, detail: registration.label };
+  }
+
+  const insurance = getExpirationStatus(vehicle.insurance_expiration, 'Insurance');
+  if (insurance.className.includes('expired') || insurance.className.includes('warning')) {
+    return { label: insurance.metaLabel, detail: insurance.label };
+  }
+
+  return { label: 'No open issue', detail: 'Ready to use' };
+}
+
+function getAssignedToLabel(vehicle) {
+  if (!vehicle.today_assignment) {
+    return 'Not assigned';
+  }
+
+  return vehicle.today_assignment.driver_name || 'Assigned';
+}
+
+function VehicleFormSections({ form, mode = 'create', onChange, vehicle }) {
+  const statusMeta = vehicle ? getStatusMeta(vehicle) : null;
+  const assignedTo = vehicle ? getAssignedToLabel(vehicle) : 'Not assigned';
+  const quietWarnings = [
+    !form.truck_type ? 'Missing truck type' : null,
+    !form.plate || !form.registration_expiration ? 'Registration not recorded' : null,
+    !form.insurance_expiration ? 'Insurance not recorded' : null,
+    !Number(form.current_mileage) ? 'Mileage not recorded' : null
+  ].filter(Boolean);
+
+  return (
+    <>
+      <section className="vehicle-form-section">
+        <div className="vehicle-form-section-heading">
+          <span>Truck Identity</span>
+        </div>
+        <div className="vehicle-form-grid">
+          <label className="driver-modal-field">
+            <span className="field-label">Truck Number</span>
+            <input className="text-field" onChange={(event) => onChange('name', event.target.value)} placeholder="Truck Number / FedEx ID" value={form.name} />
+          </label>
+          <label className="driver-modal-field">
+            <span className="field-label">Make</span>
+            <input className="text-field" onChange={(event) => onChange('make', event.target.value)} placeholder="Make" value={form.make} />
+          </label>
+          <label className="driver-modal-field">
+            <span className="field-label">Model</span>
+            <input className="text-field" onChange={(event) => onChange('model', event.target.value)} placeholder="Model" value={form.model} />
+          </label>
+          <label className="driver-modal-field">
+            <span className="field-label">Year</span>
+            <input className="text-field" min="1900" onChange={(event) => onChange('year', event.target.value)} placeholder="Year" type="number" value={form.year} />
+          </label>
+          <label className="driver-modal-field">
+            <span className="field-label">Truck type</span>
+            <select className="text-field" onChange={(event) => onChange('truck_type', event.target.value)} value={form.truck_type}>
+              <option value="">Select truck type</option>
+              {TRUCK_TYPE_OPTIONS.map((option) => (
+                <option key={option} value={option}>{option}</option>
+              ))}
+            </select>
+            {!form.truck_type ? <small className="vehicle-form-helper">Missing truck type</small> : null}
+          </label>
+          {form.truck_type === 'Other' ? (
+            <label className="driver-modal-field vehicle-form-wide">
+              <span className="field-label">Custom truck type</span>
+              <input
+                className="text-field"
+                onChange={(event) => onChange('custom_truck_type', event.target.value)}
+                placeholder="Custom truck type"
+                value={form.custom_truck_type}
+              />
+            </label>
+          ) : null}
+        </div>
+      </section>
+
+      <section className="vehicle-form-section">
+        <div className="vehicle-form-section-heading">
+          <span>Registration</span>
+        </div>
+        <div className="vehicle-form-grid">
+          <label className="driver-modal-field">
+            <span className="field-label">Registration number</span>
+            <input
+              className="text-field"
+              onChange={(event) => onChange('plate', event.target.value.toUpperCase())}
+              placeholder="Registration number"
+              value={form.plate}
+            />
+            {!form.plate ? <small className="vehicle-form-helper">Registration not recorded</small> : null}
+          </label>
+          <label className="driver-modal-field">
+            <span className="field-label">Registration expiration date</span>
+            <input
+              className="text-field"
+              onChange={(event) => onChange('registration_expiration', event.target.value)}
+              type="date"
+              value={form.registration_expiration}
+            />
+            {!form.registration_expiration ? <small className="vehicle-form-helper">Expiration not recorded</small> : null}
+          </label>
+          <label className="driver-modal-field">
+            <span className="field-label">Insurance expiration date</span>
+            <input
+              className="text-field"
+              onChange={(event) => onChange('insurance_expiration', event.target.value)}
+              type="date"
+              value={form.insurance_expiration}
+            />
+            {!form.insurance_expiration ? <small className="vehicle-form-helper">Insurance not recorded</small> : null}
+          </label>
+        </div>
+      </section>
+
+      <section className="vehicle-form-section">
+        <div className="vehicle-form-section-heading">
+          <span>Usage and Assignment</span>
+        </div>
+        <div className="vehicle-form-grid">
+          <label className="driver-modal-field">
+            <span className="field-label">Mileage</span>
+            <input
+              className="text-field"
+              min="0"
+              onChange={(event) => onChange('current_mileage', event.target.value)}
+              placeholder="Current mileage"
+              type="number"
+              value={form.current_mileage}
+            />
+            {!Number(form.current_mileage) ? <small className="vehicle-form-helper">Mileage not recorded</small> : null}
+          </label>
+          {mode === 'edit' && statusMeta ? (
+            <div className="vehicle-form-readonly">
+              <span>Status</span>
+              <StatusBadge tone={statusMeta.tone}>{statusMeta.label}</StatusBadge>
+            </div>
+          ) : null}
+          {mode === 'edit' ? (
+            <div className="vehicle-form-readonly vehicle-form-wide">
+              <span>Assigned driver</span>
+              <strong>{assignedTo}</strong>
+              {vehicle?.today_assignment?.work_area_name ? <small>Route {vehicle.today_assignment.work_area_name}</small> : null}
+            </div>
+          ) : null}
+        </div>
+      </section>
+
+      {mode === 'edit' ? (
+        <section className="vehicle-form-section">
+          <div className="vehicle-form-section-heading">
+            <span>Notes</span>
+          </div>
+          <label className="driver-modal-field">
+            <span className="field-label">Vehicle notes</span>
+            <textarea
+              className="text-field vehicle-form-textarea"
+              onChange={(event) => onChange('notes', event.target.value)}
+              placeholder="Internal notes"
+              value={form.notes}
+            />
+          </label>
+        </section>
+      ) : null}
+
+      {quietWarnings.length ? (
+        <div className="vehicle-form-warning-list">
+          {quietWarnings.map((warning) => <span key={warning}>{warning}</span>)}
+        </div>
+      ) : null}
+    </>
+  );
 }
 
 function VehicleModal({ form, errorMessage, isSubmitting, onChange, onClose, onSubmit }) {
   return (
     <div className="modal-backdrop">
-      <div className="modal-card">
+      <div className="modal-card vehicle-form-modal">
         <div className="modal-header">
           <div className="card-title">Add Vehicle</div>
           <button className="icon-button" onClick={onClose} type="button">×</button>
         </div>
 
-        <form className="form-card modal-form" onSubmit={onSubmit}>
-          <input className="text-field" onChange={(event) => onChange('name', event.target.value)} placeholder="Vehicle ID / FedEx ID" value={form.name} />
-          <select className="text-field" onChange={(event) => onChange('truck_type', event.target.value)} value={form.truck_type}>
-            <option value="">Select truck type</option>
-            {TRUCK_TYPE_OPTIONS.map((option) => (
-              <option key={option} value={option}>{option}</option>
-            ))}
-          </select>
-          {form.truck_type === 'Other' ? (
-            <input
-              className="text-field"
-              onChange={(event) => onChange('custom_truck_type', event.target.value)}
-              placeholder="Custom truck type"
-              value={form.custom_truck_type}
-            />
-          ) : null}
-          <input className="text-field" onChange={(event) => onChange('make', event.target.value)} placeholder="Make" value={form.make} />
-          <input className="text-field" onChange={(event) => onChange('model', event.target.value)} placeholder="Model" value={form.model} />
-          <input className="text-field" min="1900" onChange={(event) => onChange('year', event.target.value)} placeholder="Year" type="number" value={form.year} />
-          <input
-            className="text-field"
-            onChange={(event) => onChange('plate', event.target.value.toUpperCase())}
-            placeholder="License Plate"
-            value={form.plate}
-          />
-          <input
-            className="text-field"
-            onChange={(event) => onChange('registration_expiration', event.target.value)}
-            type="date"
-            value={form.registration_expiration}
-          />
-          <input
-            className="text-field"
-            min="0"
-            onChange={(event) => onChange('current_mileage', event.target.value)}
-            placeholder="Current Mileage"
-            type="number"
-            value={form.current_mileage}
-          />
+        <form className="vehicle-form-body" onSubmit={onSubmit}>
+          <VehicleFormSections form={form} onChange={onChange} />
 
           {errorMessage ? <div className="error-banner">{errorMessage}</div> : null}
 
-          <div className="modal-actions">
+          <div className="vehicle-detail-actions">
             <button className="secondary-inline-button" onClick={onClose} type="button">Cancel</button>
             <button className="primary-inline-button" disabled={isSubmitting} type="submit">
-              {isSubmitting ? 'Saving...' : 'Create Vehicle'}
+              {isSubmitting ? 'Saving...' : 'Add Vehicle'}
             </button>
           </div>
         </form>
@@ -357,70 +1007,51 @@ function VehicleModal({ form, errorMessage, isSubmitting, onChange, onClose, onS
   );
 }
 
-function EditVehicleModal({ form, errorMessage, isSubmitting, onChange, onClose, onSubmit }) {
+function VehicleDetailsDrawer({
+  form,
+  vehicle,
+  errorMessage,
+  isSubmitting,
+  onAddService,
+  onChange,
+  onClose,
+  onSubmit,
+  onViewHistory
+}) {
+  const statusMeta = getStatusMeta(vehicle);
+
   return (
-    <div className="modal-backdrop">
-      <div className="modal-card">
-        <div className="modal-header">
-          <div className="card-title">Edit Vehicle</div>
+    <div className="drawer-backdrop">
+      <aside className="vehicle-detail-drawer" aria-label="Vehicle details">
+        <div className="vehicle-detail-header">
+          <div>
+            <div className="vehicle-detail-eyebrow">Vehicle Details</div>
+            <div className="vehicle-detail-title">Edit Vehicle</div>
+          </div>
+          <StatusBadge tone={statusMeta.tone}>{statusMeta.label}</StatusBadge>
           <button className="icon-button" onClick={onClose} type="button">×</button>
         </div>
 
-        <form className="form-card modal-form" onSubmit={onSubmit}>
-          <input className="text-field" onChange={(event) => onChange('name', event.target.value)} placeholder="Vehicle ID / FedEx ID" value={form.name} />
-          <select className="text-field" onChange={(event) => onChange('truck_type', event.target.value)} value={form.truck_type}>
-            <option value="">Select truck type</option>
-            {TRUCK_TYPE_OPTIONS.map((option) => (
-              <option key={option} value={option}>{option}</option>
-            ))}
-          </select>
-          {form.truck_type === 'Other' ? (
-            <input
-              className="text-field"
-              onChange={(event) => onChange('custom_truck_type', event.target.value)}
-              placeholder="Custom truck type"
-              value={form.custom_truck_type}
-            />
-          ) : null}
-          <input className="text-field" onChange={(event) => onChange('make', event.target.value)} placeholder="Make" value={form.make} />
-          <input className="text-field" onChange={(event) => onChange('model', event.target.value)} placeholder="Model" value={form.model} />
-          <input className="text-field" min="1900" onChange={(event) => onChange('year', event.target.value)} placeholder="Year" type="number" value={form.year} />
-          <input
-            className="text-field"
-            onChange={(event) => onChange('plate', event.target.value.toUpperCase())}
-            placeholder="License Plate"
-            value={form.plate}
-          />
-          <input
-            className="text-field"
-            onChange={(event) => onChange('registration_expiration', event.target.value)}
-            type="date"
-            value={form.registration_expiration}
-          />
-          <input
-            className="text-field"
-            min="0"
-            onChange={(event) => onChange('current_mileage', event.target.value)}
-            placeholder="Current Mileage"
-            type="number"
-            value={form.current_mileage}
-          />
+        <form className="vehicle-form-body" onSubmit={onSubmit}>
+          <VehicleFormSections form={form} mode="edit" onChange={onChange} vehicle={vehicle} />
 
           {errorMessage ? <div className="error-banner">{errorMessage}</div> : null}
 
-          <div className="modal-actions">
+          <div className="vehicle-detail-actions">
+            <button className="secondary-inline-button" onClick={onAddService} type="button">Log Maintenance</button>
+            <button className="secondary-inline-button" onClick={onViewHistory} type="button">View Maintenance History</button>
             <button className="secondary-inline-button" onClick={onClose} type="button">Cancel</button>
             <button className="primary-inline-button" disabled={isSubmitting} type="submit">
               {isSubmitting ? 'Saving...' : 'Save Changes'}
             </button>
           </div>
         </form>
-      </div>
+      </aside>
     </div>
   );
 }
 
-function MaintenanceModal({ vehicle, form, errorMessage, isSubmitting, onChange, onClose, onSubmit }) {
+function MaintenanceModal({ vehicle, form, errorMessage, isSubmitting, onChange, onClose, onSubmit, serviceTypeOptions }) {
   if (!vehicle) {
     return null;
   }
@@ -430,21 +1061,50 @@ function MaintenanceModal({ vehicle, form, errorMessage, isSubmitting, onChange,
       <div className="modal-card">
         <div className="modal-header">
           <div>
-            <div className="card-title">Add Service Record</div>
+            <div className="card-title">Log Completed Maintenance</div>
             <div className="driver-meta">{vehicle.name}</div>
           </div>
           <button className="icon-button" onClick={onClose} type="button">×</button>
         </div>
 
         <form className="form-card modal-form" onSubmit={onSubmit}>
-          <input className="text-field" onChange={(event) => onChange('service_date', event.target.value)} type="date" value={form.service_date} />
-          <select className="text-field" onChange={(event) => onChange('service_type', event.target.value)} value={form.service_type}>
-            {SERVICE_TYPE_OPTIONS.map((option) => (
-              <option key={option} value={option}>{option}</option>
-            ))}
-          </select>
-          <input className="text-field" onChange={(event) => onChange('description', event.target.value)} placeholder="Work performed / notes" value={form.description} />
-          <input className="text-field" onChange={(event) => onChange('condition_notes', event.target.value)} placeholder="Condition / remaining miles" value={form.condition_notes} />
+          <div className="odometer-summary-card">
+            <div>
+              <span>Truck Number</span>
+              <strong>{vehicle.name || 'Not recorded'}</strong>
+            </div>
+            <div>
+              <span>Current odometer</span>
+              <strong>{formatMileage(vehicle.current_mileage)} miles</strong>
+            </div>
+          </div>
+          <label>
+            <span className="field-label">Maintenance item completed</span>
+            <select className="text-field" onChange={(event) => onChange('service_type', event.target.value)} value={form.service_type}>
+              {serviceTypeOptions.map((option) => (
+                <option key={option} value={option}>{option}</option>
+              ))}
+            </select>
+          </label>
+          <label>
+            <span className="field-label">Service odometer reading</span>
+            <input
+              className="text-field"
+              min="0"
+              onChange={(event) => onChange('mileage_at_service', event.target.value)}
+              placeholder="Mileage at service"
+              type="number"
+              value={form.mileage_at_service}
+            />
+          </label>
+          <label>
+            <span className="field-label">Service date</span>
+            <input className="text-field" onChange={(event) => onChange('service_date', event.target.value)} type="date" value={form.service_date} />
+          </label>
+          <label>
+            <span className="field-label">Vendor or shop name</span>
+            <input className="text-field" onChange={(event) => onChange('vendor_name', event.target.value)} placeholder="Optional" value={form.vendor_name} />
+          </label>
           <label className="money-field">
             <span>$</span>
             <input
@@ -457,30 +1117,29 @@ function MaintenanceModal({ vehicle, form, errorMessage, isSubmitting, onChange,
               value={form.cost}
             />
           </label>
-          <input
-            className="text-field"
-            min="0"
-            onChange={(event) => onChange('mileage_at_service', event.target.value)}
-            placeholder="Mileage at Service"
-            type="number"
-            value={form.mileage_at_service}
-          />
-          <input
-            className="text-field"
-            min="0"
-            onChange={(event) => onChange('next_service_mileage', event.target.value)}
-            placeholder="Next Service at Mileage"
-            type="number"
-            value={form.next_service_mileage}
-          />
-          <input className="text-field" onChange={(event) => onChange('next_service_date', event.target.value)} type="date" value={form.next_service_date} />
+          <label>
+            <span className="field-label">Notes</span>
+            <textarea
+              className="text-field maintenance-item-notes"
+              onChange={(event) => onChange('description', event.target.value)}
+              placeholder="Optional notes"
+              value={form.description}
+            />
+          </label>
+          {form.next_service_mileage || form.next_service_date ? (
+            <div className="driver-meta">
+              Next due: {form.next_service_mileage ? `${formatMileage(form.next_service_mileage)} miles` : ''}
+              {form.next_service_mileage && form.next_service_date ? ' / ' : ''}
+              {form.next_service_date ? formatDate(form.next_service_date) : ''}
+            </div>
+          ) : null}
 
           {errorMessage ? <div className="error-banner">{errorMessage}</div> : null}
 
           <div className="modal-actions">
             <button className="secondary-inline-button" onClick={onClose} type="button">Cancel</button>
             <button className="primary-inline-button" disabled={isSubmitting} type="submit">
-              {isSubmitting ? 'Saving...' : 'Save Record'}
+              {isSubmitting ? 'Saving...' : 'Log Maintenance'}
             </button>
           </div>
         </form>
@@ -489,14 +1148,14 @@ function MaintenanceModal({ vehicle, form, errorMessage, isSubmitting, onChange,
   );
 }
 
-function MaintenanceHistoryModal({ vehicle, open, onClose }) {
+function MaintenanceHistoryModal({ vehicle, open, onClose, selectedCsaId }) {
   const historyQuery = useQuery({
-    queryKey: ['vehicle-maintenance-history', vehicle?.id],
+    queryKey: ['vehicle-maintenance-history', selectedCsaId, vehicle?.id],
     queryFn: async () => {
       const response = await api.get(`/vehicles/${vehicle.id}/maintenance`);
       return response.data?.maintenance || [];
     },
-    enabled: open && Boolean(vehicle?.id)
+    enabled: open && Boolean(selectedCsaId) && Boolean(vehicle?.id)
   });
 
   if (!open || !vehicle) {
@@ -520,8 +1179,8 @@ function MaintenanceHistoryModal({ vehicle, open, onClose }) {
             <div className="history-table-header">
               <span>Date</span>
               <span>Type</span>
-              <span>Description</span>
-              <span>Condition</span>
+              <span>Notes</span>
+              <span>Vendor</span>
               <span>Mileage</span>
               <span>Cost</span>
               <span>Next Due</span>
@@ -531,7 +1190,7 @@ function MaintenanceHistoryModal({ vehicle, open, onClose }) {
                 <span>{formatDate(row.service_date)}</span>
                 <span>{row.service_type || '—'}</span>
                 <span>{row.description}</span>
-                <span>{row.condition_notes || '—'}</span>
+                <span>{row.vendor_name || '—'}</span>
                 <span>{row.mileage_at_service ? formatMileage(row.mileage_at_service) : '—'}</span>
                 <span>{formatCurrency(row.cost)}</span>
                 <span>{row.next_service_date ? formatDate(row.next_service_date) : row.next_service_mileage ? `${formatMileage(row.next_service_mileage)} mi` : '—'}</span>
@@ -539,7 +1198,7 @@ function MaintenanceHistoryModal({ vehicle, open, onClose }) {
             ))}
           </div>
         ) : (
-          <div className="driver-meta">No service records yet</div>
+          <div className="driver-meta">No service records yet.</div>
         )}
 
         <div className="modal-actions">
@@ -550,25 +1209,329 @@ function MaintenanceHistoryModal({ vehicle, open, onClose }) {
   );
 }
 
+function VehicleTabs({ activeTab, onChange }) {
+  return (
+    <div className="vehicles-tab-bar" role="tablist" aria-label="Vehicles sections">
+      {VEHICLE_TABS.map((tab) => (
+        <button
+          aria-selected={activeTab === tab}
+          className={`vehicles-tab-button${activeTab === tab ? ' active' : ''}`}
+          key={tab}
+          onClick={() => onChange(tab)}
+          role="tab"
+          type="button"
+        >
+          {tab}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+function VehicleSettingsPanel({ maintenanceRequirements, onOpenChecklistTemplate, onOpenMaintenanceRequirements }) {
+  return (
+    <section className="card vehicle-settings-panel" aria-labelledby="vehicle-settings-title">
+      <div className="vehicle-settings-heading">
+        <div>
+          <h2 id="vehicle-settings-title">Vehicle Settings</h2>
+          <p>Choose how this CSA wants drivers to complete vehicle checks.</p>
+        </div>
+      </div>
+
+      <div className="vehicle-settings-grid">
+        {VEHICLE_SETTINGS_CARDS.map((card) => (
+          <article className="vehicle-settings-card" key={card.title}>
+            <div>
+              <h3>{card.title}</h3>
+              <p>{card.description}</p>
+              {card.title === 'Maintenance Requirements' ? (
+                <div className="vehicle-settings-card-summary">
+                  Current: {getMaintenanceRequirementModeLabel(maintenanceRequirements.maintenance_requirement_mode)}
+                </div>
+              ) : null}
+            </div>
+            <button
+              className={card.disabled ? 'secondary-inline-button vehicle-settings-disabled-action' : 'primary-inline-button'}
+              disabled={card.disabled}
+              onClick={
+                card.title === 'Maintenance Requirements'
+                  ? onOpenMaintenanceRequirements
+                  : card.title === 'Checklist Template'
+                    ? onOpenChecklistTemplate
+                    : undefined
+              }
+              type="button"
+            >
+              {card.actionLabel}
+            </button>
+          </article>
+        ))}
+      </div>
+
+      <p className="vehicle-settings-helper">
+        Vehicle blocking is handled automatically through vehicle readiness status, overdue maintenance, expired documents, and unresolved serious issues.
+      </p>
+    </section>
+  );
+}
+
+function ChecklistTemplateScreen({
+  errorMessage,
+  fields,
+  isLoading,
+  isSaving,
+  onBack,
+  onSave,
+  onToggleField
+}) {
+  return (
+    <section className="card checklist-template-panel" aria-labelledby="checklist-template-title">
+      <div className="checklist-template-header">
+        <div>
+          <button className="secondary-inline-button" onClick={onBack} type="button">Back to Settings</button>
+          <h2 id="checklist-template-title">Checklist Template</h2>
+          <p>Default CSA vehicle maintenance inspection checklist.</p>
+        </div>
+        <div className="checklist-template-actions">
+          <button className="secondary-inline-button checklist-template-disabled-action" disabled type="button">
+            Add custom field coming soon
+          </button>
+          <button className="primary-inline-button" disabled={isSaving} onClick={onSave} type="button">
+            {isSaving ? 'Saving...' : 'Save Template'}
+          </button>
+        </div>
+      </div>
+
+      <p className="vehicle-settings-helper checklist-template-note">
+        This checklist is used for weekly full inspections in Option 1 and daily full inspections in Option 2.
+      </p>
+
+      {isLoading ? <div className="driver-meta">Loading saved checklist template...</div> : null}
+
+      <div className="checklist-template-list" aria-label="Default checklist fields">
+        {fields.map((field, index) => (
+          <div className={`checklist-template-row${field.enabled ? '' : ' disabled'}`} key={field.id}>
+            <span className="checklist-template-number">{index + 1}</span>
+            <div>
+              <strong>{field.label}</strong>
+              <span>{field.detail}</span>
+            </div>
+            <label className="checklist-template-toggle">
+              <input
+                checked={field.enabled}
+                onChange={(event) => onToggleField(field.id, event.target.checked)}
+                type="checkbox"
+              />
+              <span>{field.enabled ? 'Enabled' : 'Disabled'}</span>
+            </label>
+          </div>
+        ))}
+      </div>
+
+      {errorMessage ? <div className="error-banner">{errorMessage}</div> : null}
+    </section>
+  );
+}
+
+function RequirementList({ items }) {
+  return (
+    <ul className="maintenance-requirement-list">
+      {items.map((item) => (
+        <li key={item}>{item}</li>
+      ))}
+    </ul>
+  );
+}
+
+function MaintenanceRequirementsScreen({
+  draft,
+  errorMessage,
+  isLoading,
+  isSaving,
+  onBack,
+  onChangeCustomDaily,
+  onChangeCustomWeekly,
+  onChangeMode,
+  onChangeWeeklyDay,
+  onSave
+}) {
+  return (
+    <section className="card maintenance-requirements-panel" aria-labelledby="maintenance-requirements-title">
+      <div className="maintenance-requirements-header">
+        <div>
+          <button className="secondary-inline-button" onClick={onBack} type="button">Back to Settings</button>
+          <h2 id="maintenance-requirements-title">Maintenance Requirements</h2>
+          <p>Choose what drivers must complete for vehicle checks.</p>
+        </div>
+        <button className="primary-inline-button" disabled={isSaving} onClick={onSave} type="button">
+          {isSaving ? 'Saving...' : 'Save Requirements'}
+        </button>
+      </div>
+
+      {isLoading ? <div className="driver-meta">Loading saved maintenance requirements...</div> : null}
+
+      <div className="maintenance-requirement-options">
+        {MAINTENANCE_REQUIREMENT_OPTIONS.map((option) => {
+          const isSelected = draft.maintenance_requirement_mode === option.id;
+
+          return (
+            <button
+              aria-pressed={isSelected}
+              className={`maintenance-requirement-option${isSelected ? ' selected' : ''}`}
+              key={option.id}
+              onClick={() => onChangeMode(option.id)}
+              type="button"
+            >
+              <div className="maintenance-requirement-option-topline">
+                <span>{option.optionLabel}</span>
+                {option.badge ? <strong className={`maintenance-requirement-badge ${option.badgeClassName}`}>{option.badge}</strong> : null}
+              </div>
+              <h3>{option.title}</h3>
+              <p>{option.description}</p>
+              <div className="maintenance-requirement-columns">
+                <div>
+                  <span>Daily requirements</span>
+                  <RequirementList items={option.dailyRequirements} />
+                </div>
+                <div>
+                  <span>Weekly requirements</span>
+                  <RequirementList items={option.weeklyRequirements} />
+                </div>
+              </div>
+            </button>
+          );
+        })}
+      </div>
+
+      <div className="maintenance-requirements-controls">
+        <label className="driver-modal-field maintenance-weekday-field">
+          <span className="field-label">Weekly inspection day</span>
+          <select
+            className="text-field"
+            onChange={(event) => onChangeWeeklyDay(event.target.value)}
+            value={draft.weekly_inspection_day}
+          >
+            {WEEKLY_INSPECTION_DAYS.map((day) => (
+              <option key={day} value={day}>{day}</option>
+            ))}
+          </select>
+        </label>
+
+        {draft.maintenance_requirement_mode === 'custom' ? (
+          <div className="maintenance-custom-controls">
+            <div>
+              <h3>Custom Daily Requirements</h3>
+              <label>
+                <input
+                  checked={draft.custom_daily_requirements.require_truck_confirmation}
+                  onChange={(event) => onChangeCustomDaily('require_truck_confirmation', event.target.checked)}
+                  type="checkbox"
+                />
+                <span>Require daily truck confirmation</span>
+              </label>
+              <label>
+                <input
+                  checked={draft.custom_daily_requirements.require_odometer_entry}
+                  onChange={(event) => onChangeCustomDaily('require_odometer_entry', event.target.checked)}
+                  type="checkbox"
+                />
+                <span>Require daily odometer entry</span>
+              </label>
+              <label>
+                <input
+                  checked={draft.custom_daily_requirements.show_issue_note_box}
+                  onChange={(event) => onChangeCustomDaily('show_issue_note_box', event.target.checked)}
+                  type="checkbox"
+                />
+                <span>Show daily issue note box</span>
+              </label>
+              <label>
+                <input
+                  checked={draft.custom_daily_requirements.require_full_checklist_daily}
+                  onChange={(event) => onChangeCustomDaily('require_full_checklist_daily', event.target.checked)}
+                  type="checkbox"
+                />
+                <span>Require full checklist daily</span>
+              </label>
+            </div>
+
+            <div>
+              <h3>Custom Weekly Requirements</h3>
+              <label>
+                <input
+                  checked={draft.custom_weekly_requirements.require_full_checklist_weekly}
+                  onChange={(event) => onChangeCustomWeekly('require_full_checklist_weekly', event.target.checked)}
+                  type="checkbox"
+                />
+                <span>Require full checklist weekly</span>
+              </label>
+              <label>
+                <input
+                  checked={draft.custom_weekly_requirements.require_manager_review_for_reported_issues}
+                  onChange={(event) => onChangeCustomWeekly('require_manager_review_for_reported_issues', event.target.checked)}
+                  type="checkbox"
+                />
+                <span>Require manager review for reported issues</span>
+              </label>
+            </div>
+          </div>
+        ) : null}
+      </div>
+
+      <p className="vehicle-settings-helper maintenance-requirements-apply-note">
+        Changes apply to the next workday so today's driver checks are not interrupted.
+      </p>
+
+      {errorMessage ? <div className="error-banner">{errorMessage}</div> : null}
+    </section>
+  );
+}
+
+function VehiclePlaceholderPanel({ title, description }) {
+  return (
+    <section className="card vehicle-tab-placeholder">
+      <div className="card-title">{title}</div>
+      <div className="driver-meta">{description}</div>
+    </section>
+  );
+}
+
 export default function VehiclesPage() {
   const [searchParams] = useSearchParams();
   const queryClient = useQueryClient();
+  const { selectedCsaId } = useSelectedCsa();
   const [isVehicleModalOpen, setIsVehicleModalOpen] = useState(false);
-  const [isMaintenanceProgramExpanded, setIsMaintenanceProgramExpanded] = useState(true);
+  const [isMaintenanceProgramExpanded, setIsMaintenanceProgramExpanded] = useState(false);
   const [editingVehicle, setEditingVehicle] = useState(null);
   const [vehicleForm, setVehicleForm] = useState(emptyVehicleForm);
   const [vehicleError, setVehicleError] = useState('');
-  const [editVehicleForm, setEditVehicleForm] = useState(emptyVehicleForm);
+  const [editVehicleForm, setEditVehicleForm] = useState(emptyEditVehicleForm);
   const [editVehicleError, setEditVehicleError] = useState('');
   const [toastMessage, setToastMessage] = useState('');
   const [maintenanceVehicle, setMaintenanceVehicle] = useState(null);
   const [historyVehicle, setHistoryVehicle] = useState(null);
-  const [maintenanceSettingsDraft, setMaintenanceSettingsDraft] = useState([]);
+  const [maintenanceSettingsDraft, setMaintenanceSettingsDraft] = useState(null);
+  const [maintenanceSettingsEditingIndex, setMaintenanceSettingsEditingIndex] = useState(null);
+  const [maintenanceItemEditor, setMaintenanceItemEditor] = useState(null);
+  const [maintenanceItemError, setMaintenanceItemError] = useState('');
+  const [odometerVehicle, setOdometerVehicle] = useState(null);
+  const [odometerForm, setOdometerForm] = useState(emptyOdometerForm);
+  const [odometerError, setOdometerError] = useState('');
+  const [vehicleSearch, setVehicleSearch] = useState('');
+  const [vehicleStatusFilter, setVehicleStatusFilter] = useState('all');
+  const [activeVehiclesTab, setActiveVehiclesTab] = useState('Fleet');
+  const [vehicleSettingsView, setVehicleSettingsView] = useState('overview');
+  const [maintenanceRequirementsDraft, setMaintenanceRequirementsDraft] = useState(null);
+  const [maintenanceRequirementsError, setMaintenanceRequirementsError] = useState('');
+  const [checklistTemplateDraft, setChecklistTemplateDraft] = useState(null);
+  const [checklistTemplateError, setChecklistTemplateError] = useState('');
+  const vehicleImportInputRef = useRef(null);
   const [maintenanceForm, setMaintenanceForm] = useState({
     service_date: getTodayString(),
     service_type: 'Oil Change',
     description: '',
     condition_notes: '',
+    vendor_name: '',
     cost: '',
     mileage_at_service: '',
     next_service_mileage: '',
@@ -577,15 +1540,35 @@ export default function VehiclesPage() {
   const [maintenanceError, setMaintenanceError] = useState('');
 
   const maintenanceSettingsQuery = useQuery({
-    queryKey: ['vehicle-maintenance-settings'],
+    queryKey: ['vehicle-maintenance-settings', selectedCsaId],
+    enabled: Boolean(selectedCsaId),
     queryFn: async () => {
       const response = await api.get('/vehicles/settings/maintenance');
       return response.data?.settings || [];
     }
   });
 
+  const maintenanceRequirementsQuery = useQuery({
+    queryKey: ['vehicle-maintenance-requirements', selectedCsaId],
+    enabled: Boolean(selectedCsaId),
+    queryFn: async () => {
+      const response = await api.get('/vehicles/settings/maintenance-requirements');
+      return normalizeMaintenanceRequirementSetting(response.data?.setting);
+    }
+  });
+
+  const checklistTemplateQuery = useQuery({
+    queryKey: ['vehicle-checklist-template', selectedCsaId],
+    enabled: Boolean(selectedCsaId),
+    queryFn: async () => {
+      const response = await api.get('/vehicles/settings/checklist-template');
+      return normalizeChecklistTemplateFields(response.data?.template?.fields);
+    }
+  });
+
   const vehiclesQuery = useQuery({
-    queryKey: ['fleet-vehicles'],
+    queryKey: ['fleet-vehicles', selectedCsaId],
+    enabled: Boolean(selectedCsaId),
     queryFn: async () => {
       const response = await api.get('/vehicles');
       return response.data?.vehicles || [];
@@ -607,10 +1590,32 @@ export default function VehiclesPage() {
       setVehicleForm(emptyVehicleForm);
       setVehicleError('');
       setToastMessage('Vehicle added to fleet');
-      await queryClient.invalidateQueries({ queryKey: ['fleet-vehicles'] });
+      await queryClient.invalidateQueries({ queryKey: ['fleet-vehicles', selectedCsaId] });
     },
     onError: (error) => {
       setVehicleError(error.response?.data?.error || 'Unable to create vehicle.');
+    }
+  });
+
+  const importVehiclesMutation = useMutation({
+    mutationFn: async (file) => {
+      const formData = new FormData();
+      formData.append('file', file);
+      const response = await api.post('/vehicles/import', formData, {
+        headers: {
+          'Content-Type': 'multipart/form-data'
+        }
+      });
+      return response.data;
+    },
+    onSuccess: async (result) => {
+      setToastMessage(
+        `Vehicle import complete: ${result.created || 0} created, ${result.skipped || 0} skipped, ${(result.errors || []).length} errors.`
+      );
+      await queryClient.invalidateQueries({ queryKey: ['fleet-vehicles', selectedCsaId] });
+    },
+    onError: (error) => {
+      setToastMessage(error.response?.data?.error || 'Unable to import vehicles.');
     }
   });
 
@@ -625,13 +1630,33 @@ export default function VehiclesPage() {
     },
     onSuccess: async () => {
       setEditingVehicle(null);
-      setEditVehicleForm(emptyVehicleForm);
+      setEditVehicleForm(emptyEditVehicleForm);
       setEditVehicleError('');
       setToastMessage('Vehicle profile updated');
-      await queryClient.invalidateQueries({ queryKey: ['fleet-vehicles'] });
+      await queryClient.invalidateQueries({ queryKey: ['fleet-vehicles', selectedCsaId] });
     },
     onError: (error) => {
       setEditVehicleError(error.response?.data?.error || 'Unable to update vehicle.');
+    }
+  });
+
+  const updateOdometerMutation = useMutation({
+    mutationFn: async () => {
+      const response = await api.post(`/vehicles/${odometerVehicle.id}/odometer`, {
+        odometer_reading: Number(odometerForm.odometer_reading),
+        notes: odometerForm.notes.trim() || undefined
+      });
+      return response.data;
+    },
+    onSuccess: async () => {
+      setOdometerVehicle(null);
+      setOdometerForm(emptyOdometerForm);
+      setOdometerError('');
+      setToastMessage('Odometer updated');
+      await queryClient.invalidateQueries({ queryKey: ['fleet-vehicles', selectedCsaId] });
+    },
+    onError: (error) => {
+      setOdometerError(error.response?.data?.error || 'Unable to update odometer.');
     }
   });
 
@@ -640,8 +1665,9 @@ export default function VehiclesPage() {
       const response = await api.post(`/vehicles/${maintenanceVehicle.id}/maintenance`, {
         service_date: maintenanceForm.service_date,
         service_type: maintenanceForm.service_type,
-        description: maintenanceForm.description,
+        description: maintenanceForm.description || undefined,
         condition_notes: maintenanceForm.condition_notes || undefined,
+        vendor_name: maintenanceForm.vendor_name || undefined,
         cost: maintenanceForm.cost ? Number(maintenanceForm.cost) : undefined,
         mileage_at_service: Number(maintenanceForm.mileage_at_service),
         next_service_mileage: maintenanceForm.next_service_mileage ? Number(maintenanceForm.next_service_mileage) : undefined,
@@ -653,10 +1679,10 @@ export default function VehiclesPage() {
       setMaintenanceVehicle(null);
       setMaintenanceForm(buildMaintenanceForm({ vehicle: null, settings: activeMaintenanceSettings, mileageAtService: '' }));
       setMaintenanceError('');
-      setToastMessage('Service record added');
-      await queryClient.invalidateQueries({ queryKey: ['fleet-vehicles'] });
+      setToastMessage('Maintenance logged');
+      await queryClient.invalidateQueries({ queryKey: ['fleet-vehicles', selectedCsaId] });
       if (historyVehicle) {
-        await queryClient.invalidateQueries({ queryKey: ['vehicle-maintenance-history', historyVehicle.id] });
+        await queryClient.invalidateQueries({ queryKey: ['vehicle-maintenance-history', selectedCsaId, historyVehicle.id] });
       }
     },
     onError: (error) => {
@@ -667,34 +1693,95 @@ export default function VehiclesPage() {
   const saveMaintenanceSettingsMutation = useMutation({
     mutationFn: async () => {
       const response = await api.put('/vehicles/settings/maintenance', {
-        settings: maintenanceSettingsDraft.map((setting) => ({
+        settings: activeMaintenanceSettings.map((setting) => ({
           ...setting,
           default_interval_miles: setting.default_interval_miles === '' ? null : Number(setting.default_interval_miles),
-          default_interval_days: setting.default_interval_days === '' ? null : Number(setting.default_interval_days)
+          default_interval_days: setting.default_interval_days === '' ? null : Number(setting.default_interval_days),
+          notes: setting.notes?.trim() || null
         }))
       });
       return response.data;
     },
     onSuccess: async (data) => {
       setMaintenanceSettingsDraft(
-        (data.settings || []).map((setting) => ({
-          ...setting,
-          default_interval_miles: setting.default_interval_miles ?? '',
-          default_interval_days: setting.default_interval_days ?? ''
-        }))
+        (data.settings || []).map(normalizeMaintenanceSettingForDraft)
       );
+      setMaintenanceSettingsEditingIndex(null);
       setIsMaintenanceProgramExpanded(false);
       setToastMessage('Maintenance program updated');
-      await queryClient.invalidateQueries({ queryKey: ['vehicle-maintenance-settings'] });
+      await queryClient.invalidateQueries({ queryKey: ['vehicle-maintenance-settings', selectedCsaId] });
+    }
+  });
+
+  const saveMaintenanceRequirementsMutation = useMutation({
+    mutationFn: async () => {
+      const response = await api.put('/vehicles/settings/maintenance-requirements', activeMaintenanceRequirementsDraft);
+      return normalizeMaintenanceRequirementSetting(response.data?.setting);
+    },
+    onSuccess: async (setting) => {
+      setMaintenanceRequirementsDraft(setting);
+      setMaintenanceRequirementsError('');
+      setToastMessage('Maintenance requirements saved');
+      queryClient.setQueryData(['vehicle-maintenance-requirements', selectedCsaId], setting);
+      await queryClient.invalidateQueries({ queryKey: ['vehicle-maintenance-requirements', selectedCsaId] });
+    },
+    onError: (error) => {
+      setMaintenanceRequirementsError(error.response?.data?.error || 'Unable to save maintenance requirements.');
+    }
+  });
+
+  const saveChecklistTemplateMutation = useMutation({
+    mutationFn: async () => {
+      const response = await api.put('/vehicles/settings/checklist-template', {
+        fields: activeChecklistTemplateFields
+      });
+      return normalizeChecklistTemplateFields(response.data?.template?.fields);
+    },
+    onSuccess: async (fields) => {
+      setChecklistTemplateDraft(fields);
+      setChecklistTemplateError('');
+      setToastMessage('Checklist template saved');
+      queryClient.setQueryData(['vehicle-checklist-template', selectedCsaId], fields);
+      await queryClient.invalidateQueries({ queryKey: ['vehicle-checklist-template', selectedCsaId] });
+    },
+    onError: (error) => {
+      setChecklistTemplateError(error.response?.data?.error || 'Unable to save checklist template.');
     }
   });
 
   const vehicles = useMemo(() => vehiclesQuery.data || [], [vehiclesQuery.data]);
-  const activeMaintenanceSettings = useMemo(
-    () => (maintenanceSettingsDraft.length ? maintenanceSettingsDraft : maintenanceSettingsQuery.data || []),
-    [maintenanceSettingsDraft, maintenanceSettingsQuery.data]
+  const normalizedMaintenanceSettings = useMemo(
+    () =>
+      (maintenanceSettingsQuery.data || []).map((setting) => ({
+        ...normalizeMaintenanceSettingForDraft(setting)
+      })),
+    [maintenanceSettingsQuery.data]
   );
-  const dueSoonVehicles = useMemo(() => vehicles.filter((vehicle) => vehicle.service_due), [vehicles]);
+  const activeMaintenanceSettings = maintenanceSettingsDraft || normalizedMaintenanceSettings;
+  const activeMaintenanceRequirementsDraft = maintenanceRequirementsDraft
+    || normalizeMaintenanceRequirementSetting(maintenanceRequirementsQuery.data);
+  const activeChecklistTemplateFields = checklistTemplateDraft
+    || normalizeChecklistTemplateFields(checklistTemplateQuery.data);
+  const serviceTypeOptions = useMemo(
+    () => getServiceTypeOptions(activeMaintenanceSettings),
+    [activeMaintenanceSettings]
+  );
+  const readinessCounts = useMemo(
+    () => vehicles.reduce((counts, vehicle) => {
+      const status = getReadinessMeta(vehicle).filter;
+      counts[status] = (counts[status] || 0) + 1;
+      return counts;
+    }, { ready: 0, assigned: 0, maintenance_soon: 0, blocked: 0 }),
+    [vehicles]
+  );
+  const dueSoonVehicles = useMemo(
+    () => vehicles.filter((vehicle) => getReadinessMeta(vehicle).filter === 'maintenance_soon'),
+    [vehicles]
+  );
+  const blockedVehicles = useMemo(
+    () => vehicles.filter((vehicle) => getReadinessMeta(vehicle).filter === 'blocked'),
+    [vehicles]
+  );
   const registrationAttentionVehicles = useMemo(
     () => vehicles.filter((vehicle) => {
       const registration = getRegistrationStatus(vehicle);
@@ -706,6 +1793,25 @@ export default function VehiclesPage() {
     () => vehicles.filter((vehicle) => vehicle.today_assignment?.route_status === 'in_progress').length,
     [vehicles]
   );
+  const filteredVehicles = useMemo(() => {
+    const query = vehicleSearch.trim().toLowerCase();
+
+    return vehicles.filter((vehicle) => {
+      const status = getReadinessMeta(vehicle).filter;
+      const statusMatches = vehicleStatusFilter === 'all' || status === vehicleStatusFilter;
+      const searchableText = [
+        vehicle.name,
+        getVehicleDescription(vehicle),
+        getVehicleTypeLabel(vehicle),
+        vehicle.plate,
+        getAssignedToLabel(vehicle),
+        getLatestIssueLabel(vehicle).label,
+        getLatestIssueLabel(vehicle).detail
+      ].filter(Boolean).join(' ').toLowerCase();
+
+      return statusMatches && (!query || searchableText.includes(query));
+    });
+  }, [vehicleSearch, vehicleStatusFilter, vehicles]);
   const isSetupFlow = searchParams.get('source') === 'setup';
   const setupFocus = searchParams.get('focus') || '';
   const setupBanner = useMemo(() => {
@@ -739,20 +1845,6 @@ export default function VehiclesPage() {
     return () => window.clearTimeout(timeout);
   }, [toastMessage]);
 
-  useEffect(() => {
-    if (!maintenanceSettingsQuery.data?.length) {
-      return;
-    }
-
-    setMaintenanceSettingsDraft(
-      maintenanceSettingsQuery.data.map((setting) => ({
-        ...setting,
-        default_interval_miles: setting.default_interval_miles ?? '',
-        default_interval_days: setting.default_interval_days ?? ''
-      }))
-    );
-  }, [maintenanceSettingsQuery.data]);
-
   function updateVehicleField(field, value) {
     setVehicleForm((current) => {
       if (field === 'truck_type' && value !== 'Other') {
@@ -761,6 +1853,17 @@ export default function VehiclesPage() {
 
       return { ...current, [field]: value };
     });
+  }
+
+  function handleVehicleImportChange(event) {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+
+    if (!file) {
+      return;
+    }
+
+    importVehiclesMutation.mutate(file);
   }
 
   function updateMaintenanceField(field, value) {
@@ -811,12 +1914,224 @@ export default function VehiclesPage() {
     });
   }
 
-  function updateMaintenanceSetting(serviceType, field, value) {
+  function openOdometerEditor(vehicle) {
+    setOdometerVehicle(vehicle);
+    setOdometerForm({
+      odometer_reading: vehicle.current_mileage === null || vehicle.current_mileage === undefined
+        ? ''
+        : String(vehicle.current_mileage),
+      notes: '',
+      confirmedLower: false
+    });
+    setOdometerError('');
+  }
+
+  function updateOdometerField(field, value) {
+    setOdometerForm((current) => ({
+      ...current,
+      [field]: field === 'odometer_reading' ? value.replace(/\D/g, '') : value,
+      confirmedLower: field === 'odometer_reading' ? false : current.confirmedLower
+    }));
+  }
+
+  function handleSaveOdometer(event) {
+    event.preventDefault();
+    setOdometerError('');
+
+    if (!odometerVehicle) {
+      return;
+    }
+
+    if (odometerForm.odometer_reading === '') {
+      setOdometerError('New odometer reading is required.');
+      return;
+    }
+
+    const nextMileage = Number(odometerForm.odometer_reading);
+
+    if (!Number.isInteger(nextMileage) || nextMileage < 0) {
+      setOdometerError('Enter a valid odometer reading.');
+      return;
+    }
+
+    const currentMileage = Number(odometerVehicle.current_mileage || 0);
+    if (nextMileage < currentMileage && !odometerForm.confirmedLower) {
+      setOdometerError('Confirm the lower odometer correction before saving.');
+      return;
+    }
+
+    updateOdometerMutation.mutate();
+  }
+
+  function updateMaintenanceSetting(index, field, value) {
     setMaintenanceSettingsDraft((current) =>
-      current.map((setting) =>
-        setting.service_type === serviceType ? { ...setting, [field]: value } : setting
+      (current || activeMaintenanceSettings).map((setting, settingIndex) =>
+        settingIndex === index ? { ...setting, [field]: value } : setting
       )
     );
+  }
+
+  function openMaintenanceItemEditor(index = null) {
+    const setting = index === null ? null : activeMaintenanceSettings[index];
+
+    setMaintenanceItemError('');
+    setMaintenanceItemEditor({
+      mode: index === null ? 'add' : 'edit',
+      index,
+      form: setting
+        ? {
+            service_type: setting.service_type || '',
+            default_interval_miles: setting.default_interval_miles ?? '',
+            default_interval_days: setting.default_interval_days ?? '',
+            notes: setting.notes || ''
+          }
+        : { ...emptyMaintenanceItemForm }
+    });
+  }
+
+  function updateMaintenanceItemEditorField(field, value) {
+    setMaintenanceItemEditor((current) => (
+      current
+        ? {
+            ...current,
+            form: {
+              ...current.form,
+              [field]: value
+            }
+          }
+        : current
+    ));
+  }
+
+  function validateMaintenanceItemForm(form, editingIndex) {
+    const name = form.service_type.trim();
+    const intervalMiles = form.default_interval_miles;
+    const intervalDays = form.default_interval_days;
+    const notes = form.notes.trim();
+
+    if (!name) {
+      return 'Item name is required.';
+    }
+
+    const duplicateIndex = activeMaintenanceSettings.findIndex((setting, index) => (
+      index !== editingIndex && setting.service_type.trim().toLowerCase() === name.toLowerCase()
+    ));
+
+    if (duplicateIndex >= 0) {
+      return 'A maintenance item with this name already exists.';
+    }
+
+    if (!intervalMiles && !intervalDays && !notes && !['General Repair', 'Other'].includes(name)) {
+      return 'Add a mileage interval, days interval, or notes for a general note item.';
+    }
+
+    return '';
+  }
+
+  function handleSaveMaintenanceItem(event) {
+    event.preventDefault();
+
+    if (!maintenanceItemEditor) {
+      return;
+    }
+
+    const form = maintenanceItemEditor.form;
+    const validationError = validateMaintenanceItemForm(form, maintenanceItemEditor.index);
+
+    if (validationError) {
+      setMaintenanceItemError(validationError);
+      return;
+    }
+
+    const nextItem = {
+      service_type: form.service_type.trim(),
+      is_enabled: true,
+      default_interval_miles: form.default_interval_miles,
+      default_interval_days: form.default_interval_days,
+      notes: form.notes.trim()
+    };
+
+    setMaintenanceSettingsDraft((current) => {
+      const base = current || activeMaintenanceSettings;
+
+      if (maintenanceItemEditor.mode === 'edit' && maintenanceItemEditor.index !== null) {
+        return base.map((setting, index) => (
+          index === maintenanceItemEditor.index
+            ? {
+                ...setting,
+                ...nextItem,
+                is_enabled: setting.is_enabled
+              }
+            : setting
+        ));
+      }
+
+      return [...base, nextItem];
+    });
+
+    setMaintenanceItemEditor(null);
+    setMaintenanceItemError('');
+    setMaintenanceSettingsEditingIndex(null);
+  }
+
+  function updateMaintenanceRequirementsMode(mode) {
+    setMaintenanceRequirementsDraft((current) => ({
+      ...normalizeMaintenanceRequirementSetting(current || activeMaintenanceRequirementsDraft),
+      maintenance_requirement_mode: mode
+    }));
+    setMaintenanceRequirementsError('');
+  }
+
+  function updateMaintenanceRequirementsWeeklyDay(day) {
+    setMaintenanceRequirementsDraft((current) => ({
+      ...normalizeMaintenanceRequirementSetting(current || activeMaintenanceRequirementsDraft),
+      weekly_inspection_day: day
+    }));
+    setMaintenanceRequirementsError('');
+  }
+
+  function updateCustomDailyRequirement(field, value) {
+    setMaintenanceRequirementsDraft((current) => {
+      const normalized = normalizeMaintenanceRequirementSetting(current || activeMaintenanceRequirementsDraft);
+      return {
+        ...normalized,
+        custom_daily_requirements: {
+          ...normalized.custom_daily_requirements,
+          [field]: value
+        }
+      };
+    });
+    setMaintenanceRequirementsError('');
+  }
+
+  function updateCustomWeeklyRequirement(field, value) {
+    setMaintenanceRequirementsDraft((current) => {
+      const normalized = normalizeMaintenanceRequirementSetting(current || activeMaintenanceRequirementsDraft);
+      return {
+        ...normalized,
+        custom_weekly_requirements: {
+          ...normalized.custom_weekly_requirements,
+          [field]: value
+        }
+      };
+    });
+    setMaintenanceRequirementsError('');
+  }
+
+  function updateChecklistTemplateField(fieldId, enabled) {
+    setChecklistTemplateDraft((current) =>
+      normalizeChecklistTemplateFields(current || activeChecklistTemplateFields).map((field) => (
+        field.id === fieldId ? { ...field, enabled } : field
+      ))
+    );
+    setChecklistTemplateError('');
+  }
+
+  function deleteMaintenanceItem(index) {
+    setMaintenanceSettingsDraft((current) => (
+      (current || activeMaintenanceSettings).filter((_, settingIndex) => settingIndex !== index)
+    ));
+    setMaintenanceSettingsEditingIndex(null);
   }
 
   function handleCreateVehicle(event) {
@@ -824,7 +2139,7 @@ export default function VehiclesPage() {
     setVehicleError('');
 
     if (!vehicleForm.name || !vehicleForm.make || !vehicleForm.model || !vehicleForm.year || !vehicleForm.plate) {
-      setVehicleError('Vehicle ID, make, model, year, and plate are required.');
+      setVehicleError('Truck Number, make, model, year, and plate are required.');
       return;
     }
 
@@ -848,7 +2163,9 @@ export default function VehiclesPage() {
       year: vehicle.year ? String(vehicle.year) : '',
       plate: vehicle.plate || '',
       registration_expiration: vehicle.registration_expiration || '',
-      current_mileage: String(vehicle.current_mileage || 0)
+      insurance_expiration: vehicle.insurance_expiration || '',
+      current_mileage: String(vehicle.current_mileage || 0),
+      notes: vehicle.notes || ''
     });
   }
 
@@ -857,7 +2174,7 @@ export default function VehiclesPage() {
     setEditVehicleError('');
 
     if (!editVehicleForm.name || !editVehicleForm.make || !editVehicleForm.model || !editVehicleForm.year || !editVehicleForm.plate) {
-      setEditVehicleError('Vehicle ID, make, model, year, and plate are required.');
+      setEditVehicleError('Truck Number, make, model, year, and plate are required.');
       return;
     }
 
@@ -873,8 +2190,8 @@ export default function VehiclesPage() {
     event.preventDefault();
     setMaintenanceError('');
 
-    if (!maintenanceForm.service_date || !maintenanceForm.service_type || !maintenanceForm.description || !maintenanceForm.mileage_at_service) {
-      setMaintenanceError('Service date, type, description, and mileage at service are required.');
+    if (!maintenanceForm.service_date || !maintenanceForm.service_type || !maintenanceForm.mileage_at_service) {
+      setMaintenanceError('Service date, maintenance item, and service odometer reading are required.');
       return;
     }
 
@@ -891,18 +2208,49 @@ export default function VehiclesPage() {
   }
 
   return (
-    <section className="page-section">
-      <div className="page-header">
-        <div>
-          <h1>Fleet</h1>
-          <p>{vehicles.length} vehicles — {onRoadCount} on road today</p>
-        </div>
-        <button className="primary-cta manifest-button" onClick={() => setIsVehicleModalOpen(true)} type="button">
-          Add Vehicle
-        </button>
-      </div>
+    <section className="page-section vehicles-page">
+      <PageHeader
+        title="Vehicles"
+        description={`${vehicles.length} vehicles, ${onRoadCount} on road today`}
+        actions={(
+          <>
+            {activeVehiclesTab === 'Fleet' ? (
+              <>
+                <button
+                  className="secondary-button"
+                  disabled={importVehiclesMutation.isPending}
+                  onClick={() => vehicleImportInputRef.current?.click()}
+                  type="button"
+                >
+                  {importVehiclesMutation.isPending ? 'Importing...' : 'Import Vehicles'}
+                </button>
+                <button className="primary-cta manifest-button" onClick={() => setIsVehicleModalOpen(true)} type="button">
+                  Add Vehicle
+                </button>
+              </>
+            ) : null}
+            <input
+              accept=".csv,.xls,.xlsx"
+              hidden
+              onChange={handleVehicleImportChange}
+              ref={vehicleImportInputRef}
+              type="file"
+            />
+          </>
+        )}
+      />
 
-      {setupBanner ? (
+      <VehicleTabs
+        activeTab={activeVehiclesTab}
+        onChange={(tab) => {
+          setActiveVehiclesTab(tab);
+          if (tab !== 'Settings') {
+            setVehicleSettingsView('overview');
+          }
+        }}
+      />
+
+      {activeVehiclesTab === 'Fleet' && setupBanner ? (
         <div className={`card setup-continue-banner ${setupBanner.tone}`}>
           <div>
             <div className="setup-next-eyebrow">Onboarding</div>
@@ -917,20 +2265,29 @@ export default function VehiclesPage() {
         </div>
       ) : null}
 
-      {dueSoonVehicles.length ? (
+      {activeVehiclesTab === 'Fleet' && dueSoonVehicles.length ? (
         <div className="service-due-banner">
           <div>
-            <strong>⚠ {dueSoonVehicles.length} vehicle(s) due for service soon</strong>
+            <strong>{dueSoonVehicles.length} vehicle(s) need maintenance soon</strong>
             <div>{dueSoonVehicles.map((vehicle) => vehicle.name).join(', ')}</div>
           </div>
           <button className="banner-link-button" onClick={scrollToDueVehicle} type="button">View</button>
         </div>
       ) : null}
 
-      {registrationAttentionVehicles.length ? (
+      {activeVehiclesTab === 'Fleet' && blockedVehicles.length ? (
+        <div className="service-due-banner vehicle-blocked-banner">
+          <div>
+            <strong>{blockedVehicles.length} vehicle(s) blocked from readiness</strong>
+            <div>{blockedVehicles.map((vehicle) => vehicle.name).join(', ')}</div>
+          </div>
+        </div>
+      ) : null}
+
+      {activeVehiclesTab === 'Fleet' && registrationAttentionVehicles.length ? (
         <div className="service-due-banner registration-due-banner">
           <div>
-            <strong>⚠ {registrationAttentionVehicles.length} vehicle(s) need registration attention</strong>
+            <strong>{registrationAttentionVehicles.length} vehicle(s) need registration attention</strong>
             <div>{registrationAttentionVehicles.map((vehicle) => vehicle.name).join(', ')}</div>
           </div>
         </div>
@@ -938,119 +2295,295 @@ export default function VehiclesPage() {
 
       {toastMessage ? <div className="success-banner">{toastMessage}</div> : null}
 
-      <MaintenanceSettingsCard
-        draft={maintenanceSettingsDraft}
-        isExpanded={isMaintenanceProgramExpanded}
-        isLoading={maintenanceSettingsQuery.isLoading}
-        isSaving={saveMaintenanceSettingsMutation.isPending}
-        onChange={updateMaintenanceSetting}
-        onCollapse={() => setIsMaintenanceProgramExpanded(false)}
-        onExpand={() => setIsMaintenanceProgramExpanded(true)}
-        onSave={() => saveMaintenanceSettingsMutation.mutate()}
-      />
+      {activeVehiclesTab === 'Fleet' ? (
+        <>
+          <div className="vehicles-stat-grid">
+            <StatCard label="Ready" value={readinessCounts.ready || 0} detail="No active warnings" tone="active" />
+            <StatCard label="Assigned" value={readinessCounts.assigned || 0} detail="Driver or route today" tone="purple" />
+            <StatCard label="Maintenance Soon" value={readinessCounts.maintenance_soon || 0} detail="Within 1,000 mi or 14 days" tone="warning" />
+            <StatCard label="Blocked" value={readinessCounts.blocked || 0} detail="Overdue or expired" tone="urgent" />
+          </div>
 
-      {vehiclesQuery.isLoading ? (
-        <div className="vehicle-grid">
-          {[0, 1].map((value) => (
-            <div className="card skeleton-card vehicle-card" key={value}>
-              <div className="skeleton-line skeleton-label" />
-              <div className="skeleton-line skeleton-value" />
-              <div className="skeleton-line skeleton-label" />
+          {vehiclesQuery.isLoading ? (
+        <div className="card vehicles-table-card">
+          <div className="vehicles-table-toolbar">
+            <div>
+              <div className="card-title">Fleet Inventory</div>
+              <div className="driver-meta">Vehicle records, availability, mileage, and registration status.</div>
             </div>
-          ))}
+          </div>
+          <div className="vehicles-table">
+            <div className="vehicles-table-header">
+              <span>Truck Number</span>
+              <span>Status</span>
+              <span>Driver / Route</span>
+              <span>Odometer</span>
+              <span>Next Service</span>
+              <span>Registration</span>
+              <span>Latest Issue</span>
+              <span>Actions</span>
+            </div>
+            {[0, 1, 2].map((value) => (
+              <div className="vehicles-table-row" key={value}>
+                {Array.from({ length: 8 }).map((_, index) => (
+                  <div className="skeleton-line skeleton-label" key={index} />
+                ))}
+              </div>
+            ))}
+          </div>
         </div>
       ) : (
-        <div className="vehicle-grid">
-          {vehicles.map((vehicle) => {
-            const statusMeta = getStatusMeta(vehicle);
-            const serviceProgress = getServiceProgress(vehicle);
-            const registrationStatus = getRegistrationStatus(vehicle);
+        <div className="card vehicles-table-card">
+          <div className="vehicles-table-toolbar">
+            <div>
+              <div className="card-title">Fleet Inventory</div>
+              <div className="driver-meta">Vehicle records, availability, mileage, and registration status.</div>
+            </div>
+            <div className="vehicles-table-toolbar-actions">
+              <input
+                className="text-field"
+                onChange={(event) => setVehicleSearch(event.target.value)}
+                placeholder="Search trucks by number or description"
+                type="search"
+                value={vehicleSearch}
+              />
+              <select
+                className="text-field vehicles-status-filter"
+                onChange={(event) => setVehicleStatusFilter(event.target.value)}
+                value={vehicleStatusFilter}
+              >
+                <option value="all">All Statuses</option>
+                <option value="ready">Ready</option>
+                <option value="assigned">Assigned</option>
+                <option value="maintenance_soon">Maintenance Soon</option>
+                <option value="blocked">Blocked</option>
+              </select>
+              <span className="driver-meta">{filteredVehicles.length} vehicle{filteredVehicles.length === 1 ? '' : 's'}</span>
+            </div>
+          </div>
 
-            return (
-              <div className="card vehicle-card" id={`vehicle-card-${vehicle.id}`} key={vehicle.id}>
-                <div className="vehicle-card-header">
-                  <div className="vehicle-card-title-wrap">
-                    <div className="vehicle-card-title">{vehicle.name}</div>
-                    <div className="vehicle-type-pill">{getVehicleTypeLabel(vehicle)}</div>
-                  </div>
-                  <span className={statusMeta.className}>{statusMeta.label}</span>
+          {vehicles.length ? (
+            <>
+              <div className="vehicles-table">
+                <div className="vehicles-table-header">
+                  <span>Truck Number</span>
+                  <span>Status</span>
+                  <span>Driver / Route</span>
+                  <span>Odometer</span>
+                  <span>Next Service</span>
+                  <span>Registration</span>
+                  <span>Latest Issue</span>
+                  <span>Actions</span>
                 </div>
+                {filteredVehicles.map((vehicle) => {
+                  const statusMeta = getReadinessMeta(vehicle);
+                  const maintenanceAlert = getNextServiceLabel(vehicle);
+                  const registration = getExpirationStatus(vehicle.registration_expiration, 'Registration');
+                  const insurance = getExpirationStatus(vehicle.insurance_expiration, 'Insurance');
+                  const latestIssue = getLatestIssueLabel(vehicle);
+                  const hasTruckType = Boolean(vehicle.truck_type || vehicle.custom_truck_type);
 
-                {vehicle.today_assignment ? (
-                  <div className="vehicle-assignment-row">
-                    <span>👤 {vehicle.today_assignment.driver_name}</span>
-                    <span>📍 Route {vehicle.today_assignment.work_area_name}</span>
-                  </div>
-                ) : null}
-
-                <div className="vehicle-details-row">
-                  <span>{vehicle.make} {vehicle.model} {vehicle.year}</span>
-                  <span className="vehicle-plate">{vehicle.plate}</span>
-                </div>
-
-                <div className={registrationStatus.className}>
-                  <div className="vehicle-meta-label">{registrationStatus.metaLabel}</div>
-                  <div className="vehicle-meta-value">{registrationStatus.label}</div>
-                </div>
-
-                <div className="vehicle-mileage-row">
-                  <div className="vehicle-mileage-value">🛞 {formatMileage(vehicle.current_mileage)} miles</div>
-                  {serviceProgress ? (
-                    <div className="service-progress-wrap">
-                      <div className="service-progress-bar">
-                        <div className="service-progress-fill" style={{ width: `${serviceProgress.fill}%` }} />
+                  return (
+                    <div
+                      className={`vehicles-table-row ${statusMeta.rowClassName}`}
+                      id={`vehicle-card-${vehicle.id}`}
+                      key={vehicle.id}
+                      onClick={() => openEditVehicle(vehicle)}
+                      onKeyDown={(event) => {
+                        if (event.key === 'Enter' || event.key === ' ') {
+                          event.preventDefault();
+                          openEditVehicle(vehicle);
+                        }
+                      }}
+                      role="button"
+                      tabIndex={0}
+                    >
+                      <div className="vehicles-table-primary">
+                        <strong>{vehicle.name}</strong>
+                        <span>{getVehicleDescription(vehicle)}</span>
+                        {!hasTruckType ? <span>Truck type missing</span> : null}
                       </div>
-                      {vehicle.service_due ? (
-                        <div className="service-overdue">⚠ Service overdue</div>
-                      ) : (
-                        <div className="service-remaining">{formatMileage(serviceProgress.milesRemaining)} miles until next service</div>
-                      )}
+                      <StatusBadge className={statusMeta.className} tone={statusMeta.tone}>{statusMeta.label}</StatusBadge>
+                      <div className="vehicles-table-primary">
+                        <strong>{getAssignedToLabel(vehicle)}</strong>
+                        <span>{vehicle.today_assignment?.work_area_name ? `Route ${vehicle.today_assignment.work_area_name}` : 'No route today'}</span>
+                      </div>
+                      <div className="vehicles-mileage-cell">
+                        <strong>{formatMileage(vehicle.current_mileage)} miles</strong>
+                      </div>
+                      <div className="vehicles-table-primary">
+                        <strong>{maintenanceAlert.itemLabel}</strong>
+                        <span>{maintenanceAlert.detailLabel}</span>
+                      </div>
+                      <div className="vehicles-table-primary">
+                        <strong>{registration.label}</strong>
+                        <span>{insurance.label}</span>
+                      </div>
+                      <div className="vehicles-table-primary">
+                        <strong>{latestIssue.label}</strong>
+                        <span>{latestIssue.detail}</span>
+                      </div>
+                      <div className="vehicles-table-actions">
+                        <button
+                          className="secondary-inline-button"
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            openOdometerEditor(vehicle);
+                          }}
+                          type="button"
+                        >
+                          Edit Odometer
+                        </button>
+                        <button
+                          className="secondary-inline-button"
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            openEditVehicle(vehicle);
+                          }}
+                          type="button"
+                        >
+                          Edit
+                        </button>
+                        {statusMeta.filter === 'maintenance_soon' ? (
+                          <button
+                            className="primary-inline-button"
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              setHistoryVehicle(vehicle);
+                            }}
+                            type="button"
+                          >
+                            Review
+                          </button>
+                        ) : null}
+                        {statusMeta.filter === 'blocked' ? (
+                          <button
+                            className="primary-inline-button"
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              setMaintenanceVehicle(vehicle);
+                              setMaintenanceForm(buildMaintenanceForm({ vehicle, settings: activeMaintenanceSettings }));
+                              setMaintenanceError('');
+                            }}
+                            type="button"
+                          >
+                            Fix
+                          </button>
+                        ) : null}
+                        <details className="vehicles-row-menu" onClick={(event) => event.stopPropagation()}>
+                          <summary aria-label={`More actions for ${vehicle.name}`}>•••</summary>
+                          <div className="vehicles-row-menu-panel">
+                            <button onClick={() => openEditVehicle(vehicle)} type="button">
+                              View Details
+                            </button>
+                            <button onClick={() => openOdometerEditor(vehicle)} type="button">
+                              Edit Odometer
+                            </button>
+                            <button
+                              onClick={() => {
+                                setMaintenanceVehicle(vehicle);
+                                setMaintenanceForm(buildMaintenanceForm({ vehicle, settings: activeMaintenanceSettings }));
+                                setMaintenanceError('');
+                              }}
+                              type="button"
+                            >
+                              Log Maintenance
+                            </button>
+                            <button onClick={() => setHistoryVehicle(vehicle)} type="button">
+                              View Maintenance History
+                            </button>
+                          </div>
+                        </details>
+                      </div>
                     </div>
-                  ) : null}
-                </div>
-
-                <div className="vehicle-service-row">
-                  <div>
-                    <div className="vehicle-meta-label">Last Service</div>
-                    <div className="vehicle-meta-value">{formatDate(vehicle.last_service_date)}</div>
-                  </div>
-                  <div className="vehicle-last-service-description">
-                    {vehicle.latest_maintenance?.description || vehicle.notes || 'No service notes yet'}
-                  </div>
-                </div>
-
-                <div className="vehicle-card-actions">
-                  <button
-                    className="secondary-inline-button"
-                    onClick={() => openEditVehicle(vehicle)}
-                    type="button"
-                  >
-                    Edit Vehicle
-                  </button>
-                  <button
-                    className="secondary-inline-button"
-                    onClick={() => {
-                      setMaintenanceVehicle(vehicle);
-                      setMaintenanceForm(buildMaintenanceForm({ vehicle, settings: activeMaintenanceSettings }));
-                      setMaintenanceError('');
-                    }}
-                    type="button"
-                  >
-                    Add Service Record
-                  </button>
-                  <button
-                    className="primary-inline-button"
-                    onClick={() => setHistoryVehicle(vehicle)}
-                    type="button"
-                  >
-                    View History
-                  </button>
-                </div>
+                  );
+                })}
               </div>
-            );
-          })}
+              {!filteredVehicles.length ? (
+                <div className="labor-empty-state">No vehicles match the current search or status filter.</div>
+              ) : null}
+              <div className="maintenance-alert-legend">
+                <span><strong>OK:</strong> More than 1,000 miles to next service</span>
+                <span><strong>Due Soon:</strong> Less than 1,000 miles to next service</span>
+                <span><strong>Overdue:</strong> Service interval exceeded</span>
+              </div>
+            </>
+          ) : (
+            <div className="labor-empty-state">No vehicles are in this fleet yet.</div>
+          )}
         </div>
-      )}
+          )}
+        </>
+      ) : null}
+
+      {activeVehiclesTab === 'Maintenance' ? (
+        <>
+          <MaintenanceSettingsCard
+            draft={activeMaintenanceSettings}
+            editingIndex={maintenanceSettingsEditingIndex}
+            isExpanded={isMaintenanceProgramExpanded}
+            isLoading={maintenanceSettingsQuery.isLoading}
+            isSaving={saveMaintenanceSettingsMutation.isPending}
+            onAddItem={() => openMaintenanceItemEditor()}
+            onChange={updateMaintenanceSetting}
+            onCollapse={() => {
+              setMaintenanceSettingsEditingIndex(null);
+              setIsMaintenanceProgramExpanded(false);
+            }}
+            onDeleteItem={deleteMaintenanceItem}
+            onEditInline={setMaintenanceSettingsEditingIndex}
+            onEditItem={openMaintenanceItemEditor}
+            onExpand={() => setIsMaintenanceProgramExpanded(true)}
+            onSave={() => saveMaintenanceSettingsMutation.mutate()}
+          />
+          <VehiclePlaceholderPanel
+            title="Maintenance Records"
+            description="Service records, upcoming service, oil changes, tires, brakes, filters, and repair records will live here as this section grows."
+          />
+        </>
+      ) : null}
+
+      {activeVehiclesTab === 'Inspections' ? (
+        <VehiclePlaceholderPanel
+          title="Inspections"
+          description="Driver submissions, weekly inspections, daily issue notes, completed inspections, and manager review items will live here."
+        />
+      ) : null}
+
+      {activeVehiclesTab === 'Settings' && vehicleSettingsView === 'overview' ? (
+        <VehicleSettingsPanel
+          maintenanceRequirements={activeMaintenanceRequirementsDraft}
+          onOpenChecklistTemplate={() => setVehicleSettingsView('checklist-template')}
+          onOpenMaintenanceRequirements={() => setVehicleSettingsView('maintenance-requirements')}
+        />
+      ) : null}
+
+      {activeVehiclesTab === 'Settings' && vehicleSettingsView === 'maintenance-requirements' ? (
+        <MaintenanceRequirementsScreen
+          draft={activeMaintenanceRequirementsDraft}
+          errorMessage={maintenanceRequirementsError}
+          isLoading={maintenanceRequirementsQuery.isLoading}
+          isSaving={saveMaintenanceRequirementsMutation.isPending}
+          onBack={() => setVehicleSettingsView('overview')}
+          onChangeCustomDaily={updateCustomDailyRequirement}
+          onChangeCustomWeekly={updateCustomWeeklyRequirement}
+          onChangeMode={updateMaintenanceRequirementsMode}
+          onChangeWeeklyDay={updateMaintenanceRequirementsWeeklyDay}
+          onSave={() => saveMaintenanceRequirementsMutation.mutate()}
+        />
+      ) : null}
+
+      {activeVehiclesTab === 'Settings' && vehicleSettingsView === 'checklist-template' ? (
+        <ChecklistTemplateScreen
+          errorMessage={checklistTemplateError}
+          fields={activeChecklistTemplateFields}
+          isLoading={checklistTemplateQuery.isLoading}
+          isSaving={saveChecklistTemplateMutation.isPending}
+          onBack={() => setVehicleSettingsView('overview')}
+          onSave={() => saveChecklistTemplateMutation.mutate()}
+          onToggleField={updateChecklistTemplateField}
+        />
+      ) : null}
 
       {isVehicleModalOpen ? (
         <VehicleModal
@@ -1064,13 +2597,24 @@ export default function VehiclesPage() {
       ) : null}
 
       {editingVehicle ? (
-        <EditVehicleModal
+        <VehicleDetailsDrawer
           errorMessage={editVehicleError}
           form={editVehicleForm}
           isSubmitting={updateVehicleMutation.isPending}
+          onAddService={() => {
+            setMaintenanceVehicle(editingVehicle);
+            setMaintenanceForm(buildMaintenanceForm({ vehicle: editingVehicle, settings: activeMaintenanceSettings }));
+            setMaintenanceError('');
+            setEditingVehicle(null);
+          }}
           onChange={updateEditVehicleField}
           onClose={() => setEditingVehicle(null)}
           onSubmit={handleEditVehicle}
+          onViewHistory={() => {
+            setHistoryVehicle(editingVehicle);
+            setEditingVehicle(null);
+          }}
+          vehicle={editingVehicle}
         />
       ) : null}
 
@@ -1082,13 +2626,43 @@ export default function VehiclesPage() {
           onChange={updateMaintenanceField}
           onClose={() => setMaintenanceVehicle(null)}
           onSubmit={handleCreateMaintenance}
+          serviceTypeOptions={serviceTypeOptions}
           vehicle={maintenanceVehicle}
         />
       ) : null}
 
+      <MaintenanceItemModal
+        errorMessage={maintenanceItemError}
+        form={maintenanceItemEditor?.form || emptyMaintenanceItemForm}
+        isOpen={Boolean(maintenanceItemEditor)}
+        mode={maintenanceItemEditor?.mode || 'add'}
+        onChange={updateMaintenanceItemEditorField}
+        onClose={() => {
+          setMaintenanceItemEditor(null);
+          setMaintenanceItemError('');
+        }}
+        onSubmit={handleSaveMaintenanceItem}
+      />
+
+      <OdometerModal
+        errorMessage={odometerError}
+        form={odometerForm}
+        isSaving={updateOdometerMutation.isPending}
+        onChange={updateOdometerField}
+        onClose={() => {
+          setOdometerVehicle(null);
+          setOdometerForm(emptyOdometerForm);
+          setOdometerError('');
+        }}
+        onConfirmLower={(confirmedLower) => setOdometerForm((current) => ({ ...current, confirmedLower }))}
+        onSubmit={handleSaveOdometer}
+        vehicle={odometerVehicle}
+      />
+
       <MaintenanceHistoryModal
         onClose={() => setHistoryVehicle(null)}
         open={Boolean(historyVehicle)}
+        selectedCsaId={selectedCsaId}
         vehicle={historyVehicle}
       />
     </section>

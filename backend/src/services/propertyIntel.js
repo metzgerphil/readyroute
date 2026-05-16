@@ -57,10 +57,39 @@ function buildPropertyIntel(stop, relatedStops) {
     .filter((candidate) => candidate?.id !== stop?.id)
     .map((candidate) => ({
       id: candidate.id,
+      route_stop_id: candidate.id,
+      route_id: candidate.route_id || null,
       sequence_order: candidate.sequence_order,
       address: candidate.address,
+      address_line2: candidate.address_line2 || null,
       unit: candidate?.apartment_intelligence?.unit_number || extractUnitNumber(candidate?.address_line2) || null,
-      status: candidate.status
+      status: candidate.status,
+      sid: candidate.sid || null,
+      contact_name: candidate.contact_name || null,
+      business_name: candidate.business_name || null,
+      company_name: candidate.company_name || null,
+      primary_phone: candidate.primary_phone || null,
+      alternate_phone: candidate.alternate_phone || null,
+      email: candidate.email || null,
+      stop_type: candidate.stop_type || null,
+      has_pickup: Boolean(candidate.has_pickup),
+      has_delivery: candidate.has_delivery === false ? false : Boolean(candidate.has_delivery || !candidate.has_pickup),
+      is_pickup: Boolean(candidate.is_pickup),
+      package_count: Array.isArray(candidate.packages)
+        ? candidate.packages.length
+        : Number(candidate.package_count || candidate.pkg_count || candidate.pickup_package_count || 0),
+      exception_code: candidate.exception_code || null,
+      delivery_type_code: candidate.delivery_type_code || null,
+      scanned_at: candidate.scanned_at || null,
+      completed_at: candidate.completed_at || null,
+      completed_by_driver_id: candidate.completed_by_driver_id || null,
+      has_note: Boolean(candidate.has_note),
+      notes: candidate.notes || candidate.note_text || null,
+      note_text: candidate.note_text || null,
+      pod_photo_url: candidate.pod_photo_url || null,
+      pod_signature_url: candidate.pod_signature_url || candidate.signature_url || null,
+      signer_name: candidate.signer_name || null,
+      age_confirmed: Boolean(candidate.age_confirmed)
     }))
     .sort((a, b) => Number(a.sequence_order || 0) - Number(b.sequence_order || 0));
 
@@ -169,6 +198,7 @@ function attachDerivedPropertyIntelToStops(stops) {
 
     return {
       ...stop,
+      address_group_key: key || null,
       property_intel: buildPropertyIntel(stop, relatedStops)
     };
   });

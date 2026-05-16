@@ -12,6 +12,7 @@ import {
   getRouteWarnings,
   getStopIndicatorLabels
 } from '../services/managerRouteDetail';
+import { getRouteDisplayName } from '../services/managerOperations';
 
 const googleMapsApiKey = process.env.EXPO_PUBLIC_GOOGLE_MAPS_API_KEY || '';
 const shouldUseGoogleProvider = Platform.OS !== 'ios' || Boolean(String(googleMapsApiKey).trim());
@@ -88,8 +89,8 @@ export default function ManagerRouteDetailScreen({ navigation, route }) {
       setDetailPayload(detailResponse.data || null);
       setDriverPosition(driverPositionResponse.data || null);
       setErrorMessage('');
-    } catch (error) {
-      setErrorMessage(error.response?.data?.error || 'Unable to load route detail right now.');
+    } catch (_error) {
+      setErrorMessage('Unable to load route detail right now.');
     } finally {
       setIsLoading(false);
       setIsRefreshing(false);
@@ -125,7 +126,7 @@ export default function ManagerRouteDetailScreen({ navigation, route }) {
             <View style={styles.heroCopy}>
               <Text style={styles.eyebrow}>Route Drilldown</Text>
               <Text style={styles.heroTitle}>
-                {routeSummary.work_area_name ? `Route ${routeSummary.work_area_name}` : 'Route detail'}
+                {routeSummary.work_area_name ? `Route ${getRouteDisplayName(routeSummary)}` : 'Route detail'}
               </Text>
               <Text style={styles.heroSubtitle}>
                 {routeSummary.driver_name || 'Unassigned'} • {routeSummary.vehicle_name || 'No vehicle'}
@@ -196,13 +197,6 @@ export default function ManagerRouteDetailScreen({ navigation, route }) {
                 style={styles.map}
                 testID="manager-route-detail-map"
               >
-                {mapModel.routeMarker ? (
-                  <Marker coordinate={mapModel.routeMarker.coordinate} testID="route-summary-marker">
-                    <View style={styles.routeMarker}>
-                      <Text style={styles.routeMarkerText}>{mapModel.routeMarker.workAreaName}</Text>
-                    </View>
-                  </Marker>
-                ) : null}
                 {mapModel.driverMarker ? (
                   <Marker coordinate={mapModel.driverMarker.coordinate} testID="driver-position-marker">
                     <View style={styles.driverMarker}>
@@ -212,8 +206,26 @@ export default function ManagerRouteDetailScreen({ navigation, route }) {
                 ) : null}
                 {mapModel.stopMarkers.map((stopMarker) => (
                   <Marker coordinate={stopMarker.coordinate} key={stopMarker.key} testID={`detail-stop-marker-${stopMarker.key}`}>
-                    <View style={[styles.stopMarker, stopMarker.status === 'delivered' ? styles.stopMarkerDone : null]}>
-                      <Text style={styles.stopMarkerText}>{stopMarker.sequenceOrder || '•'}</Text>
+                    <View
+                      style={[
+                        styles.stopMarker,
+                        String(stopMarker.sequenceOrder || '').length >= 3 ? styles.stopMarkerLarge : null,
+                        stopMarker.status === 'delivered' ? styles.stopMarkerDone : null
+                      ]}
+                    >
+                      <Text
+                        style={[
+                          styles.stopMarkerText,
+                          String(stopMarker.sequenceOrder || '').length >= 3 ? styles.stopMarkerTextLarge : null
+                        ]}
+                      >
+                        {stopMarker.sequenceOrder || '•'}
+                      </Text>
+                      {stopMarker.requiresSignature ? (
+                        <View style={styles.stopMarkerSignatureBadge}>
+                          <Text style={styles.stopMarkerSignatureIcon}>✎</Text>
+                        </View>
+                      ) : null}
                     </View>
                   </Marker>
                 ))}
@@ -498,7 +510,12 @@ const styles = StyleSheet.create({
     borderWidth: 2,
     height: 28,
     justifyContent: 'center',
+    position: 'relative',
     width: 28
+  },
+  stopMarkerLarge: {
+    height: 34,
+    width: 34
   },
   stopMarkerDone: {
     borderColor: '#16a34a'
@@ -507,6 +524,28 @@ const styles = StyleSheet.create({
     color: '#173042',
     fontSize: 11,
     fontWeight: '800'
+  },
+  stopMarkerTextLarge: {
+    fontSize: 12
+  },
+  stopMarkerSignatureBadge: {
+    alignItems: 'center',
+    backgroundColor: '#173042',
+    borderColor: '#ffffff',
+    borderRadius: 999,
+    borderWidth: 1.5,
+    height: 15,
+    justifyContent: 'center',
+    position: 'absolute',
+    right: -6,
+    top: -6,
+    width: 15
+  },
+  stopMarkerSignatureIcon: {
+    color: '#ffffff',
+    fontSize: 9,
+    fontWeight: '900',
+    lineHeight: 10
   },
   stopsCard: {
     backgroundColor: '#ffffff',

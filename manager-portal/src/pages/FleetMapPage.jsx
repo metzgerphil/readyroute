@@ -1,22 +1,27 @@
 import { format } from 'date-fns';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 
 import api from '../services/api';
+import { PageHeader } from '../components/PortalDesignSystem';
+import { useSelectedCsa } from '../context/SelectedCsaContext';
 import { createDriverPositionMarker } from '../utils/stopMarkers';
+import { buildTelHref, getStopContactDetails } from '../utils/contactInfo';
 import { getTodayString, loadStoredOperationsDate, saveStoredOperationsDate } from '../utils/operationsDate';
+import { sortRoutesByWorkArea } from '../utils/routeSort';
 import './FleetMapPage.css';
 
 const GOOGLE_MAPS_KEY = import.meta.env.VITE_GOOGLE_MAPS_KEY;
 const GOOGLE_MAPS_SRC = GOOGLE_MAPS_KEY
   ? `https://maps.googleapis.com/maps/api/js?key=${GOOGLE_MAPS_KEY}&v=weekly`
   : null;
+const GOOGLE_MAPS_PLACEHOLDER_KEYS = new Set(['your_key_here', 'your_production_key']);
 
 let googleMapsScriptPromise = null;
 
 function loadGoogleMapsScript() {
-  if (!GOOGLE_MAPS_KEY || GOOGLE_MAPS_KEY === 'your_key_here') {
+  if (!GOOGLE_MAPS_KEY || GOOGLE_MAPS_PLACEHOLDER_KEYS.has(GOOGLE_MAPS_KEY)) {
     return Promise.reject(new Error('missing_google_maps_key'));
   }
 
@@ -73,6 +78,10 @@ function getFriendlyDate(dateValue) {
   return format(new Date(`${dateValue}T12:00:00`), 'MMMM d, yyyy');
 }
 
+function isMobileMapViewport() {
+  return typeof window !== 'undefined' && window.matchMedia('(max-width: 820px)').matches;
+}
+
 function getStatusLabel(status) {
   switch (status) {
     case 'in_progress':
@@ -97,6 +106,30 @@ function getDisplayStatusLabel(route) {
 
 function getProgressText(route) {
   return `${Number(route.completed_stops || 0)} / ${Number(route.total_stops || 0)} stops`;
+}
+
+function escapeHtml(value) {
+  return String(value ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+function getPickupStopCount(route) {
+  const summaryCount = Number(route?.pickup_stops ?? route?.pickup_stop_count ?? route?.total_pickup_stops);
+
+  if (Number.isFinite(summaryCount)) {
+    return summaryCount;
+  }
+
+  return (route?.stops || []).filter((stop) => (
+    stop?.has_pickup ||
+    stop?.is_pickup ||
+    stop?.stop_type === 'pickup' ||
+    stop?.stop_type === 'combined'
+  )).length;
 }
 
 const ROUTE_COLORS = [
@@ -135,6 +168,16 @@ export default function FleetMapPage() {
   const [mapError, setMapError] = useState('');
   const [mapReady, setMapReady] = useState(false);
   const [selectedRouteId, setSelectedRouteId] = useState(null);
+  const [mapMountNonce, setMapMountNonce] = useState(0);
+  const { selectedCsaId } = useSelectedCsa();
+
+  const handleMapContainerRef = useCallback((node) => {
+    mapContainerRef.current = node;
+
+    if (node) {
+      setMapMountNonce((value) => value + 1);
+    }
+  }, []);
 
   useEffect(() => {
     saveStoredOperationsDate(date);
@@ -144,14 +187,15 @@ export default function FleetMapPage() {
   }, [date, searchParams, setSearchParams]);
 
   const routesQuery = useQuery({
-    queryKey: ['fleet-map-routes', date],
+    queryKey: ['fleet-map-routes', selectedCsaId, date],
+    enabled: Boolean(selectedCsaId),
     queryFn: async () => {
       const response = await api.get('/manager/routes', { params: { date } });
       return response.data?.routes || [];
     }
   });
 
-  const routes = routesQuery.data || [];
+  const routes = useMemo(() => sortRoutesByWorkArea(routesQuery.data || []), [routesQuery.data]);
   const hasNoRoutes = !routesQuery.isLoading && routes.length === 0;
   const routesWithColors = useMemo(
     () => routes.map((route, index) => ({ ...route, routeColor: getRouteColor(route, index) })),
@@ -159,15 +203,15 @@ export default function FleetMapPage() {
   );
 
   const driverPositionsQuery = useQuery({
-    queryKey: ['fleet-map-driver-positions', date, routesWithColors.map((route) => route.id).join(',')],
-    enabled: routesWithColors.length > 0,
+    queryKey: ['fleet-map-driver-positions', selectedCsaId, date, routesWithColors.map((route) => route.id).join(',')],
+    enabled: Boolean(selectedCsaId) && routesWithColors.length > 0,
     queryFn: async () => {
       const responses = await Promise.all(
         routesWithColors.map(async (route) => {
           try {
             const response = await api.get(`/manager/routes/${route.id}/driver-position`);
             return { routeId: route.id, position: response.data };
-          } catch (error) {
+          } catch {
             return { routeId: route.id, position: null };
           }
         })
@@ -181,7 +225,7 @@ export default function FleetMapPage() {
     refetchInterval: 30000
   });
 
-  const driverPositions = driverPositionsQuery.data || {};
+  const driverPositions = useMemo(() => driverPositionsQuery.data || {}, [driverPositionsQuery.data]);
 
   const routeRows = useMemo(
     () =>
@@ -197,6 +241,7 @@ export default function FleetMapPage() {
     () => routeRows.reduce((sum, row) => sum + row.stops.length, 0),
     [routeRows]
   );
+  const selectedRoute = routesWithColors.find((route) => route.id === selectedRouteId) || null;
 
   useEffect(() => {
     let active = true;
@@ -227,6 +272,7 @@ export default function FleetMapPage() {
             zoom: 11,
             mapTypeId: 'roadmap',
             mapTypeControl: true,
+            gestureHandling: isMobileMapViewport() ? 'cooperative' : 'auto',
             streetViewControl: true,
             fullscreenControl: true,
             zoomControl: true
@@ -257,7 +303,7 @@ export default function FleetMapPage() {
     return () => {
       active = false;
     };
-  }, [hasNoRoutes]);
+  }, [hasNoRoutes, mapMountNonce]);
 
   useEffect(() => {
     const google = window.google;
@@ -291,6 +337,10 @@ export default function FleetMapPage() {
       }
 
       stops.forEach((stop) => {
+        const contact = getStopContactDetails(stop);
+        const phoneForPopup = contact.primaryPhone || contact.alternatePhone;
+        const phoneHref = buildTelHref(phoneForPopup);
+        const routeUrl = `/routes/${encodeURIComponent(route.id)}?date=${encodeURIComponent(date)}`;
         const stopMarker = new google.maps.Marker({
           map,
           position: { lat: Number(stop.lat), lng: Number(stop.lng) },
@@ -311,10 +361,23 @@ export default function FleetMapPage() {
           setSelectedRouteId(route.id);
           infoWindow.setContent(`
             <div style="min-width:220px; color:#173042; padding:8px 6px;">
-              <div style="font-size:14px; font-weight:900; color:${route.routeColor};">Route ${route.work_area_name || '—'}</div>
-              <div style="margin-top:4px; font-size:13px; font-weight:900;">Stop ${stop.sequence_order}</div>
-              <div style="margin-top:6px; font-size:12px; color:#374151;">${stop.address || 'No address available'}</div>
-              <div style="margin-top:8px; font-size:12px; color:#5f6b76;">${route.driver_name || 'Unassigned driver'}</div>
+              <div style="font-size:14px; font-weight:900; color:${escapeHtml(route.routeColor)};">Route ${escapeHtml(route.work_area_name || '—')}</div>
+              <div style="margin-top:4px; font-size:13px; font-weight:900;">Stop ${escapeHtml(stop.sequence_order || '—')}</div>
+              <div style="margin-top:6px; font-size:12px; color:#374151;">${escapeHtml(stop.address || 'No address available')}</div>
+              ${
+                contact.hasAny
+                  ? `<div style="margin-top:8px; padding:7px 8px; border-radius:10px; background:#f0fdfa; color:#0f766e; font-size:12px; font-weight:800;">
+                      ${escapeHtml(contact.contactName || contact.businessName || 'Contact info on manifest')}
+                      ${
+                        phoneForPopup
+                          ? `<br/>${phoneHref ? `<a href="${escapeHtml(phoneHref)}" style="color:#0f766e; text-decoration:none;">${escapeHtml(phoneForPopup)}</a>` : escapeHtml(phoneForPopup)}`
+                          : ''
+                      }
+                    </div>`
+                  : ''
+              }
+              <div style="margin-top:8px; font-size:12px; color:#5f6b76;">${escapeHtml(route.driver_name || 'Unassigned driver')}</div>
+              <a href="${escapeHtml(routeUrl)}" style="display:inline-flex; margin-top:8px; color:#ff6200; font-size:12px; font-weight:900; text-decoration:none;">Open route details</a>
             </div>
           `);
           infoWindow.open({ anchor: stopMarker, map });
@@ -386,36 +449,50 @@ export default function FleetMapPage() {
 
   return (
     <section className="page-section fleet-map-page">
-      <div className="page-header">
-        <div>
-          <h1>Fleet Map</h1>
-          <p>{`${totalVisibleStops} stop points across ${routesWithColors.length} routes for ${getFriendlyDate(date)}`}</p>
-        </div>
-      </div>
-
-      <div className="card fleet-map-toolbar">
-        <label className="route-page-field">
-          <span>Date</span>
-          <input className="date-field route-toolbar-input" type="date" value={date} onChange={(event) => setDate(event.target.value)} />
-        </label>
-      </div>
+      <PageHeader
+        title="Fleet Map"
+        description={`${totalVisibleStops} stop points across ${routesWithColors.length} routes for ${getFriendlyDate(date)}`}
+        actions={(
+          <>
+            <label className="route-page-field fleet-map-date-field">
+              <span>Date</span>
+              <input className="date-field route-toolbar-input" type="date" value={date} onChange={(event) => setDate(event.target.value)} />
+            </label>
+            <button className="secondary-button fleet-map-filter-button" disabled type="button">
+              Filters
+            </button>
+          </>
+        )}
+      />
 
       <div className="fleet-map-layout">
         <div className="card fleet-map-canvas-card">
-          <div ref={mapContainerRef} className="fleet-map-canvas" />
+          <div className="fleet-map-card-header">
+            <div>
+              <div className="card-title">Dispatch map</div>
+              <div className="fleet-map-subtitle">
+                Google map controls include map, satellite, zoom, street view, and fullscreen.
+              </div>
+            </div>
+            {selectedRoute ? (
+              <div className="fleet-map-selected-route" style={{ borderColor: selectedRoute.routeColor }}>
+                Route {selectedRoute.work_area_name || '--'}
+              </div>
+            ) : null}
+          </div>
+          <div ref={handleMapContainerRef} className="fleet-map-canvas" />
           {hasNoRoutes ? (
             <div className="fleet-map-empty-state">
-              <div className="fleet-map-empty-state-title">No routes loaded for this date yet.</div>
+              <div className="fleet-map-empty-state-title">No routes mapped for this date</div>
               <p>
-                The fleet map will populate automatically once FedEx routes sync in or after you upload a route from
-                the Manifest page.
+                Sync routes or upload a manifest to view them here.
               </p>
               <div className="fleet-map-empty-state-actions">
                 <button className="primary-cta" onClick={() => navigate(`/manifest?date=${date}&action=sync`)} type="button">
-                  Open Route Sync
+                  Sync routes
                 </button>
                 <button className="secondary-button" onClick={() => navigate(`/manifest?date=${date}`)} type="button">
-                  Open Manifest
+                  Upload manifest
                 </button>
               </div>
             </div>
@@ -424,39 +501,52 @@ export default function FleetMapPage() {
         </div>
 
         <aside className="card fleet-map-summary-card">
-          <div className="card-title">Active Routes</div>
+          <div className="fleet-map-panel-header">
+            <div>
+              <div className="card-title">Active Routes</div>
+              <div className="fleet-map-subtitle">{routesWithColors.length} route{routesWithColors.length === 1 ? '' : 's'} visible</div>
+            </div>
+          </div>
           {routesQuery.isLoading ? <div className="fleet-map-empty">Loading routes...</div> : null}
           {!routesQuery.isLoading && routesWithColors.length === 0 ? (
             <div className="fleet-map-empty">Waiting for route sync or manual upload.</div>
           ) : null}
-          <div className="fleet-map-route-key">
-            {routesWithColors.map((route) => (
-              <div className="fleet-map-route-key-row" key={route.id}>
-                <span className="fleet-map-route-key-dot" style={{ backgroundColor: route.routeColor }} />
-                <span>{route.work_area_name || '—'}</span>
-              </div>
-            ))}
-          </div>
           <div className="fleet-map-summary-list">
-            {routesWithColors.map((route) => (
+            {routesWithColors.map((route) => {
+              const pickupStopCount = getPickupStopCount(route);
+
+              return (
               <button
                 key={route.id}
                 type="button"
                 className={`fleet-map-summary-row${selectedRouteId === route.id ? ' active' : ''}`}
+                style={{ '--route-color': route.routeColor }}
                 onClick={() => setSelectedRouteId(route.id)}
               >
                 <div className="fleet-map-summary-topline">
-                  <strong>{route.work_area_name || '—'}</strong>
+                  <span className="fleet-map-route-identity">
+                    <span className="fleet-map-route-key-dot" style={{ backgroundColor: route.routeColor }} />
+                    <strong>Route {route.work_area_name || '—'}</strong>
+                  </span>
                   <span className={`fleet-map-status-pill ${route.status || 'pending'}`}>{getDisplayStatusLabel(route)}</span>
                 </div>
-                <div className="fleet-map-summary-driver">{route.driver_name || 'Unassigned'}</div>
-                <div className="fleet-map-summary-progress">{getProgressText(route)}</div>
-                <div className="fleet-map-summary-muted">
-                  {route.stops?.length ? `${route.stops.length} mapped points` : 'No mapped stops'}
+                <div className="fleet-map-summary-driver">{route.driver_name || 'Unassigned driver'}</div>
+                <div className="fleet-map-summary-metrics">
+                  <span>{getProgressText(route)}</span>
+                  <span>{route.stops?.length ? `${route.stops.length} mapped points` : 'No mapped stops'}</span>
                 </div>
-                {!driverPositions[route.id]?.lat ? <div className="fleet-map-summary-muted">Driver GPS not live yet</div> : null}
+                <div className="fleet-map-pickup-status">
+                  <span className="fleet-map-pickup-icon" aria-hidden="true">
+                    <svg viewBox="0 0 24 24">
+                      <path d="M12 3 20 7.5v8.8l-8 4.7-8-4.7V7.5L12 3Z" />
+                      <path d="M4.5 7.8 12 12l7.5-4.2M12 12v8.3M12 5.8v6.1m-3.2-3 3.2-3.2 3.2 3.2" />
+                    </svg>
+                  </span>
+                  {pickupStopCount} pickup{pickupStopCount === 1 ? '' : 's'}
+                </div>
               </button>
-            ))}
+              );
+            })}
           </div>
         </aside>
       </div>

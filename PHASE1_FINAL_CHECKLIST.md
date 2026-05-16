@@ -119,7 +119,7 @@ That means:
 - [ ] Login works in the browser at the Vercel production URL
 - [ ] Browser refreshes on nested routes do not 404
   Reference:
-  [VERCEL_DEPLOY.md](/Users/phillipmetzger/readyroute/VERCEL_DEPLOY.md)
+  [DEPLOYMENT.md](/Users/phillipmetzger/readyroute/DEPLOYMENT.md)
 
 ### Dashboard
 

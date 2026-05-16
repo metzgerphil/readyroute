@@ -57,7 +57,7 @@ export default function StartTrialPage() {
       window.location.assign(checkoutUrl);
     } catch (error) {
       if (!error.response) {
-        setErrorMessage('ReadyRoute could not reach the backend. Please try again.');
+        setErrorMessage('ReadyRoute is temporarily unavailable. Please try again.');
       } else {
         setErrorMessage(error.response?.data?.error || 'Could not start your free trial.');
       }
@@ -75,24 +75,24 @@ export default function StartTrialPage() {
             <span className="brand-ready">ready</span>
             <span className="brand-route">Route</span>
           </div>
-          <h1 className="login-hero-title">Start your 14-day trial and launch your CSA the right way.</h1>
+          <h1 className="login-hero-title">Start your 14-day trial and set up your workspace.</h1>
           <p className="login-hero-copy">
-            Create your company workspace, save your billing method once, and move straight into setup for VEDR,
-            managers, drivers, vehicles, and first-route import.
+            Create your company workspace, save your billing method, and continue into setup for managers,
+            drivers, vehicles, VEDR, and route import.
           </p>
 
           <div className="login-hero-points">
             <div className="login-hero-point">
-              <strong>$15 per vehicle per month</strong>
-              <span>Your card is saved now, and billing begins automatically after your full 14-day trial.</span>
+              <strong>$15 per active vehicle/month</strong>
+              <span>Simple monthly pricing starts after the 14-day trial unless you cancel first.</span>
             </div>
             <div className="login-hero-point">
               <strong>Guided setup</strong>
-              <span>We’ll drop you into a clean company setup flow as soon as checkout is complete.</span>
+              <span>Continue into a clean company setup flow after checkout is complete.</span>
             </div>
             <div className="login-hero-point">
-              <strong>No re-entry later</strong>
-              <span>Your company account and lead manager access are created before onboarding starts.</span>
+              <strong>Manager access</strong>
+              <span>Your company account and lead manager sign-in are created before setup starts.</span>
             </div>
           </div>
         </section>
@@ -155,7 +155,7 @@ export default function StartTrialPage() {
             {errorMessage ? <div className="error-banner">{errorMessage}</div> : null}
 
             <div className="trial-billing-note">
-              Start your free trial at $15 per vehicle per month. Based on {estimatedVehicleCount || 0} vehicles,
+              Start your free trial at $15 per active vehicle per month. Based on {estimatedVehicleCount || 0} vehicles,
               your estimated monthly total after trial is ${estimatedMonthlyTotal.toLocaleString()}/month. Billing
               begins automatically in 14 days unless you cancel first.
             </div>

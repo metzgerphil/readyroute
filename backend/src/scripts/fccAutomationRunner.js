@@ -5,6 +5,7 @@ const path = require('path');
 
 const { chromium } = require('playwright');
 const { renderTemplate, resolveFccAutomationConfig } = require('../services/fccAutomationConfig');
+const { getFedExExceptionCode } = require('../services/fedexStatusCodes');
 
 function requiredEnv(name) {
   const value = String(process.env[name] || '').trim();
@@ -218,7 +219,7 @@ async function submitPeopleSoftLinkInAnyFrame(page, labelPattern) {
 
 function buildManifestUrl(config, workDate) {
   if (!config.manifestUrl) {
-    throw new Error('FEDEX_FCC_MANIFEST_URL or FEDEX_FCC_MANIFEST_URL_TEMPLATE is required');
+    return '';
   }
 
   return renderTemplate(config.manifestUrl, { workDate });
@@ -252,9 +253,13 @@ function isMeaningfulWorkAreaName(value) {
       text.length <= 120 &&
       text.toLowerCase() !== 'null' &&
       !/[{};=]/.test(text) &&
-      !/\b(function|var|getElementById|window|document)\b/i.test(text) &&
+      !/\b(function|var|getElementById|window|document|password|reset|calling|call|phone|support|help|sign\s*in|login)\b/i.test(text) &&
       extractRouteCode(text)
   );
+}
+
+async function hasFccLoginOrHelpText(page) {
+  return pageHasText(page, /passwords?\s+can\s+be\s+reset|sign\s+in\s+to|purpleid|mybizaccount|forgot\s+password/i);
 }
 
 function colorLooksGreen(color) {
@@ -288,43 +293,29 @@ function toInt(value) {
   return Number.isFinite(parsed) ? parsed : 0;
 }
 
-function normalizeExceptionCode(value) {
+function normalizeExceptionCode(value, options = {}) {
   const raw = normalizeText(value);
 
   if (!raw) {
     return null;
   }
 
-  const pickupCodeMatch = raw.match(/\b(P\d{1,3})\b/i);
-  if (pickupCodeMatch) {
-    return pickupCodeMatch[1].toUpperCase();
-  }
-
-  const explicitCodeMatch = raw.match(/\b(?:code|status|exception)\s*#?:?\s*(\d{1,3})\b/i);
-  if (explicitCodeMatch) {
-    return Number(explicitCodeMatch[1]) > 0 ? explicitCodeMatch[1].padStart(2, '0') : null;
-  }
-
-  const loneCodeMatch = raw.match(/^\d{1,3}$/);
-  if (loneCodeMatch) {
-    return Number(raw) > 0 ? raw.padStart(2, '0') : null;
-  }
-
-  return null;
+  return getFedExExceptionCode(raw, options);
 }
 
-function extractExceptionCode(cells) {
+function extractExceptionCode(cells, deliveryPickup) {
   const trailingCells = cells.slice(10).map(normalizeText).filter(Boolean);
+  const pickup = /\bpick\s*up\b|\bpickup\b/i.test(normalizeText(deliveryPickup));
 
   for (const cell of trailingCells) {
-    const code = normalizeExceptionCode(cell);
+    const code = normalizeExceptionCode(cell, { pickup });
     if (code) {
       return code;
     }
   }
 
   const combined = trailingCells.join(' ');
-  return normalizeExceptionCode(combined);
+  return normalizeExceptionCode(combined, { pickup });
 }
 
 function extractScanTimestamp(cells, workDate) {
@@ -500,9 +491,18 @@ async function clickPortalManifestEntry(page, config) {
       const visible = await candidate.isVisible({ timeout: 1000 }).catch(() => false);
 
       if (visible) {
+        await candidate.scrollIntoViewIfNeeded({ timeout: 3000 }).catch(() => null);
         await Promise.all([
           page.waitForLoadState('domcontentloaded').catch(() => null),
-          candidate.click({ force: true })
+          candidate.click({ force: true, timeout: 8000 }).catch(async (error) => {
+            const message = String(error?.message || error || '');
+
+            if (!/outside of the viewport|intercepts pointer events|not visible|Timeout/i.test(message)) {
+              throw error;
+            }
+
+            await candidate.evaluate((element) => element.click());
+          })
         ]);
         await page.waitForLoadState('networkidle', { timeout: 20000 }).catch(() => null);
         await page.waitForTimeout(5000);
@@ -534,9 +534,20 @@ async function clickPortalManifestEntry(page, config) {
   }
 
   const popupPromise = page.context().waitForEvent('page', { timeout: 8000 }).catch(() => null);
+  await entry.scrollIntoViewIfNeeded({ timeout: 3000 }).catch(() => null);
   await Promise.all([
     page.waitForLoadState('domcontentloaded').catch(() => null),
-    entry.click()
+    entry.click({ timeout: 8000 }).catch(async (error) => {
+      const message = String(error?.message || error || '');
+
+      if (!/outside of the viewport|intercepts pointer events|not visible|Timeout/i.test(message)) {
+        throw error;
+      }
+
+      await entry.click({ force: true, timeout: 5000 }).catch(async () => {
+        await entry.evaluate((element) => element.click());
+      });
+    })
   ]);
   const popup = await popupPromise;
 
@@ -588,6 +599,23 @@ async function openManifestPage(page, config, manifestUrl, downloadDir) {
     return true;
   }
 
+  if (!manifestUrl) {
+    const enteredThroughPortal = await enterFccThroughPortal(page, config, downloadDir);
+    const activePage = page._readyrouteActivePage || page;
+
+    if (enteredThroughPortal && (await ensureFccManifestUi(activePage, config))) {
+      if (activePage !== page) {
+        page._readyrouteActivePage = activePage;
+      }
+      return true;
+    }
+
+    const debugDir = await saveDebugSnapshot(activePage, downloadDir, 'fcc-missing-manifest-url');
+    throw new Error(
+      `FEDEX_FCC_MANIFEST_URL or FEDEX_FCC_MANIFEST_URL_TEMPLATE is not set, and ReadyRoute could not reach P&D Manifests through the FCC portal. Debug saved to ${debugDir}`
+    );
+  }
+
   await gotoWithRetry(page, manifestUrl, { waitUntil: 'networkidle' });
 
   if (await hasMgbaAuthenticationError(page)) {
@@ -624,9 +652,20 @@ async function openManifestPage(page, config, manifestUrl, downloadDir) {
     const manifestNavigation = await findVisibleLocator(page, config.manifestNavigationSelector, 5000);
 
     if (manifestNavigation) {
+      await manifestNavigation.scrollIntoViewIfNeeded({ timeout: 3000 }).catch(() => null);
       await Promise.all([
         page.waitForLoadState('domcontentloaded').catch(() => null),
-        manifestNavigation.click()
+        manifestNavigation.click({ timeout: 8000 }).catch(async (error) => {
+          const message = String(error?.message || error || '');
+
+          if (!/outside of the viewport|intercepts pointer events|not visible|Timeout/i.test(message)) {
+            throw error;
+          }
+
+          await manifestNavigation.click({ force: true, timeout: 5000 }).catch(async () => {
+            await manifestNavigation.evaluate((element) => element.click());
+          });
+        })
       ]);
       await page.waitForLoadState('networkidle', { timeout: 20000 }).catch(() => null);
       await page.waitForTimeout(5000);
@@ -649,14 +688,14 @@ async function preparePortalSession(page, config, credentials, downloadDir) {
   return page._readyrouteActivePage || page;
 }
 
-async function ensureCombinedManifestTab(page, config) {
-  if (!config.combinedManifestTabSelector) {
-    return;
+async function selectManifestTab(page, selector, label = 'manifest') {
+  if (!selector) {
+    return false;
   }
 
   await waitForFccIdle(page);
 
-  const tab = page.locator(config.combinedManifestTabSelector).first();
+  const tab = page.locator(selector).first();
   const visible = await tab.isVisible().catch(() => false);
 
   if (visible) {
@@ -669,7 +708,14 @@ async function ensureCombinedManifestTab(page, config) {
       await tab.click({ force: true, timeout: 5000 });
     });
     await waitForFccIdle(page);
+    return true;
   }
+
+  return false;
+}
+
+async function ensureCombinedManifestTab(page, config) {
+  await selectManifestTab(page, config.combinedManifestTabSelector, 'combined manifest');
 }
 
 async function waitForFccIdle(page, timeout = 60000) {
@@ -727,10 +773,72 @@ async function findWorkAreaSelect(page, config, { timeout = 1000 } = {}) {
 async function clickSearch(page, config) {
   await waitForFccIdle(page);
   const trigger = page.locator(config.searchButtonSelector).first();
-  await Promise.all([
-    page.waitForLoadState('networkidle').catch(() => null),
-    trigger.click()
+  await trigger.scrollIntoViewIfNeeded({ timeout: 3000 }).catch(() => null);
+  const submitted = await Promise.race([
+    Promise.all([
+      page.waitForLoadState('networkidle').catch(() => null),
+      trigger.click({ timeout: 8000 }).catch(async (error) => {
+        const message = String(error?.message || error || '');
+
+        if (!/outside of the viewport|intercepts pointer events|not visible|Timeout/i.test(message)) {
+          throw error;
+        }
+
+        await trigger.click({ force: true, timeout: 5000 }).catch(async () => {
+          await page.evaluate(() => {
+            const search =
+              document.querySelector('#manifestForm\\:search') ||
+              document.querySelector('input[name="manifestForm:search"]') ||
+              Array.from(document.querySelectorAll('button, input, a')).find((element) => {
+                const text = `${element.value || ''} ${element.textContent || ''} ${element.getAttribute('aria-label') || ''}`;
+                return /\bsearch\b/i.test(text);
+              });
+
+            if (!search) {
+              return false;
+            }
+
+            search.click();
+            return true;
+          });
+        });
+      })
+    ]).then(() => true),
+    page.waitForTimeout(15000).then(() => false)
   ]);
+
+  if (!submitted) {
+    const domSubmitted = await page.evaluate(() => {
+      const search =
+        document.querySelector('#manifestForm\\:search') ||
+        document.querySelector('input[name="manifestForm:search"]') ||
+        Array.from(document.querySelectorAll('button, input, a')).find((element) => {
+          const text = `${element.value || ''} ${element.textContent || ''} ${element.getAttribute('aria-label') || ''}`;
+          return /\bsearch\b/i.test(text);
+        });
+
+      if (search) {
+        search.click();
+        return true;
+      }
+
+      const manifestForm = document.querySelector('form[id="manifestForm"], form[name="manifestForm"]');
+      if (manifestForm) {
+        manifestForm.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+        if (typeof manifestForm.submit === 'function') {
+          manifestForm.submit();
+        }
+        return true;
+      }
+
+      return false;
+    }).catch(() => false);
+
+    if (!domSubmitted) {
+      throw new Error('FCC search button was not available after selecting the work area.');
+    }
+  }
+
   await waitForFccIdle(page);
 }
 
@@ -761,6 +869,51 @@ async function readWorkAreaOptions(page, config) {
       .map((option) => option.textContent || option.value || '')
       .filter(Boolean)
   ).catch(() => []);
+}
+
+async function readRelatedWorkAreaItems(page, config) {
+  const selectors = [
+    config.relatedWorkAreaItemSelector,
+    'xpath=//*[contains(normalize-space(),"Related Work Areas")]/following::*[self::a or self::button or self::li or self::div or self::span][normalize-space()]',
+    'xpath=//*[contains(normalize-space(),"Work Area")]/following::*[self::a or self::button or self::li or self::div or self::span][normalize-space()]'
+  ].filter(Boolean);
+  const values = [];
+
+  for (const selector of selectors) {
+    const locator = page.locator(selector);
+    const count = Math.min(await locator.count().catch(() => 0), 250);
+
+    for (let index = 0; index < count; index += 1) {
+      const text = normalizeText(await locator.nth(index).textContent({ timeout: 200 }).catch(() => ''));
+
+      if (isMeaningfulWorkAreaName(text)) {
+        values.push(text);
+      }
+    }
+  }
+
+  if (values.length > 0) {
+    return values;
+  }
+
+  return page.evaluate(() => {
+    const normalize = (value) => String(value || '').replace(/\s+/g, ' ').trim();
+    const routePattern = /\b\d{3,5}\b/;
+    const blockedPattern = /\b(stop|stops|package|packages|manifest|pickup|delivery|search|records?|customer|address|phone|date|password|reset|calling|call|support|help|sign\s*in|login)\b/i;
+    const candidates = [];
+
+    for (const element of Array.from(document.querySelectorAll('a, button, li, option, td, div, span'))) {
+      const text = normalize(element.textContent || element.getAttribute('aria-label') || element.getAttribute('title') || '');
+
+      if (!text || text.length > 120 || !routePattern.test(text) || blockedPattern.test(text)) {
+        continue;
+      }
+
+      candidates.push(text);
+    }
+
+    return candidates;
+  }).catch(() => []);
 }
 
 async function writeWorkAreaDebug(page, config, downloadDir, label, workAreas = []) {
@@ -815,10 +968,19 @@ async function writeWorkAreaDebug(page, config, downloadDir, label, workAreas = 
 async function listCandidateWorkAreas(page, config) {
   const currentWorkArea = await readSelectedWorkArea(page, config);
   const optionWorkAreas = await readWorkAreaOptions(page, config);
+  const relatedWorkAreas = await readRelatedWorkAreaItems(page, config);
   const workAreas = [];
 
   for (const optionWorkArea of optionWorkAreas) {
     const text = normalizeWorkAreaName(optionWorkArea);
+
+    if (isMeaningfulWorkAreaName(text)) {
+      workAreas.push(text);
+    }
+  }
+
+  for (const relatedWorkArea of relatedWorkAreas) {
+    const text = normalizeWorkAreaName(relatedWorkArea);
 
     if (isMeaningfulWorkAreaName(text)) {
       workAreas.push(text);
@@ -851,10 +1013,67 @@ async function listCandidateWorkAreas(page, config) {
   });
 }
 
+async function clickRelatedWorkArea(page, config, targetWorkArea) {
+  const targetCode = extractRouteCode(targetWorkArea);
+  const targetNormalized = normalizeWorkAreaKey(targetWorkArea);
+  const selectors = [
+    config.relatedWorkAreaItemSelector,
+    'xpath=//*[contains(normalize-space(),"Related Work Areas")]/following::*[self::a or self::button or self::li or self::div or self::span][normalize-space()]',
+    'xpath=//*[contains(normalize-space(),"Work Area")]/following::*[self::a or self::button or self::li or self::div or self::span][normalize-space()]',
+    'a, button, li, td, div, span'
+  ].filter(Boolean);
+
+  for (const selector of selectors) {
+    const locator = page.locator(selector);
+    const count = Math.min(await locator.count().catch(() => 0), 300);
+
+    for (let index = 0; index < count; index += 1) {
+      const candidate = locator.nth(index);
+      const text = normalizeWorkAreaName(await candidate.textContent({ timeout: 200 }).catch(() => ''));
+      const candidateCode = extractRouteCode(text);
+
+      if (
+        !isMeaningfulWorkAreaName(text) ||
+        !(
+          normalizeWorkAreaKey(text) === targetNormalized ||
+          normalizeWorkAreaKey(text).includes(targetNormalized) ||
+          targetNormalized.includes(normalizeWorkAreaKey(text)) ||
+          (targetCode && candidateCode && targetCode === candidateCode)
+        )
+      ) {
+        continue;
+      }
+
+      await candidate.scrollIntoViewIfNeeded({ timeout: 3000 }).catch(() => null);
+      await candidate.click({ timeout: 8000 }).catch(async (error) => {
+        const message = String(error?.message || error || '');
+
+        if (!/outside of the viewport|intercepts pointer events|not visible|Timeout/i.test(message)) {
+          throw error;
+        }
+
+        await candidate.click({ force: true, timeout: 5000 }).catch(async () => {
+          await candidate.evaluate((element) => element.click());
+        });
+      });
+      await waitForFccIdle(page);
+      return text;
+    }
+  }
+
+  return null;
+}
+
 async function selectWorkArea(page, config, targetWorkArea) {
   const select = await findWorkAreaSelect(page, config);
 
   if (!select) {
+    const clickedWorkArea = await clickRelatedWorkArea(page, config, targetWorkArea);
+
+    if (clickedWorkArea) {
+      return clickedWorkArea;
+    }
+
     throw new Error('FCC work area selector is not visible.');
   }
 
@@ -918,6 +1137,37 @@ async function downloadFromPage(page, selector, destinationPath) {
   return destinationPath;
 }
 
+async function downloadManifestArtifact(page, config, artifact, rowDir) {
+  const selected = await selectManifestTab(page, artifact.tabSelector, artifact.label);
+
+  if (!selected) {
+    return {
+      path: null,
+      error: `${artifact.label} tab was not visible.`
+    };
+  }
+
+  await clickSearch(page, config);
+  await selectManifestTab(page, artifact.tabSelector, artifact.label);
+
+  const recordCount = await parseRecordCount(page);
+  if (recordCount <= 0) {
+    return {
+      path: null,
+      record_count: recordCount,
+      error: `${artifact.label} had no records for this route.`
+    };
+  }
+
+  const filePath = await downloadFromPage(page, artifact.exportSelector, path.join(rowDir, artifact.fileName));
+
+  return {
+    path: filePath,
+    record_count: recordCount,
+    error: filePath ? null : `${artifact.label} ${artifact.extension.toUpperCase()} export was not visible.`
+  };
+}
+
 async function parseRecordCount(page) {
   const bodyText = normalizeText(await page.locator('body').textContent().catch(() => ''));
   const match = bodyText.match(/(\d+)\s+records found/i);
@@ -951,7 +1201,7 @@ async function collectProgressRows(page, config, workDate) {
     const colors = Array.isArray(rowColors) ? rowColors : [rowColors].filter(Boolean);
     const completedColor = colors.find(colorLooksGreen) || '';
     const exceptionColor = colors.find(colorLooksException) || '';
-    const exceptionCode = extractExceptionCode(cells);
+    const exceptionCode = extractExceptionCode(cells, deliveryPickup);
     const scanTimestamp = extractScanTimestamp(cells, workDate);
 
     collected.push({
@@ -994,6 +1244,12 @@ async function collectWorkAreaSnapshot(page, config, workAreaName, workDate, dow
   const recordCount = await parseRecordCount(page);
   let xlsPath = null;
   let gpxPath = null;
+  let pickupXlsPath = null;
+  let deliveryXlsPath = null;
+  let combinedXlsPath = null;
+  let combinedGpxPath = null;
+  const downloadErrors = [];
+  const artifactRecordCounts = {};
 
   if (rows.length > 0) {
     await fs.writeFile(
@@ -1002,17 +1258,67 @@ async function collectWorkAreaSnapshot(page, config, workAreaName, workDate, dow
     ).catch(() => null);
   }
 
-  if (includeDownloads && recordCount > 0) {
-    xlsPath = await downloadFromPage(
-      page,
-      config.exportXlsSelector,
-      path.join(rowDir, `${resolvedWorkAreaName || 'manifest'}.xls`)
-    );
-    gpxPath = await downloadFromPage(
-      page,
-      config.exportGpxSelector,
-      path.join(rowDir, `${resolvedWorkAreaName || 'manifest'}.gpx`)
-    );
+  if (includeDownloads) {
+    const routeFilePrefix = resolvedWorkAreaName.replace(/[^a-zA-Z0-9._-]+/g, '-') || 'manifest';
+    const artifacts = [
+      {
+        key: 'pickup',
+        label: 'Pickup manifest',
+        extension: 'xls',
+        tabSelector: config.pickupManifestTabSelector,
+        exportSelector: config.exportXlsSelector,
+        fileName: `${routeFilePrefix}-pickup.xls`
+      },
+      {
+        key: 'delivery',
+        label: 'Delivery manifest',
+        extension: 'xls',
+        tabSelector: config.deliveryManifestTabSelector,
+        exportSelector: config.exportXlsSelector,
+        fileName: `${routeFilePrefix}-delivery.xls`
+      },
+      {
+        key: 'combined_xls',
+        label: 'Combined manifest',
+        extension: 'xls',
+        tabSelector: config.combinedManifestTabSelector,
+        exportSelector: config.exportXlsSelector,
+        fileName: `${routeFilePrefix}-combined.xls`
+      },
+      {
+        key: 'combined_gpx',
+        label: 'Combined manifest',
+        extension: 'gpx',
+        tabSelector: config.combinedManifestTabSelector,
+        exportSelector: config.exportGpxSelector,
+        fileName: `${routeFilePrefix}-combined.gpx`
+      }
+    ];
+
+    for (const artifact of artifacts) {
+      const result = await downloadManifestArtifact(page, config, artifact, rowDir);
+      artifactRecordCounts[artifact.key] = result.record_count ?? null;
+
+      if (result.error) {
+        downloadErrors.push({
+          artifact: artifact.key,
+          message: result.error
+        });
+      }
+
+      if (artifact.key === 'pickup') {
+        pickupXlsPath = result.path;
+      } else if (artifact.key === 'delivery') {
+        deliveryXlsPath = result.path;
+      } else if (artifact.key === 'combined_xls') {
+        combinedXlsPath = result.path;
+      } else if (artifact.key === 'combined_gpx') {
+        combinedGpxPath = result.path;
+      }
+    }
+
+    xlsPath = combinedXlsPath || deliveryXlsPath || pickupXlsPath;
+    gpxPath = combinedGpxPath;
   }
 
   return {
@@ -1022,7 +1328,13 @@ async function collectWorkAreaSnapshot(page, config, workAreaName, workDate, dow
     delivered_packages: 0,
     rows,
     xls_path: xlsPath,
-    gpx_path: gpxPath
+    gpx_path: gpxPath,
+    pickup_xls_path: pickupXlsPath,
+    delivery_xls_path: deliveryXlsPath,
+    combined_xls_path: combinedXlsPath,
+    combined_gpx_path: combinedGpxPath,
+    download_errors: downloadErrors,
+    artifact_record_counts: artifactRecordCounts
   };
 }
 
@@ -1044,7 +1356,7 @@ async function main() {
   });
 
   try {
-    const context = await browser.newContext({
+    let context = await browser.newContext({
       acceptDownloads: true,
       ...(await exists(sessionStatePath) ? { storageState: sessionStatePath } : {})
     });
@@ -1053,11 +1365,7 @@ async function main() {
     const hasSavedSession = await exists(sessionStatePath);
     const credentials = { username, password };
 
-    if (hasSavedSession) {
-      page = await preparePortalSession(page, config, credentials, downloadDir);
-      await openManifestPage(page, config, manifestUrl, downloadDir);
-      page = page._readyrouteActivePage || page;
-    } else {
+    async function openWithFreshLogin() {
       await gotoWithRetry(page, config.loginUrl || manifestUrl, { waitUntil: 'domcontentloaded' });
       await ensureLoggedIn(page, config, credentials);
       page = await preparePortalSession(page, config, credentials, downloadDir);
@@ -1065,7 +1373,32 @@ async function main() {
       page = page._readyrouteActivePage || page;
     }
 
+    if (hasSavedSession) {
+      page = await preparePortalSession(page, config, credentials, downloadDir);
+      await openManifestPage(page, config, manifestUrl, downloadDir);
+      page = page._readyrouteActivePage || page;
+    } else {
+      await openWithFreshLogin();
+    }
+
     await ensureCombinedManifestTab(page, config);
+
+    if (await hasFccLoginOrHelpText(page) && !(await hasFccWorkAreaUi(page, config))) {
+      if (hasSavedSession) {
+        await saveDebugSnapshot(page, downloadDir, 'fcc-stale-session-before-refresh');
+        await context.close().catch(() => null);
+        await fs.unlink(sessionStatePath).catch(() => null);
+        context = await browser.newContext({ acceptDownloads: true });
+        page = await context.newPage();
+        await openWithFreshLogin();
+        await ensureCombinedManifestTab(page, config);
+      }
+    }
+
+    if (await hasFccLoginOrHelpText(page) && !(await hasFccWorkAreaUi(page, config))) {
+      const debugDir = await saveDebugSnapshot(page, downloadDir, 'fcc-login-or-help-page');
+      throw new Error(`FCC opened a login/help page instead of P&D Manifests after a fresh login attempt. Re-authenticate the FCC portal session. Debug saved to ${debugDir}`);
+    }
 
     const workAreas = await listCandidateWorkAreas(page, config);
     await writeWorkAreaDebug(page, config, downloadDir, 'fcc-work-area-candidates', workAreas);
@@ -1088,12 +1421,27 @@ async function main() {
     await context.storageState({ path: sessionStatePath });
 
     const manifests = snapshots
-      .filter((snapshot) => snapshot.xls_path)
+      .filter((snapshot) => snapshot.xls_path || snapshot.combined_xls_path || snapshot.delivery_xls_path || snapshot.pickup_xls_path)
       .map((snapshot) => ({
         work_area_name: snapshot.work_area_name,
         date: snapshot.date,
         xls_path: snapshot.xls_path,
-        gpx_path: snapshot.gpx_path
+        gpx_path: snapshot.gpx_path,
+        pickup_xls_path: snapshot.pickup_xls_path,
+        delivery_xls_path: snapshot.delivery_xls_path,
+        combined_xls_path: snapshot.combined_xls_path,
+        combined_gpx_path: snapshot.combined_gpx_path,
+        download_errors: snapshot.download_errors || [],
+        artifact_record_counts: snapshot.artifact_record_counts || {}
+      }));
+    const skipped_manifest_snapshots = snapshots
+      .filter((snapshot) => !(snapshot.xls_path || snapshot.combined_xls_path || snapshot.delivery_xls_path || snapshot.pickup_xls_path))
+      .map((snapshot) => ({
+        work_area_name: snapshot.work_area_name,
+        date: snapshot.date,
+        record_count: snapshot.record_count,
+        download_errors: snapshot.download_errors || [],
+        artifact_record_counts: snapshot.artifact_record_counts || {}
       }));
 
     console.log(JSON.stringify({
@@ -1102,6 +1450,7 @@ async function main() {
           ? `Synced FCC progress for ${snapshots.length} work areas.`
           : `Pulled ${manifests.length} FCC manifests.`,
       manifests,
+      skipped_manifest_snapshots,
       progress_snapshots: snapshots.map((snapshot) => ({
         work_area_name: snapshot.work_area_name,
         date: snapshot.date,

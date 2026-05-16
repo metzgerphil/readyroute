@@ -45,7 +45,9 @@ import {
   getBannerBadges,
   getCompactStopTools,
   getFocusCoordinates,
+  getLocationRequirementCopy,
   getMapRegion,
+  getMapPinSize,
   getQuickIntel,
   getStopStatusColors,
   getStopTools,
@@ -53,7 +55,9 @@ import {
   getTimeCommitCallout,
   getTimeCommitUrgency,
   hasGrantedLocationPermission,
+  isDeniedLocationPermission,
   shouldPromptForLocationPermission,
+  stopRequiresSignature,
   getStopType,
   getVisibleBannerBadges,
   toCoordinate
@@ -108,6 +112,9 @@ describe('MyDriveScreen helpers', () => {
     expect(hasGrantedLocationPermission({ granted: false })).toBe(false);
     expect(shouldPromptForLocationPermission({ status: 'undetermined' })).toBe(true);
     expect(shouldPromptForLocationPermission({ status: 'granted' })).toBe(false);
+    expect(isDeniedLocationPermission({ status: 'denied', granted: false, canAskAgain: true })).toBe(true);
+    expect(isDeniedLocationPermission({ status: 'undetermined', granted: false })).toBe(false);
+    expect(getLocationRequirementCopy().title).toBe('Enable location for route tracking');
   });
 
   it('keeps quick intel and stop tools compact and operational', () => {
@@ -132,7 +139,7 @@ describe('MyDriveScreen helpers', () => {
       close_time: '10:00'
     });
     expect(badges.map((badge) => badge.label)).toEqual(
-      expect.arrayContaining(['BUSINESS', 'PICKUP', 'TC: 09:00–10:00', '• NOTE'])
+      expect.arrayContaining(['BUSINESS', 'Pickup', 'TC: 09:00–10:00', '• NOTE'])
     );
 
     const quickIntel = getQuickIntel(stop);
@@ -181,6 +188,21 @@ describe('MyDriveScreen helpers', () => {
         refreshVersion: 3
       })
     ).toBe('stop:81:selected:3');
+  });
+
+  it('sizes 100+ stop pins larger and detects signature-required packages', () => {
+    expect(getMapPinSize({ sequence_order: 99 }, false)).toBe(28);
+    expect(getMapPinSize({ sequence_order: 100 }, false)).toBe(34);
+    expect(getMapPinSize({ sequence_order: 100 }, true)).toBe(38);
+    expect(getMapPinSize({ sequence_order: 5 }, false, '+')).toBe(28);
+
+    expect(stopRequiresSignature({
+      packages: [{ id: 'pkg-1', requires_signature: true }]
+    })).toBe(true);
+    expect(stopRequiresSignature({
+      packages: [{ id: 'pkg-1', requires_adult_signature: true }]
+    })).toBe(true);
+    expect(stopRequiresSignature({ packages: [{ id: 'pkg-1' }] })).toBe(false);
   });
 
   it('uses SID bucket colors for pending pins and lets black mode stay monochrome', () => {

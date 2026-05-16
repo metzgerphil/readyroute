@@ -1,7 +1,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 
-const { createFedexSyncService } = require('./fedexSync');
+const { FCC_AUTOMATION_DISABLED_SUMMARY, FCC_SYNC_BEFORE_WINDOW_SUMMARY, createFedexSyncService } = require('./fedexSync');
 
 class MockQueryBuilder {
   constructor(supabase, table) {
@@ -105,6 +105,121 @@ class MockSupabase {
   }
 }
 
+test('triggerManualSync skips FCC automation by default while FedEx access is paused', async () => {
+  const syncRuns = [];
+  const supabase = new MockSupabase((query) => {
+    if (query.table === 'accounts' && query.operation === 'select') {
+      return {
+        data: {
+          id: 'acct-1',
+          company_name: 'Bridge Transportation',
+          operations_timezone: 'America/Los_Angeles',
+          dispatch_window_start_hour: 6,
+          dispatch_window_end_hour: 11,
+          manifest_sync_interval_minutes: 15
+        },
+        error: null
+      };
+    }
+
+    if (query.table === 'fedex_accounts') {
+      throw new Error('paused FCC automation should not read saved FedEx credentials');
+    }
+
+    if (query.table === 'fedex_sync_runs' && query.operation === 'insert') {
+      const inserted = {
+        id: 'run-1',
+        ...query.payload,
+        details: query.payload.details || {}
+      };
+      syncRuns.push(inserted);
+      return { data: inserted, error: null };
+    }
+
+    if (query.table === 'fedex_sync_runs' && query.operation === 'update') {
+      const runId = query.filters.find((filter) => filter.column === 'id')?.value;
+      const existing = syncRuns.find((run) => run.id === runId);
+      Object.assign(existing, query.payload);
+      return { data: existing, error: null };
+    }
+
+    throw new Error(`Unexpected query ${query.table}:${query.operation}:${query.mode}`);
+  });
+
+  const service = createFedexSyncService({
+    supabase,
+    now: () => new Date('2026-04-24T16:30:00.000Z')
+  });
+
+  const result = await service.triggerManualSync({ accountId: 'acct-1' });
+
+  assert.equal(result.background_sync_enabled, false);
+  assert.equal(result.sync_engine_status, 'skipped');
+  assert.equal(result.run.error_summary, FCC_AUTOMATION_DISABLED_SUMMARY);
+  assert.equal(result.run.details.reason, 'fcc_automation_disabled');
+  assert.equal(result.run.details.fcc_automation_enabled, false);
+  assert.equal(syncRuns.length, 1);
+});
+
+test('triggerManualSync blocks FCC scraping before 9 AM local time', async () => {
+  const syncRuns = [];
+  const supabase = new MockSupabase((query) => {
+    if (query.table === 'accounts' && query.operation === 'select') {
+      return {
+        data: {
+          id: 'acct-1',
+          company_name: 'Bridge Transportation',
+          operations_timezone: 'America/Los_Angeles',
+          dispatch_window_start_hour: 6,
+          dispatch_window_end_hour: 11,
+          manifest_sync_interval_minutes: 15
+        },
+        error: null
+      };
+    }
+
+    if (query.table === 'fedex_accounts') {
+      throw new Error('before-window FCC sync should not read saved FedEx credentials');
+    }
+
+    if (query.table === 'fedex_sync_runs' && query.operation === 'insert') {
+      const inserted = {
+        id: 'run-1',
+        ...query.payload,
+        details: query.payload.details || {}
+      };
+      syncRuns.push(inserted);
+      return { data: inserted, error: null };
+    }
+
+    if (query.table === 'fedex_sync_runs' && query.operation === 'update') {
+      const runId = query.filters.find((filter) => filter.column === 'id')?.value;
+      const existing = syncRuns.find((run) => run.id === runId);
+      Object.assign(existing, query.payload);
+      return { data: existing, error: null };
+    }
+
+    throw new Error(`Unexpected query ${query.table}:${query.operation}:${query.mode}`);
+  });
+
+  const service = createFedexSyncService({
+    supabase,
+    fccAutomationEnabled: true,
+    now: () => new Date('2026-04-24T15:30:00.000Z')
+  });
+
+  const result = await service.triggerManualSync({ accountId: 'acct-1' });
+
+  assert.equal(result.background_sync_enabled, false);
+  assert.equal(result.sync_engine_status, 'skipped');
+  assert.equal(result.run.error_summary, FCC_SYNC_BEFORE_WINDOW_SUMMARY);
+  assert.equal(result.run.details.reason, 'before_manifest_sync_window');
+  assert.equal(result.run.details.route_sync_settings.dispatch_window_start_hour, 9);
+  assert.equal(result.run.details.route_sync_settings.configured_dispatch_window_start_hour, 6);
+  assert.match(result.message, /Earliest sync is 9:00 America\/Los_Angeles/);
+  assert.equal(syncRuns.length, 1);
+});
+
 test('triggerManualSync creates a skipped run when no connected FedEx account exists', async () => {
   const syncRuns = [];
   const supabase = new MockSupabase((query) => {
@@ -148,7 +263,8 @@ test('triggerManualSync creates a skipped run when no connected FedEx account ex
 
   const service = createFedexSyncService({
     supabase,
-    now: () => new Date('2026-04-24T14:00:00.000Z')
+    fccAutomationEnabled: true,
+    now: () => new Date('2026-04-24T16:30:00.000Z')
   });
 
   const result = await service.triggerManualSync({ accountId: 'acct-1' });
@@ -215,7 +331,8 @@ test('triggerManualSync completes with manifest counts when the adapter returns 
 
   const service = createFedexSyncService({
     supabase,
-    now: () => new Date('2026-04-24T14:00:00.000Z'),
+    fccAutomationEnabled: true,
+    now: () => new Date('2026-04-24T16:30:00.000Z'),
     adapter: {
       async pullDailyManifests() {
         return {
@@ -258,7 +375,7 @@ test('runScheduledSync only runs accounts inside the active local window', async
             id: 'acct-before',
             company_name: 'Bridge East',
             operations_timezone: 'America/New_York',
-            dispatch_window_start_hour: 10,
+            dispatch_window_start_hour: 13,
             dispatch_window_end_hour: 14,
             manifest_sync_interval_minutes: 15
           }
@@ -305,7 +422,8 @@ test('runScheduledSync only runs accounts inside the active local window', async
 
   const service = createFedexSyncService({
     supabase,
-    now: () => new Date('2026-04-24T13:00:00.000Z'),
+    fccAutomationEnabled: true,
+    now: () => new Date('2026-04-24T16:00:00.000Z'),
     adapter: {
       async pullDailyManifests({ account }) {
         return {
@@ -382,7 +500,8 @@ test('triggerManualSync skips when the connected FedEx account is missing FCC cr
 
   const service = createFedexSyncService({
     supabase,
-    now: () => new Date('2026-04-24T14:00:00.000Z')
+    fccAutomationEnabled: true,
+    now: () => new Date('2026-04-24T16:30:00.000Z')
   });
 
   const result = await service.triggerManualSync({ accountId: 'acct-1' });
@@ -447,7 +566,8 @@ test('triggerManualSync stages adapter manifest pairs through the shared ingest 
 
   const service = createFedexSyncService({
     supabase,
-    now: () => new Date('2026-04-24T14:00:00.000Z'),
+    fccAutomationEnabled: true,
+    now: () => new Date('2026-04-24T16:30:00.000Z'),
     manifestIngestService: {
       async stageManifestArtifacts(input) {
         stagedRoutes.push(input);
@@ -476,6 +596,22 @@ test('triggerManualSync stages adapter manifest pairs through the shared ingest 
                 originalname: 'route-810.gpx',
                 buffer: Buffer.from('gpx')
               },
+              combined_manifest_file: {
+                originalname: 'route-810-combined.xls',
+                buffer: Buffer.from('combined')
+              },
+              combined_gpx_file: {
+                originalname: 'route-810-combined.gpx',
+                buffer: Buffer.from('combined-gpx')
+              },
+              delivery_manifest_file: {
+                originalname: 'route-810-delivery.xls',
+                buffer: Buffer.from('delivery')
+              },
+              pickup_manifest_file: {
+                originalname: 'route-810-pickup.xls',
+                buffer: Buffer.from('pickup')
+              },
               work_area_name: '810'
             },
             {
@@ -503,6 +639,10 @@ test('triggerManualSync stages adapter manifest pairs through the shared ingest 
   assert.equal(result.run.details.ingest_results.length, 2);
   assert.equal(stagedRoutes[0].source, 'fedex_sync');
   assert.equal(stagedRoutes[0].managerUserId, 'manager-1');
+  assert.equal(stagedRoutes[0].combinedManifestFile.originalname, 'route-810-combined.xls');
+  assert.equal(stagedRoutes[0].combinedGpxFile.originalname, 'route-810-combined.gpx');
+  assert.equal(stagedRoutes[0].deliveryManifestFile.originalname, 'route-810-delivery.xls');
+  assert.equal(stagedRoutes[0].pickupManifestFile.originalname, 'route-810-pickup.xls');
 });
 
 test('syncRouteProgress applies FCC progress snapshots through the shared progress service', async () => {
@@ -560,7 +700,8 @@ test('syncRouteProgress applies FCC progress snapshots through the shared progre
 
   const service = createFedexSyncService({
     supabase,
-    now: () => new Date('2026-04-24T14:00:00.000Z'),
+    fccAutomationEnabled: true,
+    now: () => new Date('2026-04-24T16:30:00.000Z'),
     fccProgressSyncService: {
       async applyRouteProgress(input) {
         appliedProgress.push(input);
@@ -671,6 +812,7 @@ test('runScheduledProgressSync checks every account for its local current day', 
 
   const service = createFedexSyncService({
     supabase,
+    fccAutomationEnabled: true,
     now: () => new Date('2026-04-24T23:30:00.000Z'),
     fccProgressSyncService: {
       async applyRouteProgress(input) {

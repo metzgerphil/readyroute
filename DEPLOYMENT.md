@@ -1,98 +1,263 @@
-# ReadyRoute Deployment Checklist
+# ReadyRoute Deployment
 
-## Railway Environment Variables
+ReadyRoute production should be GitHub-driven. Local deploy commands are emergency tools only; normal deployment should happen from pushes to `main` through Vercel and Railway Git integrations.
 
-Set these in the Railway backend service before the first deploy:
+## Production Targets
 
-- `PORT`
+| Service | Host | Platform | Project / Service |
+| --- | --- | --- | --- |
+| Landing page | `https://readyroute.org` | Vercel | `landing-page`, `prj_jM9cDzf32BBmTWSH4nMoBj2nuLlI` |
+| Landing page www | `https://www.readyroute.org` | Vercel | `landing-page`, `prj_jM9cDzf32BBmTWSH4nMoBj2nuLlI` |
+| Manager portal | `https://portal.readyroute.org` | Vercel | `manager-portal`, `prj_fkit6VjgKUUlx28IJHkBLuBWbxZi` |
+| Backend API | `https://readyroute-backend-production.up.railway.app` | Railway | service `1cbb4c5c-cfaa-4c72-841b-3b83a99d96a4` |
+
+Vercel team/org:
+
+- `phillovesjoy-9153s-projects`
+- `team_9qgT8TwZoJyK1COICngLd7lK`
+
+DNS:
+
+- Registrar: Name.com
+- Active DNS host: Vercel DNS
+- Nameservers:
+  - `ns1.vercel-dns.com`
+  - `ns2.vercel-dns.com`
+- Inbound email forwarding: ImproveMX
+- Keep ImproveMX MX/SPF, Resend DKIM, and DMARC TXT records in Vercel DNS.
+
+## Root Commands
+
+Run these from the repository root.
+
+```bash
+npm run verify
+npm run deploy:portal
+npm run deploy:backend
+npm run smoke
+```
+
+Aliases kept for compatibility:
+
+```bash
+npm run release:portal
+npm run release:landing
+npm run release:backend
+npm run release:smoke
+```
+
+`npm run verify` checks the landing page files, lints/builds the manager portal, and runs backend unit tests. `npm run smoke` runs the production smoke script and requires configured production smoke credentials.
+
+## Normal Release Flow
+
+1. Open a pull request.
+2. Run `npm run verify` locally before merge.
+3. GitHub Actions should pass:
+   - Backend CI
+   - Portal CI
+4. Merge to `main`.
+5. Vercel deploys `landing-page` and `manager-portal` from GitHub.
+6. Railway deploys `backend` from GitHub.
+7. Run Production Smoke:
+
+```bash
+npm run smoke
+```
+
+## Manual Emergency Deploys
+
+Prefer GitHub integrations. Use these only when production needs an immediate manual push.
+
+Portal:
+
+```bash
+npm run deploy:portal
+```
+
+Backend:
+
+```bash
+npm run deploy:backend
+```
+
+Landing page:
+
+```bash
+npm run deploy:landing
+```
+
+After any emergency deploy, commit and push the same source to GitHub so Vercel/Railway can reproduce production.
+
+## Smoke Tests
+
+Production smoke:
+
+```bash
+npm run smoke
+```
+
+Quick public checks:
+
+```bash
+curl -I https://readyroute.org
+curl -I https://www.readyroute.org
+curl -I https://portal.readyroute.org
+curl -sS https://readyroute-backend-production.up.railway.app/health
+```
+
+DNS checks:
+
+```bash
+dig +short NS readyroute.org
+dig +short MX readyroute.org
+dig +short TXT _dmarc.readyroute.org
+dig +short TXT resend._domainkey.readyroute.org
+```
+
+Vercel DNS authoritative checks:
+
+```bash
+dig @ns1.vercel-dns.com +short NS readyroute.org
+dig @ns1.vercel-dns.com +short TXT _dmarc.readyroute.org
+dig @ns1.vercel-dns.com +short TXT resend._domainkey.readyroute.org
+```
+
+## Rollback
+
+Landing page rollback:
+
+1. Open Vercel project `landing-page`.
+2. Go to Deployments.
+3. Select the last known-good deployment.
+4. Promote it to Production.
+5. Re-run:
+
+```bash
+curl -I https://readyroute.org
+curl -I https://www.readyroute.org
+```
+
+Manager portal rollback:
+
+1. Open Vercel project `manager-portal`.
+2. Go to Deployments.
+3. Select the last known-good deployment.
+4. Promote it to Production.
+5. Re-run:
+
+```bash
+curl -I https://portal.readyroute.org
+npm run smoke
+```
+
+Backend rollback:
+
+1. Open the Railway backend service.
+2. Go to Deployments.
+3. Redeploy the last known-good deployment.
+4. Confirm `/health` is healthy.
+5. Re-run production smoke:
+
+```bash
+curl -sS https://readyroute-backend-production.up.railway.app/health
+npm run smoke
+```
+
+If a schema migration caused the issue, do not rollback code alone. Confirm the database state first and apply a forward-fix migration when possible.
+
+## Required Production Environment
+
+Railway backend:
+
 - `NODE_ENV=production`
-- `VITE_MANAGER_PORTAL_URL=https://manager.readyroute.app`
 - `APP_TIME_ZONE=America/Los_Angeles`
 - `JWT_SECRET`
 - `SUPABASE_URL`
 - `SUPABASE_SERVICE_KEY`
 - `GOOGLE_MAPS_API_KEY`
 - `GOOGLE_ROUTE_OPTIMIZATION_PROJECT_ID`
-- `GOOGLE_SERVICE_ACCOUNT_KEY_PATH`
-- `GOOGLE_APPLICATION_CREDENTIALS` (optional alternative to `GOOGLE_SERVICE_ACCOUNT_KEY_PATH`)
-- `GOOGLE_CLOUD_PROJECT` or `GOOGLE_PROJECT_ID` (optional fallback for route optimization)
+- `GOOGLE_SERVICE_ACCOUNT_KEY_PATH` or `GOOGLE_APPLICATION_CREDENTIALS`
 - `STRIPE_SECRET_KEY`
 - `STRIPE_PRICE_ID`
 - `STRIPE_WEBHOOK_SECRET`
 - `RESEND_API_KEY`
 - `RESEND_FROM_EMAIL`
+- `MANAGER_PORTAL_URL=https://portal.readyroute.org`
 
-Database migration steps to keep production auth current:
+Vercel manager portal:
 
-1. Run `/Users/phillipmetzger/readyroute/backend/src/scripts/fx12_manager_users.sql`
-2. Run `/Users/phillipmetzger/readyroute/backend/src/scripts/fx13_manager_user_invites.sql`
-3. `fx12` creates `manager_users`
-4. `fx12` also backfills existing legacy `accounts.manager_email` logins into the new table
-5. `fx13` enables pending invites so additional managers can set their own password from an invite link
+- `VITE_API_URL=https://readyroute-backend-production.up.railway.app`
+- `VITE_GOOGLE_MAPS_KEY=<production_browser_key>`
 
-To add an additional manager under an existing account after the migrations:
+Driver app build environment:
 
-- Preferred flow: use the Manager Portal `Drivers` page → `Manager Access`
-- That flow emails a self-serve invite so the manager can set their own password
-- If `RESEND_API_KEY` and `RESEND_FROM_EMAIL` are not set yet, the portal falls back to showing the invite link manually
+- `EXPO_PUBLIC_API_URL=https://readyroute-backend-production.up.railway.app`
+- `EXPO_PUBLIC_GOOGLE_MAPS_API_KEY=<production_mobile_key>`
 
-Legacy terminal fallback:
+GitHub production smoke secrets:
+
+- `SMOKE_MANAGER_EMAIL`
+- `SMOKE_MANAGER_PASSWORD`
+- `SMOKE_PASSWORD_RESET_EMAIL`
+- `SUPABASE_URL`
+- `SUPABASE_SERVICE_KEY`
+
+Optional GitHub variables:
+
+- `SMOKE_BACKEND_URL`
+- `SMOKE_PORTAL_URL`
+
+## GitHub Actions
+
+GitHub Actions should check code, not own production deployment.
+
+- `.github/workflows/backend-ci.yml` runs backend unit checks.
+- `.github/workflows/portal-ci.yml` lints/builds the manager portal.
+- `.github/workflows/production-smoke.yml` runs production smoke manually or by dispatch.
+
+Vercel and Railway Git integrations remain the production deployment owners.
+
+## FCC Background Sync
+
+Preferred production setup: run the backend `worker` process from `backend/Procfile` on Railway. The worker runs `npm run fedex:sync:daemon`, which keeps manifest discovery and FCC scanner progress polling alive automatically. In Railway, scale the `worker` process to 1 instance; keeping only the `web` process on will serve the API but will not poll FCC.
+
+Backend worker environment:
+
+- `FEDEX_SYNC_MANIFEST_INTERVAL_MS=300000`
+- `FEDEX_SYNC_PROGRESS_INTERVAL_MS=90000`
+- `FEDEX_SYNC_TICK_INTERVAL_MS=15000`
+- `FEDEX_SYNC_WORKER_SECRET=<long_random_secret>`
+
+If the host cannot run a continuous worker process, call the internal sync endpoint from a scheduler:
 
 ```bash
-cd /Users/phillipmetzger/readyroute/backend
-npm run seed:manager
+curl -X POST "https://readyroute-backend-production.up.railway.app/internal/fedex-sync" \
+  -H "Authorization: Bearer $FEDEX_SYNC_WORKER_SECRET" \
+  -H "Content-Type: application/json" \
+  -d '{"mode":"auto"}'
 ```
 
-Recommended frontend environment values:
+For scanner-completion updates:
 
-- Driver app: `EXPO_PUBLIC_API_URL=https://api.readyroute.app`
-- Manager portal: `VITE_API_URL=https://api.readyroute.app`
-- Manager portal: `VITE_GOOGLE_MAPS_KEY=<your_google_maps_browser_key>`
-- Driver app: `EXPO_PUBLIC_GOOGLE_MAPS_API_KEY=<your_google_maps_mobile_key>`
+```bash
+curl -X POST "https://readyroute-backend-production.up.railway.app/internal/fedex-sync" \
+  -H "Authorization: Bearer $FEDEX_SYNC_WORKER_SECRET" \
+  -H "Content-Type: application/json" \
+  -d '{"mode":"progress"}'
+```
 
-## Railway + GitHub Setup
+## Supabase / Stripe Checks
 
-1. Push the latest `readyroute` repo to GitHub.
-2. In Railway, create a new project and choose `Deploy from GitHub repo`.
-3. Select the repository and point the service root to `/backend`.
-4. Confirm Railway detects the start command from `Procfile` as `web: node src/index.js`.
-5. Add the environment variables above in the Railway service settings.
-6. Trigger the first deploy and confirm the deploy logs show the app listening on Railway's assigned port.
-7. Verify `https://<railway-generated-domain>/health` returns `{"status":"ok",...}`.
+ReadyRoute uses the Supabase service-role key from the backend. Client apps should not access operational tables directly. Verify RLS remains enabled on operational tables and that `anon` / `authenticated` do not have broad direct access policies.
 
-## Custom Domain Setup
+Production Stripe webhook:
 
-1. In Railway, open the backend service and add a custom domain such as `api.readyroute.app`.
-2. Copy the DNS target Railway provides.
-3. In your DNS provider, create the required `CNAME` or `ALIAS/ANAME` record for `api.readyroute.app`.
-4. Wait for Railway TLS issuance to complete.
-5. Re-test `https://api.readyroute.app/health`.
-6. Update frontend env values so both apps point at `https://api.readyroute.app`.
+```text
+https://readyroute-backend-production.up.railway.app/billing/webhook
+```
 
-## Supabase RLS Policies To Verify
+## Notes
 
-ReadyRoute currently uses the Supabase service-role key from the backend, so client apps should not access operational tables directly. Verify these protections are active:
-
-- RLS is enabled on `accounts`
-- RLS is enabled on `drivers`
-- RLS is enabled on `vehicles`
-- RLS is enabled on `routes`
-- RLS is enabled on `stops`
-- RLS is enabled on `packages`
-- RLS is enabled on `driver_positions`
-- RLS is enabled on `timecards`
-- RLS is enabled on `road_rules`
-- RLS is enabled on `stop_notes`
-- `anon` has no direct read/write policy on operational tables
-- `authenticated` has no direct read/write policy on operational tables unless explicitly required for an admin tool
-- Storage bucket `pod-photos` only allows access patterns you intend to support in production
-
-## Stripe Webhook
-
-Register this production webhook URL in Stripe after the custom domain is live:
-
-- `https://yourdomain.com/billing/webhook`
-
-For ReadyRoute production, that should become:
-
-- `https://api.readyroute.app/billing/webhook`
+- The manager portal uses React Router, so `manager-portal/vercel.json` rewrites all routes to `/index.html`.
+- The landing page is static HTML and uses `landing-page/vercel.json`.
+- ReadyRoute no longer uses Netlify for web hosting.

@@ -245,7 +245,16 @@ function buildPendingManifestStopKeyWithDuplicateSids(stop, fallbackKey, duplica
     return `sid:${sid}`;
   }
 
-  return buildStopAddressAlias(stop) || fallbackKey;
+  const hasPickup = Boolean(stop?.has_pickup || stop?.is_pickup || stop?.type === 'pickup' || stop?.stop_type === 'pickup' || stop?.type === 'combined' || stop?.stop_type === 'combined');
+  const hasDelivery = stop?.has_delivery !== false && stop?.type !== 'pickup' && stop?.stop_type !== 'pickup';
+  const scope = hasDelivery ? 'delivery' : hasPickup ? 'pickup' : 'generic';
+  const addressAlias = hasDelivery
+    ? buildStopAddressAlias(stop, 'delivery-address')
+    : hasPickup
+      ? buildStopAddressAlias(stop, 'pickup-address')
+      : buildStopAddressAlias(stop);
+
+  return addressAlias ? `${scope}:${addressAlias}` : fallbackKey;
 }
 
 function normalizeStopStreetAlias(value) {
@@ -432,6 +441,16 @@ function mergePackageDetails(primaryPackages = [], fallbackPackages = []) {
   return merged;
 }
 
+function getStopPackageTrackingNumbers(stop = {}) {
+  if (!Array.isArray(stop?.packages)) {
+    return [];
+  }
+
+  return stop.packages
+    .map((pkg) => String(pkg?.tracking_number || '').trim())
+    .filter(Boolean);
+}
+
 function dedupePackageRows(packageRows = []) {
   const seenTrackingNumbers = new Set();
   const dedupedRows = [];
@@ -520,21 +539,28 @@ function mergePendingManifestStops(existingStops = [], incomingStops = []) {
     const hasDelivery = stop?.has_delivery !== false && stop?.type !== 'pickup' && stop?.stop_type !== 'pickup';
     const genericAddressAlias = buildStopAddressAlias(stop);
 
-    if (genericAddressAlias && !aliasToPrimaryKey.has(genericAddressAlias)) {
-      aliasToPrimaryKey.set(genericAddressAlias, primaryKey);
+    if (genericAddressAlias && !aliasToPrimaryKey.has(`generic:${genericAddressAlias}`)) {
+      aliasToPrimaryKey.set(`generic:${genericAddressAlias}`, primaryKey);
     }
 
     if (hasPickup) {
       const pickupAlias = buildStopAddressAlias(stop, 'pickup-address');
-      if (pickupAlias && !aliasToPrimaryKey.has(pickupAlias)) {
-        aliasToPrimaryKey.set(pickupAlias, primaryKey);
+      if (pickupAlias && !aliasToPrimaryKey.has(`pickup:${pickupAlias}`)) {
+        aliasToPrimaryKey.set(`pickup:${pickupAlias}`, primaryKey);
       }
     }
 
     if (hasDelivery) {
       const deliveryAlias = buildStopAddressAlias(stop, 'delivery-address');
-      if (deliveryAlias && !aliasToPrimaryKey.has(deliveryAlias)) {
-        aliasToPrimaryKey.set(deliveryAlias, primaryKey);
+      if (deliveryAlias && !aliasToPrimaryKey.has(`delivery:${deliveryAlias}`)) {
+        aliasToPrimaryKey.set(`delivery:${deliveryAlias}`, primaryKey);
+      }
+    }
+
+    for (const trackingNumber of getStopPackageTrackingNumbers(stop)) {
+      const trackingAlias = `package:${trackingNumber}`;
+      if (!aliasToPrimaryKey.has(trackingAlias)) {
+        aliasToPrimaryKey.set(trackingAlias, primaryKey);
       }
     }
   }
@@ -545,16 +571,23 @@ function mergePendingManifestStops(existingStops = [], incomingStops = []) {
       return primaryKey;
     }
 
+    for (const trackingNumber of getStopPackageTrackingNumbers(stop)) {
+      const matchedPrimaryKey = aliasToPrimaryKey.get(`package:${trackingNumber}`);
+      if (matchedPrimaryKey && mergedStops.has(matchedPrimaryKey)) {
+        return matchedPrimaryKey;
+      }
+    }
+
     const hasPickup = Boolean(stop?.has_pickup || stop?.is_pickup || stop?.type === 'pickup' || stop?.stop_type === 'pickup' || stop?.type === 'combined' || stop?.stop_type === 'combined');
     const hasDelivery = stop?.has_delivery !== false && stop?.type !== 'pickup' && stop?.stop_type !== 'pickup';
     const sliceAliases = [
-      hasPickup ? buildStopAddressAlias(stop, 'pickup-address') : null,
-      hasDelivery ? buildStopAddressAlias(stop, 'delivery-address') : null,
-      buildStopAddressAlias(stop)
+      hasPickup ? ['pickup', buildStopAddressAlias(stop, 'pickup-address')] : null,
+      hasDelivery ? ['delivery', buildStopAddressAlias(stop, 'delivery-address')] : null,
+      ['generic', buildStopAddressAlias(stop)]
     ].filter(Boolean);
 
-    for (const alias of sliceAliases) {
-      const matchedPrimaryKey = aliasToPrimaryKey.get(alias);
+    for (const [scope, alias] of sliceAliases) {
+      const matchedPrimaryKey = alias ? aliasToPrimaryKey.get(`${scope}:${alias}`) : null;
       if (matchedPrimaryKey && mergedStops.has(matchedPrimaryKey)) {
         return matchedPrimaryKey;
       }
@@ -581,6 +614,468 @@ function mergePendingManifestStops(existingStops = [], incomingStops = []) {
   });
 
   return normalizeMergedStopSequences(primaryKeys.map((key) => mergedStops.get(key)).filter(Boolean));
+}
+
+function hasManifestFile(file) {
+  return Boolean(file?.buffer);
+}
+
+function getManifestFileLabel(file, fallback = 'manifest') {
+  return file?.originalname || fallback;
+}
+
+function countStopsWithContact(stops = []) {
+  return (stops || []).filter((stop) => (
+    hasContactValue(stop?.primary_phone) ||
+    hasContactValue(stop?.alternate_phone) ||
+    hasContactValue(stop?.email) ||
+    hasContactValue(stop?.business_name) ||
+    hasContactValue(stop?.company_name) ||
+    hasContactValue(stop?.customer_instructions) ||
+    hasContactValue(stop?.delivery_instructions) ||
+    hasContactValue(stop?.consignee) ||
+    hasContactValue(stop?.shipper)
+  )).length;
+}
+
+function countExplicitPackages(stops = []) {
+  return (stops || []).reduce((sum, stop) => {
+    const explicitPackages = Array.isArray(stop?.packages)
+      ? stop.packages.filter((pkg) => String(pkg?.tracking_number || '').trim())
+      : [];
+    return sum + explicitPackages.length;
+  }, 0);
+}
+
+function countServiceCodes(stops = []) {
+  return (stops || []).reduce((sum, stop) => {
+    const explicitPackages = Array.isArray(stop?.packages) ? stop.packages : [];
+    return sum + explicitPackages.filter((pkg) => hasContactValue(pkg?.service_code)).length;
+  }, 0);
+}
+
+function summarizeManifestLayer(layer) {
+  const stops = layer?.stops || [];
+  return {
+    key: layer?.key || 'manifest',
+    label: layer?.label || layer?.key || 'Manifest',
+    file_name: getManifestFileLabel(layer?.file, layer?.key || 'manifest'),
+    companion_gpx_name: layer?.companionGpxFile?.originalname || null,
+    format: layer?.format || 'unknown',
+    stop_count: stops.length,
+    pickup_stop_count: stops.filter((stop) => stop?.has_pickup || stop?.is_pickup || stop?.type === 'pickup' || stop?.type === 'combined').length,
+    delivery_stop_count: stops.filter((stop) => stop?.has_delivery !== false && stop?.type !== 'pickup').length,
+    contact_stop_count: countStopsWithContact(stops),
+    explicit_package_count: countExplicitPackages(stops),
+    service_code_count: countServiceCodes(stops),
+    mapped_stop_count: stops.filter((stop) => toNumber(stop?.lat) !== null && toNumber(stop?.lng) !== null).length
+  };
+}
+
+function buildManifestLayers({
+  manifestFile,
+  companionGpxFile,
+  combinedManifestFile,
+  combinedGpxFile,
+  deliveryManifestFile,
+  deliveryGpxFile,
+  pickupManifestFile
+}) {
+  const namedLayers = [
+    { key: 'combined', label: 'Combined manifest', file: combinedManifestFile, companionGpxFile: combinedGpxFile || companionGpxFile || null },
+    { key: 'delivery', label: 'Delivery manifest', file: deliveryManifestFile, companionGpxFile: deliveryGpxFile || null },
+    { key: 'pickup', label: 'Pickup manifest', file: pickupManifestFile, companionGpxFile: null }
+  ].filter((layer) => hasManifestFile(layer.file));
+
+  if (namedLayers.length) {
+    return namedLayers;
+  }
+
+  return hasManifestFile(manifestFile)
+    ? [{ key: 'primary', label: 'Manifest', file: manifestFile, companionGpxFile: companionGpxFile || null }]
+    : [];
+}
+
+async function parseManifestLayer(layer) {
+  const manifestFormat = detectManifestFormat(layer.file.buffer, layer.file.originalname);
+
+  if (manifestFormat === 'unknown') {
+    throw new Error(`Unsupported ${layer.label || 'manifest'} file type. Use .xls, .xlsx, or .gpx.`);
+  }
+
+  const manifest =
+    manifestFormat === 'xls'
+      ? parseXLSManifest(layer.file.buffer)
+      : await parseGPXManifest(layer.file.buffer);
+
+  let parsedStops = manifest?.stops || [];
+  let manifestMeta = manifest?.manifest_meta || {};
+
+  if (hasManifestFile(layer.companionGpxFile)) {
+    const gpxFormat = detectManifestFormat(layer.companionGpxFile.buffer, layer.companionGpxFile.originalname);
+
+    if (gpxFormat !== 'gpx') {
+      throw new Error(`${layer.label || 'Manifest'} companion file must be a .gpx file.`);
+    }
+
+    const gpxManifest = await parseGPXManifest(layer.companionGpxFile.buffer);
+    parsedStops = mergeManifestStops(parsedStops, gpxManifest?.stops || []);
+    parsedStops = normalizeMergedStopSequences(parsedStops);
+    manifestMeta = mergeManifestMeta(manifestMeta, gpxManifest?.manifest_meta || null);
+  }
+
+  return {
+    ...layer,
+    format: manifestFormat,
+    stops: parsedStops,
+    manifest_meta: manifestMeta || {}
+  };
+}
+
+function mergeParsedManifestLayers(parsedLayers = []) {
+  if (!parsedLayers.length) {
+    return {
+      parsedStops: [],
+      manifestMeta: {},
+      manifestFormat: 'unknown',
+      manifestLayerSummary: []
+    };
+  }
+
+  const parsedStops = parsedLayers.reduce((mergedStops, layer) => {
+    if (!mergedStops.length) {
+      return normalizeMergedStopSequences(layer.stops || []);
+    }
+
+    return mergePendingManifestStops(mergedStops, layer.stops || []);
+  }, []);
+
+  const manifestMeta = parsedLayers.reduce(
+    (mergedMeta, layer) => mergeManifestMeta(mergedMeta, layer.manifest_meta || null),
+    null
+  ) || {};
+
+  return {
+    parsedStops,
+    manifestMeta,
+    manifestFormat: parsedLayers.some((layer) => layer.format === 'xls') ? 'xls' : parsedLayers[0]?.format || 'unknown',
+    manifestLayerSummary: parsedLayers.map(summarizeManifestLayer)
+  };
+}
+
+function validateManifestPackageTracking(routeStops = []) {
+  const seen = new Map();
+  const duplicates = [];
+
+  for (const stop of routeStops || []) {
+    for (const pkg of stop?.packages || []) {
+      const trackingNumber = String(pkg?.tracking_number || '').trim();
+      if (!trackingNumber) {
+        continue;
+      }
+
+      if (seen.has(trackingNumber)) {
+        duplicates.push({
+          tracking_number: trackingNumber,
+          first_sequence: seen.get(trackingNumber),
+          duplicate_sequence: stop?.sequence || null
+        });
+      } else {
+        seen.set(trackingNumber, stop?.sequence || null);
+      }
+    }
+  }
+
+  if (duplicates.length) {
+    const error = new Error(
+      `Manifest has ${duplicates.length} duplicate package tracking number${duplicates.length === 1 ? '' : 's'} after merging. Check duplicate addresses/suites before saving this route.`
+    );
+    error.statusCode = 422;
+    error.duplicate_packages = duplicates.slice(0, 10);
+    throw error;
+  }
+}
+
+function getPackageSaveError(error) {
+  const schemaError = getManifestSchemaError(error);
+  if (schemaError) {
+    return schemaError;
+  }
+
+  const message = String(error?.message || error?.details || error?.hint || '').trim();
+  if (/duplicate key|unique constraint/i.test(message)) {
+    return 'Package save failed because duplicate tracking numbers were detected after manifest merge. Check for duplicate stop addresses, suites, or repeated manifest files.';
+  }
+
+  return 'Failed to save packages from manifest. The route was not fully updated; retry the upload or contact support before dispatching.';
+}
+
+function isMissingAtomicRouteRpcError(error) {
+  const message = String(error?.message || error?.details || error?.hint || '');
+  return (
+    /replace_manifest_route_atomic/i.test(message) &&
+    (/function .* does not exist/i.test(message) || /could not find/i.test(message) || /schema cache/i.test(message))
+  );
+}
+
+function buildStopInsertPayload({ routeId, routeStops, existingRoute, preservedStopStateByKey, nowIso }) {
+  return routeStops.map((stop) => ({
+    route_id: routeId,
+    sequence_order: stop.sequence,
+    address: stop.address,
+    address_line2: stop.address_line2 || null,
+    contact_name: stop.contact_name || null,
+    business_name: stop.business_name || null,
+    company_name: stop.company_name || null,
+    primary_phone: stop.primary_phone || null,
+    alternate_phone: stop.alternate_phone || null,
+    email: stop.email || null,
+    customer_instructions: stop.customer_instructions || null,
+    delivery_instructions: stop.delivery_instructions || null,
+    consignee: stop.consignee || null,
+    shipper: stop.shipper || null,
+    contact_source: stop.contact_source || null,
+    contact_last_imported_at: stop.contact_last_imported_at || (stop.contact_source ? nowIso : null),
+    raw_contact_metadata: stop.raw_contact_metadata || null,
+    lat: stop.lat,
+    lng: stop.lng,
+    is_pickup: Boolean(stop.is_pickup),
+    is_business: Boolean(stop.is_business),
+    sid: stop.sid || null,
+    ready_time: stop.ready_time || null,
+    close_time: stop.close_time || null,
+    has_time_commit: Boolean(stop.has_time_commit),
+    stop_type: stop.type || 'delivery',
+    has_pickup: Boolean(stop.has_pickup),
+    has_delivery: stop.has_delivery !== false,
+    geocode_source: stop.geocode_source || 'manifest',
+    geocode_accuracy: stop.geocode_accuracy || 'manifest',
+    ...(() => {
+      const preservedState = existingRoute
+        ? getExistingStopStateForManifestStop(
+            preservedStopStateByKey,
+            stop,
+            `insert:${stop?.sequence}`
+          )
+        : null;
+
+      return {
+        status: preservedState?.status || 'pending',
+        exception_code: preservedState?.exception_code || null,
+        delivery_type_code: preservedState?.delivery_type_code || null,
+        signer_name: preservedState?.signer_name || null,
+        signature_url: preservedState?.signature_url || null,
+        age_confirmed: preservedState?.age_confirmed || false,
+        pod_photo_url: preservedState?.pod_photo_url || null,
+        pod_signature_url: preservedState?.pod_signature_url || null,
+        scanned_at: preservedState?.scanned_at || null,
+        completed_at: preservedState?.completed_at || null,
+        has_note: Boolean(stop.warning || preservedState?.has_note),
+        notes: stop.warning ? stop.warning : preservedState?.notes || null
+      };
+    })()
+  }));
+}
+
+function buildPackageRowsForStops({ routeId, routeStops, stopIdBySequence = null }) {
+  return dedupePackageRows(routeStops.flatMap((stop) => {
+    const explicitPackages = Array.isArray(stop.packages)
+      ? stop.packages.filter((pkg) => pkg?.tracking_number)
+      : [];
+    const stopId = stopIdBySequence?.get(stop.sequence) || null;
+
+    if (explicitPackages.length) {
+      return explicitPackages.map((pkg) => ({
+        ...(stopId ? { stop_id: stopId } : { route_stop_sequence: stop.sequence }),
+        tracking_number: String(pkg.tracking_number || '').trim(),
+        service_code: pkg.service_code || null,
+        requires_signature: Boolean(pkg.requires_signature),
+        requires_adult_signature: Boolean(pkg.requires_adult_signature),
+        hazmat: Boolean(pkg.hazmat)
+      }));
+    }
+
+    const packageCount = Math.max(1, Number(stop.package_count || 1));
+    const packageKeyBase = stop.sid && stop.sid !== '0'
+      ? `RR-${routeId.slice(0, 8)}-SEQ-${stop.sequence}-SID-${stop.sid}`
+      : `RR-${routeId.slice(0, 8)}-SEQ-${stop.sequence}`;
+
+    return Array.from({ length: packageCount }, (_, index) => ({
+      ...(stopId ? { stop_id: stopId } : { route_stop_sequence: stop.sequence }),
+      tracking_number: `${packageKeyBase}-${index + 1}`,
+      service_code: null,
+      requires_signature: false,
+      requires_adult_signature: false,
+      hazmat: false
+    }));
+  }));
+}
+
+async function applyManifestRouteClientSide({
+  supabase,
+  routeId,
+  accountId,
+  existingRoute,
+  mergedIntoExistingRoute,
+  routePayload,
+  stopInsertPayload,
+  routeStops
+}) {
+  if (mergedIntoExistingRoute && existingRoute) {
+    const { data: existingStops, error: existingStopsError } = await supabase
+      .from('stops')
+      .select('id')
+      .eq('route_id', existingRoute.id);
+
+    if (existingStopsError) {
+      throw new Error('Failed to reload old route stops before applying the manifest');
+    }
+
+    const existingStopIds = (existingStops || []).map((stop) => stop.id);
+
+    if (existingStopIds.length) {
+      const { error: deletePackagesError } = await supabase
+        .from('packages')
+        .delete()
+        .in('stop_id', existingStopIds);
+
+      if (deletePackagesError) {
+        throw new Error('Failed to clear the old package rows before applying the new manifest');
+      }
+    }
+
+    const { error: deleteStopsError } = await supabase
+      .from('stops')
+      .delete()
+      .eq('route_id', existingRoute.id);
+
+    if (deleteStopsError) {
+      throw new Error('Failed to clear the old route stops before applying the new manifest');
+    }
+
+    const { data: updatedRoute, error: updateRouteError } = await supabase
+      .from('routes')
+      .update(routePayload)
+      .eq('id', existingRoute.id)
+      .eq('account_id', accountId)
+      .select('id')
+      .single();
+
+    if (updateRouteError) {
+      throw new Error('Failed to update the existing route with the new manifest data');
+    }
+
+    routeId = updatedRoute.id;
+  } else {
+    const { data: routeRecord, error: routeError } = await supabase
+      .from('routes')
+      .insert(routePayload)
+      .select('id')
+      .single();
+
+    if (routeError) {
+      throw routeError;
+    }
+
+    routeId = routeRecord.id || routePayload.id;
+    for (const stopRow of stopInsertPayload) {
+      stopRow.route_id = routeId;
+    }
+  }
+
+  const { data: insertedStops, error: stopsError } = await supabase
+    .from('stops')
+    .insert(stopInsertPayload)
+    .select('id, sequence_order');
+
+  if (stopsError) {
+    if (!mergedIntoExistingRoute) {
+      await supabase.from('routes').delete().eq('id', routeId);
+    }
+    const error = new Error(getManifestSchemaError(stopsError) || 'Failed to save stops from manifest');
+    error.statusCode = 500;
+    throw error;
+  }
+
+  const stopIdBySequence = new Map(insertedStops.map((stop) => [stop.sequence_order, stop.id]));
+  const packageInsertPayload = buildPackageRowsForStops({ routeId, routeStops, stopIdBySequence });
+
+  let { error: packagesError } = await supabase
+    .from('packages')
+    .insert(packageInsertPayload);
+
+  if (packagesError && canRetryPackageInsertWithoutDetailColumns(packagesError)) {
+    const { error: fallbackPackagesError } = await supabase
+      .from('packages')
+      .insert(stripOptionalPackageDetailColumns(packageInsertPayload));
+    packagesError = fallbackPackagesError;
+  }
+
+  if (packagesError) {
+    if (!mergedIntoExistingRoute) {
+      await supabase.from('routes').delete().eq('id', routeId);
+    }
+    const error = new Error(getPackageSaveError(packagesError));
+    error.statusCode = 500;
+    error.details = packagesError?.details || packagesError?.message || null;
+    throw error;
+  }
+
+  return {
+    routeId,
+    insertedStops,
+    packageInsertPayload,
+    appliedAtomically: false
+  };
+}
+
+async function applyManifestRouteAtomically({
+  supabase,
+  routeId,
+  accountId,
+  existingRoute,
+  mergedIntoExistingRoute,
+  routePayload,
+  stopInsertPayload,
+  packageInsertPayload
+}) {
+  if (typeof supabase.rpc !== 'function') {
+    return null;
+  }
+
+  const { data, error } = await supabase.rpc('replace_manifest_route_atomic', {
+    p_account_id: accountId,
+    p_route_id: routeId,
+    p_existing_route_id: existingRoute?.id || null,
+    p_replace_existing: Boolean(mergedIntoExistingRoute && existingRoute),
+    p_route: routePayload,
+    p_stops: stopInsertPayload,
+    p_packages: packageInsertPayload
+  });
+
+  if (error) {
+    if (isMissingAtomicRouteRpcError(error)) {
+      return null;
+    }
+
+    const friendlyMessage = getManifestSchemaError(error) || getPackageSaveError(error);
+    const wrapped = new Error(friendlyMessage || error.message || 'Failed to apply manifest route atomically');
+    wrapped.statusCode = /duplicate|constraint|missing stop/i.test(String(error.message || error.details || '')) ? 422 : 500;
+    wrapped.details = error.details || error.message || null;
+    throw wrapped;
+  }
+
+  const stopIds = Array.isArray(data?.stop_ids) ? data.stop_ids : [];
+
+  return {
+    routeId: data?.route_id || routeId,
+    insertedStops: stopIds.map((stop) => ({
+      id: stop.id,
+      sequence_order: stop.sequence_order
+    })),
+    packageInsertPayload,
+    appliedAtomically: true
+  };
 }
 
 function buildExistingStopStateMap(existingStops = []) {
@@ -644,6 +1139,11 @@ function createManifestIngestService(options = {}) {
     managerUserId = null,
     manifestFile,
     companionGpxFile = null,
+    combinedManifestFile = null,
+    combinedGpxFile = null,
+    deliveryManifestFile = null,
+    deliveryGpxFile = null,
+    pickupManifestFile = null,
     requestedDriverId = null,
     requestedDriverName = null,
     requestedVehicleId = null,
@@ -651,35 +1151,27 @@ function createManifestIngestService(options = {}) {
     requestedWorkAreaName = null,
     source = 'fedex_sync'
   }) {
-    if (!manifestFile?.buffer) {
+    const manifestLayers = buildManifestLayers({
+      manifestFile,
+      companionGpxFile,
+      combinedManifestFile,
+      combinedGpxFile,
+      deliveryManifestFile,
+      deliveryGpxFile,
+      pickupManifestFile
+    });
+
+    if (!manifestLayers.length) {
       throw new Error('Manifest file is required');
     }
 
-    const manifestFormat = detectManifestFormat(manifestFile.buffer, manifestFile.originalname);
-
-    if (manifestFormat === 'unknown') {
-      throw new Error('Unsupported manifest file type. Use .xls, .xlsx, or .gpx.');
-    }
-
-    let manifest =
-      manifestFormat === 'xls'
-        ? parseXLSManifest(manifestFile.buffer)
-        : await parseGPXManifest(manifestFile.buffer);
-    let parsedStops = manifest?.stops || [];
-    let manifestMeta = manifest?.manifest_meta || {};
-
-    if (companionGpxFile) {
-      const gpxFormat = detectManifestFormat(companionGpxFile.buffer, companionGpxFile.originalname);
-
-      if (gpxFormat !== 'gpx') {
-        throw new Error('Optional companion file must be a .gpx file.');
-      }
-
-      const gpxManifest = await parseGPXManifest(companionGpxFile.buffer);
-      parsedStops = mergeManifestStops(parsedStops, gpxManifest?.stops || []);
-      parsedStops = normalizeMergedStopSequences(parsedStops);
-      manifestMeta = mergeManifestMeta(manifestMeta, gpxManifest?.manifest_meta || null);
-    }
+    const parsedLayers = await Promise.all(manifestLayers.map(parseManifestLayer));
+    const {
+      parsedStops,
+      manifestMeta,
+      manifestFormat,
+      manifestLayerSummary
+    } = mergeParsedManifestLayers(parsedLayers);
 
     if (!parsedStops.length) {
       throw new Error('No stops found in manifest file');
@@ -773,7 +1265,20 @@ function createManifestIngestService(options = {}) {
     const addressWarnings = [];
     const correctedStops = await applyLocationCorrectionsToStops(supabase, accountId, manifestStops);
     const geocodedManifest = await enrichManifestStopsWithGeocoding(supabase, accountId, correctedStops);
-    let routeStops = normalizeMergedStopSequences(geocodedManifest.stops);
+    let routeStops = mergePendingManifestStops([], normalizeMergedStopSequences(geocodedManifest.stops));
+    validateManifestPackageTracking(routeStops);
+    const coordinateHealth = summarizeCoordinateHealth(routeStops);
+    const coordinateIntegrity = detectSuspiciousCoordinateClusters(routeStops);
+
+    if (coordinateIntegrity.suspicious_cluster_count > 0) {
+      const error = new Error(
+        'Manifest upload was blocked because too many different stop addresses collapsed onto the same map pin. Please re-check the manifest/GPX pair before dispatch.'
+      );
+      error.statusCode = 422;
+      error.route_health = coordinateHealth;
+      error.coordinate_integrity = coordinateIntegrity;
+      throw error;
+    }
 
     const { data: existingRoute, error: existingRouteError } = await loadExistingManifestRoute(supabase, {
       accountId,
@@ -785,9 +1290,85 @@ function createManifestIngestService(options = {}) {
       throw new Error('Failed to check for an existing route before upload');
     }
 
+    if (existingRoute?.dispatch_state === 'dispatched') {
+      const syncedAt = nowProvider().toISOString();
+      const protectedRouteSyncMetadata = buildRouteSyncMetadata({
+        manifestMeta,
+        routeStops,
+        previousRoute: existingRoute,
+        syncedAt
+      });
+      const manifestChanged = protectedRouteSyncMetadata.manifest_fingerprint !== existingRoute.manifest_fingerprint;
+
+      await recordRouteSyncEvent(supabase, {
+        accountId,
+        routeId: existingRoute.id,
+        workDate: resolvedDate,
+        eventType: manifestChanged ? 'post_dispatch_change' : 'manifest_updated',
+        eventStatus: manifestChanged ? 'warning' : 'info',
+        summary: manifestChanged
+          ? `Post-dispatch manifest sync held for route ${resolvedWorkAreaName}`
+          : `Post-dispatch manifest sync matched live route ${resolvedWorkAreaName}`,
+        details: {
+          live_route_protected: true,
+          driver_route_unchanged: true,
+          sync_state: manifestChanged ? 'changed_after_dispatch' : 'staged_stable',
+          existing_route_id: existingRoute.id,
+          incoming_manifest_stop_count: routeStops.length,
+          incoming_manifest_package_count: protectedRouteSyncMetadata.manifest_package_count,
+          existing_manifest_fingerprint: existingRoute.manifest_fingerprint || null,
+          incoming_manifest_fingerprint: protectedRouteSyncMetadata.manifest_fingerprint,
+          manifest_layers: manifestLayerSummary,
+          auto_matched_driver: autoMatchedDriver,
+          auto_matched_vehicle: autoMatchedVehicle
+        },
+        managerUserId
+      });
+
+      const deliveryCount = routeStops.filter((stop) => stop.type === 'delivery').length;
+      const pickupCount = routeStops.filter((stop) => stop.type === 'pickup').length;
+      const combinedCount = routeStops.filter((stop) => stop.type === 'combined').length;
+      const pickupStopCount = routeStops.filter((stop) => stop.has_pickup || stop.type === 'pickup' || stop.type === 'combined').length;
+      const timeCommitCount = routeStops.filter((stop) => stop.has_time_commit).length;
+
+      return {
+        route_id: existingRoute.id,
+        total_stops: routeStops.length,
+        delivery_count: deliveryCount,
+        pickup_count: pickupCount,
+        pickup_stop_count: pickupStopCount,
+        total_pickup_stops: pickupStopCount,
+        combined_count: combinedCount,
+        time_commit_count: timeCommitCount,
+        merged_into_existing_route: false,
+        live_route_protected: true,
+        driver_route_unchanged: true,
+        post_dispatch_change_held: manifestChanged,
+        auto_matched_driver: autoMatchedDriver,
+        ...(matchedDriverName ? { matched_driver_name: matchedDriverName } : {}),
+        ...(unmatchedDriverName ? { unmatched_driver_name: unmatchedDriverName } : {}),
+        auto_matched_vehicle: autoMatchedVehicle,
+        manifest_meta: manifestMeta,
+        manifest_layers: manifestLayerSummary,
+        geocoding: {
+          status: geocodedManifest.summary.status,
+          attempted: geocodedManifest.summary.attempted,
+          geocoded: geocodedManifest.summary.geocoded,
+          failed: geocodedManifest.summary.failed
+        },
+        route_health: coordinateHealth,
+        coordinate_integrity: coordinateIntegrity,
+        address_warnings: addressWarnings,
+        manifest_stop_count: protectedRouteSyncMetadata.manifest_stop_count,
+        manifest_package_count: protectedRouteSyncMetadata.manifest_package_count,
+        sync_state: manifestChanged ? 'changed_after_dispatch' : 'staged_stable'
+      };
+    }
+
     let routeId = null;
     let mergedIntoExistingRoute = false;
     let routeSyncMetadata = null;
+    let routePayload = null;
     let preservedStopStateByKey = new Map();
 
     if (existingRoute) {
@@ -850,26 +1431,6 @@ function createManifestIngestService(options = {}) {
           ? existingRoute.completed_at || nowProvider().toISOString()
           : null;
 
-      if (existingStopIds.length) {
-        const { error: deletePackagesError } = await supabase
-          .from('packages')
-          .delete()
-          .in('stop_id', existingStopIds);
-
-        if (deletePackagesError) {
-          throw new Error('Failed to clear the old package placeholders before applying the new manifest');
-        }
-      }
-
-      const { error: deleteStopsError } = await supabase
-        .from('stops')
-        .delete()
-        .eq('route_id', existingRoute.id);
-
-      if (deleteStopsError) {
-        throw new Error('Failed to clear the old route stops before applying the new manifest');
-      }
-
       routeSyncMetadata = buildRouteSyncMetadata({
         manifestMeta,
         routeStops,
@@ -877,36 +1438,26 @@ function createManifestIngestService(options = {}) {
         syncedAt: nowProvider().toISOString()
       });
 
-      const { data: updatedRoute, error: updateRouteError } = await supabase
-        .from('routes')
-        .update({
-          driver_id: resolvedDriverId,
-          vehicle_id: resolvedVehicleId,
-          work_area_name: resolvedWorkAreaName,
-          dispatch_state: shouldResetRouteForManifestRefresh ? 'staged' : existingRoute.dispatch_state || 'staged',
-          dispatched_at: shouldResetRouteForManifestRefresh ? null : existingRoute.dispatched_at || null,
-          dispatched_by_manager_user_id: shouldResetRouteForManifestRefresh
-            ? null
-            : existingRoute.dispatched_by_manager_user_id || null,
-          ...routeSyncMetadata,
-          sa_number: manifestMeta.sa_number || null,
-          contractor_name: manifestMeta.contractor_name || null,
-          source,
-          total_stops: routeStops.length,
-          completed_stops: shouldResetRouteForManifestRefresh ? 0 : preservedCompletedStops,
-          completed_at: nextCompletedAt,
-          status: nextRouteStatus
-        })
-        .eq('id', existingRoute.id)
-        .eq('account_id', accountId)
-        .select('id')
-        .single();
+      routePayload = {
+        driver_id: resolvedDriverId,
+        vehicle_id: resolvedVehicleId,
+        work_area_name: resolvedWorkAreaName,
+        dispatch_state: shouldResetRouteForManifestRefresh ? 'staged' : existingRoute.dispatch_state || 'staged',
+        dispatched_at: shouldResetRouteForManifestRefresh ? null : existingRoute.dispatched_at || null,
+        dispatched_by_manager_user_id: shouldResetRouteForManifestRefresh
+          ? null
+          : existingRoute.dispatched_by_manager_user_id || null,
+        ...routeSyncMetadata,
+        sa_number: manifestMeta.sa_number || null,
+        contractor_name: manifestMeta.contractor_name || null,
+        source,
+        total_stops: routeStops.length,
+        completed_stops: shouldResetRouteForManifestRefresh ? 0 : preservedCompletedStops,
+        completed_at: nextCompletedAt,
+        status: nextRouteStatus
+      };
 
-      if (updateRouteError) {
-        throw new Error('Failed to update the existing route with the new manifest data');
-      }
-
-      routeId = updatedRoute.id;
+      routeId = existingRoute.id;
       mergedIntoExistingRoute = true;
     } else {
       routeSyncMetadata = buildRouteSyncMetadata({
@@ -916,187 +1467,85 @@ function createManifestIngestService(options = {}) {
         syncedAt: nowProvider().toISOString()
       });
 
-      const { data: routeRecord, error: routeError } = await supabase
-        .from('routes')
-        .insert({
-          account_id: accountId,
-          driver_id: resolvedDriverId,
-          vehicle_id: resolvedVehicleId,
-          work_area_name: resolvedWorkAreaName,
-          date: resolvedDate,
-          dispatch_state: 'staged',
-          dispatched_at: null,
-          dispatched_by_manager_user_id: null,
-          ...routeSyncMetadata,
-          sa_number: manifestMeta.sa_number || null,
-          contractor_name: manifestMeta.contractor_name || null,
-          source,
-          total_stops: routeStops.length,
-          completed_stops: 0,
-          status: 'pending'
-        })
-        .select('id')
-        .single();
+      routeId = crypto.randomUUID();
+      routePayload = {
+        id: routeId,
+        account_id: accountId,
+        driver_id: resolvedDriverId,
+        vehicle_id: resolvedVehicleId,
+        work_area_name: resolvedWorkAreaName,
+        date: resolvedDate,
+        dispatch_state: 'staged',
+        dispatched_at: null,
+        dispatched_by_manager_user_id: null,
+        ...routeSyncMetadata,
+        sa_number: manifestMeta.sa_number || null,
+        contractor_name: manifestMeta.contractor_name || null,
+        source,
+        total_stops: routeStops.length,
+        completed_stops: 0,
+        status: 'pending'
+      };
+    }
 
-      if (routeError) {
-        const friendlyError = getManifestUploadError(routeError, {
-          workAreaName: resolvedWorkAreaName,
-          date: resolvedDate
+    const stopInsertPayload = buildStopInsertPayload({
+      routeId,
+      routeStops,
+      existingRoute,
+      preservedStopStateByKey,
+      nowIso: nowProvider().toISOString()
+    });
+    const atomicPackagePayload = buildPackageRowsForStops({ routeId, routeStops });
+    let appliedRoute = await applyManifestRouteAtomically({
+      supabase,
+      routeId,
+      accountId,
+      existingRoute,
+      mergedIntoExistingRoute,
+      routePayload,
+      stopInsertPayload,
+      packageInsertPayload: atomicPackagePayload
+    });
+
+    if (!appliedRoute) {
+      try {
+        appliedRoute = await applyManifestRouteClientSide({
+          supabase,
+          routeId,
+          accountId,
+          existingRoute,
+          mergedIntoExistingRoute,
+          routePayload,
+          stopInsertPayload,
+          routeStops
         });
-        const error = new Error(friendlyError || 'Failed to create route from manifest');
-        error.statusCode = routeError?.code === '23505' ? 409 : 500;
-        throw error;
-      }
+      } catch (routeError) {
+        if (!mergedIntoExistingRoute) {
+          const friendlyError = getManifestUploadError(routeError, {
+            workAreaName: resolvedWorkAreaName,
+            date: resolvedDate
+          });
+          if (friendlyError) {
+            const error = new Error(friendlyError);
+            error.statusCode = routeError?.code === '23505' ? 409 : 500;
+            throw error;
+          }
+        }
 
-      routeId = routeRecord.id;
+        throw routeError;
+      }
     }
 
-    const stopInsertPayload = routeStops.map((stop) => ({
-      route_id: routeId,
-      sequence_order: stop.sequence,
-      address: stop.address,
-      address_line2: stop.address_line2 || null,
-      contact_name: stop.contact_name || null,
-      business_name: stop.business_name || null,
-      company_name: stop.company_name || null,
-      primary_phone: stop.primary_phone || null,
-      alternate_phone: stop.alternate_phone || null,
-      email: stop.email || null,
-      customer_instructions: stop.customer_instructions || null,
-      delivery_instructions: stop.delivery_instructions || null,
-      consignee: stop.consignee || null,
-      shipper: stop.shipper || null,
-      contact_source: stop.contact_source || null,
-      contact_last_imported_at: stop.contact_last_imported_at || (stop.contact_source ? nowProvider().toISOString() : null),
-      raw_contact_metadata: stop.raw_contact_metadata || null,
-      lat: stop.lat,
-      lng: stop.lng,
-      is_pickup: Boolean(stop.is_pickup),
-      is_business: Boolean(stop.is_business),
-      sid: stop.sid || null,
-      ready_time: stop.ready_time || null,
-      close_time: stop.close_time || null,
-      has_time_commit: Boolean(stop.has_time_commit),
-      stop_type: stop.type || 'delivery',
-      has_pickup: Boolean(stop.has_pickup),
-      has_delivery: stop.has_delivery !== false,
-      geocode_source: stop.geocode_source || 'manifest',
-      geocode_accuracy: stop.geocode_accuracy || 'manifest',
-      ...(() => {
-        const preservedState = existingRoute
-          ? getExistingStopStateForManifestStop(
-              preservedStopStateByKey,
-              stop,
-              `insert:${stop?.sequence}`
-            )
-          : null;
-
-        return {
-          status: preservedState?.status || 'pending',
-          exception_code: preservedState?.exception_code || null,
-          delivery_type_code: preservedState?.delivery_type_code || null,
-          signer_name: preservedState?.signer_name || null,
-          signature_url: preservedState?.signature_url || null,
-          age_confirmed: preservedState?.age_confirmed || false,
-          pod_photo_url: preservedState?.pod_photo_url || null,
-          pod_signature_url: preservedState?.pod_signature_url || null,
-          scanned_at: preservedState?.scanned_at || null,
-          completed_at: preservedState?.completed_at || null,
-          has_note: Boolean(stop.warning || preservedState?.has_note),
-          notes: stop.warning ? stop.warning : preservedState?.notes || null
-        };
-      })()
-    }));
-
-    const { data: insertedStops, error: stopsError } = await supabase
-      .from('stops')
-      .insert(stopInsertPayload)
-      .select('id, sequence_order');
-
-    if (stopsError) {
-      if (!mergedIntoExistingRoute) {
-        await supabase.from('routes').delete().eq('id', routeId);
-      }
-      const error = new Error(getManifestSchemaError(stopsError) || 'Failed to save stops from manifest');
-      error.statusCode = 500;
-      throw error;
-    }
-
+    routeId = appliedRoute.routeId;
+    const insertedStops = appliedRoute.insertedStops || [];
+    const packageInsertPayload = appliedRoute.packageInsertPayload || atomicPackagePayload;
     const stopIdBySequence = new Map(insertedStops.map((stop) => [stop.sequence_order, stop.id]));
-
-    const packageInsertPayload = dedupePackageRows(routeStops.flatMap((stop) => {
-      const explicitPackages = Array.isArray(stop.packages)
-        ? stop.packages.filter((pkg) => pkg?.tracking_number)
-        : [];
-      const stopId = stopIdBySequence.get(stop.sequence);
-
-      if (explicitPackages.length) {
-        return explicitPackages.map((pkg) => ({
-          stop_id: stopId,
-          tracking_number: String(pkg.tracking_number || '').trim(),
-          service_code: pkg.service_code || null,
-          requires_signature: Boolean(pkg.requires_signature),
-          requires_adult_signature: Boolean(pkg.requires_adult_signature),
-          hazmat: Boolean(pkg.hazmat)
-        }));
-      }
-
-      const packageCount = Math.max(1, Number(stop.package_count || 1));
-      const packageKeyBase = stop.sid && stop.sid !== '0'
-        ? `RR-${routeId.slice(0, 8)}-STOPID-${stopId}-SID-${stop.sid}`
-        : `RR-${routeId.slice(0, 8)}-STOPID-${stopId}`;
-
-      return Array.from({ length: packageCount }, (_, index) => ({
-        stop_id: stopId,
-        tracking_number: `${packageKeyBase}-${index + 1}`,
-        service_code: null,
-        requires_signature: false,
-        requires_adult_signature: false,
-        hazmat: false
-      }));
-    }));
-
-    let { error: packagesError } = await supabase
-      .from('packages')
-      .insert(packageInsertPayload);
-
-    if (packagesError && canRetryPackageInsertWithoutDetailColumns(packagesError)) {
-      const { error: fallbackPackagesError } = await supabase
-        .from('packages')
-        .insert(stripOptionalPackageDetailColumns(packageInsertPayload));
-      packagesError = fallbackPackagesError;
-    }
-
-    if (packagesError) {
-      if (!mergedIntoExistingRoute) {
-        await supabase.from('routes').delete().eq('id', routeId);
-      }
-      const error = new Error('Failed to save package placeholders');
-      error.statusCode = 500;
-      throw error;
-    }
 
     const deliveryCount = routeStops.filter((stop) => stop.type === 'delivery').length;
     const pickupCount = routeStops.filter((stop) => stop.type === 'pickup').length;
     const combinedCount = routeStops.filter((stop) => stop.type === 'combined').length;
     const pickupStopCount = routeStops.filter((stop) => stop.has_pickup || stop.type === 'pickup' || stop.type === 'combined').length;
     const timeCommitCount = routeStops.filter((stop) => stop.has_time_commit).length;
-    const coordinateHealth = summarizeCoordinateHealth(routeStops);
-    const coordinateIntegrity = detectSuspiciousCoordinateClusters(routeStops);
-
-    if (coordinateIntegrity.suspicious_cluster_count > 0) {
-      if (!mergedIntoExistingRoute) {
-        await supabase.from('routes').delete().eq('id', routeId);
-      }
-
-      const error = new Error(
-        'Manifest upload was blocked because too many different stop addresses collapsed onto the same map pin. Please re-check the manifest/GPX pair before dispatch.'
-      );
-      error.statusCode = 422;
-      error.route_health = coordinateHealth;
-      error.coordinate_integrity = coordinateIntegrity;
-      throw error;
-    }
 
     const insertedStopsForEnrichment = routeStops.map((stop) => ({
       ...stop,
@@ -1124,14 +1573,20 @@ function createManifestIngestService(options = {}) {
         ? `Manifest refreshed for route ${resolvedWorkAreaName}`
         : `Manifest staged for route ${resolvedWorkAreaName}`,
       details: {
-        upload_mode: companionGpxFile ? 'spreadsheet_gpx' : manifestFormat,
+        upload_mode: manifestLayerSummary.length > 1
+          ? 'manifest_bundle'
+          : manifestLayers.some((layer) => hasManifestFile(layer.companionGpxFile))
+            ? 'spreadsheet_gpx'
+            : manifestFormat,
         total_stops: routeStops.length,
         manifest_stop_count: routeSyncMetadata?.manifest_stop_count || routeStops.length,
         manifest_package_count: routeSyncMetadata?.manifest_package_count || packageInsertPayload.length,
+        manifest_layers: manifestLayerSummary,
         sync_state: routeSyncMetadata?.sync_state || null,
         auto_matched_driver: autoMatchedDriver,
         auto_matched_vehicle: autoMatchedVehicle,
         merged_into_existing_route: mergedIntoExistingRoute,
+        applied_atomically: Boolean(appliedRoute.appliedAtomically),
         coordinate_status: coordinateHealth.status
       },
       managerUserId
@@ -1147,11 +1602,13 @@ function createManifestIngestService(options = {}) {
       combined_count: combinedCount,
       time_commit_count: timeCommitCount,
       merged_into_existing_route: mergedIntoExistingRoute,
+      applied_atomically: Boolean(appliedRoute.appliedAtomically),
       auto_matched_driver: autoMatchedDriver,
       ...(matchedDriverName ? { matched_driver_name: matchedDriverName } : {}),
       ...(unmatchedDriverName ? { unmatched_driver_name: unmatchedDriverName } : {}),
       auto_matched_vehicle: autoMatchedVehicle,
       manifest_meta: manifestMeta,
+      manifest_layers: manifestLayerSummary,
       geocoding: {
         status: geocodedManifest.summary.status,
         attempted: geocodedManifest.summary.attempted,
@@ -1175,6 +1632,10 @@ function createManifestIngestService(options = {}) {
 module.exports = {
   createManifestIngestService,
   __private: {
-    mergePendingManifestStops
+    mergePendingManifestStops,
+    buildManifestLayers,
+    mergeParsedManifestLayers,
+    validateManifestPackageTracking,
+    applyManifestRouteAtomically
   }
 };

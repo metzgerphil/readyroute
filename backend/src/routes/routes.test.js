@@ -228,10 +228,64 @@ function buildFedExManifestBuffer() {
     ['Vehicle Type', 'VAN']
   ];
   const stopRows = [
-    ['ST#', 'Delivery/Pickup', 'Contact Name', 'Address Line 1', 'Address Line 2', 'City', 'State', 'Postal Code', '# Pkgs', 'SID', 'Ready', 'Close'],
-    [1, 'Delivery', 'Acme Receiving', '123 Main St', 'Suite 200', 'San Diego', 'CA', '92029-4159', 2, 'SID123', '09:00', '10:00'],
-    [1, 'Pickup', 'Acme Receiving', '123 Main St', 'Suite 200', 'San Diego', 'CA', '92029-4159', 1, 0, '13:00', '14:00'],
-    [2, 'Pickup', 'Warehouse Dock', '456 Market St', '', 'San Diego', 'CA', '92101', 3, 0, '00:00', '00:00']
+    [
+      'ST#',
+      'Delivery/Pickup',
+      'Contact Name',
+      'Company Name',
+      'Phone',
+      'Email',
+      'Delivery Instructions',
+      'Contact Preference',
+      'Address Line 1',
+      'Address Line 2',
+      'City',
+      'State',
+      'Postal Code',
+      '# Pkgs',
+      'SID',
+      'Ready',
+      'Close'
+    ],
+    [
+      1,
+      'Delivery',
+      'Acme Receiving',
+      'Acme Corp',
+      '(555) 111-2222 ext. 9',
+      'dock@example.com',
+      'Use rear dock',
+      'Text first',
+      '123 Main St',
+      'Suite 200',
+      'San Diego',
+      'CA',
+      '92029-4159',
+      2,
+      'SID123',
+      '09:00',
+      '10:00'
+    ],
+    [
+      1,
+      'Pickup',
+      'Acme Receiving',
+      '',
+      '',
+      '',
+      '',
+      '',
+      '123 Main St',
+      'Suite 200',
+      'San Diego',
+      'CA',
+      '92029-4159',
+      1,
+      0,
+      '13:00',
+      '14:00'
+    ],
+    [2, 'Pickup', 'Warehouse Dock', '', '', '', '', '', '456 Market St', '', 'San Diego', 'CA', '92101', 3, 0, '00:00', '00:00']
   ];
 
   XLSX.utils.book_append_sheet(workbook, XLSX.utils.aoa_to_sheet(headerRows), 'Header');
@@ -281,6 +335,15 @@ test('GET /routes/today returns the driver route with stops and nested packages'
             address: '100 Main St',
             contact_name: 'PALOMAR REHABILITATION',
             address_line2: 'Suite 100',
+            business_name: 'Palomar Rehab',
+            company_name: 'Palomar Health',
+            primary_phone: '(555) 111-2222 ext. 9',
+            alternate_phone: null,
+            email: 'dock@example.com',
+            customer_instructions: 'Call before arrival',
+            delivery_instructions: 'Use rear dock',
+            consignee: 'Receiving Desk',
+            shipper: 'Sender Co',
             sid: 'SID123',
             ready_time: '09:00',
             close_time: '10:00',
@@ -411,6 +474,10 @@ test('GET /routes/today returns the driver route with stops and nested packages'
     assert.equal(body.route.id, 'route-1');
     assert.equal(body.route.total_stops, 2);
     assert.equal(body.route.completed_stops, 0);
+    assert.equal(body.route.pickup_stops, 1);
+    assert.equal(body.route.pickup_stops_completed, 1);
+    assert.equal(body.route.pickup_stop_count, 1);
+    assert.equal(body.route.driver_pickup_stops, 1);
     assert.equal(body.route.stops_per_hour, null);
     assert.equal(body.route.stops.length, 2);
     assert.deepEqual(body.route.stops[0].packages, [
@@ -431,9 +498,176 @@ test('GET /routes/today returns the driver route with stops and nested packages'
     ]);
     assert.equal(body.route.stops[1].status, 'attempted');
     assert.equal(body.route.stops[0].is_business, true);
+    assert.equal(body.route.stops[0].has_contact_info, true);
+    assert.equal(body.route.stops[0].business_name, 'Palomar Rehab');
+    assert.equal(body.route.stops[0].company_name, 'Palomar Health');
+    assert.equal(body.route.stops[0].primary_phone, '(555) 111-2222 ext. 9');
+    assert.equal(body.route.stops[0].email, 'dock@example.com');
+    assert.equal(body.route.stops[0].customer_instructions, 'Call before arrival');
+    assert.equal(body.route.stops[0].delivery_instructions, 'Use rear dock');
+    assert.equal(body.route.stops[0].consignee, 'Receiving Desk');
+    assert.equal(body.route.stops[0].shipper, 'Sender Co');
     assert.equal(body.route.stops[0].has_note, false);
     assert.equal(body.route.stops[0].ready_time, '09:00');
     assert.equal(body.route.stops[1].stop_type, 'combined');
+  } finally {
+    await server.close();
+  }
+});
+
+test('GET /routes/today preserves same-address stops as distinct operational stops', async () => {
+  const sameAddressStops = [
+    {
+      id: 'same-stop-1',
+      route_id: 'route-1',
+      sequence_order: 10,
+      address: '1517 Knoll Park Gln, Escondido, CA',
+      contact_name: 'First Customer',
+      address_line2: 'Unit 101',
+      business_name: null,
+      company_name: null,
+      primary_phone: '555-0001',
+      alternate_phone: null,
+      email: null,
+      customer_instructions: 'Leave at door',
+      delivery_instructions: null,
+      consignee: null,
+      shipper: null,
+      sid: 'SID101',
+      ready_time: null,
+      close_time: null,
+      has_time_commit: false,
+      stop_type: 'delivery',
+      has_pickup: false,
+      has_delivery: true,
+      is_business: false,
+      has_note: true,
+      lat: 33.1,
+      lng: -117.2,
+      status: 'pending',
+      notes: 'Unit has a gate code',
+      exception_code: null,
+      delivery_type_code: null,
+      signer_name: null,
+      signature_url: null,
+      age_confirmed: false,
+      is_pickup: false,
+      pod_photo_url: null,
+      pod_signature_url: null,
+      scanned_at: null,
+      completed_at: null
+    },
+    {
+      id: 'same-stop-2',
+      route_id: 'route-1',
+      sequence_order: 11,
+      address: '1517 Knoll Park Gln, Escondido, CA',
+      contact_name: 'Second Customer',
+      address_line2: 'Unit 102',
+      business_name: null,
+      company_name: null,
+      primary_phone: '555-0002',
+      alternate_phone: null,
+      email: null,
+      customer_instructions: null,
+      delivery_instructions: null,
+      consignee: null,
+      shipper: null,
+      sid: 'SID102',
+      ready_time: null,
+      close_time: null,
+      has_time_commit: false,
+      stop_type: 'delivery',
+      has_pickup: false,
+      has_delivery: true,
+      is_business: false,
+      has_note: false,
+      lat: 33.1001,
+      lng: -117.2001,
+      status: 'delivered',
+      exception_code: null,
+      delivery_type_code: '013',
+      signer_name: 'Second Receiver',
+      signature_url: null,
+      age_confirmed: false,
+      is_pickup: false,
+      pod_photo_url: 'https://cdn/pod-2.jpg',
+      pod_signature_url: null,
+      scanned_at: '2026-04-08T15:00:00.000Z',
+      completed_at: '2026-04-08T15:00:00.000Z'
+    }
+  ];
+
+  const supabase = new MockSupabase((query) => {
+    if (query.table === 'routes' && query.operation === 'select') {
+      return {
+        data: {
+          id: 'route-1',
+          date: '2026-04-08',
+          status: 'in_progress',
+          dispatch_state: 'dispatched',
+          total_stops: 2,
+          completed_stops: 1,
+          completed_at: null
+        },
+        error: null
+      };
+    }
+
+    if (query.table === 'stops' && query.operation === 'select') {
+      return { data: sameAddressStops, error: null };
+    }
+
+    if (query.table === 'packages' && query.operation === 'select') {
+      return {
+        data: [
+          { id: 'pkg-1', stop_id: 'same-stop-1', tracking_number: 'TN1', requires_signature: false, hazmat: false },
+          { id: 'pkg-2', stop_id: 'same-stop-2', tracking_number: 'TN2', requires_signature: false, hazmat: false },
+          { id: 'pkg-3', stop_id: 'same-stop-2', tracking_number: 'TN3', requires_signature: false, hazmat: false }
+        ],
+        error: null
+      };
+    }
+
+    if (['location_corrections', 'apartment_units', 'property_intel', 'stop_notes'].includes(query.table) && query.operation === 'select') {
+      return { data: [], error: null };
+    }
+
+    throw new Error(`Unexpected query ${query.table}:${query.operation}:${query.mode}`);
+  });
+
+  const server = await startTestServer(supabase);
+
+  try {
+    const response = await fetch(`${server.baseUrl}/routes/today`, {
+      headers: {
+        Authorization: `Bearer ${signDriverToken()}`
+      }
+    });
+
+    assert.equal(response.status, 200);
+    const body = await response.json();
+    assert.equal(body.route.total_stops, 2);
+    assert.equal(body.route.completed_stops, 1);
+    assert.equal(body.route.stops.length, 2);
+    assert.equal(body.route.stops[0].id, 'same-stop-1');
+    assert.equal(body.route.stops[1].id, 'same-stop-2');
+    assert.equal(body.route.stops[0].address_group_key, body.route.stops[1].address_group_key);
+    assert.equal(body.route.stops[0].packages.length, 1);
+    assert.equal(body.route.stops[1].packages.length, 2);
+
+    const groupedSibling = body.route.stops[0].property_intel.grouped_stops[0];
+    assert.equal(groupedSibling.id, 'same-stop-2');
+    assert.equal(groupedSibling.route_stop_id, 'same-stop-2');
+    assert.equal(groupedSibling.route_id, 'route-1');
+    assert.equal(groupedSibling.sid, 'SID102');
+    assert.equal(groupedSibling.sequence_order, 11);
+    assert.equal(groupedSibling.status, 'delivered');
+    assert.equal(groupedSibling.package_count, 2);
+    assert.equal(groupedSibling.contact_name, 'Second Customer');
+    assert.equal(groupedSibling.delivery_type_code, '013');
+    assert.equal(groupedSibling.completed_at, '2026-04-08T15:00:00.000Z');
+    assert.equal(groupedSibling.pod_photo_url, 'https://cdn/pod-2.jpg');
   } finally {
     await server.close();
   }
@@ -471,6 +705,135 @@ test('GET /routes/today returns null when the route has not been dispatched yet'
     const body = await response.json();
     assert.equal(body.route, null);
     assert.equal(body.driver_day.status, 'unassigned');
+  } finally {
+    await server.close();
+  }
+});
+
+test('POST /routes/odometer saves valid driver reading and updates vehicle mileage', async () => {
+  const supabase = new MockSupabase((query) => {
+    if (query.table === 'routes' && query.operation === 'select') {
+      return {
+        data: {
+          id: 'route-1',
+          vehicle_id: 'vehicle-1',
+          dispatch_state: 'dispatched'
+        },
+        error: null
+      };
+    }
+
+    if (query.table === 'vehicles' && query.operation === 'select') {
+      return {
+        data: {
+          id: 'vehicle-1',
+          account_id: 'acct-1',
+          current_mileage: 54250
+        },
+        error: null
+      };
+    }
+
+    if (query.table === 'vehicle_odometer_entries' && query.operation === 'insert') {
+      assert.equal(query.payload.vehicle_id, 'vehicle-1');
+      assert.equal(query.payload.driver_id, 'driver-1');
+      assert.equal(query.payload.account_id, 'acct-1');
+      assert.equal(query.payload.route_id, 'route-1');
+      assert.equal(query.payload.old_odometer_reading, 54250);
+      assert.equal(query.payload.new_odometer_reading, 54300);
+      assert.equal(query.payload.odometer_reading, 54300);
+      assert.equal(query.payload.source, 'driver');
+      return {
+        data: {
+          id: 'odo-1',
+          odometer_reading: 54300,
+          recorded_at: query.payload.recorded_at
+        },
+        error: null
+      };
+    }
+
+    if (query.table === 'vehicles' && query.operation === 'update') {
+      assert.equal(query.payload.current_mileage, 54300);
+      assert.equal(query.filters.find((filter) => filter.column === 'id')?.value, 'vehicle-1');
+      assert.equal(query.filters.find((filter) => filter.column === 'account_id')?.value, 'acct-1');
+      return { data: null, error: null };
+    }
+
+    throw new Error(`Unexpected query ${query.table}:${query.operation}:${query.mode}`);
+  });
+
+  const server = await startTestServer(supabase);
+
+  try {
+    const response = await fetch(`${server.baseUrl}/routes/odometer`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${signDriverToken()}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        vehicle_id: 'vehicle-1',
+        route_id: 'route-1',
+        odometer_reading: 54300
+      })
+    });
+
+    assert.equal(response.status, 201);
+    const body = await response.json();
+    assert.equal(body.vehicle.current_mileage, 54300);
+  } finally {
+    await server.close();
+  }
+});
+
+test('POST /routes/odometer blocks readings outside the accepted range', async () => {
+  const supabase = new MockSupabase((query) => {
+    if (query.table === 'routes' && query.operation === 'select') {
+      return {
+        data: {
+          id: 'route-1',
+          vehicle_id: 'vehicle-1',
+          dispatch_state: 'dispatched'
+        },
+        error: null
+      };
+    }
+
+    if (query.table === 'vehicles' && query.operation === 'select') {
+      return {
+        data: {
+          id: 'vehicle-1',
+          account_id: 'acct-1',
+          current_mileage: 54250
+        },
+        error: null
+      };
+    }
+
+    throw new Error(`Unexpected query ${query.table}:${query.operation}:${query.mode}`);
+  });
+
+  const server = await startTestServer(supabase);
+
+  try {
+    const response = await fetch(`${server.baseUrl}/routes/odometer`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${signDriverToken()}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        vehicle_id: 'vehicle-1',
+        route_id: 'route-1',
+        odometer_reading: 54600
+      })
+    });
+
+    assert.equal(response.status, 400);
+    const body = await response.json();
+    assert.equal(body.minimum_odometer, 54250);
+    assert.equal(body.maximum_odometer, 54550);
   } finally {
     await server.close();
   }
@@ -760,6 +1123,92 @@ test('PATCH /routes/stops/:stop_id/complete stores attempted stops using a suppo
   }
 });
 
+test('PATCH /routes/stops/:stop_id/complete only updates the selected same-address stop', async () => {
+  const supabase = new MockSupabase((query) => {
+    if (query.table === 'stops' && query.operation === 'select' && query.mode === 'maybeSingle') {
+      if (query.filters.some((filter) => filter.column === 'routes.driver_id')) {
+        assert.equal(query.filters.find((filter) => filter.column === 'id')?.value, 'same-stop-1');
+        return {
+          data: {
+            id: 'same-stop-1',
+            route_id: 'route-1',
+            sequence_order: 10,
+            address: '1517 Knoll Park Gln',
+            status: 'pending',
+            completed_at: null,
+            routes: {
+              id: 'route-1',
+              driver_id: 'driver-1',
+              account_id: 'acct-1',
+              dispatch_state: 'dispatched',
+              total_stops: 2,
+              completed_stops: 0,
+              status: 'in_progress'
+            }
+          },
+          error: null
+        };
+      }
+
+      assert.equal(query.filters.find((filter) => filter.column === 'route_id')?.value, 'route-1');
+      assert.equal(query.filters.find((filter) => filter.column === 'status')?.value, 'pending');
+      return {
+        data: {
+          id: 'same-stop-2',
+          route_id: 'route-1',
+          sequence_order: 11,
+          address: '1517 Knoll Park Gln',
+          lat: 33.1001,
+          lng: -117.2001,
+          status: 'pending'
+        },
+        error: null
+      };
+    }
+
+    if (query.table === 'stops' && query.operation === 'update') {
+      assert.equal(query.filters.find((filter) => filter.column === 'id')?.value, 'same-stop-1');
+      assert.equal(query.filters.some((filter) => /address/i.test(filter.column)), false);
+      assert.equal(query.payload.status, 'delivered');
+      assert.equal(query.payload.delivery_type_code, '013');
+      assert.equal(query.payload.exception_code, null);
+      assert.equal(query.payload.completed_by_driver_id, 'driver-1');
+      return { data: null, error: null };
+    }
+
+    if (query.table === 'routes' && query.operation === 'update') {
+      assert.equal(query.filters.find((filter) => filter.column === 'id')?.value, 'route-1');
+      assert.equal(query.payload.completed_stops, 1);
+      assert.equal(query.payload.status, undefined);
+      return { data: null, error: null };
+    }
+
+    throw new Error(`Unexpected query ${query.table}:${query.operation}:${query.mode}`);
+  });
+
+  const server = await startTestServer(supabase);
+
+  try {
+    const response = await fetch(`${server.baseUrl}/routes/stops/same-stop-1/complete`, {
+      method: 'PATCH',
+      headers: {
+        Authorization: `Bearer ${signDriverToken()}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        status: 'delivered',
+        delivery_type_code: '013'
+      })
+    });
+
+    assert.equal(response.status, 200);
+    const body = await response.json();
+    assert.equal(body.next_stop.id, 'same-stop-2');
+  } finally {
+    await server.close();
+  }
+});
+
 test('POST /routes/position inserts a driver GPS row for the authenticated route', async () => {
   const supabase = new MockSupabase((query) => {
     if (query.table === 'routes' && query.operation === 'select') {
@@ -928,6 +1377,15 @@ test('GET /routes/stops/:stop_id returns stop detail with packages and note text
           address: '100 Main St',
           contact_name: 'Acme Apartments',
           address_line2: 'Unit 3B gate code 4455',
+          business_name: null,
+          company_name: 'Acme Property Group',
+          primary_phone: '555-111-2222',
+          alternate_phone: '555-222-3333',
+          email: 'resident@example.com',
+          customer_instructions: 'Call on arrival',
+          delivery_instructions: 'Leave with front desk',
+          consignee: 'Acme Resident',
+          shipper: 'Sender Co',
           lat: 40.7,
           lng: -74,
           status: 'pending',
@@ -1032,6 +1490,16 @@ test('GET /routes/stops/:stop_id returns stop detail with packages and note text
     assert.equal(response.status, 200);
     const body = await response.json();
     assert.equal(body.stop.address, '100 Main St');
+    assert.equal(body.stop.has_contact_info, true);
+    assert.equal(body.stop.company_name, 'Acme Property Group');
+    assert.equal(body.stop.primary_phone, '555-111-2222');
+    assert.equal(body.stop.alternate_phone, '555-222-3333');
+    assert.equal(body.stop.email, 'resident@example.com');
+    assert.equal(body.stop.customer_instructions, 'Call on arrival');
+    assert.equal(body.stop.delivery_instructions, 'Leave with front desk');
+    assert.equal(body.stop.consignee, 'Acme Resident');
+    assert.equal(body.stop.shipper, 'Sender Co');
+    assert.equal(body.stop.raw_contact_metadata, undefined);
     assert.equal(body.stop.note_text, 'Beware of side gate');
     assert.equal(body.stop.delivery_type_code, null);
     assert.equal(body.stop.property_intel.location_type, 'apartment');
@@ -1532,6 +2000,7 @@ test('GET /routes/status-codes returns ordered FedEx status codes for drivers', 
             affects_service_score: false,
             requires_warning: false,
             is_pickup_code: false,
+            is_exception_code: true,
             created_at: '2026-04-11T10:00:00.000Z'
           },
           {
@@ -1543,6 +2012,7 @@ test('GET /routes/status-codes returns ordered FedEx status codes for drivers', 
             affects_service_score: true,
             requires_warning: true,
             is_pickup_code: false,
+            is_exception_code: true,
             created_at: '2026-04-11T10:00:00.000Z'
           },
           {
@@ -1554,6 +2024,7 @@ test('GET /routes/status-codes returns ordered FedEx status codes for drivers', 
             affects_service_score: false,
             requires_warning: false,
             is_pickup_code: true,
+            is_exception_code: true,
             created_at: '2026-04-11T10:00:00.000Z'
           }
         ],
@@ -1577,6 +2048,7 @@ test('GET /routes/status-codes returns ordered FedEx status codes for drivers', 
     const body = await response.json();
     assert.equal(body.codes.length, 3);
     assert.equal(body.codes[0].category, '1');
+    assert.equal(body.codes[0].is_exception_code, true);
     assert.equal(body.codes[1].requires_warning, true);
     assert.equal(body.codes[2].is_pickup_code, true);
   } finally {
@@ -1697,6 +2169,8 @@ test('POST /routes/upload-manifest accepts XLSX manifests and auto-matches drive
     assert.equal(payload.total_stops, 2);
     assert.equal(payload.delivery_count, 0);
     assert.equal(payload.pickup_count, 1);
+    assert.equal(payload.pickup_stop_count, 2);
+    assert.equal(payload.total_pickup_stops, 2);
     assert.equal(payload.combined_count, 1);
     assert.equal(payload.time_commit_count, 1);
     assert.equal(payload.auto_matched_driver, true);
@@ -1718,6 +2192,15 @@ test('POST /routes/upload-manifest accepts XLSX manifests and auto-matches drive
     assert.equal(insertedStopsPayload[0].has_delivery, true);
     assert.equal(insertedStopsPayload[0].has_time_commit, true);
     assert.equal(insertedStopsPayload[0].contact_name, 'Acme Receiving');
+    assert.equal(insertedStopsPayload[0].company_name, 'Acme Corp');
+    assert.equal(insertedStopsPayload[0].primary_phone, '(555) 111-2222 ext. 9');
+    assert.equal(insertedStopsPayload[0].email, 'dock@example.com');
+    assert.equal(insertedStopsPayload[0].delivery_instructions, 'Use rear dock');
+    assert.equal(insertedStopsPayload[0].contact_source, 'manifest');
+    assert.match(insertedStopsPayload[0].contact_last_imported_at, /^\d{4}-\d{2}-\d{2}T/);
+    assert.deepEqual(insertedStopsPayload[0].raw_contact_metadata, {
+      'Contact Preference': 'Text first'
+    });
     assert.equal(insertedStopsPayload[0].address_line2, 'Suite 200');
     assert.equal(insertedStopsPayload[0].sid, 'SID123');
     assert.equal(insertedStopsPayload[0].ready_time, '09:00');
@@ -1726,6 +2209,8 @@ test('POST /routes/upload-manifest accepts XLSX manifests and auto-matches drive
     assert.equal(insertedStopsPayload[1].has_pickup, true);
     assert.equal(insertedStopsPayload[1].has_delivery, false);
     assert.equal(insertedStopsPayload[1].is_pickup, true);
+    assert.equal(insertedStopsPayload[1].primary_phone, null);
+    assert.equal(insertedStopsPayload[1].email, null);
 
     assert.equal(insertedPackagesPayload.length, 6);
   } finally {
@@ -2000,6 +2485,9 @@ test('POST /routes/upload-manifest optionally merges GPX coordinates into spread
     assert.equal(insertedStopsPayload[1].lat, 33.2);
     assert.equal(insertedStopsPayload[1].lng, -117.3);
     assert.equal(insertedStopsPayload[0].contact_name, 'Acme Receiving');
+    assert.equal(insertedStopsPayload[0].primary_phone, '(555) 111-2222 ext. 9');
+    assert.equal(insertedStopsPayload[0].email, 'dock@example.com');
+    assert.equal(insertedStopsPayload[0].delivery_instructions, 'Use rear dock');
     assert.equal(insertedStopsPayload[0].address_line2, 'Suite 200');
     assert.equal(insertedStopsPayload[0].sid, 'SID123');
     assert.equal(insertedStopsPayload[0].geocode_source, 'manifest');
@@ -2013,9 +2501,10 @@ test('POST /routes/upload-manifest optionally merges GPX coordinates into spread
   }
 });
 
-test('POST /routes/upload-manifest refreshes an active route and preserves completed stop progress', async () => {
+test('POST /routes/upload-manifest holds post-dispatch changes without mutating the driver route', async () => {
   let updatedRoutePayload;
   let insertedStopsPayload;
+  let insertedSyncEventPayload;
 
   const supabase = new MockSupabase((query) => {
     if (query.table === 'drivers' && query.operation === 'select') {
@@ -2152,6 +2641,7 @@ test('POST /routes/upload-manifest refreshes an active route and preserves compl
     }
 
     if (query.table === 'route_sync_events' && query.operation === 'insert') {
+      insertedSyncEventPayload = query.payload;
       return {
         data: null,
         error: null
@@ -2191,18 +2681,17 @@ test('POST /routes/upload-manifest refreshes an active route and preserves compl
 
     assert.equal(response.status, 201);
     const payload = await response.json();
-    const completedStop = insertedStopsPayload.find((stop) => stop.sid === 'SID123');
 
     assert.equal(payload.route_id, 'route-existing');
-    assert.equal(payload.merged_into_existing_route, true);
-    assert.equal(updatedRoutePayload.dispatch_state, 'dispatched');
-    assert.equal(updatedRoutePayload.dispatched_at, '2026-04-13T14:00:00.000Z');
-    assert.equal(updatedRoutePayload.dispatched_by_manager_user_id, 'manager-dispatcher');
-    assert.equal(updatedRoutePayload.completed_stops, 1);
-    assert.equal(updatedRoutePayload.status, 'in_progress');
-    assert.equal(completedStop.status, 'delivered');
-    assert.equal(completedStop.scanned_at, '2026-04-13T16:00:00.000Z');
-    assert.equal(completedStop.completed_at, '2026-04-13T16:00:00.000Z');
+    assert.equal(payload.live_route_protected, true);
+    assert.equal(payload.driver_route_unchanged, true);
+    assert.equal(payload.post_dispatch_change_held, true);
+    assert.equal(payload.sync_state, 'changed_after_dispatch');
+    assert.equal(updatedRoutePayload, undefined);
+    assert.equal(insertedStopsPayload, undefined);
+    assert.equal(insertedSyncEventPayload.event_type, 'post_dispatch_change');
+    assert.equal(insertedSyncEventPayload.details.driver_route_unchanged, true);
+    assert.equal(insertedSyncEventPayload.details.live_route_protected, true);
   } finally {
     await server.close();
   }

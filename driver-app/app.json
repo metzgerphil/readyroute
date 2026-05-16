@@ -19,7 +19,7 @@
           "comgooglemaps",
           "maps"
         ],
-        "NSLocationWhenInUseUsageDescription": "ReadyRoute requires live location while drivers are using the app so managers can track active drivers and support routes in real time."
+        "NSLocationWhenInUseUsageDescription": "ReadyRoute uses your location while you are on route so your manager can see route progress, support dispatch decisions, and locate drivers during the workday."
       }
     },
     "android": {

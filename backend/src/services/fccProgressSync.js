@@ -1,4 +1,8 @@
 const { namesLookLikeMatch, parseFccWorkAreaIdentity } = require('./routeIdentity');
+const {
+  getFedExExceptionCode,
+  normalizeFedExStatusCode
+} = require('./fedexStatusCodes');
 
 function normalizeComparisonValue(value) {
   return String(value || '')
@@ -273,24 +277,16 @@ function deriveRouteStatus({ completedStops, totalStops, currentStatus }) {
   return currentStatus || 'pending';
 }
 
-function normalizeExceptionCode(value) {
-  const raw = String(value || '').trim();
+function getProgressRowExceptionCode(row) {
+  const rawCode = row?.exception_code || row?.status_code || row?.scan_code;
+  const stopType = getProgressStopType(row);
+  const pickup = stopType === 'pickup' || stopType === 'combined' || /^P/i.test(String(rawCode || '').trim());
 
-  if (!raw) {
-    return null;
+  if (row?.is_exception) {
+    return normalizeFedExStatusCode(rawCode, { pickup });
   }
 
-  const prefixedPickupCode = raw.match(/\b(P\d{1,3})\b/i);
-  if (prefixedPickupCode) {
-    return prefixedPickupCode[1].toUpperCase();
-  }
-
-  const numericCode = raw.match(/\b(?:code\s*)?(\d{1,3})\b/i);
-  if (!numericCode) {
-    return raw.toUpperCase();
-  }
-
-  return Number(numericCode[1]) > 0 ? numericCode[1].padStart(2, '0') : null;
+  return getFedExExceptionCode(rawCode, { pickup });
 }
 
 function getProgressRowTimestamp(row, nowProvider) {
@@ -313,7 +309,7 @@ function getProgressRowUpdate(row, nowProvider) {
     };
   }
 
-  const exceptionCode = normalizeExceptionCode(row?.exception_code || row?.status_code || row?.scan_code);
+  const exceptionCode = getProgressRowExceptionCode(row);
   if (row?.is_exception || exceptionCode) {
     return {
       status: row?.status === 'incomplete' ? 'incomplete' : 'attempted',
