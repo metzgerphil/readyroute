@@ -4,72 +4,13 @@ import { useQuery } from '@tanstack/react-query';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 
 import api from '../services/api';
+import { loadGoogleMapsScript } from '../utils/googleMaps';
 import { createDriverPositionMarker } from '../utils/stopMarkers';
 import { getTodayString, loadStoredOperationsDate, saveStoredOperationsDate } from '../utils/operationsDate';
 import './FleetMapPage.css';
 
-const GOOGLE_MAPS_KEY = import.meta.env.VITE_GOOGLE_MAPS_KEY;
-const GOOGLE_MAPS_SRC = GOOGLE_MAPS_KEY
-  ? `https://maps.googleapis.com/maps/api/js?key=${GOOGLE_MAPS_KEY}&v=weekly`
-  : null;
-
-let googleMapsScriptPromise = null;
 const EMPTY_ARRAY = [];
 const EMPTY_OBJECT = {};
-
-function loadGoogleMapsScript() {
-  if (!GOOGLE_MAPS_KEY || GOOGLE_MAPS_KEY === 'your_key_here') {
-    return Promise.reject(new Error('missing_google_maps_key'));
-  }
-
-  if (window.google?.maps?.Map) {
-    return Promise.resolve(window.google);
-  }
-
-  if (!googleMapsScriptPromise) {
-    googleMapsScriptPromise = new Promise((resolve, reject) => {
-      const existingScript = document.querySelector('script[data-readyroute-google-maps="true"]');
-
-      if (existingScript) {
-        existingScript.addEventListener(
-          'load',
-          () => {
-            if (window.google?.maps?.Map) {
-              resolve(window.google);
-            } else {
-              reject(new Error('google_maps_auth_failed'));
-            }
-          },
-          { once: true }
-        );
-        existingScript.addEventListener('error', () => reject(new Error('google_maps_script_failed')), { once: true });
-        return;
-      }
-
-      window.__readyrouteGoogleMapsAuthFailed = false;
-      window.gm_authFailure = () => {
-        window.__readyrouteGoogleMapsAuthFailed = true;
-      };
-
-      const script = document.createElement('script');
-      script.src = GOOGLE_MAPS_SRC;
-      script.async = true;
-      script.defer = true;
-      script.dataset.readyrouteGoogleMaps = 'true';
-      script.onload = () => {
-        if (window.__readyrouteGoogleMapsAuthFailed || !window.google?.maps?.Map) {
-          reject(new Error('google_maps_auth_failed'));
-          return;
-        }
-        resolve(window.google);
-      };
-      script.onerror = () => reject(new Error('google_maps_script_failed'));
-      document.head.appendChild(script);
-    });
-  }
-
-  return googleMapsScriptPromise;
-}
 
 function getFriendlyDate(dateValue) {
   return format(new Date(`${dateValue}T12:00:00`), 'MMMM d, yyyy');

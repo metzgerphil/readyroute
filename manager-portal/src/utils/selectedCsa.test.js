@@ -5,6 +5,7 @@ import {
   deriveSelectedCsa,
   deriveSelectedCsaName,
   getAuthorizedCsaId,
+  getSelectedCsaInitialization,
   resolveSelectedCsaId
 } from './selectedCsa.js';
 
@@ -84,4 +85,42 @@ test('CSA selection keeps A and B identities separate for route data scoping', (
   assert.equal(selectedA.company_name, 'CSA A Test');
   assert.equal(selectedB.company_name, 'CSA B Test');
   assert.notEqual(selectedA.id, selectedB.id);
+});
+
+test('CSA initialization clears unauthorized stored CSA ids', () => {
+  const init = getSelectedCsaInitialization({
+    csas: [csaA],
+    selectedCsaId: 'csa-a-id',
+    storedCsaId: 'unknown-csa',
+    tokenCsaId: 'csa-a-id'
+  });
+
+  assert.equal(init.shouldClearStoredCsaId, true);
+  assert.equal(init.selectedStateId, null);
+  assert.equal(init.storedSwitchId, null);
+});
+
+test('CSA initialization requests one stored CSA token switch when authorized', () => {
+  const init = getSelectedCsaInitialization({
+    csas: [csaA, csaB],
+    selectedCsaId: 'csa-a-id',
+    storedCsaId: 'csa-b-id',
+    tokenCsaId: 'csa-a-id'
+  });
+
+  assert.equal(init.shouldClearStoredCsaId, false);
+  assert.equal(init.selectedStateId, 'csa-a-id');
+  assert.equal(init.storedSwitchId, 'csa-b-id');
+});
+
+test('CSA initialization does not repeat stored CSA token switch attempts', () => {
+  const init = getSelectedCsaInitialization({
+    csas: [csaA, csaB],
+    selectedCsaId: 'csa-a-id',
+    storedCsaId: 'csa-b-id',
+    tokenCsaId: 'csa-a-id',
+    hasAttemptedStoredSwitch: true
+  });
+
+  assert.equal(init.storedSwitchId, null);
 });

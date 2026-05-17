@@ -179,6 +179,39 @@ button {
   font-weight: 650;
 }
 
+.sidebar-csa-card {
+  display: grid;
+  gap: 10px;
+  margin-top: 16px;
+}
+
+.sidebar-csa-name {
+  color: #ffffff;
+  font-size: 1.18rem;
+  font-weight: 850;
+  line-height: 1.16;
+}
+
+.sidebar-csa-select {
+  width: 100%;
+  min-height: 38px;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.08);
+  color: #ffffff;
+  font: inherit;
+  font-size: 0.9rem;
+  font-weight: 750;
+  padding: 8px 10px;
+}
+
+.sidebar-csa-hint {
+  color: rgba(255, 255, 255, 0.92);
+  font-size: 1rem;
+  font-weight: 700;
+  line-height: 1.35;
+}
+
 .sidebar-nav {
   display: grid;
   gap: 16px;
@@ -946,6 +979,25 @@ button {
   font-size: 1rem;
   font-weight: 800;
   text-align: center;
+}
+
+.page-loading-skeleton {
+  display: grid;
+  gap: 12px;
+  margin-top: 18px;
+}
+
+.page-loading-skeleton .skeleton-line {
+  display: block;
+  height: 14px;
+  margin: 0 auto;
+  max-width: 360px;
+  width: 70%;
+}
+
+.page-loading-skeleton .skeleton-value {
+  height: 24px;
+  width: 46%;
 }
 
 .card,

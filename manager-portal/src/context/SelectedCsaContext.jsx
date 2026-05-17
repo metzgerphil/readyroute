@@ -11,8 +11,7 @@ import {
 import {
   deriveSelectedCsa,
   deriveSelectedCsaName,
-  getAuthorizedCsaId,
-  resolveSelectedCsaId
+  getSelectedCsaInitialization
 } from '../utils/selectedCsa';
 
 const SelectedCsaContext = createContext(null);
@@ -85,30 +84,26 @@ export function SelectedCsaProvider({ children }) {
     }
 
     const storedCsaId = getSelectedCsaId();
-    const storedAuthorizedId = getAuthorizedCsaId(csaOptions, storedCsaId);
-    const nextSelectedId = resolveSelectedCsaId({
+    const initialization = getSelectedCsaInitialization({
       csas: csaOptions,
+      selectedCsaId,
       storedCsaId,
-      tokenCsaId
+      tokenCsaId,
+      isSwitchingCsa,
+      hasAttemptedStoredSwitch: attemptedStoredSwitchRef.current
     });
 
-    if (storedCsaId && !storedAuthorizedId) {
+    if (initialization.shouldClearStoredCsaId) {
       saveSelectedCsaId(null);
     }
 
-    if (nextSelectedId && nextSelectedId !== selectedCsaId) {
-      setSelectedCsaIdState(nextSelectedId === tokenCsaId ? nextSelectedId : tokenCsaId);
+    if (initialization.selectedStateId) {
+      setSelectedCsaIdState(initialization.selectedStateId);
     }
 
-    if (
-      storedAuthorizedId &&
-      tokenCsaId &&
-      storedAuthorizedId !== tokenCsaId &&
-      !isSwitchingCsa &&
-      !attemptedStoredSwitchRef.current
-    ) {
+    if (initialization.storedSwitchId) {
       attemptedStoredSwitchRef.current = true;
-      switchCsa(storedAuthorizedId, { redirectTo: window.location.pathname || '/setup' });
+      switchCsa(initialization.storedSwitchId, { redirectTo: window.location.pathname || '/setup' });
     }
   }, [csaOptions, csaQuery.data, isSwitchingCsa, selectedCsaId, switchCsa, tokenCsaId]);
 

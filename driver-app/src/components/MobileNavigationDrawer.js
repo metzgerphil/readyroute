@@ -16,17 +16,6 @@ function getInitial(name) {
   return trimmedName ? trimmedName.charAt(0).toUpperCase() : 'R';
 }
 
-function getMenuIconLabel(item) {
-  const label = String(item?.label || '');
-  const words = label.split(/\s+/).filter(Boolean);
-
-  if (words.length > 1) {
-    return words.slice(0, 2).map((word) => word.charAt(0)).join('').toUpperCase();
-  }
-
-  return label.slice(0, 2).toUpperCase() || 'RR';
-}
-
 export function getMobileMenuLayout({ height, insets, width }) {
   const isTabletLayout = Math.min(height, width) >= 768;
   const topControlBottom = TOP_CONTROL_ROW_TOP + TOP_CONTROL_ROW_HEIGHT + TOP_CONTROL_ROW_GAP;
@@ -127,11 +116,6 @@ export default function MobileNavigationDrawer({
                     ]}
                   >
                     {isActive ? <View style={styles.activeRail} /> : null}
-                    <View style={[styles.menuIcon, isActive ? styles.menuIconActive : null]}>
-                      <Text style={[styles.menuIconText, isActive ? styles.menuIconTextActive : null]}>
-                        {getMenuIconLabel(item)}
-                      </Text>
-                    </View>
                     <Text style={[styles.menuLabel, isActive ? styles.menuLabelActive : null]}>
                       {item.label}
                     </Text>
@@ -299,26 +283,6 @@ const styles = StyleSheet.create({
     position: 'absolute',
     top: 8,
     width: 3
-  },
-  menuIcon: {
-    alignItems: 'center',
-    backgroundColor: '#f3f6f8',
-    borderRadius: 9,
-    height: 30,
-    justifyContent: 'center',
-    width: 30
-  },
-  menuIconActive: {
-    backgroundColor: '#ffe8d6'
-  },
-  menuIconText: {
-    color: '#657582',
-    fontSize: 11,
-    fontWeight: '900',
-    letterSpacing: 0.2
-  },
-  menuIconTextActive: {
-    color: '#f05a00'
   },
   menuLabel: {
     color: '#142635',

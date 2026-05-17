@@ -22,6 +22,7 @@ supabase/.temp/
 dist/
 dist-*/
 coverage/
+exports/
 
 # logs
 npm-debug.log*

@@ -177,7 +177,7 @@ describe('MobileNavigationDrawer', () => {
     expect(screen.getByText('Driver Home')).toBeTruthy();
     expect(screen.getByText('My Drive')).toBeTruthy();
     expect(screen.getByText('Manifest')).toBeTruthy();
-    expect(screen.getByText('DH')).toBeTruthy();
+    expect(screen.queryByText('DH')).toBeNull();
     expect(screen.getByText('Open')).toBeTruthy();
   });
 
@@ -203,7 +203,8 @@ describe('MobileNavigationDrawer', () => {
     expect(screen.getByText('Routes')).toBeTruthy();
     expect(screen.getByText('Notifications')).toBeTruthy();
     expect(screen.getByText('Settings')).toBeTruthy();
-    expect(screen.getByText('MV')).toBeTruthy();
+    expect(screen.queryByText('MV')).toBeNull();
+    expect(screen.queryByText('RO')).toBeNull();
     expect(screen.queryByText('Manager')).toBeNull();
     expect(screen.queryByText('Switch to Driver Mode')).toBeNull();
 

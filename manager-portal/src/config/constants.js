@@ -96,8 +96,8 @@ export const VEDR_PROVIDER_CONFIG = Object.freeze({
     shortName: 'Verizon Connect',
     description: 'Fleet visibility, cameras, and telematics operations',
     connectLabel: 'Connect Verizon Connect',
-    loginUrlWithRedirect: 'https://my.geotab.com/login.html',
-    dashboardUrl: 'https://my.geotab.com/login.html'
+    loginUrlWithRedirect: 'https://www.verizonconnect.com/login/',
+    dashboardUrl: 'https://www.verizonconnect.com/login/'
   },
   [VEDR_PROVIDERS.GEOTAB]: {
     key: VEDR_PROVIDERS.GEOTAB,

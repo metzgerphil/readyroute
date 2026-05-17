@@ -1,8 +1,28 @@
 const MANAGER_TOKEN_KEY = 'readyroute_manager_token';
 const SELECTED_CSA_ID_KEY = 'readyroute_selected_csa_id';
 
+function getStorage() {
+  if (typeof window === 'undefined' || !window.localStorage) {
+    return null;
+  }
+
+  return window.localStorage;
+}
+
+function getStorageItem(key) {
+  return getStorage()?.getItem(key) || null;
+}
+
+function setStorageItem(key, value) {
+  getStorage()?.setItem(key, value);
+}
+
+function removeStorageItem(key) {
+  getStorage()?.removeItem(key);
+}
+
 export function getManagerToken() {
-  return window.localStorage.getItem(MANAGER_TOKEN_KEY);
+  return getStorageItem(MANAGER_TOKEN_KEY);
 }
 
 export function decodeManagerTokenPayload(token) {
@@ -32,27 +52,27 @@ export function getManagerAccountId() {
 }
 
 export function getSelectedCsaId() {
-  return window.localStorage.getItem(SELECTED_CSA_ID_KEY);
+  return getStorageItem(SELECTED_CSA_ID_KEY);
 }
 
 export function saveSelectedCsaId(csaId) {
   if (csaId) {
-    window.localStorage.setItem(SELECTED_CSA_ID_KEY, csaId);
+    setStorageItem(SELECTED_CSA_ID_KEY, csaId);
   } else {
-    window.localStorage.removeItem(SELECTED_CSA_ID_KEY);
+    removeStorageItem(SELECTED_CSA_ID_KEY);
   }
 }
 
 export function clearSelectedCsaId() {
-  window.localStorage.removeItem(SELECTED_CSA_ID_KEY);
+  removeStorageItem(SELECTED_CSA_ID_KEY);
 }
 
 export function saveManagerToken(token) {
-  window.localStorage.setItem(MANAGER_TOKEN_KEY, token);
+  setStorageItem(MANAGER_TOKEN_KEY, token);
   saveSelectedCsaId(decodeManagerTokenPayload(token)?.account_id || null);
 }
 
 export function clearManagerToken() {
-  window.localStorage.removeItem(MANAGER_TOKEN_KEY);
+  removeStorageItem(MANAGER_TOKEN_KEY);
   clearSelectedCsaId();
 }

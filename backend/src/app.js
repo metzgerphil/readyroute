@@ -134,6 +134,13 @@ function createApp(options = {}) {
   );
 
   app.use('/billing', billingRouter);
+  app.use((req, _res, next) => {
+    const contentType = req.headers['content-type'];
+    if (typeof contentType === 'string' && /charset=UTF-8/i.test(contentType)) {
+      req.headers['content-type'] = contentType.replace(/charset=UTF-8/i, 'charset=utf-8');
+    }
+    next();
+  });
   app.use(express.json());
 
   app.get('/health', (_req, res) => {

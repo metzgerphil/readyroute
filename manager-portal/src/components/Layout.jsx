@@ -3,7 +3,8 @@ import { useState } from 'react';
 import { NavLink, useNavigate } from 'react-router-dom';
 
 import { VEDR_CONNECTION_STATUSES } from '../config/constants';
-import { clearManagerToken, saveManagerToken } from '../services/auth';
+import { useSelectedCsa } from '../context/SelectedCsaContext';
+import { clearManagerToken } from '../services/auth';
 import api from '../services/api';
 
 const links = [
@@ -78,19 +79,20 @@ function SidebarIcon({ type }) {
 export default function Layout({ children }) {
   const navigate = useNavigate();
   const [isSidebarHidden, setIsSidebarHidden] = useState(false);
-  const [isSwitchingCsa, setIsSwitchingCsa] = useState(false);
+  const {
+    csaQuery,
+    isSwitchingCsa,
+    linkedCsas,
+    selectedCsaId,
+    selectedCsaName,
+    switchCsa,
+    tokenCsaId
+  } = useSelectedCsa();
   const vedrSettingsQuery = useQuery({
     queryKey: ['vedr-settings'],
     queryFn: async () => {
       const response = await api.get('/api/vedr/settings');
       return response.data || { provider: null, connection_status: VEDR_CONNECTION_STATUSES.NOT_STARTED, setup_completed_at: null };
-    }
-  });
-  const csaQuery = useQuery({
-    queryKey: ['sidebar-csas'],
-    queryFn: async () => {
-      const response = await api.get('/manager/csas');
-      return response.data || { current_csa: null, csas: [] };
     }
   });
 
@@ -101,22 +103,14 @@ export default function Layout({ children }) {
   async function handleCsaSwitch(event) {
     const nextAccountId = event.target.value;
 
-    if (!nextAccountId || nextAccountId === csaQuery.data?.current_csa?.id) {
+    if (!nextAccountId || nextAccountId === selectedCsaId) {
       return;
     }
 
-    setIsSwitchingCsa(true);
-
     try {
-      const response = await api.post('/manager/csas/switch', {
-        account_id: nextAccountId
-      });
-      saveManagerToken(response.data?.token || '');
-      window.location.assign('/setup');
+      await switchCsa(nextAccountId, { redirectTo: '/setup' });
     } catch {
       window.alert('CSA switch could not be completed right now.');
-    } finally {
-      setIsSwitchingCsa(false);
     }
   }
 
@@ -133,22 +127,20 @@ export default function Layout({ children }) {
             <span className="brand-ready">ready</span>
             <span className="brand-route">Route</span>
           </a>
-          <div className="brand-subtitle">Last-mile routing</div>
           <div className="sidebar-csa-card">
-            <div className="sidebar-csa-label">Current CSA</div>
             <div className="sidebar-csa-name">
               {csaQuery.isLoading
                 ? 'Loading...'
-                : csaQuery.data?.current_csa?.company_name || 'No CSA selected'}
+                : selectedCsaName || 'No CSA selected'}
             </div>
-            {(csaQuery.data?.csas || []).length > 1 ? (
+            {linkedCsas.length > 1 ? (
               <select
                 className="sidebar-csa-select"
-                disabled={isSwitchingCsa}
+                disabled={isSwitchingCsa || csaQuery.isLoading}
                 onChange={handleCsaSwitch}
-                value={csaQuery.data?.current_csa?.id || ''}
+                value={selectedCsaId || tokenCsaId || ''}
               >
-                {(csaQuery.data?.csas || []).map((csa) => (
+                {linkedCsas.map((csa) => (
                   <option key={csa.id} value={csa.id}>
                     {csa.company_name}
                   </option>
