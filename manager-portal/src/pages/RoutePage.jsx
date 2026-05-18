@@ -54,6 +54,7 @@ export default function RoutePage() {
   const [mapError, setMapError] = useState('');
   const [mapReady, setMapReady] = useState(false);
   const [mapLoading, setMapLoading] = useState(false);
+  const [mapTilesPainted, setMapTilesPainted] = useState(false);
   const [mapRefreshNonce, setMapRefreshNonce] = useState(0);
   const [mapIsRepainting, setMapIsRepainting] = useState(false);
   const [mapType, setMapType] = useState('roadmap');
@@ -110,6 +111,7 @@ export default function RoutePage() {
     mapInstanceRef.current = null;
     mapTilesLoadedRef.current = false;
     setMapReady(false);
+    setMapTilesPainted(false);
   }, [clearMapArtifacts]);
 
   const routesQuery = useQuery({
@@ -416,7 +418,6 @@ export default function RoutePage() {
           }
 
           setMapReady(true);
-          setMapLoading(false);
           startTileWatchdog(google, map);
         }, 180);
       });
@@ -473,11 +474,17 @@ export default function RoutePage() {
           });
           google.maps.event.addListenerOnce(mapInstanceRef.current, 'tilesloaded', () => {
             mapTilesLoadedRef.current = true;
+            setMapTilesPainted(true);
+            setMapLoading(false);
             setMapIsRepainting(false);
             clearTileWatchdog();
           });
         } else {
           stabilizeMap(google, mapInstanceRef.current);
+          if (mapTilesLoadedRef.current) {
+            setMapTilesPainted(true);
+            setMapLoading(false);
+          }
         }
 
         if (mapContainerRef.current && 'ResizeObserver' in window) {
@@ -496,6 +503,7 @@ export default function RoutePage() {
         if (active) {
           setMapReady(false);
           setMapLoading(false);
+          setMapTilesPainted(false);
           setMapError(getGoogleMapsErrorMessage(error));
         }
       }
@@ -1029,8 +1037,8 @@ export default function RoutePage() {
 
       <div className="route-map-stage">
         <div key={`route-map-${mapRefreshNonce}`} ref={mapContainerRef} className="route-map-fullscreen" />
-        {mapLoading && !mapReady && !mapError ? (
-          <div className="route-map-loading">Loading map...</div>
+        {mapLoading && !mapTilesPainted && !mapError ? (
+          <div className="route-map-loading">{mapReady ? 'Loading map tiles...' : 'Loading map...'}</div>
         ) : null}
         {mapIsRepainting && !mapError ? (
           <div className="route-map-repaint-notice">Map is repainting...</div>
