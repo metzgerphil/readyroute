@@ -348,8 +348,8 @@ function MaintenanceSettingsCard({
               Choose which service categories this CSA tracks and set default reminder rules.
             </div>
           </div>
-          <button className="secondary-inline-button" onClick={onExpand} type="button">
-            View Maintenance
+          <button className="primary-inline-button" onClick={onExpand} type="button">
+            Manage
           </button>
         </div>
         <div className="maintenance-settings-summary">
@@ -1307,7 +1307,7 @@ function MaintenanceRecordsPanel({ isLoading, records, onViewHistory }) {
           ))}
         </div>
       ) : (
-        <div className="labor-empty-state">No maintenance records yet. Log maintenance from a truck row to see it here.</div>
+        <div className="labor-empty-state">No maintenance records yet. Log maintenance from a truck row or vehicle details to see it here.</div>
       )}
     </section>
   );
@@ -1344,7 +1344,7 @@ function VehicleSettingsPanel({
       <div className="vehicle-settings-heading">
         <div>
           <h2 id="vehicle-settings-title">Vehicle Settings</h2>
-          <p>Choose how this CSA wants drivers to complete vehicle checks.</p>
+          <p>Configure how this CSA tracks service and how drivers complete vehicle checks.</p>
         </div>
       </div>
 
@@ -2576,6 +2576,8 @@ export default function VehiclesPage() {
           setActiveVehiclesTab(tab);
           if (tab !== 'Settings') {
             setVehicleSettingsView('overview');
+            setMaintenanceSettingsEditingIndex(null);
+            setIsMaintenanceProgramExpanded(false);
           }
         }}
       />
@@ -2889,6 +2891,18 @@ export default function VehiclesPage() {
       ) : null}
 
       {activeVehiclesTab === 'Maintenance' ? (
+        <MaintenanceRecordsPanel
+          isLoading={maintenanceRecordsQuery.isLoading && !latestVehicleMaintenanceRecords.length}
+          onViewHistory={setHistoryVehicle}
+          records={maintenanceRecords}
+        />
+      ) : null}
+
+      {activeVehiclesTab === 'Inspections' ? (
+        <InspectionsPanel />
+      ) : null}
+
+      {activeVehiclesTab === 'Settings' && vehicleSettingsView === 'overview' ? (
         <>
           <MaintenanceSettingsCard
             draft={activeMaintenanceSettings}
@@ -2908,26 +2922,14 @@ export default function VehiclesPage() {
             onExpand={() => setIsMaintenanceProgramExpanded(true)}
             onSave={() => saveMaintenanceSettingsMutation.mutate()}
           />
-          <MaintenanceRecordsPanel
-            isLoading={maintenanceRecordsQuery.isLoading && !latestVehicleMaintenanceRecords.length}
-            onViewHistory={setHistoryVehicle}
-            records={maintenanceRecords}
+          <VehicleSettingsPanel
+            maintenanceRequirements={activeMaintenanceRequirementsDraft}
+            onOpenChecklistTemplate={() => setVehicleSettingsView('checklist-template')}
+            onOpenMaintenanceRequirements={() => setVehicleSettingsView('maintenance-requirements')}
+            onOpenReminderSchedule={() => setVehicleSettingsView('reminder-schedule')}
+            reminderSchedule={activeReminderScheduleDraft}
           />
         </>
-      ) : null}
-
-      {activeVehiclesTab === 'Inspections' ? (
-        <InspectionsPanel />
-      ) : null}
-
-      {activeVehiclesTab === 'Settings' && vehicleSettingsView === 'overview' ? (
-        <VehicleSettingsPanel
-          maintenanceRequirements={activeMaintenanceRequirementsDraft}
-          onOpenChecklistTemplate={() => setVehicleSettingsView('checklist-template')}
-          onOpenMaintenanceRequirements={() => setVehicleSettingsView('maintenance-requirements')}
-          onOpenReminderSchedule={() => setVehicleSettingsView('reminder-schedule')}
-          reminderSchedule={activeReminderScheduleDraft}
-        />
       ) : null}
 
       {activeVehiclesTab === 'Settings' && vehicleSettingsView === 'maintenance-requirements' ? (
