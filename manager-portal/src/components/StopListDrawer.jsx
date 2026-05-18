@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 
+import { getStopContactDetails } from '../utils/contactInfo';
 import './StopListDrawer.css';
 
 function getStopType(stop) {
@@ -82,6 +83,16 @@ function formatExceptionCode(code) {
 
 function getPackageCount(stop) {
   return Array.isArray(stop?.packages) ? stop.packages.length : 0;
+}
+
+function getStopPhoneSummary(stop) {
+  const contact = getStopContactDetails(stop);
+  const phoneNumbers = [
+    contact.primaryPhone ? `Phone: ${contact.primaryPhone}` : null,
+    contact.alternatePhone ? `Alt: ${contact.alternatePhone}` : null
+  ].filter(Boolean);
+
+  return phoneNumbers.join(' · ');
 }
 
 function getStopStats(stops = []) {
@@ -169,6 +180,8 @@ function filterStops(stops, activeFilter, searchTerm) {
     return (
       String(stop.sequence_order || '').includes(needle) ||
       String(stop.contact_name || '').toLowerCase().includes(needle) ||
+      String(stop.primary_phone || '').toLowerCase().includes(needle) ||
+      String(stop.alternate_phone || '').toLowerCase().includes(needle) ||
       String(stop.address || '').toLowerCase().includes(needle) ||
       String(stop.address_line2 || '').toLowerCase().includes(needle)
     );
@@ -309,6 +322,7 @@ export default function StopListDrawer({
             const propertyIntel = stop.property_intel;
             const completionTime = formatCompletionTime(stop);
             const packageCount = getPackageCount(stop);
+            const phoneSummary = getStopPhoneSummary(stop);
 
             return (
               <button
@@ -340,6 +354,7 @@ export default function StopListDrawer({
                     ) : null}
                   </div>
                   {stop.contact_name ? <div className="stop-list-row-contact">{stop.contact_name}</div> : null}
+                  {phoneSummary ? <div className="stop-list-row-phone">{phoneSummary}</div> : null}
                   {stop.address_line2 ? <div className="stop-list-row-address-line2">{stop.address_line2}</div> : null}
                   {stop.secondary_address_type || stop.unit_label || stop.suite_label || stop.building_label ? (
                     <div className="stop-list-row-address-line2">

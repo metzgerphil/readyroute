@@ -25,24 +25,55 @@ export function loadGoogleMapsScript() {
     googleMapsScriptPromise = new Promise((resolve, reject) => {
       const existingScript = document.querySelector('script[data-readyroute-google-maps="true"]');
       let timeoutId = null;
+      let pollId = null;
 
-      function clearTimeoutIfNeeded() {
+      function clearTimers() {
         if (timeoutId) {
           window.clearTimeout(timeoutId);
           timeoutId = null;
         }
+
+        if (pollId) {
+          window.clearInterval(pollId);
+          pollId = null;
+        }
       }
 
       function fail(error) {
-        clearTimeoutIfNeeded();
+        clearTimers();
         googleMapsScriptFailed = true;
         googleMapsScriptPromise = null;
         reject(error);
       }
 
       function succeed() {
-        clearTimeoutIfNeeded();
+        clearTimers();
         resolve(window.google);
+      }
+
+      function waitForGoogleMapsReady() {
+        if (window.google?.maps?.Map) {
+          succeed();
+          return;
+        }
+
+        if (window.__readyrouteGoogleMapsAuthFailed) {
+          fail(new Error('google_maps_auth_failed'));
+          return;
+        }
+
+        if (!pollId) {
+          pollId = window.setInterval(() => {
+            if (window.google?.maps?.Map) {
+              succeed();
+              return;
+            }
+
+            if (window.__readyrouteGoogleMapsAuthFailed) {
+              fail(new Error('google_maps_auth_failed'));
+            }
+          }, 50);
+        }
       }
 
       if (existingScript) {
@@ -50,17 +81,8 @@ export function loadGoogleMapsScript() {
           fail(new Error('google_maps_script_timeout'));
         }, 12000);
 
-        existingScript.addEventListener(
-          'load',
-          () => {
-            if (window.google?.maps?.Map) {
-              succeed();
-            } else {
-              fail(new Error('google_maps_auth_failed'));
-            }
-          },
-          { once: true }
-        );
+        waitForGoogleMapsReady();
+        existingScript.addEventListener('load', waitForGoogleMapsReady, { once: true });
         existingScript.addEventListener('error', () => fail(new Error('google_maps_script_failed')), { once: true });
         return;
       }
@@ -75,14 +97,7 @@ export function loadGoogleMapsScript() {
       script.async = true;
       script.defer = true;
       script.dataset.readyrouteGoogleMaps = 'true';
-      script.onload = () => {
-        if (window.__readyrouteGoogleMapsAuthFailed || !window.google?.maps?.Map) {
-          fail(new Error('google_maps_auth_failed'));
-          return;
-        }
-
-        succeed();
-      };
+      script.onload = waitForGoogleMapsReady;
       script.onerror = () => fail(new Error('google_maps_script_failed'));
 
       timeoutId = window.setTimeout(() => {

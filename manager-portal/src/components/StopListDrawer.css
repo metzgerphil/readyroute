@@ -205,6 +205,14 @@
   font-weight: 700;
 }
 
+.stop-list-row-phone {
+  color: #0f766e;
+  font-size: 0.78rem;
+  font-weight: 850;
+  margin-top: 1px;
+  overflow-wrap: anywhere;
+}
+
 .stop-list-row-address {
   color: #1f2933;
   font-size: 0.93rem;

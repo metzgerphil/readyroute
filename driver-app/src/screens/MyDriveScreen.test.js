@@ -48,6 +48,7 @@ import {
   getLocationRequirementCopy,
   getMapRegion,
   getMapPinSize,
+  getMapPinServiceBadgeLabel,
   getQuickIntel,
   getStopStatusColors,
   getStopTools,
@@ -85,6 +86,12 @@ describe('MyDriveScreen helpers', () => {
 
     expect(getStopType(combinedStop)).toBe('combined');
     expect(getStopType(pickupStop)).toBe('pickup');
+    expect(getMapPinServiceBadgeLabel(pickupStop)).toBe('P');
+    expect(getMapPinServiceBadgeLabel(combinedStop)).toBe('P');
+    expect(getMapPinServiceBadgeLabel({ stop_type: 'delivery', has_time_commit: true })).toBe('T');
+    expect(getMapPinServiceBadgeLabel({ has_delivery: true, has_time_commit: true })).toBe('T');
+    expect(getMapPinServiceBadgeLabel({ has_time_commit: true })).toBeNull();
+    expect(getMapPinServiceBadgeLabel({ stop_type: 'delivery', has_time_commit: false })).toBeNull();
     expect(formatTimeCommitLine(timedStop)).toBe('TC: 09:00–10:00');
 
     const warningUrgency = getTimeCommitUrgency(

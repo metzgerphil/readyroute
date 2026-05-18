@@ -1,5 +1,7 @@
 import { format } from 'date-fns';
 
+import { buildTelHref, getStopContactDetails } from './contactInfo';
+
 export const ROUTE_STATUS_META = {
   pending: { label: 'Pending', color: '#9ca3af' },
   ready: { label: 'Ready', color: '#3b82f6' },
@@ -74,6 +76,21 @@ function formatCompletionTime(stop) {
     minute: '2-digit',
     hour12: true
   }).format(date);
+}
+
+function buildPhoneLink(phone, label) {
+  if (!phone) {
+    return '';
+  }
+
+  const href = buildTelHref(phone);
+  const copy = `${label}: ${phone}`;
+
+  if (!href) {
+    return `<span style="font-weight:850;">${escapeHtml(copy)}</span>`;
+  }
+
+  return `<a href="${escapeHtml(href)}" style="color:#0f766e; font-weight:900; text-decoration:none;">${escapeHtml(copy)}</a>`;
 }
 
 function getCompletionBadge(stop) {
@@ -299,6 +316,11 @@ export function buildInfoWindow(stop) {
   const packageCount = getPackageCount(stop);
   const completionBadge = getCompletionBadge(stop);
   const stopType = getStopType(stop);
+  const contact = getStopContactDetails(stop);
+  const phoneLinks = [
+    buildPhoneLink(contact.primaryPhone, 'Phone'),
+    buildPhoneLink(contact.alternatePhone, 'Alt')
+  ].filter(Boolean);
   const timeCommitLine = formatTimeCommit(stop);
   const timeCommitCopy = timeCommitLine
     ? stopType === 'pickup'
@@ -344,6 +366,11 @@ export function buildInfoWindow(stop) {
         </div>
       </div>
       ${stop.contact_name ? `<div style="margin-top:12px; font-size:18px; line-height:1.15; font-weight:950;">${escapeHtml(stop.contact_name)}</div>` : ''}
+      ${
+        phoneLinks.length
+          ? `<div style="margin-top:8px; display:flex; flex-wrap:wrap; gap:8px 12px; font-size:14px; line-height:1.25;">${phoneLinks.join('')}</div>`
+          : ''
+      }
       <div style="margin-top:8px; font-size:20px; line-height:1.2; font-weight:950; letter-spacing:-0.02em; color:#173042;">${escapeHtml(addressLine1)}</div>
       ${
         stop.address_line2

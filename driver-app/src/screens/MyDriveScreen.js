@@ -411,6 +411,29 @@ export function getStopType(stop) {
   return 'delivery';
 }
 
+export function getMapPinServiceBadgeLabel(stop) {
+  const explicitlyHasPickup = Boolean(
+    stop?.stop_type === 'pickup' ||
+      stop?.stop_type === 'combined' ||
+      stop?.has_pickup ||
+      stop?.is_pickup
+  );
+  const explicitlyDeliveryOnly = Boolean(
+    !explicitlyHasPickup &&
+      (stop?.stop_type === 'delivery' || stop?.has_delivery === true)
+  );
+
+  if (explicitlyHasPickup) {
+    return 'P';
+  }
+
+  if (stop?.has_time_commit && explicitlyDeliveryOnly) {
+    return 'T';
+  }
+
+  return null;
+}
+
 export function isStopComplete(stop) {
   return Boolean(
     stop?.completed_at ||
@@ -926,7 +949,7 @@ function MapPin({ isCurrentStop, now, stop, labelOverride = null, groupCount = 0
   const colors = getStopStatusColors(stop.status, isCurrentStop, stopType, stop, pinColorMode);
   const hasTimeCommit = Boolean(stop.has_time_commit);
   const isApartment = Boolean(stop.is_apartment_unit || stop.apartment_intelligence);
-  const hasPickupWork = stopType === 'pickup' || stopType === 'combined';
+  const serviceBadgeLabel = getMapPinServiceBadgeLabel(stop);
   const mainLabel = labelOverride || String(stop.sequence_order);
   const hasLongStopNumber = String(mainLabel || '').length >= 3;
   const pinSize = getMapPinSize(stop, isCurrentStop, labelOverride);
@@ -977,7 +1000,7 @@ function MapPin({ isCurrentStop, now, stop, labelOverride = null, groupCount = 0
 
           {hasTimeCommit ? (
             <View style={[styles.timeCommitBadge, urgencyStyles.badgeStyle]}>
-              <Text style={[styles.timeCommitBadgeText, urgencyStyles.badgeTextStyle]}>TC</Text>
+              <Text style={[styles.timeCommitBadgeText, urgencyStyles.badgeTextStyle]}>{serviceBadgeLabel || 'TC'}</Text>
             </View>
           ) : null}
 
@@ -987,9 +1010,9 @@ function MapPin({ isCurrentStop, now, stop, labelOverride = null, groupCount = 0
             </View>
           ) : null}
 
-          {hasPickupWork ? (
+          {serviceBadgeLabel && !hasTimeCommit ? (
             <View style={styles.pickupBadge}>
-              <Text style={styles.pickupBadgeText}>+</Text>
+              <Text style={styles.pickupBadgeText}>{serviceBadgeLabel}</Text>
             </View>
           ) : null}
 
@@ -1074,9 +1097,9 @@ function MapLegend({ expanded, onToggle }) {
           <View style={styles.legendRow}>
             <View style={[styles.legendDot, styles.legendDotPending]}>
               <Text style={styles.legendDotText}>1</Text>
-              <View style={styles.legendMiniTimeCommit}><Text style={styles.legendMiniTimeCommitText}>TC</Text></View>
+              <View style={styles.legendMiniTimeCommit}><Text style={styles.legendMiniText}>T</Text></View>
             </View>
-            <Text style={styles.legendRowText}>Time commit window</Text>
+            <Text style={styles.legendRowText}>Timed delivery</Text>
           </View>
           <View style={styles.legendRow}>
             <View style={[styles.legendDot, styles.legendDotPending]}>
@@ -2966,20 +2989,20 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     backgroundColor: '#2980b9',
     borderColor: '#ffffff',
-    borderRadius: 8,
+    borderRadius: 9,
     borderWidth: 1,
-    height: 16,
+    height: 18,
     justifyContent: 'center',
     left: '50%',
-    marginLeft: -9,
+    marginLeft: -10,
+    minWidth: 20,
     position: 'absolute',
     paddingHorizontal: 3,
-    top: -8,
-    minWidth: 18
+    top: -14
   },
   timeCommitBadgeText: {
     color: '#ffffff',
-    fontSize: 7,
+    fontSize: 8,
     fontWeight: '900'
   },
   timeCommitBadgeWarning: {
