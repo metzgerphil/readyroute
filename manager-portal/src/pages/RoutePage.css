@@ -321,6 +321,7 @@
 .route-map-stage {
   position: relative;
   min-height: calc(100vh - 220px);
+  height: calc(100vh - 220px);
   border: 1px solid #e8ddd2;
   border-radius: 28px;
   overflow: hidden;

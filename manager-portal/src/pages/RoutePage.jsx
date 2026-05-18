@@ -48,7 +48,6 @@ export default function RoutePage() {
   const resizeObserverRef = useRef(null);
   const mapStabilizeTimerRef = useRef(null);
   const mapTileWatchdogRef = useRef(null);
-  const mapTileRetryCountRef = useRef(0);
   const mapTilesLoadedRef = useRef(false);
   const [date, setDate] = useState(() => getInitialRouteDate(searchParams));
   const [mapError, setMapError] = useState('');
@@ -311,7 +310,6 @@ export default function RoutePage() {
 
   useEffect(() => {
     setSelectedStopId(null);
-    mapTileRetryCountRef.current = 0;
     resetMapInstance();
     setMapRefreshNonce((value) => value + 1);
   }, [id, date, resetMapInstance]);
@@ -352,6 +350,33 @@ export default function RoutePage() {
       }
     }
 
+    function mapHasPaintedSurface() {
+      const mapContainer = mapContainerRef.current;
+
+      if (!mapContainer) {
+        return false;
+      }
+
+      return Boolean(
+        mapContainer.querySelector('.gm-style canvas') ||
+          mapContainer.querySelector('.gm-style img[src*="google"]') ||
+          mapContainer.querySelector('.gm-style img[src^="http"]')
+      );
+    }
+
+    function markMapPainted() {
+      if (!active) {
+        return;
+      }
+
+      mapTilesLoadedRef.current = true;
+      setMapReady(true);
+      setMapTilesPainted(true);
+      setMapLoading(false);
+      setMapIsRepainting(false);
+      clearTileWatchdog();
+    }
+
     function startTileWatchdog(google, map) {
       clearTileWatchdog();
 
@@ -366,22 +391,15 @@ export default function RoutePage() {
           fitRoute();
         }
 
-        if (mapTileRetryCountRef.current < 2) {
-          mapTileRetryCountRef.current += 1;
-          setMapIsRepainting(true);
-          window.setTimeout(() => {
-            if (!active || mapTilesLoadedRef.current) {
-              return;
-            }
-
-            resetMapInstance();
-            setMapRefreshNonce((value) => value + 1);
-          }, 250);
-        } else {
-          setMapIsRepainting(false);
-          setMapError('The map is loaded but tiles did not paint. Tap Recenter map or refresh this page.');
+        if (mapHasPaintedSurface()) {
+          markMapPainted();
+          return;
         }
-      }, 2600);
+
+        setMapIsRepainting(false);
+        setMapLoading(false);
+        setMapError('The map did not finish drawing. Refresh this page or tap Fit to route.');
+      }, 8000);
     }
 
     function containerHasSize() {
@@ -464,28 +482,29 @@ export default function RoutePage() {
             maxWidth: 460,
             pixelOffset: new google.maps.Size(0, -8)
           });
-
-          // Some browsers never deliver the first Google Maps idle event when
-          // the map is created inside a freshly mounted, flex-sized panel.
-          // Stabilize immediately so the canvas paints instead of sitting gray.
-          stabilizeMap(google, mapInstanceRef.current);
-          google.maps.event.addListenerOnce(mapInstanceRef.current, 'idle', () => {
-            stabilizeMap(google, mapInstanceRef.current);
-          });
-          google.maps.event.addListenerOnce(mapInstanceRef.current, 'tilesloaded', () => {
-            mapTilesLoadedRef.current = true;
-            setMapTilesPainted(true);
-            setMapLoading(false);
-            setMapIsRepainting(false);
-            clearTileWatchdog();
-          });
         } else {
-          stabilizeMap(google, mapInstanceRef.current);
           if (mapTilesLoadedRef.current) {
             setMapTilesPainted(true);
             setMapLoading(false);
           }
         }
+
+        const map = mapInstanceRef.current;
+
+        // Some browsers deliver Google Maps lifecycle events inconsistently
+        // when the canvas is mounted inside a resizable route panel. Listen for
+        // both signals and also verify that Google painted a real surface.
+        stabilizeMap(google, map);
+        google.maps.event.addListenerOnce(map, 'idle', () => {
+          stabilizeMap(google, map);
+
+          window.setTimeout(() => {
+            if (mapHasPaintedSurface()) {
+              markMapPainted();
+            }
+          }, 240);
+        });
+        google.maps.event.addListenerOnce(map, 'tilesloaded', markMapPainted);
 
         if (mapContainerRef.current && 'ResizeObserver' in window) {
           resizeObserverRef.current?.disconnect();
@@ -1037,7 +1056,7 @@ export default function RoutePage() {
 
       <div className="route-map-stage">
         <div key={`route-map-${mapRefreshNonce}`} ref={mapContainerRef} className="route-map-fullscreen" />
-        {mapLoading && !mapTilesPainted && !mapError ? (
+        {!mapError && (!mapReady || (mapLoading && !mapTilesPainted)) ? (
           <div className="route-map-loading">{mapReady ? 'Loading map tiles...' : 'Loading map...'}</div>
         ) : null}
         {mapIsRepainting && !mapError ? (
