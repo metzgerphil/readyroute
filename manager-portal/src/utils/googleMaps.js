@@ -1,4 +1,4 @@
-const GOOGLE_MAPS_KEY = import.meta.env.VITE_GOOGLE_MAPS_KEY;
+const GOOGLE_MAPS_KEY = (import.meta.env.VITE_GOOGLE_MAPS_KEY || '').trim();
 const GOOGLE_MAPS_CALLBACK = '__readyrouteGoogleMapsLoaded';
 const GOOGLE_MAPS_SRC = GOOGLE_MAPS_KEY
   ? `https://maps.googleapis.com/maps/api/js?${new URLSearchParams({
