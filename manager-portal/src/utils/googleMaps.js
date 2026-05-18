@@ -13,6 +13,12 @@ const GOOGLE_MAPS_PLACEHOLDER_KEYS = new Set(['your_key_here', 'your_production_
 let googleMapsScriptPromise = null;
 let googleMapsScriptFailed = false;
 
+function removeGoogleMapsScript(script) {
+  if (script?.parentNode) {
+    script.parentNode.removeChild(script);
+  }
+}
+
 export function loadGoogleMapsScript() {
   if (!GOOGLE_MAPS_KEY || GOOGLE_MAPS_PLACEHOLDER_KEYS.has(GOOGLE_MAPS_KEY)) {
     return Promise.reject(new Error('missing_google_maps_key'));
@@ -29,9 +35,10 @@ export function loadGoogleMapsScript() {
 
   if (!googleMapsScriptPromise) {
     googleMapsScriptPromise = new Promise((resolve, reject) => {
-      const existingScript = document.querySelector('script[data-readyroute-google-maps="true"]');
+      let existingScript = document.querySelector('script[data-readyroute-google-maps="true"]');
       let timeoutId = null;
       let pollId = null;
+      let activeScript = existingScript;
       let settled = false;
 
       function clearTimers() {
@@ -55,6 +62,9 @@ export function loadGoogleMapsScript() {
         clearTimers();
         googleMapsScriptFailed = true;
         googleMapsScriptPromise = null;
+        if (!window.google?.maps?.Map) {
+          removeGoogleMapsScript(activeScript);
+        }
         reject(error);
       }
 
@@ -105,6 +115,12 @@ export function loadGoogleMapsScript() {
       };
       window[GOOGLE_MAPS_CALLBACK] = succeed;
 
+      if (existingScript && existingScript.src !== GOOGLE_MAPS_SRC) {
+        removeGoogleMapsScript(existingScript);
+        existingScript = null;
+        activeScript = null;
+      }
+
       if (existingScript) {
         timeoutId = window.setTimeout(() => {
           fail(new Error('google_maps_script_timeout'));
@@ -121,6 +137,7 @@ export function loadGoogleMapsScript() {
       script.async = true;
       script.defer = true;
       script.dataset.readyrouteGoogleMaps = 'true';
+      activeScript = script;
       script.onload = waitForGoogleMapsReady;
       script.onerror = () => fail(new Error('google_maps_script_failed'));
 
