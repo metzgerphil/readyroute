@@ -1,5 +1,6 @@
 const READYROUTE_FROM_EMAIL = 'ReadyRoute <info@readyroute.org>';
 const READYROUTE_REPLY_TO_EMAIL = 'info@readyroute.org';
+const READYROUTE_FEEDBACK_TO_EMAIL = 'info@readyroute.org';
 const WAITLIST_THANK_YOU_SUBJECT = 'Thanks for joining the ReadyRoute early access list';
 
 function escapeHtml(value) {
@@ -147,11 +148,122 @@ async function sendWaitlistThankYouEmail({
   };
 }
 
+function buildFeedbackEmail({
+  name,
+  email,
+  fedexPosition,
+  feedback,
+  sourcePage,
+  userAgent
+} = {}) {
+  const subjectName = String(name || '').trim() || 'ReadyRoute visitor';
+  const subject = `ReadyRoute MVP feedback from ${subjectName}`;
+  const text = `New ReadyRoute MVP feedback
+
+Name: ${String(name || '').trim()}
+Email: ${String(email || '').trim()}
+Position with FedEx: ${String(fedexPosition || '').trim()}
+Source page: ${String(sourcePage || '').trim() || 'Unknown'}
+User agent: ${String(userAgent || '').trim() || 'Unknown'}
+
+Feedback:
+${String(feedback || '').trim()}`;
+
+  const html = `
+    <!doctype html>
+    <html lang="en">
+      <head>
+        <meta charset="utf-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <title>${escapeHtml(subject)}</title>
+      </head>
+      <body style="margin:0;background:#f6f9fc;color:#102536;font-family:Arial,Helvetica,sans-serif;">
+        <main style="max-width:680px;margin:0 auto;padding:28px 18px;">
+          <section style="background:#ffffff;border:1px solid #dce6ee;border-radius:18px;padding:24px;">
+            <p style="margin:0 0 8px;color:#ff6b1a;font-size:12px;font-weight:800;letter-spacing:0.1em;text-transform:uppercase;">ReadyRoute MVP Feedback</p>
+            <h1 style="margin:0 0 22px;color:#172f42;font-size:26px;line-height:1.2;">${escapeHtml(subject)}</h1>
+            <table style="width:100%;border-collapse:collapse;margin-bottom:22px;">
+              <tr><td style="padding:8px 0;color:#637586;font-weight:700;width:170px;">Name</td><td style="padding:8px 0;color:#102536;font-weight:700;">${escapeHtml(name)}</td></tr>
+              <tr><td style="padding:8px 0;color:#637586;font-weight:700;">Email</td><td style="padding:8px 0;color:#102536;font-weight:700;">${escapeHtml(email)}</td></tr>
+              <tr><td style="padding:8px 0;color:#637586;font-weight:700;">Position with FedEx</td><td style="padding:8px 0;color:#102536;font-weight:700;">${escapeHtml(fedexPosition)}</td></tr>
+              <tr><td style="padding:8px 0;color:#637586;font-weight:700;">Source page</td><td style="padding:8px 0;color:#102536;">${escapeHtml(sourcePage || 'Unknown')}</td></tr>
+            </table>
+            <div style="border-top:1px solid #dce6ee;padding-top:18px;">
+              <p style="margin:0 0 8px;color:#637586;font-weight:800;">Feedback</p>
+              <p style="margin:0;color:#102536;font-size:16px;line-height:1.65;white-space:pre-wrap;">${escapeHtml(feedback)}</p>
+            </div>
+          </section>
+        </main>
+      </body>
+    </html>
+  `;
+
+  return { subject, text, html };
+}
+
+async function sendFeedbackEmail({
+  name,
+  email,
+  fedexPosition,
+  feedback,
+  sourcePage,
+  userAgent,
+  fetchImpl = fetch
+} = {}) {
+  const apiKey = process.env.RESEND_API_KEY;
+
+  if (!apiKey) {
+    return {
+      delivered: false,
+      skipped: true,
+      reason: 'Resend API key is not configured',
+      provider_id: null
+    };
+  }
+
+  const message = buildFeedbackEmail({ name, email, fedexPosition, feedback, sourcePage, userAgent });
+  const response = await fetchImpl('https://api.resend.com/emails', {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({
+      from: process.env.RESEND_FROM_EMAIL || READYROUTE_FROM_EMAIL,
+      to: [READYROUTE_FEEDBACK_TO_EMAIL],
+      reply_to: email,
+      subject: message.subject,
+      text: message.text,
+      html: message.html
+    })
+  });
+
+  if (!response.ok) {
+    const bodyText = await response.text();
+    const error = new Error(`Resend feedback email failed: ${response.status} ${bodyText}`);
+    error.status = response.status;
+    throw error;
+  }
+
+  const payload = await response.json();
+  const providerId = payload?.id || null;
+
+  return {
+    delivered: true,
+    skipped: false,
+    provider_id: providerId,
+    resend_email_id: providerId
+  };
+}
+
 module.exports = {
   READYROUTE_FROM_EMAIL,
+  READYROUTE_FEEDBACK_TO_EMAIL,
   READYROUTE_REPLY_TO_EMAIL,
   WAITLIST_THANK_YOU_SUBJECT,
+  buildFeedbackEmail,
   buildWaitlistGreeting,
   buildWaitlistThankYouEmail,
+  sendFeedbackEmail,
   sendWaitlistThankYouEmail
 };

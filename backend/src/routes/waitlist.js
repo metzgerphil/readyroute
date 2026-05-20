@@ -1,6 +1,7 @@
 const express = require('express');
 
 const defaultSupabase = require('../lib/supabase');
+const { sendFeedbackEmail: defaultSendFeedbackEmail } = require('../services/waitlistEmail');
 
 function normalizeText(value, maxLength = 240) {
   const text = String(value || '').trim();
@@ -80,9 +81,44 @@ function buildSignupPayload(body = {}, req) {
   };
 }
 
+function buildFeedbackPayload(body = {}, req) {
+  const name = normalizeText(body.name, 160);
+  const email = normalizeEmail(body.email);
+  const fedexPosition = normalizeText(body.position ?? body.fedex_position, 160);
+  const feedback = normalizeText(body.feedback, 4000);
+
+  if (!name) {
+    return { error: 'Name is required.' };
+  }
+
+  if (!isValidEmail(email)) {
+    return { error: 'A valid email is required.' };
+  }
+
+  if (!fedexPosition) {
+    return { error: 'Position with FedEx is required.' };
+  }
+
+  if (!feedback || feedback.length < 10) {
+    return { error: 'Feedback must be at least 10 characters.' };
+  }
+
+  return {
+    payload: {
+      name,
+      email,
+      fedexPosition,
+      feedback,
+      sourcePage: normalizeText(body.source_page, 500),
+      userAgent: normalizeText(req.get('user-agent'), 500)
+    }
+  };
+}
+
 function createWaitlistRouter(options = {}) {
   const router = express.Router();
   const supabase = options.supabase || defaultSupabase;
+  const sendFeedbackEmail = options.sendFeedbackEmail || defaultSendFeedbackEmail;
 
   router.post('/early-access', async (req, res) => {
     try {
@@ -110,9 +146,32 @@ function createWaitlistRouter(options = {}) {
     }
   });
 
+  router.post('/feedback', async (req, res) => {
+    try {
+      const { payload, error } = buildFeedbackPayload(req.body, req);
+
+      if (error) {
+        return res.status(400).json({ error });
+      }
+
+      const delivery = await sendFeedbackEmail(payload);
+
+      if (delivery?.skipped) {
+        console.error('ReadyRoute feedback email skipped:', delivery.reason);
+        return res.status(503).json({ error: 'Feedback email service is not configured yet.' });
+      }
+
+      return res.status(201).json({ ok: true });
+    } catch (error) {
+      console.error('ReadyRoute feedback endpoint failed:', error);
+      return res.status(500).json({ error: 'Unable to send feedback right now.' });
+    }
+  });
+
   return router;
 }
 
 module.exports = createWaitlistRouter();
 module.exports.createWaitlistRouter = createWaitlistRouter;
+module.exports.buildFeedbackPayload = buildFeedbackPayload;
 module.exports.buildSignupPayload = buildSignupPayload;

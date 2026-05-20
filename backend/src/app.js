@@ -114,7 +114,7 @@ function createApp(options = {}) {
     workerSecret: options.fedexSyncWorkerSecret
   });
   const waitlistRouter = options.supabase
-    ? createWaitlistRouter({ supabase: options.supabase })
+    ? createWaitlistRouter({ supabase: options.supabase, sendFeedbackEmail: options.sendFeedbackEmail })
     : waitlistRoutes;
   const requireActiveSubscription = options.enforceBilling === false || (Boolean(options.supabase) && options.enforceBilling !== true)
     ? (_req, _res, next) => next()

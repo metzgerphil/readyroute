@@ -62,8 +62,13 @@ class MockSupabase {
   }
 }
 
-async function startTestServer(supabase) {
-  const app = createApp({ supabase, jwtSecret: process.env.JWT_SECRET, enforceBilling: false });
+async function startTestServer(supabase, options = {}) {
+  const app = createApp({
+    supabase,
+    jwtSecret: process.env.JWT_SECRET,
+    enforceBilling: false,
+    ...options
+  });
   const server = await new Promise((resolve) => {
     const listeningServer = app.listen(0, () => resolve(listeningServer));
   });
@@ -148,6 +153,71 @@ test('POST /waitlist/early-access validates required fields', async () => {
 
     assert.equal(response.status, 400);
     assert.equal(supabase.calls.length, 0);
+  } finally {
+    await server.close();
+  }
+});
+
+test('POST /waitlist/feedback sends contractor feedback to ReadyRoute', async () => {
+  const supabase = new MockSupabase(() => {
+    throw new Error('Supabase should not be called for feedback emails');
+  });
+  const sentFeedback = [];
+  const server = await startTestServer(supabase, {
+    sendFeedbackEmail: async (payload) => {
+      sentFeedback.push(payload);
+      return { delivered: true, skipped: false, provider_id: 'email-1' };
+    }
+  });
+
+  try {
+    const response = await fetch(`${server.baseUrl}/waitlist/feedback`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        name: 'Taylor Driver',
+        email: 'TAYLOR@example.com',
+        position: 'FedEx BC',
+        feedback: 'The driver map should make apartments easier to sort.',
+        source_page: 'https://www.readyroute.org/mvp'
+      })
+    });
+
+    assert.equal(response.status, 201);
+    assert.deepEqual(await response.json(), { ok: true });
+    assert.equal(sentFeedback.length, 1);
+    assert.equal(sentFeedback[0].name, 'Taylor Driver');
+    assert.equal(sentFeedback[0].email, 'taylor@example.com');
+    assert.equal(sentFeedback[0].fedexPosition, 'FedEx BC');
+    assert.match(sentFeedback[0].feedback, /apartments/);
+  } finally {
+    await server.close();
+  }
+});
+
+test('POST /waitlist/feedback validates required fields', async () => {
+  const supabase = new MockSupabase(() => {
+    throw new Error('Supabase should not be called for invalid feedback');
+  });
+  const server = await startTestServer(supabase, {
+    sendFeedbackEmail: async () => {
+      throw new Error('Email should not be sent for invalid feedback');
+    }
+  });
+
+  try {
+    const response = await fetch(`${server.baseUrl}/waitlist/feedback`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        name: '',
+        email: 'bad-email',
+        position: '',
+        feedback: 'short'
+      })
+    });
+
+    assert.equal(response.status, 400);
   } finally {
     await server.close();
   }
