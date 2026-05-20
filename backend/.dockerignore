@@ -1,0 +1,13 @@
+node_modules
+npm-debug.log
+.env
+.env.*
+schema.sql
+tests
+*.test.js
+coverage
+.railwayignore
+nixpacks.toml
+railpack.json
+CI_DEPLOY_PROBE.md
+google-service-account*.json
