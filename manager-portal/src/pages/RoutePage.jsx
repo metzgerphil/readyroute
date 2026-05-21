@@ -11,7 +11,6 @@ import {
   ROUTE_STATUS_META,
   buildBoundary,
   buildDriverInfoWindow,
-  buildInfoWindow,
   formatDateShort,
   formatTimestamp,
   getDistanceMiles,
@@ -29,6 +28,8 @@ import { createDriverPositionMarker, createStopMarkerSVG, getMarkerZIndex } from
 import './RoutePage.css';
 
 const EMPTY_ARRAY = [];
+const ROUTE_MAP_INIT_TIMEOUT_MS = 8000;
+const ROUTE_MAP_TIMEOUT_MESSAGE = 'Map did not initialize. Check console logs for RouteMap Debug.';
 
 export default function RoutePage() {
   const { id } = useParams();
@@ -46,16 +47,20 @@ export default function RoutePage() {
   const territoryBorderRef = useRef(null);
   const exceptionsPanelRef = useRef(null);
   const resizeObserverRef = useRef(null);
-  const mapStabilizeTimerRef = useRef(null);
-  const mapTileWatchdogRef = useRef(null);
-  const mapTilesLoadedRef = useRef(false);
+  const mapSettleTimersRef = useRef([]);
+  const mapPaintListenerRef = useRef(null);
+  const mapInitTimeoutRef = useRef(null);
+  const mapReadyRef = useRef(false);
+  const mapLoadingRef = useRef(false);
+  const mapErrorRef = useRef('');
+  const loaderStatusRef = useRef('idle');
   const [date, setDate] = useState(() => getInitialRouteDate(searchParams));
   const [mapError, setMapError] = useState('');
   const [mapReady, setMapReady] = useState(false);
   const [mapLoading, setMapLoading] = useState(false);
-  const [mapTilesPainted, setMapTilesPainted] = useState(false);
-  const [mapRefreshNonce, setMapRefreshNonce] = useState(0);
-  const [mapIsRepainting, setMapIsRepainting] = useState(false);
+  const [loaderStatus, setLoaderStatus] = useState('idle');
+  const [mapDebugSnapshot, setMapDebugSnapshot] = useState(null);
+  const [mapContainerVersion, setMapContainerVersion] = useState(0);
   const [mapType, setMapType] = useState('roadmap');
   const [selectedStopId, setSelectedStopId] = useState(null);
   const [showLegend, setShowLegend] = useState(true);
@@ -103,15 +108,36 @@ export default function RoutePage() {
     }
   }, []);
 
+  const clearMapSettleTimers = useCallback(() => {
+    mapSettleTimersRef.current.forEach((timeoutId) => window.clearTimeout(timeoutId));
+    mapSettleTimersRef.current = [];
+  }, []);
+
+  const clearMapInitTimeout = useCallback(() => {
+    if (mapInitTimeoutRef.current) {
+      window.clearTimeout(mapInitTimeoutRef.current);
+      mapInitTimeoutRef.current = null;
+    }
+  }, []);
+
   const resetMapInstance = useCallback(() => {
+    clearMapInitTimeout();
+    clearMapSettleTimers();
+    mapPaintListenerRef.current?.remove?.();
+    mapPaintListenerRef.current = null;
     clearMapArtifacts();
     infoWindowRef.current?.close();
     infoWindowRef.current = null;
     mapInstanceRef.current = null;
-    mapTilesLoadedRef.current = false;
+    if (mapContainerRef.current) {
+      mapContainerRef.current.innerHTML = '';
+    }
     setMapReady(false);
-    setMapTilesPainted(false);
-  }, [clearMapArtifacts]);
+    setMapLoading(false);
+    setMapError('');
+    setMapDebugSnapshot(null);
+    setLoaderStatus('idle');
+  }, [clearMapArtifacts, clearMapInitTimeout, clearMapSettleTimers]);
 
   const routesQuery = useQuery({
     queryKey: ['route-page-routes', date],
@@ -170,7 +196,6 @@ export default function RoutePage() {
 
   const routeDetail = routeDetailQuery.data;
   const route = routeDetail?.route || routeOptions.find((item) => item.id === id) || null;
-  const coordinateRecovery = routeDetail?.coordinate_recovery || null;
   const allStops = useMemo(() => routeDetail?.stops || EMPTY_ARRAY, [routeDetail?.stops]);
   const mappableStops = useMemo(
     () =>
@@ -218,46 +243,70 @@ export default function RoutePage() {
   const noteEditorStop = allStops.find((stop) => stop.id === noteEditorStopId) || null;
   const propertyEditorStop = allStops.find((stop) => stop.id === propertyEditorStopId) || null;
 
-  useEffect(() => {
-    selectedStopIdRef.current = selectedStopId;
-  }, [selectedStopId]);
-
-  const getInfoWindowPixelOffset = useCallback((marker) => {
-    const google = window.google;
-    const map = mapInstanceRef.current;
-    const position = marker?.getPosition?.();
-    const projection = map?.getProjection?.();
-    const center = map?.getCenter?.();
-    const div = map?.getDiv?.();
-
-    if (!google?.maps || !position || !projection || !center || !div) {
-      return google?.maps ? new google.maps.Size(0, -8) : null;
-    }
-
-    const markerPoint = projection.fromLatLngToPoint(position);
-    const centerPoint = projection.fromLatLngToPoint(center);
-    const scale = 2 ** (map.getZoom() || 0);
-    const markerY = (markerPoint.y - centerPoint.y) * scale + div.clientHeight / 2;
-    const topSafeZone = 250;
-
-    return new google.maps.Size(0, markerY < topSafeZone ? topSafeZone - markerY : -8);
-  }, []);
-
-  const openStopInfoWindow = useCallback((stop, marker) => {
-    const infoWindow = infoWindowRef.current;
-    const map = mapInstanceRef.current;
-
-    if (!infoWindow || !map || !marker) {
+  const setRouteMapContainer = useCallback((node) => {
+    if (mapContainerRef.current === node) {
       return;
     }
 
-    const pixelOffset = getInfoWindowPixelOffset(marker);
-    if (pixelOffset) {
-      infoWindow.setOptions({ pixelOffset });
-    }
-    infoWindow.setContent(buildInfoWindow(stop));
-    infoWindow.open({ anchor: marker, map, shouldFocus: false });
-  }, [getInfoWindowPixelOffset]);
+    mapContainerRef.current = node;
+    setMapContainerVersion((version) => version + 1);
+  }, []);
+
+  useEffect(() => {
+    mapReadyRef.current = mapReady;
+  }, [mapReady]);
+
+  useEffect(() => {
+    mapLoadingRef.current = mapLoading;
+  }, [mapLoading]);
+
+  useEffect(() => {
+    mapErrorRef.current = mapError;
+  }, [mapError]);
+
+  useEffect(() => {
+    loaderStatusRef.current = loaderStatus;
+  }, [loaderStatus]);
+
+  const buildRouteMapDebugSnapshot = useCallback((overrides = {}) => {
+    const rect = mapContainerRef.current?.getBoundingClientRect?.();
+    const currentLoaderStatus = overrides.loaderStatus ?? loaderStatusRef.current;
+    const currentLoadingState = overrides.loadingState ?? {
+      mapReady: mapReadyRef.current,
+      mapLoading: mapLoadingRef.current
+    };
+    const currentErrorState = overrides.errorState ?? mapErrorRef.current;
+
+    return {
+      selectedRouteId: id,
+      routeNumber: route?.work_area_name || route?.route_number || route?.name || null,
+      totalStops: allStops?.length ?? 0,
+      validCoordinateStops: orderedStops?.length ?? 0,
+      firstStop: allStops?.[0],
+      firstValidStop: orderedStops?.[0],
+      hasMapContainer: Boolean(mapContainerRef.current),
+      mapContainerRect: rect,
+      googleExists: Boolean(window.google),
+      googleMapsExists: Boolean(window.google?.maps),
+      googleMapCtorExists: Boolean(window.google?.maps?.Map),
+      loaderStatus: currentLoaderStatus,
+      mapInstanceExists: Boolean(mapInstanceRef.current),
+      loadingState: currentLoadingState,
+      errorState: currentErrorState
+    };
+  }, [allStops, id, orderedStops, route]);
+
+  const logRouteMapDebug = useCallback((overrides = {}) => {
+    const snapshot = buildRouteMapDebugSnapshot(overrides);
+    console.group('[RouteMap Debug]');
+    console.log(snapshot);
+    console.groupEnd();
+    return snapshot;
+  }, [buildRouteMapDebugSnapshot]);
+
+  useEffect(() => {
+    selectedStopIdRef.current = selectedStopId;
+  }, [selectedStopId]);
 
   const fitRoute = useCallback(() => {
     const google = window.google;
@@ -268,9 +317,10 @@ export default function RoutePage() {
     }
 
     const bounds = new google.maps.LatLngBounds();
+    const fitPoints = [];
 
     orderedStops.forEach((stop) => {
-      bounds.extend({ lat: Number(stop.lat), lng: Number(stop.lng) });
+      fitPoints.push({ lat: Number(stop.lat), lng: Number(stop.lng) });
     });
 
     if (
@@ -282,13 +332,68 @@ export default function RoutePage() {
         routeCentroid
       ) <= 50
     ) {
-      bounds.extend({ lat: Number(livePosition.lat), lng: Number(livePosition.lng) });
+      fitPoints.push({ lat: Number(livePosition.lat), lng: Number(livePosition.lng) });
     }
 
-    if (!bounds.isEmpty()) {
+    fitPoints.forEach((point) => bounds.extend(point));
+
+    if (fitPoints.length === 1) {
+      map.setCenter(fitPoints[0]);
+      map.setZoom(15);
+    } else if (!bounds.isEmpty()) {
       map.fitBounds(bounds, 72);
     }
   }, [livePosition?.lat, livePosition?.lng, orderedStops, routeCentroid]);
+
+  const forceMapRepaint = useCallback((reason = 'manual') => {
+    const google = window.google;
+    const map = mapInstanceRef.current;
+
+    if (!google?.maps || !map) {
+      return;
+    }
+
+    [0, 60, 180, 420, 900].forEach((delay) => {
+      const timeoutId = window.setTimeout(() => {
+        const currentMap = mapInstanceRef.current;
+
+        if (!currentMap || currentMap !== map || !window.google?.maps) {
+          return;
+        }
+
+        window.requestAnimationFrame(() => {
+          const center = currentMap.getCenter?.();
+          const zoom = currentMap.getZoom?.();
+          const typeId = currentMap.getMapTypeId?.();
+
+          window.google.maps.event.trigger(currentMap, 'resize');
+
+          if (typeId) {
+            currentMap.setMapTypeId(typeId);
+          }
+
+          if (center) {
+            currentMap.setCenter(center);
+          }
+
+          if (Number.isFinite(zoom)) {
+            currentMap.setZoom(zoom);
+          }
+
+          fitRoute();
+          console.debug('[RouteMap Debug] forced repaint', {
+            selectedRouteId: id,
+            reason,
+            delay,
+            mapTypeId: typeId,
+            markerCount: stopMarkersRef.current.size
+          });
+        });
+      }, delay);
+
+      mapSettleTimersRef.current.push(timeoutId);
+    });
+  }, [fitRoute, id]);
 
   useEffect(() => {
     if (!actionMessage) {
@@ -311,7 +416,6 @@ export default function RoutePage() {
   useEffect(() => {
     setSelectedStopId(null);
     resetMapInstance();
-    setMapRefreshNonce((value) => value + 1);
   }, [id, date, resetMapInstance]);
 
   useEffect(() => {
@@ -335,140 +439,126 @@ export default function RoutePage() {
 
   useEffect(() => {
     let active = true;
-
-    function clearPendingStabilizeTimer() {
-      if (mapStabilizeTimerRef.current) {
-        window.clearTimeout(mapStabilizeTimerRef.current);
-        mapStabilizeTimerRef.current = null;
-      }
-    }
-
-    function clearTileWatchdog() {
-      if (mapTileWatchdogRef.current) {
-        window.clearTimeout(mapTileWatchdogRef.current);
-        mapTileWatchdogRef.current = null;
-      }
-    }
-
-    function mapHasPaintedSurface() {
-      const mapContainer = mapContainerRef.current;
-
-      if (!mapContainer) {
-        return false;
-      }
-
-      return Boolean(
-        mapContainer.querySelector('.gm-style canvas') ||
-          mapContainer.querySelector('.gm-style img[src*="google"]') ||
-          mapContainer.querySelector('.gm-style img[src^="http"]')
-      );
-    }
-
-    function markMapPainted() {
-      if (!active) {
-        return;
-      }
-
-      mapTilesLoadedRef.current = true;
-      setMapReady(true);
-      setMapTilesPainted(true);
-      setMapLoading(false);
-      setMapIsRepainting(false);
-      clearTileWatchdog();
-    }
-
-    function startTileWatchdog(google, map) {
-      clearTileWatchdog();
-
-      mapTileWatchdogRef.current = window.setTimeout(() => {
-        if (!active || mapTilesLoadedRef.current || !mapContainerRef.current || !map) {
-          return;
-        }
-
-        google.maps.event.trigger(map, 'resize');
-
-        if (orderedStops.length) {
-          fitRoute();
-        }
-
-        if (mapHasPaintedSurface()) {
-          markMapPainted();
-          return;
-        }
-
-        setMapIsRepainting(false);
-        setMapLoading(false);
-        setMapError('The map did not finish drawing. Refresh this page or tap Fit to route.');
-      }, 8000);
-    }
+    let retryTimerId = null;
 
     function containerHasSize() {
       const rect = mapContainerRef.current?.getBoundingClientRect?.();
-      return Boolean(rect && rect.width > 40 && rect.height > 40);
+      return Boolean(rect && rect.width > 0 && rect.height > 0);
     }
 
-    function stabilizeMap(google, map) {
-      if (!active || !google?.maps || !map) {
-        return;
-      }
-
-      clearPendingStabilizeTimer();
-
+    function resizeAndFitMap(google, map) {
       window.requestAnimationFrame(() => {
-        if (!active || !mapInstanceRef.current) {
+        if (!active || !map) {
           return;
         }
 
         google.maps.event.trigger(map, 'resize');
+        fitRoute();
+      });
+    }
 
-        mapStabilizeTimerRef.current = window.setTimeout(() => {
-          if (!active || !mapInstanceRef.current) {
+    function scheduleMapSettle(google, map) {
+      clearMapSettleTimers();
+
+      [0, 80, 220, 520, 1000].forEach((delay) => {
+        const timeoutId = window.setTimeout(() => {
+          if (!active || !mapInstanceRef.current || mapInstanceRef.current !== map) {
             return;
           }
 
-          google.maps.event.trigger(map, 'resize');
+          resizeAndFitMap(google, map);
+        }, delay);
 
-          if (orderedStops.length) {
-            fitRoute();
-          } else {
-            map.setCenter({ lat: 33.1217, lng: -117.0815 });
-            map.setZoom(11);
-          }
-
-          setMapReady(true);
-          startTileWatchdog(google, map);
-        }, 180);
+        mapSettleTimersRef.current.push(timeoutId);
       });
     }
 
     async function initMap() {
+      if (!id) {
+        setMapLoading(false);
+        logRouteMapDebug({
+          loadingState: { mapReady: mapReadyRef.current, mapLoading: false }
+        });
+        return;
+      }
+
+      if (routeDetailQuery.isLoading) {
+        setMapLoading(false);
+        logRouteMapDebug({
+          loadingState: { mapReady: mapReadyRef.current, mapLoading: false }
+        });
+        return;
+      }
+
+      if (!route) {
+        setMapLoading(false);
+        setMapReady(false);
+        setMapError('Selected route was not found.');
+        logRouteMapDebug({ loadingState: { mapReady: false, mapLoading: false }, errorState: 'Selected route was not found.' });
+        return;
+      }
+
+      if (orderedStops.length === 0) {
+        clearMapArtifacts();
+        setMapReady(false);
+        setMapLoading(false);
+        setMapError('No mapped stops for this route');
+        logRouteMapDebug({
+          loadingState: { mapReady: false, mapLoading: false },
+          errorState: 'No mapped stops for this route'
+        });
+        return;
+      }
+
       if (!mapContainerRef.current) {
+        setMapLoading(false);
+        logRouteMapDebug({
+          loadingState: { mapReady: mapReadyRef.current, mapLoading: false }
+        });
+        retryTimerId = window.setTimeout(initMap, 50);
         return;
       }
 
       if (!containerHasSize()) {
-        window.setTimeout(initMap, 100);
+        setMapLoading(true);
+        logRouteMapDebug({
+          loadingState: { mapReady: mapReadyRef.current, mapLoading: true }
+        });
+        retryTimerId = window.setTimeout(initMap, 100);
         return;
       }
 
       try {
         setMapLoading(true);
+        setMapError('');
+        setMapDebugSnapshot(null);
+        setLoaderStatus('loading');
+        logRouteMapDebug({
+          loaderStatus: 'loading',
+          loadingState: { mapReady: mapReadyRef.current, mapLoading: true }
+        });
         const { Map } = await loadGoogleMaps();
         const google = window.google;
 
-        if (!active || !mapContainerRef.current || !Map || !google?.maps) {
+        if (!active || !mapContainerRef.current) {
           return;
         }
 
-        setMapError('');
-        setMapIsRepainting(false);
+        setLoaderStatus('loaded');
+        logRouteMapDebug({
+          loaderStatus: 'loaded',
+          loadingState: { mapReady: mapReadyRef.current, mapLoading: true }
+        });
 
         const shouldCreateFreshMap =
           !mapInstanceRef.current ||
           (typeof mapInstanceRef.current.getDiv === 'function' && mapInstanceRef.current.getDiv() !== mapContainerRef.current);
 
         if (shouldCreateFreshMap) {
-          resetMapInstance();
+          clearMapArtifacts();
+          mapPaintListenerRef.current?.remove?.();
+          mapPaintListenerRef.current = null;
+          infoWindowRef.current?.close();
           mapInstanceRef.current = new Map(mapContainerRef.current, {
             center: { lat: 33.1217, lng: -117.0815 },
             zoom: 11,
@@ -483,29 +573,11 @@ export default function RoutePage() {
             maxWidth: 460,
             pixelOffset: new google.maps.Size(0, -8)
           });
-        } else {
-          if (mapTilesLoadedRef.current) {
-            setMapTilesPainted(true);
-            setMapLoading(false);
-          }
         }
 
         const map = mapInstanceRef.current;
-
-        // Some browsers deliver Google Maps lifecycle events inconsistently
-        // when the canvas is mounted inside a resizable route panel. Listen for
-        // both signals and also verify that Google painted a real surface.
-        stabilizeMap(google, map);
-        google.maps.event.addListenerOnce(map, 'idle', () => {
-          stabilizeMap(google, map);
-
-          window.setTimeout(() => {
-            if (mapHasPaintedSurface()) {
-              markMapPainted();
-            }
-          }, 240);
-        });
-        google.maps.event.addListenerOnce(map, 'tilesloaded', markMapPainted);
+        setMapReady(true);
+        scheduleMapSettle(google, map);
 
         if (mapContainerRef.current && 'ResizeObserver' in window) {
           resizeObserverRef.current?.disconnect();
@@ -514,16 +586,17 @@ export default function RoutePage() {
               return;
             }
 
-            stabilizeMap(window.google, mapInstanceRef.current);
+            resizeAndFitMap(window.google, mapInstanceRef.current);
           });
           resizeObserverRef.current.observe(mapContainerRef.current);
         }
       } catch (error) {
         console.error('RoutePage Google Maps load failed:', error);
+        setLoaderStatus('error');
+        logRouteMapDebug({ loaderStatus: 'error', errorState: error });
         if (active) {
           setMapReady(false);
           setMapLoading(false);
-          setMapTilesPainted(false);
           setMapError(getGoogleMapsErrorMessage(error));
         }
       }
@@ -533,12 +606,26 @@ export default function RoutePage() {
 
     return () => {
       active = false;
-      clearPendingStabilizeTimer();
-      clearTileWatchdog();
+      if (retryTimerId) {
+        window.clearTimeout(retryTimerId);
+      }
+      clearMapSettleTimers();
       resizeObserverRef.current?.disconnect();
       resizeObserverRef.current = null;
     };
-  }, [fitRoute, mapRefreshNonce, mapType, orderedStops.length, resetMapInstance]);
+  }, [
+    allStops.length,
+    clearMapArtifacts,
+    clearMapSettleTimers,
+    fitRoute,
+    id,
+    logRouteMapDebug,
+    mapContainerVersion,
+    mapType,
+    orderedStops.length,
+    route,
+    routeDetailQuery.isLoading
+  ]);
 
   useEffect(() => {
     const google = window.google;
@@ -551,8 +638,50 @@ export default function RoutePage() {
     map.setMapTypeId(mapType);
     window.requestAnimationFrame(() => {
       google.maps.event.trigger(map, 'resize');
+      fitRoute();
     });
-  }, [mapType]);
+    forceMapRepaint('map_type_changed');
+  }, [fitRoute, forceMapRepaint, mapType]);
+
+  useEffect(() => {
+    clearMapInitTimeout();
+
+    const rect = mapContainerRef.current?.getBoundingClientRect?.();
+    const prerequisitesReady =
+      Boolean(id) &&
+      !routeDetailQuery.isLoading &&
+      Boolean(route) &&
+      orderedStops.length > 0 &&
+      Boolean(rect && rect.width > 0 && rect.height > 0);
+
+    if (mapError || mapReady || !mapLoading || !prerequisitesReady) {
+      return undefined;
+    }
+
+    mapInitTimeoutRef.current = window.setTimeout(() => {
+      const snapshot = logRouteMapDebug({
+        loadingState: { mapReady, mapLoading: true },
+        errorState: ROUTE_MAP_TIMEOUT_MESSAGE
+      });
+      setMapDebugSnapshot(snapshot);
+      setMapError(ROUTE_MAP_TIMEOUT_MESSAGE);
+      setMapLoading(false);
+      setMapReady(false);
+    }, ROUTE_MAP_INIT_TIMEOUT_MS);
+
+    return clearMapInitTimeout;
+  }, [
+    clearMapInitTimeout,
+    id,
+    logRouteMapDebug,
+    mapContainerVersion,
+    mapError,
+    mapLoading,
+    mapReady,
+    orderedStops.length,
+    route,
+    routeDetailQuery.isLoading
+  ]);
 
   useEffect(() => {
     if (routeDetailQuery.isLoading) {
@@ -565,16 +694,12 @@ export default function RoutePage() {
     }
 
     if (allStops.length > 0 && mappableStops.length === 0) {
-      const attempted = Number(coordinateRecovery?.attempted || 0);
-      const recovered = Number(coordinateRecovery?.recovered || 0);
-
-      if (attempted > 0 && recovered === 0) {
-        setMapError('This route loaded without coordinates, so the map cannot render those stops yet.');
-        return;
-      }
+      setMapError('No mapped stops for this route');
+      return;
     }
 
     if (
+      mapError === 'No mapped stops for this route' ||
       mapError === 'This route loaded without coordinates, so the map cannot render those stops yet.' ||
       mapError === 'This route record exists, but its stops did not finish importing. Re-upload the manifest for this route.'
     ) {
@@ -582,8 +707,6 @@ export default function RoutePage() {
     }
   }, [
     allStops.length,
-    coordinateRecovery?.attempted,
-    coordinateRecovery?.recovered,
     mapError,
     mappableStops.length,
     route?.total_stops,
@@ -599,117 +722,139 @@ export default function RoutePage() {
       return;
     }
 
-    clearMapArtifacts();
+    try {
+      clearMapArtifacts();
 
-    orderedStops.forEach((stop) => {
-      const marker = new google.maps.Marker({
-        map,
-        position: { lat: Number(stop.lat), lng: Number(stop.lng) },
-        title: getStopMarkerLabel(stop),
-        icon: createStopMarkerSVG(stop, stop.id === selectedStopId),
-        zIndex: getMarkerZIndex(stop, stop.id === selectedStopId)
-      });
+      orderedStops.forEach((stop) => {
+        const marker = new google.maps.Marker({
+          map,
+          position: { lat: Number(stop.lat), lng: Number(stop.lng) },
+          title: getStopMarkerLabel(stop),
+          icon: createStopMarkerSVG(stop, stop.id === selectedStopId),
+          zIndex: getMarkerZIndex(stop, stop.id === selectedStopId)
+        });
 
-      marker.addListener('click', () => {
-        selectedStopIdRef.current = stop.id;
-        setSelectedStopId(stop.id);
-        setShowStopDrawer(true);
-        openStopInfoWindow(stop, marker);
-      });
+        marker.addListener('click', () => {
+          selectedStopIdRef.current = stop.id;
+          setSelectedStopId(stop.id);
+          setShowStopDrawer(true);
+          infoWindowRef.current?.close();
+        });
 
-      marker.addListener('mouseover', () => {
-        marker.setIcon(createStopMarkerSVG(stop, true));
-        marker.setZIndex(getMarkerZIndex(stop, true));
-      });
+        marker.addListener('mouseover', () => {
+          marker.setIcon(createStopMarkerSVG(stop, true));
+          marker.setZIndex(getMarkerZIndex(stop, true));
+        });
 
-      marker.addListener('mouseout', () => {
-        if (selectedStopIdRef.current !== stop.id) {
-          marker.setIcon(createStopMarkerSVG(stop, false));
-          marker.setZIndex(getMarkerZIndex(stop, false));
-        }
-      });
-
-      stopMarkersRef.current.set(stop.id, marker);
-    });
-
-    if (orderedStops.length > 1) {
-      routePolylineRef.current = new google.maps.Polyline({
-        map,
-        path: orderedStops.map((stop) => ({ lat: Number(stop.lat), lng: Number(stop.lng) })),
-        strokeColor: '#4285F4',
-        strokeOpacity: 1,
-        strokeWeight: 3,
-        zIndex: 2
-      });
-    }
-
-    if (routeBounds) {
-      territoryFillRef.current = new google.maps.Rectangle({
-        map,
-        bounds: routeBounds,
-        strokeOpacity: 0,
-        strokeWeight: 0,
-        fillColor: '#4CAF50',
-        fillOpacity: 0.04
-      });
-
-      territoryBorderRef.current = new google.maps.Polyline({
-        map,
-        path: [
-          { lat: routeBounds.north, lng: routeBounds.west },
-          { lat: routeBounds.north, lng: routeBounds.east },
-          { lat: routeBounds.south, lng: routeBounds.east },
-          { lat: routeBounds.south, lng: routeBounds.west },
-          { lat: routeBounds.north, lng: routeBounds.west }
-        ],
-        strokeOpacity: 0,
-        strokeWeight: 1.5,
-        icons: [
-          {
-            icon: {
-              path: 'M 0,-1 0,1',
-              strokeColor: '#333333',
-              strokeOpacity: 0.6,
-              strokeWeight: 1.5,
-              scale: 4
-            },
-            offset: '0',
-            repeat: '12px'
+        marker.addListener('mouseout', () => {
+          if (selectedStopIdRef.current !== stop.id) {
+            marker.setIcon(createStopMarkerSVG(stop, false));
+            marker.setZIndex(getMarkerZIndex(stop, false));
           }
-        ],
-        zIndex: 1
-      });
-    }
+        });
 
-    if (
-      livePosition?.lat != null &&
-      livePosition?.lng != null &&
-      routeCentroid &&
-      getDistanceMiles(
-        { lat: Number(livePosition.lat), lng: Number(livePosition.lng) },
-        routeCentroid
-      ) <= 50
-    ) {
-      const marker = new google.maps.Marker({
-        map,
-        position: { lat: Number(livePosition.lat), lng: Number(livePosition.lng) },
-        title: routeDriverName,
-        icon: createDriverPositionMarker(routeDriverName, route?.status),
-        zIndex: 30
+        stopMarkersRef.current.set(stop.id, marker);
       });
 
-      marker.addListener('click', () => {
-        infoWindow.setContent(buildDriverInfoWindow({ route, routeDriverName, nextStop, pendingTimeCommitCount }));
-        infoWindow.open({ anchor: marker, map });
+      if (orderedStops.length > 1) {
+        routePolylineRef.current = new google.maps.Polyline({
+          map,
+          path: orderedStops.map((stop) => ({ lat: Number(stop.lat), lng: Number(stop.lng) })),
+          strokeColor: '#4285F4',
+          strokeOpacity: 1,
+          strokeWeight: 3,
+          zIndex: 2
+        });
+      }
+
+      if (routeBounds) {
+        territoryFillRef.current = new google.maps.Rectangle({
+          map,
+          bounds: routeBounds,
+          strokeOpacity: 0,
+          strokeWeight: 0,
+          fillColor: '#4CAF50',
+          fillOpacity: 0.04
+        });
+
+        territoryBorderRef.current = new google.maps.Polyline({
+          map,
+          path: [
+            { lat: routeBounds.north, lng: routeBounds.west },
+            { lat: routeBounds.north, lng: routeBounds.east },
+            { lat: routeBounds.south, lng: routeBounds.east },
+            { lat: routeBounds.south, lng: routeBounds.west },
+            { lat: routeBounds.north, lng: routeBounds.west }
+          ],
+          strokeOpacity: 0,
+          strokeWeight: 1.5,
+          icons: [
+            {
+              icon: {
+                path: 'M 0,-1 0,1',
+                strokeColor: '#333333',
+                strokeOpacity: 0.6,
+                strokeWeight: 1.5,
+                scale: 4
+              },
+              offset: '0',
+              repeat: '12px'
+            }
+          ],
+          zIndex: 1
+        });
+      }
+
+      if (
+        livePosition?.lat != null &&
+        livePosition?.lng != null &&
+        routeCentroid &&
+        getDistanceMiles(
+          { lat: Number(livePosition.lat), lng: Number(livePosition.lng) },
+          routeCentroid
+        ) <= 50
+      ) {
+        const marker = new google.maps.Marker({
+          map,
+          position: { lat: Number(livePosition.lat), lng: Number(livePosition.lng) },
+          title: routeDriverName,
+          icon: createDriverPositionMarker(routeDriverName, route?.status),
+          zIndex: 30
+        });
+
+        marker.addListener('click', () => {
+          infoWindow.setContent(buildDriverInfoWindow({ route, routeDriverName, nextStop, pendingTimeCommitCount }));
+          infoWindow.open({ anchor: marker, map });
+        });
+
+        driverMarkerRef.current = marker;
+      }
+
+      if (orderedStops.length) {
+        fitRoute();
+      }
+
+      console.debug('[RouteMap Debug] markers rendered', {
+        selectedRouteId: id,
+        markerCount: stopMarkersRef.current.size
       });
-
-      driverMarkerRef.current = marker;
-    }
-
-    if (orderedStops.length) {
-      fitRoute();
+      clearMapInitTimeout();
+      setMapDebugSnapshot(null);
+      setMapError('');
+      setMapLoading(false);
+      forceMapRepaint('markers_rendered');
+    } catch (error) {
+      console.error('RoutePage marker render failed:', error);
+      const snapshot = logRouteMapDebug({
+        loadingState: { mapReady, mapLoading: false },
+        errorState: error
+      });
+      setMapDebugSnapshot(snapshot);
+      setMapError(ROUTE_MAP_TIMEOUT_MESSAGE);
+      setMapLoading(false);
     }
   }, [
+    id,
     mapReady,
     orderedStops,
     routeBounds,
@@ -719,8 +864,10 @@ export default function RoutePage() {
     routeDriverName,
     route?.status,
     nextStop,
+    clearMapInitTimeout,
     clearMapArtifacts,
-    openStopInfoWindow,
+    forceMapRepaint,
+    logRouteMapDebug,
     pendingTimeCommitCount,
     fitRoute,
     route,
@@ -745,13 +892,8 @@ export default function RoutePage() {
       marker.setZIndex(getMarkerZIndex(stop, stopId === selectedStopId));
     });
 
-    const selectedMarker = stopMarkersRef.current.get(selectedStopId);
-    const selectedStop = orderedStops.find((stop) => stop.id === selectedStopId);
-
-    if (selectedMarker && selectedStop) {
-      openStopInfoWindow(selectedStop, selectedMarker);
-    }
-  }, [openStopInfoWindow, orderedStops, selectedStopId]);
+    infoWindowRef.current?.close();
+  }, [orderedStops, selectedStopId]);
 
   function handleRouteChange(nextRouteId) {
     if (!nextRouteId) {
@@ -932,6 +1074,10 @@ export default function RoutePage() {
     );
   }
 
+  const mapErrorSnapshot = mapDebugSnapshot || buildRouteMapDebugSnapshot();
+  const mapErrorRect = mapErrorSnapshot?.mapContainerRect;
+  const googleLoaded = Boolean(mapErrorSnapshot?.googleMapCtorExists);
+
   return (
     <section className="page-section route-page-shell">
       <header className={`route-page-header ${isHeaderCollapsed ? 'collapsed' : ''}`}>
@@ -1056,14 +1202,43 @@ export default function RoutePage() {
       </header>
 
       <div className="route-map-stage">
-        <div key={`route-map-${mapRefreshNonce}`} ref={mapContainerRef} className="route-map-fullscreen" />
-        {!mapError && (!mapReady || (mapLoading && !mapTilesPainted)) ? (
-          <div className="route-map-loading">{mapReady ? 'Loading map tiles...' : 'Loading map...'}</div>
+        <div key={`${id || 'route'}-${date}`} ref={setRouteMapContainer} className="route-map-fullscreen" />
+        {!mapError && (!mapReady || mapLoading) ? <div className="route-map-loading">Loading map...</div> : null}
+        {mapError ? (
+          <div className="route-map-error">
+            <div className="route-map-error-card">
+              <strong>{mapError}</strong>
+              {mapError === ROUTE_MAP_TIMEOUT_MESSAGE ? (
+                <dl>
+                  <div>
+                    <dt>Route id</dt>
+                    <dd>{mapErrorSnapshot?.selectedRouteId || '—'}</dd>
+                  </div>
+                  <div>
+                    <dt>Total stops</dt>
+                    <dd>{mapErrorSnapshot?.totalStops ?? 0}</dd>
+                  </div>
+                  <div>
+                    <dt>Valid coordinate stops</dt>
+                    <dd>{mapErrorSnapshot?.validCoordinateStops ?? 0}</dd>
+                  </div>
+                  <div>
+                    <dt>Google Maps loaded</dt>
+                    <dd>{googleLoaded ? 'Yes' : 'No'}</dd>
+                  </div>
+                  <div>
+                    <dt>Map container exists</dt>
+                    <dd>{mapErrorSnapshot?.hasMapContainer ? 'Yes' : 'No'}</dd>
+                  </div>
+                  <div>
+                    <dt>Container size</dt>
+                    <dd>{`${Math.round(mapErrorRect?.width || 0)} x ${Math.round(mapErrorRect?.height || 0)}`}</dd>
+                  </div>
+                </dl>
+              ) : null}
+            </div>
+          </div>
         ) : null}
-        {mapIsRepainting && !mapError ? (
-          <div className="route-map-repaint-notice">Map is repainting...</div>
-        ) : null}
-        {mapError ? <div className="route-map-error">{mapError}</div> : null}
 
         {!showStopDrawer ? (
           <button type="button" className="route-map-stop-list-handle" onClick={() => setShowStopDrawer(true)}>
