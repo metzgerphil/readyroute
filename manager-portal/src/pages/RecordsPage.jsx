@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useMemo, useState } from 'react';
+import { Link } from 'react-router-dom';
 
 import api from '../services/api';
 import { PageHeader, StatCard, StatusBadge } from '../components/PortalDesignSystem';
@@ -87,6 +88,29 @@ function formatDisplayDate(value) {
     day: 'numeric',
     year: 'numeric'
   }).format(date);
+}
+
+function formatCompactDisplayDate(value) {
+  if (!value) {
+    return 'Day';
+  }
+
+  const date = new Date(`${value}T12:00:00`);
+  if (Number.isNaN(date.getTime())) {
+    return value;
+  }
+
+  return new Intl.DateTimeFormat('en-US', {
+    weekday: 'short',
+    month: 'short',
+    day: 'numeric'
+  }).format(date);
+}
+
+function getDateOffsetString(dateValue, offsetDays) {
+  const date = new Date(`${dateValue}T12:00:00`);
+  date.setDate(date.getDate() + offsetDays);
+  return date.toISOString().slice(0, 10);
 }
 
 function getBreaks(row) {
@@ -191,6 +215,21 @@ function formatAssignment(row) {
         <small>{vehicleName}</small>
       </>
     );
+  }
+
+  return routeName ? `Route ${routeName}` : vehicleName;
+}
+
+function formatAssignmentText(row) {
+  const routeName = row.assigned_route?.work_area_name || row.latest_timecard?.route_name || null;
+  const vehicleName = row.assigned_route?.vehicle_name || null;
+
+  if (!routeName && !vehicleName) {
+    return 'No assigned route';
+  }
+
+  if (routeName && vehicleName) {
+    return `Route ${routeName} / ${vehicleName}`;
   }
 
   return routeName ? `Route ${routeName}` : vehicleName;
@@ -492,9 +531,32 @@ const emptyLaborForm = {
   adjustment_reason: ''
 };
 
+function escapeCsvValue(value) {
+  const stringValue = value === null || value === undefined ? '' : String(value);
+  return `"${stringValue.replace(/"/g, '""')}"`;
+}
+
+function downloadCsv({ filename, headers, rows }) {
+  if (typeof window === 'undefined') {
+    return;
+  }
+
+  const csv = [
+    headers.map(escapeCsvValue).join(','),
+    ...rows.map((row) => row.map(escapeCsvValue).join(','))
+  ].join('\n');
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+  const url = window.URL.createObjectURL(blob);
+  const link = window.document.createElement('a');
+  link.href = url;
+  link.download = filename;
+  link.click();
+  window.URL.revokeObjectURL(url);
+}
+
 export default function RecordsPage() {
   const queryClient = useQueryClient();
-  const { selectedCsaId } = useSelectedCsa();
+  const { selectedCsaId, selectedCsaName } = useSelectedCsa();
   const [selectedDate, setSelectedDate] = useState(loadStoredOperationsDate() || getTodayString());
   const [selectedDriverId, setSelectedDriverId] = useState('');
   const [drawerMode, setDrawerMode] = useState('view');
@@ -502,6 +564,7 @@ export default function RecordsPage() {
   const [laborForm, setLaborForm] = useState(emptyLaborForm);
   const [laborErrorMessage, setLaborErrorMessage] = useState('');
   const [showAllAttention, setShowAllAttention] = useState(false);
+  const [activeRecordsTab, setActiveRecordsTab] = useState('labor');
 
   function handleDateChange(nextDate) {
     setSelectedDate(nextDate);
@@ -711,24 +774,71 @@ export default function RecordsPage() {
     updateLabor.mutate();
   }
 
+  function exportLaborCsv() {
+    downloadCsv({
+      filename: `readyroute-labor-records-${selectedDate}.csv`,
+      headers: ['Date', 'Driver', 'Status', 'Assignment', 'Shift', 'Lunch', 'Clock In', 'Clock Out', 'Rest Break', 'Warnings'],
+      rows: laborReviews.map(({ row, review }) => [
+        selectedDate,
+        row.driver_name,
+        review.label,
+        formatAssignmentText(row),
+        formatShiftSummary(row, selectedDate),
+        formatLunchSummary(row),
+        formatShortTime(row.latest_timecard?.clock_in),
+        formatClockOutSummary(row, selectedDate),
+        formatTimelineBreak(row, 'rest', 'Not recorded'),
+        review.warnings.join('; ')
+      ])
+    });
+  }
+
+  function exportRouteCsv() {
+    downloadCsv({
+      filename: `readyroute-route-history-${selectedDate}.csv`,
+      headers: ['Date', 'Route', 'Driver', 'Vehicle', 'Stops Completed', 'Total Stops', 'Source', 'Status', 'SA Number', 'Contractor', 'Archived'],
+      rows: routes.map((route) => [
+        selectedDate,
+        route.work_area_name || '',
+        route.driver_name || 'No driver assigned',
+        route.vehicle_name || 'No vehicle assigned',
+        route.completed_stops || 0,
+        route.total_stops || 0,
+        route.source || 'manual',
+        route.status || '',
+        route.sa_number || '',
+        route.contractor_name || '',
+        route.archived_at ? 'Yes' : 'No'
+      ])
+    });
+  }
+
   const selectedLaborReview = selectedLaborRow ? getLaborReview(selectedLaborRow, selectedDate) : null;
   const visibleCorrectionFields = getCorrectionFields(correctionModeTitle);
   const correctionReasonEntered = Boolean(laborForm.adjustment_reason.trim());
   const timeInputMin = `${selectedDate}T00:00`;
   const timeInputMax = `${selectedDate}T23:59`;
   const timeInputPlaceholder = `Select a time on ${formatDisplayDate(selectedDate)}`;
+  const todayDate = getTodayString();
+  const yesterdayDate = getDateOffsetString(todayDate, -1);
+  const recordTabs = [
+    { key: 'labor', label: 'Labor' },
+    { key: 'routes', label: 'Routes' },
+    { key: 'corrections', label: 'Corrections' },
+    { key: 'exports', label: 'Exports' }
+  ];
 
   return (
     <section className="page-section records-page">
       <PageHeader
-        title="Records"
-        description="Review historical driver labor, finalized daily records, route history, and manager corrections."
+        title="Records & Reports"
+        description="Review driver labor records, route history, and manager correction history by day."
         actions={(
           <label className="weekly-date-picker records-date-picker">
             <span className="field-label">Selected Day</span>
             <input
               className="date-field"
-              max={getTodayString()}
+              max={todayDate}
               min={recordsQuery.data?.range_start || ''}
               onChange={(event) => handleDateChange(event.target.value)}
               type="date"
@@ -738,77 +848,93 @@ export default function RecordsPage() {
         )}
       />
 
-      <div className="records-layout">
-        <div className="card records-sidebar">
-          <div>
-            <div className="card-title">Last 30 Days</div>
-            <div className="driver-meta">Select a day to review route and labor records.</div>
-          </div>
-          <div className="records-day-list">
-            {recentDays.map((day) => (
-              <button
-                className={`records-day-button${selectedDate === day.date ? ' active' : ''}`}
-                key={day.date}
-                onClick={() => handleDateChange(day.date)}
-                type="button"
-              >
-                <strong>{formatDisplayDate(day.date)}</strong>
-                <span>{day.route_count} routes</span>
-                <span>{day.adjustment_count} corrections</span>
-              </button>
-            ))}
-          </div>
+      <div className="records-toolbar">
+        <div className="records-quick-dates" aria-label="Quick record dates">
+          <button className={selectedDate === todayDate ? 'active' : ''} onClick={() => handleDateChange(todayDate)} type="button">
+            Today
+          </button>
+          <button className={selectedDate === yesterdayDate ? 'active' : ''} onClick={() => handleDateChange(yesterdayDate)} type="button">
+            Yesterday
+          </button>
+          {recentDays.slice(2, 7).map((day) => (
+            <button className={selectedDate === day.date ? 'active' : ''} key={day.date} onClick={() => handleDateChange(day.date)} type="button">
+              {formatCompactDisplayDate(day.date)}
+            </button>
+          ))}
         </div>
 
-        <div className="records-main">
-          <div className="card records-daily-summary-card">
-            <div className="section-title-row">
-              <div>
-                <div className="card-title">{formatDisplayDate(selectedDate)}</div>
-                <div className="driver-meta">Daily Summary</div>
-              </div>
+        <div className="records-tab-bar" role="tablist" aria-label="Records sections">
+          {recordTabs.map((tab) => (
+            <button
+              className={activeRecordsTab === tab.key ? 'active' : ''}
+              key={tab.key}
+              onClick={() => setActiveRecordsTab(tab.key)}
+              role="tab"
+              type="button"
+            >
+              {tab.label}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <div className="records-main">
+        <div className="card records-overview-card">
+          <div className="section-title-row">
+            <div>
+              <div className="card-title">{formatDisplayDate(selectedDate)}</div>
+              <div className="driver-meta">{selectedCsaName || 'Current CSA'}</div>
             </div>
-
-            {recordsQuery.isLoading ? (
-              <div className="driver-meta">Loading records...</div>
-            ) : recordsQuery.isError ? (
-              <div className="error-banner">Unable to load records.</div>
+            {needsReviewCount ? (
+              <span className="records-review-count-pill">{needsReviewCount} item{needsReviewCount === 1 ? '' : 's'} need review</span>
             ) : (
-              <>
-                <div className="records-summary-grid records-labor-summary-grid">
-                  <StatCard label="Assigned Drivers" value={assignedDriverCount} detail="Routes assigned today" />
-                  <StatCard label="Clocked In" value={clockedInCount} detail="Drivers with clock activity" tone={clockedInCount ? 'info' : 'default'} />
-                  <StatCard label="Needs Review" value={needsReviewCount} detail="Records needing manager action" tone={needsReviewCount ? 'warning' : 'default'} />
-                  <StatCard label="Approved" value={approvedCount} detail="Reviewed records" tone={approvedCount ? 'active' : 'default'} />
-                </div>
-
-                {attentionRows.length ? (
-                  <div className="records-labor-alert">
-                    <strong>{attentionRows.length} driver{attentionRows.length === 1 ? '' : 's'} need attention</strong>
-                    <div className="records-attention-chip-list">
-                      {visibleAttentionRows.map(({ row, review }) => (
-                        <button
-                          className="records-attention-chip"
-                          key={row.driver_id}
-                          onClick={() => openLaborReview(row)}
-                          type="button"
-                        >
-                          {row.driver_name}: {review.label}
-                        </button>
-                      ))}
-                      {!showAllAttention && attentionRows.length > 5 ? (
-                        <button className="records-attention-view-all" onClick={() => setShowAllAttention(true)} type="button">
-                          View all needs review
-                        </button>
-                      ) : null}
-                    </div>
-                  </div>
-                ) : (
-                  null
-                )}
-              </>
+              <span className="records-clear-pill">No labor review items</span>
             )}
           </div>
+
+          {recordsQuery.isLoading ? (
+            <div className="driver-meta">Loading records...</div>
+          ) : recordsQuery.isError ? (
+            <div className="error-banner">Unable to load records.</div>
+          ) : (
+            <div className="records-summary-grid records-labor-summary-grid">
+              <StatCard label="Assigned Drivers" value={assignedDriverCount} detail="Routes assigned" />
+              <StatCard label="Clocked In" value={clockedInCount} detail="Drivers with activity" tone={clockedInCount ? 'info' : 'default'} />
+              <StatCard label="Needs Review" value={needsReviewCount} detail="Manager action needed" tone={needsReviewCount ? 'warning' : 'default'} />
+              <StatCard label="Approved" value={approvedCount} detail="Reviewed records" tone={approvedCount ? 'active' : 'default'} />
+            </div>
+          )}
+        </div>
+
+        {activeRecordsTab === 'labor' ? (
+          <>
+            {attentionRows.length ? (
+              <div className="card records-needs-review-card">
+                <div className="section-title-row">
+                  <div>
+                    <div className="card-title">Needs Review</div>
+                    <div className="driver-meta">Labor records that need manager attention first.</div>
+                  </div>
+                </div>
+                <div className="records-review-list">
+                  {visibleAttentionRows.map(({ row, review }) => (
+                    <button className="records-review-row" key={row.driver_id} onClick={() => openLaborReview(row)} type="button">
+                      <div>
+                        <strong>{row.driver_name}</strong>
+                        <span>{formatAssignmentText(row)}</span>
+                      </div>
+                      <StatusBadge tone={review.tone}>{review.label}</StatusBadge>
+                      <span className="secondary-inline-button records-row-action">Review Labor Record</span>
+                    </button>
+                  ))}
+                  {!showAllAttention && attentionRows.length > 5 ? (
+                    <button className="secondary-button records-view-all-button" onClick={() => setShowAllAttention(true)} type="button">
+                      View all needs review
+                    </button>
+                  ) : null}
+                </div>
+              </div>
+            ) : null}
 
           <div className="card records-history-card">
             <div className="section-title-row">
@@ -816,6 +942,14 @@ export default function RecordsPage() {
                 <div className="card-title">Driver Labor Records</div>
                 <div className="driver-meta">Daily labor review, corrections, and finalized record source for {selectedDate}.</div>
               </div>
+              <button
+                className="secondary-inline-button"
+                disabled={!laborRecordRows.length}
+                onClick={exportLaborCsv}
+                type="button"
+              >
+                Export CSV
+              </button>
             </div>
 
             {liveLaborQuery.isLoading ? (
@@ -856,13 +990,24 @@ export default function RecordsPage() {
               </div>
             )}
           </div>
+          </>
+        ) : null}
 
+        {activeRecordsTab === 'routes' ? (
           <div className="card records-history-card">
             <div className="section-title-row">
               <div>
                 <div className="card-title">Route History</div>
                 <div className="driver-meta">All routes recorded for {selectedDate}, including archived ones.</div>
               </div>
+              <button
+                className="secondary-inline-button"
+                disabled={!routes.length}
+                onClick={exportRouteCsv}
+                type="button"
+              >
+                Export CSV
+              </button>
             </div>
 
             {routes.length ? (
@@ -874,6 +1019,7 @@ export default function RecordsPage() {
                   <span>Stops</span>
                   <span>Source</span>
                   <span>Status</span>
+                  <span>Action</span>
                 </div>
                 {routes.map((route) => (
                   <div className="records-route-table-row" key={route.id}>
@@ -888,6 +1034,9 @@ export default function RecordsPage() {
                     <StatusBadge tone={route.archived_at ? 'neutral' : 'active'}>
                       {route.archived_at ? 'Archived' : route.status}
                     </StatusBadge>
+                    <Link className="secondary-inline-button records-route-review-link" to={`/routes/${route.id}?date=${selectedDate}`}>
+                      Review Route
+                    </Link>
                   </div>
                 ))}
               </div>
@@ -895,12 +1044,14 @@ export default function RecordsPage() {
               <div className="labor-empty-state">No routes recorded for this day.</div>
             )}
           </div>
+        ) : null}
 
+        {activeRecordsTab === 'corrections' ? (
           <div className="card">
             <div className="section-title-row">
               <div>
                 <div className="card-title">Manager Corrections</div>
-                <div className="driver-meta">Edit history log for labor corrections made on {selectedDate}.</div>
+                <div className="driver-meta">Audit log for labor corrections made on {selectedDate}.</div>
               </div>
             </div>
 
@@ -912,7 +1063,7 @@ export default function RecordsPage() {
                     <span>{adjustment.adjustment_reason}</span>
                     <small>Driver: {adjustment.driver_name}</small>
                     <small>Date: {formatDisplayDate(adjustment.work_date || selectedDate)}</small>
-                    <small>Manager: {adjustment.manager_user_id ? `ID ${String(adjustment.manager_user_id).slice(0, 8)}` : 'Recorded manager'}</small>
+                    <small>Recorded by: Manager</small>
                     {getAuditFieldChanges(adjustment.before_state, adjustment.after_state).length ? (
                       getAuditFieldChanges(adjustment.before_state, adjustment.after_state).map((change) => (
                         <small key={`${adjustment.id}-${change.label}`}>
@@ -932,7 +1083,26 @@ export default function RecordsPage() {
               <div className="labor-empty-state">No manager corrections recorded for this day.</div>
             )}
           </div>
-        </div>
+        ) : null}
+
+        {activeRecordsTab === 'exports' ? (
+          <div className="card records-export-card">
+            <div>
+              <div className="card-title">Exports</div>
+              <div className="driver-meta">Download clean CSV files for payroll review, route history, and manager records.</div>
+            </div>
+            <div className="records-export-grid">
+              <button className="records-export-option" disabled={!laborRecordRows.length} onClick={exportLaborCsv} type="button">
+                <strong>Driver Labor CSV</strong>
+                <span>Clock in, clock out, lunch, assignment, and review status.</span>
+              </button>
+              <button className="records-export-option" disabled={!routes.length} onClick={exportRouteCsv} type="button">
+                <strong>Route History CSV</strong>
+                <span>Route, driver, truck, stop totals, source, and archive status.</span>
+              </button>
+            </div>
+          </div>
+        ) : null}
       </div>
 
       {selectedLaborRow ? (
@@ -997,7 +1167,7 @@ export default function RecordsPage() {
                             <span>{adjustment.adjustment_reason}</span>
                             <small>Driver: {selectedLaborRow.driver_name}</small>
                             <small>Date: {formatDisplayDate(adjustment.work_date || selectedDate)}</small>
-                            <small>Manager: {adjustment.manager_user_id ? `ID ${String(adjustment.manager_user_id).slice(0, 8)}` : 'Recorded manager'}</small>
+                            <small>Recorded by: Manager</small>
                             {getAuditFieldChanges(adjustment.before_state, adjustment.after_state).length ? (
                               getAuditFieldChanges(adjustment.before_state, adjustment.after_state).map((change) => (
                                 <small key={`${adjustment.id}-${change.label}`}>
