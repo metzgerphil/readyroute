@@ -153,7 +153,7 @@ describe('managerOperations helpers', () => {
     expect(routes[1].routeColor).toBeUndefined();
   });
 
-  it('keeps stop pins hidden until the map is zoomed in or a route is selected', () => {
+  it('shows fleet stop pins across routes before a route is selected', () => {
     const routes = [
       {
         id: 'route-1',
@@ -173,18 +173,38 @@ describe('managerOperations helpers', () => {
         longitudeDelta: 0.4
       }
     });
-    const zoomedInModel = buildManagerMapModel({
-      routes,
-      region: {
-        latitude: 33.11,
-        longitude: -117.09,
-        latitudeDelta: 0.05,
-        longitudeDelta: 0.05
-      }
-    });
+    expect(zoomedOutModel.stopMarkers).toHaveLength(1);
+    expect(zoomedOutModel.stopMarkers[0]).toEqual(
+      expect.objectContaining({
+        routeId: 'route-1',
+        stopId: 'stop-1'
+      })
+    );
+  });
 
-    expect(zoomedOutModel.stopMarkers).toHaveLength(0);
-    expect(zoomedInModel.stopMarkers).toHaveLength(1);
+  it('does not cap fleet stop pins at the old 80 marker limit', () => {
+    const routes = [
+      {
+        id: 'route-1',
+        work_area_name: '816',
+        stops: Array.from({ length: 90 }, (_, index) => ({
+          id: `stop-${index + 1}`,
+          sequence_order: index + 1,
+          lat: 33.1 + index * 0.0001,
+          lng: -117.1 - index * 0.0001,
+          status: 'pending'
+        }))
+      }
+    ];
+
+    const model = buildManagerMapModel({ routes });
+
+    expect(model.stopMarkers).toHaveLength(90);
+    expect(model.stopMarkers[89]).toEqual(
+      expect.objectContaining({
+        stopId: 'stop-90'
+      })
+    );
   });
 
   it('derives zoom thresholds, cluster radius, and location freshness safely', () => {

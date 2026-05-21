@@ -131,6 +131,16 @@ export default function AppNavigator() {
       return;
     }
 
+    if (screen === 'ManagerMap') {
+      navigationRef.current?.navigate('ManagerMap', {
+        selectedRouteId: null,
+        fleetMode: true
+      });
+      setCurrentRouteName('ManagerMap');
+      closeDrawer();
+      return;
+    }
+
     if (screen === currentRouteName) {
       closeDrawer();
       return;

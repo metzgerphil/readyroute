@@ -87,11 +87,30 @@ describe('StopDetailScreen interactions', () => {
 
     await waitFor(() => {
       expect(api.patch).toHaveBeenCalledWith('/routes/stops/stop-1/note', {
-        note_text: 'Leave at side gate'
+        note_text: 'Leave at side gate',
+        note_scope: 'unit'
       });
     });
 
     expect(api.get).toHaveBeenCalledWith('/routes/stops/stop-1');
+  });
+
+  it('lets the driver save a building-wide note', async () => {
+    const screen = await renderAndFlush();
+
+    await screen.findByText('Add note');
+
+    fireEvent.press(screen.getByText('Add note'));
+    fireEvent.changeText(screen.getByPlaceholderText('Add a delivery note'), 'Gate code 2468');
+    fireEvent.press(screen.getByText('Whole building'));
+    fireEvent.press(screen.getByText('Save'));
+
+    await waitFor(() => {
+      expect(api.patch).toHaveBeenCalledWith('/routes/stops/stop-1/note', {
+        note_text: 'Gate code 2468',
+        note_scope: 'address'
+      });
+    });
   });
 
   it('saves the current location as the corrected pin', async () => {

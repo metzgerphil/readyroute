@@ -3,6 +3,7 @@ import { getSidBucketNumber, getSidBucketTheme } from './sidBuckets';
 describe('sid bucket helpers', () => {
   it('groups SIDs by thousand bucket', () => {
     expect(getSidBucketNumber('1999')).toBe(1);
+    expect(getSidBucketNumber('1999FL')).toBe(1);
     expect(getSidBucketNumber('2001')).toBe(2);
     expect(getSidBucketNumber('3061')).toBe(3);
     expect(getSidBucketNumber('')).toBeNull();

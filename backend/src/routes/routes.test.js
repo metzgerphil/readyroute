@@ -673,6 +673,102 @@ test('GET /routes/today preserves same-address stops as distinct operational sto
   }
 });
 
+test('GET /routes/today includes vehicle check requirements for the driver route', async () => {
+  const supabase = new MockSupabase((query) => {
+    if (query.table === 'routes' && query.operation === 'select') {
+      return {
+        data: {
+          id: 'route-1',
+          date: '2026-05-18',
+          work_area_name: '823',
+          status: 'pending',
+          dispatch_state: 'dispatched',
+          total_stops: 4,
+          completed_stops: 0,
+          completed_at: null,
+          vehicle_id: 'vehicle-1'
+        },
+        error: null
+      };
+    }
+
+    if (query.table === 'stops' && query.operation === 'select') {
+      return { data: [], error: null };
+    }
+
+    if (['location_corrections', 'apartment_units', 'property_intel', 'stop_notes'].includes(query.table) && query.operation === 'select') {
+      return { data: [], error: null };
+    }
+
+    if (query.table === 'vehicles' && query.operation === 'select') {
+      return {
+        data: {
+          id: 'vehicle-1',
+          name: 'Truck 12',
+          current_mileage: 54250
+        },
+        error: null
+      };
+    }
+
+    if (query.table === 'vehicle_odometer_entries' && query.operation === 'select') {
+      return { data: [], error: null };
+    }
+
+    if (query.table === 'vehicle_check_requirement_settings' && query.operation === 'select') {
+      return {
+        data: {
+          maintenance_requirement_mode: 'option_2',
+          weekly_inspection_day: 'Monday',
+          custom_daily_requirements: {},
+          custom_weekly_requirements: {}
+        },
+        error: null
+      };
+    }
+
+    if (query.table === 'vehicle_checklist_template_settings' && query.operation === 'select') {
+      return {
+        data: {
+          fields: [
+            { id: 'tires', enabled: true },
+            { id: 'lights', enabled: false }
+          ]
+        },
+        error: null
+      };
+    }
+
+    if (query.table === 'vehicle_inspections' && query.operation === 'select') {
+      return { data: [], error: null };
+    }
+
+    throw new Error(`Unexpected query ${query.table}:${query.operation}:${query.mode}`);
+  });
+
+  const server = await startTestServer(supabase);
+
+  try {
+    const response = await fetch(`${server.baseUrl}/routes/today`, {
+      headers: {
+        Authorization: `Bearer ${signDriverToken()}`
+      }
+    });
+
+    assert.equal(response.status, 200);
+    const body = await response.json();
+    assert.equal(body.driver_day.vehicle_check_requirement.required, true);
+    assert.equal(body.driver_day.vehicle_check_requirement.submitted, false);
+    assert.equal(body.driver_day.vehicle_check_requirement.mode, 'option_2');
+    assert.equal(body.driver_day.vehicle_check_requirement.require_full_checklist, true);
+    assert.equal(body.driver_day.vehicle_check_requirement.inspection_type, 'full_inspection');
+    assert.ok(body.driver_day.vehicle_check_requirement.checklist_fields.some((field) => field.id === 'tires'));
+    assert.equal(body.driver_day.vehicle_check_requirement.checklist_fields.some((field) => field.id === 'lights'), false);
+  } finally {
+    await server.close();
+  }
+});
+
 test('GET /routes/today returns null when the route has not been dispatched yet', async () => {
   let routeSelectCount = 0;
   const supabase = new MockSupabase((query) => {
@@ -1580,8 +1676,84 @@ test('PATCH /routes/stops/:stop_id/note inserts a stop note when none exists', a
     });
 
     assert.equal(response.status, 200);
-    assert.deepEqual(await response.json(), { ok: true });
+    assert.deepEqual(await response.json(), { ok: true, note_scope: 'address' });
     assert.equal(updatedHasNote, true);
+  } finally {
+    await server.close();
+  }
+});
+
+test('PATCH /routes/stops/:stop_id/note can save a building-wide note for apartment stops', async () => {
+  let insertedPayload = null;
+  let updatedStopPayload = null;
+  const supabase = new MockSupabase((query) => {
+    if (query.table === 'stops' && query.operation === 'select' && query.mode === 'maybeSingle') {
+      if (query.filters.some((filter) => filter.column === 'routes.driver_id')) {
+        return {
+          data: {
+            id: 'stop-1',
+            route_id: 'route-1',
+            sequence_order: 1,
+            address: '2500 Main St, Escondido, CA 92025',
+            address_line2: 'Apt 5',
+            status: 'pending',
+            completed_at: null,
+            routes: {
+              id: 'route-1',
+              driver_id: 'driver-1',
+              account_id: 'acct-1',
+              total_stops: 2,
+              completed_stops: 0,
+              status: 'pending'
+            }
+          },
+          error: null
+        };
+      }
+
+      return { data: null, error: null };
+    }
+
+    if (query.table === 'stop_notes' && query.operation === 'select') {
+      assert.ok(query.filters.some((filter) => filter.column === 'unit_number' && filter.op === 'is' && filter.value === null));
+      return { data: null, error: null };
+    }
+
+    if (query.table === 'stop_notes' && query.operation === 'insert') {
+      insertedPayload = query.payload;
+      return { data: null, error: null };
+    }
+
+    if (query.table === 'stops' && query.operation === 'update') {
+      updatedStopPayload = query.payload;
+      return { data: null, error: null };
+    }
+
+    throw new Error(`Unexpected query ${query.table}:${query.operation}:${query.mode}`);
+  });
+
+  const server = await startTestServer(supabase);
+
+  try {
+    const response = await fetch(`${server.baseUrl}/routes/stops/stop-1/note`, {
+      method: 'PATCH',
+      headers: {
+        Authorization: `Bearer ${signDriverToken()}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        note_text: 'Gate code 2468',
+        note_scope: 'address'
+      })
+    });
+
+    assert.equal(response.status, 200);
+    assert.deepEqual(await response.json(), { ok: true, note_scope: 'address' });
+    assert.equal(insertedPayload.account_id, 'acct-1');
+    assert.equal(insertedPayload.note_text, 'Gate code 2468');
+    assert.equal(insertedPayload.unit_number, null);
+    assert.ok(insertedPayload.normalized_address);
+    assert.deepEqual(updatedStopPayload, { has_note: true, notes: null });
   } finally {
     await server.close();
   }
@@ -1649,7 +1821,7 @@ test('PATCH /routes/stops/:stop_id/note clears an existing note and resets has_n
     });
 
     assert.equal(response.status, 200);
-    assert.deepEqual(await response.json(), { ok: true });
+    assert.deepEqual(await response.json(), { ok: true, note_scope: 'unit' });
     assert.equal(deletedNoteId, 'note-1');
     assert.equal(updatedHasNote, false);
   } finally {

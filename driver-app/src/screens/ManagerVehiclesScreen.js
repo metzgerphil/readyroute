@@ -32,6 +32,21 @@ const VEHICLE_MANAGER_TABS = ['Fleet', 'Maintenance', 'Inspections', 'Settings']
 
 const WEEKLY_INSPECTION_DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
 
+const MAINTENANCE_RECORD_FILTERS = [
+  { key: 'all', label: 'All' },
+  { key: 'Oil Change', label: 'Oil' },
+  { key: 'Inspection', label: 'Inspection' },
+  { key: 'General Repair', label: 'Repair' }
+];
+
+const INSPECTION_REVIEW_FILTERS = [
+  { key: 'all', label: 'All' },
+  { key: 'needs_review', label: 'Needs Review' },
+  { key: 'reported_issues', label: 'Issues' },
+  { key: 'failed_items', label: 'Failed Items' },
+  { key: 'reviewed', label: 'Reviewed' }
+];
+
 const DEFAULT_MAINTENANCE_REQUIREMENTS = {
   maintenance_requirement_mode: 'option_1',
   weekly_inspection_day: 'Monday',
@@ -182,6 +197,68 @@ function getMaintenanceModeLabel(setting) {
   return MAINTENANCE_REQUIREMENT_OPTIONS.find((option) => option.id === mode)?.title || MAINTENANCE_REQUIREMENT_OPTIONS[0].title;
 }
 
+function filterMaintenanceRecords(records = [], serviceTypeFilter = 'all') {
+  if (serviceTypeFilter === 'all') {
+    return records;
+  }
+
+  return records.filter((record) => (record.service_type || 'Maintenance') === serviceTypeFilter);
+}
+
+function filterInspectionRows(inspections = [], filter = 'all') {
+  if (filter === 'reported_issues') {
+    return inspections.filter((inspection) => inspection.issue_reported || inspection.issue_note);
+  }
+
+  if (filter === 'failed_items') {
+    return inspections.filter((inspection) => Number(inspection.failed_items_count || 0) > 0 || (inspection.items || []).some((item) => item.status === 'fail'));
+  }
+
+  if (filter === 'all') {
+    return inspections;
+  }
+
+  return inspections.filter((inspection) => inspection.status === filter);
+}
+
+function getInspectionStatusLabel(status) {
+  if (status === 'needs_review') {
+    return 'Needs Review';
+  }
+
+  if (status === 'reviewed') {
+    return 'Reviewed';
+  }
+
+  return 'Submitted';
+}
+
+function getInspectionVehicleLabel(inspection) {
+  return inspection?.vehicle?.name || 'Truck not recorded';
+}
+
+function getInspectionDriverLabel(inspection) {
+  return inspection?.driver?.name || 'Driver not recorded';
+}
+
+function formatTimestamp(value) {
+  if (!value) {
+    return 'Not recorded';
+  }
+
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return 'Not recorded';
+  }
+
+  return new Intl.DateTimeFormat('en-US', {
+    month: 'short',
+    day: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit'
+  }).format(date);
+}
+
 function getRegistrationStatus(vehicle) {
   if (!vehicle?.registration_expiration) {
     return 'Registration not recorded';
@@ -206,6 +283,24 @@ function getRegistrationStatus(vehicle) {
 }
 
 function getStatusMeta(vehicle) {
+  const readinessStatus = vehicle?.readiness_status || vehicle?.readiness?.status;
+
+  if (readinessStatus === 'blocked') {
+    return { filterKey: 'maintenance', label: 'Blocked', tone: 'danger' };
+  }
+
+  if (readinessStatus === 'maintenance_soon') {
+    return { filterKey: 'maintenance', label: 'Maintenance Soon', tone: 'warning' };
+  }
+
+  if (readinessStatus === 'assigned') {
+    return { filterKey: 'assigned', label: 'Assigned', tone: 'complete' };
+  }
+
+  if (readinessStatus === 'ready') {
+    return { filterKey: 'available', label: 'Ready', tone: 'active' };
+  }
+
   const missingInfo = !vehicle?.registration_expiration || !vehicle?.make || !vehicle?.model || !vehicle?.year || !vehicle?.plate;
 
   if (vehicle?.service_due) {
@@ -228,6 +323,15 @@ function getStatusMeta(vehicle) {
 }
 
 function getLastServiceSummary(vehicle) {
+  if (vehicle?.open_inspection_issue) {
+    const issue = vehicle.open_inspection_issue;
+    const failedItem = issue.failed_items?.[0];
+    return {
+      dateLabel: issue.submitted_at ? formatDate(issue.submitted_at) : 'Needs review',
+      detailLabel: issue.issue_note || failedItem?.label || 'Driver issue needs review'
+    };
+  }
+
   const latest = vehicle?.latest_maintenance || null;
   const date = latest?.service_date || vehicle?.last_service_date || '';
   const detail = latest?.service_type || latest?.condition_notes || latest?.description || vehicle?.notes || '';
@@ -355,6 +459,28 @@ function getMaintenanceForm(vehicle) {
   };
 }
 
+function getInspectionMaintenanceForm(inspection) {
+  const failedItems = (inspection?.items || [])
+    .filter((item) => item.status === 'fail')
+    .map((item) => `${item.label}${item.value ? `: ${item.value}` : ''}${item.note ? ` (${item.note})` : ''}`);
+  const notes = [
+    inspection?.issue_note ? `Driver issue note: ${inspection.issue_note}` : null,
+    failedItems.length ? `Failed checklist items: ${failedItems.join('; ')}` : null,
+    inspection?.id ? `Source inspection: ${inspection.id}` : null
+  ].filter(Boolean);
+
+  return {
+    ...getMaintenanceForm({
+      ...inspection?.vehicle,
+      current_mileage: inspection?.odometer || inspection?.vehicle?.current_mileage || ''
+    }),
+    condition_notes: failedItems.join('\n'),
+    description: notes.join('\n'),
+    mileage_at_service: inspection?.odometer ? String(inspection.odometer) : '',
+    service_type: failedItems.length || inspection?.issue_note ? 'General Repair' : 'Inspection'
+  };
+}
+
 function getOdometerForm(vehicle) {
   return {
     odometer_reading: vehicle?.current_mileage === null || vehicle?.current_mileage === undefined
@@ -452,17 +578,86 @@ function SectionTabs({ activeTab, onChange }) {
   );
 }
 
-function MaintenanceProgramPanel({
-  isLoading,
+function MaintenanceProgramEditor({
   isSaving,
   onChangeSetting,
   onSave,
-  records,
   settings,
   settingsErrorMessage
 }) {
   const draftSettings = normalizeMaintenanceSettingsDraft(settings);
-  const recentRecords = Array.isArray(records) ? records.slice(0, 8) : [];
+
+  return (
+    <AppCard style={styles.managerMaintenanceCard}>
+      <Text style={styles.panelTitle}>Maintenance Program</Text>
+      <Text style={styles.panelBody}>Choose which service categories this CSA tracks and set default reminder rules.</Text>
+      {draftSettings.length ? (
+        <View style={styles.settingsList}>
+          {draftSettings.map((setting, index) => (
+            <View key={`${setting.service_type}-${index}`} style={styles.settingRow}>
+              <View style={styles.settingRowHeader}>
+                <View style={styles.settingTitleBlock}>
+                  <Text style={styles.settingName}>{setting.service_type}</Text>
+                  <Text style={styles.settingMeta}>{setting.is_enabled ? formatInterval(setting) : 'Not tracked'}</Text>
+                </View>
+                <CheckToggle
+                  checked={setting.is_enabled}
+                  compact
+                  label={setting.is_enabled ? 'On' : 'Off'}
+                  onPress={() => onChangeSetting(index, 'is_enabled', !setting.is_enabled)}
+                />
+              </View>
+              <View style={styles.inlineFieldRow}>
+                <View style={styles.inlineField}>
+                  <Text style={styles.summaryLabel}>Miles</Text>
+                  <TextInput
+                    keyboardType="number-pad"
+                    onChangeText={(value) => onChangeSetting(index, 'default_interval_miles', value.replace(/\D/g, ''))}
+                    placeholder="As needed"
+                    placeholderTextColor={appTheme.colors.textTertiary}
+                    style={styles.inlineInput}
+                    value={String(setting.default_interval_miles ?? '')}
+                  />
+                </View>
+                <View style={styles.inlineField}>
+                  <Text style={styles.summaryLabel}>Days</Text>
+                  <TextInput
+                    keyboardType="number-pad"
+                    onChangeText={(value) => onChangeSetting(index, 'default_interval_days', value.replace(/\D/g, ''))}
+                    placeholder="As needed"
+                    placeholderTextColor={appTheme.colors.textTertiary}
+                    style={styles.inlineInput}
+                    value={String(setting.default_interval_days ?? '')}
+                  />
+                </View>
+              </View>
+            </View>
+          ))}
+        </View>
+      ) : (
+        <Text style={styles.emptyBody}>No maintenance categories are enabled yet.</Text>
+      )}
+      {settingsErrorMessage ? <Text style={styles.modalError}>{settingsErrorMessage}</Text> : null}
+      <Pressable disabled={isSaving} onPress={onSave} style={({ pressed }) => [styles.saveButton, isSaving ? styles.saveButtonDisabled : null, pressed ? styles.pressed : null]}>
+        {isSaving ? (
+          <ActivityIndicator color={appTheme.colors.textInverse} size="small" />
+        ) : (
+          <Text style={styles.saveButtonText}>Save Maintenance Program</Text>
+        )}
+      </Pressable>
+    </AppCard>
+  );
+}
+
+function MaintenanceRecordsPanel({
+  isLoading,
+  maintenanceRecordFilter,
+  onMaintenanceRecordFilterChange,
+  onOpenRecord,
+  records
+}) {
+  const filteredRecords = filterMaintenanceRecords(Array.isArray(records) ? records : [], maintenanceRecordFilter);
+  const recentRecords = filteredRecords.slice(0, 20);
 
   if (isLoading) {
     return (
@@ -476,71 +671,38 @@ function MaintenanceProgramPanel({
   return (
     <View style={styles.panelStack}>
       <AppCard style={styles.managerMaintenanceCard}>
-        <Text style={styles.panelTitle}>Maintenance Program</Text>
-        <Text style={styles.panelBody}>Service categories this CSA tracks and the default reminder intervals.</Text>
-        {draftSettings.length ? (
-          <View style={styles.settingsList}>
-            {draftSettings.map((setting, index) => (
-              <View key={`${setting.service_type}-${index}`} style={styles.settingRow}>
-                <View style={styles.settingRowHeader}>
-                  <View style={styles.settingTitleBlock}>
-                    <Text style={styles.settingName}>{setting.service_type}</Text>
-                    <Text style={styles.settingMeta}>{setting.is_enabled ? formatInterval(setting) : 'Not tracked'}</Text>
-                  </View>
-                  <CheckToggle
-                    checked={setting.is_enabled}
-                    compact
-                    label={setting.is_enabled ? 'On' : 'Off'}
-                    onPress={() => onChangeSetting(index, 'is_enabled', !setting.is_enabled)}
-                  />
-                </View>
-                <View style={styles.inlineFieldRow}>
-                  <View style={styles.inlineField}>
-                    <Text style={styles.summaryLabel}>Miles</Text>
-                    <TextInput
-                      keyboardType="number-pad"
-                      onChangeText={(value) => onChangeSetting(index, 'default_interval_miles', value.replace(/\D/g, ''))}
-                      placeholder="As needed"
-                      placeholderTextColor={appTheme.colors.textTertiary}
-                      style={styles.inlineInput}
-                      value={String(setting.default_interval_miles ?? '')}
-                    />
-                  </View>
-                  <View style={styles.inlineField}>
-                    <Text style={styles.summaryLabel}>Days</Text>
-                    <TextInput
-                      keyboardType="number-pad"
-                      onChangeText={(value) => onChangeSetting(index, 'default_interval_days', value.replace(/\D/g, ''))}
-                      placeholder="As needed"
-                      placeholderTextColor={appTheme.colors.textTertiary}
-                      style={styles.inlineInput}
-                      value={String(setting.default_interval_days ?? '')}
-                    />
-                  </View>
-                </View>
-              </View>
+        <View style={styles.panelHeaderRow}>
+          <View style={styles.panelHeaderCopy}>
+            <Text style={styles.panelTitle}>Maintenance Records</Text>
+            <Text style={styles.panelBody}>Service records, oil changes, tires, brakes, filters, and repairs.</Text>
+          </View>
+          <Text style={styles.recordCountText}>{filteredRecords.length} of {records.length}</Text>
+        </View>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+          <View style={styles.weekdayChips}>
+            {MAINTENANCE_RECORD_FILTERS.map((filter) => (
+              <Pressable
+                key={filter.key}
+                onPress={() => onMaintenanceRecordFilterChange(filter.key)}
+                style={({ pressed }) => [
+                  styles.weekdayChip,
+                  maintenanceRecordFilter === filter.key ? styles.weekdayChipActive : null,
+                  pressed ? styles.pressed : null
+                ]}
+              >
+                <Text style={[styles.weekdayChipText, maintenanceRecordFilter === filter.key ? styles.weekdayChipTextActive : null]}>{filter.label}</Text>
+              </Pressable>
             ))}
           </View>
-        ) : (
-          <Text style={styles.emptyBody}>No maintenance categories are enabled yet.</Text>
-        )}
-        {settingsErrorMessage ? <Text style={styles.modalError}>{settingsErrorMessage}</Text> : null}
-        <Pressable disabled={isSaving} onPress={onSave} style={({ pressed }) => [styles.saveButton, isSaving ? styles.saveButtonDisabled : null, pressed ? styles.pressed : null]}>
-          {isSaving ? (
-            <ActivityIndicator color={appTheme.colors.textInverse} size="small" />
-          ) : (
-            <Text style={styles.saveButtonText}>Save Maintenance Program</Text>
-          )}
-        </Pressable>
-      </AppCard>
-
-      <AppCard style={styles.managerMaintenanceCard}>
-        <Text style={styles.panelTitle}>Recent Maintenance Records</Text>
-        <Text style={styles.panelBody}>Completed oil changes, tires, brakes, filters, inspections, and repair records.</Text>
+        </ScrollView>
         {recentRecords.length ? (
           <View style={styles.recordsList}>
             {recentRecords.map((record) => (
-              <View key={record.id || `${record.vehicle_id}-${record.service_date}-${record.service_type}`} style={styles.recordRow}>
+              <Pressable
+                key={record.id || `${record.vehicle_id}-${record.service_date}-${record.service_type}`}
+                onPress={() => onOpenRecord(record)}
+                style={({ pressed }) => [styles.recordRow, pressed ? styles.pressed : null]}
+              >
                 <View style={styles.recordRowHeader}>
                   <Text style={styles.recordTitle}>Truck {record.vehicle_name || record.vehicle?.name || 'Not recorded'}</Text>
                   <Text style={styles.recordDate}>{formatDate(record.service_date)}</Text>
@@ -554,18 +716,33 @@ function MaintenanceProgramPanel({
                 {record.description || record.condition_notes ? (
                   <Text style={styles.recordNotes}>{record.description || record.condition_notes}</Text>
                 ) : null}
-              </View>
+              </Pressable>
             ))}
           </View>
         ) : (
-          <Text style={styles.emptyBody}>No fleet maintenance records yet.</Text>
+          <Text style={styles.emptyBody}>{records.length ? 'No maintenance records match this filter.' : 'No fleet maintenance records yet.'}</Text>
         )}
+        <Text style={styles.panelCaption}>To add a record, open a Truck from Fleet and choose Edit, then Log Maintenance.</Text>
       </AppCard>
     </View>
   );
 }
 
-function InspectionsPanel({ checklistTemplate, isLoading, requirements }) {
+function InspectionsPanel({
+  checklistTemplate,
+  inspections,
+  isLoading,
+  onOpenInspection,
+  onStatusFilterChange,
+  requirements,
+  statusFilter
+}) {
+  const allInspections = inspections || [];
+  const filteredInspections = filterInspectionRows(allInspections, statusFilter);
+  const needsReviewCount = allInspections.filter((inspection) => inspection.status === 'needs_review').length;
+  const issueCount = allInspections.filter((inspection) => inspection.issue_reported || inspection.issue_note).length;
+  const failedCount = allInspections.filter((inspection) => Number(inspection.failed_items_count || 0) > 0 || (inspection.items || []).some((item) => item.status === 'fail')).length;
+
   const checklistFields = normalizeChecklistFields(checklistTemplate);
 
   if (isLoading) {
@@ -581,37 +758,85 @@ function InspectionsPanel({ checklistTemplate, isLoading, requirements }) {
     <View style={styles.panelStack}>
       <AppCard style={styles.managerMaintenanceCard}>
         <Text style={styles.panelTitle}>Vehicle Check Requirements</Text>
-        <Text style={styles.panelBody}>{getMaintenanceModeLabel(requirements)}</Text>
+        <Text style={styles.panelBody}>Driver vehicle checks and completed inspections for manager review.</Text>
         <View style={styles.summaryGrid}>
           <View style={styles.summaryTile}>
-            <Text style={styles.summaryLabel}>Weekly day</Text>
-            <Text style={styles.summaryValue}>{requirements?.weekly_inspection_day || 'Monday'}</Text>
+            <Text style={styles.summaryLabel}>Needs review</Text>
+            <Text style={styles.summaryValue}>{needsReviewCount}</Text>
           </View>
           <View style={styles.summaryTile}>
-            <Text style={styles.summaryLabel}>Reported issues</Text>
-            <Text style={styles.summaryValue}>
-              {requirements?.custom_weekly_requirements?.require_manager_review_for_reported_issues ? 'Manager review required' : 'Manager review optional'}
-            </Text>
+            <Text style={styles.summaryLabel}>Issues</Text>
+            <Text style={styles.summaryValue}>{issueCount}</Text>
+          </View>
+          <View style={styles.summaryTile}>
+            <Text style={styles.summaryLabel}>Failed</Text>
+            <Text style={styles.summaryValue}>{failedCount}</Text>
+          </View>
+          <View style={styles.summaryTile}>
+            <Text style={styles.summaryLabel}>Mode</Text>
+            <Text style={styles.summaryValue}>{getMaintenanceModeLabel(requirements)}</Text>
           </View>
         </View>
-        <Text style={styles.panelCaption}>Changes apply to the next workday so today’s driver checks are not interrupted.</Text>
-      </AppCard>
 
-      <AppCard style={styles.managerMaintenanceCard}>
-        <Text style={styles.panelTitle}>Checklist Template</Text>
-        <Text style={styles.panelBody}>Used for weekly full inspections in Option 1 and daily full inspections in Option 2.</Text>
-        {checklistFields.length ? (
-          <View style={styles.checklistList}>
-            {checklistFields.map((field) => (
-              <View key={field} style={styles.checklistRow}>
-                <Text style={styles.checklistDot}>✓</Text>
-                <Text style={styles.checklistText}>{field}</Text>
-              </View>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+          <View style={styles.weekdayChips}>
+            {INSPECTION_REVIEW_FILTERS.map((filter) => (
+              <Pressable
+                key={filter.key}
+                onPress={() => onStatusFilterChange(filter.key)}
+                style={({ pressed }) => [
+                  styles.weekdayChip,
+                  statusFilter === filter.key ? styles.weekdayChipActive : null,
+                  pressed ? styles.pressed : null
+                ]}
+              >
+                <Text style={[styles.weekdayChipText, statusFilter === filter.key ? styles.weekdayChipTextActive : null]}>{filter.label}</Text>
+              </Pressable>
+            ))}
+          </View>
+        </ScrollView>
+
+        {filteredInspections.length ? (
+          <View style={styles.recordsList}>
+            {filteredInspections.map((inspection) => (
+              <Pressable
+                key={inspection.id}
+                onPress={() => onOpenInspection(inspection)}
+                style={({ pressed }) => [styles.inspectionCard, pressed ? styles.pressed : null]}
+              >
+                <View style={styles.recordRowHeader}>
+                  <Text style={styles.recordTitle}>Truck {getInspectionVehicleLabel(inspection)}</Text>
+                  <Text style={[
+                    styles.inspectionStatus,
+                    inspection.status === 'needs_review' ? styles.inspectionStatusWarning : null,
+                    inspection.status === 'reviewed' ? styles.inspectionStatusReviewed : null
+                  ]}>
+                    {inspection.status_label || getInspectionStatusLabel(inspection.status)}
+                  </Text>
+                </View>
+                <Text style={styles.recordService}>{inspection.inspection_type_label || 'Vehicle Check'}</Text>
+                <Text style={styles.recordMeta}>
+                  {getInspectionDriverLabel(inspection)} • {formatDate(inspection.inspection_date)}
+                </Text>
+                <Text style={styles.recordNotes}>
+                  {inspection.issue_note || (inspection.odometer ? `${formatMileage(inspection.odometer)} odometer` : 'No issue note submitted')}
+                </Text>
+              </Pressable>
             ))}
           </View>
         ) : (
-          <Text style={styles.emptyBody}>No checklist fields are enabled yet.</Text>
+          <Text style={styles.emptyBody}>{allInspections.length ? 'No vehicle inspections match this filter yet.' : 'No vehicle inspection submissions found for this filter.'}</Text>
         )}
+
+        <View style={styles.inspectionTemplateSummary}>
+          <Text style={styles.settingName}>Checklist Template</Text>
+          {checklistFields.length ? checklistFields.map((field) => (
+            <Text key={field} style={styles.requirementListItem}>{field}</Text>
+          )) : (
+            <Text style={styles.emptyBody}>No checklist fields are enabled yet.</Text>
+          )}
+        </View>
+        <Text style={styles.panelCaption}>{checklistFields.length} checklist fields enabled • Weekly day {requirements?.weekly_inspection_day || 'Monday'}</Text>
       </AppCard>
     </View>
   );
@@ -630,6 +855,161 @@ function CheckToggle({ checked, compact = false, label, onPress }) {
       </View>
       <Text style={[styles.checkToggleText, compact ? styles.checkToggleTextCompact : null]}>{label}</Text>
     </Pressable>
+  );
+}
+
+function InspectionDetailModal({
+  inspection,
+  isSaving,
+  onChangeReviewNote,
+  onClose,
+  onLogMaintenanceFromIssue,
+  onMarkReviewed,
+  reviewNote
+}) {
+  if (!inspection) {
+    return null;
+  }
+
+  return (
+    <Modal animationType="fade" onRequestClose={onClose} transparent visible={Boolean(inspection)}>
+      <Pressable onPress={onClose} style={styles.modalBackdrop}>
+        <Pressable style={styles.modalCard}>
+          <View style={styles.modalHeader}>
+            <View>
+              <Text style={styles.modalTitle}>Truck {getInspectionVehicleLabel(inspection)}</Text>
+              <Text style={styles.modalSubtitle}>{inspection.inspection_type_label || 'Vehicle Check'} • {formatDate(inspection.inspection_date)}</Text>
+            </View>
+            <Pressable accessibilityLabel="Close inspection" onPress={onClose} style={styles.closeButton}>
+              <Text style={styles.closeButtonText}>×</Text>
+            </Pressable>
+          </View>
+
+          <View style={styles.summaryGrid}>
+            <View style={styles.summaryTile}>
+              <Text style={styles.summaryLabel}>Status</Text>
+              <Text style={styles.summaryValue}>{inspection.status_label || getInspectionStatusLabel(inspection.status)}</Text>
+            </View>
+            <View style={styles.summaryTile}>
+              <Text style={styles.summaryLabel}>Odometer</Text>
+              <Text style={styles.summaryValue}>{inspection.odometer ? formatMileage(inspection.odometer) : 'None'}</Text>
+            </View>
+          </View>
+
+          <Text style={styles.recordMeta}>{getInspectionDriverLabel(inspection)} • Submitted {formatTimestamp(inspection.submitted_at)}</Text>
+          {inspection.issue_note ? <Text style={styles.inspectionIssueNote}>{inspection.issue_note}</Text> : null}
+
+          <ScrollView style={styles.inspectionItemsModalList}>
+            {(inspection.items || []).length ? inspection.items.map((item) => (
+              <View key={item.id || item.checklist_item_key} style={styles.inspectionItemModalRow}>
+                <Text style={styles.checklistText}>{item.label}</Text>
+                <Text style={styles.settingMeta}>{item.value || item.note || item.status}</Text>
+              </View>
+            )) : (
+              <Text style={styles.emptyBody}>No checklist item answers were submitted.</Text>
+            )}
+          </ScrollView>
+
+          {inspection.status !== 'reviewed' ? (
+            <Field
+              label="Manager review note"
+              multiline
+              onChangeText={onChangeReviewNote}
+              placeholder="Optional note for this review"
+              value={reviewNote}
+            />
+          ) : inspection.manager_review_note ? (
+            <View style={styles.reviewNoteBlock}>
+              <Text style={styles.summaryLabel}>Manager review note</Text>
+              <Text style={styles.recordNotes}>{inspection.manager_review_note}</Text>
+            </View>
+          ) : null}
+
+          <View style={styles.modalActions}>
+            <AppButton label="Close" onPress={onClose} style={styles.modalActionButton} variant="outline" />
+            <AppButton
+              label="Log Maintenance"
+              onPress={onLogMaintenanceFromIssue}
+              style={styles.modalActionButton}
+              variant="outline"
+            />
+            {inspection.status !== 'reviewed' ? (
+              <AppButton
+                disabled={isSaving}
+                label={isSaving ? 'Saving' : 'Mark Reviewed'}
+                onPress={onMarkReviewed}
+                style={styles.modalActionButton}
+              />
+            ) : null}
+          </View>
+        </Pressable>
+      </Pressable>
+    </Modal>
+  );
+}
+
+function MaintenanceRecordDetailModal({ onClose, record }) {
+  if (!record) {
+    return null;
+  }
+
+  const vehicleName = record.vehicle_name || record.vehicle?.name || 'Not recorded';
+  const vehicleDescription = record.vehicle ? getVehicleDescription(record.vehicle) : record.vehicle_description || '';
+  const nextDue = record.next_service_date
+    ? formatDate(record.next_service_date)
+    : record.next_service_mileage
+      ? formatMileage(record.next_service_mileage)
+      : 'Not recorded';
+
+  return (
+    <Modal animationType="fade" onRequestClose={onClose} transparent visible={Boolean(record)}>
+      <Pressable onPress={onClose} style={styles.modalBackdrop}>
+        <Pressable style={styles.modalCard}>
+          <View style={styles.modalHeader}>
+            <View>
+              <Text style={styles.modalTitle}>Maintenance Record</Text>
+              <Text style={styles.modalSubtitle}>Truck {vehicleName}</Text>
+            </View>
+            <Pressable accessibilityLabel="Close maintenance record" onPress={onClose} style={styles.closeButton}>
+              <Text style={styles.closeButtonText}>×</Text>
+            </Pressable>
+          </View>
+
+          <View style={styles.summaryGrid}>
+            <View style={styles.summaryTile}>
+              <Text style={styles.summaryLabel}>Service</Text>
+              <Text style={styles.summaryValue}>{record.service_type || 'Maintenance'}</Text>
+            </View>
+            <View style={styles.summaryTile}>
+              <Text style={styles.summaryLabel}>Date</Text>
+              <Text style={styles.summaryValue}>{formatDate(record.service_date)}</Text>
+            </View>
+            <View style={styles.summaryTile}>
+              <Text style={styles.summaryLabel}>Mileage</Text>
+              <Text style={styles.summaryValue}>{record.mileage_at_service ? formatMileage(record.mileage_at_service) : 'Not recorded'}</Text>
+            </View>
+            <View style={styles.summaryTile}>
+              <Text style={styles.summaryLabel}>Next due</Text>
+              <Text style={styles.summaryValue}>{nextDue}</Text>
+            </View>
+          </View>
+
+          {vehicleDescription ? <Text style={styles.recordMeta}>{vehicleDescription}</Text> : null}
+          <View style={styles.reviewNoteBlock}>
+            <Text style={styles.summaryLabel}>Vendor</Text>
+            <Text style={styles.recordNotes}>{record.vendor_name || 'Not recorded'}</Text>
+          </View>
+          <View style={styles.reviewNoteBlock}>
+            <Text style={styles.summaryLabel}>Notes</Text>
+            <Text style={styles.recordNotes}>{record.description || record.condition_notes || 'No notes recorded'}</Text>
+          </View>
+
+          <View style={styles.modalActions}>
+            <AppButton label="Close" onPress={onClose} style={styles.modalActionButton} variant="outline" />
+          </View>
+        </Pressable>
+      </Pressable>
+    </Modal>
   );
 }
 
@@ -890,13 +1270,17 @@ function MaintenanceSettingsPanel({
   checklistTemplateErrorMessage,
   isLoading,
   isSavingChecklistTemplate,
+  isSavingMaintenanceSettings,
   isSavingRequirements,
   isSavingReminderSchedule,
+  maintenanceSettingsErrorMessage,
+  onChangeMaintenanceSetting,
   onChangeCustomDaily,
   onChangeCustomWeekly,
   onChangeReminderSchedule,
   onChangeRequirementMode,
   onChangeWeeklyDay,
+  onSaveMaintenanceSettings,
   onSaveChecklistTemplate,
   onSaveRequirements,
   onSaveReminderSchedule,
@@ -928,6 +1312,14 @@ function MaintenanceSettingsPanel({
 
   return (
     <View style={styles.panelStack}>
+      <MaintenanceProgramEditor
+        isSaving={isSavingMaintenanceSettings}
+        onChangeSetting={onChangeMaintenanceSetting}
+        onSave={onSaveMaintenanceSettings}
+        settings={settings}
+        settingsErrorMessage={maintenanceSettingsErrorMessage}
+      />
+
       <MaintenanceRequirementsEditor
         draft={draft}
         errorMessage={requirementErrorMessage}
@@ -1055,7 +1447,14 @@ function EditTruckActionsModal({ onAddService, onClose, onEditInfo, onEditOdomet
   );
 }
 
-function ViewTruckActionsModal({ onClose, onViewHistory, vehicle }) {
+function ViewTruckActionsModal({
+  onClose,
+  onViewAssignmentHistory,
+  onViewHistory,
+  onViewInspectionHistory,
+  onViewOdometerHistory,
+  vehicle
+}) {
   return (
     <Modal animationType="fade" onRequestClose={onClose} transparent visible={Boolean(vehicle)}>
       <Pressable onPress={onClose} style={styles.modalBackdrop}>
@@ -1064,9 +1463,9 @@ function ViewTruckActionsModal({ onClose, onViewHistory, vehicle }) {
           <Text style={styles.modalSubtitle}>Open records and history.</Text>
           <View style={styles.truckActionList}>
             <TruckActionRow label="Service History" onPress={onViewHistory} />
-            <TruckActionRow disabled label="Inspection History" />
-            <TruckActionRow disabled label="Odometer History" />
-            <TruckActionRow disabled label="Assignment History" />
+            <TruckActionRow label="Inspection History" onPress={onViewInspectionHistory} />
+            <TruckActionRow label="Odometer History" onPress={onViewOdometerHistory} />
+            <TruckActionRow label="Assignment History" onPress={onViewAssignmentHistory} />
           </View>
           <AppButton label="Close" onPress={onClose} style={styles.menuActionButton} />
         </Pressable>
@@ -1247,6 +1646,137 @@ function ServiceHistoryModal({ history, isLoading, onClose, vehicle }) {
   );
 }
 
+function InspectionHistoryModal({ history, isLoading, onClose, onOpenInspection, vehicle }) {
+  return (
+    <Modal animationType="fade" onRequestClose={onClose} transparent visible={Boolean(vehicle)}>
+      <Pressable onPress={onClose} style={styles.modalBackdrop}>
+        <Pressable style={styles.modalCard}>
+          <View style={styles.modalHeader}>
+            <View>
+              <Text style={styles.modalTitle}>Inspection History</Text>
+              <Text style={styles.modalSubtitle}>{vehicle?.name || 'Vehicle'}</Text>
+            </View>
+            <Pressable accessibilityLabel="Close inspection history" onPress={onClose} style={styles.closeButton}>
+              <Text style={styles.closeButtonText}>×</Text>
+            </Pressable>
+          </View>
+          {isLoading ? (
+            <ActivityIndicator color={appTheme.colors.orange} size="large" />
+          ) : history.length ? (
+            <ScrollView contentContainerStyle={styles.historyList} showsVerticalScrollIndicator={false}>
+              {history.map((inspection) => {
+                const failedItems = (inspection.items || []).filter((item) => item.status === 'fail');
+
+                return (
+                  <Pressable
+                    key={inspection.id || `${inspection.inspection_date}-${inspection.inspection_type}`}
+                    onPress={() => onOpenInspection(inspection)}
+                    style={({ pressed }) => [styles.historyRow, pressed ? styles.pressed : null]}
+                  >
+                    <View style={styles.historyRowHeader}>
+                      <Text style={styles.historyTitle}>{formatDate(inspection.inspection_date)} • {inspection.inspection_type_label || 'Vehicle Check'}</Text>
+                      <Text style={styles.historyStatus}>{inspection.status_label || getInspectionStatusLabel(inspection.status)}</Text>
+                    </View>
+                    <Text style={styles.historyMeta}>{getInspectionDriverLabel(inspection)}</Text>
+                    <Text style={styles.historyMeta}>{inspection.odometer ? formatMileage(inspection.odometer) : 'Odometer not recorded'}</Text>
+                    {inspection.issue_note ? <Text style={styles.historyMeta}>Issue: {inspection.issue_note}</Text> : null}
+                    <Text style={styles.historyMeta}>{failedItems.length ? `${failedItems.length} failed checklist item${failedItems.length === 1 ? '' : 's'}` : 'No failed checklist items'}</Text>
+                  </Pressable>
+                );
+              })}
+            </ScrollView>
+          ) : (
+            <Text style={styles.emptyBody}>No inspection submissions for this Truck yet.</Text>
+          )}
+        </Pressable>
+      </Pressable>
+    </Modal>
+  );
+}
+
+function OdometerHistoryModal({ entries, isLoading, onClose, vehicle }) {
+  return (
+    <Modal animationType="fade" onRequestClose={onClose} transparent visible={Boolean(vehicle)}>
+      <Pressable onPress={onClose} style={styles.modalBackdrop}>
+        <Pressable style={styles.modalCard}>
+          <View style={styles.modalHeader}>
+            <View>
+              <Text style={styles.modalTitle}>Odometer History</Text>
+              <Text style={styles.modalSubtitle}>{vehicle?.name || 'Vehicle'}</Text>
+            </View>
+            <Pressable accessibilityLabel="Close odometer history" onPress={onClose} style={styles.closeButton}>
+              <Text style={styles.closeButtonText}>×</Text>
+            </Pressable>
+          </View>
+          {isLoading ? (
+            <ActivityIndicator color={appTheme.colors.orange} size="large" />
+          ) : entries.length ? (
+            <ScrollView contentContainerStyle={styles.historyList} showsVerticalScrollIndicator={false}>
+              {entries.map((entry) => (
+                <View key={entry.id || `${entry.recorded_at}-${entry.odometer_reading}`} style={styles.historyRow}>
+                  <View style={styles.historyRowHeader}>
+                    <Text style={styles.historyTitle}>{formatMileage(entry.odometer_reading)}</Text>
+                    <Text style={styles.historyStatus}>{entry.source === 'manager' ? 'Manager' : 'Driver'}</Text>
+                  </View>
+                  <Text style={styles.historyMeta}>{formatTimestamp(entry.recorded_at || entry.created_at)}</Text>
+                  <Text style={styles.historyMeta}>
+                    {[entry.driver?.name, entry.route?.work_area_name ? `Route ${entry.route.work_area_name}` : null].filter(Boolean).join(' • ') || 'No route recorded'}
+                  </Text>
+                  {entry.notes ? <Text style={styles.historyMeta}>{entry.notes}</Text> : null}
+                </View>
+              ))}
+            </ScrollView>
+          ) : (
+            <Text style={styles.emptyBody}>No odometer history for this Truck yet.</Text>
+          )}
+        </Pressable>
+      </Pressable>
+    </Modal>
+  );
+}
+
+function AssignmentHistoryModal({ assignments, isLoading, onClose, vehicle }) {
+  return (
+    <Modal animationType="fade" onRequestClose={onClose} transparent visible={Boolean(vehicle)}>
+      <Pressable onPress={onClose} style={styles.modalBackdrop}>
+        <Pressable style={styles.modalCard}>
+          <View style={styles.modalHeader}>
+            <View>
+              <Text style={styles.modalTitle}>Assignment History</Text>
+              <Text style={styles.modalSubtitle}>{vehicle?.name || 'Vehicle'}</Text>
+            </View>
+            <Pressable accessibilityLabel="Close assignment history" onPress={onClose} style={styles.closeButton}>
+              <Text style={styles.closeButtonText}>×</Text>
+            </Pressable>
+          </View>
+          {isLoading ? (
+            <ActivityIndicator color={appTheme.colors.orange} size="large" />
+          ) : assignments.length ? (
+            <ScrollView contentContainerStyle={styles.historyList} showsVerticalScrollIndicator={false}>
+              {assignments.map((assignment) => (
+                <View key={assignment.id || `${assignment.date}-${assignment.work_area_name}`} style={styles.historyRow}>
+                  <View style={styles.historyRowHeader}>
+                    <Text style={styles.historyTitle}>{formatDate(assignment.date)} • Route {assignment.work_area_name || 'Not recorded'}</Text>
+                    <Text style={styles.historyStatus}>{assignment.status || 'assigned'}</Text>
+                  </View>
+                  <Text style={styles.historyMeta}>{assignment.driver?.name || 'Driver not recorded'}</Text>
+                  <Text style={styles.historyMeta}>
+                    {Number.isFinite(Number(assignment.completed_stops)) && Number.isFinite(Number(assignment.total_stops))
+                      ? `${assignment.completed_stops}/${assignment.total_stops} stops`
+                      : 'Stop count not recorded'}
+                  </Text>
+                </View>
+              ))}
+            </ScrollView>
+          ) : (
+            <Text style={styles.emptyBody}>No assignment history for this Truck yet.</Text>
+          )}
+        </Pressable>
+      </Pressable>
+    </Modal>
+  );
+}
+
 export default function ManagerVehiclesScreen({ csaWorkspaceVersion = 0, identity }) {
   const [vehicles, setVehicles] = useState([]);
   const [activeTab, setActiveTab] = useState('Fleet');
@@ -1254,6 +1784,12 @@ export default function ManagerVehiclesScreen({ csaWorkspaceVersion = 0, identit
   const [errorMessage, setErrorMessage] = useState('');
   const [maintenanceSettings, setMaintenanceSettings] = useState([]);
   const [maintenanceRecords, setMaintenanceRecords] = useState([]);
+  const [maintenanceRecordFilter, setMaintenanceRecordFilter] = useState('all');
+  const [vehicleInspections, setVehicleInspections] = useState([]);
+  const [inspectionStatusFilter, setInspectionStatusFilter] = useState('all');
+  const [selectedInspection, setSelectedInspection] = useState(null);
+  const [inspectionReviewNote, setInspectionReviewNote] = useState('');
+  const [isSavingInspectionReview, setIsSavingInspectionReview] = useState(false);
   const [maintenanceRequirements, setMaintenanceRequirements] = useState(null);
   const [reminderSchedule, setReminderSchedule] = useState(null);
   const [checklistTemplate, setChecklistTemplate] = useState(null);
@@ -1264,6 +1800,7 @@ export default function ManagerVehiclesScreen({ csaWorkspaceVersion = 0, identit
   const [isSavingReminderSchedule, setIsSavingReminderSchedule] = useState(false);
   const [maintenanceErrorMessage, setMaintenanceErrorMessage] = useState('');
   const [maintenanceSettingsErrorMessage, setMaintenanceSettingsErrorMessage] = useState('');
+  const [selectedMaintenanceRecord, setSelectedMaintenanceRecord] = useState(null);
   const [checklistTemplateErrorMessage, setChecklistTemplateErrorMessage] = useState('');
   const [requirementErrorMessage, setRequirementErrorMessage] = useState('');
   const [reminderScheduleErrorMessage, setReminderScheduleErrorMessage] = useState('');
@@ -1286,6 +1823,15 @@ export default function ManagerVehiclesScreen({ csaWorkspaceVersion = 0, identit
   const [historyVehicle, setHistoryVehicle] = useState(null);
   const [history, setHistory] = useState([]);
   const [isLoadingHistory, setIsLoadingHistory] = useState(false);
+  const [inspectionHistoryVehicle, setInspectionHistoryVehicle] = useState(null);
+  const [inspectionHistory, setInspectionHistory] = useState([]);
+  const [isLoadingInspectionHistory, setIsLoadingInspectionHistory] = useState(false);
+  const [odometerHistoryVehicle, setOdometerHistoryVehicle] = useState(null);
+  const [odometerHistory, setOdometerHistory] = useState([]);
+  const [isLoadingOdometerHistory, setIsLoadingOdometerHistory] = useState(false);
+  const [assignmentHistoryVehicle, setAssignmentHistoryVehicle] = useState(null);
+  const [assignmentHistory, setAssignmentHistory] = useState([]);
+  const [isLoadingAssignmentHistory, setIsLoadingAssignmentHistory] = useState(false);
   const [odometerVehicle, setOdometerVehicle] = useState(null);
   const [odometerForm, setOdometerForm] = useState(getOdometerForm(null));
   const [odometerError, setOdometerError] = useState('');
@@ -1309,36 +1855,48 @@ export default function ManagerVehiclesScreen({ csaWorkspaceVersion = 0, identit
     const [
       settingsResponse,
       recordsResponse,
+      inspectionsResponse,
       requirementsResponse,
       reminderResponse,
       checklistResponse
     ] = await Promise.allSettled([
       api.get('/vehicles/settings/maintenance', { authMode: 'manager' }),
       api.get('/vehicles/maintenance-records', { authMode: 'manager' }),
+      api.get('/vehicles/inspections', {
+        authMode: 'manager',
+        params: {
+          status: ['reported_issues', 'failed_items'].includes(inspectionStatusFilter)
+            ? 'all'
+            : inspectionStatusFilter
+        }
+      }),
       api.get('/vehicles/settings/maintenance-requirements', { authMode: 'manager' }),
       api.get('/vehicles/settings/reminder-schedule', { authMode: 'manager' }),
       api.get('/vehicles/settings/checklist-template', { authMode: 'manager' })
     ]);
 
-    const fulfilled = [settingsResponse, recordsResponse, requirementsResponse, reminderResponse, checklistResponse]
+    const fulfilled = [settingsResponse, recordsResponse, inspectionsResponse, requirementsResponse, reminderResponse, checklistResponse]
       .filter((response) => response.status === 'fulfilled');
 
     if (settingsResponse.status === 'fulfilled') {
-      setMaintenanceSettings(normalizeMaintenanceSettingsDraft(settingsResponse.value.data?.settings || []));
+      setMaintenanceSettings(normalizeMaintenanceSettingsDraft(settingsResponse.value?.data?.settings || []));
     }
     if (recordsResponse.status === 'fulfilled') {
-      setMaintenanceRecords(recordsResponse.value.data?.maintenance || []);
+      setMaintenanceRecords(recordsResponse.value?.data?.maintenance || []);
+    }
+    if (inspectionsResponse.status === 'fulfilled') {
+      setVehicleInspections(inspectionsResponse.value?.data?.inspections || []);
     }
     if (requirementsResponse.status === 'fulfilled') {
-      setMaintenanceRequirements(normalizeMaintenanceRequirementSetting(requirementsResponse.value.data?.setting));
+      setMaintenanceRequirements(normalizeMaintenanceRequirementSetting(requirementsResponse.value?.data?.setting));
     }
     if (reminderResponse.status === 'fulfilled') {
-      setReminderSchedule(reminderResponse.value.data?.schedule || null);
+      setReminderSchedule(reminderResponse.value?.data?.schedule || null);
     }
     if (checklistResponse.status === 'fulfilled') {
       setChecklistTemplate({
-        ...(checklistResponse.value.data?.template || {}),
-        fields: normalizeChecklistTemplateFields(checklistResponse.value.data?.template)
+        ...(checklistResponse.value?.data?.template || {}),
+        fields: normalizeChecklistTemplateFields(checklistResponse.value?.data?.template)
       });
     }
 
@@ -1360,6 +1918,12 @@ export default function ManagerVehiclesScreen({ csaWorkspaceVersion = 0, identit
       loadMaintenanceOverview();
     }
   }, [activeTab, hasLoadedMaintenanceOverview, isLoadingMaintenance]);
+
+  useEffect(() => {
+    if (activeTab === 'Inspections' && hasLoadedMaintenanceOverview && !isLoadingMaintenance) {
+      loadMaintenanceOverview();
+    }
+  }, [inspectionStatusFilter]);
 
   const filteredVehicles = useMemo(() => filterVehicles(vehicles, searchTerm, statusFilter), [searchTerm, statusFilter, vehicles]);
 
@@ -1383,6 +1947,45 @@ export default function ManagerVehiclesScreen({ csaWorkspaceVersion = 0, identit
     setEditingVehicle(null);
     setVehicleForm(getVehicleForm(null));
     setVehicleError('');
+  }
+
+  async function openInspectionDetail(inspection) {
+    setSelectedInspection(inspection);
+    setInspectionReviewNote(inspection.manager_review_note || '');
+
+    try {
+      const response = await api.get(`/vehicles/inspections/${inspection.id}`, { authMode: 'manager' });
+      const detailedInspection = response.data?.inspection || inspection;
+      setSelectedInspection(detailedInspection);
+      setInspectionReviewNote(detailedInspection.manager_review_note || '');
+    } catch (_error) {
+      setSelectedInspection(inspection);
+    }
+  }
+
+  async function markInspectionReviewed() {
+    if (!selectedInspection?.id) {
+      return;
+    }
+
+    setIsSavingInspectionReview(true);
+    try {
+      const response = await api.put(`/vehicles/inspections/${selectedInspection.id}/review`, {
+        manager_review_note: inspectionReviewNote || undefined
+      }, { authMode: 'manager' });
+      setSelectedInspection(null);
+      setInspectionReviewNote('');
+      setVehicleInspections((current) => current.map((inspection) => (
+        inspection.id === selectedInspection.id
+          ? { ...inspection, ...(response.data?.inspection || {}), status: 'reviewed', status_label: 'Reviewed' }
+          : inspection
+      )));
+      await loadMaintenanceOverview();
+    } catch (_error) {
+      // Keep the detail open so the manager can try again.
+    } finally {
+      setIsSavingInspectionReview(false);
+    }
   }
 
   function updateVehicleField(field, value) {
@@ -1695,6 +2298,75 @@ export default function ManagerVehiclesScreen({ csaWorkspaceVersion = 0, identit
     }
   }
 
+  async function openInspectionHistory(vehicle) {
+    setServiceMenuVehicle(null);
+    setViewMenuVehicle(null);
+    setInspectionHistoryVehicle(vehicle);
+    setIsLoadingInspectionHistory(true);
+    try {
+      const response = await api.get(`/vehicles/${vehicle.id}/inspection-history`, { authMode: 'manager' });
+      setInspectionHistory(response.data?.inspections || []);
+    } catch (_error) {
+      setInspectionHistory([]);
+    } finally {
+      setIsLoadingInspectionHistory(false);
+    }
+  }
+
+  async function openOdometerHistory(vehicle) {
+    setServiceMenuVehicle(null);
+    setViewMenuVehicle(null);
+    setOdometerHistoryVehicle(vehicle);
+    setIsLoadingOdometerHistory(true);
+    try {
+      const response = await api.get(`/vehicles/${vehicle.id}/odometer-history`, { authMode: 'manager' });
+      setOdometerHistory(response.data?.odometer_entries || []);
+    } catch (_error) {
+      setOdometerHistory([]);
+    } finally {
+      setIsLoadingOdometerHistory(false);
+    }
+  }
+
+  async function openAssignmentHistory(vehicle) {
+    setServiceMenuVehicle(null);
+    setViewMenuVehicle(null);
+    setAssignmentHistoryVehicle(vehicle);
+    setIsLoadingAssignmentHistory(true);
+    try {
+      const response = await api.get(`/vehicles/${vehicle.id}/assignment-history`, { authMode: 'manager' });
+      setAssignmentHistory(response.data?.assignments || []);
+    } catch (_error) {
+      setAssignmentHistory([]);
+    } finally {
+      setIsLoadingAssignmentHistory(false);
+    }
+  }
+
+  function openInspectionFromHistory(inspection) {
+    setInspectionHistoryVehicle(null);
+    setSelectedInspection(inspection);
+    setInspectionReviewNote(inspection.manager_review_note || '');
+  }
+
+  function openMaintenanceFromInspection(inspection) {
+    const vehicle = inspection?.vehicle;
+    if (!vehicle?.id) {
+      return;
+    }
+
+    setSelectedInspection(null);
+    setInspectionReviewNote('');
+    setServiceMenuVehicle(null);
+    setViewMenuVehicle(null);
+    setServiceVehicle({
+      ...vehicle,
+      current_mileage: inspection.odometer || vehicle.current_mileage || ''
+    });
+    setServiceForm(getInspectionMaintenanceForm(inspection));
+    setServiceError('');
+  }
+
   function openOdometerEditor(vehicle) {
     setServiceMenuVehicle(null);
     setViewMenuVehicle(null);
@@ -1813,21 +2485,23 @@ export default function ManagerVehiclesScreen({ csaWorkspaceVersion = 0, identit
         <ErrorState body="Check your connection and try again." onAction={loadMaintenanceOverview} title="Couldn’t load maintenance" />
       ) : null}
       {activeTab === 'Maintenance' ? (
-        <MaintenanceProgramPanel
+        <MaintenanceRecordsPanel
           isLoading={isLoadingMaintenance}
-          isSaving={isSavingMaintenanceSettings}
-          onChangeSetting={updateMaintenanceSetting}
-          onSave={saveMaintenanceSettings}
+          maintenanceRecordFilter={maintenanceRecordFilter}
+          onMaintenanceRecordFilterChange={setMaintenanceRecordFilter}
+          onOpenRecord={setSelectedMaintenanceRecord}
           records={maintenanceRecords}
-          settings={maintenanceSettings}
-          settingsErrorMessage={maintenanceSettingsErrorMessage}
         />
       ) : null}
       {activeTab === 'Inspections' ? (
         <InspectionsPanel
           checklistTemplate={checklistTemplate}
+          inspections={vehicleInspections}
           isLoading={isLoadingMaintenance}
+          onOpenInspection={openInspectionDetail}
+          onStatusFilterChange={setInspectionStatusFilter}
           requirements={maintenanceRequirements}
+          statusFilter={inspectionStatusFilter}
         />
       ) : null}
       {activeTab === 'Settings' ? (
@@ -1836,13 +2510,17 @@ export default function ManagerVehiclesScreen({ csaWorkspaceVersion = 0, identit
           checklistTemplateErrorMessage={checklistTemplateErrorMessage}
           isLoading={isLoadingMaintenance}
           isSavingChecklistTemplate={isSavingChecklistTemplate}
+          isSavingMaintenanceSettings={isSavingMaintenanceSettings}
           isSavingRequirements={isSavingRequirements}
           isSavingReminderSchedule={isSavingReminderSchedule}
+          maintenanceSettingsErrorMessage={maintenanceSettingsErrorMessage}
+          onChangeMaintenanceSetting={updateMaintenanceSetting}
           onChangeCustomDaily={updateCustomDailyRequirement}
           onChangeCustomWeekly={updateCustomWeeklyRequirement}
           onChangeReminderSchedule={updateReminderSchedule}
           onChangeRequirementMode={updateRequirementMode}
           onChangeWeeklyDay={updateRequirementWeeklyDay}
+          onSaveMaintenanceSettings={saveMaintenanceSettings}
           onSaveChecklistTemplate={saveChecklistTemplate}
           onSaveRequirements={saveMaintenanceRequirements}
           onSaveReminderSchedule={saveReminderSchedule}
@@ -1921,7 +2599,10 @@ export default function ManagerVehiclesScreen({ csaWorkspaceVersion = 0, identit
       />
       <ViewTruckActionsModal
         onClose={() => setViewMenuVehicle(null)}
+        onViewAssignmentHistory={() => openAssignmentHistory(viewMenuVehicle)}
         onViewHistory={() => openServiceHistory(viewMenuVehicle)}
+        onViewInspectionHistory={() => openInspectionHistory(viewMenuVehicle)}
+        onViewOdometerHistory={() => openOdometerHistory(viewMenuVehicle)}
         vehicle={viewMenuVehicle}
       />
       <OdometerModal
@@ -1948,6 +2629,41 @@ export default function ManagerVehiclesScreen({ csaWorkspaceVersion = 0, identit
         isLoading={isLoadingHistory}
         onClose={() => setHistoryVehicle(null)}
         vehicle={historyVehicle}
+      />
+      <InspectionHistoryModal
+        history={inspectionHistory}
+        isLoading={isLoadingInspectionHistory}
+        onClose={() => setInspectionHistoryVehicle(null)}
+        onOpenInspection={openInspectionFromHistory}
+        vehicle={inspectionHistoryVehicle}
+      />
+      <OdometerHistoryModal
+        entries={odometerHistory}
+        isLoading={isLoadingOdometerHistory}
+        onClose={() => setOdometerHistoryVehicle(null)}
+        vehicle={odometerHistoryVehicle}
+      />
+      <AssignmentHistoryModal
+        assignments={assignmentHistory}
+        isLoading={isLoadingAssignmentHistory}
+        onClose={() => setAssignmentHistoryVehicle(null)}
+        vehicle={assignmentHistoryVehicle}
+      />
+      <InspectionDetailModal
+        inspection={selectedInspection}
+        isSaving={isSavingInspectionReview}
+        onChangeReviewNote={setInspectionReviewNote}
+        onClose={() => {
+          setSelectedInspection(null);
+          setInspectionReviewNote('');
+        }}
+        onLogMaintenanceFromIssue={() => openMaintenanceFromInspection(selectedInspection)}
+        onMarkReviewed={markInspectionReviewed}
+        reviewNote={inspectionReviewNote}
+      />
+      <MaintenanceRecordDetailModal
+        onClose={() => setSelectedMaintenanceRecord(null)}
+        record={selectedMaintenanceRecord}
       />
     </>
   );
@@ -2103,6 +2819,17 @@ const styles = StyleSheet.create({
     fontWeight: appTheme.typography.weights.semibold,
     lineHeight: appTheme.typography.lineHeights.bodySmall
   },
+  panelHeaderRow: {
+    alignItems: 'flex-start',
+    flexDirection: 'row',
+    gap: appTheme.spacing.sm,
+    justifyContent: 'space-between'
+  },
+  panelHeaderCopy: {
+    flex: 1,
+    gap: 3,
+    minWidth: 0
+  },
   panelCaption: {
     color: appTheme.colors.textTertiary,
     fontSize: appTheme.typography.caption,
@@ -2188,6 +2915,12 @@ const styles = StyleSheet.create({
     fontSize: appTheme.typography.caption,
     fontWeight: appTheme.typography.weights.semibold
   },
+  recordCountText: {
+    color: appTheme.colors.textSecondary,
+    fontSize: appTheme.typography.caption,
+    fontWeight: appTheme.typography.weights.heavy,
+    paddingTop: 2
+  },
   recordService: {
     color: appTheme.colors.orangeDeep,
     fontSize: appTheme.typography.bodySmall,
@@ -2203,6 +2936,70 @@ const styles = StyleSheet.create({
     fontSize: appTheme.typography.caption,
     fontWeight: appTheme.typography.weights.semibold,
     marginTop: 2
+  },
+  inspectionCard: {
+    backgroundColor: appTheme.colors.surfaceTint,
+    borderColor: appTheme.colors.border,
+    borderRadius: appTheme.radius.md,
+    borderWidth: 1,
+    gap: 4,
+    padding: appTheme.spacing.md
+  },
+  inspectionStatus: {
+    backgroundColor: appTheme.colors.surface,
+    borderColor: appTheme.colors.border,
+    borderRadius: appTheme.radius.pill,
+    borderWidth: 1,
+    color: appTheme.colors.textSecondary,
+    fontSize: appTheme.typography.caption,
+    fontWeight: appTheme.typography.weights.heavy,
+    overflow: 'hidden',
+    paddingHorizontal: appTheme.spacing.sm,
+    paddingVertical: 4
+  },
+  inspectionStatusWarning: {
+    backgroundColor: appTheme.colors.orangeSoft,
+    borderColor: appTheme.colors.orangeBorder,
+    color: appTheme.colors.orangeDeep
+  },
+  inspectionStatusReviewed: {
+    backgroundColor: appTheme.colors.greenSoft,
+    borderColor: appTheme.colors.green,
+    color: appTheme.colors.greenText
+  },
+  inspectionIssueNote: {
+    backgroundColor: appTheme.colors.orangeSoft,
+    borderColor: appTheme.colors.orangeBorder,
+    borderRadius: appTheme.radius.md,
+    borderWidth: 1,
+    color: appTheme.colors.textPrimary,
+    fontSize: appTheme.typography.bodySmall,
+    fontWeight: appTheme.typography.weights.semibold,
+    lineHeight: 20,
+    padding: appTheme.spacing.md
+  },
+  inspectionItemsModalList: {
+    maxHeight: 260
+  },
+  inspectionItemModalRow: {
+    borderBottomColor: appTheme.colors.border,
+    borderBottomWidth: 1,
+    gap: 3,
+    paddingVertical: appTheme.spacing.sm
+  },
+  reviewNoteBlock: {
+    backgroundColor: appTheme.colors.surfaceTint,
+    borderColor: appTheme.colors.border,
+    borderRadius: appTheme.radius.md,
+    borderWidth: 1,
+    gap: 4,
+    padding: appTheme.spacing.md
+  },
+  inspectionTemplateSummary: {
+    borderTopColor: appTheme.colors.border,
+    borderTopWidth: 1,
+    gap: 4,
+    paddingTop: appTheme.spacing.sm
   },
   summaryGrid: {
     flexDirection: 'row',
@@ -2297,6 +3094,10 @@ const styles = StyleSheet.create({
     backgroundColor: appTheme.colors.warningSoft,
     borderColor: '#ffd3a6'
   },
+  statusBadgedanger: {
+    backgroundColor: appTheme.colors.dangerSoft,
+    borderColor: appTheme.colors.danger
+  },
   statusBadgeneutral: {
     backgroundColor: appTheme.colors.grayBadge,
     borderColor: appTheme.colors.borderStrong
@@ -2314,6 +3115,9 @@ const styles = StyleSheet.create({
   },
   statusBadgeTextwarning: {
     color: appTheme.colors.warningText
+  },
+  statusBadgeTextdanger: {
+    color: appTheme.colors.dangerText
   },
   statusBadgeTextneutral: {
     color: appTheme.colors.grayBadgeText
@@ -2717,10 +3521,27 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     padding: appTheme.spacing.md
   },
+  historyRowHeader: {
+    alignItems: 'flex-start',
+    flexDirection: 'row',
+    gap: appTheme.spacing.xs,
+    justifyContent: 'space-between'
+  },
   historyTitle: {
+    flex: 1,
     color: appTheme.colors.textPrimary,
     fontSize: appTheme.typography.bodySmall,
     fontWeight: appTheme.typography.weights.heavy
+  },
+  historyStatus: {
+    backgroundColor: appTheme.colors.softGray,
+    borderRadius: 999,
+    color: appTheme.colors.textSecondary,
+    fontSize: appTheme.typography.caption,
+    fontWeight: appTheme.typography.weights.heavy,
+    overflow: 'hidden',
+    paddingHorizontal: 10,
+    paddingVertical: 5
   },
   historyMeta: {
     color: appTheme.colors.textSecondary,

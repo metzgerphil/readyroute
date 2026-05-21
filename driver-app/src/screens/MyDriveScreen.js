@@ -12,6 +12,26 @@ import { getSidBucketTheme } from '../utils/sidBuckets';
 
 const googleMapsApiKey = process.env.EXPO_PUBLIC_GOOGLE_MAPS_API_KEY || '';
 const shouldUseGoogleProvider = Platform.OS !== 'ios' || Boolean(String(googleMapsApiKey).trim());
+const DRIVER_LOCATION_POST_INTERVAL_MS = 10000;
+const DRIVER_LOCATION_POST_DISTANCE_METERS = 20;
+
+function getHighAccuracyMode() {
+  return Location.Accuracy?.BestForNavigation || Location.Accuracy?.Highest || Location.Accuracy?.High;
+}
+
+function getHighAccuracyOptions() {
+  const accuracy = getHighAccuracyMode();
+  return accuracy ? { accuracy } : {};
+}
+
+function getLocationWatchOptions() {
+  return {
+    ...getHighAccuracyOptions(),
+    timeInterval: 1000,
+    distanceInterval: 5,
+    mayShowUserSettingsDialog: true
+  };
+}
 
 export function getPendingStops(stops) {
   return (stops || []).filter((stop) => stop.status === 'pending');
@@ -183,6 +203,11 @@ export function toCoordinate(stop) {
   };
 }
 
+export function getHouseNumber(address) {
+  const match = String(address || '').trim().match(/^(\d+[A-Za-z]?)/);
+  return match ? match[1] : null;
+}
+
 export function getDistanceMiles(pointA, pointB) {
   if (!pointA || !pointB) {
     return Number.POSITIVE_INFINITY;
@@ -199,6 +224,38 @@ export function getDistanceMiles(pointA, pointB) {
     Math.cos(latitudeA) * Math.cos(latitudeB) * Math.sin(longitudeDelta / 2) * Math.sin(longitudeDelta / 2);
 
   return 2 * earthRadiusMiles * Math.atan2(Math.sqrt(haversine), Math.sqrt(1 - haversine));
+}
+
+export function getDistanceMeters(pointA, pointB) {
+  return getDistanceMiles(pointA, pointB) * 1609.344;
+}
+
+export function positionToCoordinate(position) {
+  const latitude = Number(position?.coords?.latitude);
+  const longitude = Number(position?.coords?.longitude);
+
+  if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) {
+    return null;
+  }
+
+  return { latitude, longitude };
+}
+
+export function shouldPostDriverPosition({ lastPostedPosition, nextPosition, now = Date.now() }) {
+  const nextCoordinate = positionToCoordinate(nextPosition);
+
+  if (!nextCoordinate) {
+    return false;
+  }
+
+  if (!lastPostedPosition?.coordinate || !lastPostedPosition?.postedAt) {
+    return true;
+  }
+
+  const elapsedMs = now - lastPostedPosition.postedAt;
+  const movedMeters = getDistanceMeters(lastPostedPosition.coordinate, nextCoordinate);
+
+  return elapsedMs >= DRIVER_LOCATION_POST_INTERVAL_MS || movedMeters >= DRIVER_LOCATION_POST_DISTANCE_METERS;
 }
 
 export function getFocusCoordinates({ currentLocation, selectedStop }) {
@@ -1130,6 +1187,9 @@ export default function MyDriveScreen({ navigation, route: screenRoute }) {
   const activeBreakTimerRef = useRef(null);
   const markerRefreshTimerRef = useRef(null);
   const hasInitializedMarkerRefreshRef = useRef(false);
+  const locationSubscriptionRef = useRef(null);
+  const latestRouteIdRef = useRef(null);
+  const lastPostedPositionRef = useRef(null);
   const [route, setRoute] = useState(null);
   const [stops, setStops] = useState([]);
   const [currentLocation, setCurrentLocation] = useState(null);
@@ -1152,6 +1212,8 @@ export default function MyDriveScreen({ navigation, route: screenRoute }) {
   const [markersNeedRefresh, setMarkersNeedRefresh] = useState(true);
   const [markerRefreshVersion, setMarkerRefreshVersion] = useState(1);
   const [pinColorMode, setPinColorMode] = useState('sid');
+  const [showAddressLabels, setShowAddressLabels] = useState(false);
+  latestRouteIdRef.current = route?.id || null;
 
   const mappableStops = useMemo(() => getMappableStops(stops), [stops]);
   const mapItems = useMemo(() => buildMapItems(mappableStops), [mappableStops]);
@@ -1197,6 +1259,11 @@ export default function MyDriveScreen({ navigation, route: screenRoute }) {
     () => getMapRegion({ currentStop: selectedStop || selectedStopGroup?.representativeStop || null, currentLocation, mappableStops }),
     [currentLocation, mappableStops, selectedStop, selectedStopGroup]
   );
+
+  const handleMapRegionChangeComplete = (region) => {
+    const shouldShowLabels = Number(region?.latitudeDelta) < 0.01;
+    setShowAddressLabels((current) => (current === shouldShowLabels ? current : shouldShowLabels));
+  };
 
   useEffect(() => {
     const incomingSelectedStopId = screenRoute?.params?.selectedStopId;
@@ -1354,7 +1421,7 @@ export default function MyDriveScreen({ navigation, route: screenRoute }) {
           return;
         }
 
-        const position = await Location.getCurrentPositionAsync({});
+        const position = await Location.getCurrentPositionAsync(getHighAccuracyOptions());
 
         if (isMounted) {
           setCurrentLocation(position);
@@ -1388,10 +1455,6 @@ export default function MyDriveScreen({ navigation, route: screenRoute }) {
       return undefined;
     }
 
-    const positionInterval = setInterval(() => {
-      postCurrentPosition();
-    }, 30000);
-
     const rateInterval = setInterval(() => {
       refreshRoute({ allowStateUpdate: true, showAlert: false });
     }, 60000);
@@ -1399,10 +1462,75 @@ export default function MyDriveScreen({ navigation, route: screenRoute }) {
     postCurrentPosition();
 
     return () => {
-      clearInterval(positionInterval);
       clearInterval(rateInterval);
     };
   }, [route?.id]);
+
+  useEffect(() => {
+    latestRouteIdRef.current = route?.id || null;
+    lastPostedPositionRef.current = null;
+  }, [route?.id]);
+
+  useEffect(() => {
+    let isActive = true;
+
+    if (!hasLocationAccess) {
+      locationSubscriptionRef.current?.remove?.();
+      locationSubscriptionRef.current = null;
+      return undefined;
+    }
+
+    async function startLocationWatch() {
+      try {
+        const currentPermission = await Location.getForegroundPermissionsAsync();
+
+        if (!hasGrantedLocationPermission(currentPermission)) {
+          if (isActive) {
+            setHasLocationAccess(false);
+            setIsLocationPermissionBlocked(isBlockedLocationPermission(currentPermission));
+            setIsLocationPermissionDenied(isDeniedLocationPermission(currentPermission));
+          }
+          return;
+        }
+
+        const position = await Location.getCurrentPositionAsync(getHighAccuracyOptions());
+
+        if (!isActive) {
+          return;
+        }
+
+        setCurrentLocation(position);
+        postDriverPosition(position, { force: true });
+
+        const subscription = await Location.watchPositionAsync(getLocationWatchOptions(), (nextPosition) => {
+          setCurrentLocation(nextPosition);
+          postDriverPosition(nextPosition);
+        });
+
+        if (!isActive) {
+          subscription?.remove?.();
+          return;
+        }
+
+        locationSubscriptionRef.current?.remove?.();
+        locationSubscriptionRef.current = subscription;
+      } catch (_error) {
+        if (isActive) {
+          setHasLocationAccess(false);
+          setIsLocationPermissionBlocked(false);
+          setIsLocationPermissionDenied(false);
+        }
+      }
+    }
+
+    startLocationWatch();
+
+    return () => {
+      isActive = false;
+      locationSubscriptionRef.current?.remove?.();
+      locationSubscriptionRef.current = null;
+    };
+  }, [hasLocationAccess]);
 
   useEffect(() => {
     const map = mapRef.current;
@@ -1488,7 +1616,7 @@ export default function MyDriveScreen({ navigation, route: screenRoute }) {
   }
 
   async function postCurrentPosition() {
-    if (!route?.id) {
+    if (!latestRouteIdRef.current) {
       return;
     }
 
@@ -1505,16 +1633,41 @@ export default function MyDriveScreen({ navigation, route: screenRoute }) {
       setHasLocationAccess(true);
       setIsLocationPermissionBlocked(false);
       setIsLocationPermissionDenied(false);
-      const position = await Location.getCurrentPositionAsync({});
+      const position = await Location.getCurrentPositionAsync(getHighAccuracyOptions());
       setCurrentLocation(position);
-
-      await api.post('/routes/position', {
-        lat: position.coords.latitude,
-        lng: position.coords.longitude,
-        route_id: route.id
-      });
+      await postDriverPosition(position, { force: true });
     } catch (_error) {
       // Keep the driver flow resilient and retry later.
+    }
+  }
+
+  async function postDriverPosition(position, { force = false } = {}) {
+    const routeId = latestRouteIdRef.current;
+    const coordinate = positionToCoordinate(position);
+
+    if (!routeId || !coordinate) {
+      return;
+    }
+
+    const now = Date.now();
+
+    if (!force && !shouldPostDriverPosition({ lastPostedPosition: lastPostedPositionRef.current, nextPosition: position, now })) {
+      return;
+    }
+
+    lastPostedPositionRef.current = {
+      coordinate,
+      postedAt: now
+    };
+
+    try {
+      await api.post('/routes/position', {
+        lat: coordinate.latitude,
+        lng: coordinate.longitude,
+        route_id: routeId
+      });
+    } catch (_error) {
+      // Do not let server reporting affect the driver's live location marker.
     }
   }
 
@@ -1538,7 +1691,7 @@ export default function MyDriveScreen({ navigation, route: screenRoute }) {
         return;
       }
 
-      const position = await Location.getCurrentPositionAsync({});
+      const position = await Location.getCurrentPositionAsync(getHighAccuracyOptions());
       setCurrentLocation(position);
       await postCurrentPosition();
     } catch (_error) {
@@ -1855,8 +2008,26 @@ export default function MyDriveScreen({ navigation, route: screenRoute }) {
     const stopId = stopToComplete.id;
     const nextStatus = extraPayload.status || (getStopType(stopToComplete) === 'pickup' ? 'pickup_complete' : 'delivered');
     const wasComplete = isStopComplete(stopToComplete);
+    const optimisticCompletedAt = new Date().toISOString();
+    const previousStopState = {
+      status: stopToComplete.status,
+      completed_at: stopToComplete.completed_at,
+      delivery_type_code: stopToComplete.delivery_type_code,
+      exception_code: stopToComplete.exception_code
+    };
+    const previousRouteCompletedStops = Number(route?.completed_stops || 0);
 
     setIsSubmitting(true);
+    updateCompletedStopState(stopId, {
+      status: nextStatus,
+      completed_at: optimisticCompletedAt,
+      delivery_type_code: extraPayload.delivery_type_code !== undefined ? extraPayload.delivery_type_code : stopToComplete.delivery_type_code,
+      exception_code: extraPayload.exception_code !== undefined ? extraPayload.exception_code : stopToComplete.exception_code
+    });
+
+    if (!wasComplete) {
+      incrementRouteCompletedStops();
+    }
 
     try {
       await api.patch(`/routes/stops/${stopId}/complete`, {
@@ -1864,19 +2035,19 @@ export default function MyDriveScreen({ navigation, route: screenRoute }) {
         status: nextStatus
       });
 
-      updateCompletedStopState(stopId, {
-        status: nextStatus,
-        completed_at: new Date().toISOString(),
-        delivery_type_code: extraPayload.delivery_type_code !== undefined ? extraPayload.delivery_type_code : stopToComplete.delivery_type_code,
-        exception_code: extraPayload.exception_code !== undefined ? extraPayload.exception_code : stopToComplete.exception_code
-      });
-
-      if (!wasComplete) {
-        incrementRouteCompletedStops();
-      }
-
-      await refreshRoute({ allowStateUpdate: true, showAlert: true });
+      Promise.resolve(refreshRoute({ allowStateUpdate: true, showAlert: false })).catch(() => {});
     } catch (error) {
+      updateCompletedStopState(stopId, previousStopState);
+      if (!wasComplete) {
+        setRoute((previousRoute) =>
+          previousRoute
+            ? {
+                ...previousRoute,
+                completed_stops: previousRouteCompletedStops
+              }
+            : previousRoute
+        );
+      }
       const message = error.response?.data?.error || 'Unable to complete this stop right now.';
       Alert.alert('Stop update failed', message);
     } finally {
@@ -1885,8 +2056,9 @@ export default function MyDriveScreen({ navigation, route: screenRoute }) {
   }
 
   async function handleCompleteStop() {
-    await completeIndividualStop(selectedStop);
+    const stopToComplete = selectedStop;
     setSelectedMapItemId(null);
+    await completeIndividualStop(stopToComplete);
   }
 
   function promptForStopCode(stopToCode, codeType) {
@@ -2065,6 +2237,7 @@ export default function MyDriveScreen({ navigation, route: screenRoute }) {
           ref={mapRef}
           rotateEnabled
           scrollEnabled
+          onRegionChangeComplete={handleMapRegionChangeComplete}
           zoomEnabled
           style={styles.map}
         >
@@ -2114,6 +2287,36 @@ export default function MyDriveScreen({ navigation, route: screenRoute }) {
               </Marker>
             );
           })}
+
+          {showAddressLabels
+            ? mapItems.map((item) => {
+                const stop = item.type === 'group' ? item.representativeStop : item.stop;
+                const houseNumber = getHouseNumber(stop?.address);
+
+                if (!houseNumber) {
+                  return null;
+                }
+
+                const isCurrentStop = selectedMapItem?.id === item.id;
+
+                return (
+                  <Marker
+                    anchor={{ x: 0.5, y: 1.85 }}
+                    coordinate={item.coordinate}
+                    key={`address-label-${item.id}`}
+                    onPress={() => handleSelectMapItem(item.id)}
+                    tracksViewChanges={false}
+                    zIndex={isCurrentStop ? 1200 : item.type === 'group' ? 600 : 2}
+                  >
+                    <View style={[styles.addressLabel, isCurrentStop && styles.addressLabelActive]}>
+                      <Text style={[styles.addressLabelText, isCurrentStop && styles.addressLabelTextActive]}>
+                        {houseNumber}
+                      </Text>
+                    </View>
+                  </Marker>
+                );
+              })
+            : null}
         </MapView>
 
         <MapLegend expanded={legendExpanded} onToggle={() => setLegendExpanded((current) => !current)} />
@@ -2966,6 +3169,34 @@ const styles = StyleSheet.create({
   },
   currentMarkerLabel: {
     fontSize: 14
+  },
+  addressLabel: {
+    backgroundColor: 'rgba(255, 255, 255, 0.92)',
+    borderColor: 'rgba(16, 24, 38, 0.12)',
+    borderRadius: 5,
+    borderWidth: 1,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    shadowColor: '#000000',
+    shadowOffset: {
+      width: 0,
+      height: 1
+    },
+    shadowOpacity: 0.12,
+    shadowRadius: 2,
+    elevation: 2
+  },
+  addressLabelActive: {
+    borderColor: '#16a34a',
+    borderWidth: 1.5
+  },
+  addressLabelText: {
+    color: '#3f4a54',
+    fontSize: 10,
+    fontWeight: '700'
+  },
+  addressLabelTextActive: {
+    color: '#15803d'
   },
   businessBadge: {
     alignItems: 'center',

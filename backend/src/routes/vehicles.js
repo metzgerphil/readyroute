@@ -1,7 +1,7 @@
 const express = require('express');
 
 const defaultSupabase = require('../lib/supabase');
-const { requireManager } = require('../middleware/auth');
+const { requireDriver, requireManager } = require('../middleware/auth');
 const { parseMultipartForm } = require('../middleware/multipart');
 const { parseVehicleImportRows } = require('../services/resourceImport');
 
@@ -72,6 +72,10 @@ const VEHICLE_STATUS_LABELS = {
   not_on_schedule_b: 'Not on Schedule B',
   needs_repair: 'Needs Repair'
 };
+
+const INSPECTION_TYPES = new Set(['daily_check', 'weekly_inspection', 'full_inspection']);
+const INSPECTION_STATUSES = new Set(['submitted', 'needs_review', 'reviewed']);
+const INSPECTION_ITEM_STATUSES = new Set(['pass', 'fail', 'note', 'not_applicable']);
 
 const DEFAULT_CHECKLIST_TEMPLATE_FIELDS = [
   { id: 'date', label: 'Date', detail: 'Inspection date', enabled: true },
@@ -223,6 +227,163 @@ function createDefaultChecklistTemplateSetting() {
     fields: DEFAULT_CHECKLIST_TEMPLATE_FIELDS.map((field) => ({ ...field })),
     updated_by_manager_user_id: null,
     updated_at: null
+  };
+}
+
+function normalizeInspectionType(value) {
+  const normalized = String(value || '').trim() || 'daily_check';
+  return INSPECTION_TYPES.has(normalized) ? normalized : null;
+}
+
+function normalizeInspectionStatus(value, fallback = 'submitted') {
+  const normalized = String(value || '').trim() || fallback;
+  return INSPECTION_STATUSES.has(normalized) ? normalized : fallback;
+}
+
+function normalizeInspectionItemStatus(value) {
+  const normalized = String(value || '').trim() || 'note';
+  return INSPECTION_ITEM_STATUSES.has(normalized) ? normalized : 'note';
+}
+
+function formatInspectionTypeLabel(type) {
+  if (type === 'weekly_inspection') {
+    return 'Weekly Inspection';
+  }
+
+  if (type === 'full_inspection') {
+    return 'Full Inspection';
+  }
+
+  return 'Daily Check';
+}
+
+function formatInspectionStatusLabel(status) {
+  if (status === 'needs_review') {
+    return 'Needs Review';
+  }
+
+  if (status === 'reviewed') {
+    return 'Reviewed';
+  }
+
+  return 'Submitted';
+}
+
+function normalizeInspectionItems(items = []) {
+  return (Array.isArray(items) ? items : [])
+    .filter((item) => item && typeof item === 'object')
+    .map((item, index) => {
+      const key = String(item.checklist_item_key || item.key || item.id || '').trim() || `item_${index + 1}`;
+      const label = String(item.label || item.name || key).trim();
+      const value = item.value === undefined || item.value === null ? null : String(item.value).trim();
+      const note = item.note === undefined || item.note === null ? null : String(item.note).trim();
+
+      return {
+        checklist_item_key: key,
+        label,
+        value,
+        status: normalizeInspectionItemStatus(item.status),
+        note,
+        sort_order: index
+      };
+    });
+}
+
+function inspectionNeedsReview({ issueReported, issueNote, items }) {
+  if (issueReported || String(issueNote || '').trim()) {
+    return true;
+  }
+
+  return (items || []).some((item) => ['fail', 'note'].includes(item.status) && (item.status === 'fail' || item.note || item.value));
+}
+
+function presentVehicleSummary(vehicle) {
+  if (!vehicle) {
+    return null;
+  }
+
+  return {
+    id: vehicle.id,
+    name: vehicle.name,
+    make: vehicle.make || null,
+    model: vehicle.model || null,
+    year: vehicle.year || null,
+    truck_type: vehicle.truck_type || null,
+    custom_truck_type: vehicle.custom_truck_type || null
+  };
+}
+
+function presentDriverSummary(driver) {
+  if (!driver) {
+    return null;
+  }
+
+  return {
+    id: driver.id,
+    name: driver.name || null,
+    phone: driver.phone || null
+  };
+}
+
+function presentInspection(inspection, { vehicle = null, driver = null, items = [] } = {}) {
+  const status = normalizeInspectionStatus(inspection.status);
+  const type = normalizeInspectionType(inspection.inspection_type) || 'daily_check';
+  const normalizedItems = (items || []).map((item) => ({
+    id: item.id,
+    checklist_item_key: item.checklist_item_key,
+    label: item.label,
+    value: item.value,
+    status: normalizeInspectionItemStatus(item.status),
+    note: item.note,
+    sort_order: item.sort_order ?? 0
+  }));
+  const failedItems = normalizedItems.filter((item) => item.status === 'fail');
+
+  return {
+    ...inspection,
+    inspection_type: type,
+    inspection_type_label: formatInspectionTypeLabel(type),
+    status,
+    status_label: formatInspectionStatusLabel(status),
+    issue_reported: Boolean(inspection.issue_reported),
+    vehicle: presentVehicleSummary(vehicle),
+    driver: presentDriverSummary(driver),
+    failed_items_count: failedItems.length,
+    failed_items: failedItems.map((item) => ({
+      checklist_item_key: item.checklist_item_key,
+      label: item.label,
+      value: item.value,
+      note: item.note
+    })),
+    items: normalizedItems
+  };
+}
+
+function presentOdometerEntry(entry, { driver = null, route = null } = {}) {
+  return {
+    ...entry,
+    driver: presentDriverSummary(driver),
+    route: route ? {
+      id: route.id,
+      date: route.date || null,
+      work_area_name: route.work_area_name || null,
+      status: route.status || null
+    } : null
+  };
+}
+
+function presentAssignmentRoute(route, { driver = null } = {}) {
+  return {
+    id: route.id,
+    date: route.date || null,
+    work_area_name: route.work_area_name || null,
+    status: route.status || null,
+    total_stops: route.total_stops ?? null,
+    completed_stops: route.completed_stops ?? null,
+    driver_id: route.driver_id || null,
+    driver: presentDriverSummary(driver),
+    created_at: route.created_at || null,
+    completed_at: route.completed_at || null
   };
 }
 
@@ -489,6 +650,41 @@ function getLatestMaintenanceByVehicleAndType(records = []) {
   }, new Map());
 }
 
+function mapOpenInspectionIssues(inspections = [], itemsByInspectionId = new Map()) {
+  return (inspections || []).reduce((map, inspection) => {
+    if (!inspection?.vehicle_id) {
+      return map;
+    }
+
+    const items = itemsByInspectionId.get(inspection.id) || [];
+    const failedItems = items.filter((item) => normalizeInspectionItemStatus(item.status) === 'fail');
+    const existing = map.get(inspection.vehicle_id);
+
+    if (existing && String(existing.submitted_at || '') > String(inspection.submitted_at || '')) {
+      return map;
+    }
+
+    map.set(inspection.vehicle_id, {
+      id: inspection.id,
+      inspection_type: normalizeInspectionType(inspection.inspection_type) || 'daily_check',
+      inspection_type_label: formatInspectionTypeLabel(inspection.inspection_type),
+      status: normalizeInspectionStatus(inspection.status),
+      issue_reported: Boolean(inspection.issue_reported),
+      issue_note: inspection.issue_note || null,
+      submitted_at: inspection.submitted_at || null,
+      failed_items: failedItems.map((item) => ({
+        checklist_item_key: item.checklist_item_key,
+        label: item.label,
+        value: item.value,
+        note: item.note
+      })),
+      severity: failedItems.length ? 'blocked' : 'maintenance_soon'
+    });
+
+    return map;
+  }, new Map());
+}
+
 function buildVehicleMaintenanceAlert(
   vehicle = {},
   activeSettings = [],
@@ -513,14 +709,13 @@ function buildVehicleMaintenanceAlert(
       const latestService = maintenanceByVehicleAndType.get(`${vehicle.id}:${serviceType.toLowerCase()}`) || null;
       const lastCompletedMileage = toInteger(latestService?.mileage_at_service);
       const nextServiceMileage = toInteger(latestService?.next_service_mileage);
-      const nextDueMileage = nextServiceMileage !== null
-        ? nextServiceMileage
-        : lastCompletedMileage !== null && intervalMiles !== null && intervalMiles > 0
+      const nextDueMileage = lastCompletedMileage !== null && intervalMiles !== null && intervalMiles > 0
           ? lastCompletedMileage + intervalMiles
-          : null;
+          : nextServiceMileage;
       const remainingMiles = nextDueMileage !== null ? nextDueMileage - currentMileage : null;
-      const nextDueDate = latestService?.next_service_date ||
-        addDaysToDateString(latestService?.service_date, intervalDays);
+      const nextDueDate = intervalDays !== null && intervalDays > 0
+        ? addDaysToDateString(latestService?.service_date, intervalDays)
+        : latestService?.next_service_date || null;
       const remainingDays = differenceInDays(nextDueDate, todayString);
       const mileageStatus = remainingMiles === null
         ? 'ok'
@@ -592,6 +787,7 @@ function buildVehicleReadiness(
   vehicle = {},
   maintenanceAlert = {},
   todayAssignment = null,
+  openInspectionIssue = null,
   todayString = getCurrentDateString(),
   reminderSchedule = DEFAULT_REMINDER_SCHEDULE
 ) {
@@ -618,6 +814,18 @@ function buildVehicleReadiness(
         : maintenanceItem?.remaining_days !== null && maintenanceItem?.remaining_days < 0
           ? `${Math.abs(maintenanceItem.remaining_days)} days overdue`
           : null
+    });
+  }
+
+  if (openInspectionIssue?.severity === 'blocked') {
+    const failedItem = openInspectionIssue.failed_items?.[0];
+    reasons.push({
+      type: 'unresolved_inspection_issue',
+      severity: 'blocked',
+      label: failedItem?.label
+        ? `${failedItem.label} needs review`
+        : 'Vehicle issue needs review',
+      detail: openInspectionIssue.issue_note || failedItem?.value || 'Driver inspection issue'
     });
   }
 
@@ -654,6 +862,15 @@ function buildVehicleReadiness(
       severity: 'maintenance_soon',
       label: 'Insurance expiring soon',
       detail: `${insuranceDays} days left`
+    });
+  }
+
+  if (openInspectionIssue && openInspectionIssue.severity !== 'blocked') {
+    reasons.push({
+      type: 'unresolved_inspection_note',
+      severity: 'maintenance_soon',
+      label: 'Driver issue needs review',
+      detail: openInspectionIssue.issue_note || openInspectionIssue.inspection_type_label || 'Vehicle check submitted'
     });
   }
 
@@ -748,6 +965,7 @@ function createVehiclesRouter(options = {}) {
       let maintenanceByVehicleId = new Map();
       let maintenanceByVehicleAndType = new Map();
       let assignmentsByVehicleId = new Map();
+      let openInspectionIssuesByVehicleId = new Map();
       let activeMaintenanceSettings = [];
       let reminderSchedule = { ...DEFAULT_REMINDER_SCHEDULE };
 
@@ -798,6 +1016,44 @@ function createVehiclesRouter(options = {}) {
         maintenanceByVehicleId = mapLatestMaintenance(maintenanceRows);
         maintenanceByVehicleAndType = getLatestMaintenanceByVehicleAndType(maintenanceRows);
 
+        const { data: openInspectionRows, error: openInspectionError } = await supabase
+          .from('vehicle_inspections')
+          .select('id, vehicle_id, inspection_type, issue_reported, issue_note, status, submitted_at')
+          .eq('account_id', req.account.account_id)
+          .eq('status', 'needs_review')
+          .in('vehicle_id', vehicleIds)
+          .order('submitted_at', { ascending: false });
+
+        if (openInspectionError) {
+          console.error('Vehicle open inspection lookup failed:', openInspectionError);
+          return res.status(500).json({ error: 'Failed to load vehicle inspection issues' });
+        }
+
+        const openInspectionIds = (openInspectionRows || []).map((inspection) => inspection.id).filter(Boolean);
+        let itemsByInspectionId = new Map();
+
+        if (openInspectionIds.length) {
+          const { data: inspectionItems, error: inspectionItemsError } = await supabase
+            .from('vehicle_inspection_items')
+            .select('inspection_id, checklist_item_key, label, value, status, note')
+            .eq('account_id', req.account.account_id)
+            .in('inspection_id', openInspectionIds);
+
+          if (inspectionItemsError) {
+            console.error('Vehicle open inspection item lookup failed:', inspectionItemsError);
+            return res.status(500).json({ error: 'Failed to load vehicle inspection issues' });
+          }
+
+          itemsByInspectionId = (inspectionItems || []).reduce((map, item) => {
+            const current = map.get(item.inspection_id) || [];
+            current.push(item);
+            map.set(item.inspection_id, current);
+            return map;
+          }, new Map());
+        }
+
+        openInspectionIssuesByVehicleId = mapOpenInspectionIssues(openInspectionRows, itemsByInspectionId);
+
         const { data: routeAssignments, error: assignmentsError } = await supabase
           .from('routes')
           .select('id, vehicle_id, driver_id, work_area_name, status')
@@ -847,7 +1103,15 @@ function createVehiclesRouter(options = {}) {
           );
           const maintenanceServiceDue = ['due_soon', 'overdue'].includes(maintenanceAlert.status);
           const todayAssignment = assignmentsByVehicleId.get(vehicle.id) || null;
-          const readiness = buildVehicleReadiness(vehicle, maintenanceAlert, todayAssignment, today, reminderSchedule);
+          const openInspectionIssue = openInspectionIssuesByVehicleId.get(vehicle.id) || null;
+          const readiness = buildVehicleReadiness(
+            vehicle,
+            maintenanceAlert,
+            todayAssignment,
+            openInspectionIssue,
+            today,
+            reminderSchedule
+          );
 
           return {
             ...vehicle,
@@ -855,6 +1119,7 @@ function createVehiclesRouter(options = {}) {
             vehicle_status_label: getVehicleStatusLabel(vehicle),
             latest_maintenance: maintenanceByVehicleId.get(vehicle.id) || null,
             maintenance_alert: maintenanceAlert,
+            open_inspection_issue: openInspectionIssue,
             today_assignment: todayAssignment,
             readiness,
             readiness_status: readiness.status,
@@ -869,6 +1134,8 @@ function createVehiclesRouter(options = {}) {
   });
 
   router.get('/due-soon', requireManager, async (req, res) => {
+    const today = getCurrentDateString(nowProvider());
+
     try {
       const { data: vehicles, error } = await supabase
         .from('vehicles')
@@ -881,11 +1148,80 @@ function createVehiclesRouter(options = {}) {
         return res.status(500).json({ error: 'Failed to load vehicles due for service' });
       }
 
-      const dueSoon = (vehicles || []).filter((vehicle) => {
+      const vehicleIds = (vehicles || []).map((vehicle) => vehicle.id);
+      let activeMaintenanceSettings = [];
+      let maintenanceByVehicleAndType = new Map();
+      let reminderSchedule = { ...DEFAULT_REMINDER_SCHEDULE };
+
+      const { data: maintenanceSettings, error: maintenanceSettingsError } = await supabase
+        .from('vehicle_maintenance_settings')
+        .select('*')
+        .eq('account_id', req.account.account_id)
+        .order('service_type');
+
+      if (maintenanceSettingsError) {
+        console.error('Vehicles due-soon maintenance settings lookup failed:', maintenanceSettingsError);
+        return res.status(500).json({ error: 'Failed to load maintenance settings' });
+      }
+
+      activeMaintenanceSettings = maintenanceSettings?.length
+        ? maintenanceSettings
+        : createDefaultMaintenanceSettings();
+
+      const { data: checkRequirementSettings, error: checkRequirementError } = await supabase
+        .from('vehicle_check_requirement_settings')
+        .select('weekly_inspection_day, maintenance_warning_miles, maintenance_warning_days, document_warning_days')
+        .eq('account_id', req.account.account_id)
+        .maybeSingle();
+
+      if (checkRequirementError) {
+        const missingReminderColumns = ['42703', 'PGRST204', 'PGRST205'].includes(checkRequirementError.code);
+        if (!missingReminderColumns) {
+          console.error('Vehicles due-soon reminder schedule lookup failed:', checkRequirementError);
+          return res.status(500).json({ error: 'Failed to load vehicle reminder schedule' });
+        }
+      } else {
+        reminderSchedule = presentReminderSchedule(checkRequirementSettings);
+      }
+
+      if (vehicleIds.length) {
+        const { data: maintenanceRows, error: maintenanceError } = await supabase
+          .from('vehicle_maintenance')
+          .select('*')
+          .eq('account_id', req.account.account_id)
+          .in('vehicle_id', vehicleIds)
+          .order('service_date', { ascending: false });
+
+        if (maintenanceError) {
+          console.error('Vehicles due-soon maintenance lookup failed:', maintenanceError);
+          return res.status(500).json({ error: 'Failed to load vehicle maintenance' });
+        }
+
+        maintenanceByVehicleAndType = getLatestMaintenanceByVehicleAndType(maintenanceRows);
+      }
+
+      const dueSoon = (vehicles || []).map((vehicle) => {
         const nextServiceMileage = toInteger(vehicle.next_service_mileage);
         const currentMileage = toInteger(vehicle.current_mileage) || 0;
-        return Number.isInteger(nextServiceMileage) && currentMileage >= nextServiceMileage - 500;
-      });
+        const legacyServiceDue = Number.isInteger(nextServiceMileage) && currentMileage >= nextServiceMileage - 500;
+        const maintenanceAlert = buildVehicleMaintenanceAlert(
+          vehicle,
+          activeMaintenanceSettings,
+          maintenanceByVehicleAndType,
+          today,
+          reminderSchedule
+        );
+
+        if (!legacyServiceDue && !['due_soon', 'overdue'].includes(maintenanceAlert.status)) {
+          return null;
+        }
+
+        return {
+          ...vehicle,
+          maintenance_alert: maintenanceAlert,
+          service_due: true
+        };
+      }).filter(Boolean);
 
       return res.status(200).json({ vehicles: dueSoon });
     } catch (error) {
@@ -1239,6 +1575,356 @@ function createVehiclesRouter(options = {}) {
     } catch (error) {
       console.error('Vehicle checklist template save failed:', error);
       return res.status(500).json({ error: 'Failed to save checklist template' });
+    }
+  });
+
+  router.get('/inspections', requireManager, async (req, res) => {
+    const statusFilter = String(req.query.status || 'all').trim();
+    const dateFilter = String(req.query.date || '').trim();
+    const vehicleIdFilter = String(req.query.vehicle_id || '').trim();
+
+    if (statusFilter !== 'all' && !INSPECTION_STATUSES.has(statusFilter)) {
+      return res.status(400).json({ error: 'inspection status is not supported' });
+    }
+
+    try {
+      let query = supabase
+        .from('vehicle_inspections')
+        .select('*')
+        .eq('account_id', req.account.account_id)
+        .order('submitted_at', { ascending: false })
+        .order('created_at', { ascending: false })
+        .limit(150);
+
+      if (statusFilter !== 'all') {
+        query = query.eq('status', statusFilter);
+      }
+
+      if (dateFilter) {
+        query = query.eq('inspection_date', dateFilter);
+      }
+
+      if (vehicleIdFilter) {
+        query = query.eq('vehicle_id', vehicleIdFilter);
+      }
+
+      const { data: inspections, error } = await query;
+
+      if (error) {
+        console.error('Vehicle inspections lookup failed:', error);
+        return res.status(500).json({ error: 'Failed to load vehicle inspections' });
+      }
+
+      const vehicleIds = [...new Set((inspections || []).map((inspection) => inspection.vehicle_id).filter(Boolean))];
+      const driverIds = [...new Set((inspections || []).map((inspection) => inspection.driver_id).filter(Boolean))];
+      const inspectionIds = (inspections || []).map((inspection) => inspection.id).filter(Boolean);
+      let vehiclesById = new Map();
+      let driversById = new Map();
+      let itemsByInspectionId = new Map();
+
+      if (vehicleIds.length) {
+        const { data: vehicles, error: vehiclesError } = await supabase
+          .from('vehicles')
+          .select('id, name, make, model, year, truck_type, custom_truck_type')
+          .eq('account_id', req.account.account_id)
+          .in('id', vehicleIds);
+
+        if (vehiclesError) {
+          console.error('Vehicle inspections vehicle lookup failed:', vehiclesError);
+          return res.status(500).json({ error: 'Failed to load vehicle inspections' });
+        }
+
+        vehiclesById = new Map((vehicles || []).map((vehicle) => [vehicle.id, vehicle]));
+      }
+
+      if (driverIds.length) {
+        const { data: drivers, error: driversError } = await supabase
+          .from('drivers')
+          .select('id, name, phone')
+          .eq('account_id', req.account.account_id)
+          .in('id', driverIds);
+
+        if (driversError) {
+          console.error('Vehicle inspections driver lookup failed:', driversError);
+          return res.status(500).json({ error: 'Failed to load vehicle inspections' });
+        }
+
+        driversById = new Map((drivers || []).map((driver) => [driver.id, driver]));
+      }
+
+      if (inspectionIds.length) {
+        const { data: items, error: itemsError } = await supabase
+          .from('vehicle_inspection_items')
+          .select('*')
+          .eq('account_id', req.account.account_id)
+          .in('inspection_id', inspectionIds)
+          .order('sort_order');
+
+        if (itemsError) {
+          console.error('Vehicle inspections item lookup failed:', itemsError);
+          return res.status(500).json({ error: 'Failed to load vehicle inspections' });
+        }
+
+        itemsByInspectionId = (items || []).reduce((map, item) => {
+          const current = map.get(item.inspection_id) || [];
+          current.push(item);
+          map.set(item.inspection_id, current);
+          return map;
+        }, new Map());
+      }
+
+      return res.status(200).json({
+        inspections: (inspections || []).map((inspection) => presentInspection(inspection, {
+          vehicle: vehiclesById.get(inspection.vehicle_id) || null,
+          driver: driversById.get(inspection.driver_id) || null,
+          items: itemsByInspectionId.get(inspection.id) || []
+        }))
+      });
+    } catch (error) {
+      console.error('Vehicle inspections endpoint failed:', error);
+      return res.status(500).json({ error: 'Failed to load vehicle inspections' });
+    }
+  });
+
+  router.get('/inspections/:inspectionId', requireManager, async (req, res) => {
+    try {
+      const { data: inspection, error } = await supabase
+        .from('vehicle_inspections')
+        .select('*')
+        .eq('account_id', req.account.account_id)
+        .eq('id', req.params.inspectionId)
+        .maybeSingle();
+
+      if (error) {
+        console.error('Vehicle inspection detail lookup failed:', error);
+        return res.status(500).json({ error: 'Failed to load vehicle inspection' });
+      }
+
+      if (!inspection) {
+        return res.status(404).json({ error: 'Vehicle inspection not found' });
+      }
+
+      const [
+        vehicleResult,
+        driverResult,
+        itemsResult
+      ] = await Promise.all([
+        inspection.vehicle_id
+          ? supabase
+            .from('vehicles')
+            .select('id, name, make, model, year, truck_type, custom_truck_type')
+            .eq('account_id', req.account.account_id)
+            .eq('id', inspection.vehicle_id)
+            .maybeSingle()
+          : Promise.resolve({ data: null, error: null }),
+        inspection.driver_id
+          ? supabase
+            .from('drivers')
+            .select('id, name, phone')
+            .eq('account_id', req.account.account_id)
+            .eq('id', inspection.driver_id)
+            .maybeSingle()
+          : Promise.resolve({ data: null, error: null }),
+        supabase
+          .from('vehicle_inspection_items')
+          .select('*')
+          .eq('account_id', req.account.account_id)
+          .eq('inspection_id', inspection.id)
+          .order('sort_order')
+      ]);
+
+      if (vehicleResult.error || driverResult.error || itemsResult.error) {
+        console.error('Vehicle inspection detail related lookup failed:', vehicleResult.error || driverResult.error || itemsResult.error);
+        return res.status(500).json({ error: 'Failed to load vehicle inspection' });
+      }
+
+      return res.status(200).json({
+        inspection: presentInspection(inspection, {
+          vehicle: vehicleResult.data,
+          driver: driverResult.data,
+          items: itemsResult.data || []
+        })
+      });
+    } catch (error) {
+      console.error('Vehicle inspection detail endpoint failed:', error);
+      return res.status(500).json({ error: 'Failed to load vehicle inspection' });
+    }
+  });
+
+  router.put('/inspections/:inspectionId/review', requireManager, async (req, res) => {
+    const managerReviewNote = req.body?.manager_review_note === undefined || req.body?.manager_review_note === null
+      ? null
+      : String(req.body.manager_review_note).trim();
+
+    try {
+      const { data: existing, error: lookupError } = await supabase
+        .from('vehicle_inspections')
+        .select('id')
+        .eq('account_id', req.account.account_id)
+        .eq('id', req.params.inspectionId)
+        .maybeSingle();
+
+      if (lookupError) {
+        console.error('Vehicle inspection review lookup failed:', lookupError);
+        return res.status(500).json({ error: 'Failed to review vehicle inspection' });
+      }
+
+      if (!existing) {
+        return res.status(404).json({ error: 'Vehicle inspection not found' });
+      }
+
+      const reviewedAt = nowProvider().toISOString();
+      const payload = {
+        status: 'reviewed',
+        reviewed_at: reviewedAt,
+        reviewed_by_manager_user_id: req.account.manager_user_id || null,
+        manager_review_note: managerReviewNote,
+        updated_at: reviewedAt
+      };
+
+      const { data: inspection, error: updateError } = await supabase
+        .from('vehicle_inspections')
+        .update(payload)
+        .eq('account_id', req.account.account_id)
+        .eq('id', req.params.inspectionId)
+        .select('*')
+        .single();
+
+      if (updateError) {
+        console.error('Vehicle inspection review update failed:', updateError);
+        return res.status(500).json({ error: 'Failed to review vehicle inspection' });
+      }
+
+      return res.status(200).json({ inspection: presentInspection(inspection) });
+    } catch (error) {
+      console.error('Vehicle inspection review endpoint failed:', error);
+      return res.status(500).json({ error: 'Failed to review vehicle inspection' });
+    }
+  });
+
+  router.post('/inspections', requireDriver, async (req, res) => {
+    const vehicleId = String(req.body?.vehicle_id || '').trim();
+    const routeId = req.body?.route_id ? String(req.body.route_id).trim() : null;
+    const inspectionType = normalizeInspectionType(req.body?.inspection_type);
+    const inspectionDate = String(req.body?.inspection_date || '').trim() || getCurrentDateString(nowProvider());
+    const odometer = req.body?.odometer === undefined || req.body?.odometer === null || req.body?.odometer === ''
+      ? null
+      : toInteger(req.body.odometer);
+    const issueNote = req.body?.issue_note === undefined || req.body?.issue_note === null
+      ? null
+      : String(req.body.issue_note).trim();
+    const items = normalizeInspectionItems(req.body?.items);
+
+    if (!vehicleId) {
+      return res.status(400).json({ error: 'vehicle_id is required' });
+    }
+
+    if (!inspectionType) {
+      return res.status(400).json({ error: 'inspection_type is not supported' });
+    }
+
+    if (odometer !== null && (!Number.isInteger(odometer) || odometer < 0)) {
+      return res.status(400).json({ error: 'odometer must be a non-negative integer' });
+    }
+
+    try {
+      const { data: vehicle, error: vehicleError } = await loadOwnedVehicle(supabase, {
+        vehicleId,
+        accountId: req.driver.account_id
+      });
+
+      if (vehicleError) {
+        console.error('Vehicle inspection vehicle lookup failed:', vehicleError);
+        return res.status(500).json({ error: 'Failed to save vehicle inspection' });
+      }
+
+      if (!vehicle) {
+        return res.status(403).json({ error: 'Vehicle does not belong to this account' });
+      }
+
+      if (routeId) {
+        const { data: route, error: routeError } = await supabase
+          .from('routes')
+          .select('id')
+          .eq('account_id', req.driver.account_id)
+          .eq('driver_id', req.driver.driver_id)
+          .eq('id', routeId)
+          .maybeSingle();
+
+        if (routeError) {
+          console.error('Vehicle inspection route lookup failed:', routeError);
+          return res.status(500).json({ error: 'Failed to save vehicle inspection' });
+        }
+
+        if (!route) {
+          return res.status(403).json({ error: 'Route does not belong to this driver' });
+        }
+      }
+
+      const issueReported = Boolean(req.body?.issue_reported) || Boolean(issueNote) || items.some((item) => item.status === 'fail');
+      const status = inspectionNeedsReview({ issueReported, issueNote, items }) ? 'needs_review' : 'submitted';
+      const submittedAt = nowProvider().toISOString();
+      const inspectionPayload = {
+        account_id: req.driver.account_id,
+        vehicle_id: vehicleId,
+        driver_id: req.driver.driver_id,
+        route_id: routeId,
+        inspection_date: inspectionDate,
+        inspection_type: inspectionType,
+        odometer,
+        issue_reported: issueReported,
+        issue_note: issueNote,
+        status,
+        submitted_at: submittedAt,
+        updated_at: submittedAt
+      };
+
+      const { data: inspection, error: insertError } = await supabase
+        .from('vehicle_inspections')
+        .insert(inspectionPayload)
+        .select('*')
+        .single();
+
+      if (insertError) {
+        console.error('Vehicle inspection insert failed:', insertError);
+        return res.status(500).json({ error: 'Failed to save vehicle inspection' });
+      }
+
+      if (items.length) {
+        const itemPayload = items.map((item) => ({
+          ...item,
+          account_id: req.driver.account_id,
+          inspection_id: inspection.id
+        }));
+
+        const { error: itemsError } = await supabase
+          .from('vehicle_inspection_items')
+          .insert(itemPayload);
+
+        if (itemsError) {
+          console.error('Vehicle inspection items insert failed:', itemsError);
+          return res.status(500).json({ error: 'Failed to save vehicle inspection items' });
+        }
+      }
+
+      if (odometer !== null && odometer > (toInteger(vehicle.current_mileage) || 0)) {
+        const { error: updateVehicleError } = await supabase
+          .from('vehicles')
+          .update({ current_mileage: odometer })
+          .eq('id', vehicleId)
+          .eq('account_id', req.driver.account_id);
+
+        if (updateVehicleError) {
+          console.error('Vehicle inspection odometer update failed:', updateVehicleError);
+        }
+      }
+
+      return res.status(201).json({
+        inspection: presentInspection(inspection, { vehicle })
+      });
+    } catch (error) {
+      console.error('Vehicle inspection submit endpoint failed:', error);
+      return res.status(500).json({ error: 'Failed to save vehicle inspection' });
     }
   });
 
@@ -1774,6 +2460,232 @@ function createVehiclesRouter(options = {}) {
     } catch (error) {
       console.error('Vehicle maintenance history endpoint failed:', error);
       return res.status(500).json({ error: 'Failed to load maintenance history' });
+    }
+  });
+
+  router.get('/:id/inspection-history', requireManager, async (req, res) => {
+    const vehicleId = req.params.id;
+
+    try {
+      const { data: vehicle, error: vehicleError } = await loadOwnedVehicle(supabase, {
+        vehicleId,
+        accountId: req.account.account_id
+      });
+
+      if (vehicleError) {
+        console.error('Vehicle inspection history lookup failed:', vehicleError);
+        return res.status(500).json({ error: 'Failed to validate vehicle' });
+      }
+
+      if (!vehicle) {
+        return res.status(403).json({ error: 'Vehicle does not belong to this account' });
+      }
+
+      const { data: inspections, error: inspectionsError } = await supabase
+        .from('vehicle_inspections')
+        .select('*')
+        .eq('account_id', req.account.account_id)
+        .eq('vehicle_id', vehicleId)
+        .order('inspection_date', { ascending: false })
+        .order('submitted_at', { ascending: false })
+        .limit(100);
+
+      if (inspectionsError) {
+        console.error('Vehicle inspection history query failed:', inspectionsError);
+        return res.status(500).json({ error: 'Failed to load inspection history' });
+      }
+
+      const driverIds = [...new Set((inspections || []).map((inspection) => inspection.driver_id).filter(Boolean))];
+      const inspectionIds = (inspections || []).map((inspection) => inspection.id).filter(Boolean);
+      let driversById = new Map();
+      let itemsByInspectionId = new Map();
+
+      if (driverIds.length) {
+        const { data: drivers, error: driversError } = await supabase
+          .from('drivers')
+          .select('id, name, phone')
+          .eq('account_id', req.account.account_id)
+          .in('id', driverIds);
+
+        if (driversError) {
+          console.error('Vehicle inspection history driver lookup failed:', driversError);
+          return res.status(500).json({ error: 'Failed to load inspection history' });
+        }
+
+        driversById = new Map((drivers || []).map((driver) => [driver.id, driver]));
+      }
+
+      if (inspectionIds.length) {
+        const { data: items, error: itemsError } = await supabase
+          .from('vehicle_inspection_items')
+          .select('*')
+          .eq('account_id', req.account.account_id)
+          .in('inspection_id', inspectionIds)
+          .order('sort_order');
+
+        if (itemsError) {
+          console.error('Vehicle inspection history items lookup failed:', itemsError);
+          return res.status(500).json({ error: 'Failed to load inspection history' });
+        }
+
+        itemsByInspectionId = (items || []).reduce((map, item) => {
+          const current = map.get(item.inspection_id) || [];
+          current.push(item);
+          map.set(item.inspection_id, current);
+          return map;
+        }, new Map());
+      }
+
+      return res.status(200).json({
+        inspections: (inspections || []).map((inspection) => presentInspection(inspection, {
+          vehicle,
+          driver: driversById.get(inspection.driver_id) || null,
+          items: itemsByInspectionId.get(inspection.id) || []
+        }))
+      });
+    } catch (error) {
+      console.error('Vehicle inspection history endpoint failed:', error);
+      return res.status(500).json({ error: 'Failed to load inspection history' });
+    }
+  });
+
+  router.get('/:id/odometer-history', requireManager, async (req, res) => {
+    const vehicleId = req.params.id;
+
+    try {
+      const { data: vehicle, error: vehicleError } = await loadOwnedVehicle(supabase, {
+        vehicleId,
+        accountId: req.account.account_id
+      });
+
+      if (vehicleError) {
+        console.error('Vehicle odometer history lookup failed:', vehicleError);
+        return res.status(500).json({ error: 'Failed to validate vehicle' });
+      }
+
+      if (!vehicle) {
+        return res.status(403).json({ error: 'Vehicle does not belong to this account' });
+      }
+
+      const { data: entries, error: entriesError } = await supabase
+        .from('vehicle_odometer_entries')
+        .select('*')
+        .eq('account_id', req.account.account_id)
+        .eq('vehicle_id', vehicleId)
+        .order('recorded_at', { ascending: false })
+        .order('created_at', { ascending: false })
+        .limit(100);
+
+      if (entriesError) {
+        console.error('Vehicle odometer history query failed:', entriesError);
+        return res.status(500).json({ error: 'Failed to load odometer history' });
+      }
+
+      const driverIds = [...new Set((entries || []).map((entry) => entry.driver_id).filter(Boolean))];
+      const routeIds = [...new Set((entries || []).map((entry) => entry.route_id).filter(Boolean))];
+      let driversById = new Map();
+      let routesById = new Map();
+
+      if (driverIds.length) {
+        const { data: drivers, error: driversError } = await supabase
+          .from('drivers')
+          .select('id, name, phone')
+          .eq('account_id', req.account.account_id)
+          .in('id', driverIds);
+
+        if (driversError) {
+          console.error('Vehicle odometer history driver lookup failed:', driversError);
+          return res.status(500).json({ error: 'Failed to load odometer history' });
+        }
+
+        driversById = new Map((drivers || []).map((driver) => [driver.id, driver]));
+      }
+
+      if (routeIds.length) {
+        const { data: routes, error: routesError } = await supabase
+          .from('routes')
+          .select('id, date, work_area_name, status')
+          .eq('account_id', req.account.account_id)
+          .in('id', routeIds);
+
+        if (routesError) {
+          console.error('Vehicle odometer history route lookup failed:', routesError);
+          return res.status(500).json({ error: 'Failed to load odometer history' });
+        }
+
+        routesById = new Map((routes || []).map((route) => [route.id, route]));
+      }
+
+      return res.status(200).json({
+        odometer_entries: (entries || []).map((entry) => presentOdometerEntry(entry, {
+          driver: driversById.get(entry.driver_id) || null,
+          route: routesById.get(entry.route_id) || null
+        }))
+      });
+    } catch (error) {
+      console.error('Vehicle odometer history endpoint failed:', error);
+      return res.status(500).json({ error: 'Failed to load odometer history' });
+    }
+  });
+
+  router.get('/:id/assignment-history', requireManager, async (req, res) => {
+    const vehicleId = req.params.id;
+
+    try {
+      const { data: vehicle, error: vehicleError } = await loadOwnedVehicle(supabase, {
+        vehicleId,
+        accountId: req.account.account_id
+      });
+
+      if (vehicleError) {
+        console.error('Vehicle assignment history lookup failed:', vehicleError);
+        return res.status(500).json({ error: 'Failed to validate vehicle' });
+      }
+
+      if (!vehicle) {
+        return res.status(403).json({ error: 'Vehicle does not belong to this account' });
+      }
+
+      const { data: routes, error: routesError } = await supabase
+        .from('routes')
+        .select('id, date, driver_id, vehicle_id, work_area_name, status, total_stops, completed_stops, created_at, completed_at')
+        .eq('account_id', req.account.account_id)
+        .eq('vehicle_id', vehicleId)
+        .order('date', { ascending: false })
+        .order('created_at', { ascending: false })
+        .limit(100);
+
+      if (routesError) {
+        console.error('Vehicle assignment history route query failed:', routesError);
+        return res.status(500).json({ error: 'Failed to load assignment history' });
+      }
+
+      const driverIds = [...new Set((routes || []).map((route) => route.driver_id).filter(Boolean))];
+      let driversById = new Map();
+
+      if (driverIds.length) {
+        const { data: drivers, error: driversError } = await supabase
+          .from('drivers')
+          .select('id, name, phone')
+          .eq('account_id', req.account.account_id)
+          .in('id', driverIds);
+
+        if (driversError) {
+          console.error('Vehicle assignment history driver lookup failed:', driversError);
+          return res.status(500).json({ error: 'Failed to load assignment history' });
+        }
+
+        driversById = new Map((drivers || []).map((driver) => [driver.id, driver]));
+      }
+
+      return res.status(200).json({
+        assignments: (routes || []).map((route) => presentAssignmentRoute(route, {
+          driver: driversById.get(route.driver_id) || null
+        }))
+      });
+    } catch (error) {
+      console.error('Vehicle assignment history endpoint failed:', error);
+      return res.status(500).json({ error: 'Failed to load assignment history' });
     }
   });
 

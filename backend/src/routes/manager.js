@@ -1779,7 +1779,8 @@ function createPackagesByStopId(packages = []) {
       service_code: pkg.service_code,
       requires_signature: pkg.requires_signature,
       requires_adult_signature: pkg.requires_adult_signature,
-      hazmat: pkg.hazmat
+      hazmat: pkg.hazmat,
+      ...(pkg.floor_load ? { floor_load: true } : {})
     });
     map.set(pkg.stop_id, current);
     return map;
@@ -1788,7 +1789,7 @@ function createPackagesByStopId(packages = []) {
 
 function isOptionalPackageDetailColumnError(error) {
   const message = String(error?.message || error?.details || error?.hint || '');
-  return /service_code/i.test(message) || /requires_adult_signature/i.test(message) || /schema cache/i.test(message);
+  return /service_code/i.test(message) || /requires_adult_signature/i.test(message) || /floor_load/i.test(message) || /schema cache/i.test(message);
 }
 
 async function fetchPackagesByStopIds(supabase, stopIds = [], selectClause = 'id, stop_id') {
@@ -5040,7 +5041,7 @@ function createManagerRouter(options = {}) {
       const { data: packages, error: packagesError } = await fetchPackagesByStopIds(
         supabase,
         [stopId],
-        'id, stop_id, tracking_number, service_code, requires_signature, requires_adult_signature, hazmat'
+        'id, stop_id, tracking_number, service_code, requires_signature, requires_adult_signature, hazmat, floor_load'
       );
 
       if (packagesError) {
@@ -5177,7 +5178,7 @@ function createManagerRouter(options = {}) {
         const { data: packages, error: packagesError } = await fetchPackagesByStopIds(
           supabase,
           stopIds,
-          'id, stop_id, tracking_number, service_code, requires_signature, requires_adult_signature, hazmat'
+          'id, stop_id, tracking_number, service_code, requires_signature, requires_adult_signature, hazmat, floor_load'
         );
 
         if (packagesError) {
@@ -5392,6 +5393,8 @@ function createManagerRouter(options = {}) {
   router.patch('/routes/stops/:stop_id/note', requireManager, async (req, res) => {
     const stopId = req.params.stop_id;
     const normalizedNoteText = String(req.body?.note_text || '').trim();
+    const normalizedNoteScope = String(req.body?.note_scope || 'unit').trim().toLowerCase();
+    const saveScope = ['stop', 'unit', 'address', 'building'].includes(normalizedNoteScope) ? normalizedNoteScope : 'unit';
 
     try {
       const { data: stop, error: stopError } = await supabase
@@ -5410,11 +5413,31 @@ function createManagerRouter(options = {}) {
         return res.status(404).json({ error: 'Stop not found' });
       }
 
-      await saveStopNote(supabase, req.account.account_id, stop, normalizedNoteText, createAddressHash);
+      if (saveScope === 'stop') {
+        const { error: stopOnlyError } = await supabase
+          .from('stops')
+          .update({
+            has_note: Boolean(normalizedNoteText),
+            notes: normalizedNoteText || null
+          })
+          .eq('id', stopId);
+
+        if (stopOnlyError) {
+          console.error('Manager stop-only note update failed:', stopOnlyError);
+          return res.status(500).json({ error: 'Failed to save stop note' });
+        }
+
+        return res.status(200).json({ ok: true, note_scope: 'stop' });
+      }
+
+      const noteSaveResult = await saveStopNote(supabase, req.account.account_id, stop, normalizedNoteText, createAddressHash, { scope: saveScope });
 
       const { error: stopUpdateError } = await supabase
         .from('stops')
-        .update({ has_note: Boolean(normalizedNoteText) })
+        .update({
+          has_note: Boolean(normalizedNoteText),
+          notes: null
+        })
         .eq('id', stopId);
 
       if (stopUpdateError) {
@@ -5422,7 +5445,7 @@ function createManagerRouter(options = {}) {
         return res.status(500).json({ error: 'Failed to save stop note' });
       }
 
-      return res.status(200).json({ ok: true });
+      return res.status(200).json({ ok: true, note_scope: noteSaveResult?.note_scope || (saveScope === 'building' ? 'address' : saveScope) });
     } catch (error) {
       console.error('Manager stop note endpoint failed:', error);
       return res.status(500).json({ error: 'Failed to save stop note' });

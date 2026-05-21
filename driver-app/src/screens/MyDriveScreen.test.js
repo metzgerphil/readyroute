@@ -16,9 +16,15 @@ jest.mock('../services/auth', () => ({
 }));
 
 jest.mock('expo-location', () => ({
+  Accuracy: {
+    BestForNavigation: 6,
+    Highest: 5,
+    High: 4
+  },
   getForegroundPermissionsAsync: jest.fn(),
   requestForegroundPermissionsAsync: jest.fn(),
-  getCurrentPositionAsync: jest.fn()
+  getCurrentPositionAsync: jest.fn(),
+  watchPositionAsync: jest.fn()
 }));
 
 jest.mock('react-native-maps', () => {
@@ -45,10 +51,12 @@ import {
   getBannerBadges,
   getCompactStopTools,
   getFocusCoordinates,
+  getHouseNumber,
   getLocationRequirementCopy,
   getMapRegion,
   getMapPinSize,
   getMapPinServiceBadgeLabel,
+  positionToCoordinate,
   getQuickIntel,
   getStopStatusColors,
   getStopTools,
@@ -58,6 +66,7 @@ import {
   hasGrantedLocationPermission,
   isDeniedLocationPermission,
   shouldPromptForLocationPermission,
+  shouldPostDriverPosition,
   stopRequiresSignature,
   getStopType,
   getVisibleBannerBadges,
@@ -69,6 +78,8 @@ describe('MyDriveScreen helpers', () => {
     const stop = { lat: 33.12, lng: -117.08 };
     expect(toCoordinate(stop)).toEqual({ latitude: 33.12, longitude: -117.08 });
     expect(toCoordinate({ lat: null, lng: -117.08 })).toBeNull();
+    expect(getHouseNumber('20253 Elfin Forest Road, Escondido, CA')).toBe('20253');
+    expect(getHouseNumber('Avenida Del Diablo, Escondido, CA')).toBeNull();
 
     const selectedStop = { lat: 33.12, lng: -117.08 };
     const currentLocation = {
@@ -77,6 +88,22 @@ describe('MyDriveScreen helpers', () => {
 
     expect(getFocusCoordinates({ currentLocation, selectedStop })).toHaveLength(2);
     expect(getMapRegion({ currentStop: selectedStop, currentLocation }).latitude).toBe(33.12);
+  });
+
+  it('throttles driver location posts by time and distance', () => {
+    const firstPosition = { coords: { latitude: 33.12, longitude: -117.08 } };
+    const nearbyPosition = { coords: { latitude: 33.12001, longitude: -117.08001 } };
+    const movedPosition = { coords: { latitude: 33.1203, longitude: -117.0803 } };
+    const lastPostedPosition = {
+      coordinate: positionToCoordinate(firstPosition),
+      postedAt: 1000
+    };
+
+    expect(shouldPostDriverPosition({ nextPosition: firstPosition, now: 1000 })).toBe(true);
+    expect(shouldPostDriverPosition({ lastPostedPosition, nextPosition: nearbyPosition, now: 5000 })).toBe(false);
+    expect(shouldPostDriverPosition({ lastPostedPosition, nextPosition: nearbyPosition, now: 12000 })).toBe(true);
+    expect(shouldPostDriverPosition({ lastPostedPosition, nextPosition: movedPosition, now: 5000 })).toBe(true);
+    expect(shouldPostDriverPosition({ lastPostedPosition, nextPosition: { coords: {} }, now: 12000 })).toBe(false);
   });
 
   it('derives stop type, time commit presentation, and urgency correctly', () => {

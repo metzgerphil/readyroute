@@ -565,7 +565,7 @@ export function buildManagerOverviewStats(routes = []) {
   );
 }
 
-export function buildVisibleStopMarkers(routes = [], { selectedRoute = null, region = null, maxStopMarkers = 80 } = {}) {
+export function buildVisibleStopMarkers(routes = [], { selectedRoute = null, region = null, maxStopMarkers = Number.POSITIVE_INFINITY } = {}) {
   if (selectedRoute) {
     const routeColor = getRouteColor(selectedRoute, routes);
     return buildStopMarkers(selectedRoute).map((marker) => ({
@@ -575,16 +575,12 @@ export function buildVisibleStopMarkers(routes = [], { selectedRoute = null, reg
     }));
   }
 
-  if (!isMapZoomedIn(region)) {
-    return [];
-  }
-
   return routes
     .flatMap((route) => buildStopMarkers(route, { routeColor: getRouteColor(route, routes) }).map((marker) => ({
       ...marker,
       routeId: route.id
     })))
-    .slice(0, maxStopMarkers);
+    .slice(0, Number.isFinite(maxStopMarkers) ? maxStopMarkers : undefined);
 }
 
 export function buildManagerMapModel({ routes = [], selectedRouteId = null, region = null } = {}) {

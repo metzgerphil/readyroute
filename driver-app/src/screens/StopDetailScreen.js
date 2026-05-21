@@ -18,6 +18,44 @@ import api from '../services/api';
 import { getSidBucketTheme } from '../utils/sidBuckets';
 
 const FLAG_OPTIONS = ['Impassable', 'Seasonal', 'Low clearance', 'Private/no access'];
+const NOTE_SCOPE_OPTIONS = [
+  {
+    value: 'stop',
+    label: 'This stop only',
+    detail: 'For today’s exact stop.'
+  },
+  {
+    value: 'unit',
+    label: 'This apartment/unit',
+    detail: 'Reuse for this same apartment or suite.'
+  },
+  {
+    value: 'address',
+    label: 'Whole building',
+    detail: 'Reuse for this address or complex.'
+  }
+];
+
+function getInitialNoteScope(stop) {
+  if (['stop', 'unit', 'address'].includes(stop?.note_scope)) {
+    return stop.note_scope;
+  }
+
+  return stop?.is_apartment_unit || stop?.unit_label ? 'unit' : 'address';
+}
+
+function getNoteScopeLabel(scope) {
+  switch (scope) {
+    case 'stop':
+      return 'STOP NOTE';
+    case 'unit':
+      return 'APARTMENT/UNIT NOTE';
+    case 'address':
+      return 'BUILDING NOTE';
+    default:
+      return 'NOTE';
+  }
+}
 
 export function getStatusConfig(status) {
   switch (status) {
@@ -279,6 +317,7 @@ export default function StopDetailScreen({ navigation, route }) {
   const initialStop = route.params?.stop || null;
   const [stop, setStop] = useState(initialStop);
   const [noteDraft, setNoteDraft] = useState(initialStop?.note_text || '');
+  const [noteScope, setNoteScope] = useState(getInitialNoteScope(initialStop));
   const [floorDraft, setFloorDraft] = useState(
     initialStop?.apartment_intelligence?.floor != null ? String(initialStop.apartment_intelligence.floor) : ''
   );
@@ -306,9 +345,10 @@ export default function StopDetailScreen({ navigation, route }) {
         const response = await fetchStopDetail();
 
         if (isMounted) {
-          setStop(response.data?.stop || null);
-          setNoteDraft(response.data?.stop?.note_text || '');
-          setFloorDraft(
+	          setStop(response.data?.stop || null);
+	          setNoteDraft(response.data?.stop?.note_text || '');
+	          setNoteScope(getInitialNoteScope(response.data?.stop || null));
+	          setFloorDraft(
             response.data?.stop?.apartment_intelligence?.floor != null
               ? String(response.data.stop.apartment_intelligence.floor)
               : ''
@@ -344,6 +384,7 @@ export default function StopDetailScreen({ navigation, route }) {
       const response = await fetchStopDetail();
       setStop(response.data?.stop || null);
       setNoteDraft(response.data?.stop?.note_text || '');
+      setNoteScope(getInitialNoteScope(response.data?.stop || null));
       setFloorDraft(
         response.data?.stop?.apartment_intelligence?.floor != null
           ? String(response.data.stop.apartment_intelligence.floor)
@@ -400,7 +441,8 @@ export default function StopDetailScreen({ navigation, route }) {
     try {
       const notePath = isManagerMode ? `/manager/routes/stops/${stopId}/note` : `/routes/stops/${stopId}/note`;
       const notePayload = {
-        note_text: noteDraft.trim()
+        note_text: noteDraft.trim(),
+        note_scope: noteScope
       };
 
       if (isManagerMode) {
@@ -540,6 +582,7 @@ export default function StopDetailScreen({ navigation, route }) {
   const addressLine2 = String(stop.address_line2 || '').trim();
   const hasSignatureRequired = (stop.packages || []).some((pkg) => pkg.requires_signature);
   const hasHazmat = (stop.packages || []).some((pkg) => pkg.hazmat);
+  const hasFloorLoad = Boolean(stop.floor_load) || (stop.packages || []).some((pkg) => pkg.floor_load);
   const packageCount = getStopPackageCount(stop);
   const hasVisibleNote = Boolean(stop.has_note && stop.note_text);
   const apartmentIntel = stop.apartment_intelligence;
@@ -908,6 +951,11 @@ export default function StopDetailScreen({ navigation, route }) {
                 <Text style={styles.packageAlertText}>HAZMAT</Text>
               </View>
             ) : null}
+            {hasFloorLoad ? (
+              <View style={[styles.packageAlertBadge, styles.floorLoadBadge]}>
+                <Text style={[styles.packageAlertText, styles.floorLoadText]}>FLOOR LOAD</Text>
+              </View>
+            ) : null}
           </View>
           {(stop.packages || []).map((pkg, index) => (
             <View key={pkg.id} style={styles.packageRow}>
@@ -920,6 +968,11 @@ export default function StopDetailScreen({ navigation, route }) {
                   <Text style={styles.hazmatText}>HZ</Text>
                 </View>
               ) : null}
+              {pkg.floor_load ? (
+                <View style={styles.floorLoadPackageBadge}>
+                  <Text style={styles.floorLoadPackageText}>FL</Text>
+                </View>
+              ) : null}
             </View>
           ))}
         </View>
@@ -928,7 +981,7 @@ export default function StopDetailScreen({ navigation, route }) {
           <Text style={styles.sectionTitle}>Stop Notes</Text>
           {hasVisibleNote ? (
             <View style={styles.savedNoteBox}>
-              <Text style={styles.savedNoteLabel}>NOTE</Text>
+              <Text style={styles.savedNoteLabel}>{getNoteScopeLabel(stop.note_scope)}</Text>
               <Text style={styles.savedNoteText}>{stop.note_text}</Text>
             </View>
           ) : null}
@@ -940,9 +993,29 @@ export default function StopDetailScreen({ navigation, route }) {
                 placeholder="Add a delivery note"
                 placeholderTextColor="#8b8b8b"
                 style={styles.noteInput}
-                value={noteDraft}
-              />
-              <Pressable
+	                value={noteDraft}
+	              />
+              <Text style={styles.noteScopeTitle}>Where should this note apply?</Text>
+              <View style={styles.noteScopeList}>
+                {NOTE_SCOPE_OPTIONS.map((option) => {
+                  const isSelected = noteScope === option.value;
+
+                  return (
+                    <Pressable
+                      key={option.value}
+                      onPress={() => setNoteScope(option.value)}
+                      style={[styles.noteScopeOption, isSelected && styles.noteScopeOptionSelected]}
+                    >
+                      <View style={[styles.noteScopeRadio, isSelected && styles.noteScopeRadioSelected]} />
+                      <View style={styles.noteScopeTextBlock}>
+                        <Text style={[styles.noteScopeLabel, isSelected && styles.noteScopeLabelSelected]}>{option.label}</Text>
+                        <Text style={styles.noteScopeDetail}>{option.detail}</Text>
+                      </View>
+                    </Pressable>
+                  );
+                })}
+              </View>
+	              <Pressable
                 disabled={isSavingNote || !hasNoteDraft}
                 onPress={handleSaveNote}
                 style={[styles.primaryButton, (isSavingNote || !hasNoteDraft) && styles.buttonDisabled]}
@@ -1474,6 +1547,14 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontWeight: '900'
   },
+  floorLoadBadge: {
+    backgroundColor: '#fff7ed',
+    borderColor: '#ff6200',
+    borderWidth: 1
+  },
+  floorLoadText: {
+    color: '#9a3412'
+  },
   packageRow: {
     alignItems: 'center',
     backgroundColor: '#f9fafb',
@@ -1503,6 +1584,19 @@ const styles = StyleSheet.create({
     color: '#ffffff',
     fontSize: 12,
     fontWeight: '800'
+  },
+  floorLoadPackageBadge: {
+    backgroundColor: '#fff7ed',
+    borderColor: '#ff6200',
+    borderRadius: 999,
+    borderWidth: 1,
+    paddingHorizontal: 10,
+    paddingVertical: 6
+  },
+  floorLoadPackageText: {
+    color: '#9a3412',
+    fontSize: 12,
+    fontWeight: '900'
   },
   noteText: {
     color: '#495862',
@@ -1540,6 +1634,60 @@ const styles = StyleSheet.create({
     minHeight: 112,
     padding: 14,
     textAlignVertical: 'top'
+  },
+  noteScopeTitle: {
+    color: '#173042',
+    fontSize: 14,
+    fontWeight: '900',
+    marginBottom: 8
+  },
+  noteScopeList: {
+    gap: 8,
+    marginBottom: 14
+  },
+  noteScopeOption: {
+    alignItems: 'center',
+    backgroundColor: '#ffffff',
+    borderColor: '#d7dce0',
+    borderRadius: 14,
+    borderWidth: 1,
+    flexDirection: 'row',
+    gap: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 10
+  },
+  noteScopeOptionSelected: {
+    backgroundColor: '#fff7f0',
+    borderColor: '#FF6200'
+  },
+  noteScopeRadio: {
+    borderColor: '#9aa8b2',
+    borderRadius: 999,
+    borderWidth: 2,
+    height: 18,
+    width: 18
+  },
+  noteScopeRadioSelected: {
+    backgroundColor: '#FF6200',
+    borderColor: '#FF6200'
+  },
+  noteScopeTextBlock: {
+    flex: 1
+  },
+  noteScopeLabel: {
+    color: '#173042',
+    fontSize: 14,
+    fontWeight: '800'
+  },
+  noteScopeLabelSelected: {
+    color: '#b45309'
+  },
+  noteScopeDetail: {
+    color: '#687783',
+    fontSize: 12,
+    fontWeight: '700',
+    lineHeight: 16,
+    marginTop: 2
   },
   primaryButton: {
     alignItems: 'center',

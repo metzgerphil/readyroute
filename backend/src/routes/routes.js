@@ -41,6 +41,35 @@ const {
   summarizeCoordinateHealth
 } = require('../services/coordinates');
 
+const DEFAULT_CUSTOM_DAILY_REQUIREMENTS = {
+  require_truck_confirmation: true,
+  require_odometer_entry: true,
+  show_issue_note_box: true,
+  require_full_checklist_daily: false
+};
+
+const DEFAULT_CUSTOM_WEEKLY_REQUIREMENTS = {
+  require_full_checklist_weekly: true,
+  require_manager_review_for_reported_issues: true
+};
+
+const DEFAULT_CHECKLIST_TEMPLATE_FIELDS = [
+  { id: 'date', label: 'Date', detail: 'Inspection date', enabled: true, driver_entered: false },
+  { id: 'company_name', label: 'Company name', detail: 'CSA or company name', enabled: true, driver_entered: false },
+  { id: 'truck_number', label: 'Truck Number', detail: 'Truck identifier for the inspection', enabled: true, driver_entered: false },
+  { id: 'driver_name', label: 'Driver first and last name', detail: 'Driver completing the inspection', enabled: true, driver_entered: false },
+  { id: 'tires', label: 'Tires, front, rear inner, rear outer', detail: 'Tire condition across front and rear positions', enabled: true, driver_entered: true },
+  { id: 'check_engine_light', label: 'Check engine light', detail: 'On or Off', enabled: true, driver_entered: true },
+  { id: 'coolant', label: 'Coolant', detail: 'Good or Needs Added', enabled: true, driver_entered: true },
+  { id: 'engine_oil', label: 'Engine oil', detail: 'Good, Needs Added, or Needs Full Change', enabled: true, driver_entered: true },
+  { id: 'brake_fluid', label: 'Brake fluid', detail: 'Good or Needs Added', enabled: true, driver_entered: true },
+  { id: 'windshield_fluid', label: 'Windshield fluid', detail: 'Good or Needs Added', enabled: true, driver_entered: true },
+  { id: 'wipers', label: 'Wipers', detail: 'Good, Left Bad, Right Bad, or Both Bad', enabled: true, driver_entered: true },
+  { id: 'lights', label: 'Lights', detail: 'Headlights, stop lights, and turning signals', enabled: true, driver_entered: true },
+  { id: 'truck_cleanliness', label: 'Truck cleanliness', detail: 'Good or Bad', enabled: true, driver_entered: true },
+  { id: 'driver_notes', label: 'Driver notes', detail: 'Free-text notes from the driver', enabled: true, driver_entered: true }
+];
+
 function parseMultipartForm(req, res, next) {
   const contentType = req.headers['content-type'] || '';
   const boundaryMatch = contentType.match(/boundary=(?:(?:"([^"]+)")|([^;]+))/i);
@@ -181,6 +210,11 @@ function isMissingColumnError(error, columnName) {
   );
 }
 
+function isMissingRelationError(error) {
+  const message = String(error?.message || error?.details || error?.hint || '');
+  return /relation .* does not exist|schema cache|could not find the table/i.test(message);
+}
+
 function getManifestUploadError(error, { workAreaName, date }) {
   const schemaError = getManifestSchemaError(error);
 
@@ -241,6 +275,161 @@ function toInteger(value) {
   return Number.isInteger(parsed) ? parsed : null;
 }
 
+function getWeekdayName(dateString, timeZone = process.env.APP_TIME_ZONE || 'America/Los_Angeles') {
+  const date = dateString ? new Date(`${dateString}T12:00:00`) : new Date();
+
+  return new Intl.DateTimeFormat('en-US', {
+    weekday: 'long',
+    timeZone
+  }).format(date);
+}
+
+function normalizeBooleanMap(value, defaults) {
+  const source = value && typeof value === 'object' && !Array.isArray(value) ? value : {};
+
+  return Object.entries(defaults).reduce((normalized, [key, defaultValue]) => ({
+    ...normalized,
+    [key]: typeof source[key] === 'boolean' ? source[key] : defaultValue
+  }), {});
+}
+
+function normalizeVehicleCheckSetting(setting = {}) {
+  const mode = ['option_1', 'option_2', 'custom'].includes(setting?.maintenance_requirement_mode)
+    ? setting.maintenance_requirement_mode
+    : 'option_1';
+
+  return {
+    maintenance_requirement_mode: mode,
+    weekly_inspection_day: setting?.weekly_inspection_day || 'Monday',
+    custom_daily_requirements: normalizeBooleanMap(
+      setting?.custom_daily_requirements,
+      DEFAULT_CUSTOM_DAILY_REQUIREMENTS
+    ),
+    custom_weekly_requirements: normalizeBooleanMap(
+      setting?.custom_weekly_requirements,
+      DEFAULT_CUSTOM_WEEKLY_REQUIREMENTS
+    )
+  };
+}
+
+function normalizeChecklistTemplateFields(fields = []) {
+  const fieldsById = new Map(
+    (Array.isArray(fields) ? fields : [])
+      .filter((field) => field && typeof field === 'object')
+      .map((field) => [String(field.id || '').trim(), field])
+      .filter(([id]) => Boolean(id))
+  );
+
+  return DEFAULT_CHECKLIST_TEMPLATE_FIELDS.map((defaultField) => {
+    const savedField = fieldsById.get(defaultField.id);
+    return {
+      ...defaultField,
+      enabled: typeof savedField?.enabled === 'boolean' ? savedField.enabled : defaultField.enabled
+    };
+  });
+}
+
+function buildVehicleCheckRequirementPayload({
+  route,
+  vehicle,
+  odometerEntry,
+  existingInspection,
+  setting,
+  checklistTemplate,
+  currentDate
+}) {
+  if (!route?.vehicle_id) {
+    return {
+      required: false,
+      submitted: true
+    };
+  }
+
+  const normalizedSetting = normalizeVehicleCheckSetting(setting);
+  const todayName = getWeekdayName(currentDate);
+  const isWeeklyInspectionDay = todayName === normalizedSetting.weekly_inspection_day;
+  let dailyRequirements = {
+    require_truck_confirmation: true,
+    require_odometer_entry: true,
+    show_issue_note_box: true,
+    require_full_checklist_daily: false
+  };
+  let weeklyRequirements = {
+    require_full_checklist_weekly: isWeeklyInspectionDay,
+    require_manager_review_for_reported_issues: true
+  };
+
+  if (normalizedSetting.maintenance_requirement_mode === 'option_2') {
+    dailyRequirements = {
+      require_truck_confirmation: true,
+      require_odometer_entry: true,
+      show_issue_note_box: true,
+      require_full_checklist_daily: true
+    };
+    weeklyRequirements = {
+      require_full_checklist_weekly: false,
+      require_manager_review_for_reported_issues: true
+    };
+  }
+
+  if (normalizedSetting.maintenance_requirement_mode === 'custom') {
+    dailyRequirements = normalizedSetting.custom_daily_requirements;
+    weeklyRequirements = {
+      ...normalizedSetting.custom_weekly_requirements,
+      require_full_checklist_weekly:
+        isWeeklyInspectionDay && normalizedSetting.custom_weekly_requirements.require_full_checklist_weekly
+    };
+  }
+
+  const requiresFullChecklist = Boolean(
+    dailyRequirements.require_full_checklist_daily || weeklyRequirements.require_full_checklist_weekly
+  );
+  const checklistFields = requiresFullChecklist
+    ? normalizeChecklistTemplateFields(checklistTemplate?.fields)
+        .filter((field) => field.enabled && field.driver_entered)
+    : [];
+  const submitted = Boolean(existingInspection);
+  const lastRecordedOdometer = toInteger(vehicle?.current_mileage) || 0;
+
+  return {
+    required: true,
+    submitted,
+    vehicle_id: route.vehicle_id,
+    vehicle_name: vehicle?.name || null,
+    mode: normalizedSetting.maintenance_requirement_mode,
+    inspection_type: requiresFullChecklist
+      ? (weeklyRequirements.require_full_checklist_weekly ? 'weekly_inspection' : 'full_inspection')
+      : 'daily_check',
+    inspection_date: currentDate,
+    weekly_inspection_day: normalizedSetting.weekly_inspection_day,
+    is_weekly_inspection_day: isWeeklyInspectionDay,
+    require_truck_confirmation: Boolean(dailyRequirements.require_truck_confirmation),
+    require_odometer_entry: Boolean(dailyRequirements.require_odometer_entry),
+    show_issue_note_box: Boolean(dailyRequirements.show_issue_note_box),
+    require_full_checklist: requiresFullChecklist,
+    require_manager_review_for_reported_issues: Boolean(weeklyRequirements.require_manager_review_for_reported_issues),
+    last_recorded_odometer: lastRecordedOdometer,
+    minimum_odometer: lastRecordedOdometer,
+    maximum_odometer: lastRecordedOdometer + 300,
+    checklist_fields: checklistFields,
+    latest_odometer_entry: odometerEntry
+      ? {
+          id: odometerEntry.id,
+          odometer_reading: Number(odometerEntry.odometer_reading),
+          created_at: odometerEntry.created_at || null
+        }
+      : null,
+    latest_inspection: existingInspection
+      ? {
+          id: existingInspection.id,
+          inspection_type: existingInspection.inspection_type,
+          status: existingInspection.status,
+          submitted_at: existingInspection.submitted_at || null
+        }
+      : null
+  };
+}
+
 function createAddressHash(address) {
   return crypto
     .createHash('md5')
@@ -259,17 +448,18 @@ function normalizePackageRows(packages) {
     service_code: pkg.service_code,
     requires_signature: pkg.requires_signature,
     requires_adult_signature: pkg.requires_adult_signature,
-    hazmat: pkg.hazmat
+    hazmat: pkg.hazmat,
+    ...(pkg.floor_load ? { floor_load: true } : {})
   }));
 }
 
 function isOptionalPackageDetailColumnError(error) {
   const message = String(error?.message || error?.details || error?.hint || '');
-  return /service_code/i.test(message) || /requires_adult_signature/i.test(message) || /schema cache/i.test(message);
+  return /service_code/i.test(message) || /requires_adult_signature/i.test(message) || /floor_load/i.test(message) || /schema cache/i.test(message);
 }
 
 async function selectPackagesForStops(queryBuilder) {
-  const withDetails = await queryBuilder('id, stop_id, tracking_number, service_code, requires_signature, requires_adult_signature, hazmat');
+  const withDetails = await queryBuilder('id, stop_id, tracking_number, service_code, requires_signature, requires_adult_signature, hazmat, floor_load');
 
   if (!withDetails.error || !isOptionalPackageDetailColumnError(withDetails.error)) {
     return withDetails;
@@ -1134,6 +1324,9 @@ function createRoutesRouter(options = {}) {
       const pickupStopSummary = getPickupStopSummary(routeStops);
       let vehicle = null;
       let odometerEntry = null;
+      let vehicleCheckSetting = null;
+      let checklistTemplate = null;
+      let existingVehicleInspection = null;
 
       if (route.vehicle_id) {
         const { data: vehicleRow, error: vehicleError } = await supabase
@@ -1166,9 +1359,62 @@ function createRoutesRouter(options = {}) {
         }
 
         odometerEntry = (odometerRows || [])[0] || null;
+
+        const { data: settingRow, error: settingError } = await supabase
+          .from('vehicle_check_requirement_settings')
+          .select('maintenance_requirement_mode, weekly_inspection_day, custom_daily_requirements, custom_weekly_requirements')
+          .eq('account_id', req.driver.account_id)
+          .maybeSingle();
+
+        if (settingError && !isMissingRelationError(settingError)) {
+          console.error('Today vehicle check setting lookup failed:', settingError);
+          return res.status(500).json({ error: 'Failed to load vehicle check requirements' });
+        }
+
+        vehicleCheckSetting = settingRow || null;
+
+        const { data: checklistRow, error: checklistError } = await supabase
+          .from('vehicle_checklist_template_settings')
+          .select('fields')
+          .eq('account_id', req.driver.account_id)
+          .maybeSingle();
+
+        if (checklistError && !isMissingRelationError(checklistError)) {
+          console.error('Today vehicle checklist template lookup failed:', checklistError);
+          return res.status(500).json({ error: 'Failed to load vehicle checklist template' });
+        }
+
+        checklistTemplate = checklistRow || null;
+
+        const { data: inspectionRows, error: inspectionError } = await supabase
+          .from('vehicle_inspections')
+          .select('id, inspection_type, status, submitted_at')
+          .eq('account_id', req.driver.account_id)
+          .eq('driver_id', req.driver.driver_id)
+          .eq('vehicle_id', route.vehicle_id)
+          .eq('route_id', route.id)
+          .eq('inspection_date', currentDate)
+          .order('submitted_at', { ascending: false })
+          .limit(1);
+
+        if (inspectionError && !isMissingRelationError(inspectionError)) {
+          console.error('Today vehicle inspection lookup failed:', inspectionError);
+          return res.status(500).json({ error: 'Failed to load vehicle inspection status' });
+        }
+
+        existingVehicleInspection = (inspectionRows || [])[0] || null;
       }
 
       const lastRecordedOdometer = toInteger(vehicle?.current_mileage) || 0;
+      const vehicleCheckRequirement = buildVehicleCheckRequirementPayload({
+        route,
+        vehicle,
+        odometerEntry,
+        existingInspection: existingVehicleInspection,
+        setting: vehicleCheckSetting,
+        checklistTemplate,
+        currentDate
+      });
 
       return res.status(200).json({
         route: {
@@ -1229,7 +1475,10 @@ function createRoutesRouter(options = {}) {
           odometer_requirement: route.vehicle_id
             ? {
                 required: true,
-                submitted: Boolean(odometerEntry),
+                submitted: Boolean(odometerEntry || (
+                  vehicleCheckRequirement.submitted &&
+                  vehicleCheckRequirement.require_odometer_entry
+                )),
                 vehicle_id: route.vehicle_id,
                 vehicle_name: vehicle?.name || null,
                 last_recorded_odometer: lastRecordedOdometer,
@@ -1246,7 +1495,8 @@ function createRoutesRouter(options = {}) {
             : {
                 required: false,
                 submitted: true
-              }
+              },
+          vehicle_check_requirement: vehicleCheckRequirement
         }
       });
     } catch (error) {
@@ -1520,11 +1770,13 @@ function createRoutesRouter(options = {}) {
         supabase,
         req.driver.account_id,
         await attachLocationCorrection(supabase, req.driver.account_id, presentStopStatus({
-          ...stopRecord,
-          packages: normalizePackageRows(packages),
-          note_text: noteRecord?.note_text || null
-        }))
-      );
+	          ...stopRecord,
+	          packages: normalizePackageRows(packages),
+	          note_text: stopRecord.notes || noteRecord?.note_text || null,
+	          note_scope: stopRecord.notes ? 'stop' : noteRecord ? (noteRecord.unit_number ? 'unit' : 'address') : null,
+	          has_note: Boolean(stopRecord.notes || noteRecord?.note_text)
+	        }))
+	      );
 
       const enrichedSiblings = await attachApartmentIntelligenceToStops(
         supabase,
@@ -2029,8 +2281,10 @@ function createRoutesRouter(options = {}) {
 
   router.patch('/stops/:stop_id/note', requireDriver, async (req, res) => {
     const stopId = req.params.stop_id;
-    const { note_text: noteText } = req.body || {};
+    const { note_text: noteText, note_scope: noteScope } = req.body || {};
     const normalizedNoteText = String(noteText || '').trim();
+    const normalizedNoteScope = String(noteScope || 'unit').trim().toLowerCase();
+    const saveScope = ['stop', 'unit', 'address', 'building'].includes(normalizedNoteScope) ? normalizedNoteScope : 'unit';
 
     try {
       const { data: stop, error: stopError } = await loadAuthorizedStop(supabase, {
@@ -2048,8 +2302,27 @@ function createRoutesRouter(options = {}) {
         return res.status(403).json({ error: 'Stop not assigned to this driver' });
       }
 
+      if (saveScope === 'stop') {
+        const { error: stopOnlyError } = await supabase
+          .from('stops')
+          .update({
+            has_note: Boolean(normalizedNoteText),
+            notes: normalizedNoteText || null
+          })
+          .eq('id', stopId);
+
+        if (stopOnlyError) {
+          console.error('Stop-only note update failed:', stopOnlyError);
+          return res.status(500).json({ error: 'Failed to save stop note' });
+        }
+
+        return res.status(200).json({ ok: true, note_scope: 'stop' });
+      }
+
+      let noteSaveResult = null;
+
       try {
-        await saveStopNote(supabase, req.driver.account_id, stop, normalizedNoteText, createAddressHash);
+        noteSaveResult = await saveStopNote(supabase, req.driver.account_id, stop, normalizedNoteText, createAddressHash, { scope: saveScope });
       } catch (noteSaveError) {
         console.error('Stop note save failed:', noteSaveError);
         return res.status(500).json({ error: 'Failed to save stop note' });
@@ -2057,7 +2330,10 @@ function createRoutesRouter(options = {}) {
 
       const { error: stopUpdateError } = await supabase
         .from('stops')
-        .update({ has_note: Boolean(normalizedNoteText) })
+        .update({
+          has_note: Boolean(normalizedNoteText),
+          notes: null
+        })
         .eq('id', stopId);
 
       if (stopUpdateError) {
@@ -2065,7 +2341,7 @@ function createRoutesRouter(options = {}) {
         return res.status(500).json({ error: 'Failed to save stop note' });
       }
 
-      return res.status(200).json({ ok: true });
+      return res.status(200).json({ ok: true, note_scope: noteSaveResult?.note_scope || (saveScope === 'building' ? 'address' : saveScope) });
     } catch (error) {
       console.error('Stop note endpoint failed:', error);
       return res.status(500).json({ error: 'Failed to save stop note' });

@@ -27,6 +27,8 @@ import {
   getPostDispatchChangeNotice,
   getDriverWaitingCopy,
   getOdometerRequirement,
+  getVehicleCheckRequirement,
+  getVehicleChecklistValue,
   hasGrantedLocationPermission,
   isDeniedLocationPermission,
   shouldPromptForLocationPermission,
@@ -107,6 +109,34 @@ describe('HomeScreen helpers', () => {
       minimum_odometer: 54250,
       maximum_odometer: 54550
     });
+  });
+
+  it('derives the vehicle check gate and checklist values', () => {
+    expect(getVehicleCheckRequirement({ vehicle_check_requirement: { required: false } }, { id: 'route-1' })).toBeNull();
+    expect(
+      getVehicleCheckRequirement(
+        {
+          vehicle_check_requirement: {
+            required: true,
+            submitted: false,
+            vehicle_id: 'vehicle-1',
+            vehicle_name: 'Truck 12',
+            last_recorded_odometer: 54250,
+            checklist_fields: [{ id: 'tires', label: 'Tires' }]
+          }
+        },
+        { id: 'route-1', vehicle_id: 'vehicle-1' }
+      )
+    ).toMatchObject({
+      vehicle_id: 'vehicle-1',
+      vehicle_name: 'Truck 12',
+      minimum_odometer: 54250,
+      maximum_odometer: 54550,
+      checklist_fields: [{ id: 'tires', label: 'Tires' }]
+    });
+    expect(getVehicleChecklistValue('pass')).toBe('Good');
+    expect(getVehicleChecklistValue('fail')).toBe('Needs Attention');
+    expect(getVehicleChecklistValue('not_applicable')).toBe('Not Applicable');
   });
 
   it('derives the staged waiting state for drivers before dispatch', () => {

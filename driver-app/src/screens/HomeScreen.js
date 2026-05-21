@@ -273,6 +273,40 @@ export function getOdometerRequirement(driverDay, route) {
   };
 }
 
+export function getVehicleCheckRequirement(driverDay, route) {
+  const requirement = driverDay?.vehicle_check_requirement || null;
+
+  if (!route || !requirement?.required || requirement.submitted) {
+    return null;
+  }
+
+  const lastRecorded = Number(requirement.last_recorded_odometer ?? route.vehicle?.current_mileage ?? 0);
+  const minimum = Number(requirement.minimum_odometer ?? lastRecorded);
+  const maximum = Number(requirement.maximum_odometer ?? minimum + 300);
+
+  return {
+    ...requirement,
+    vehicle_id: requirement.vehicle_id || route.vehicle_id || route.vehicle?.id || null,
+    vehicle_name: requirement.vehicle_name || route.vehicle_name || route.vehicle?.name || null,
+    last_recorded_odometer: Number.isFinite(lastRecorded) ? lastRecorded : 0,
+    minimum_odometer: Number.isFinite(minimum) ? minimum : 0,
+    maximum_odometer: Number.isFinite(maximum) ? maximum : 300,
+    checklist_fields: Array.isArray(requirement.checklist_fields) ? requirement.checklist_fields : []
+  };
+}
+
+export function getVehicleChecklistValue(status) {
+  if (status === 'fail') {
+    return 'Needs Attention';
+  }
+
+  if (status === 'not_applicable') {
+    return 'Not Applicable';
+  }
+
+  return 'Good';
+}
+
 export function getDriverDayStatus(driverDay, route) {
   if (route) {
     return 'dispatched';
@@ -365,6 +399,12 @@ export default function HomeScreen({ navigation, onLogout }) {
   const [isSubmittingOdometer, setIsSubmittingOdometer] = useState(false);
   const [odometerInput, setOdometerInput] = useState('');
   const [odometerError, setOdometerError] = useState('');
+  const [isSubmittingVehicleCheck, setIsSubmittingVehicleCheck] = useState(false);
+  const [vehicleCheckConfirmed, setVehicleCheckConfirmed] = useState(false);
+  const [vehicleCheckOdometerInput, setVehicleCheckOdometerInput] = useState('');
+  const [vehicleCheckIssueNote, setVehicleCheckIssueNote] = useState('');
+  const [vehicleChecklistStatuses, setVehicleChecklistStatuses] = useState({});
+  const [vehicleCheckError, setVehicleCheckError] = useState('');
   const [isUpdatingClock, setIsUpdatingClock] = useState(false);
   const [isUpdatingBreak, setIsUpdatingBreak] = useState(false);
   const [isRetryingLoad, setIsRetryingLoad] = useState(false);
@@ -577,6 +617,34 @@ export default function HomeScreen({ navigation, onLogout }) {
     };
   }, [activeBreak]);
 
+  useEffect(() => {
+    const requirement = getVehicleCheckRequirement(driverDay, route);
+
+    if (!requirement) {
+      setVehicleCheckConfirmed(false);
+      setVehicleCheckOdometerInput('');
+      setVehicleCheckIssueNote('');
+      setVehicleChecklistStatuses({});
+      setVehicleCheckError('');
+      return;
+    }
+
+    setVehicleChecklistStatuses((current) => {
+      const next = { ...current };
+      for (const field of requirement.checklist_fields) {
+        if (!next[field.id]) {
+          next[field.id] = 'pass';
+        }
+      }
+      return next;
+    });
+  }, [
+    driverDay?.vehicle_check_requirement?.vehicle_id,
+    driverDay?.vehicle_check_requirement?.inspection_date,
+    driverDay?.vehicle_check_requirement?.submitted,
+    route?.id
+  ]);
+
   async function handleRetryLoad() {
     setIsRetryingLoad(true);
     await loadHomeData({ showAlert: false, isRetry: true });
@@ -635,6 +703,12 @@ export default function HomeScreen({ navigation, onLogout }) {
       return;
     }
 
+    const vehicleCheckRequirement = getVehicleCheckRequirement(driverDay, route);
+    if (vehicleCheckRequirement) {
+      setVehicleCheckError('Complete the vehicle check before continuing.');
+      return;
+    }
+
     const requirement = getOdometerRequirement(driverDay, route);
     if (requirement) {
       setOdometerError('Enter the current truck odometer before continuing.');
@@ -642,6 +716,106 @@ export default function HomeScreen({ navigation, onLogout }) {
     }
 
     await continueIntoRouteWorkflow();
+  }
+
+  async function handleSubmitVehicleCheck() {
+    if (!route) {
+      return;
+    }
+
+    const requirement = getVehicleCheckRequirement(driverDay, route);
+    if (!requirement) {
+      await continueIntoRouteWorkflow();
+      return;
+    }
+
+    if (requirement.require_truck_confirmation && !vehicleCheckConfirmed) {
+      setVehicleCheckError('Confirm this is the truck you are driving today.');
+      return;
+    }
+
+    const parsedOdometer = requirement.require_odometer_entry
+      ? Number(vehicleCheckOdometerInput)
+      : null;
+
+    if (requirement.require_odometer_entry && !Number.isInteger(parsedOdometer)) {
+      setVehicleCheckError('Enter the current odometer reading as a whole number.');
+      return;
+    }
+
+    if (
+      requirement.require_odometer_entry &&
+      (parsedOdometer < requirement.minimum_odometer || parsedOdometer > requirement.maximum_odometer)
+    ) {
+      setVehicleCheckError('Odometer reading is outside the allowed range. Please recheck the truck odometer or contact your manager.');
+      return;
+    }
+
+    const items = requirement.require_full_checklist
+      ? requirement.checklist_fields.map((field, index) => {
+          const status = vehicleChecklistStatuses[field.id] || 'pass';
+          return {
+            checklist_item_key: field.id || `item_${index + 1}`,
+            label: field.label || field.id || `Item ${index + 1}`,
+            status,
+            value: getVehicleChecklistValue(status)
+          };
+        })
+      : [];
+    const issueNote = vehicleCheckIssueNote.trim();
+
+    setIsSubmittingVehicleCheck(true);
+    setVehicleCheckError('');
+
+    try {
+      await api.post('/vehicles/inspections', {
+        vehicle_id: requirement.vehicle_id,
+        route_id: route.id,
+        inspection_type: requirement.inspection_type || 'daily_check',
+        inspection_date: requirement.inspection_date,
+        odometer: parsedOdometer,
+        issue_reported: Boolean(issueNote) || items.some((item) => item.status === 'fail'),
+        issue_note: issueNote || null,
+        items
+      });
+
+      setDriverDay((current) => ({
+        ...current,
+        vehicle_check_requirement: {
+          ...(current?.vehicle_check_requirement || {}),
+          submitted: true
+        },
+        odometer_requirement: requirement.require_odometer_entry
+          ? {
+              ...(current?.odometer_requirement || {}),
+              submitted: true,
+              latest_entry: {
+                odometer_reading: parsedOdometer
+              }
+            }
+          : current?.odometer_requirement
+      }));
+      if (requirement.require_odometer_entry) {
+        setRoute((current) => current
+          ? {
+              ...current,
+              vehicle: current.vehicle
+                ? { ...current.vehicle, current_mileage: parsedOdometer }
+                : current.vehicle,
+              vehicle_current_mileage: parsedOdometer
+            }
+          : current);
+      }
+      setVehicleCheckConfirmed(false);
+      setVehicleCheckOdometerInput('');
+      setVehicleCheckIssueNote('');
+      setVehicleChecklistStatuses({});
+      await continueIntoRouteWorkflow();
+    } catch (error) {
+      setVehicleCheckError(error.response?.data?.error || 'Unable to save the vehicle check right now.');
+    } finally {
+      setIsSubmittingVehicleCheck(false);
+    }
   }
 
   async function handleSubmitOdometer() {
@@ -809,6 +983,7 @@ export default function HomeScreen({ navigation, onLogout }) {
   const driverDayStatus = getDriverDayStatus(driverDay, route);
   const waitingCopy = getDriverWaitingCopy(driverDay);
   const postDispatchNotice = getPostDispatchChangeNotice(route);
+  const vehicleCheckRequirement = getVehicleCheckRequirement(driverDay, route);
   const odometerRequirement = getOdometerRequirement(driverDay, route);
   const locationRequirementCopy = getLocationRequirementCopy();
   const showLocationGate = Boolean(route && !hasLocationAccess);
@@ -956,7 +1131,147 @@ export default function HomeScreen({ navigation, onLogout }) {
               </View>
             ) : null}
 
-            {odometerRequirement && hasLocationAccess ? (
+            {vehicleCheckRequirement && hasLocationAccess ? (
+              <View style={styles.odometerCard}>
+                <Text style={styles.odometerEyebrow}>Required before route start</Text>
+                <Text style={styles.odometerTitle}>
+                  {vehicleCheckRequirement.require_full_checklist ? 'Complete vehicle inspection' : 'Complete vehicle check'}
+                </Text>
+                <Text style={styles.odometerBody}>
+                  {vehicleCheckRequirement.vehicle_name || vehicleCheckRequirement.vehicle_id || 'Selected truck'}
+                </Text>
+
+                {vehicleCheckRequirement.require_truck_confirmation ? (
+                  <Pressable
+                    onPress={() => {
+                      setVehicleCheckConfirmed((current) => !current);
+                      setVehicleCheckError('');
+                    }}
+                    style={({ pressed }) => [
+                      styles.vehicleCheckConfirmRow,
+                      vehicleCheckConfirmed && styles.vehicleCheckConfirmRowActive,
+                      pressed ? styles.buttonPressed : null
+                    ]}
+                  >
+                    <View style={[
+                      styles.vehicleCheckCheckbox,
+                      vehicleCheckConfirmed && styles.vehicleCheckCheckboxActive
+                    ]}>
+                      <Text style={styles.vehicleCheckCheckboxText}>{vehicleCheckConfirmed ? '✓' : ''}</Text>
+                    </View>
+                    <Text style={styles.vehicleCheckConfirmText}>
+                      I confirm this is my truck for today.
+                    </Text>
+                  </Pressable>
+                ) : null}
+
+                {vehicleCheckRequirement.require_odometer_entry ? (
+                  <>
+                    <View style={styles.odometerDetailGrid}>
+                      <View style={styles.odometerDetail}>
+                        <Text style={styles.odometerDetailLabel}>Last recorded</Text>
+                        <Text style={styles.odometerDetailValue}>
+                          {formatMileage(vehicleCheckRequirement.last_recorded_odometer)}
+                        </Text>
+                      </View>
+                      <View style={styles.odometerDetail}>
+                        <Text style={styles.odometerDetailLabel}>Acceptable range</Text>
+                        <Text style={styles.odometerDetailValue}>
+                          {formatMileage(vehicleCheckRequirement.minimum_odometer)} to {formatMileage(vehicleCheckRequirement.maximum_odometer)}
+                        </Text>
+                      </View>
+                    </View>
+                    <TextInput
+                      keyboardType="number-pad"
+                      onChangeText={(value) => {
+                        setVehicleCheckOdometerInput(value.replace(/[^\d]/g, ''));
+                        setVehicleCheckError('');
+                      }}
+                      placeholder="Current odometer reading"
+                      placeholderTextColor={appTheme.colors.textMuted}
+                      style={styles.odometerInput}
+                      value={vehicleCheckOdometerInput}
+                    />
+                  </>
+                ) : null}
+
+                {vehicleCheckRequirement.require_full_checklist ? (
+                  <View style={styles.vehicleChecklist}>
+                    {vehicleCheckRequirement.checklist_fields.map((field) => {
+                      const selectedStatus = vehicleChecklistStatuses[field.id] || 'pass';
+                      return (
+                        <View key={field.id} style={styles.vehicleChecklistItem}>
+                          <Text style={styles.vehicleChecklistLabel}>{field.label}</Text>
+                          <View style={styles.vehicleChecklistChoices}>
+                            {[
+                              ['pass', 'Good'],
+                              ['fail', 'Needs attention'],
+                              ['not_applicable', 'N/A']
+                            ].map(([status, label]) => (
+                              <Pressable
+                                key={status}
+                                onPress={() => {
+                                  setVehicleChecklistStatuses((current) => ({
+                                    ...current,
+                                    [field.id]: status
+                                  }));
+                                  setVehicleCheckError('');
+                                }}
+                                style={[
+                                  styles.vehicleChecklistChoice,
+                                  selectedStatus === status && styles.vehicleChecklistChoiceActive
+                                ]}
+                              >
+                                <Text style={[
+                                  styles.vehicleChecklistChoiceText,
+                                  selectedStatus === status && styles.vehicleChecklistChoiceTextActive
+                                ]}>
+                                  {label}
+                                </Text>
+                              </Pressable>
+                            ))}
+                          </View>
+                        </View>
+                      );
+                    })}
+                  </View>
+                ) : null}
+
+                {vehicleCheckRequirement.show_issue_note_box ? (
+                  <TextInput
+                    multiline
+                    onChangeText={(value) => {
+                      setVehicleCheckIssueNote(value);
+                      setVehicleCheckError('');
+                    }}
+                    placeholder="Report any issue noticed today"
+                    placeholderTextColor={appTheme.colors.textMuted}
+                    style={[styles.odometerInput, styles.vehicleCheckNoteInput]}
+                    value={vehicleCheckIssueNote}
+                  />
+                ) : null}
+
+                {vehicleCheckError ? <Text style={styles.odometerError}>{vehicleCheckError}</Text> : null}
+                <Pressable
+                  disabled={isSubmittingVehicleCheck}
+                  onPress={handleSubmitVehicleCheck}
+                  style={({ pressed }) => [
+                    styles.primaryButton,
+                    styles.startRouteButton,
+                    isSubmittingVehicleCheck && styles.buttonDisabled,
+                    pressed && !isSubmittingVehicleCheck ? styles.buttonPressed : null
+                  ]}
+                >
+                  {isSubmittingVehicleCheck ? (
+                    <ActivityIndicator color="#ffffff" />
+                  ) : (
+                    <Text style={styles.primaryButtonText}>Save Vehicle Check</Text>
+                  )}
+                </Pressable>
+              </View>
+            ) : null}
+
+            {odometerRequirement && !vehicleCheckRequirement && hasLocationAccess ? (
               <View style={styles.odometerCard}>
                 <Text style={styles.odometerEyebrow}>Required before route start</Text>
                 <Text style={styles.odometerTitle}>Enter truck odometer</Text>
@@ -1006,7 +1321,7 @@ export default function HomeScreen({ navigation, onLogout }) {
               </View>
             ) : null}
 
-            {routePresentation?.actionLabel && !odometerRequirement ? (
+            {routePresentation?.actionLabel && !vehicleCheckRequirement && !odometerRequirement ? (
               <Pressable
                 disabled={isStartingRoute || !hasLocationAccess}
                 onPress={handleRouteAction}
@@ -1282,6 +1597,92 @@ const styles = StyleSheet.create({
     fontSize: appTheme.typography.bodySmall,
     fontWeight: appTheme.typography.weights.bold,
     lineHeight: appTheme.typography.lineHeights.bodySmall
+  },
+  vehicleCheckConfirmRow: {
+    alignItems: 'center',
+    backgroundColor: appTheme.colors.backgroundWarm,
+    borderColor: appTheme.colors.border,
+    borderRadius: appTheme.radius.md,
+    borderWidth: 1,
+    flexDirection: 'row',
+    gap: appTheme.spacing.sm,
+    padding: appTheme.spacing.sm
+  },
+  vehicleCheckConfirmRowActive: {
+    backgroundColor: appTheme.colors.greenSoft,
+    borderColor: appTheme.colors.green
+  },
+  vehicleCheckCheckbox: {
+    alignItems: 'center',
+    borderColor: appTheme.colors.borderStrong,
+    borderRadius: 8,
+    borderWidth: 2,
+    height: 28,
+    justifyContent: 'center',
+    width: 28
+  },
+  vehicleCheckCheckboxActive: {
+    backgroundColor: appTheme.colors.greenText,
+    borderColor: appTheme.colors.greenText
+  },
+  vehicleCheckCheckboxText: {
+    color: appTheme.colors.textInverse,
+    fontSize: appTheme.typography.bodySmall,
+    fontWeight: appTheme.typography.weights.heavy
+  },
+  vehicleCheckConfirmText: {
+    color: appTheme.colors.textPrimary,
+    flex: 1,
+    fontSize: appTheme.typography.bodySmall,
+    fontWeight: appTheme.typography.weights.bold,
+    lineHeight: appTheme.typography.lineHeights.bodySmall
+  },
+  vehicleChecklist: {
+    gap: appTheme.spacing.sm
+  },
+  vehicleChecklistItem: {
+    backgroundColor: appTheme.colors.backgroundWarm,
+    borderColor: appTheme.colors.border,
+    borderRadius: appTheme.radius.md,
+    borderWidth: 1,
+    gap: appTheme.spacing.xs,
+    padding: appTheme.spacing.sm
+  },
+  vehicleChecklistLabel: {
+    color: appTheme.colors.textPrimary,
+    fontSize: appTheme.typography.bodySmall,
+    fontWeight: appTheme.typography.weights.heavy,
+    lineHeight: appTheme.typography.lineHeights.bodySmall
+  },
+  vehicleChecklistChoices: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: appTheme.spacing.xs
+  },
+  vehicleChecklistChoice: {
+    backgroundColor: appTheme.colors.surface,
+    borderColor: appTheme.colors.border,
+    borderRadius: appTheme.radius.pill,
+    borderWidth: 1,
+    paddingHorizontal: appTheme.spacing.sm,
+    paddingVertical: 8
+  },
+  vehicleChecklistChoiceActive: {
+    backgroundColor: appTheme.colors.orange,
+    borderColor: appTheme.colors.orange
+  },
+  vehicleChecklistChoiceText: {
+    color: appTheme.colors.textSecondary,
+    fontSize: appTheme.typography.caption,
+    fontWeight: appTheme.typography.weights.bold
+  },
+  vehicleChecklistChoiceTextActive: {
+    color: appTheme.colors.textInverse
+  },
+  vehicleCheckNoteInput: {
+    minHeight: 88,
+    paddingTop: appTheme.spacing.sm,
+    textAlignVertical: 'top'
   },
   safetyCard: {
     ...appTheme.shadows.card,

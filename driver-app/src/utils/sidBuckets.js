@@ -11,7 +11,8 @@ const SID_BUCKET_PALETTE = [
 ];
 
 export function getSidBucketNumber(sid) {
-  const numericSid = Number(String(sid ?? '').trim());
+  const sidMatch = String(sid ?? '').trim().match(/\d+/);
+  const numericSid = sidMatch ? Number(sidMatch[0]) : NaN;
 
   if (!Number.isFinite(numericSid) || numericSid < 1000) {
     return null;

@@ -172,6 +172,7 @@ describe('ManagerVehiclesScreen', () => {
           ]
         }
       })
+      .mockResolvedValueOnce({ data: { inspections: [] } })
       .mockResolvedValueOnce({
         data: {
           setting: {
@@ -214,9 +215,9 @@ describe('ManagerVehiclesScreen', () => {
     await waitFor(() => {
       expect(api.get).toHaveBeenCalledWith('/vehicles/settings/maintenance', { authMode: 'manager' });
       expect(api.get).toHaveBeenCalledWith('/vehicles/maintenance-records', { authMode: 'manager' });
-      expect(screen.getByText('Maintenance Program')).toBeTruthy();
-      expect(screen.getByText('Recent Maintenance Records')).toBeTruthy();
+      expect(screen.getByText('Maintenance Records')).toBeTruthy();
       expect(screen.getByText('Truck V-42')).toBeTruthy();
+      expect(screen.queryByText('Maintenance Program')).toBeNull();
     });
 
     fireEvent.press(screen.getByText('Inspections'));
@@ -230,6 +231,7 @@ describe('ManagerVehiclesScreen', () => {
     fireEvent.press(screen.getByText('Settings'));
 
     await waitFor(() => {
+      expect(screen.getByText('Maintenance Program')).toBeTruthy();
       expect(screen.getByText('Reminder Schedule')).toBeTruthy();
       expect(screen.getByText('Checklist Template')).toBeTruthy();
       expect(screen.getByText('Save Template')).toBeTruthy();
@@ -432,7 +434,7 @@ describe('ManagerVehiclesScreen', () => {
     });
   });
 
-  it('saves maintenance program category changes from the app maintenance tab', async () => {
+  it('saves maintenance program category changes from the app settings tab', async () => {
     api.get
       .mockResolvedValueOnce({
         data: {
@@ -485,7 +487,7 @@ describe('ManagerVehiclesScreen', () => {
       expect(screen.getByText('V-42')).toBeTruthy();
     });
 
-    fireEvent.press(screen.getAllByText('Maintenance')[0]);
+    fireEvent.press(screen.getByText('Settings'));
 
     await waitFor(() => {
       expect(screen.getByText('Maintenance Program')).toBeTruthy();
@@ -732,6 +734,209 @@ describe('ManagerVehiclesScreen', () => {
     await waitFor(() => {
       expect(api.get).toHaveBeenCalledWith('/vehicles/vehicle-1/maintenance', { authMode: 'manager' });
       expect(screen.getByText('Oil and filter')).toBeTruthy();
+    });
+  });
+
+  it('loads inspection history from the truck view menu', async () => {
+    api.get
+      .mockResolvedValueOnce({
+        data: {
+          vehicles: [
+            {
+              id: 'vehicle-1',
+              name: 'V-42',
+              make: 'Ford',
+              model: 'Transit',
+              year: 2022,
+              plate: 'ABC123',
+              registration_expiration: '2026-12-31'
+            }
+          ]
+        }
+      })
+      .mockResolvedValueOnce({
+        data: {
+          inspections: [
+            {
+              id: 'inspection-1',
+              vehicle: { id: 'vehicle-1', name: 'V-42' },
+              driver: { id: 'driver-1', name: 'Luis Perez' },
+              inspection_date: '2026-05-18',
+              inspection_type_label: 'Weekly Inspection',
+              odometer: 65000,
+              issue_note: 'Brake light is out',
+              status: 'needs_review',
+              status_label: 'Needs Review',
+              items: [
+                { id: 'item-1', label: 'Lights', status: 'fail', value: 'Needs attention' }
+              ]
+            }
+          ]
+        }
+      });
+
+    const screen = render(<ManagerVehiclesScreen />);
+
+    await waitFor(() => {
+      expect(screen.getByText('V-42')).toBeTruthy();
+    });
+
+    fireEvent.press(screen.getByText('View'));
+    fireEvent.press(screen.getByText('Inspection History'));
+
+    await waitFor(() => {
+      expect(api.get).toHaveBeenCalledWith('/vehicles/vehicle-1/inspection-history', { authMode: 'manager' });
+      expect(screen.getByText('May 18, 2026 • Weekly Inspection')).toBeTruthy();
+      expect(screen.getByText('Issue: Brake light is out')).toBeTruthy();
+    });
+  });
+
+  it('loads odometer and assignment history from the truck view menu', async () => {
+    api.get
+      .mockResolvedValueOnce({
+        data: {
+          vehicles: [
+            {
+              id: 'vehicle-1',
+              name: 'V-42',
+              make: 'Ford',
+              model: 'Transit',
+              year: 2022,
+              plate: 'ABC123',
+              registration_expiration: '2026-12-31'
+            }
+          ]
+        }
+      })
+      .mockResolvedValueOnce({
+        data: {
+          odometer_entries: [
+            {
+              id: 'odom-1',
+              odometer_reading: 65000,
+              source: 'driver',
+              recorded_at: '2026-05-18T15:00:00.000Z',
+              driver: { name: 'Luis Perez' },
+              route: { work_area_name: '829' }
+            }
+          ]
+        }
+      })
+      .mockResolvedValueOnce({
+        data: {
+          assignments: [
+            {
+              id: 'route-1',
+              date: '2026-05-18',
+              work_area_name: '829',
+              status: 'complete',
+              completed_stops: 81,
+              total_stops: 81,
+              driver: { name: 'Luis Perez' }
+            }
+          ]
+        }
+      });
+
+    const screen = render(<ManagerVehiclesScreen />);
+
+    await waitFor(() => {
+      expect(screen.getByText('V-42')).toBeTruthy();
+    });
+
+    fireEvent.press(screen.getByText('View'));
+    fireEvent.press(screen.getByText('Odometer History'));
+
+    await waitFor(() => {
+      expect(api.get).toHaveBeenCalledWith('/vehicles/vehicle-1/odometer-history', { authMode: 'manager' });
+      expect(screen.getByText('65,000 miles')).toBeTruthy();
+      expect(screen.getByText('Luis Perez • Route 829')).toBeTruthy();
+    });
+
+    fireEvent.press(screen.getByLabelText('Close odometer history'));
+    fireEvent.press(screen.getByText('View'));
+    fireEvent.press(screen.getByText('Assignment History'));
+
+    await waitFor(() => {
+      expect(api.get).toHaveBeenCalledWith('/vehicles/vehicle-1/assignment-history', { authMode: 'manager' });
+      expect(screen.getByText('May 18, 2026 • Route 829')).toBeTruthy();
+      expect(screen.getByText('81/81 stops')).toBeTruthy();
+    });
+  });
+
+  it('prefills maintenance from an inspection issue', async () => {
+    api.get
+      .mockResolvedValueOnce({
+        data: {
+          vehicles: [
+            {
+              id: 'vehicle-1',
+              name: 'V-42',
+              make: 'Ford',
+              model: 'Transit',
+              year: 2022,
+              plate: 'ABC123',
+              registration_expiration: '2026-12-31'
+            }
+          ]
+        }
+      })
+      .mockResolvedValueOnce({
+        data: {
+          inspections: [
+            {
+              id: 'inspection-1',
+              vehicle: { id: 'vehicle-1', name: 'V-42' },
+              driver: { id: 'driver-1', name: 'Luis Perez' },
+              inspection_date: '2026-05-18',
+              inspection_type_label: 'Weekly Inspection',
+              odometer: 65000,
+              issue_note: 'Brake light is out',
+              status: 'needs_review',
+              status_label: 'Needs Review',
+              submitted_at: '2026-05-18T15:00:00.000Z',
+              items: [
+                { id: 'item-1', label: 'Lights', status: 'fail', value: 'Needs attention' }
+              ]
+            }
+          ]
+        }
+      });
+    api.post.mockResolvedValue({ data: { maintenance_id: 'maint-1' } });
+
+    const screen = render(<ManagerVehiclesScreen />);
+
+    await waitFor(() => {
+      expect(screen.getByText('V-42')).toBeTruthy();
+    });
+
+    fireEvent.press(screen.getByText('View'));
+    fireEvent.press(screen.getByText('Inspection History'));
+
+    await waitFor(() => {
+      expect(screen.getByText('Issue: Brake light is out')).toBeTruthy();
+    });
+
+    fireEvent.press(screen.getByText('Issue: Brake light is out'));
+    fireEvent.press(screen.getByText('Log Maintenance'));
+
+    await waitFor(() => {
+      expect(screen.getByText('Log Completed Maintenance')).toBeTruthy();
+      expect(screen.getByDisplayValue('General Repair')).toBeTruthy();
+      expect(screen.getByDisplayValue('65000')).toBeTruthy();
+      expect(screen.getByDisplayValue(/Driver issue note: Brake light is out/)).toBeTruthy();
+    });
+
+    fireEvent.press(screen.getAllByText('Log Maintenance').at(-1));
+
+    await waitFor(() => {
+      expect(api.post).toHaveBeenCalledWith('/vehicles/vehicle-1/maintenance', expect.objectContaining({
+        service_type: 'General Repair',
+        description: expect.stringContaining('Source inspection: inspection-1'),
+        mileage_at_service: 65000
+      }), {
+        authMode: 'manager'
+      });
     });
   });
 });

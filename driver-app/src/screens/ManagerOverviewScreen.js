@@ -369,8 +369,9 @@ export default function ManagerOverviewScreen({
   route
 }) {
   const requestedDate = route?.params?.date || null;
-  const requestedRouteId = route?.params?.selectedRouteId || null;
-  const initialDate = requestedRouteId && requestedDate ? requestedDate : getTodayOperationsDate();
+  const isFleetModeRequest = route?.params?.fleetMode === true;
+  const requestedRouteId = isFleetModeRequest ? null : route?.params?.selectedRouteId || null;
+  const initialDate = (requestedRouteId || isFleetModeRequest) && requestedDate ? requestedDate : getTodayOperationsDate();
   const insets = useSafeAreaInsets();
   const { height: windowHeight } = useWindowDimensions();
   const [selectedDate, setSelectedDate] = useState(initialDate);
@@ -454,6 +455,17 @@ export default function ManagerOverviewScreen({
   }, [requestedDate, requestedRouteId, selectedDate]);
 
   useEffect(() => {
+    if (isFleetModeRequest) {
+      setSelectedRouteId(null);
+      setSelectedRouteDetail(null);
+      setSelectedDriverPosition(null);
+      setSelectedStopId(null);
+      setShowRouteDetails(false);
+      setRouteDetailErrorMessage('');
+      setMapRegion(buildManagerMapModel({ routes }).region);
+      return;
+    }
+
     if (!requestedRouteId) {
       return;
     }
@@ -467,7 +479,7 @@ export default function ManagerOverviewScreen({
     }
 
     animateSheetTo('half');
-  }, [requestedRouteId, routes]);
+  }, [isFleetModeRequest, requestedRouteId, routes]);
 
   useEffect(() => {
     const nextOffset = sheetLayout.snapOffsets[sheetMode];
@@ -1066,6 +1078,11 @@ export default function ManagerOverviewScreen({
                                   {selectedStop.sid ? `SID ${selectedStop.sid}` : 'No SID'}
                                 </Text>
                               </View>
+                              {selectedStop.floor_load || (selectedStop.packages || []).some((pkg) => pkg.floor_load) ? (
+                                <View style={styles.selectedStopSummaryMetric}>
+                                  <Text style={styles.selectedStopSummaryMetricText}>Floor load</Text>
+                                </View>
+                              ) : null}
                             </View>
                           </View>
                           <Text style={styles.selectedStopSummaryChevron}>›</Text>
@@ -1168,6 +1185,11 @@ export default function ManagerOverviewScreen({
                               <RouteMetricIcon color="#173042" name="sid" size={15} />
                               <Text style={styles.stopCardMetricText}>{item.sid ? `SID:${item.sid}` : 'No SID'}</Text>
                             </View>
+                            {item.floor_load || (item.packages || []).some((pkg) => pkg.floor_load) ? (
+                              <View style={styles.stopCardMetric}>
+                                <Text style={styles.stopCardMetricText}>Floor load</Text>
+                              </View>
+                            ) : null}
                           </View>
                           {scanTime ? (
                             <View style={styles.stopCompletionBadge}>

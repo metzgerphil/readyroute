@@ -206,6 +206,113 @@ describe('HomeScreen interactions', () => {
     });
   });
 
+  it('submits a required vehicle check before starting a route', async () => {
+    api.get.mockImplementation((url) => {
+      if (url === '/routes/today') {
+        return Promise.resolve({
+          data: {
+            route: {
+              id: 'route-1',
+              status: 'pending',
+              vehicle_id: 'vehicle-1',
+              vehicle_name: 'Truck 12',
+              vehicle: { id: 'vehicle-1', name: 'Truck 12', current_mileage: 54250 },
+              stops: [{ id: 'stop-1' }]
+            },
+            driver_day: {
+              status: 'dispatched',
+              odometer_requirement: {
+                required: true,
+                submitted: false,
+                vehicle_id: 'vehicle-1',
+                vehicle_name: 'Truck 12',
+                last_recorded_odometer: 54250,
+                minimum_odometer: 54250,
+                maximum_odometer: 54550
+              },
+              vehicle_check_requirement: {
+                required: true,
+                submitted: false,
+                vehicle_id: 'vehicle-1',
+                vehicle_name: 'Truck 12',
+                inspection_type: 'weekly_inspection',
+                inspection_date: '2026-05-18',
+                require_truck_confirmation: true,
+                require_odometer_entry: true,
+                show_issue_note_box: true,
+                require_full_checklist: true,
+                last_recorded_odometer: 54250,
+                minimum_odometer: 54250,
+                maximum_odometer: 54550,
+                checklist_fields: [
+                  { id: 'tires', label: 'Tires' },
+                  { id: 'lights', label: 'Lights' }
+                ]
+              }
+            }
+          }
+        });
+      }
+
+      if (url === '/timecards/status') {
+        return Promise.resolve({
+          data: {
+            active_timecard: null,
+            active_break: null
+          }
+        });
+      }
+
+      return Promise.reject(new Error(`Unexpected GET ${url}`));
+    });
+    api.post.mockResolvedValue({ data: { inspection: { id: 'inspection-1' } } });
+    api.patch.mockResolvedValue({ data: {} });
+
+    const screen = await renderAndFlush();
+
+    await waitFor(() => {
+      expect(screen.getByText('Complete vehicle inspection')).toBeTruthy();
+      expect(screen.getByText('Tires')).toBeTruthy();
+      expect(screen.getByText('Lights')).toBeTruthy();
+    });
+
+    fireEvent.press(screen.getByText('I confirm this is my truck for today.'));
+    fireEvent.changeText(screen.getByPlaceholderText('Current odometer reading'), '54300');
+    fireEvent.press(screen.getAllByText('Needs attention')[0]);
+    fireEvent.changeText(screen.getByPlaceholderText('Report any issue noticed today'), 'Left rear tire needs review');
+    fireEvent.press(screen.getByText('Save Vehicle Check'));
+
+    await waitFor(() => {
+      expect(api.post).toHaveBeenCalledWith('/vehicles/inspections', {
+        vehicle_id: 'vehicle-1',
+        route_id: 'route-1',
+        inspection_type: 'weekly_inspection',
+        inspection_date: '2026-05-18',
+        odometer: 54300,
+        issue_reported: true,
+        issue_note: 'Left rear tire needs review',
+        items: [
+          {
+            checklist_item_key: 'tires',
+            label: 'Tires',
+            status: 'fail',
+            value: 'Needs Attention'
+          },
+          {
+            checklist_item_key: 'lights',
+            label: 'Lights',
+            status: 'pass',
+            value: 'Good'
+          }
+        ]
+      });
+      expect(api.patch).toHaveBeenCalledWith('/routes/route-1/status', {
+        status: 'in_progress'
+      });
+      expect(navigation.navigate).toHaveBeenCalledWith('MyDrive');
+    });
+  });
+
   it('shows a waiting-for-dispatch state when a staged route is assigned but not yet live', async () => {
     api.get.mockImplementation((url) => {
       if (url === '/routes/today') {

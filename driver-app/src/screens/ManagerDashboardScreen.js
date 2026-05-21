@@ -256,7 +256,11 @@ export default function ManagerDashboardScreen({ csaWorkspaceVersion = 0, identi
   const hasPickups = stats.pickupStops > 0;
 
   function openFleetMap() {
-    navigation?.navigate('ManagerMap', { date });
+    navigation?.navigate('ManagerMap', {
+      date,
+      selectedRouteId: null,
+      fleetMode: true
+    });
   }
 
   function openRoutes() {

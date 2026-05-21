@@ -32,6 +32,14 @@ function stripLeadingZeros(value) {
   return stripped || '0';
 }
 
+function getSidMetadata(value) {
+  const sid = String(value ?? '').trim();
+  return {
+    sid,
+    floor_load: /\d+\s*FL$/i.test(sid)
+  };
+}
+
 function titleCaseToken(token) {
   return String(token || '')
     .trim()
@@ -699,7 +707,8 @@ function buildPackageDetailsByStop(packageDetailsSheet) {
 
     const record = getStopRowObject(packageHeaders, row);
     const stopNumber = parseInteger(record['ST#'], null);
-    const sid = String(record.SID ?? '').trim();
+    const sidMetadata = getSidMetadata(record.SID);
+    const sid = sidMetadata.sid;
     const addressLine1 = String(record['Address Line 1'] || '').trim();
     const trackingNumber = String(record['Track ID'] || record['Tracking Number'] || record.Tracking || '').trim();
 
@@ -716,7 +725,8 @@ function buildPackageDetailsByStop(packageDetailsSheet) {
       service_code: serviceCode,
       requires_signature: isSignatureService(serviceCode),
       requires_adult_signature: isAdultSignatureService(serviceCode),
-      hazmat: false
+      hazmat: false,
+      ...(sidMetadata.floor_load ? { floor_load: true } : {})
     });
     packagesByStop.set(key, existing);
   }
@@ -976,6 +986,7 @@ function buildParsedStop(stopNumber, deliveryRow, pickupRow, options = {}) {
     pickup_package_count: pickupPackageCount,
     packages,
     sid: hasDelivery ? deliveryRow.sid : pickupRow.sid,
+    floor_load: Boolean(deliveryRow?.floor_load || pickupRow?.floor_load || packages.some((pkg) => pkg.floor_load)),
     ready_time: readyTime,
     close_time: closeTime,
     pickup_ready_time: pickupRow ? pickupRow.ready_time : null,
@@ -1159,6 +1170,7 @@ function parseGpxWaypointName(rawName, fallbackSequence) {
       stopNumber: fallbackSequence,
       sequence: fallbackSequence,
       sid: normalized || '',
+      floor_load: false,
       addressLine1: fallbackAddress,
       fullAddress: fallbackAddress,
       readyTime: null,
@@ -1169,7 +1181,8 @@ function parseGpxWaypointName(rawName, fallbackSequence) {
   }
 
   const stopNumber = parseInteger(structured[1], fallbackSequence) || fallbackSequence;
-  const sid = String(structured[2] || '').trim();
+  const sidMetadata = getSidMetadata(structured[2]);
+  const sid = sidMetadata.sid;
   const addressLine1 = String(structured[3] || '').trim() || fallbackAddress;
   const readyTime = formatTimeValue(structured[4]);
   const closeTime = formatTimeValue(structured[5]);
@@ -1178,6 +1191,7 @@ function parseGpxWaypointName(rawName, fallbackSequence) {
     stopNumber,
     sequence: stopNumber,
     sid,
+    floor_load: sidMetadata.floor_load,
     addressLine1,
     fullAddress: addressLine1,
     readyTime,
@@ -1225,6 +1239,7 @@ async function parseGPXManifest(fileBuffer) {
       address: parsedWaypoint.fullAddress,
       package_count: 1,
       sid: parsedWaypoint.sid,
+      floor_load: Boolean(parsedWaypoint.floor_load),
       ready_time: parsedWaypoint.readyTime,
       close_time: parsedWaypoint.closeTime,
       pickup_ready_time: null,
@@ -1333,6 +1348,8 @@ function parseXLSManifest(fileBuffer) {
 
     const contactFields = extractManifestContactFields(record, sheetHeaders);
 
+    const sidMetadata = getSidMetadata(record.SID);
+
     const parsedRow = {
       stop_number: stopNumber,
       type,
@@ -1357,7 +1374,8 @@ function parseXLSManifest(fileBuffer) {
       state,
       postal_code: postalCode,
       package_count: parseInteger(record['# Pkgs'], 0),
-      sid: String(record.SID ?? '').trim(),
+      sid: sidMetadata.sid,
+      floor_load: sidMetadata.floor_load,
       ready_time: formatTimeValue(pickFirstNonEmpty(record.Ready, record.DeliveryTimeBegin)),
       close_time: formatTimeValue(pickFirstNonEmpty(record.Close, record.DeliveryTimeEnd)),
       completed: String(record.Completed || '').trim().toUpperCase() === 'Y'
@@ -1372,6 +1390,7 @@ function parseXLSManifest(fileBuffer) {
     if (packageDetails.length) {
       parsedRow.packages = packageDetails;
       parsedRow.package_count = packageDetails.length;
+      parsedRow.floor_load = parsedRow.floor_load || packageDetails.some((pkg) => pkg.floor_load);
     }
 
     const normalizedTimeWindow = normalizeSuspiciousBusinessDeliveryWindow(parsedRow);

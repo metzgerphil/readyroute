@@ -16,6 +16,26 @@ function buildStopNoteKey(stop, createAddressHash) {
   };
 }
 
+function getScopedStopNoteKey(stop, createAddressHash, scope = 'unit') {
+  const noteKey = buildStopNoteKey(stop, createAddressHash);
+  const normalizedScope = String(scope || '').trim().toLowerCase();
+
+  if (normalizedScope === 'address' || normalizedScope === 'building') {
+    return {
+      ...noteKey,
+      address_hash: noteKey.normalized_address ? null : noteKey.address_hash,
+      unit_number: null,
+      scope: 'address'
+    };
+  }
+
+  return {
+    ...noteKey,
+    address_hash: noteKey.normalized_address ? null : noteKey.address_hash,
+    scope: 'unit'
+  };
+}
+
 async function loadStopNote(supabase, accountId, stop, createAddressHash) {
   const noteKey = buildStopNoteKey(stop, createAddressHash);
 
@@ -84,10 +104,45 @@ async function loadStopNote(supabase, accountId, stop, createAddressHash) {
   };
 }
 
-async function saveStopNote(supabase, accountId, stop, noteText, createAddressHash) {
+async function loadScopedStopNote(supabase, accountId, noteKey) {
+  if (noteKey.normalized_address) {
+    let query = supabase
+      .from('stop_notes')
+      .select('id, note_text, normalized_address, unit_number, updated_at')
+      .eq('account_id', accountId)
+      .eq('normalized_address', noteKey.normalized_address);
+
+    query = noteKey.unit_number
+      ? query.eq('unit_number', noteKey.unit_number)
+      : query.is('unit_number', null);
+
+    const { data, error } = await query.maybeSingle();
+
+    if (error) {
+      throw error;
+    }
+
+    return data || null;
+  }
+
+  const { data, error } = await supabase
+    .from('stop_notes')
+    .select('id, note_text, updated_at')
+    .eq('account_id', accountId)
+    .eq('address_hash', noteKey.address_hash)
+    .maybeSingle();
+
+  if (error) {
+    throw error;
+  }
+
+  return data || null;
+}
+
+async function saveStopNote(supabase, accountId, stop, noteText, createAddressHash, options = {}) {
   const normalizedNoteText = normalizeString(noteText);
-  const noteKey = buildStopNoteKey(stop, createAddressHash);
-  const existingNote = await loadStopNote(supabase, accountId, stop, createAddressHash);
+  const noteKey = getScopedStopNoteKey(stop, createAddressHash, options.scope || 'unit');
+  const existingNote = await loadScopedStopNote(supabase, accountId, noteKey);
 
   if (existingNote?.id && normalizedNoteText) {
     const { error } = await supabase
@@ -134,7 +189,8 @@ async function saveStopNote(supabase, accountId, stop, noteText, createAddressHa
   return normalizedNoteText
     ? {
         note_text: normalizedNoteText,
-        applies_to_unit: Boolean(noteKey.unit_number)
+        applies_to_unit: Boolean(noteKey.unit_number),
+        note_scope: noteKey.unit_number ? 'unit' : 'address'
       }
     : null;
 }
@@ -207,17 +263,21 @@ async function attachStopNotesToStops(supabase, accountId, stops, createAddressH
     const exactKey = key.normalized_address && key.unit_number
       ? `${key.normalized_address}::${key.unit_number}`
       : null;
-    const note = (exactKey && exactNotes.get(exactKey))
+    const stopOnlyNote = normalizeString(stop?.notes);
+    const note = stopOnlyNote
+      ? null
+      : (exactKey && exactNotes.get(exactKey))
       || (key.normalized_address && buildingNotes.get(key.normalized_address))
       || legacyNotes.get(key.address_hash)
       || null;
+    const noteText = stopOnlyNote || note?.note_text || null;
 
     return {
       ...stop,
-      has_note: Boolean(note?.note_text),
-      note_text: note?.note_text || null,
-      notes: note?.note_text || stop?.notes || null,
-      note_scope: note ? (note.unit_number ? 'unit' : 'address') : null
+      has_note: Boolean(noteText),
+      note_text: noteText,
+      notes: noteText,
+      note_scope: stopOnlyNote ? 'stop' : note ? (note.unit_number ? 'unit' : 'address') : null
     };
   });
 }
@@ -226,5 +286,6 @@ module.exports = {
   attachStopNotesToStops,
   buildStopNoteKey,
   loadStopNote,
+  getScopedStopNoteKey,
   saveStopNote
 };

@@ -282,7 +282,7 @@ test('parseXLSManifest parses FedEx Delivery Manifest stop and package detail ta
       ],
       [
         1,
-        '1001',
+        '1001FL',
         2,
         'Gloria Claudat',
         '',
@@ -305,8 +305,8 @@ test('parseXLSManifest parses FedEx Delivery Manifest stop and package detail ta
     workbook,
     XLSX.utils.aoa_to_sheet([
       ['ST#', 'SID', 'Recipient', 'Contact Name', 'Address Line 1', 'Address Line 2', 'City', 'State', 'Postal Code', 'Track ID', 'Prem Svc'],
-      [1, '1001', 'Gloria Claudat', '', '19752 Mount Israel Pl', '', 'Escondido', 'CA', '92029', '794612345678', 'ISIGNRES'],
-      [1, '1001', 'Gloria Claudat', '', '19752 Mount Israel Pl', '', 'Escondido', 'CA', '92029', '794612345679', 'RES']
+      [1, '1001FL', 'Gloria Claudat', '', '19752 Mount Israel Pl', '', 'Escondido', 'CA', '92029', '794612345678', 'ISIGNRES'],
+      [1, '1001FL', 'Gloria Claudat', '', '19752 Mount Israel Pl', '', 'Escondido', 'CA', '92029', '794612345679', 'RES']
     ]),
     'Package Details'
   );
@@ -322,6 +322,8 @@ test('parseXLSManifest parses FedEx Delivery Manifest stop and package detail ta
   assert.equal(stop.delivery_instructions, 'FRONT DOOR:please deliver Friday');
   assert.equal(stop.ready_time, '10:00');
   assert.equal(stop.close_time, '12:00');
+  assert.equal(stop.sid, '1001FL');
+  assert.equal(stop.floor_load, true);
   assert.equal(stop.package_count, 2);
   assert.deepEqual(stop.packages, [
     {
@@ -329,14 +331,16 @@ test('parseXLSManifest parses FedEx Delivery Manifest stop and package detail ta
       service_code: 'ISIGNRES',
       requires_signature: true,
       requires_adult_signature: false,
-      hazmat: false
+      hazmat: false,
+      floor_load: true
     },
     {
       tracking_number: '794612345679',
       service_code: 'RES',
       requires_signature: false,
       requires_adult_signature: false,
-      hazmat: false
+      hazmat: false,
+      floor_load: true
     }
   ]);
 });
@@ -747,7 +751,7 @@ test('parseGPXManifest extracts route work area and waypoint stop metadata from 
         <rte>
           <name>WA 0829</name>
           <rtept lon="-117.11" lat="32.11">
-            <name>Seq 20:SID 2089:2924 GAIT WAY:Ready 00:00:Close 20:00</name>
+            <name>Seq 20:SID 2089FL:2924 GAIT WAY:Ready 00:00:Close 20:00</name>
           </rtept>
           <rtept lon="-117.12" lat="32.12">
             <name>Seq 2:SID 1010:20785 CAMINO CIELO AZUL:Ready 00:00:Close 00:00</name>
@@ -766,7 +770,8 @@ test('parseGPXManifest extracts route work area and waypoint stop metadata from 
   assert.equal(manifest.stops[0].has_time_commit, false);
   assert.equal(manifest.stops[1].sequence, 20);
   assert.equal(manifest.stops[1].address, '2924 GAIT WAY');
-  assert.equal(manifest.stops[1].sid, '2089');
+  assert.equal(manifest.stops[1].sid, '2089FL');
+  assert.equal(manifest.stops[1].floor_load, true);
   assert.equal(manifest.stops[1].close_time, '20:00');
   assert.equal(manifest.stops[1].has_time_commit, true);
   assert.equal(manifest.stops[1].name, '2924 GAIT WAY');

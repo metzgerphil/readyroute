@@ -128,6 +128,19 @@ function signManagerToken(overrides = {}) {
   );
 }
 
+function signDriverToken(overrides = {}) {
+  return jwt.sign(
+    {
+      account_id: overrides.account_id || 'acct-1',
+      driver_id: overrides.driver_id || 'driver-1',
+      name: overrides.name || 'Test Driver',
+      role: 'driver'
+    },
+    process.env.JWT_SECRET,
+    { expiresIn: '1h' }
+  );
+}
+
 async function startTestServer(supabase, now = () => new Date('2026-04-12T16:00:00.000Z')) {
   const app = createApp({ supabase, jwtSecret: process.env.JWT_SECRET, now, enforceBilling: false });
   const server = await new Promise((resolve) => {
@@ -268,6 +281,39 @@ test('GET /vehicles returns vehicles with latest maintenance, today assignment, 
       };
     }
 
+    if (query.table === 'vehicle_inspections' && query.operation === 'select') {
+      return {
+        data: [
+          {
+            id: 'inspection-1',
+            vehicle_id: 'vehicle-2',
+            inspection_type: 'daily_check',
+            issue_reported: true,
+            issue_note: 'Brake light is out',
+            status: 'needs_review',
+            submitted_at: '2026-04-12T13:00:00.000Z'
+          }
+        ],
+        error: null
+      };
+    }
+
+    if (query.table === 'vehicle_inspection_items' && query.operation === 'select') {
+      return {
+        data: [
+          {
+            inspection_id: 'inspection-1',
+            checklist_item_key: 'lights',
+            label: 'Lights',
+            value: 'Needs Attention',
+            status: 'fail',
+            note: null
+          }
+        ],
+        error: null
+      };
+    }
+
     if (query.table === 'routes' && query.operation === 'select') {
       return {
         data: [
@@ -320,7 +366,10 @@ test('GET /vehicles returns vehicles with latest maintenance, today assignment, 
     assert.equal(body.vehicles[1].today_assignment, null);
     assert.equal(body.vehicles[1].service_due, false);
     assert.equal(body.vehicles[1].maintenance_alert.status, 'ok');
-    assert.equal(body.vehicles[1].readiness_status, 'ready');
+    assert.equal(body.vehicles[1].open_inspection_issue.issue_note, 'Brake light is out');
+    assert.equal(body.vehicles[1].open_inspection_issue.severity, 'blocked');
+    assert.equal(body.vehicles[1].readiness_status, 'blocked');
+    assert.equal(body.vehicles[1].readiness.primary_reason.type, 'unresolved_inspection_issue');
     assert.equal(body.vehicles[1].custom_truck_type, 'Box Truck P700');
   } finally {
     await server.close();
@@ -915,14 +964,63 @@ test('GET /vehicles/maintenance-records returns recent maintenance with truck de
   }
 });
 
-test('GET /vehicles/due-soon returns only service-due vehicles', async () => {
+test('GET /vehicles/due-soon returns vehicles due from maintenance program rules', async () => {
   const supabase = new MockSupabase((query) => {
     if (query.table === 'vehicles' && query.operation === 'select') {
       return {
         data: [
-          { id: 'vehicle-1', name: 'Truck 12', current_mileage: 19600, next_service_mileage: 20000 },
+          { id: 'vehicle-1', name: 'Truck 12', current_mileage: 19000, next_service_mileage: 30000 },
           { id: 'vehicle-2', name: 'Truck 14', current_mileage: 12000, next_service_mileage: 20000 },
           { id: 'vehicle-3', name: 'Truck 16', current_mileage: 15000, next_service_mileage: null }
+        ],
+        error: null
+      };
+    }
+
+    if (query.table === 'vehicle_maintenance_settings' && query.operation === 'select') {
+      return {
+        data: [
+          { service_type: 'Oil Change', is_enabled: true, default_interval_miles: 5000, default_interval_days: 180 },
+          { service_type: 'Inspection', is_enabled: true, default_interval_miles: null, default_interval_days: 14 },
+          { service_type: 'Air Filter', is_enabled: false, default_interval_miles: 1000, default_interval_days: null }
+        ],
+        error: null
+      };
+    }
+
+    if (query.table === 'vehicle_check_requirement_settings' && query.operation === 'select') {
+      return {
+        data: {
+          weekly_inspection_day: 'Monday',
+          maintenance_warning_miles: 750,
+          maintenance_warning_days: 10,
+          document_warning_days: 30
+        },
+        error: null
+      };
+    }
+
+    if (query.table === 'vehicle_maintenance' && query.operation === 'select') {
+      return {
+        data: [
+          {
+            id: 'maint-1',
+            vehicle_id: 'vehicle-1',
+            service_type: 'Oil Change',
+            service_date: '2026-03-01',
+            mileage_at_service: 14500,
+            next_service_mileage: 30000,
+            created_at: '2026-03-01T10:00:00.000Z'
+          },
+          {
+            id: 'maint-2',
+            vehicle_id: 'vehicle-3',
+            service_type: 'Inspection',
+            service_date: '2026-04-01',
+            mileage_at_service: null,
+            next_service_date: '2026-08-01',
+            created_at: '2026-04-01T10:00:00.000Z'
+          }
         ],
         error: null
       };
@@ -942,8 +1040,15 @@ test('GET /vehicles/due-soon returns only service-due vehicles', async () => {
 
     assert.equal(response.status, 200);
     const body = await response.json();
-    assert.equal(body.vehicles.length, 1);
+    assert.equal(body.vehicles.length, 2);
     assert.equal(body.vehicles[0].id, 'vehicle-1');
+    assert.equal(body.vehicles[0].maintenance_alert.status, 'due_soon');
+    assert.equal(body.vehicles[0].maintenance_alert.most_urgent.service_type, 'Oil Change');
+    assert.equal(body.vehicles[0].maintenance_alert.most_urgent.next_due_mileage, 19500);
+    assert.equal(body.vehicles[1].id, 'vehicle-3');
+    assert.equal(body.vehicles[1].maintenance_alert.status, 'due_soon');
+    assert.equal(body.vehicles[1].maintenance_alert.most_urgent.service_type, 'Inspection');
+    assert.equal(body.vehicles[1].maintenance_alert.most_urgent.next_due_date, '2026-04-15');
   } finally {
     await server.close();
   }
@@ -1304,6 +1409,476 @@ test('GET /vehicles/settings/checklist-template returns default checklist fields
     assert.equal(body.template.fields[2].id, 'truck_number');
     assert.equal(body.template.fields[2].label, 'Truck Number');
     assert.equal(body.template.fields.every((field) => field.enabled), true);
+  } finally {
+    await server.close();
+  }
+});
+
+test('GET /vehicles/inspections returns manager review rows with truck and driver summaries', async () => {
+  const supabase = new MockSupabase((query) => {
+    if (query.table === 'vehicle_inspections' && query.operation === 'select') {
+      return {
+        data: [
+          {
+            id: 'inspection-1',
+            account_id: 'acct-1',
+            vehicle_id: 'vehicle-1',
+            driver_id: 'driver-1',
+            route_id: 'route-1',
+            inspection_date: '2026-05-18',
+            inspection_type: 'weekly_inspection',
+            odometer: 65000,
+            issue_reported: true,
+            issue_note: 'Wiper blade torn',
+            status: 'needs_review',
+            submitted_at: '2026-05-18T15:00:00.000Z'
+          }
+        ],
+        error: null
+      };
+    }
+
+    if (query.table === 'vehicles' && query.operation === 'select') {
+      return {
+        data: [{ id: 'vehicle-1', name: '204526', make: 'Ford', model: 'Transit', year: 2022, truck_type: 'P1100' }],
+        error: null
+      };
+    }
+
+    if (query.table === 'drivers' && query.operation === 'select') {
+      return {
+        data: [{ id: 'driver-1', name: 'Phillip', phone: '555-0100' }],
+        error: null
+      };
+    }
+
+    if (query.table === 'vehicle_inspection_items' && query.operation === 'select') {
+      return {
+        data: [
+          {
+            id: 'item-1',
+            inspection_id: 'inspection-1',
+            checklist_item_key: 'wipers',
+            label: 'Wipers',
+            value: 'Needs attention',
+            status: 'fail',
+            note: null,
+            sort_order: 0
+          }
+        ],
+        error: null
+      };
+    }
+
+    return { data: [], error: null };
+  });
+  const server = await startTestServer(supabase);
+
+  try {
+    const response = await fetch(`${server.baseUrl}/vehicles/inspections?status=needs_review`, {
+      headers: { Authorization: `Bearer ${signManagerToken()}` }
+    });
+    const body = await response.json();
+
+    assert.equal(response.status, 200);
+    assert.equal(body.inspections.length, 1);
+    assert.equal(body.inspections[0].status_label, 'Needs Review');
+    assert.equal(body.inspections[0].vehicle.name, '204526');
+    assert.equal(body.inspections[0].driver.name, 'Phillip');
+    assert.equal(body.inspections[0].failed_items_count, 1);
+    assert.equal(body.inspections[0].failed_items[0].label, 'Wipers');
+  } finally {
+    await server.close();
+  }
+});
+
+test('GET /vehicles/inspections/:id returns checklist detail for manager review', async () => {
+  const supabase = new MockSupabase((query) => {
+    if (query.table === 'vehicle_inspections' && query.operation === 'select') {
+      return {
+        data: {
+          id: 'inspection-1',
+          account_id: 'acct-1',
+          vehicle_id: 'vehicle-1',
+          driver_id: 'driver-1',
+          route_id: 'route-1',
+          inspection_date: '2026-05-18',
+          inspection_type: 'weekly_inspection',
+          odometer: 65000,
+          issue_reported: true,
+          issue_note: 'Wiper blade torn',
+          status: 'needs_review',
+          submitted_at: '2026-05-18T15:00:00.000Z'
+        },
+        error: null
+      };
+    }
+
+    if (query.table === 'vehicles' && query.operation === 'select') {
+      return {
+        data: { id: 'vehicle-1', name: '204526', make: 'Ford', model: 'Transit', year: 2022, truck_type: 'P1100' },
+        error: null
+      };
+    }
+
+    if (query.table === 'drivers' && query.operation === 'select') {
+      return {
+        data: { id: 'driver-1', name: 'Phillip', phone: '555-0100' },
+        error: null
+      };
+    }
+
+    if (query.table === 'vehicle_inspection_items' && query.operation === 'select') {
+      return {
+        data: [
+          {
+            id: 'item-1',
+            checklist_item_key: 'wipers',
+            label: 'Wipers',
+            value: 'Needs Attention',
+            status: 'fail',
+            note: null,
+            sort_order: 0
+          }
+        ],
+        error: null
+      };
+    }
+
+    throw new Error(`Unexpected query ${query.table}:${query.operation}:${query.mode}`);
+  });
+  const server = await startTestServer(supabase);
+
+  try {
+    const response = await fetch(`${server.baseUrl}/vehicles/inspections/inspection-1`, {
+      headers: { Authorization: `Bearer ${signManagerToken()}` }
+    });
+    const body = await response.json();
+
+    assert.equal(response.status, 200);
+    assert.equal(body.inspection.status_label, 'Needs Review');
+    assert.equal(body.inspection.vehicle.name, '204526');
+    assert.equal(body.inspection.driver.phone, '555-0100');
+    assert.equal(body.inspection.items.length, 1);
+    assert.equal(body.inspection.items[0].label, 'Wipers');
+  } finally {
+    await server.close();
+  }
+});
+
+test('GET /vehicles/:id/inspection-history returns truck inspection history with items', async () => {
+  const supabase = new MockSupabase((query) => {
+    if (query.table === 'vehicles' && query.operation === 'select') {
+      return {
+        data: { id: 'vehicle-1', account_id: 'acct-1', name: '204526', make: 'Ford', model: 'Transit', year: 2022, truck_type: 'P1100' },
+        error: null
+      };
+    }
+
+    if (query.table === 'vehicle_inspections' && query.operation === 'select') {
+      assert.equal(query.filters.find((filter) => filter.column === 'vehicle_id')?.value, 'vehicle-1');
+      return {
+        data: [
+          {
+            id: 'inspection-1',
+            account_id: 'acct-1',
+            vehicle_id: 'vehicle-1',
+            driver_id: 'driver-1',
+            inspection_date: '2026-05-18',
+            inspection_type: 'weekly_inspection',
+            odometer: 65000,
+            issue_reported: true,
+            issue_note: 'Brake light is out',
+            status: 'needs_review',
+            submitted_at: '2026-05-18T15:00:00.000Z'
+          }
+        ],
+        error: null
+      };
+    }
+
+    if (query.table === 'drivers' && query.operation === 'select') {
+      return {
+        data: [{ id: 'driver-1', name: 'Phillip', phone: '555-0100' }],
+        error: null
+      };
+    }
+
+    if (query.table === 'vehicle_inspection_items' && query.operation === 'select') {
+      assert.deepEqual(query.filters.find((filter) => filter.column === 'inspection_id')?.value, ['inspection-1']);
+      return {
+        data: [
+          {
+            id: 'item-1',
+            inspection_id: 'inspection-1',
+            checklist_item_key: 'lights',
+            label: 'Lights',
+            value: 'Needs attention',
+            status: 'fail',
+            note: 'Left brake light',
+            sort_order: 0
+          }
+        ],
+        error: null
+      };
+    }
+
+    throw new Error(`Unexpected query ${query.table}:${query.operation}:${query.mode}`);
+  });
+  const server = await startTestServer(supabase);
+
+  try {
+    const response = await fetch(`${server.baseUrl}/vehicles/vehicle-1/inspection-history`, {
+      headers: { Authorization: `Bearer ${signManagerToken()}` }
+    });
+    const body = await response.json();
+
+    assert.equal(response.status, 200);
+    assert.equal(body.inspections.length, 1);
+    assert.equal(body.inspections[0].vehicle.name, '204526');
+    assert.equal(body.inspections[0].driver.name, 'Phillip');
+    assert.equal(body.inspections[0].items[0].label, 'Lights');
+    assert.equal(body.inspections[0].status_label, 'Needs Review');
+  } finally {
+    await server.close();
+  }
+});
+
+test('GET /vehicles/:id/odometer-history returns truck odometer entries with driver and route', async () => {
+  const supabase = new MockSupabase((query) => {
+    if (query.table === 'vehicles' && query.operation === 'select') {
+      return {
+        data: { id: 'vehicle-1', account_id: 'acct-1', name: '204526' },
+        error: null
+      };
+    }
+
+    if (query.table === 'vehicle_odometer_entries' && query.operation === 'select') {
+      assert.equal(query.filters.find((filter) => filter.column === 'vehicle_id')?.value, 'vehicle-1');
+      return {
+        data: [
+          {
+            id: 'odom-1',
+            vehicle_id: 'vehicle-1',
+            account_id: 'acct-1',
+            driver_id: 'driver-1',
+            route_id: 'route-1',
+            old_odometer_reading: 64000,
+            new_odometer_reading: 65000,
+            odometer_reading: 65000,
+            source: 'driver',
+            notes: null,
+            recorded_at: '2026-05-18T15:00:00.000Z'
+          }
+        ],
+        error: null
+      };
+    }
+
+    if (query.table === 'drivers' && query.operation === 'select') {
+      return {
+        data: [{ id: 'driver-1', name: 'Phillip', phone: '555-0100' }],
+        error: null
+      };
+    }
+
+    if (query.table === 'routes' && query.operation === 'select') {
+      return {
+        data: [{ id: 'route-1', date: '2026-05-18', work_area_name: '829', status: 'in_progress' }],
+        error: null
+      };
+    }
+
+    throw new Error(`Unexpected query ${query.table}:${query.operation}:${query.mode}`);
+  });
+  const server = await startTestServer(supabase);
+
+  try {
+    const response = await fetch(`${server.baseUrl}/vehicles/vehicle-1/odometer-history`, {
+      headers: { Authorization: `Bearer ${signManagerToken()}` }
+    });
+    const body = await response.json();
+
+    assert.equal(response.status, 200);
+    assert.equal(body.odometer_entries.length, 1);
+    assert.equal(body.odometer_entries[0].odometer_reading, 65000);
+    assert.equal(body.odometer_entries[0].driver.name, 'Phillip');
+    assert.equal(body.odometer_entries[0].route.work_area_name, '829');
+  } finally {
+    await server.close();
+  }
+});
+
+test('GET /vehicles/:id/assignment-history returns route assignment history', async () => {
+  const supabase = new MockSupabase((query) => {
+    if (query.table === 'vehicles' && query.operation === 'select') {
+      return {
+        data: { id: 'vehicle-1', account_id: 'acct-1', name: '204526' },
+        error: null
+      };
+    }
+
+    if (query.table === 'routes' && query.operation === 'select') {
+      assert.equal(query.filters.find((filter) => filter.column === 'vehicle_id')?.value, 'vehicle-1');
+      return {
+        data: [
+          {
+            id: 'route-1',
+            date: '2026-05-18',
+            driver_id: 'driver-1',
+            vehicle_id: 'vehicle-1',
+            work_area_name: '829',
+            status: 'complete',
+            total_stops: 81,
+            completed_stops: 81,
+            created_at: '2026-05-18T12:00:00.000Z',
+            completed_at: '2026-05-18T22:00:00.000Z'
+          }
+        ],
+        error: null
+      };
+    }
+
+    if (query.table === 'drivers' && query.operation === 'select') {
+      return {
+        data: [{ id: 'driver-1', name: 'Phillip', phone: '555-0100' }],
+        error: null
+      };
+    }
+
+    throw new Error(`Unexpected query ${query.table}:${query.operation}:${query.mode}`);
+  });
+  const server = await startTestServer(supabase);
+
+  try {
+    const response = await fetch(`${server.baseUrl}/vehicles/vehicle-1/assignment-history`, {
+      headers: { Authorization: `Bearer ${signManagerToken()}` }
+    });
+    const body = await response.json();
+
+    assert.equal(response.status, 200);
+    assert.equal(body.assignments.length, 1);
+    assert.equal(body.assignments[0].work_area_name, '829');
+    assert.equal(body.assignments[0].driver.name, 'Phillip');
+    assert.equal(body.assignments[0].completed_stops, 81);
+  } finally {
+    await server.close();
+  }
+});
+
+test('PUT /vehicles/inspections/:id/review marks an inspection reviewed with manager note', async () => {
+  const fixedNow = new Date('2026-05-18T16:00:00.000Z');
+  const supabase = new MockSupabase((query) => {
+    if (query.table === 'vehicle_inspections' && query.operation === 'select') {
+      return {
+        data: { id: 'inspection-1', account_id: 'acct-1', status: 'needs_review' },
+        error: null
+      };
+    }
+
+    if (query.table === 'vehicle_inspections' && query.operation === 'update') {
+      assert.equal(query.payload.status, 'reviewed');
+      assert.equal(query.payload.manager_review_note, 'Replaced wiper blade.');
+      assert.equal(query.payload.reviewed_by_manager_user_id, 'manager-1');
+      assert.equal(query.payload.reviewed_at, fixedNow.toISOString());
+      return {
+        data: {
+          id: 'inspection-1',
+          ...query.payload,
+          account_id: 'acct-1',
+          vehicle_id: 'vehicle-1',
+          inspection_type: 'daily_check'
+        },
+        error: null
+      };
+    }
+
+    throw new Error(`Unexpected query ${query.table}:${query.operation}:${query.mode}`);
+  });
+  const server = await startTestServer(supabase, () => fixedNow);
+
+  try {
+    const response = await fetch(`${server.baseUrl}/vehicles/inspections/inspection-1/review`, {
+      method: 'PUT',
+      headers: {
+        Authorization: `Bearer ${signManagerToken()}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        manager_review_note: 'Replaced wiper blade.'
+      })
+    });
+    const body = await response.json();
+
+    assert.equal(response.status, 200);
+    assert.equal(body.inspection.status, 'reviewed');
+    assert.equal(body.inspection.status_label, 'Reviewed');
+    assert.equal(body.inspection.manager_review_note, 'Replaced wiper blade.');
+  } finally {
+    await server.close();
+  }
+});
+
+test('POST /vehicles/inspections lets a driver submit a vehicle check for manager review', async () => {
+  const supabase = new MockSupabase((query) => {
+    if (query.table === 'vehicles' && query.operation === 'select') {
+      return {
+        data: { id: 'vehicle-1', account_id: 'acct-1', name: '204526', current_mileage: 64000 },
+        error: null
+      };
+    }
+
+    if (query.table === 'routes' && query.operation === 'select') {
+      return { data: { id: 'route-1' }, error: null };
+    }
+
+    if (query.table === 'vehicle_inspections' && query.operation === 'insert') {
+      assert.equal(query.payload.status, 'needs_review');
+      assert.equal(query.payload.issue_reported, true);
+      return {
+        data: { id: 'inspection-1', ...query.payload },
+        error: null
+      };
+    }
+
+    if (query.table === 'vehicle_inspection_items' && query.operation === 'insert') {
+      assert.equal(query.payload.length, 1);
+      assert.equal(query.payload[0].status, 'fail');
+      return { data: null, error: null };
+    }
+
+    if (query.table === 'vehicles' && query.operation === 'update') {
+      assert.equal(query.payload.current_mileage, 65000);
+      return { data: null, error: null };
+    }
+
+    return { data: null, error: null };
+  });
+  const server = await startTestServer(supabase);
+
+  try {
+    const response = await fetch(`${server.baseUrl}/vehicles/inspections`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${signDriverToken()}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        vehicle_id: 'vehicle-1',
+        route_id: 'route-1',
+        inspection_type: 'daily_check',
+        odometer: 65000,
+        issue_note: 'Left wiper is bad',
+        items: [
+          { checklist_item_key: 'wipers', label: 'Wipers', value: 'Left Bad', status: 'fail' }
+        ]
+      })
+    });
+    const body = await response.json();
+
+    assert.equal(response.status, 201);
+    assert.equal(body.inspection.status, 'needs_review');
+    assert.equal(body.inspection.vehicle.name, '204526');
   } finally {
     await server.close();
   }

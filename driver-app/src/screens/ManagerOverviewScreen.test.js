@@ -224,7 +224,7 @@ describe('ManagerOverviewScreen', () => {
     expect(screen.getByTestId('manager-operations-map')).toBeTruthy();
     expect(screen.queryByTestId('route-marker-route-1')).toBeNull();
     expect(screen.getByTestId('driver-marker-route-1')).toBeTruthy();
-    expect(screen.queryByTestId('stop-marker-stop-1')).toBeNull();
+    expect(screen.getByTestId('stop-marker-stop-1')).toBeTruthy();
     expect(screen.getByText('Routes')).toBeTruthy();
     expect(screen.getByText('Drivers')).toBeTruthy();
     expect(screen.getByText('Exceptions')).toBeTruthy();
@@ -301,6 +301,41 @@ describe('ManagerOverviewScreen', () => {
         authMode: 'manager',
         params: {
           date: getTodayOperationsDate()
+        }
+      });
+    });
+  });
+
+  it('uses the requested date when opening the fleet map from the manager dashboard', async () => {
+    api.get.mockResolvedValue({
+      data: {
+        sync_status: {
+          routes_today: 0,
+          routes_assigned: 0,
+          last_sync_at: '2026-04-24T13:30:00.000Z'
+        },
+        routes: []
+      }
+    });
+
+    render(
+      <ManagerOverviewScreen
+        navigation={{ navigate: jest.fn() }}
+        onLogout={jest.fn()}
+        route={{
+          params: {
+            date: '2026-04-23',
+            fleetMode: true
+          }
+        }}
+      />
+    );
+
+    await waitFor(() => {
+      expect(api.get).toHaveBeenCalledWith('/manager/routes', {
+        authMode: 'manager',
+        params: {
+          date: '2026-04-23'
         }
       });
     });

@@ -4,7 +4,7 @@ export function getDrawerMenuItems(activeMode) {
       {
         key: 'manager-overview',
         label: 'Map View',
-        screen: 'ManagerOverview'
+        screen: 'ManagerMap'
       },
       {
         key: 'manager-routes',

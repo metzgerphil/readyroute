@@ -41,6 +41,7 @@ function canRetryPackageInsertWithoutDetailColumns(error) {
   return (
     /service_code/i.test(message) ||
     /requires_adult_signature/i.test(message) ||
+    /floor_load/i.test(message) ||
     /schema cache/i.test(message) ||
     /column .* does not exist/i.test(message) ||
     /could not find the .*column/i.test(message)
@@ -48,7 +49,7 @@ function canRetryPackageInsertWithoutDetailColumns(error) {
 }
 
 function stripOptionalPackageDetailColumns(packageRows = []) {
-  return (packageRows || []).map(({ service_code, requires_adult_signature, ...row }) => row);
+  return (packageRows || []).map(({ service_code, requires_adult_signature, floor_load, ...row }) => row);
 }
 
 function getManifestUploadError(error, { workAreaName, date }) {
@@ -434,7 +435,8 @@ function mergePackageDetails(primaryPackages = [], fallbackPackages = []) {
       service_code: pkg.service_code || null,
       requires_signature: Boolean(pkg.requires_signature),
       requires_adult_signature: Boolean(pkg.requires_adult_signature),
-      hazmat: Boolean(pkg.hazmat)
+      hazmat: Boolean(pkg.hazmat),
+      ...(pkg.floor_load ? { floor_load: true } : {})
     });
   }
 
@@ -891,7 +893,8 @@ function buildPackageRowsForStops({ routeId, routeStops, stopIdBySequence = null
         service_code: pkg.service_code || null,
         requires_signature: Boolean(pkg.requires_signature),
         requires_adult_signature: Boolean(pkg.requires_adult_signature),
-        hazmat: Boolean(pkg.hazmat)
+        hazmat: Boolean(pkg.hazmat),
+        ...(pkg.floor_load || stop.floor_load ? { floor_load: true } : {})
       }));
     }
 
@@ -906,7 +909,8 @@ function buildPackageRowsForStops({ routeId, routeStops, stopIdBySequence = null
       service_code: null,
       requires_signature: false,
       requires_adult_signature: false,
-      hazmat: false
+      hazmat: false,
+      ...(stop.floor_load ? { floor_load: true } : {})
     }));
   }));
 }
@@ -1040,6 +1044,10 @@ async function applyManifestRouteAtomically({
   packageInsertPayload
 }) {
   if (typeof supabase.rpc !== 'function') {
+    return null;
+  }
+
+  if ((packageInsertPayload || []).some((pkg) => pkg.floor_load)) {
     return null;
   }
 
