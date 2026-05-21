@@ -1,6 +1,6 @@
 # ReadyRoute Google Cloud Run Migration
 
-This is the low-risk migration path for moving the ReadyRoute backend API from Railway to Google Cloud Run while leaving the landing page, manager portal, mobile app, and Supabase database in place.
+This is the low-risk migration path for running the ReadyRoute backend API on Google Cloud Run while leaving the landing page, manager portal, mobile app, and Supabase database in place.
 
 ## Target Shape
 
@@ -30,7 +30,7 @@ The backend listens on `process.env.PORT`, which Cloud Run provides automaticall
 
 ## Required Cloud Run Environment Variables
 
-Copy the real values from the current Railway backend service. Do not paste secrets into this repo.
+Copy the real production values into Google Cloud Secret Manager and/or Cloud Run environment variables. Do not paste secrets into this repo.
 
 Minimum required for the API:
 
@@ -104,4 +104,4 @@ Do not update the portal or mobile app until this returns `{"status":"ok"}`.
 
 ## Rollback
 
-Keep Railway running during the transition. If Cloud Run has trouble, point `api.readyroute.org` back to Railway or keep the apps on the current Railway backend URL.
+If Cloud Run has trouble, route traffic back to the last known-good Cloud Run revision, then re-run production smoke before sending users back to the portal or driver app.

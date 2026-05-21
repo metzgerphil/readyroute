@@ -34,7 +34,7 @@ Last verified: `2026-04-15`
 
 ### Driver App
 - Production env file exists: `/Users/phillipmetzger/readyroute/driver-app/.env.production`
-- Production API URL set to: `https://api.readyroute.app`
+- Production API URL set to: `https://api.readyroute.org`
 - Google Maps key present for production Expo config
 - Release guardrail script exists: `/Users/phillipmetzger/readyroute/driver-app/scripts/check-release-env.js`
 
