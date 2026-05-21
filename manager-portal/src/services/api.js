@@ -3,7 +3,7 @@ import axios from 'axios';
 import { clearManagerToken, getManagerAccountId, getManagerToken, getSelectedCsaId } from './auth';
 
 const LOCAL_API_URL = import.meta.env.VITE_API_URL_LOCAL || 'http://localhost:3001';
-const PRODUCTION_API_URL = import.meta.env.VITE_API_URL || 'https://readyroute-backend-production.up.railway.app';
+const PRODUCTION_API_URL = import.meta.env.VITE_API_URL || 'https://api.readyroute.org';
 const API_URL = import.meta.env.DEV ? LOCAL_API_URL : PRODUCTION_API_URL;
 
 const api = axios.create({

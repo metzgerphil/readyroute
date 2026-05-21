@@ -11,7 +11,7 @@ echo "==> Linting manager portal"
 npm --prefix "$ROOT_DIR/manager-portal" run lint
 
 echo "==> Building manager portal"
-VITE_API_URL="${VITE_API_URL:-https://readyroute-backend-production.up.railway.app}" \
+VITE_API_URL="${VITE_API_URL:-https://api.readyroute.org}" \
   npm --prefix "$ROOT_DIR/manager-portal" run build
 
 echo "==> Running backend unit tests"

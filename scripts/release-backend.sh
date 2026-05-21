@@ -3,19 +3,55 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 BACKEND_DIR="$ROOT_DIR/backend"
-RAILWAY_PROJECT_ID="${RAILWAY_PROJECT_ID:-6563ba20-da03-4222-8c84-7244fc6b44b4}"
-RAILWAY_SERVICE_ID="${RAILWAY_SERVICE_ID:-1cbb4c5c-cfaa-4c72-841b-3b83a99d96a4}"
-RAILWAY_ENVIRONMENT="${RAILWAY_ENVIRONMENT:-production}"
+GOOGLE_CLOUD_PROJECT="${GOOGLE_CLOUD_PROJECT:-ready-route-project}"
+GOOGLE_CLOUD_REGION="${GOOGLE_CLOUD_REGION:-us-west1}"
+CLOUD_RUN_SERVICE="${CLOUD_RUN_SERVICE:-readyroute-api}"
+BACKEND_HEALTH_URL="${BACKEND_HEALTH_URL:-https://api.readyroute.org/health}"
 
 echo "==> Running backend tests"
 cd "$BACKEND_DIR"
-npm test -- --runInBand
+npm run test:unit
 
-echo "==> Deploying backend to Railway"
-export NPM_CONFIG_CACHE="${NPM_CONFIG_CACHE:-$ROOT_DIR/.npm-cache}"
+if ! command -v gcloud >/dev/null 2>&1; then
+  cat <<EOF
+
+gcloud is not installed on this machine, so deploy from Google Cloud Shell.
+
+Step 1: Open Google Cloud Shell.
+
+Step 2: Paste this:
+
+cd ~/readyroute
+git fetch origin
+git checkout main
+git pull --ff-only origin main
+gcloud config set project $GOOGLE_CLOUD_PROJECT
+gcloud run deploy $CLOUD_RUN_SERVICE \\
+  --source ./backend \\
+  --region $GOOGLE_CLOUD_REGION \\
+  --allow-unauthenticated \\
+  --port 8080
+
+Step 3: Verify:
+
+curl -sS $BACKEND_HEALTH_URL
+
+Expected result:
+{"status":"ok",...}
+
+EOF
+  exit 0
+fi
+
+echo "==> Deploying backend to Google Cloud Run"
 cd "$ROOT_DIR"
-npx @railway/cli@4.39.0 up -p "$RAILWAY_PROJECT_ID" -s "$RAILWAY_SERVICE_ID" -e "$RAILWAY_ENVIRONMENT"
+gcloud config set project "$GOOGLE_CLOUD_PROJECT"
+gcloud run deploy "$CLOUD_RUN_SERVICE" \
+  --source ./backend \
+  --region "$GOOGLE_CLOUD_REGION" \
+  --allow-unauthenticated \
+  --port 8080
 
 echo "==> Verifying backend health"
-curl -sS https://readyroute-backend-production.up.railway.app/health
+curl -sS "$BACKEND_HEALTH_URL"
 echo

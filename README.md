@@ -20,7 +20,7 @@ The daemon runs manifest discovery every `FEDEX_SYNC_MANIFEST_INTERVAL_MS` and F
 - `FEDEX_SYNC_PROGRESS_INTERVAL_MS=90000` (90 seconds)
 - `FEDEX_SYNC_TICK_INTERVAL_MS=15000` (15 seconds)
 
-On Railway, run this as a separate `worker` process from `backend/Procfile`. The web process still serves the API, and the worker process keeps FCC polling alive. Make sure the Railway `worker` process is scaled to 1 instance; the `web` process alone will not run the FCC daemon.
+In production, prefer a Cloud Scheduler job that calls the backend internal sync endpoint. The Cloud Run API service still serves requests, and the scheduler keeps FCC polling alive.
 
 ReadyRoute also has one single-run worker entrypoint for manual checks:
 
@@ -40,7 +40,7 @@ Recommended scheduler setup:
 - Prefer the continuous daemon on a dedicated backend worker process.
 - If the host cannot run a worker process, call `/internal/fedex-sync` from an external scheduler.
 - Each CSA is evaluated in its own `operations_timezone`, so the worker should be scheduled often globally instead of assuming one national dispatch time.
-- The backend `postinstall` step installs Chromium with Playwright so the daemon can run FCC automation in Railway/Linux.
+- The backend `postinstall` step installs Chromium with Playwright so FCC automation can run in Linux-based cloud environments.
 
 Before enabling the worker against a live database, apply:
 

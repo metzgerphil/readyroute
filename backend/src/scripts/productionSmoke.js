@@ -7,7 +7,7 @@ try {
   // script usable in stripped-down CI installs too.
 }
 
-const DEFAULT_BACKEND_URL = 'https://readyroute-backend-production.up.railway.app';
+const DEFAULT_BACKEND_URL = 'https://api.readyroute.org';
 const DEFAULT_PORTAL_URL = 'https://portal.readyroute.org';
 
 function requireEnv(name) {

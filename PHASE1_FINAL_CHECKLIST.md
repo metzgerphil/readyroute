@@ -38,13 +38,13 @@ That means:
 
 ### Production Backend
 
-- [ ] Verify `GET /health` returns `200` on the Railway production URL
+- [ ] Verify `GET /health` returns `200` on the Cloud Run production URL
   Expected response:
   ```json
   { "status": "ok", "timestamp": "..." }
   ```
 
-- [ ] Confirm Railway env vars are set correctly
+- [ ] Confirm Cloud Run env vars and secrets are set correctly
   Reference:
   [DEPLOYMENT.md](/Users/phillipmetzger/readyroute/DEPLOYMENT.md)
 

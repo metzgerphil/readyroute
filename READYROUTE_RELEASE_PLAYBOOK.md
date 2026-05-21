@@ -1,6 +1,6 @@
 # ReadyRoute Release Playbook
 
-Last updated: `2026-04-17`
+Last updated: `2026-05-20`
 
 ## Purpose
 
@@ -14,8 +14,8 @@ Use it when you are:
 
 ## Current Production Surfaces
 
-- Backend: `https://readyroute-backend-production.up.railway.app`
-- Manager portal: `https://manager-portal-ten.vercel.app`
+- Backend: `https://api.readyroute.org`
+- Manager portal: `https://portal.readyroute.org`
 - Driver app: iOS build and TestFlight/App Store flow through EAS
 
 ## Repo-Level Release Commands
@@ -26,7 +26,7 @@ From the repo root:
 - `npm run release:smoke`
 - `npm run release:app:prep`
 
-These are thin wrappers around the real Railway, Vercel, and driver-app prep commands.
+These are thin wrappers around the real Cloud Run, Vercel, and driver-app prep commands.
 They are the fastest way to run the standard ReadyRoute release flow consistently.
 
 ## Release Types
@@ -51,7 +51,7 @@ Use this when:
 - you changed Supabase or server-side business logic
 
 Expected result:
-- live API updates after Railway deploy
+- live API updates after Cloud Run deploy
 - manager portal and driver app use the new backend immediately
 - no iPhone app rebuild needed unless the mobile code also changed
 
@@ -103,23 +103,30 @@ npm run release:backend
 
 What `npm run release:backend` does:
 - runs backend tests
-- deploys the backend to Railway
+- deploys the backend to Google Cloud Run when `gcloud` is installed
+- prints clear Cloud Shell steps when `gcloud` is not installed locally
 - checks production health
 
 Manual equivalent:
 ```bash
-cd /Users/phillipmetzger/readyroute/backend
-npm test -- --runInBand
-export NPM_CONFIG_CACHE=/tmp/readyroute-npm-cache
-npx @railway/cli@4.39.0 up -s 1cbb4c5c-cfaa-4c72-841b-3b83a99d96a4 -e production
-curl -sS https://readyroute-backend-production.up.railway.app/health
+cd ~/readyroute
+git fetch origin
+git checkout main
+git pull --ff-only origin main
+gcloud config set project ready-route-project
+gcloud run deploy readyroute-api \
+  --source ./backend \
+  --region us-west1 \
+  --allow-unauthenticated \
+  --port 8080
+curl -sS https://api.readyroute.org/health
 ```
 
 Expected result:
 - returns `{"status":"ok",...}`
 
 If backend crashes:
-- check Railway deploy logs
+- check Cloud Run revision logs
 - most likely causes are missing env vars or startup config issues
 
 ## Manager Portal Release Workflow
@@ -202,7 +209,7 @@ Important:
 
 ### Backend
 
-- changes go live after Railway deploy
+- changes go live after Cloud Run deploy
 - manager portal and driver app will use new backend behavior immediately
 
 ### Manager Portal
@@ -269,7 +276,7 @@ For every real release, record:
 
 ## Current Known Gaps
 
-- custom production backend domain still needs to be finalized if you want `api.readyroute.app`
+- Cloud Run env/secret changes should be made carefully so existing Supabase and Resend config is preserved
 - manager portal production Google Maps key/referrer restrictions should be verified against the live Vercel domain
 - driver app OTA updates are not configured as an automatic release path right now
 
@@ -279,13 +286,13 @@ If you changed only manager portal code:
 - deploy Vercel only
 
 If you changed only backend code:
-- deploy Railway only
+- deploy Cloud Run only
 
 If you changed only driver app code:
 - run release prep, build with EAS, then submit
 
 If you changed everything:
-- Railway
+- Cloud Run
 - Vercel
 - EAS build
 - EAS submit

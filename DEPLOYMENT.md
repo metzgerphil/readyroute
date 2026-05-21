@@ -1,6 +1,6 @@
 # ReadyRoute Deployment
 
-ReadyRoute production should be GitHub-driven. Local deploy commands are emergency tools only; normal deployment should happen from pushes to `main` through Vercel and Railway Git integrations.
+ReadyRoute production should be GitHub-driven. Local deploy commands are emergency tools only; normal deployment should happen from committed source through Vercel, Google Cloud Run, Supabase, Resend, and EAS.
 
 ## Production Targets
 
@@ -9,7 +9,7 @@ ReadyRoute production should be GitHub-driven. Local deploy commands are emergen
 | Landing page | `https://readyroute.org` | Vercel | `landing-page`, `prj_jM9cDzf32BBmTWSH4nMoBj2nuLlI` |
 | Landing page www | `https://www.readyroute.org` | Vercel | `landing-page`, `prj_jM9cDzf32BBmTWSH4nMoBj2nuLlI` |
 | Manager portal | `https://portal.readyroute.org` | Vercel | `manager-portal`, `prj_fkit6VjgKUUlx28IJHkBLuBWbxZi` |
-| Backend API | `https://readyroute-backend-production.up.railway.app` | Railway | service `1cbb4c5c-cfaa-4c72-841b-3b83a99d96a4` |
+| Backend API | `https://api.readyroute.org` | Google Cloud Run | project `ready-route-project`, service `readyroute-api`, region `us-west1` |
 
 Vercel team/org:
 
@@ -57,7 +57,7 @@ npm run release:smoke
    - Portal CI
 4. Merge to `main`.
 5. Vercel deploys `landing-page` and `manager-portal` from GitHub.
-6. Railway deploys `backend` from GitHub.
+6. Deploy `backend` to Google Cloud Run.
 7. Run Production Smoke:
 
 ```bash
@@ -86,7 +86,7 @@ Landing page:
 npm run deploy:landing
 ```
 
-After any emergency deploy, commit and push the same source to GitHub so Vercel/Railway can reproduce production.
+After any emergency deploy, commit and push the same source to GitHub so Vercel and Cloud Run can reproduce production.
 
 ## Smoke Tests
 
@@ -102,7 +102,7 @@ Quick public checks:
 curl -I https://readyroute.org
 curl -I https://www.readyroute.org
 curl -I https://portal.readyroute.org
-curl -sS https://readyroute-backend-production.up.railway.app/health
+curl -sS https://api.readyroute.org/health
 ```
 
 DNS checks:
@@ -152,14 +152,14 @@ npm run smoke
 
 Backend rollback:
 
-1. Open the Railway backend service.
-2. Go to Deployments.
-3. Redeploy the last known-good deployment.
+1. Open the Cloud Run service `readyroute-api`.
+2. Go to Revisions.
+3. Route traffic back to the last known-good revision.
 4. Confirm `/health` is healthy.
 5. Re-run production smoke:
 
 ```bash
-curl -sS https://readyroute-backend-production.up.railway.app/health
+curl -sS https://api.readyroute.org/health
 npm run smoke
 ```
 
@@ -167,7 +167,7 @@ If a schema migration caused the issue, do not rollback code alone. Confirm the 
 
 ## Required Production Environment
 
-Railway backend:
+Cloud Run backend:
 
 - `NODE_ENV=production`
 - `APP_TIME_ZONE=America/Los_Angeles`
@@ -186,12 +186,12 @@ Railway backend:
 
 Vercel manager portal:
 
-- `VITE_API_URL=https://readyroute-backend-production.up.railway.app`
+- `VITE_API_URL=https://api.readyroute.org`
 - `VITE_GOOGLE_MAPS_KEY=<production_browser_key>`
 
 Driver app build environment:
 
-- `EXPO_PUBLIC_API_URL=https://readyroute-backend-production.up.railway.app`
+- `EXPO_PUBLIC_API_URL=https://api.readyroute.org`
 - `EXPO_PUBLIC_GOOGLE_MAPS_API_KEY=<production_mobile_key>`
 
 GitHub production smoke secrets:
@@ -215,11 +215,11 @@ GitHub Actions should check code, not own production deployment.
 - `.github/workflows/portal-ci.yml` lints/builds the manager portal.
 - `.github/workflows/production-smoke.yml` runs production smoke manually or by dispatch.
 
-Vercel and Railway Git integrations remain the production deployment owners.
+Vercel and Cloud Run remain the production deployment owners.
 
 ## FCC Background Sync
 
-Preferred production setup: run the backend `worker` process from `backend/Procfile` on Railway. The worker runs `npm run fedex:sync:daemon`, which keeps manifest discovery and FCC scanner progress polling alive automatically. In Railway, scale the `worker` process to 1 instance; keeping only the `web` process on will serve the API but will not poll FCC.
+Preferred production setup: run FCC background sync from a Cloud Scheduler job that calls the backend internal sync endpoint. Cloud Run request handlers serve the API; scheduled jobs trigger manifest discovery and FCC scanner progress polling.
 
 Backend worker environment:
 
@@ -231,7 +231,7 @@ Backend worker environment:
 If the host cannot run a continuous worker process, call the internal sync endpoint from a scheduler:
 
 ```bash
-curl -X POST "https://readyroute-backend-production.up.railway.app/internal/fedex-sync" \
+curl -X POST "https://api.readyroute.org/internal/fedex-sync" \
   -H "Authorization: Bearer $FEDEX_SYNC_WORKER_SECRET" \
   -H "Content-Type: application/json" \
   -d '{"mode":"auto"}'
@@ -240,7 +240,7 @@ curl -X POST "https://readyroute-backend-production.up.railway.app/internal/fede
 For scanner-completion updates:
 
 ```bash
-curl -X POST "https://readyroute-backend-production.up.railway.app/internal/fedex-sync" \
+curl -X POST "https://api.readyroute.org/internal/fedex-sync" \
   -H "Authorization: Bearer $FEDEX_SYNC_WORKER_SECRET" \
   -H "Content-Type: application/json" \
   -d '{"mode":"progress"}'
@@ -253,7 +253,7 @@ ReadyRoute uses the Supabase service-role key from the backend. Client apps shou
 Production Stripe webhook:
 
 ```text
-https://readyroute-backend-production.up.railway.app/billing/webhook
+https://api.readyroute.org/billing/webhook
 ```
 
 ## Notes
