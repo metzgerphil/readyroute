@@ -25,9 +25,8 @@
 }
 
 .fleet-map-canvas-card {
-  display: grid;
-  grid-template-rows: auto minmax(560px, 1fr);
-  gap: 10px;
+  display: flex;
+  flex-direction: column;
   min-height: 76vh;
 }
 
@@ -60,7 +59,9 @@
 }
 
 .fleet-map-canvas {
-  min-height: 100%;
+  flex: 1 1 auto;
+  height: auto;
+  min-height: 560px;
   width: 100%;
   border-radius: 12px;
   overflow: hidden;
@@ -286,7 +287,11 @@
   }
 
   .fleet-map-canvas-card {
-    grid-template-rows: auto minmax(460px, 1fr);
+    min-height: 56vh;
+  }
+
+  .fleet-map-canvas {
+    min-height: 460px;
   }
 
   .fleet-map-empty-state {
@@ -301,7 +306,7 @@
   }
 
   .fleet-map-canvas-card {
-    grid-template-rows: auto minmax(420px, 58vh);
+    min-height: auto;
   }
 
   .fleet-map-canvas {

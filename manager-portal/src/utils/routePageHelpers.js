@@ -20,18 +20,14 @@ export function getInitialRouteDate(searchParams) {
 
 export function getGoogleMapsErrorMessage(error) {
   if (error?.message === 'missing_google_maps_key') {
-    return 'Google Maps is not configured for this portal. Add VITE_GOOGLE_MAPS_KEY and redeploy.';
+    return 'Map failed to load. Check Google Maps API key, billing, and referrer restrictions.';
   }
 
   if (error?.message === 'google_maps_auth_failed') {
-    return 'Google Maps rejected this browser key. Check the Maps JavaScript API and portal.readyroute.org referrer restrictions.';
+    return 'Map failed to load. Check Google Maps API key, billing, and referrer restrictions.';
   }
 
-  if (error?.message === 'google_maps_script_timeout') {
-    return 'Google Maps is taking too long to load. Refresh this route or check the browser network connection.';
-  }
-
-  return 'Google Maps could not load for this route view.';
+  return 'Map failed to load. Check Google Maps API key, billing, and referrer restrictions.';
 }
 
 export function getFriendlyDate(dateValue) {
@@ -314,6 +310,7 @@ export function getRouteCentroid(stops = []) {
 
 export function buildInfoWindow(stop) {
   const packageCount = getPackageCount(stop);
+  const hasFloorLoad = Boolean(stop?.floor_load) || (stop?.packages || []).some((pkg) => pkg?.floor_load);
   const completionBadge = getCompletionBadge(stop);
   const stopType = getStopType(stop);
   const contact = getStopContactDetails(stop);
@@ -413,6 +410,13 @@ export function buildInfoWindow(stop) {
         <span style="width:8px; height:8px; border-radius:50%; background:${locationAccuracy.color}; display:inline-block;"></span>
         <span>${locationAccuracy.label}</span>
       </div>
+      ${
+        hasFloorLoad
+          ? `<div style="margin-top:12px; display:inline-flex; align-items:center; gap:8px; padding:8px 12px; border-radius:999px; background:#fff7ed; color:#9a3412; border:1px solid #ff6200; font-size:14px; font-weight:950;">
+              FLOOR LOAD
+            </div>`
+          : ''
+      }
       ${
         stop.exception_code
           ? `<div style="margin-top:12px; display:inline-flex; align-items:center; gap:8px; padding:8px 12px; border-radius:999px; background:#c93300; color:#ffffff; font-size:18px; font-weight:950;">

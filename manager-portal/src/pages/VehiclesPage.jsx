@@ -169,6 +169,22 @@ const emptyOdometerForm = {
   confirmedLower: false
 };
 
+const emptyMaintenanceRecordFilters = {
+  truck: '',
+  serviceType: 'all',
+  startDate: '',
+  endDate: ''
+};
+
+const INSPECTION_REVIEW_FILTERS = [
+  ['all', 'All'],
+  ['needs_review', 'Needs Review'],
+  ['reported_issues', 'Reported Issues'],
+  ['failed_items', 'Failed Checklist Items'],
+  ['submitted', 'Submitted'],
+  ['reviewed', 'Reviewed']
+];
+
 function getMaintenanceSettingKey(setting, index) {
   return setting.id || `${setting.service_type || 'maintenance-item'}-${index}`;
 }
@@ -245,6 +261,131 @@ function getServiceTypeOptions(settings = []) {
   return Array.from(options);
 }
 
+function filterMaintenanceRecords(records = [], filters = emptyMaintenanceRecordFilters) {
+  const truckNeedle = filters.truck.trim().toLowerCase();
+  const serviceType = filters.serviceType || 'all';
+  const startDate = filters.startDate || '';
+  const endDate = filters.endDate || '';
+
+  return (records || []).filter((record) => {
+    const truckLabel = [
+      record.vehicle?.name,
+      record.vehicle_name,
+      record.vehicle?.make,
+      record.vehicle?.model,
+      record.vehicle?.year
+    ].filter(Boolean).join(' ').toLowerCase();
+    const recordServiceType = record.service_type || 'Maintenance';
+
+    if (truckNeedle && !truckLabel.includes(truckNeedle)) {
+      return false;
+    }
+
+    if (serviceType !== 'all' && recordServiceType !== serviceType) {
+      return false;
+    }
+
+    if (startDate && String(record.service_date || '') < startDate) {
+      return false;
+    }
+
+    if (endDate && String(record.service_date || '') > endDate) {
+      return false;
+    }
+
+    return true;
+  });
+}
+
+function filterInspectionRows(inspections = [], filter = 'all') {
+  if (filter === 'reported_issues') {
+    return inspections.filter((inspection) => inspection.issue_reported || inspection.issue_note);
+  }
+
+  if (filter === 'failed_items') {
+    return inspections.filter((inspection) => Number(inspection.failed_items_count || 0) > 0 || (inspection.items || []).some((item) => item.status === 'fail'));
+  }
+
+  if (filter === 'all') {
+    return inspections;
+  }
+
+  return inspections.filter((inspection) => inspection.status === filter);
+}
+
+function sanitizeCsvValue(value) {
+  if (value === undefined || value === null) {
+    return '';
+  }
+
+  const stringValue = String(value).replace(/\r?\n|\r/g, ' ').trim();
+  return /^[=+\-@]/.test(stringValue) ? `'${stringValue}` : stringValue;
+}
+
+function toCsv(rows = []) {
+  return rows.map((row) => row.map((value) => {
+    const safeValue = sanitizeCsvValue(value);
+    return /[",\n]/.test(safeValue) ? `"${safeValue.replace(/"/g, '""')}"` : safeValue;
+  }).join(',')).join('\n');
+}
+
+function downloadCsv(filename, rows = []) {
+  const csv = toCsv(rows);
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(url);
+}
+
+function buildMaintenanceRecordsCsvRows(records = []) {
+  return [
+    ['Date', 'Truck Number', 'Vehicle Description', 'Vehicle Type', 'Service Type', 'Notes', 'Vendor', 'Mileage', 'Cost', 'Next Due Mileage', 'Next Due Date'],
+    ...records.map((record) => [
+      record.service_date || '',
+      record.vehicle?.name || record.vehicle_name || '',
+      record.vehicle ? getVehicleDescription(record.vehicle) : '',
+      record.vehicle ? getVehicleTypeLabel(record.vehicle) : '',
+      record.service_type || 'Maintenance',
+      record.description || '',
+      record.vendor_name || '',
+      record.mileage_at_service ?? '',
+      record.cost ?? '',
+      record.next_service_mileage ?? '',
+      record.next_service_date || ''
+    ])
+  ];
+}
+
+function buildInspectionCsvRows(inspections = []) {
+  return [
+    ['Inspection Date', 'Submitted Time', 'Truck Number', 'Driver', 'Inspection Type', 'Odometer', 'Status', 'Issue Note', 'Failed Checklist Count', 'Failed Checklist Items', 'Manager Review Note'],
+    ...inspections.map((inspection) => {
+      const failedItems = inspection.failed_items?.length
+        ? inspection.failed_items
+        : (inspection.items || []).filter((item) => item.status === 'fail');
+
+      return [
+        inspection.inspection_date || '',
+        inspection.submitted_at || '',
+        getInspectionVehicleLabel(inspection),
+        getInspectionDriverLabel(inspection),
+        inspection.inspection_type_label || '',
+        inspection.odometer ?? '',
+        inspection.status_label || '',
+        inspection.issue_note || '',
+        inspection.failed_items_count ?? failedItems.length,
+        failedItems.map((item) => `${item.label || item.checklist_item_key}${item.value ? `: ${item.value}` : ''}${item.note ? ` (${item.note})` : ''}`).join('; '),
+        inspection.manager_review_note || ''
+      ];
+    })
+  ];
+}
+
 function findMaintenanceSetting(settings, serviceType) {
   return (settings || []).find((setting) => setting.service_type === serviceType) || null;
 }
@@ -298,6 +439,24 @@ function buildMaintenanceForm({ vehicle, settings, serviceType = 'Oil Change', s
     mileage_at_service: resolvedMileageAtService,
     next_service_mileage: autofill.next_service_mileage,
     next_service_date: autofill.next_service_date
+  };
+}
+
+function buildInspectionMaintenancePrefill(inspection) {
+  const failedItems = (inspection?.items || [])
+    .filter((item) => item.status === 'fail')
+    .map((item) => `${item.label}${item.value ? `: ${item.value}` : ''}${item.note ? ` (${item.note})` : ''}`);
+  const notes = [
+    inspection?.issue_note ? `Driver issue note: ${inspection.issue_note}` : null,
+    failedItems.length ? `Failed checklist items: ${failedItems.join('; ')}` : null,
+    inspection?.id ? `Source inspection: ${inspection.id}` : null
+  ].filter(Boolean);
+
+  return {
+    serviceType: failedItems.length || inspection?.issue_note ? 'General Repair' : 'Inspection',
+    description: notes.join('\n'),
+    conditionNotes: failedItems.join('\n'),
+    mileageAtService: inspection?.odometer ? String(inspection.odometer) : ''
   };
 }
 
@@ -641,6 +800,26 @@ function getVehicleTypeLabel(vehicle) {
   }
 
   return vehicle.truck_type || 'Truck type not recorded';
+}
+
+function getInspectionVehicleLabel(inspection) {
+  return inspection?.vehicle?.name || 'Truck not recorded';
+}
+
+function getInspectionDriverLabel(inspection) {
+  return inspection?.driver?.name || 'Driver not recorded';
+}
+
+function getInspectionStatusClass(status) {
+  if (status === 'needs_review') {
+    return 'warning';
+  }
+
+  if (status === 'reviewed') {
+    return 'ready';
+  }
+
+  return 'neutral';
 }
 
 function getRegistrationStatus(vehicle, warningDays = DEFAULT_REMINDER_SCHEDULE.document_warning_days) {
@@ -1065,7 +1244,10 @@ function VehicleDetailsDrawer({
   onAddService,
   onChange,
   onClose,
+  onViewAssignmentHistory,
   onSubmit,
+  onViewInspectionHistory,
+  onViewOdometerHistory,
   onViewHistory
 }) {
   const statusMeta = getStatusMeta(vehicle);
@@ -1090,6 +1272,9 @@ function VehicleDetailsDrawer({
           <div className="vehicle-detail-actions">
             <button className="secondary-inline-button" onClick={onAddService} type="button">Log Maintenance</button>
             <button className="secondary-inline-button" onClick={onViewHistory} type="button">View Maintenance History</button>
+            <button className="secondary-inline-button" onClick={onViewInspectionHistory} type="button">View Inspection History</button>
+            <button className="secondary-inline-button" onClick={onViewOdometerHistory} type="button">View Odometer History</button>
+            <button className="secondary-inline-button" onClick={onViewAssignmentHistory} type="button">View Assignment History</button>
             <button className="secondary-inline-button" onClick={onClose} type="button">Cancel</button>
             <button className="primary-inline-button" disabled={isSubmitting} type="submit">
               {isSubmitting ? 'Saving...' : 'Save Changes'}
@@ -1214,7 +1399,7 @@ function MaintenanceHistoryModal({ vehicle, open, onClose, selectedCsaId }) {
 
   return (
     <div className="modal-backdrop">
-      <div className="modal-card history-modal-card">
+      <div className="modal-card history-modal-card service-history-modal-card">
         <div className="modal-header">
           <div>
             <div className="card-title">{vehicle.name} — Service History</div>
@@ -1259,7 +1444,206 @@ function MaintenanceHistoryModal({ vehicle, open, onClose, selectedCsaId }) {
   );
 }
 
-function MaintenanceRecordsPanel({ isLoading, records, onViewHistory }) {
+function InspectionHistoryModal({ vehicle, open, onClose, onOpenInspection, selectedCsaId }) {
+  const historyQuery = useQuery({
+    queryKey: ['vehicle-inspection-history', selectedCsaId, vehicle?.id],
+    queryFn: async () => {
+      const response = await api.get(`/vehicles/${vehicle.id}/inspection-history`);
+      return response.data?.inspections || [];
+    },
+    enabled: open && Boolean(selectedCsaId) && Boolean(vehicle?.id)
+  });
+
+  if (!open || !vehicle) {
+    return null;
+  }
+
+  return (
+    <div className="modal-backdrop">
+      <div className="modal-card history-modal-card inspection-history-modal-card">
+        <div className="modal-header">
+          <div>
+            <div className="card-title">{vehicle.name} — Inspection History</div>
+            <div className="driver-meta">Driver vehicle checks and manager review status for this Truck.</div>
+          </div>
+          <button className="icon-button" onClick={onClose} type="button">×</button>
+        </div>
+
+        {historyQuery.isLoading ? (
+          <div className="driver-meta">Loading inspection history...</div>
+        ) : historyQuery.data?.length ? (
+          <div className="inspection-history-list">
+            {historyQuery.data.map((inspection) => {
+              const failedItems = (inspection.items || []).filter((item) => item.status === 'fail');
+
+              return (
+                <button
+                  className="inspection-history-row"
+                  key={inspection.id}
+                  onClick={() => onOpenInspection(inspection)}
+                  type="button"
+                >
+                  <span className={`inspection-status-pill ${getInspectionStatusClass(inspection.status)}`}>
+                    {inspection.status_label}
+                  </span>
+                  <span className="inspection-review-main">
+                    <strong>{inspection.inspection_type_label} • {formatDate(inspection.inspection_date)}</strong>
+                    <span>{getInspectionDriverLabel(inspection)} • {inspection.odometer ? `${formatMileage(inspection.odometer)} mi` : 'No odometer'}</span>
+                    {inspection.issue_note ? <span>Issue note: {inspection.issue_note}</span> : null}
+                  </span>
+                  <span className="inspection-review-meta">
+                    <strong>{failedItems.length ? `${failedItems.length} failed` : 'No failed items'}</strong>
+                    <span>{inspection.manager_review_note || 'No manager note'}</span>
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        ) : (
+          <div className="driver-meta">No inspection submissions for this Truck yet.</div>
+        )}
+
+        <div className="modal-actions">
+          <button className="secondary-inline-button" onClick={onClose} type="button">Close</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function OdometerHistoryModal({ vehicle, open, onClose, selectedCsaId }) {
+  const historyQuery = useQuery({
+    queryKey: ['vehicle-odometer-history', selectedCsaId, vehicle?.id],
+    queryFn: async () => {
+      const response = await api.get(`/vehicles/${vehicle.id}/odometer-history`);
+      return response.data?.odometer_entries || [];
+    },
+    enabled: open && Boolean(selectedCsaId) && Boolean(vehicle?.id)
+  });
+
+  if (!open || !vehicle) {
+    return null;
+  }
+
+  return (
+    <div className="modal-backdrop">
+      <div className="modal-card history-modal-card">
+        <div className="modal-header">
+          <div>
+            <div className="card-title">{vehicle.name} — Odometer History</div>
+            <div className="driver-meta">Driver and manager odometer readings for this Truck.</div>
+          </div>
+          <button className="icon-button" onClick={onClose} type="button">×</button>
+        </div>
+
+        {historyQuery.isLoading ? (
+          <div className="driver-meta">Loading odometer history...</div>
+        ) : historyQuery.data?.length ? (
+          <div className="history-table compact-history-table">
+            <div className="history-table-header odometer-history-header">
+              <span>Date</span>
+              <span>Reading</span>
+              <span>Source</span>
+              <span>Driver / Route</span>
+              <span>Notes</span>
+            </div>
+            {historyQuery.data.map((entry) => (
+              <div className="history-table-row odometer-history-row" key={entry.id}>
+                <span data-label="Date">{entry.recorded_at ? format(new Date(entry.recorded_at), 'MMM d, yyyy h:mm a') : '—'}</span>
+                <span data-label="Reading">{entry.odometer_reading ? `${formatMileage(entry.odometer_reading)} mi` : '—'}</span>
+                <span data-label="Source">{entry.source === 'manager' ? 'Manager' : 'Driver'}</span>
+                <span data-label="Driver / Route">
+                  {[entry.driver?.name, entry.route?.work_area_name ? `Route ${entry.route.work_area_name}` : null].filter(Boolean).join(' • ') || '—'}
+                </span>
+                <span data-label="Notes">{entry.notes || '—'}</span>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div className="driver-meta">No odometer history for this Truck yet.</div>
+        )}
+
+        <div className="modal-actions">
+          <button className="secondary-inline-button" onClick={onClose} type="button">Close</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function AssignmentHistoryModal({ vehicle, open, onClose, selectedCsaId }) {
+  const historyQuery = useQuery({
+    queryKey: ['vehicle-assignment-history', selectedCsaId, vehicle?.id],
+    queryFn: async () => {
+      const response = await api.get(`/vehicles/${vehicle.id}/assignment-history`);
+      return response.data?.assignments || [];
+    },
+    enabled: open && Boolean(selectedCsaId) && Boolean(vehicle?.id)
+  });
+
+  if (!open || !vehicle) {
+    return null;
+  }
+
+  return (
+    <div className="modal-backdrop">
+      <div className="modal-card history-modal-card">
+        <div className="modal-header">
+          <div>
+            <div className="card-title">{vehicle.name} — Assignment History</div>
+            <div className="driver-meta">Route and driver assignments for this Truck.</div>
+          </div>
+          <button className="icon-button" onClick={onClose} type="button">×</button>
+        </div>
+
+        {historyQuery.isLoading ? (
+          <div className="driver-meta">Loading assignment history...</div>
+        ) : historyQuery.data?.length ? (
+          <div className="history-table compact-history-table">
+            <div className="history-table-header assignment-history-header">
+              <span>Date</span>
+              <span>Route</span>
+              <span>Driver</span>
+              <span>Status</span>
+              <span>Stops</span>
+            </div>
+            {historyQuery.data.map((assignment) => (
+              <div className="history-table-row assignment-history-row" key={assignment.id}>
+                <span data-label="Date">{formatDate(assignment.date)}</span>
+                <span data-label="Route">{assignment.work_area_name || '—'}</span>
+                <span data-label="Driver">{assignment.driver?.name || '—'}</span>
+                <span data-label="Status">{assignment.status || '—'}</span>
+                <span data-label="Stops">
+                  {Number.isFinite(Number(assignment.completed_stops)) && Number.isFinite(Number(assignment.total_stops))
+                    ? `${assignment.completed_stops}/${assignment.total_stops}`
+                    : '—'}
+                </span>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div className="driver-meta">No assignment history for this Truck yet.</div>
+        )}
+
+        <div className="modal-actions">
+          <button className="secondary-inline-button" onClick={onClose} type="button">Close</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function MaintenanceRecordsPanel({
+  filters,
+  isLoading,
+  onChangeFilters,
+  onClearFilters,
+  onExportCsv,
+  onViewHistory,
+  records,
+  serviceTypeOptions,
+  totalRecords
+}) {
   return (
     <section className="card vehicles-table-card maintenance-records-card">
       <div className="vehicles-table-toolbar">
@@ -1267,7 +1651,58 @@ function MaintenanceRecordsPanel({ isLoading, records, onViewHistory }) {
           <div className="card-title">Maintenance Records</div>
           <div className="driver-meta">Recent service records, oil changes, tires, brakes, filters, and repairs.</div>
         </div>
-        <span className="driver-meta">{records.length} record{records.length === 1 ? '' : 's'}</span>
+        <div className="vehicles-table-toolbar-actions">
+          <span className="driver-meta">{records.length} of {totalRecords} record{totalRecords === 1 ? '' : 's'}</span>
+          <button className="secondary-inline-button" disabled={!records.length} onClick={onExportCsv} type="button">
+            Export CSV
+          </button>
+        </div>
+      </div>
+
+      <div className="maintenance-record-filter-grid">
+        <label>
+          <span className="field-label">Truck</span>
+          <input
+            className="text-field"
+            onChange={(event) => onChangeFilters('truck', event.target.value)}
+            placeholder="Truck Number"
+            value={filters.truck}
+          />
+        </label>
+        <label>
+          <span className="field-label">Service</span>
+          <select
+            className="text-field"
+            onChange={(event) => onChangeFilters('serviceType', event.target.value)}
+            value={filters.serviceType}
+          >
+            <option value="all">All service types</option>
+            {serviceTypeOptions.map((serviceType) => (
+              <option key={serviceType} value={serviceType}>{serviceType}</option>
+            ))}
+          </select>
+        </label>
+        <label>
+          <span className="field-label">From</span>
+          <input
+            className="text-field"
+            onChange={(event) => onChangeFilters('startDate', event.target.value)}
+            type="date"
+            value={filters.startDate}
+          />
+        </label>
+        <label>
+          <span className="field-label">To</span>
+          <input
+            className="text-field"
+            onChange={(event) => onChangeFilters('endDate', event.target.value)}
+            type="date"
+            value={filters.endDate}
+          />
+        </label>
+        <button className="secondary-inline-button" onClick={onClearFilters} type="button">
+          Clear
+        </button>
       </div>
 
       {isLoading ? (
@@ -1307,7 +1742,9 @@ function MaintenanceRecordsPanel({ isLoading, records, onViewHistory }) {
           ))}
         </div>
       ) : (
-        <div className="labor-empty-state">No maintenance records yet. Log maintenance from a truck row or vehicle details to see it here.</div>
+        <div className="labor-empty-state">
+          {totalRecords ? 'No maintenance records match these filters.' : 'No maintenance records yet. Log maintenance from a truck row or vehicle details to see it here.'}
+        </div>
       )}
     </section>
   );
@@ -1695,29 +2132,185 @@ function VehiclePlaceholderPanel({ title, description }) {
   );
 }
 
-function InspectionsPanel() {
+function InspectionDetailModal({
+  inspection,
+  isReviewing,
+  onChangeReviewNote,
+  onClose,
+  onLogMaintenanceFromIssue,
+  onReview,
+  reviewNote
+}) {
+  if (!inspection) {
+    return null;
+  }
+
   return (
-    <section className="card inspections-panel">
-      <div>
-        <div className="card-title">Inspections</div>
-        <div className="driver-meta">
-          Inspection review will activate after driver checklist submissions are connected.
+    <div className="modal-backdrop">
+      <div className="modal-card inspection-detail-modal">
+        <div className="modal-header">
+          <div>
+            <div className="card-title">{getInspectionVehicleLabel(inspection)} — Inspection</div>
+            <div className="driver-meta">
+              {inspection.inspection_type_label} • {formatDate(inspection.inspection_date)} • {getInspectionDriverLabel(inspection)}
+            </div>
+          </div>
+          <button className="icon-button" onClick={onClose} type="button">×</button>
+        </div>
+
+        <div className="inspection-detail-summary">
+          <div>
+            <span>Status</span>
+            <strong>{inspection.status_label}</strong>
+          </div>
+          <div>
+            <span>Odometer</span>
+            <strong>{inspection.odometer ? `${formatMileage(inspection.odometer)} mi` : 'Not recorded'}</strong>
+          </div>
+          <div>
+            <span>Submitted</span>
+            <strong>{inspection.submitted_at ? format(new Date(inspection.submitted_at), 'MMM d, h:mm a') : 'Not recorded'}</strong>
+          </div>
+        </div>
+
+        {inspection.issue_note ? (
+          <div className="inspection-issue-note">
+            <strong>Driver issue note</strong>
+            <span>{inspection.issue_note}</span>
+          </div>
+        ) : null}
+
+        <div className="inspection-items-list">
+          {(inspection.items || []).length ? inspection.items.map((item) => (
+            <div className={`inspection-item-row ${item.status}`} key={item.id || item.checklist_item_key}>
+              <div>
+                <strong>{item.label}</strong>
+                <span>{item.value || item.note || 'No answer recorded'}</span>
+              </div>
+              <span className="inspection-item-status">{item.status.replace('_', ' ')}</span>
+            </div>
+          )) : (
+            <div className="labor-empty-state">No checklist item answers were submitted.</div>
+          )}
+        </div>
+
+        {inspection.status !== 'reviewed' ? (
+          <label className="inspection-review-note">
+            <span className="field-label">Manager review note</span>
+            <textarea
+              className="text-field maintenance-item-notes"
+              onChange={(event) => onChangeReviewNote(event.target.value)}
+              placeholder="Optional note for this review"
+              value={reviewNote}
+            />
+          </label>
+        ) : inspection.manager_review_note ? (
+          <div className="inspection-issue-note">
+            <strong>Manager review note</strong>
+            <span>{inspection.manager_review_note}</span>
+          </div>
+        ) : null}
+
+        <div className="modal-actions">
+          <button className="secondary-inline-button" onClick={onClose} type="button">Close</button>
+          <button className="secondary-inline-button" onClick={onLogMaintenanceFromIssue} type="button">
+            Log Maintenance from Issue
+          </button>
+          {inspection.status !== 'reviewed' ? (
+            <button className="primary-inline-button" disabled={isReviewing} onClick={onReview} type="button">
+              {isReviewing ? 'Saving...' : 'Mark Reviewed'}
+            </button>
+          ) : null}
         </div>
       </div>
-      <div className="inspections-readiness-grid">
+    </div>
+  );
+}
+
+function InspectionsPanel({
+  inspections,
+  isLoading,
+  onExportCsv,
+  onOpenInspection,
+  onStatusFilterChange,
+  statusFilter
+}) {
+  const needsReviewCount = inspections.filter((inspection) => inspection.status === 'needs_review').length;
+  const reviewedCount = inspections.filter((inspection) => inspection.status === 'reviewed').length;
+
+  return (
+    <section className="card inspections-panel vehicle-inspections-review-panel">
+      <div className="vehicles-table-toolbar">
         <div>
-          <strong>Driver submissions</strong>
-          <span>Daily issue notes and completed checklist submissions will appear here.</span>
+          <div className="card-title">Inspections</div>
+          <div className="driver-meta">
+            Driver vehicle checks, weekly inspections, daily issue notes, and manager review items.
+          </div>
         </div>
-        <div>
-          <strong>Weekly inspections</strong>
-          <span>Weekly full inspections will follow the weekday set in Vehicle Settings.</span>
-        </div>
-        <div>
-          <strong>Manager review</strong>
-          <span>Reported issues will route here for manager review before closing.</span>
+        <div className="vehicles-table-toolbar-actions">
+          <span className="driver-meta">{inspections.length} submission{inspections.length === 1 ? '' : 's'}</span>
+          <button className="secondary-inline-button" disabled={!inspections.length} onClick={onExportCsv} type="button">
+            Export CSV
+          </button>
         </div>
       </div>
+
+      <div className="inspection-summary-grid">
+        <div className="inspection-summary-tile attention">
+          <span>Needs Review</span>
+          <strong>{needsReviewCount}</strong>
+        </div>
+        <div className="inspection-summary-tile">
+          <span>Submitted</span>
+          <strong>{inspections.filter((inspection) => inspection.status === 'submitted').length}</strong>
+        </div>
+        <div className="inspection-summary-tile">
+          <span>Reviewed</span>
+          <strong>{reviewedCount}</strong>
+        </div>
+      </div>
+
+      <div className="inspection-filter-row">
+        {INSPECTION_REVIEW_FILTERS.map(([value, label]) => (
+          <button
+            className={`vehicle-status-filter ${statusFilter === value ? 'active' : ''}`}
+            key={value}
+            onClick={() => onStatusFilterChange(value)}
+            type="button"
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+
+      {isLoading ? (
+        <div className="labor-empty-state">Loading vehicle inspections...</div>
+      ) : inspections.length ? (
+        <div className="inspection-review-list">
+          {inspections.map((inspection) => (
+            <button
+              className="inspection-review-row"
+              key={inspection.id}
+              onClick={() => onOpenInspection(inspection)}
+              type="button"
+            >
+              <span className={`inspection-status-pill ${getInspectionStatusClass(inspection.status)}`}>
+                {inspection.status_label}
+              </span>
+              <span className="inspection-review-main">
+                <strong>{getInspectionVehicleLabel(inspection)}</strong>
+                <span>{inspection.inspection_type_label} • {getInspectionDriverLabel(inspection)}</span>
+              </span>
+              <span className="inspection-review-meta">
+                <strong>{formatDate(inspection.inspection_date)}</strong>
+                <span>{inspection.odometer ? `${formatMileage(inspection.odometer)} mi` : 'No odometer'}</span>
+              </span>
+            </button>
+          ))}
+        </div>
+      ) : (
+        <div className="labor-empty-state">No vehicle inspection submissions found for this filter.</div>
+      )}
     </section>
   );
 }
@@ -1736,6 +2329,9 @@ export default function VehiclesPage() {
   const [toastMessage, setToastMessage] = useState('');
   const [maintenanceVehicle, setMaintenanceVehicle] = useState(null);
   const [historyVehicle, setHistoryVehicle] = useState(null);
+  const [inspectionHistoryVehicle, setInspectionHistoryVehicle] = useState(null);
+  const [odometerHistoryVehicle, setOdometerHistoryVehicle] = useState(null);
+  const [assignmentHistoryVehicle, setAssignmentHistoryVehicle] = useState(null);
   const [maintenanceSettingsDraft, setMaintenanceSettingsDraft] = useState(null);
   const [maintenanceSettingsEditingIndex, setMaintenanceSettingsEditingIndex] = useState(null);
   const [maintenanceItemEditor, setMaintenanceItemEditor] = useState(null);
@@ -1745,7 +2341,11 @@ export default function VehiclesPage() {
   const [odometerError, setOdometerError] = useState('');
   const [vehicleSearch, setVehicleSearch] = useState('');
   const [vehicleStatusFilter, setVehicleStatusFilter] = useState('all');
+  const [maintenanceRecordFilters, setMaintenanceRecordFilters] = useState(emptyMaintenanceRecordFilters);
   const [activeVehiclesTab, setActiveVehiclesTab] = useState('Fleet');
+  const [inspectionStatusFilter, setInspectionStatusFilter] = useState('all');
+  const [selectedInspection, setSelectedInspection] = useState(null);
+  const [inspectionReviewNote, setInspectionReviewNote] = useState('');
   const [vehicleSettingsView, setVehicleSettingsView] = useState('overview');
   const [maintenanceRequirementsDraft, setMaintenanceRequirementsDraft] = useState(null);
   const [maintenanceRequirementsError, setMaintenanceRequirementsError] = useState('');
@@ -1822,6 +2422,31 @@ export default function VehiclesPage() {
     }
   });
 
+  const inspectionsQuery = useQuery({
+    queryKey: ['vehicle-inspections', selectedCsaId, inspectionStatusFilter],
+    enabled: Boolean(selectedCsaId) && activeVehiclesTab === 'Inspections',
+    queryFn: async () => {
+      const serverStatusFilter = ['reported_issues', 'failed_items'].includes(inspectionStatusFilter)
+        ? 'all'
+        : inspectionStatusFilter;
+      const response = await api.get('/vehicles/inspections', {
+        params: {
+          status: serverStatusFilter
+        }
+      });
+      return response.data?.inspections || [];
+    }
+  });
+
+  const inspectionDetailQuery = useQuery({
+    queryKey: ['vehicle-inspection-detail', selectedCsaId, selectedInspection?.id],
+    enabled: Boolean(selectedCsaId) && Boolean(selectedInspection?.id),
+    queryFn: async () => {
+      const response = await api.get(`/vehicles/inspections/${selectedInspection.id}`);
+      return response.data?.inspection || null;
+    }
+  });
+
   const createVehicleMutation = useMutation({
     mutationFn: async () => {
       const response = await api.post('/vehicles', {
@@ -1840,6 +2465,26 @@ export default function VehiclesPage() {
     },
     onError: (error) => {
       setVehicleError(error.response?.data?.error || 'Unable to create vehicle.');
+    }
+  });
+
+  const reviewInspectionMutation = useMutation({
+    mutationFn: async () => {
+      const inspectionId = inspectionDetailQuery.data?.id || selectedInspection?.id;
+      const response = await api.put(`/vehicles/inspections/${inspectionId}/review`, {
+        manager_review_note: inspectionReviewNote || undefined
+      });
+      return response.data?.inspection;
+    },
+    onSuccess: async () => {
+      setInspectionReviewNote('');
+      setSelectedInspection(null);
+      setToastMessage('Vehicle inspection marked reviewed');
+      await queryClient.invalidateQueries({ queryKey: ['vehicle-inspections', selectedCsaId] });
+      await queryClient.invalidateQueries({ queryKey: ['vehicle-inspection-detail', selectedCsaId] });
+      if (inspectionHistoryVehicle) {
+        await queryClient.invalidateQueries({ queryKey: ['vehicle-inspection-history', selectedCsaId, inspectionHistoryVehicle.id] });
+      }
     }
   });
 
@@ -2079,6 +2724,14 @@ export default function VehiclesPage() {
   const maintenanceRecords = maintenanceRecordsQuery.data?.length
     ? maintenanceRecordsQuery.data
     : latestVehicleMaintenanceRecords;
+  const filteredMaintenanceRecords = useMemo(
+    () => filterMaintenanceRecords(maintenanceRecords, maintenanceRecordFilters),
+    [maintenanceRecordFilters, maintenanceRecords]
+  );
+  const filteredInspections = useMemo(
+    () => filterInspectionRows(inspectionsQuery.data || [], inspectionStatusFilter),
+    [inspectionStatusFilter, inspectionsQuery.data]
+  );
   const readinessCounts = useMemo(
     () => vehicles.reduce((counts, vehicle) => {
       const status = getReadinessMeta(vehicle).filter;
@@ -2282,6 +2935,13 @@ export default function VehiclesPage() {
         settingIndex === index ? { ...setting, [field]: value } : setting
       )
     );
+  }
+
+  function updateMaintenanceRecordFilter(field, value) {
+    setMaintenanceRecordFilters((current) => ({
+      ...current,
+      [field]: value
+    }));
   }
 
   function openMaintenanceItemEditor(index = null) {
@@ -2528,6 +3188,36 @@ export default function VehiclesPage() {
     createMaintenanceMutation.mutate();
   }
 
+  function openMaintenanceFromInspection(inspection) {
+    const vehicle = inspection?.vehicle;
+    if (!vehicle?.id) {
+      setToastMessage('Inspection is missing a Truck record.');
+      return;
+    }
+
+    const prefill = buildInspectionMaintenancePrefill(inspection);
+    const maintenanceVehicleFromInspection = {
+      ...vehicle,
+      current_mileage: inspection.odometer || vehicle.current_mileage || ''
+    };
+    const nextForm = buildMaintenanceForm({
+      vehicle: maintenanceVehicleFromInspection,
+      settings: activeMaintenanceSettings,
+      serviceType: prefill.serviceType,
+      mileageAtService: prefill.mileageAtService || undefined
+    });
+
+    setMaintenanceVehicle(maintenanceVehicleFromInspection);
+    setMaintenanceForm({
+      ...nextForm,
+      description: prefill.description,
+      condition_notes: prefill.conditionNotes
+    });
+    setMaintenanceError('');
+    setSelectedInspection(null);
+    setInspectionReviewNote('');
+  }
+
   function scrollToDueVehicle() {
     if (!dueSoonVehicles.length) {
       return;
@@ -2578,6 +3268,10 @@ export default function VehiclesPage() {
             setVehicleSettingsView('overview');
             setMaintenanceSettingsEditingIndex(null);
             setIsMaintenanceProgramExpanded(false);
+          }
+          if (tab !== 'Inspections') {
+            setSelectedInspection(null);
+            setInspectionReviewNote('');
           }
         }}
       />
@@ -2892,14 +3586,36 @@ export default function VehiclesPage() {
 
       {activeVehiclesTab === 'Maintenance' ? (
         <MaintenanceRecordsPanel
+          filters={maintenanceRecordFilters}
           isLoading={maintenanceRecordsQuery.isLoading && !latestVehicleMaintenanceRecords.length}
+          onChangeFilters={updateMaintenanceRecordFilter}
+          onClearFilters={() => setMaintenanceRecordFilters(emptyMaintenanceRecordFilters)}
+          onExportCsv={() => downloadCsv(
+            `readyroute-maintenance-records-${getTodayString()}.csv`,
+            buildMaintenanceRecordsCsvRows(filteredMaintenanceRecords)
+          )}
           onViewHistory={setHistoryVehicle}
-          records={maintenanceRecords}
+          records={filteredMaintenanceRecords}
+          serviceTypeOptions={serviceTypeOptions}
+          totalRecords={maintenanceRecords.length}
         />
       ) : null}
 
       {activeVehiclesTab === 'Inspections' ? (
-        <InspectionsPanel />
+        <InspectionsPanel
+          inspections={filteredInspections}
+          isLoading={inspectionsQuery.isLoading}
+          onExportCsv={() => downloadCsv(
+            `readyroute-vehicle-inspections-${getTodayString()}.csv`,
+            buildInspectionCsvRows(filteredInspections)
+          )}
+          onOpenInspection={(inspection) => {
+            setSelectedInspection(inspection);
+            setInspectionReviewNote(inspection.manager_review_note || '');
+          }}
+          onStatusFilterChange={setInspectionStatusFilter}
+          statusFilter={inspectionStatusFilter}
+        />
       ) : null}
 
       {activeVehiclesTab === 'Settings' && vehicleSettingsView === 'overview' ? (
@@ -2995,9 +3711,21 @@ export default function VehiclesPage() {
           }}
           onChange={updateEditVehicleField}
           onClose={() => setEditingVehicle(null)}
+          onViewAssignmentHistory={() => {
+            setAssignmentHistoryVehicle(editingVehicle);
+            setEditingVehicle(null);
+          }}
           onSubmit={handleEditVehicle}
           onViewHistory={() => {
             setHistoryVehicle(editingVehicle);
+            setEditingVehicle(null);
+          }}
+          onViewInspectionHistory={() => {
+            setInspectionHistoryVehicle(editingVehicle);
+            setEditingVehicle(null);
+          }}
+          onViewOdometerHistory={() => {
+            setOdometerHistoryVehicle(editingVehicle);
             setEditingVehicle(null);
           }}
           vehicle={editingVehicle}
@@ -3050,6 +3778,44 @@ export default function VehiclesPage() {
         open={Boolean(historyVehicle)}
         selectedCsaId={selectedCsaId}
         vehicle={historyVehicle}
+      />
+
+      <InspectionHistoryModal
+        onClose={() => setInspectionHistoryVehicle(null)}
+        onOpenInspection={(inspection) => {
+          setSelectedInspection(inspection);
+          setInspectionReviewNote(inspection.manager_review_note || '');
+        }}
+        open={Boolean(inspectionHistoryVehicle)}
+        selectedCsaId={selectedCsaId}
+        vehicle={inspectionHistoryVehicle}
+      />
+
+      <OdometerHistoryModal
+        onClose={() => setOdometerHistoryVehicle(null)}
+        open={Boolean(odometerHistoryVehicle)}
+        selectedCsaId={selectedCsaId}
+        vehicle={odometerHistoryVehicle}
+      />
+
+      <AssignmentHistoryModal
+        onClose={() => setAssignmentHistoryVehicle(null)}
+        open={Boolean(assignmentHistoryVehicle)}
+        selectedCsaId={selectedCsaId}
+        vehicle={assignmentHistoryVehicle}
+      />
+
+      <InspectionDetailModal
+        inspection={inspectionDetailQuery.data || selectedInspection}
+        isReviewing={reviewInspectionMutation.isPending}
+        onChangeReviewNote={setInspectionReviewNote}
+        onClose={() => {
+          setSelectedInspection(null);
+          setInspectionReviewNote('');
+        }}
+        onLogMaintenanceFromIssue={() => openMaintenanceFromInspection(inspectionDetailQuery.data || selectedInspection)}
+        onReview={() => reviewInspectionMutation.mutate()}
+        reviewNote={inspectionReviewNote}
       />
     </section>
   );
