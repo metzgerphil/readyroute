@@ -20,7 +20,7 @@ The daemon runs manifest discovery every `FEDEX_SYNC_MANIFEST_INTERVAL_MS` and F
 - `FEDEX_SYNC_PROGRESS_INTERVAL_MS=90000` (90 seconds)
 - `FEDEX_SYNC_TICK_INTERVAL_MS=15000` (15 seconds)
 
-On Google Cloud, run this as a separate Cloud Run Job or scheduled worker. The public API service still serves requests, and the worker keeps FCC polling alive. Keeping only the API service on will not run the FCC daemon.
+On Google Cloud, run this through Cloud Scheduler hitting the internal sync endpoint. The public API service still serves requests, and the scheduled calls keep FCC polling alive. Keeping only the API service on will not run the FCC sync by itself.
 
 ReadyRoute also has one single-run worker entrypoint for manual checks:
 
@@ -37,8 +37,8 @@ npm run fedex:sync
 
 Recommended scheduler setup:
 
-- Prefer the continuous daemon on a dedicated backend worker process.
-- If the host cannot run a worker process, call `/internal/fedex-sync` from an external scheduler.
+- Prefer Cloud Scheduler jobs created by `npm run setup:fedex-scheduler`.
+- If Cloud Scheduler is unavailable, call `/internal/fedex-sync` from another trusted scheduler.
 - Each CSA is evaluated in its own `operations_timezone`, so the worker should be scheduled often globally instead of assuming one national dispatch time.
 - The backend `postinstall` step installs Chromium with Playwright so the daemon can run FCC automation in Linux-based production workers.
 

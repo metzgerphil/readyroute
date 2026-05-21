@@ -6,6 +6,7 @@
     "deploy:backend": "zsh ./scripts/release-backend.sh",
     "deploy:landing": "zsh ./scripts/release-landing.sh",
     "deploy:portal": "zsh ./scripts/release-portal.sh",
+    "setup:fedex-scheduler": "zsh ./scripts/setup-cloud-scheduler-fedex-sync.sh",
     "smoke": "zsh ./scripts/release-smoke.sh",
     "release:backend": "zsh ./scripts/release-backend.sh",
     "release:landing": "zsh ./scripts/release-landing.sh",

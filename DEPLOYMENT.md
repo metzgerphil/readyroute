@@ -219,7 +219,7 @@ Vercel remains the production deployment owner for web surfaces. Cloud Run owns 
 
 ## FCC Background Sync
 
-Preferred production setup: keep the public API on Cloud Run and move FCC background work into a separate Cloud Run Job or scheduled worker. Until that is created, call the internal sync endpoint from Cloud Scheduler.
+Preferred production setup: keep the public API on Cloud Run and call the internal sync endpoint from Cloud Scheduler.
 
 Backend worker environment:
 
@@ -228,20 +228,24 @@ Backend worker environment:
 - `FEDEX_SYNC_TICK_INTERVAL_MS=15000`
 - `FEDEX_SYNC_WORKER_SECRET=<long_random_secret>`
 
-If the host cannot run a continuous worker process, call the internal sync endpoint from a scheduler:
+Cloud Scheduler setup:
 
 ```bash
-curl -X POST "https://api.readyroute.org/internal/fedex-sync" \
-  -H "Authorization: Bearer $FEDEX_SYNC_WORKER_SECRET" \
-  -H "Content-Type: application/json" \
-  -d '{"mode":"auto"}'
+read -s FEDEX_SYNC_WORKER_SECRET
+export FEDEX_SYNC_WORKER_SECRET
+npm run setup:fedex-scheduler
 ```
 
-For scanner-completion updates:
+This creates or updates:
+
+- `readyroute-fedex-sync-manifests`: calls `mode=manifests` every 5 minutes.
+- `readyroute-fedex-sync-progress`: calls `mode=progress` every 2 minutes.
+
+Manual endpoint check:
 
 ```bash
 curl -X POST "https://api.readyroute.org/internal/fedex-sync" \
-  -H "Authorization: Bearer $FEDEX_SYNC_WORKER_SECRET" \
+  -H "x-readyroute-worker-secret: $FEDEX_SYNC_WORKER_SECRET" \
   -H "Content-Type: application/json" \
   -d '{"mode":"progress"}'
 ```

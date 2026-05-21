@@ -48,3 +48,21 @@ Verify:
 ```bash
 curl -sS https://api.readyroute.org/health
 ```
+
+## Cloud Scheduler FedEx/FCC Sync
+
+After `FEDEX_SYNC_WORKER_SECRET` is set on the Cloud Run service, create the scheduled sync jobs from Google Cloud Shell:
+
+```bash
+cd ~/readyroute
+git checkout main
+git pull --ff-only origin main
+read -s FEDEX_SYNC_WORKER_SECRET
+export FEDEX_SYNC_WORKER_SECRET
+npm run setup:fedex-scheduler
+```
+
+This creates:
+
+- `readyroute-fedex-sync-manifests`: `mode=manifests` every 5 minutes.
+- `readyroute-fedex-sync-progress`: `mode=progress` every 2 minutes.
