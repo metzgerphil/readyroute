@@ -7,15 +7,32 @@ import { useSelectedCsa } from '../context/SelectedCsaContext';
 import { clearManagerToken } from '../services/auth';
 import api from '../services/api';
 
-const links = [
-  { to: '/', label: 'Dashboard', end: true, icon: 'dashboard' },
-  { to: '/manifest', label: 'Manifest', icon: 'manifest' },
-  { to: '/csa', label: 'CSA', icon: 'csa' },
-  { to: '/records', label: 'Records', icon: 'records' },
-  { to: '/drivers', label: 'Drivers', icon: 'drivers' },
-  { to: '/vehicles', label: 'Vehicles', icon: 'vehicles' },
-  { to: '/vedr', label: 'VEDR', icon: 'vedr', showsSetupBadge: true },
-  { to: '/fleet-map', label: 'Fleet Map', icon: 'fleet' }
+const navGroups = [
+  {
+    label: 'Today',
+    links: [
+      { to: '/', label: 'Dashboard', end: true, icon: 'dashboard' },
+      { to: '/manifest', label: 'Morning Setup', icon: 'manifest' },
+      { to: '/fleet-map', label: 'Fleet Map', icon: 'fleet' }
+    ]
+  },
+  {
+    label: 'Operations',
+    links: [
+      { to: '/routes', label: 'Routes', icon: 'routes', end: true },
+      { to: '/time-commits', label: 'P&D Time Commit', icon: 'commits' },
+      { to: '/drivers', label: 'Drivers', icon: 'drivers' },
+      { to: '/vehicles', label: 'Vehicles', icon: 'vehicles' },
+      { to: '/records', label: 'Records', icon: 'records' }
+    ]
+  },
+  {
+    label: 'Integrations',
+    links: [
+      { to: '/csa', label: 'CSA Access', icon: 'csa', end: true },
+      { to: '/vedr', label: 'VEDR Providers', icon: 'vedr', showsSetupBadge: true }
+    ]
+  }
 ];
 
 function SidebarIcon({ type }) {
@@ -31,6 +48,23 @@ function SidebarIcon({ type }) {
         <svg aria-hidden="true" className="sidebar-link-icon-svg" viewBox="0 0 24 24">
           <path d="M7 3h8l5 5v13H7a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2zm7 1.5V9h4.5" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
           <path d="M9 13h8M9 17h6" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+        </svg>
+      );
+    case 'routes':
+      return (
+        <svg aria-hidden="true" className="sidebar-link-icon-svg" viewBox="0 0 24 24">
+          <path d="M5 17.5c2.5 0 2.5-11 5-11s2.5 11 5 11 2.5-11 4-11" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+          <circle cx="5" cy="17.5" r="2" fill="none" stroke="currentColor" strokeWidth="1.8" />
+          <circle cx="10" cy="6.5" r="2" fill="none" stroke="currentColor" strokeWidth="1.8" />
+          <circle cx="15" cy="17.5" r="2" fill="none" stroke="currentColor" strokeWidth="1.8" />
+          <circle cx="19" cy="6.5" r="2" fill="none" stroke="currentColor" strokeWidth="1.8" />
+        </svg>
+      );
+    case 'commits':
+      return (
+        <svg aria-hidden="true" className="sidebar-link-icon-svg" viewBox="0 0 24 24">
+          <circle cx="12" cy="12" r="8" fill="none" stroke="currentColor" strokeWidth="1.8" />
+          <path d="M12 7.5V12l3 2M4.5 4.5l2 2M19.5 4.5l-2 2" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
         </svg>
       );
     case 'drivers':
@@ -154,23 +188,30 @@ export default function Layout({ children }) {
           </div>
         </div>
 
-        <nav className="sidebar-nav">
-          {links.map((link) => (
-            <NavLink
-              className={({ isActive }) => `sidebar-link${isActive ? ' active' : ''}`}
-              end={link.end}
-              key={link.to}
-              reloadDocument
-              to={link.to}
-            >
-              <span className="sidebar-link-content">
-                <span className="sidebar-link-icon" aria-hidden="true">
-                  <SidebarIcon type={link.icon} />
-                  {link.showsSetupBadge && showVedrSetupBadge ? <span className="sidebar-link-badge-dot" /> : null}
-                </span>
-                <span>{link.label}</span>
-              </span>
-            </NavLink>
+        <nav className="sidebar-nav" aria-label="Manager portal navigation">
+          {navGroups.map((group) => (
+            <div className="sidebar-nav-group" key={group.label}>
+              <div className="sidebar-nav-group-label">{group.label}</div>
+              <div className="sidebar-nav-group-links">
+                {group.links.map((link) => (
+                  <NavLink
+                    className={({ isActive }) => `sidebar-link${isActive ? ' active' : ''}`}
+                    end={link.end}
+                    key={link.to}
+                    reloadDocument
+                    to={link.to}
+                  >
+                    <span className="sidebar-link-content">
+                      <span className="sidebar-link-icon" aria-hidden="true">
+                        <SidebarIcon type={link.icon} />
+                        {link.showsSetupBadge && showVedrSetupBadge ? <span className="sidebar-link-badge-dot" /> : null}
+                      </span>
+                      <span>{link.label}</span>
+                    </span>
+                  </NavLink>
+                ))}
+              </div>
+            </div>
           ))}
         </nav>
 
