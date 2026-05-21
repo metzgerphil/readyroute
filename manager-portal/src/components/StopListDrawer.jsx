@@ -387,6 +387,9 @@ export default function StopListDrawer({
                     </span>
                     <span>{`${packageCount} PKG${packageCount === 1 ? '' : 'S'}`}</span>
                     {stop.sid && stop.sid !== '0' ? <span className="stop-list-row-sid">{`SID: ${stop.sid}`}</span> : null}
+                    {stop.floor_load || (stop.packages || []).some((pkg) => pkg.floor_load) ? (
+                      <span className="stop-list-row-sid">Floor load</span>
+                    ) : null}
                   </div>
 
                   <div className="stop-list-row-badges">

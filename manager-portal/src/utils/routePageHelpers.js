@@ -314,6 +314,7 @@ export function getRouteCentroid(stops = []) {
 
 export function buildInfoWindow(stop) {
   const packageCount = getPackageCount(stop);
+  const hasFloorLoad = Boolean(stop?.floor_load) || (stop?.packages || []).some((pkg) => pkg?.floor_load);
   const completionBadge = getCompletionBadge(stop);
   const stopType = getStopType(stop);
   const contact = getStopContactDetails(stop);
@@ -413,6 +414,13 @@ export function buildInfoWindow(stop) {
         <span style="width:8px; height:8px; border-radius:50%; background:${locationAccuracy.color}; display:inline-block;"></span>
         <span>${locationAccuracy.label}</span>
       </div>
+      ${
+        hasFloorLoad
+          ? `<div style="margin-top:12px; display:inline-flex; align-items:center; gap:8px; padding:8px 12px; border-radius:999px; background:#fff7ed; color:#9a3412; border:1px solid #ff6200; font-size:14px; font-weight:950;">
+              FLOOR LOAD
+            </div>`
+          : ''
+      }
       ${
         stop.exception_code
           ? `<div style="margin-top:12px; display:inline-flex; align-items:center; gap:8px; padding:8px 12px; border-radius:999px; background:#c93300; color:#ffffff; font-size:18px; font-weight:950;">
