@@ -9,6 +9,7 @@ import { getManagerToken } from './services/auth';
 
 const DashboardPage = lazy(() => import('./pages/DashboardPage'));
 const CsaPage = lazy(() => import('./pages/CsaPage'));
+const DebugGoogleMapPage = lazy(() => import('./pages/DebugGoogleMapPage'));
 const DriversPage = lazy(() => import('./pages/DriversPage'));
 const FleetMapPage = lazy(() => import('./pages/FleetMapPage'));
 const LoginPage = lazy(() => import('./pages/LoginPage'));
@@ -64,6 +65,7 @@ function ProtectedApp() {
               <Route element={<SetupPage />} path="/setup" />
               <Route element={<FleetMapPage />} path="/fleet-map" />
               <Route element={<TimeCommitsPage />} path="/time-commits" />
+              <Route element={<DebugGoogleMapPage />} path="/debug/google-map" />
               <Route element={<RoutesPage />} path="/routes" />
               <Route element={<RoutePage />} path="/route/:id" />
               <Route element={<RoutePage />} path="/routes/:id" />
