@@ -1,4 +1,4 @@
-#!/bin/zsh
+#!/usr/bin/env bash
 set -euo pipefail
 
 CLOUD_RUN_PROJECT="${CLOUD_RUN_PROJECT:-ready-route-project}"
