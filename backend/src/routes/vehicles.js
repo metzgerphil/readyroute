@@ -1387,6 +1387,185 @@ function createVehiclesRouter(options = {}) {
     }
   });
 
+  router.get('/inspections', requireManager, async (req, res) => {
+    return res.status(200).json({ inspections: [] });
+  });
+
+  router.get('/inspections/:inspection_id', requireManager, async (req, res) => {
+    return res.status(404).json({ error: 'Vehicle inspection records are not configured yet.' });
+  });
+
+  router.put('/inspections/:inspection_id/review', requireManager, async (req, res) => {
+    return res.status(404).json({ error: 'Vehicle inspection records are not configured yet.' });
+  });
+
+  router.get('/:id/inspection-history', requireManager, async (req, res) => {
+    const vehicleId = req.params.id;
+
+    try {
+      const { data: vehicle, error: vehicleError } = await loadOwnedVehicle(supabase, {
+        vehicleId,
+        accountId: req.account.account_id
+      });
+
+      if (vehicleError) {
+        console.error('Vehicle inspection history vehicle lookup failed:', vehicleError);
+        return res.status(500).json({ error: 'Failed to validate vehicle' });
+      }
+
+      if (!vehicle) {
+        return res.status(403).json({ error: 'Vehicle does not belong to this account' });
+      }
+
+      return res.status(200).json({ inspections: [] });
+    } catch (error) {
+      console.error('Vehicle inspection history endpoint failed:', error);
+      return res.status(500).json({ error: 'Failed to load inspection history' });
+    }
+  });
+
+  router.get('/:id/odometer-history', requireManager, async (req, res) => {
+    const vehicleId = req.params.id;
+
+    try {
+      const { data: vehicle, error: vehicleError } = await loadOwnedVehicle(supabase, {
+        vehicleId,
+        accountId: req.account.account_id
+      });
+
+      if (vehicleError) {
+        console.error('Vehicle odometer history vehicle lookup failed:', vehicleError);
+        return res.status(500).json({ error: 'Failed to validate vehicle' });
+      }
+
+      if (!vehicle) {
+        return res.status(403).json({ error: 'Vehicle does not belong to this account' });
+      }
+
+      const { data: entries, error: entriesError } = await supabase
+        .from('vehicle_odometer_entries')
+        .select('id, driver_id, route_id, odometer_reading, source, notes, recorded_at, created_at')
+        .eq('account_id', req.account.account_id)
+        .eq('vehicle_id', vehicleId)
+        .order('recorded_at', { ascending: false })
+        .order('created_at', { ascending: false })
+        .limit(100);
+
+      if (entriesError) {
+        console.error('Vehicle odometer history lookup failed:', entriesError);
+        return res.status(500).json({ error: 'Failed to load odometer history' });
+      }
+
+      const driverIds = [...new Set((entries || []).map((entry) => entry.driver_id).filter(Boolean))];
+      const routeIds = [...new Set((entries || []).map((entry) => entry.route_id).filter(Boolean))];
+      let driversById = new Map();
+      let routesById = new Map();
+
+      if (driverIds.length > 0) {
+        const { data: drivers, error: driversError } = await supabase
+          .from('drivers')
+          .select('id, name')
+          .eq('account_id', req.account.account_id)
+          .in('id', driverIds);
+
+        if (driversError) {
+          console.error('Vehicle odometer history driver lookup failed:', driversError);
+          return res.status(500).json({ error: 'Failed to load odometer history' });
+        }
+
+        driversById = new Map((drivers || []).map((driver) => [driver.id, driver]));
+      }
+
+      if (routeIds.length > 0) {
+        const { data: routes, error: routesError } = await supabase
+          .from('routes')
+          .select('id, work_area_name')
+          .eq('account_id', req.account.account_id)
+          .in('id', routeIds);
+
+        if (routesError) {
+          console.error('Vehicle odometer history route lookup failed:', routesError);
+          return res.status(500).json({ error: 'Failed to load odometer history' });
+        }
+
+        routesById = new Map((routes || []).map((route) => [route.id, route]));
+      }
+
+      return res.status(200).json({
+        odometer_entries: (entries || []).map((entry) => ({
+          ...entry,
+          driver: entry.driver_id ? driversById.get(entry.driver_id) || null : null,
+          route: entry.route_id ? routesById.get(entry.route_id) || null : null
+        }))
+      });
+    } catch (error) {
+      console.error('Vehicle odometer history endpoint failed:', error);
+      return res.status(500).json({ error: 'Failed to load odometer history' });
+    }
+  });
+
+  router.get('/:id/assignment-history', requireManager, async (req, res) => {
+    const vehicleId = req.params.id;
+
+    try {
+      const { data: vehicle, error: vehicleError } = await loadOwnedVehicle(supabase, {
+        vehicleId,
+        accountId: req.account.account_id
+      });
+
+      if (vehicleError) {
+        console.error('Vehicle assignment history vehicle lookup failed:', vehicleError);
+        return res.status(500).json({ error: 'Failed to validate vehicle' });
+      }
+
+      if (!vehicle) {
+        return res.status(403).json({ error: 'Vehicle does not belong to this account' });
+      }
+
+      const { data: routes, error: routesError } = await supabase
+        .from('routes')
+        .select('id, date, work_area_name, driver_id, status, completed_stops, total_stops')
+        .eq('account_id', req.account.account_id)
+        .eq('vehicle_id', vehicleId)
+        .order('date', { ascending: false })
+        .order('created_at', { ascending: false })
+        .limit(100);
+
+      if (routesError) {
+        console.error('Vehicle assignment history route lookup failed:', routesError);
+        return res.status(500).json({ error: 'Failed to load assignment history' });
+      }
+
+      const driverIds = [...new Set((routes || []).map((route) => route.driver_id).filter(Boolean))];
+      let driversById = new Map();
+
+      if (driverIds.length > 0) {
+        const { data: drivers, error: driversError } = await supabase
+          .from('drivers')
+          .select('id, name')
+          .eq('account_id', req.account.account_id)
+          .in('id', driverIds);
+
+        if (driversError) {
+          console.error('Vehicle assignment history driver lookup failed:', driversError);
+          return res.status(500).json({ error: 'Failed to load assignment history' });
+        }
+
+        driversById = new Map((drivers || []).map((driver) => [driver.id, driver]));
+      }
+
+      return res.status(200).json({
+        assignments: (routes || []).map((route) => ({
+          ...route,
+          driver: route.driver_id ? driversById.get(route.driver_id) || null : null
+        }))
+      });
+    } catch (error) {
+      console.error('Vehicle assignment history endpoint failed:', error);
+      return res.status(500).json({ error: 'Failed to load assignment history' });
+    }
+  });
+
   router.put('/:id', requireManager, async (req, res) => {
     const vehicleId = req.params.id;
     const allowedFields = [

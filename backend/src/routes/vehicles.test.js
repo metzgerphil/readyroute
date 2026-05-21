@@ -806,6 +806,123 @@ test('POST /vehicles/:id/odometer saves a manager override audit row and updates
   }
 });
 
+test('GET /vehicles/:id/odometer-history returns entries with driver and route labels', async () => {
+  const supabase = new MockSupabase((query) => {
+    if (query.table === 'vehicles' && query.operation === 'select') {
+      return {
+        data: { id: 'vehicle-1', account_id: 'acct-1' },
+        error: null
+      };
+    }
+
+    if (query.table === 'vehicle_odometer_entries' && query.operation === 'select') {
+      assert.equal(query.filters.find((filter) => filter.column === 'vehicle_id')?.value, 'vehicle-1');
+      assert.equal(query.filters.find((filter) => filter.column === 'account_id')?.value, 'acct-1');
+      assert.equal(query.limit, 100);
+      return {
+        data: [
+          {
+            id: 'odo-1',
+            driver_id: 'driver-1',
+            route_id: 'route-1',
+            odometer_reading: 54321,
+            source: 'driver',
+            notes: 'Morning reading',
+            recorded_at: '2026-05-16T14:00:00.000Z'
+          }
+        ],
+        error: null
+      };
+    }
+
+    if (query.table === 'drivers' && query.operation === 'select') {
+      assert.deepEqual(query.filters.find((filter) => filter.column === 'id')?.value, ['driver-1']);
+      return { data: [{ id: 'driver-1', name: 'Phillip Driver' }], error: null };
+    }
+
+    if (query.table === 'routes' && query.operation === 'select') {
+      assert.deepEqual(query.filters.find((filter) => filter.column === 'id')?.value, ['route-1']);
+      return { data: [{ id: 'route-1', work_area_name: '829' }], error: null };
+    }
+
+    throw new Error(`Unexpected query ${query.table}:${query.operation}:${query.mode}`);
+  });
+
+  const server = await startTestServer(supabase);
+
+  try {
+    const response = await fetch(`${server.baseUrl}/vehicles/vehicle-1/odometer-history`, {
+      headers: {
+        Authorization: `Bearer ${signManagerToken()}`
+      }
+    });
+
+    assert.equal(response.status, 200);
+    const body = await response.json();
+    assert.equal(body.odometer_entries.length, 1);
+    assert.equal(body.odometer_entries[0].driver.name, 'Phillip Driver');
+    assert.equal(body.odometer_entries[0].route.work_area_name, '829');
+  } finally {
+    await server.close();
+  }
+});
+
+test('GET /vehicles/:id/assignment-history returns recent route assignments', async () => {
+  const supabase = new MockSupabase((query) => {
+    if (query.table === 'vehicles' && query.operation === 'select') {
+      return {
+        data: { id: 'vehicle-1', account_id: 'acct-1' },
+        error: null
+      };
+    }
+
+    if (query.table === 'routes' && query.operation === 'select') {
+      assert.equal(query.filters.find((filter) => filter.column === 'vehicle_id')?.value, 'vehicle-1');
+      assert.equal(query.filters.find((filter) => filter.column === 'account_id')?.value, 'acct-1');
+      assert.equal(query.limit, 100);
+      return {
+        data: [
+          {
+            id: 'route-1',
+            date: '2026-05-16',
+            work_area_name: '829',
+            driver_id: 'driver-1',
+            status: 'in_progress',
+            completed_stops: 28,
+            total_stops: 134
+          }
+        ],
+        error: null
+      };
+    }
+
+    if (query.table === 'drivers' && query.operation === 'select') {
+      assert.deepEqual(query.filters.find((filter) => filter.column === 'id')?.value, ['driver-1']);
+      return { data: [{ id: 'driver-1', name: 'Phillip Driver' }], error: null };
+    }
+
+    throw new Error(`Unexpected query ${query.table}:${query.operation}:${query.mode}`);
+  });
+
+  const server = await startTestServer(supabase);
+
+  try {
+    const response = await fetch(`${server.baseUrl}/vehicles/vehicle-1/assignment-history`, {
+      headers: {
+        Authorization: `Bearer ${signManagerToken()}`
+      }
+    });
+
+    assert.equal(response.status, 200);
+    const body = await response.json();
+    assert.equal(body.assignments.length, 1);
+    assert.equal(body.assignments[0].work_area_name, '829');
+    assert.equal(body.assignments[0].driver.name, 'Phillip Driver');
+  } finally {
+    await server.close();
+  }
+});
+
 test('GET /vehicles/:id/maintenance returns newest-first history for owned vehicle', async () => {
   const supabase = new MockSupabase((query) => {
     if (query.table === 'vehicles' && query.operation === 'select') {
