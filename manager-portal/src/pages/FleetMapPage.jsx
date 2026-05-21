@@ -4,7 +4,7 @@ import { useQuery } from '@tanstack/react-query';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 
 import api from '../services/api';
-import { loadGoogleMapsScript } from '../utils/googleMaps';
+import { loadGoogleMaps } from '../lib/googleMapsLoader';
 import { createDriverPositionMarker } from '../utils/stopMarkers';
 import { getTodayString, loadStoredOperationsDate, saveStoredOperationsDate } from '../utils/operationsDate';
 import './FleetMapPage.css';
@@ -156,16 +156,17 @@ export default function FleetMapPage() {
       }
 
       try {
-        const google = await loadGoogleMapsScript();
+        const { Map } = await loadGoogleMaps();
+        const google = window.google;
 
-        if (!active || !mapContainerRef.current) {
+        if (!active || !mapContainerRef.current || !Map || !google?.maps) {
           return;
         }
 
         setMapError('');
 
         if (!mapInstanceRef.current) {
-          mapInstanceRef.current = new google.maps.Map(mapContainerRef.current, {
+          mapInstanceRef.current = new Map(mapContainerRef.current, {
             center: { lat: 33.1217, lng: -117.0815 },
             zoom: 11,
             mapTypeId: 'roadmap',

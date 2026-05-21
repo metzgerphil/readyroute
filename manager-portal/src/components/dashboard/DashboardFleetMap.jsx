@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 
-import { loadGoogleMapsScript } from '../../utils/googleMaps';
+import { loadGoogleMaps } from '../../lib/googleMapsLoader';
 import { createDriverPinSvg, getPrimaryBoundsPoints, getValidCoordinatePoints } from '../../utils/dashboardHelpers';
 
 export default function DashboardFleetMap({ center, markers = [], boundsPoints = [] }) {
@@ -19,16 +19,17 @@ export default function DashboardFleetMap({ center, markers = [], boundsPoints =
       }
 
       try {
-        const google = await loadGoogleMapsScript();
+        const { Map } = await loadGoogleMaps();
+        const google = window.google;
 
-        if (!isMounted || !mapRef.current || !google?.maps?.Map) {
+        if (!isMounted || !mapRef.current || !Map || !google?.maps) {
           return;
         }
 
         setErrorMessage('');
 
         if (!mapInstanceRef.current) {
-          mapInstanceRef.current = new google.maps.Map(mapRef.current, {
+          mapInstanceRef.current = new Map(mapRef.current, {
             center: center || { lat: 33.1217, lng: -117.0815 },
             zoom: center ? 11 : 10
           });

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 
-import { loadGoogleMapsScript } from '../utils/googleMaps';
+import { loadGoogleMaps } from '../lib/googleMapsLoader';
 
 export default function MapView({ center, markers = [] }) {
   const mapRef = useRef(null);
@@ -27,16 +27,17 @@ export default function MapView({ center, markers = [] }) {
       }
 
       try {
-        const google = await loadGoogleMapsScript();
+        const { Map } = await loadGoogleMaps();
+        const google = window.google;
 
-        if (!isMounted || !mapRef.current || !google?.maps?.Map) {
+        if (!isMounted || !mapRef.current || !Map || !google?.maps) {
           return;
         }
 
         setErrorMessage('');
 
         if (!mapInstanceRef.current) {
-          mapInstanceRef.current = new google.maps.Map(mapRef.current, {
+          mapInstanceRef.current = new Map(mapRef.current, {
             center: center || { lat: 39.5, lng: -98.35 },
             zoom: center ? 11 : 4
           });

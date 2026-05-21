@@ -5,7 +5,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import MapLegend from '../components/MapLegend';
 import StopListDrawer from '../components/StopListDrawer';
 import api from '../services/api';
-import { loadGoogleMapsScript } from '../utils/googleMaps';
+import { loadGoogleMaps } from '../lib/googleMapsLoader';
 import { getPropertyWorkflowHint } from '../utils/pinWorkflow';
 import {
   ROUTE_STATUS_META,
@@ -453,9 +453,10 @@ export default function RoutePage() {
 
       try {
         setMapLoading(true);
-        const google = await loadGoogleMapsScript();
+        const { Map } = await loadGoogleMaps();
+        const google = window.google;
 
-        if (!active || !mapContainerRef.current) {
+        if (!active || !mapContainerRef.current || !Map || !google?.maps) {
           return;
         }
 
@@ -468,7 +469,7 @@ export default function RoutePage() {
 
         if (shouldCreateFreshMap) {
           resetMapInstance();
-          mapInstanceRef.current = new google.maps.Map(mapContainerRef.current, {
+          mapInstanceRef.current = new Map(mapContainerRef.current, {
             center: { lat: 33.1217, lng: -117.0815 },
             zoom: 11,
             mapTypeId: mapType,
