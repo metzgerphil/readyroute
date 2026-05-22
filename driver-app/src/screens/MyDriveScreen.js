@@ -12,6 +12,23 @@ import { getSidBucketTheme } from '../utils/sidBuckets';
 
 const googleMapsApiKey = process.env.EXPO_PUBLIC_GOOGLE_MAPS_API_KEY || '';
 const shouldUseGoogleProvider = Platform.OS !== 'ios' || Boolean(String(googleMapsApiKey).trim());
+export const DRIVER_LOCATION_POST_INTERVAL_MS = 5000;
+export const DRIVER_LOCATION_POST_DISTANCE_MILES = 0.006;
+
+function getDriverLocationAccuracy() {
+  return Location.Accuracy?.BestForNavigation || Location.Accuracy?.Highest || Location.Accuracy?.High || undefined;
+}
+
+function getDriverLocationWatchOptions() {
+  const accuracy = getDriverLocationAccuracy();
+
+  return {
+    ...(accuracy ? { accuracy } : {}),
+    distanceInterval: 1,
+    timeInterval: 1000,
+    mayShowUserSettingsDialog: true
+  };
+}
 
 export function getPendingStops(stops) {
   return (stops || []).filter((stop) => stop.status === 'pending');
@@ -199,6 +216,34 @@ export function getDistanceMiles(pointA, pointB) {
     Math.cos(latitudeA) * Math.cos(latitudeB) * Math.sin(longitudeDelta / 2) * Math.sin(longitudeDelta / 2);
 
   return 2 * earthRadiusMiles * Math.atan2(Math.sqrt(haversine), Math.sqrt(1 - haversine));
+}
+
+export function shouldPostDriverLocationUpdate({
+  forcePost = false,
+  lastPostedAt = 0,
+  lastPostedCoordinate = null,
+  now = Date.now(),
+  position
+}) {
+  const coords = position?.coords;
+
+  if (!coords || !Number.isFinite(Number(coords.latitude)) || !Number.isFinite(Number(coords.longitude))) {
+    return false;
+  }
+
+  if (forcePost || !lastPostedAt || !lastPostedCoordinate) {
+    return true;
+  }
+
+  const nextCoordinate = {
+    latitude: Number(coords.latitude),
+    longitude: Number(coords.longitude)
+  };
+
+  return (
+    now - lastPostedAt >= DRIVER_LOCATION_POST_INTERVAL_MS ||
+    getDistanceMiles(lastPostedCoordinate, nextCoordinate) >= DRIVER_LOCATION_POST_DISTANCE_MILES
+  );
 }
 
 export function getFocusCoordinates({ currentLocation, selectedStop }) {
@@ -1130,6 +1175,9 @@ export default function MyDriveScreen({ navigation, route: screenRoute }) {
   const activeBreakTimerRef = useRef(null);
   const markerRefreshTimerRef = useRef(null);
   const hasInitializedMarkerRefreshRef = useRef(false);
+  const lastPostedLocationAtRef = useRef(0);
+  const lastPostedCoordinateRef = useRef(null);
+  const isPostingLocationRef = useRef(false);
   const [route, setRoute] = useState(null);
   const [stops, setStops] = useState([]);
   const [currentLocation, setCurrentLocation] = useState(null);
@@ -1354,7 +1402,9 @@ export default function MyDriveScreen({ navigation, route: screenRoute }) {
           return;
         }
 
-        const position = await Location.getCurrentPositionAsync({});
+        const position = await Location.getCurrentPositionAsync({
+          accuracy: getDriverLocationAccuracy()
+        });
 
         if (isMounted) {
           setCurrentLocation(position);
@@ -1388,18 +1438,64 @@ export default function MyDriveScreen({ navigation, route: screenRoute }) {
       return undefined;
     }
 
-    const positionInterval = setInterval(() => {
-      postCurrentPosition();
-    }, 30000);
-
     const rateInterval = setInterval(() => {
       refreshRoute({ allowStateUpdate: true, showAlert: false });
     }, 60000);
 
-    postCurrentPosition();
+    let isActive = true;
+    let locationSubscription = null;
+
+    async function startLocationWatch() {
+      try {
+        const currentPermission = await Location.getForegroundPermissionsAsync();
+
+        if (!isActive) {
+          return;
+        }
+
+        if (!hasGrantedLocationPermission(currentPermission)) {
+          setHasLocationAccess(false);
+          setIsLocationPermissionBlocked(isBlockedLocationPermission(currentPermission));
+          setIsLocationPermissionDenied(isDeniedLocationPermission(currentPermission));
+          return;
+        }
+
+        setHasLocationAccess(true);
+        setIsLocationPermissionBlocked(false);
+        setIsLocationPermissionDenied(false);
+
+        const initialPosition = await Location.getCurrentPositionAsync({
+          accuracy: getDriverLocationAccuracy()
+        });
+
+        if (!isActive) {
+          return;
+        }
+
+        await handleDriverLocationUpdate(initialPosition, { forcePost: true });
+
+        const subscription = await Location.watchPositionAsync(getDriverLocationWatchOptions(), (position) => {
+          handleDriverLocationUpdate(position);
+        });
+
+        if (!isActive) {
+          subscription?.remove?.();
+          return;
+        }
+
+        locationSubscription = subscription;
+      } catch (_error) {
+        if (isActive) {
+          setHasLocationAccess(false);
+        }
+      }
+    }
+
+    startLocationWatch();
 
     return () => {
-      clearInterval(positionInterval);
+      isActive = false;
+      locationSubscription?.remove?.();
       clearInterval(rateInterval);
     };
   }, [route?.id]);
@@ -1487,34 +1583,48 @@ export default function MyDriveScreen({ navigation, route: screenRoute }) {
     await refreshRoute({ allowStateUpdate: true, showAlert: false, isRetry: true });
   }
 
-  async function postCurrentPosition() {
+  async function handleDriverLocationUpdate(position, { forcePost = false } = {}) {
+    if (position?.coords) {
+      setCurrentLocation(position);
+    }
+
     if (!route?.id) {
       return;
     }
 
+    if (
+      !shouldPostDriverLocationUpdate({
+        forcePost,
+        lastPostedAt: lastPostedLocationAtRef.current,
+        lastPostedCoordinate: lastPostedCoordinateRef.current,
+        position
+      })
+    ) {
+      return;
+    }
+
+    if (isPostingLocationRef.current) {
+      return;
+    }
+
+    isPostingLocationRef.current = true;
+
     try {
-      const currentPermission = await Location.getForegroundPermissionsAsync();
-
-      if (!hasGrantedLocationPermission(currentPermission)) {
-        setHasLocationAccess(false);
-        setIsLocationPermissionBlocked(isBlockedLocationPermission(currentPermission));
-        setIsLocationPermissionDenied(isDeniedLocationPermission(currentPermission));
-        return;
-      }
-
-      setHasLocationAccess(true);
-      setIsLocationPermissionBlocked(false);
-      setIsLocationPermissionDenied(false);
-      const position = await Location.getCurrentPositionAsync({});
-      setCurrentLocation(position);
-
       await api.post('/routes/position', {
         lat: position.coords.latitude,
         lng: position.coords.longitude,
         route_id: route.id
       });
+
+      lastPostedLocationAtRef.current = Date.now();
+      lastPostedCoordinateRef.current = {
+        latitude: Number(position.coords.latitude),
+        longitude: Number(position.coords.longitude)
+      };
     } catch (_error) {
       // Keep the driver flow resilient and retry later.
+    } finally {
+      isPostingLocationRef.current = false;
     }
   }
 
@@ -1538,9 +1648,11 @@ export default function MyDriveScreen({ navigation, route: screenRoute }) {
         return;
       }
 
-      const position = await Location.getCurrentPositionAsync({});
+      const position = await Location.getCurrentPositionAsync({
+        accuracy: getDriverLocationAccuracy()
+      });
       setCurrentLocation(position);
-      await postCurrentPosition();
+      await handleDriverLocationUpdate(position, { forcePost: true });
     } catch (_error) {
       setHasLocationAccess(false);
       setIsLocationPermissionDenied(false);
@@ -1666,7 +1778,9 @@ export default function MyDriveScreen({ navigation, route: screenRoute }) {
         return;
       }
 
-      const location = await Location.getCurrentPositionAsync({});
+      const location = await Location.getCurrentPositionAsync({
+        accuracy: getDriverLocationAccuracy()
+      });
       await api.patch(`/routes/stops/${representativeStop.id}/correct-location`, {
         lat: location.coords.latitude,
         lng: location.coords.longitude,
@@ -1698,7 +1812,9 @@ export default function MyDriveScreen({ navigation, route: screenRoute }) {
         return;
       }
 
-      const location = await Location.getCurrentPositionAsync({});
+      const location = await Location.getCurrentPositionAsync({
+        accuracy: getDriverLocationAccuracy()
+      });
       await api.post(`/routes/stops/${representativeStop.id}/flag-road`, {
         lat_start: location.coords.latitude,
         lng_start: location.coords.longitude,

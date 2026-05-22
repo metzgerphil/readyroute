@@ -31,9 +31,15 @@ jest.mock('../services/auth', () => ({
 }));
 
 jest.mock('expo-location', () => ({
+  Accuracy: {
+    BestForNavigation: 6,
+    High: 4,
+    Highest: 5
+  },
   getForegroundPermissionsAsync: jest.fn(),
   requestForegroundPermissionsAsync: jest.fn(),
-  getCurrentPositionAsync: jest.fn()
+  getCurrentPositionAsync: jest.fn(),
+  watchPositionAsync: jest.fn()
 }));
 
 jest.mock('react-native-maps', () => {
@@ -87,6 +93,7 @@ describe('MyDriveScreen interactions', () => {
         longitude: -117.21
       }
     });
+    Location.watchPositionAsync.mockResolvedValue({ remove: jest.fn() });
     auth.getClockInTime.mockResolvedValue(null);
     auth.getPinColorMode.mockResolvedValue('sid');
     auth.removeClockInTime.mockResolvedValue();

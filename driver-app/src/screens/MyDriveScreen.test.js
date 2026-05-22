@@ -16,9 +16,15 @@ jest.mock('../services/auth', () => ({
 }));
 
 jest.mock('expo-location', () => ({
+  Accuracy: {
+    BestForNavigation: 6,
+    High: 4,
+    Highest: 5
+  },
   getForegroundPermissionsAsync: jest.fn(),
   requestForegroundPermissionsAsync: jest.fn(),
-  getCurrentPositionAsync: jest.fn()
+  getCurrentPositionAsync: jest.fn(),
+  watchPositionAsync: jest.fn()
 }));
 
 jest.mock('react-native-maps', () => {
@@ -61,6 +67,7 @@ import {
   stopRequiresSignature,
   getStopType,
   getVisibleBannerBadges,
+  shouldPostDriverLocationUpdate,
   toCoordinate
 } from './MyDriveScreen';
 
@@ -77,6 +84,21 @@ describe('MyDriveScreen helpers', () => {
 
     expect(getFocusCoordinates({ currentLocation, selectedStop })).toHaveLength(2);
     expect(getMapRegion({ currentStop: selectedStop, currentLocation }).latitude).toBe(33.12);
+    expect(
+      shouldPostDriverLocationUpdate({
+        position: currentLocation,
+        lastPostedAt: Date.now(),
+        lastPostedCoordinate: { latitude: 33.121, longitude: -117.081 }
+      })
+    ).toBe(false);
+    expect(
+      shouldPostDriverLocationUpdate({
+        position: currentLocation,
+        lastPostedAt: 1,
+        lastPostedCoordinate: { latitude: 33.11, longitude: -117.07 },
+        now: 6001
+      })
+    ).toBe(true);
   });
 
   it('derives stop type, time commit presentation, and urgency correctly', () => {

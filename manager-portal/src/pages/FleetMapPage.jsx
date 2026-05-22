@@ -121,7 +121,7 @@ export default function FleetMapPage() {
         return accumulator;
       }, {});
     },
-    refetchInterval: 30000
+    refetchInterval: 10000
   });
 
   const driverPositions = useMemo(() => driverPositionsQuery.data || EMPTY_OBJECT, [driverPositionsQuery.data]);

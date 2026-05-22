@@ -72,7 +72,7 @@ export default function DashboardPage() {
       });
       return response.data;
     },
-    refetchInterval: 30000
+    refetchInterval: 10000
   });
 
   const vehiclesQuery = useQuery({

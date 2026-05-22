@@ -183,7 +183,7 @@ export default function RoutePage() {
       return response.data;
     },
     enabled: Boolean(id),
-    refetchInterval: 30000
+    refetchInterval: 10000
   });
 
   const roadFlagsQuery = useQuery({
