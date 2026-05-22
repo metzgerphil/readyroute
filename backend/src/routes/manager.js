@@ -1590,6 +1590,54 @@ async function ensureLinkedManagerAccess(supabase, accountId, managerIdentity, n
   };
 }
 
+async function findManagerIdentityById(supabase, managerUserId) {
+  if (!managerUserId) {
+    return null;
+  }
+
+  const managerUserQuery = await supabase
+    .from('manager_users')
+    .select('id, account_id, email, full_name, password_hash, is_active')
+    .eq('id', managerUserId)
+    .maybeSingle();
+
+  if (managerUserQuery.error && !isMissingManagerUsersTable(managerUserQuery.error)) {
+    throw managerUserQuery.error;
+  }
+
+  if (!managerUserQuery.data || managerUserQuery.data.is_active === false) {
+    return null;
+  }
+
+  return {
+    id: managerUserQuery.data.id,
+    account_id: managerUserQuery.data.account_id,
+    email: managerUserQuery.data.email,
+    password_hash: managerUserQuery.data.password_hash,
+    full_name: managerUserQuery.data.full_name,
+    is_active: managerUserQuery.data.is_active,
+    source: 'manager_user'
+  };
+}
+
+async function ensureReciprocalCsaManagerAccess(supabase, linkCode, currentManagerIdentity, currentAccountId, nowIso) {
+  if (!linkCode?.created_by_manager_user_id || !currentManagerIdentity?.email || !currentAccountId) {
+    return null;
+  }
+
+  const codeCreatorIdentity = await findManagerIdentityById(supabase, linkCode.created_by_manager_user_id);
+
+  if (!codeCreatorIdentity?.email || codeCreatorIdentity.account_id !== linkCode.account_id) {
+    return null;
+  }
+
+  if (normalizeEmail(codeCreatorIdentity.email) === normalizeEmail(currentManagerIdentity.email)) {
+    return null;
+  }
+
+  return ensureLinkedManagerAccess(supabase, currentAccountId, codeCreatorIdentity, nowIso);
+}
+
 function isDisplayableManagerRoute(route) {
   return !route?.archived_at && Boolean(String(route?.work_area_name || '').trim());
 }
@@ -2553,7 +2601,7 @@ function createManagerRouter(options = {}) {
 
       const linkCodeQuery = await supabase
         .from('account_link_codes')
-        .select('id, account_id, code, expires_at, used_at')
+        .select('id, account_id, code, expires_at, used_at, created_by_manager_user_id')
         .eq('code', code)
         .maybeSingle();
 
@@ -2579,7 +2627,15 @@ function createManagerRouter(options = {}) {
         return res.status(409).json({ error: 'That code belongs to the current CSA already' });
       }
 
-      await ensureLinkedManagerAccess(supabase, linkCode.account_id, managerIdentity, nowProvider().toISOString());
+      const linkedAt = nowProvider().toISOString();
+      await ensureLinkedManagerAccess(supabase, linkCode.account_id, managerIdentity, linkedAt);
+      await ensureReciprocalCsaManagerAccess(
+        supabase,
+        linkCode,
+        managerIdentity,
+        req.account.account_id,
+        linkedAt
+      );
 
       const { error: updateError } = await supabase
         .from('account_link_codes')

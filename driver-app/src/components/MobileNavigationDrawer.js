@@ -50,9 +50,14 @@ export function getMobileMenuLayout({ height, insets, width }) {
 export default function MobileNavigationDrawer({
   activeMode,
   currentRouteName,
+  currentManagerCsaId,
   identity,
+  isLoadingManagerCsas,
   isOpen,
+  isSwitchingManagerCsa,
+  managerCsas = [],
   onClose,
+  onManagerCsaSelect,
   onLogout,
   onNavigate,
   onSwitchMode,
@@ -99,6 +104,38 @@ export default function MobileNavigationDrawer({
               <Pressable onPress={onSwitchMode} style={({ pressed }) => [styles.switchButton, pressed ? styles.pressed : null]}>
                 <Text style={styles.switchButtonText}>{getModeSwitchLabel(activeMode)}</Text>
               </Pressable>
+            ) : null}
+
+            {activeMode === 'manager' && managerCsas.length > 1 ? (
+              <View style={styles.workspaceSection}>
+                <Text style={styles.workspaceSectionLabel}>CSA workspace</Text>
+                <View style={styles.workspaceList}>
+                  {managerCsas.map((csa) => {
+                    const isCurrent = csa.id === currentManagerCsaId || csa.is_current;
+                    const isDisabled = isLoadingManagerCsas || isSwitchingManagerCsa;
+
+                    return (
+                      <Pressable
+                        disabled={isDisabled || isCurrent}
+                        key={csa.id}
+                        onPress={() => onManagerCsaSelect?.(csa.id)}
+                        style={({ pressed }) => [
+                          styles.workspaceItem,
+                          isCurrent ? styles.workspaceItemCurrent : null,
+                          pressed && !isDisabled && !isCurrent ? styles.pressed : null
+                        ]}
+                      >
+                        <Text numberOfLines={1} style={[styles.workspaceName, isCurrent ? styles.workspaceNameCurrent : null]}>
+                          {csa.company_name || 'CSA workspace'}
+                        </Text>
+                        <Text style={[styles.workspaceBadge, isCurrent ? styles.workspaceBadgeCurrent : null]}>
+                          {isCurrent ? 'Current' : 'Switch'}
+                        </Text>
+                      </Pressable>
+                    );
+                  })}
+                </View>
+              </View>
             ) : null}
 
             <View style={styles.menuSection}>
@@ -256,6 +293,59 @@ const styles = StyleSheet.create({
     color: '#4d148c',
     fontSize: 15,
     fontWeight: '800'
+  },
+  workspaceSection: {
+    borderColor: '#e3ebf2',
+    borderRadius: 14,
+    borderWidth: 1,
+    marginBottom: 14,
+    padding: 12
+  },
+  workspaceSectionLabel: {
+    color: '#657582',
+    fontSize: 11,
+    fontWeight: '900',
+    letterSpacing: 0.4,
+    lineHeight: 14,
+    marginBottom: 8,
+    textTransform: 'uppercase'
+  },
+  workspaceList: {
+    gap: 6
+  },
+  workspaceItem: {
+    alignItems: 'center',
+    borderColor: '#edf1f5',
+    borderRadius: 10,
+    borderWidth: 1,
+    flexDirection: 'row',
+    gap: 10,
+    minHeight: 44,
+    paddingHorizontal: 10,
+    paddingVertical: 8
+  },
+  workspaceItemCurrent: {
+    backgroundColor: '#f0faf4',
+    borderColor: '#bfe8cb'
+  },
+  workspaceName: {
+    color: '#142635',
+    flex: 1,
+    fontSize: 14,
+    fontWeight: '800',
+    lineHeight: 18
+  },
+  workspaceNameCurrent: {
+    color: '#137333'
+  },
+  workspaceBadge: {
+    color: '#657582',
+    fontSize: 11,
+    fontWeight: '900',
+    lineHeight: 14
+  },
+  workspaceBadgeCurrent: {
+    color: '#137333'
   },
   menuSection: {
     gap: 4

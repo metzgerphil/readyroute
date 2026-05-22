@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 import { useState } from 'react';
-import { NavLink, useNavigate } from 'react-router-dom';
+import { NavLink, useLocation, useNavigate } from 'react-router-dom';
 
 import { VEDR_CONNECTION_STATUSES } from '../config/constants';
 import { useSelectedCsa } from '../context/SelectedCsaContext';
@@ -111,6 +111,7 @@ function SidebarIcon({ type }) {
 }
 
 export default function Layout({ children }) {
+  const location = useLocation();
   const navigate = useNavigate();
   const [isSidebarHidden, setIsSidebarHidden] = useState(false);
   const {
@@ -142,7 +143,9 @@ export default function Layout({ children }) {
     }
 
     try {
-      await switchCsa(nextAccountId, { redirectTo: '/setup' });
+      await switchCsa(nextAccountId, {
+        redirectTo: `${location.pathname || '/'}${location.search || ''}${location.hash || ''}`
+      });
     } catch {
       window.alert('CSA switch could not be completed right now.');
     }

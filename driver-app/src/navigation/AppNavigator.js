@@ -91,9 +91,29 @@ export default function AppNavigator() {
   } = usePortalSession();
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
   const [currentRouteName, setCurrentRouteName] = useState(null);
+  const [isLoadingManagerCsas, setIsLoadingManagerCsas] = useState(false);
+  const [isSwitchingManagerCsa, setIsSwitchingManagerCsa] = useState(false);
+  const [managerCsaPayload, setManagerCsaPayload] = useState({ current_csa: null, csas: [] });
   const [managerDataVersion, setManagerDataVersion] = useState(0);
   const [managerWorkspaceVersion, setManagerWorkspaceVersion] = useState(0);
   const navigationRef = useRef(null);
+  const managerCsas = managerCsaPayload?.csas || [];
+  const currentManagerCsaId = managerCsaPayload?.current_csa?.id || managerCsas.find((csa) => csa?.is_current)?.id || null;
+
+  const loadManagerCsas = useCallback(async () => {
+    setIsLoadingManagerCsas(true);
+
+    try {
+      const response = await api.get('/manager/csas', {
+        authMode: 'manager'
+      });
+      setManagerCsaPayload(response.data || { current_csa: null, csas: [] });
+    } catch (_error) {
+      setManagerCsaPayload({ current_csa: null, csas: [] });
+    } finally {
+      setIsLoadingManagerCsas(false);
+    }
+  }, []);
 
   useEffect(() => {
     if (!hasAnyAccess) {
@@ -113,12 +133,24 @@ export default function AppNavigator() {
     setCurrentRouteName(activeMode === 'manager' ? 'ManagerDashboard' : 'Home');
   }, [activeMode, currentRouteName, hasAnyAccess, needsModeSelection]);
 
+  useEffect(() => {
+    if (activeMode !== 'manager' || !sessionTokens?.managerToken) {
+      setManagerCsaPayload({ current_csa: null, csas: [] });
+      return;
+    }
+
+    loadManagerCsas();
+  }, [activeMode, loadManagerCsas, managerWorkspaceVersion, sessionTokens?.managerToken]);
+
   if (isBootstrapping) {
     return <LoadingScreen />;
   }
 
   function openDrawer() {
     setIsDrawerOpen(true);
+    if (activeMode === 'manager' && sessionTokens?.managerToken) {
+      loadManagerCsas();
+    }
   }
 
   function closeDrawer() {
@@ -204,11 +236,40 @@ export default function AppNavigator() {
     await authenticate(nextTokens);
 
     setManagerWorkspaceVersion((current) => current + 1);
-    navigationRef.current?.navigate?.('ManagerDashboard', {
-      csaSwitchAt: Date.now()
-    });
-    setCurrentRouteName('ManagerDashboard');
+    if (!String(currentRouteName || '').startsWith('Manager')) {
+      navigationRef.current?.navigate?.('ManagerDashboard', {
+        csaSwitchAt: Date.now()
+      });
+      setCurrentRouteName('ManagerDashboard');
+    }
     closeDrawer();
+  }
+
+  async function handleManagerCsaSelect(accountId) {
+    if (!accountId || accountId === currentManagerCsaId || isSwitchingManagerCsa) {
+      return;
+    }
+
+    setIsSwitchingManagerCsa(true);
+
+    try {
+      const response = await api.post('/manager/csas/switch', {
+        account_id: accountId
+      }, {
+        authMode: 'manager'
+      });
+      const nextManagerToken = response.data?.token;
+
+      if (!nextManagerToken) {
+        throw new Error('CSA switch did not return a manager token.');
+      }
+
+      await handleManagerWorkspaceSwitch(nextManagerToken);
+    } catch (error) {
+      console.warn('Manager CSA switch failed:', error?.message || error);
+    } finally {
+      setIsSwitchingManagerCsa(false);
+    }
   }
 
   function handleManagerDataRefresh() {
@@ -400,9 +461,14 @@ export default function AppNavigator() {
           <MobileNavigationDrawer
             activeMode={activeMode}
             currentRouteName={currentRouteName}
+            currentManagerCsaId={currentManagerCsaId}
             identity={identity}
+            isLoadingManagerCsas={isLoadingManagerCsas}
             isOpen={isDrawerOpen}
+            isSwitchingManagerCsa={isSwitchingManagerCsa}
+            managerCsas={managerCsas}
             onClose={closeDrawer}
+            onManagerCsaSelect={handleManagerCsaSelect}
             onManagerWorkspaceSwitch={handleManagerWorkspaceSwitch}
             onLogout={logout}
             onNavigate={handleNavigate}

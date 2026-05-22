@@ -239,7 +239,7 @@ export function getRouteDispatchWarnings({ route, allStops, roadFlags = [] }) {
   if (stopWarnings > 0) {
     warnings.push({
       key: 'address-warnings',
-      label: `${stopWarnings} address warning${stopWarnings === 1 ? '' : 's'}`,
+      label: `${stopWarnings} stop${stopWarnings === 1 ? '' : 's'} need review`,
       tone: 'warning'
     });
   }

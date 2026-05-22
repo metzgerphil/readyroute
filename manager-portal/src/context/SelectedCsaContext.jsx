@@ -44,7 +44,7 @@ export function SelectedCsaProvider({ children }) {
   const selectedCsaName = deriveSelectedCsaName(selectedCsa);
 
   const switchCsa = useCallback(async (nextCsaId, options = {}) => {
-    const redirectTo = options.redirectTo || '/setup';
+    const redirectTo = options.redirectTo || `${window.location.pathname || '/'}${window.location.search || ''}${window.location.hash || ''}`;
     setCsaSelectionError('');
 
     if (!nextCsaId || nextCsaId === tokenCsaId) {

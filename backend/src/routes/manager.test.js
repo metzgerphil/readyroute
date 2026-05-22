@@ -1096,6 +1096,181 @@ test('POST /manager/csas/switch returns a new token for an accessible CSA', asyn
   }
 });
 
+test('POST /manager/csas/link-existing grants reciprocal manager access for linked CSAs', async () => {
+  const insertedManagerUsers = [];
+
+  const supabase = new MockSupabase((query) => {
+    if (query.table === 'manager_users' && query.operation === 'select') {
+      const idFilter = query.filters.find((filter) => filter.column === 'id');
+      const accountFilter = query.filters.find((filter) => filter.column === 'account_id' && filter.op === 'eq');
+      const emailFilter = query.filters.find((filter) => filter.column === 'email');
+      const accountInFilter = query.filters.find((filter) => filter.column === 'account_id' && filter.op === 'in');
+
+      if (idFilter?.value === 'manager-2') {
+        return {
+          data: {
+            id: 'manager-2',
+            account_id: 'acct-2',
+            email: 'pv@example.com',
+            full_name: 'PV Manager',
+            password_hash: 'creator-hash',
+            is_active: true
+          },
+          error: null
+        };
+      }
+
+      if (accountFilter?.value === 'acct-1' && emailFilter?.value === 'phillovesjoy@gmail.com') {
+        return {
+          data: {
+            id: 'manager-1',
+            account_id: 'acct-1',
+            email: 'phillovesjoy@gmail.com',
+            full_name: 'Bridge Manager',
+            password_hash: 'bridge-hash',
+            is_active: true
+          },
+          error: null
+        };
+      }
+
+      if (accountFilter?.value === 'acct-2' && emailFilter?.value === 'phillovesjoy@gmail.com') {
+        return { data: null, error: null };
+      }
+
+      if (accountFilter?.value === 'acct-1' && emailFilter?.value === 'pv@example.com') {
+        return { data: null, error: null };
+      }
+
+      if (emailFilter?.value === 'phillovesjoy@gmail.com') {
+        return {
+          data: [
+            { account_id: 'acct-1', is_active: true },
+            { account_id: 'acct-2', is_active: true }
+          ],
+          error: null
+        };
+      }
+
+      if (accountInFilter) {
+        return {
+          data: [
+            { account_id: 'acct-1', id: 'manager-1', is_active: true, email: 'phillovesjoy@gmail.com' },
+            { account_id: 'acct-1', id: 'manager-pv-linked', is_active: true, email: 'pv@example.com' },
+            { account_id: 'acct-2', id: 'manager-2', is_active: true, email: 'pv@example.com' },
+            { account_id: 'acct-2', id: 'manager-bridge-linked', is_active: true, email: 'phillovesjoy@gmail.com' }
+          ],
+          error: null
+        };
+      }
+    }
+
+    if (query.table === 'manager_users' && query.operation === 'insert') {
+      insertedManagerUsers.push(query.payload);
+      return {
+        data: {
+          id: `inserted-${insertedManagerUsers.length}`,
+          ...query.payload
+        },
+        error: null
+      };
+    }
+
+    if (query.table === 'account_link_codes' && query.operation === 'select') {
+      return {
+        data: {
+          id: 'code-1',
+          account_id: 'acct-2',
+          code: 'CSA-ABCDEFGH',
+          expires_at: '2026-04-21T18:00:00.000Z',
+          used_at: null,
+          created_by_manager_user_id: 'manager-2'
+        },
+        error: null
+      };
+    }
+
+    if (query.table === 'account_link_codes' && query.operation === 'update') {
+      assert.equal(query.payload.used_by_account_id, 'acct-1');
+      return { data: null, error: null };
+    }
+
+    if (query.table === 'accounts' && query.operation === 'select') {
+      const idInFilter = query.filters.find((filter) => filter.column === 'id' && filter.op === 'in');
+      const managerEmailFilter = query.filters.find((filter) => filter.column === 'manager_email');
+
+      if (idInFilter) {
+        return {
+          data: [
+            {
+              id: 'acct-1',
+              company_name: 'Bridge Transportation',
+              manager_email: 'phillovesjoy@gmail.com',
+              created_at: '2026-04-01T00:00:00.000Z'
+            },
+            {
+              id: 'acct-2',
+              company_name: 'PV Delivery',
+              manager_email: 'pv@example.com',
+              created_at: '2026-04-02T00:00:00.000Z'
+            }
+          ],
+          error: null
+        };
+      }
+
+      if (managerEmailFilter) {
+        return { data: [], error: null };
+      }
+    }
+
+    if (query.table === 'drivers' && query.operation === 'select') {
+      return { data: [], error: null };
+    }
+
+    if (query.table === 'vehicles' && query.operation === 'select') {
+      return { data: [], error: null };
+    }
+
+    if (query.table === 'routes' && query.operation === 'select') {
+      return { data: [], error: null };
+    }
+
+    throw new Error(`Unexpected query ${query.table}:${query.operation}`);
+  });
+
+  const server = await startTestServer({ supabase, now: () => new Date('2026-04-20T18:00:00.000Z') });
+
+  try {
+    const response = await fetch(`${server.baseUrl}/manager/csas/link-existing`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${signManagerToken()}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        code: 'CSA-ABCDEFGH'
+      })
+    });
+
+    assert.equal(response.status, 200);
+    assert.deepEqual(
+      insertedManagerUsers.map((row) => ({
+        account_id: row.account_id,
+        email: row.email
+      })),
+      [
+        { account_id: 'acct-2', email: 'phillovesjoy@gmail.com' },
+        { account_id: 'acct-1', email: 'pv@example.com' }
+      ]
+    );
+    const body = await response.json();
+    assert.deepEqual(body.csas.map((csa) => csa.company_name), ['Bridge Transportation', 'PV Delivery']);
+  } finally {
+    await server.close();
+  }
+});
+
 test('DELETE /manager/csas/:accountId/access unlinks non-current CSA access when another manager remains', async () => {
   let deactivatedManagerUserId = null;
   const supabase = new MockSupabase((query) => {

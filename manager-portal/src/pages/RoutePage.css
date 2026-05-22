@@ -306,6 +306,16 @@
   border: 1px solid transparent;
 }
 
+.route-dispatch-chip.interactive {
+  cursor: pointer;
+  font-family: inherit;
+}
+
+.route-dispatch-chip.interactive:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 8px 18px rgba(180, 83, 9, 0.14);
+}
+
 .route-dispatch-chip.urgent {
   background: #fef2f2;
   border-color: #fecaca;
@@ -316,6 +326,138 @@
   background: #fff7ed;
   border-color: #fed7aa;
   color: #b45309;
+}
+
+.route-stop-review-panel {
+  margin: -6px 22px 18px;
+  padding: 16px;
+  border: 1px solid #fed7aa;
+  border-radius: 18px;
+  background: #fffdf8;
+  display: grid;
+  gap: 14px;
+}
+
+.route-stop-review-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.route-stop-review-heading > div {
+  display: grid;
+  gap: 4px;
+}
+
+.route-stop-review-heading strong {
+  color: #173042;
+  font-size: 0.98rem;
+  font-weight: 900;
+}
+
+.route-stop-review-heading span {
+  color: #66737c;
+  font-size: 0.88rem;
+  font-weight: 700;
+  line-height: 1.35;
+}
+
+.route-stop-review-heading button,
+.route-stop-review-actions button {
+  border: 1px solid #e8ddd2;
+  border-radius: 10px;
+  background: #ffffff;
+  color: #173042;
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.78rem;
+  font-weight: 900;
+  min-height: 34px;
+  padding: 0 10px;
+}
+
+.route-stop-review-heading button:hover,
+.route-stop-review-actions button:hover {
+  border-color: #ffb885;
+  color: #c2410c;
+}
+
+.route-stop-review-list {
+  display: grid;
+  gap: 10px;
+}
+
+.route-stop-review-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: center;
+  padding: 10px;
+  border: 1px solid #f0e5d9;
+  border-radius: 14px;
+  background: #ffffff;
+}
+
+.route-stop-review-main {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  font: inherit;
+  text-align: left;
+}
+
+.route-stop-review-sequence {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  width: 34px;
+  height: 34px;
+  border-radius: 999px;
+  background: #fff7ed;
+  border: 1px solid #fed7aa;
+  color: #b45309;
+  font-size: 0.82rem;
+  font-weight: 900;
+}
+
+.route-stop-review-copy {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.route-stop-review-copy strong {
+  color: #173042;
+  font-size: 0.88rem;
+  font-weight: 900;
+  line-height: 1.25;
+}
+
+.route-stop-review-copy span,
+.route-stop-review-copy small {
+  color: #66737c;
+  font-size: 0.8rem;
+  font-weight: 700;
+  line-height: 1.35;
+}
+
+.route-stop-review-copy small {
+  color: #9a4d13;
+}
+
+.route-stop-review-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: flex-end;
 }
 
 .route-map-stage {
@@ -1571,6 +1713,20 @@
   .route-stop-detail-grid,
   .route-stop-detail-lines {
     grid-template-columns: 1fr;
+  }
+
+  .route-stop-review-heading,
+  .route-stop-review-actions {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .route-stop-review-row {
+    grid-template-columns: 1fr;
+  }
+
+  .route-stop-review-actions {
+    justify-content: stretch;
   }
 
   .route-stop-package-row {

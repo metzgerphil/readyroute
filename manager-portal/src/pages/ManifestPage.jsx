@@ -1083,13 +1083,8 @@ export default function ManifestPage() {
                   type="file"
                 />
 
-                <div className="manifest-upload-grid">
-                  {latestUpload?.manifest_meta?.work_area_name ? (
-                    <div className="manifest-field">
-                      <span className="field-label">Work Area Name</span>
-                      <div className="manifest-readonly-field">{latestUpload.manifest_meta.work_area_name}</div>
-                    </div>
-                  ) : (
+                {hasSelectedFile && !isSpreadsheetUpload && !isManifestBundleUpload ? (
+                  <div className="manifest-upload-grid">
                     <label className="manifest-field">
                       <span className="field-label">Work Area Name (e.g. 810)</span>
                       <input
@@ -1098,14 +1093,7 @@ export default function ManifestPage() {
                         value={workAreaName}
                       />
                     </label>
-                  )}
 
-                  {latestUpload?.manifest_meta?.date ? (
-                    <div className="manifest-field">
-                      <span className="field-label">Date</span>
-                      <div className="manifest-readonly-field">{latestUpload.manifest_meta.date}</div>
-                    </div>
-                  ) : (
                     <label className="manifest-field">
                       <span className="field-label">Assign to driver</span>
                       <select className="text-field" onChange={(event) => setDriverId(event.target.value)} value={driverId}>
@@ -1115,20 +1103,20 @@ export default function ManifestPage() {
                         ))}
                       </select>
                     </label>
-                  )}
 
-                  <label className="manifest-field">
-                    <span className="field-label">Assign vehicle</span>
-                    <select className="text-field" onChange={(event) => setVehicleId(event.target.value)} value={vehicleId}>
-                      <option value="">Select vehicle...</option>
-                      {(vehiclesQuery.data || []).map((vehicle) => (
-                        <option key={vehicle.id} value={vehicle.id}>
-                          {vehicle.name} {vehicle.plate ? `· ${vehicle.plate}` : ''}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                </div>
+                    <label className="manifest-field">
+                      <span className="field-label">Assign vehicle</span>
+                      <select className="text-field" onChange={(event) => setVehicleId(event.target.value)} value={vehicleId}>
+                        <option value="">Select vehicle...</option>
+                        {(vehiclesQuery.data || []).map((vehicle) => (
+                          <option key={vehicle.id} value={vehicle.id}>
+                            {vehicle.name} {vehicle.plate ? `· ${vehicle.plate}` : ''}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                  </div>
+                ) : null}
 
                 {latestUpload ? (
                   <div className="manifest-upload-summary">
@@ -1173,7 +1161,7 @@ export default function ManifestPage() {
 
                 {needsGpxUploadFields ? (
                   <div className="info-banner">
-                    Please fill in Work Area Name, Driver, and Vehicle before processing.
+                    GPX-only uploads need a route name, driver, and vehicle before processing.
                   </div>
                 ) : null}
 
@@ -1185,30 +1173,6 @@ export default function ManifestPage() {
                 ) : null}
               </div>
             )}
-
-            {hasRoutesToday ? (
-              <div className="manifest-upload-status-strip">
-                <div className="manifest-upload-stat routes">
-                  <span className="manifest-stat-icon">↱</span>
-                  <strong>{routeSummaries.length}</strong>
-                  <span>routes loaded</span>
-                </div>
-                <div className="manifest-upload-stat drivers">
-                  <span className="manifest-stat-icon">◎</span>
-                  <strong>{routeSummaries.length - routesNeedingDrivers.length}</strong>
-                  <span>drivers assigned</span>
-                </div>
-                <div className="manifest-upload-stat trucks">
-                  <span className="manifest-stat-icon">▣</span>
-                  <strong>{routesNeedingVehicles.length}</strong>
-                  <span>missing trucks</span>
-                </div>
-                <div className={routesNeedingVehicles.length || routesNeedingDrivers.length ? 'manifest-ready-pill warning' : 'manifest-ready-pill'}>
-                  <span>✓</span>
-                  {routesNeedingVehicles.length || routesNeedingDrivers.length ? 'Needs review' : 'Ready for review'}
-                </div>
-              </div>
-            ) : null}
 
             {routesQuery.isError ? (
               <div className="error-banner">

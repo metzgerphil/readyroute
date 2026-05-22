@@ -239,6 +239,39 @@ describe('MobileNavigationDrawer', () => {
     expect(onNavigate).toHaveBeenCalledWith('ManagerNotifications');
   });
 
+  it('shows linked CSA workspaces and switches from the drawer', () => {
+    const onManagerCsaSelect = jest.fn();
+    const screen = renderDrawer({
+      activeMode: 'manager',
+      currentManagerCsaId: 'csa-bridge',
+      currentRouteName: 'ManagerRoutes',
+      identity: {
+        fullName: 'Vlad Fedoryshyn',
+        companyName: 'Bridge Transportation',
+        primaryRole: 'Manager'
+      },
+      isOpen: true,
+      managerCsas: [
+        { id: 'csa-bridge', company_name: 'Bridge Transportation', is_current: true },
+        { id: 'csa-pv', company_name: 'PV Delivery', is_current: false }
+      ],
+      onClose: jest.fn(),
+      onLogout: jest.fn(),
+      onManagerCsaSelect,
+      onNavigate: jest.fn(),
+      onSwitchMode: jest.fn(),
+      showModeSwitch: false
+    });
+
+    expect(screen.getByText('CSA workspace')).toBeTruthy();
+    expect(screen.getAllByText('Bridge Transportation').length).toBeGreaterThan(0);
+    expect(screen.getByText('PV Delivery')).toBeTruthy();
+
+    fireEvent.press(screen.getByText('PV Delivery'));
+
+    expect(onManagerCsaSelect).toHaveBeenCalledWith('csa-pv');
+  });
+
   it('keeps mode switching and logout wired to the existing callbacks', () => {
     const onLogout = jest.fn();
     const onSwitchMode = jest.fn();

@@ -66,6 +66,7 @@ export default function RoutePage() {
   const [showLegend, setShowLegend] = useState(true);
   const [showStopDrawer, setShowStopDrawer] = useState(true);
   const [showExceptions, setShowExceptions] = useState(false);
+  const [showStopReview, setShowStopReview] = useState(false);
   const [activeExceptionsTab, setActiveExceptionsTab] = useState('exceptions');
   const [isSavingNote, setIsSavingNote] = useState(false);
   const [noteEditorStopId, setNoteEditorStopId] = useState(null);
@@ -227,6 +228,10 @@ export default function RoutePage() {
   const routeDispatchWarnings = useMemo(
     () => getRouteDispatchWarnings({ route, allStops, roadFlags }),
     [route, allStops, roadFlags]
+  );
+  const reviewStops = useMemo(
+    () => allStops.filter((stop) => Boolean(stop?.notes)),
+    [allStops]
   );
   const nextStop = useMemo(
     () => allStops.find((stop) => stop.status === 'pending') || null,
@@ -914,6 +919,13 @@ export default function RoutePage() {
     centerOnStop(stop);
   }
 
+  function handleReviewStop(stop) {
+    setShowStopReview(true);
+    setShowStopDrawer(true);
+    setShowExceptions(false);
+    centerOnStop(stop);
+  }
+
   function openNoteEditor(stop = selectedStop || nextStop || null) {
     if (!stop) {
       setActionError('Select a stop first, then add or edit the address note.');
@@ -964,12 +976,14 @@ export default function RoutePage() {
     const map = mapInstanceRef.current;
     const marker = stopMarkersRef.current.get(stop.id);
 
+    setSelectedStopId(stop.id);
+
     if (!map || !marker) {
       return;
     }
 
-    setSelectedStopId(stop.id);
     map.panTo(marker.getPosition());
+    map.setZoom(Math.max(map.getZoom() || 14, 15));
   }
 
   function centerOnRoadFlag(flag) {
@@ -1182,11 +1196,27 @@ export default function RoutePage() {
                   <span>This route still has items worth checking before a driver heads out.</span>
                 </div>
                 <div className="route-dispatch-alert-chips">
-                  {routeDispatchWarnings.map((warning) => (
-                    <span className={`route-dispatch-chip ${warning.tone}`} key={warning.key}>
-                      {warning.label}
-                    </span>
-                  ))}
+                  {routeDispatchWarnings.map((warning) => {
+                    const isStopReviewWarning = warning.key === 'address-warnings';
+                    if (isStopReviewWarning) {
+                      return (
+                        <button
+                          className={`route-dispatch-chip ${warning.tone} interactive`}
+                          key={warning.key}
+                          onClick={() => setShowStopReview((current) => !current)}
+                          type="button"
+                        >
+                          {warning.label}
+                        </button>
+                      );
+                    }
+
+                    return (
+                      <span className={`route-dispatch-chip ${warning.tone}`} key={warning.key}>
+                        {warning.label}
+                      </span>
+                    );
+                  })}
                 </div>
               </div>
             ) : (
@@ -1197,6 +1227,49 @@ export default function RoutePage() {
                 </div>
               </div>
             )}
+            {showStopReview && reviewStops.length ? (
+              <div className="route-stop-review-panel">
+                <div className="route-stop-review-heading">
+                  <div>
+                    <strong>Stops Needing Review</strong>
+                    <span>These stops have address notes or delivery context worth checking before dispatch.</span>
+                  </div>
+                  <button type="button" onClick={() => setShowStopReview(false)}>
+                    Hide
+                  </button>
+                </div>
+                <div className="route-stop-review-list">
+                  {reviewStops.map((stop) => (
+                    <article className="route-stop-review-row" key={stop.id}>
+                      <button
+                        className="route-stop-review-main"
+                        onClick={() => handleReviewStop(stop)}
+                        type="button"
+                      >
+                        <span className="route-stop-review-sequence">{stop.sequence_order}</span>
+                        <span className="route-stop-review-copy">
+                          <strong>{stop.address}</strong>
+                          {stop.address_line2 ? <span>{stop.address_line2}</span> : null}
+                          {stop.contact_name ? <span>{stop.contact_name}</span> : null}
+                          <small>{stop.notes}</small>
+                        </span>
+                      </button>
+                      <div className="route-stop-review-actions">
+                        <button type="button" onClick={() => handleReviewStop(stop)}>
+                          Find
+                        </button>
+                        <button type="button" onClick={() => openNoteEditor(stop)}>
+                          Edit Note
+                        </button>
+                        <button type="button" onClick={() => openPropertyEditor(stop)}>
+                          Building Intel
+                        </button>
+                      </div>
+                    </article>
+                  ))}
+                </div>
+              </div>
+            ) : null}
           </>
         )}
       </header>
