@@ -423,13 +423,14 @@ async function ensureLoggedIn(page, config, credentials) {
 
   await submitButton.click();
 
-  // Wait for Okta to finish its redirect chain back to the FedEx portal.
-  // networkidle is unreliable here because Okta fires multiple redirects in sequence.
-  await page.waitForFunction(
-    () => !window.location.href.includes('okta.com') && !window.location.href.includes('my.policy'),
+  // waitForFunction fails across cross-domain redirects; waitForURL handles it correctly.
+  await page.waitForURL(
+    (url) => !url.href.includes('okta.com') && !url.href.includes('my.policy'),
     { timeout: 30000 }
   ).catch(() => null);
   await page.waitForLoadState('networkidle', { timeout: 15000 }).catch(() => null);
+
+  await saveDebugSnapshot(page, config.downloadDir, 'fcc-post-login');
 
   if (config.mfaSelector) {
     const mfaVisible = await page.locator(config.mfaSelector).first().isVisible().catch(() => false);
