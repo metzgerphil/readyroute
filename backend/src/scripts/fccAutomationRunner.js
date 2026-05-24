@@ -1344,7 +1344,8 @@ async function main() {
   const browser = await chromium.launch({
     headless: config.headless,
     slowMo: config.slowMoMs,
-    ...(config.chromiumExecutablePath ? { executablePath: config.chromiumExecutablePath } : {})
+    ...(config.chromiumExecutablePath ? { executablePath: config.chromiumExecutablePath } : {}),
+    ...(config.ignoreHttpsErrors ? { args: ['--ignore-certificate-errors'] } : {})
   });
 
   try {

@@ -52,7 +52,8 @@ function resolveFccAutomationConfig(env = process.env) {
     runMode: String(env.READYROUTE_FCC_RUN_MODE || 'daily').trim().toLowerCase(),
     headless: String(env.FEDEX_FCC_HEADLESS || 'true').trim().toLowerCase() !== 'false',
     slowMoMs: Number(env.FEDEX_FCC_SLOW_MO_MS || 0),
-    chromiumExecutablePath: String(env.FEDEX_FCC_CHROMIUM_EXECUTABLE || '').trim() || undefined
+    chromiumExecutablePath: String(env.FEDEX_FCC_CHROMIUM_EXECUTABLE || '').trim() || undefined,
+    ignoreHttpsErrors: String(env.FEDEX_FCC_IGNORE_HTTPS_ERRORS || '').trim().toLowerCase() === 'true'
   };
 }
 
