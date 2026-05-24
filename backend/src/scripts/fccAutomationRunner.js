@@ -1343,7 +1343,8 @@ async function main() {
 
   const browser = await chromium.launch({
     headless: config.headless,
-    slowMo: config.slowMoMs
+    slowMo: config.slowMoMs,
+    ...(config.chromiumExecutablePath ? { executablePath: config.chromiumExecutablePath } : {})
   });
 
   try {
