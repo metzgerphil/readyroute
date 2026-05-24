@@ -726,9 +726,9 @@ async function waitForFccIdle(page, timeout = 60000) {
 
   for (const selector of overlaySelectors) {
     const overlay = page.locator(selector).first();
-    const count = await overlay.count().catch(() => 0);
-
-    if (count > 0) {
+    await overlay.waitFor({ state: 'visible', timeout: 2000 }).catch(() => null);
+    const visible = await overlay.isVisible().catch(() => false);
+    if (visible) {
       await overlay.waitFor({ state: 'hidden', timeout }).catch(() => null);
     }
   }
@@ -774,71 +774,54 @@ async function clickSearch(page, config) {
   await waitForFccIdle(page);
   const trigger = page.locator(config.searchButtonSelector).first();
   await trigger.scrollIntoViewIfNeeded({ timeout: 3000 }).catch(() => null);
-  const submitted = await Promise.race([
-    Promise.all([
-      page.waitForLoadState('networkidle').catch(() => null),
-      trigger.click({ timeout: 8000 }).catch(async (error) => {
-        const message = String(error?.message || error || '');
+  // ICEfaces keeps persistent long-poll connections open, so waitForLoadState('networkidle')
+  // never resolves. Listen for the JSF AJAX response instead, set up before the click.
+  const responsePromise = page.waitForResponse(
+    (res) => res.url().includes('index.jsf') && res.status() === 200,
+    { timeout: 20000 }
+  ).catch(() => null);
 
-        if (!/outside of the viewport|intercepts pointer events|not visible|Timeout/i.test(message)) {
-          throw error;
-        }
+  await trigger.click({ timeout: 8000 }).catch(async (error) => {
+    const message = String(error?.message || error || '');
 
-        await trigger.click({ force: true, timeout: 5000 }).catch(async () => {
-          await page.evaluate(() => {
-            const search =
-              document.querySelector('#manifestForm\\:search') ||
-              document.querySelector('input[name="manifestForm:search"]') ||
-              Array.from(document.querySelectorAll('button, input, a')).find((element) => {
-                const text = `${element.value || ''} ${element.textContent || ''} ${element.getAttribute('aria-label') || ''}`;
-                return /\bsearch\b/i.test(text);
-              });
-
-            if (!search) {
-              return false;
-            }
-
-            search.click();
-            return true;
-          });
-        });
-      })
-    ]).then(() => true),
-    page.waitForTimeout(15000).then(() => false)
-  ]);
-
-  if (!submitted) {
-    const domSubmitted = await page.evaluate(() => {
-      const search =
-        document.querySelector('#manifestForm\\:search') ||
-        document.querySelector('input[name="manifestForm:search"]') ||
-        Array.from(document.querySelectorAll('button, input, a')).find((element) => {
-          const text = `${element.value || ''} ${element.textContent || ''} ${element.getAttribute('aria-label') || ''}`;
-          return /\bsearch\b/i.test(text);
-        });
-
-      if (search) {
-        search.click();
-        return true;
-      }
-
-      const manifestForm = document.querySelector('form[id="manifestForm"], form[name="manifestForm"]');
-      if (manifestForm) {
-        manifestForm.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
-        if (typeof manifestForm.submit === 'function') {
-          manifestForm.submit();
-        }
-        return true;
-      }
-
-      return false;
-    }).catch(() => false);
-
-    if (!domSubmitted) {
-      throw new Error('FCC search button was not available after selecting the work area.');
+    if (!/outside of the viewport|intercepts pointer events|not visible|Timeout/i.test(message)) {
+      throw error;
     }
-  }
 
+    await trigger.click({ force: true, timeout: 5000 }).catch(async () => {
+      const domClicked = await page.evaluate(() => {
+        const search =
+          document.querySelector('#manifestForm\\:search') ||
+          document.querySelector('input[name="manifestForm:search"]') ||
+          Array.from(document.querySelectorAll('button, input, a')).find((element) => {
+            const text = `${element.value || ''} ${element.textContent || ''} ${element.getAttribute('aria-label') || ''}`;
+            return /\bsearch\b/i.test(text);
+          });
+
+        if (search) {
+          search.click();
+          return true;
+        }
+
+        const manifestForm = document.querySelector('form[id="manifestForm"], form[name="manifestForm"]');
+        if (manifestForm) {
+          manifestForm.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+          if (typeof manifestForm.submit === 'function') {
+            manifestForm.submit();
+          }
+          return true;
+        }
+
+        return false;
+      }).catch(() => false);
+
+      if (!domClicked) {
+        throw new Error('FCC search button was not available after selecting the work area.');
+      }
+    });
+  });
+
+  await responsePromise;
   await waitForFccIdle(page);
 }
 
@@ -1128,8 +1111,16 @@ async function downloadFromPage(page, selector, destinationPath) {
     return null;
   }
 
+  // FCC export buttons sometimes open a popup window rather than downloading directly.
+  // Race between a direct download on this page and a download from a new popup.
+  const popupPromise = page.context().waitForEvent('page', { timeout: 5000 }).catch(() => null);
   const [download] = await Promise.all([
-    page.waitForEvent('download'),
+    Promise.race([
+      page.waitForEvent('download', { timeout: 30000 }),
+      popupPromise.then((popup) =>
+        popup ? popup.waitForEvent('download', { timeout: 30000 }) : new Promise(() => {})
+      )
+    ]),
     trigger.click()
   ]);
 
@@ -1373,7 +1364,18 @@ async function main() {
       page = page._readyrouteActivePage || page;
     }
 
+    // On session restore, navigate directly to the saved page URL so the F5-embedded
+    // jsessionid path parameter is preserved, giving the server a chance to resume
+    // the session without a full re-login.
+    const sessionUrlPath = `${sessionStatePath}.url`;
+    const savedSessionUrl = hasSavedSession
+      ? await fs.readFile(sessionUrlPath, 'utf8').then((v) => v.trim()).catch(() => '')
+      : '';
+
     if (hasSavedSession) {
+      if (savedSessionUrl) {
+        await gotoWithRetry(page, savedSessionUrl, { waitUntil: 'domcontentloaded' }).catch(() => null);
+      }
       page = await preparePortalSession(page, config, credentials, downloadDir);
       await openManifestPage(page, config, manifestUrl, downloadDir);
       page = page._readyrouteActivePage || page;
@@ -1419,6 +1421,7 @@ async function main() {
     }
 
     await context.storageState({ path: sessionStatePath });
+    await fs.writeFile(sessionUrlPath, page.url()).catch(() => null);
 
     const manifests = snapshots
       .filter((snapshot) => snapshot.xls_path || snapshot.combined_xls_path || snapshot.delivery_xls_path || snapshot.pickup_xls_path)
