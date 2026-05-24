@@ -421,10 +421,15 @@ async function ensureLoggedIn(page, config, credentials) {
     throw new Error(`Could not find the PurpleID/FCC submit button after entering the password. Debug saved to ${debugDir}`);
   }
 
-  await Promise.all([
-    page.waitForLoadState('networkidle').catch(() => null),
-    submitButton.click()
-  ]);
+  await submitButton.click();
+
+  // Wait for Okta to finish its redirect chain back to the FedEx portal.
+  // networkidle is unreliable here because Okta fires multiple redirects in sequence.
+  await page.waitForFunction(
+    () => !window.location.href.includes('okta.com') && !window.location.href.includes('my.policy'),
+    { timeout: 30000 }
+  ).catch(() => null);
+  await page.waitForLoadState('networkidle', { timeout: 15000 }).catch(() => null);
 
   if (config.mfaSelector) {
     const mfaVisible = await page.locator(config.mfaSelector).first().isVisible().catch(() => false);
@@ -566,8 +571,13 @@ async function enterFccThroughPortal(page, config, downloadDir) {
     return false;
   }
 
-  await gotoWithRetry(page, config.portalUrl, { waitUntil: 'domcontentloaded' });
-  await page.waitForLoadState('networkidle', { timeout: 15000 }).catch(() => null);
+  // Skip navigation if we're already past the login page — e.g. when called
+  // immediately after ensureLoggedIn, which leaves us on the portal already.
+  const alreadyPastLogin = !(await hasFccLoginOrHelpText(page));
+  if (!alreadyPastLogin) {
+    await gotoWithRetry(page, config.portalUrl, { waitUntil: 'domcontentloaded' });
+    await page.waitForLoadState('networkidle', { timeout: 15000 }).catch(() => null);
+  }
   await page.waitForTimeout(config.portalWarmupMs);
 
   if (await ensureFccManifestUi(page, config)) {
