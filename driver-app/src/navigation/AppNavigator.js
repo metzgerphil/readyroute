@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useFocusEffect } from '@react-navigation/native';
-import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Alert, Pressable, StyleSheet, Text, View } from 'react-native';
 import { createStackNavigator } from '@react-navigation/stack';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -222,8 +222,8 @@ export default function AppNavigator() {
         authToken: managerToken
       });
       driverToken = response.data?.driver_token || null;
-    } catch (error) {
-      console.warn('Failed to refresh driver mode for selected CSA:', error?.message || error);
+    } catch (_error) {
+      // Driver token refresh failed; manager mode still switches, driver mode may be limited.
     }
 
     const nextTokens = {
@@ -265,8 +265,8 @@ export default function AppNavigator() {
       }
 
       await handleManagerWorkspaceSwitch(nextManagerToken);
-    } catch (error) {
-      console.warn('Manager CSA switch failed:', error?.message || error);
+    } catch (_error) {
+      Alert.alert('CSA Switch Failed', 'Could not switch to the selected CSA. Please try again.');
     } finally {
       setIsSwitchingManagerCsa(false);
     }
