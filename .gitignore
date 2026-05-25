@@ -17,6 +17,7 @@ node_modules/
 .playwright-browsers/
 .tools/
 supabase/.temp/
+package-lock.json
 
 # build output
 dist/
