@@ -11,6 +11,7 @@ import {
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import Svg, { Path } from 'react-native-svg';
 
+import ErrorState from '../components/ui/ErrorState';
 import api from '../services/api';
 import { getPinColorMode, savePinColorMode, subscribePinColorMode } from '../services/auth';
 import appTheme from '../theme/appTheme';
@@ -174,6 +175,8 @@ export default function ManifestScreen({ navigation, route }) {
   const [search, setSearch] = useState('');
   const [activeStopFilter, setActiveStopFilter] = useState('all');
   const [isLoading, setIsLoading] = useState(true);
+  const [errorMessage, setErrorMessage] = useState('');
+  const [retryKey, setRetryKey] = useState(0);
   const [pinColorMode, setPinColorMode] = useState('sid');
   const selectedStopId = route?.params?.selectedStopId;
   const groupStopIds = useMemo(
@@ -200,12 +203,17 @@ export default function ManifestScreen({ navigation, route }) {
         const nextRoute = response.data?.route || null;
 
         if (isMounted) {
+          setErrorMessage('');
           setRouteData(nextRoute);
           setDriverDay(
             response.data?.driver_day || {
               status: nextRoute ? 'dispatched' : 'unassigned'
             }
           );
+        }
+      } catch (_error) {
+        if (isMounted) {
+          setErrorMessage('Unable to load your route right now.');
         }
       } finally {
         if (isMounted) {
@@ -219,7 +227,7 @@ export default function ManifestScreen({ navigation, route }) {
     return () => {
       isMounted = false;
     };
-  }, []);
+  }, [retryKey]);
 
   useEffect(() => {
     let isMounted = true;
@@ -461,11 +469,23 @@ export default function ManifestScreen({ navigation, route }) {
           </View>
         ) : null}
 
+        {!isLoading && errorMessage ? (
+          <ErrorState
+            body="Check your connection and try again."
+            onAction={() => {
+              setErrorMessage('');
+              setIsLoading(true);
+              setRetryKey((k) => k + 1);
+            }}
+            title="Couldn't load your route"
+          />
+        ) : null}
+
         {isLoading ? (
           <View style={styles.centered}>
             <ActivityIndicator color="#FF6200" size="large" />
           </View>
-        ) : (
+        ) : !errorMessage ? (
           <FlatList
             contentContainerStyle={[styles.listContent, { paddingBottom: appTheme.spacing.xxl + insets.bottom }]}
             data={visibleStops}
@@ -478,7 +498,7 @@ export default function ManifestScreen({ navigation, route }) {
             ListEmptyComponent={<Text style={styles.emptyText}>No stops match that search.</Text>}
             renderItem={renderStopRow}
           />
-        )}
+        ) : null}
       </View>
     </SafeAreaView>
   );
