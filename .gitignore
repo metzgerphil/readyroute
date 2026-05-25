@@ -7,6 +7,9 @@
 .env.*
 !.env.example
 
+# claude local settings (contains personal tokens)
+.claude/settings.local.json
+
 # local credential files
 backend/google-service-account.json
 *service-account*.json
