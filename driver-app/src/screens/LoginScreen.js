@@ -14,6 +14,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { getApiErrorMessage } from '../utils/apiError';
 import api from '../services/api';
 import { saveSessionTokens } from '../services/auth';
 
@@ -105,7 +106,7 @@ export default function LoginScreen({ onAuthenticated }) {
       setResetEmail(requestedEmail);
       setResetMessage(response.data?.message || 'Check your email for reset instructions.');
     } catch (error) {
-      setResetErrorMessage(error.response?.data?.error || 'Could not send reset instructions.');
+      setResetErrorMessage(getApiErrorMessage(error, 'Could not send reset instructions.'));
     } finally {
       setResetLoading(false);
     }
