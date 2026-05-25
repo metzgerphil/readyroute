@@ -13,6 +13,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import * as Location from 'expo-location';
 
+import { getApiErrorMessage } from '../utils/apiError';
 import api from '../services/api';
 import appTheme from '../theme/appTheme';
 import {
@@ -495,7 +496,7 @@ export default function HomeScreen({ navigation, onLogout }) {
         return;
       }
 
-      const message = error.response?.data?.error || 'Unable to load your route right now.';
+      const message = getApiErrorMessage(error, 'Unable to load your route right now.');
       setLoadError(message);
       if (showAlert) {
         Alert.alert('Could not load home screen', message);
@@ -617,7 +618,7 @@ export default function HomeScreen({ navigation, onLogout }) {
       setRoute(nextRoute);
       navigation.navigate('MyDrive');
     } catch (error) {
-      const message = error.response?.data?.error || 'Unable to start your route right now.';
+      const message = getApiErrorMessage(error, 'Unable to start your route right now.');
       Alert.alert('Could not start route', message);
     } finally {
       setIsStartingRoute(false);
@@ -699,10 +700,7 @@ export default function HomeScreen({ navigation, onLogout }) {
       setOdometerInput('');
       await continueIntoRouteWorkflow();
     } catch (error) {
-      setOdometerError(
-        error.response?.data?.error ||
-        'Odometer reading is outside the allowed range. Please recheck the truck odometer or contact your manager.'
-      );
+      setOdometerError(getApiErrorMessage(error, 'Odometer reading is outside the allowed range. Please recheck the truck odometer or contact your manager.'));
     } finally {
       setIsSubmittingOdometer(false);
     }
@@ -739,7 +737,7 @@ export default function HomeScreen({ navigation, onLogout }) {
         setClockedInAt(timestamp);
       }
     } catch (error) {
-      const message = error.response?.data?.error || 'Unable to update clock status right now.';
+      const message = getApiErrorMessage(error, 'Unable to update clock status right now.');
       Alert.alert('Clock update failed', message);
     } finally {
       setIsUpdatingClock(false);
@@ -782,7 +780,7 @@ export default function HomeScreen({ navigation, onLogout }) {
       });
       setActiveBreak(response.data?.active_break || null);
     } catch (error) {
-      const message = error.response?.data?.error || 'Unable to start break right now.';
+      const message = getApiErrorMessage(error, 'Unable to start break right now.');
       Alert.alert('Break update failed', message);
     } finally {
       setIsUpdatingBreak(false);
@@ -796,7 +794,7 @@ export default function HomeScreen({ navigation, onLogout }) {
       await api.post('/timecards/breaks/end');
       setActiveBreak(null);
     } catch (error) {
-      const message = error.response?.data?.error || 'Unable to end break right now.';
+      const message = getApiErrorMessage(error, 'Unable to end break right now.');
       Alert.alert('Break update failed', message);
     } finally {
       setIsUpdatingBreak(false);
@@ -810,6 +808,14 @@ export default function HomeScreen({ navigation, onLogout }) {
   const waitingCopy = getDriverWaitingCopy(driverDay);
   const postDispatchNotice = getPostDispatchChangeNotice(route);
   const odometerRequirement = getOdometerRequirement(driverDay, route);
+  const parsedOdometerValue = odometerInput.length > 0 ? Number(odometerInput) : null;
+  const isOdometerInRange = parsedOdometerValue !== null && odometerRequirement
+    ? parsedOdometerValue >= odometerRequirement.minimum_odometer && parsedOdometerValue <= odometerRequirement.maximum_odometer
+    : true;
+  const isOdometerSubmittable = parsedOdometerValue !== null && isOdometerInRange;
+  const odometerRangeHint = parsedOdometerValue !== null && odometerInput.length >= 4 && !isOdometerInRange
+    ? 'Value is outside the accepted range.'
+    : '';
   const locationRequirementCopy = getLocationRequirementCopy();
   const showLocationGate = Boolean(route && !hasLocationAccess);
   const locationPermissionDenied = isLocationPermissionBlocked || isLocationPermissionDenied;
@@ -986,15 +992,17 @@ export default function HomeScreen({ navigation, onLogout }) {
                   style={styles.odometerInput}
                   value={odometerInput}
                 />
+                {odometerRangeHint && !odometerError ? <Text style={styles.odometerError}>{odometerRangeHint}</Text> : null}
                 {odometerError ? <Text style={styles.odometerError}>{odometerError}</Text> : null}
                 <Pressable
-                  disabled={isSubmittingOdometer}
+                  accessibilityLabel="Submit odometer reading"
+                  disabled={isSubmittingOdometer || !isOdometerSubmittable}
                   onPress={handleSubmitOdometer}
                   style={({ pressed }) => [
                     styles.primaryButton,
                     styles.startRouteButton,
-                    isSubmittingOdometer && styles.buttonDisabled,
-                    pressed && !isSubmittingOdometer ? styles.buttonPressed : null
+                    (isSubmittingOdometer || !isOdometerSubmittable) && styles.buttonDisabled,
+                    pressed && !isSubmittingOdometer && isOdometerSubmittable ? styles.buttonPressed : null
                   ]}
                 >
                   {isSubmittingOdometer ? (
@@ -1028,6 +1036,7 @@ export default function HomeScreen({ navigation, onLogout }) {
 
           <View style={styles.actionRow}>
             <Pressable
+              accessibilityLabel={clockedInAt ? 'Clock Out' : 'Clock In'}
               disabled={isUpdatingClock || (!route && !clockedInAt) || (!hasLocationAccess && !clockedInAt)}
               onPress={handleClockToggle}
               style={({ pressed }) => [
@@ -1048,6 +1057,7 @@ export default function HomeScreen({ navigation, onLogout }) {
             </Pressable>
 
             <Pressable
+              accessibilityLabel={breakButtonLabel}
               disabled={isUpdatingBreak || !clockedInAt}
               onPress={handleBreakToggle}
               style={({ pressed }) => [

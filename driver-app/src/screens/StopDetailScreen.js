@@ -14,6 +14,7 @@ import {
 import * as Location from 'expo-location';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { getApiErrorMessage } from '../utils/apiError';
 import api from '../services/api';
 import { getSidBucketTheme } from '../utils/sidBuckets';
 
@@ -448,7 +449,7 @@ export default function StopDetailScreen({ navigation, route }) {
       setIsFlagModalVisible(false);
       Alert.alert('Road flagged', 'Thanks. Your route team will see this update.');
     } catch (error) {
-      const message = error.response?.data?.error || 'Unable to flag this road right now.';
+      const message = getApiErrorMessage(error, 'Unable to flag this road right now.');
       Alert.alert('Flag failed', message);
     }
   }
@@ -506,7 +507,7 @@ export default function StopDetailScreen({ navigation, route }) {
           : 'The corrected pin was saved. The refreshed stop view may take a moment.'
       );
     } catch (error) {
-      const message = error.response?.data?.error || 'Unable to save the corrected stop location right now.';
+      const message = getApiErrorMessage(error, 'Unable to save the corrected stop location right now.');
       Alert.alert('Save failed', message);
     } finally {
       setIsSavingLocation(false);

@@ -3,6 +3,7 @@ import { ActivityIndicator, Pressable, StyleSheet, Text, TextInput, View } from 
 
 import ManagerSectionLayout from '../components/ManagerSectionLayout';
 import AppCard from '../components/ui/AppCard';
+import { getApiErrorMessage } from '../utils/apiError';
 import api from '../services/api';
 import appTheme from '../theme/appTheme';
 
@@ -50,7 +51,7 @@ export default function ManagerSettingsScreen({ availableModes = [], identity })
       setConfirmPassword('');
       setPasswordMessage(response.data?.message || 'Password updated.');
     } catch (error) {
-      setPasswordError(error.response?.data?.error || 'Unable to update password.');
+      setPasswordError(getApiErrorMessage(error, 'Unable to update password.'));
     } finally {
       setIsSavingPassword(false);
     }

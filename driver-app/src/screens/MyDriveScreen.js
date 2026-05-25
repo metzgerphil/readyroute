@@ -8,6 +8,7 @@ import Svg, { Path } from 'react-native-svg';
 import api from '../services/api';
 import appTheme from '../theme/appTheme';
 import { getPinColorMode, removeClockInTime, saveClockInTime, subscribePinColorMode } from '../services/auth';
+import { getApiErrorMessage } from '../utils/apiError';
 import { getSidBucketTheme } from '../utils/sidBuckets';
 
 const googleMapsApiKey = process.env.EXPO_PUBLIC_GOOGLE_MAPS_API_KEY || '';
@@ -1566,7 +1567,7 @@ export default function MyDriveScreen({ navigation, route: screenRoute }) {
       }
     } catch (error) {
       if (allowStateUpdate) {
-        const message = error.response?.data?.error || 'Unable to load route details.';
+        const message = getApiErrorMessage(error, 'Unable to load route details.');
         setLoadError(message);
         if (showAlert) {
           Alert.alert('Route unavailable', message);
@@ -1699,7 +1700,7 @@ export default function MyDriveScreen({ navigation, route: screenRoute }) {
         setClockedInAt(timestamp);
       }
     } catch (error) {
-      const message = error.response?.data?.error || 'Unable to update clock status right now.';
+      const message = getApiErrorMessage(error, 'Unable to update clock status right now.');
       Alert.alert('Clock update failed', message);
     } finally {
       setIsUpdatingClock(false);
@@ -1742,7 +1743,7 @@ export default function MyDriveScreen({ navigation, route: screenRoute }) {
       });
       setActiveBreak(response.data?.active_break || null);
     } catch (error) {
-      const message = error.response?.data?.error || 'Unable to start break right now.';
+      const message = getApiErrorMessage(error, 'Unable to start break right now.');
       Alert.alert('Break update failed', message);
     } finally {
       setIsUpdatingBreak(false);
@@ -1756,7 +1757,7 @@ export default function MyDriveScreen({ navigation, route: screenRoute }) {
       await api.post('/timecards/breaks/end');
       setActiveBreak(null);
     } catch (error) {
-      const message = error.response?.data?.error || 'Unable to end break right now.';
+      const message = getApiErrorMessage(error, 'Unable to end break right now.');
       Alert.alert('Break update failed', message);
     } finally {
       setIsUpdatingBreak(false);
