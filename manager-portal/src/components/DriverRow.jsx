@@ -1,13 +1,13 @@
 function getStatusTone(routeRow) {
   if (!routeRow.name || !routeRow.is_online) {
-    return { label: 'offline', className: 'status-badge offline' };
+    return { label: 'Offline', className: 'status-badge offline' };
   }
 
   if (routeRow.route_status === 'in_progress') {
-    return { label: 'on_route', className: 'status-badge on-route' };
+    return { label: 'On Route', className: 'status-badge on-route' };
   }
 
-  return { label: 'idle', className: 'status-badge idle' };
+  return { label: 'Idle', className: 'status-badge idle' };
 }
 
 function getStopsPerHourClass(value) {
