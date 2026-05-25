@@ -1586,6 +1586,19 @@ export default function MyDriveScreen({ navigation, route: screenRoute }) {
   async function handleDriverLocationUpdate(position, { forcePost = false } = {}) {
     if (position?.coords) {
       setCurrentLocation(position);
+
+      if (mapRef.current) {
+        mapRef.current.animateCamera(
+          {
+            center: {
+              latitude: position.coords.latitude,
+              longitude: position.coords.longitude
+            },
+            zoom: 17
+          },
+          { duration: 800 }
+        );
+      }
     }
 
     if (!route?.id) {
@@ -1647,6 +1660,8 @@ export default function MyDriveScreen({ navigation, route: screenRoute }) {
       if (!granted) {
         return;
       }
+
+      await Location.requestBackgroundPermissionsAsync().catch(() => {});
 
       const position = await Location.getCurrentPositionAsync({
         accuracy: getDriverLocationAccuracy()
