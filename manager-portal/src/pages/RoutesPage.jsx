@@ -60,7 +60,7 @@ function getRouteStatus(route) {
     return { label: 'In progress', tone: 'active' };
   }
 
-  if (route.status === 'completed') {
+  if (route.status === 'complete') {
     return { label: 'Complete', tone: 'active' };
   }
 
