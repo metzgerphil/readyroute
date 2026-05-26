@@ -5847,6 +5847,7 @@ function createManagerRouter(options = {}) {
           const routePackages = routeStops.flatMap((stop) => packagesByStopId.get(stop.id) || []);
           const packageSummary = getPackageStatusSummary(routePackages, stopsById);
           const pickupStopSummary = getPickupStopSummary(routeStops);
+          const deliveryStopSummary = getDeliveryStopSummary(routeStops);
           const exceptionCount = routeStops.filter((stop) =>
             Boolean(stop.exception_code) ||
             ['attempted', 'incomplete', 'pickup_attempted'].includes(stop.status)
@@ -5883,6 +5884,9 @@ function createManagerRouter(options = {}) {
             vehicle_plate: route.vehicle_id ? vehiclesById.get(route.vehicle_id)?.plate || null : null,
             time_commits_total: getTimeCommitCounts(routeStops).total,
             time_commits_completed: getTimeCommitCounts(routeStops).completed,
+            delivery_stops: deliveryStopSummary.total,
+            delivery_stops_completed: deliveryStopSummary.completed,
+            delivery_stop_count: deliveryStopSummary.total,
             pickup_stops: pickupStopSummary.total,
             pickup_stops_completed: pickupStopSummary.completed,
             pickup_stop_count: pickupStopSummary.total,

@@ -7,7 +7,7 @@ import AppButton from '../components/ui/AppButton';
 import AppCard from '../components/ui/AppCard';
 import ProgressBar from '../components/ui/ProgressBar';
 import api from '../services/api';
-import { getPickupStopCount, getRouteDisplayName, sortManagerRoutes } from '../services/managerOperations';
+import { getDeliveryStopCount, getPickupStopCount, getRouteDisplayName, sortManagerRoutes } from '../services/managerOperations';
 import appTheme from '../theme/appTheme';
 
 function getTodayDateParam() {
@@ -86,6 +86,8 @@ function buildDashboardStats(routes = [], syncStatus = {}) {
 
     summary.completedStops += Number(route.completed_stops || 0);
     summary.totalStops += Number(route.total_stops || 0);
+    summary.deliveryStops += getDeliveryStopCount(route);
+    summary.deliveryStopsCompleted += Number(route.delivery_stops_completed || route.completed_delivery_stops || route.completed_stops || 0);
     summary.deliveredPackages += Number(route.delivered_packages || 0);
     summary.totalPackages += Number(route.total_packages || 0);
     summary.pickupStops += getPickupStopCount(route);
@@ -96,6 +98,8 @@ function buildDashboardStats(routes = [], syncStatus = {}) {
   }, {
     completedStops: 0,
     deliveredPackages: 0,
+    deliveryStops: 0,
+    deliveryStopsCompleted: 0,
     exceptions: 0,
     pickupStops: 0,
     pickupStopsCompleted: 0,
@@ -152,7 +156,7 @@ function ProgressCard({ completed, icon, label, total }) {
     <AppCard style={styles.progressCard}>
       <View style={styles.progressHeader}>
         <View style={styles.progressTitleRow}>
-          <RouteMetricIcon color={appTheme.colors.charcoalSoft} name={icon} size={appTheme.icons.md} />
+          <RouteMetricIcon color={appTheme.colors.charcoalSoft} name={icon} size={appTheme.icons.sm} />
           <Text style={styles.progressLabel}>{label}</Text>
         </View>
         <Text style={styles.progressValue}>{formatRatio(completed, total)}</Text>
@@ -253,7 +257,6 @@ export default function ManagerDashboardScreen({ csaWorkspaceVersion = 0, identi
   );
   const stats = useMemo(() => buildDashboardStats(routes, payload?.sync_status || {}), [payload?.sync_status, routes]);
   const importantRoutes = useMemo(() => getImportantRoutes(routes), [routes]);
-  const hasPickups = stats.pickupStops > 0;
 
   function openFleetMap() {
     navigation?.navigate('ManagerMap', { date });
@@ -300,11 +303,9 @@ export default function ManagerDashboardScreen({ csaWorkspaceVersion = 0, identi
       ) : null}
 
       <View style={styles.progressStack}>
-        <ProgressCard completed={stats.completedStops} icon="stop" label="Stops" total={stats.totalStops} />
+        <ProgressCard completed={stats.deliveryStopsCompleted} icon="stop" label="Deliveries" total={stats.deliveryStops} />
+        <ProgressCard completed={stats.pickupStopsCompleted} icon="pickup" label="Pickups" total={stats.pickupStops} />
         <ProgressCard completed={stats.deliveredPackages} icon="package" label="Packages" total={stats.totalPackages} />
-        {hasPickups ? (
-          <ProgressCard completed={stats.pickupStopsCompleted} icon="pickup" label="Pickups" total={stats.pickupStops} />
-        ) : null}
       </View>
 
       <View style={styles.sectionTitleRow}>
@@ -482,36 +483,38 @@ const styles = StyleSheet.create({
     fontWeight: appTheme.typography.weights.heavy
   },
   progressStack: {
+    flexDirection: 'row',
     gap: appTheme.spacing.xs
   },
   progressCard: {
+    flex: 1,
     gap: appTheme.spacing.xs,
-    paddingHorizontal: appTheme.spacing.md,
-    paddingVertical: appTheme.spacing.sm
+    paddingHorizontal: appTheme.spacing.sm,
+    paddingVertical: appTheme.spacing.xs
   },
   progressHeader: {
-    alignItems: 'center',
-    flexDirection: 'row',
-    justifyContent: 'space-between'
+    alignItems: 'flex-start',
+    gap: 4
   },
   progressTitleRow: {
     alignItems: 'center',
     flexDirection: 'row',
-    gap: appTheme.spacing.xs
+    gap: 4,
+    minHeight: 18
   },
   progressLabel: {
     color: appTheme.colors.textPrimary,
-    fontSize: appTheme.typography.body,
+    fontSize: 11,
     fontWeight: appTheme.typography.weights.heavy
   },
   progressValue: {
     color: appTheme.colors.textPrimary,
-    fontSize: appTheme.typography.bodySmall,
+    fontSize: 12,
     fontWeight: appTheme.typography.weights.heavy
   },
   progressMeta: {
     color: appTheme.colors.textSecondary,
-    fontSize: appTheme.typography.caption,
+    fontSize: 10,
     fontWeight: appTheme.typography.weights.semibold
   },
   sectionTitleRow: {

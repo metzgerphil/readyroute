@@ -37,6 +37,8 @@ describe('ManagerDashboardScreen', () => {
         driver_name: 'Luis',
         completed_stops: 4,
         total_stops: 10,
+        delivery_stops: 9,
+        delivery_stops_completed: 3,
         delivered_packages: 7,
         total_packages: 12,
         pickup_stop_count: 2,
@@ -109,6 +111,8 @@ describe('ManagerDashboardScreen', () => {
             vehicle_name: 'Truck 12',
             completed_stops: 8,
             total_stops: 14,
+            delivery_stops: 12,
+            delivery_stops_completed: 7,
             delivered_packages: 23,
             total_packages: 31,
             pickup_stop_count: 2,
@@ -124,6 +128,8 @@ describe('ManagerDashboardScreen', () => {
             vehicle_name: 'Truck 8',
             completed_stops: 3,
             total_stops: 10,
+            delivery_stops: 10,
+            delivery_stops_completed: 3,
             delivered_packages: 12,
             total_packages: 18,
             stops_per_hour: 9,
@@ -150,7 +156,7 @@ describe('ManagerDashboardScreen', () => {
     expect(screen.getByText('Drivers')).toBeTruthy();
     expect(screen.getByText('Exceptions')).toBeTruthy();
     expect(screen.queryByText(/GPS stale/i)).toBeNull();
-    expect(screen.getAllByText('Stops').length).toBeGreaterThan(0);
+    expect(screen.getByText('Deliveries')).toBeTruthy();
     expect(screen.getAllByText('Packages').length).toBeGreaterThan(0);
     expect(screen.getByText('Pickups')).toBeTruthy();
     expect(screen.getByText('One or more routes have exceptions.')).toBeTruthy();

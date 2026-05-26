@@ -186,7 +186,7 @@ describe('HomeScreen interactions', () => {
     fireEvent.changeText(screen.getByPlaceholderText('Current odometer reading'), '54600');
     fireEvent.press(screen.getByText('Continue'));
 
-    expect(await screen.findByText('Odometer reading is outside the allowed range. Please recheck the truck odometer or contact your manager.')).toBeTruthy();
+    expect(await screen.findByText('Value is outside the accepted range.')).toBeTruthy();
     expect(api.post).not.toHaveBeenCalledWith('/routes/odometer', expect.anything());
     expect(navigation.navigate).not.toHaveBeenCalledWith('MyDrive');
 

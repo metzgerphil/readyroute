@@ -233,12 +233,12 @@ function EmptyRoutesState({ hasActiveFilters }) {
   return (
     <AppCard style={styles.emptyStateCard}>
       <Text style={styles.emptyStateTitle}>
-        {hasActiveFilters ? ‘No routes match your filters.’ : ‘No routes available.’}
+        {hasActiveFilters ? 'No routes match your filters.' : 'No routes available.'}
       </Text>
       <Text style={styles.emptyStateBody}>
         {hasActiveFilters
-          ? ‘Try clearing your search or filter to see all routes.’
-          : ‘Upload routes manually to start reviewing today’s work areas.’}
+          ? 'Try clearing your search or filter to see all routes.'
+          : 'Upload routes manually to start reviewing today\'s work areas.'}
       </Text>
     </AppCard>
   );

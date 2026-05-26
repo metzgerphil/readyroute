@@ -154,7 +154,11 @@ export function getStopCanonicalId(stop) {
 }
 
 export function isPickupStop(stop) {
-  return stop?.stop_type === 'pickup' || stop?.is_pickup === true || stop?.has_pickup === true;
+  return stop?.stop_type === 'pickup' || stop?.stop_type === 'combined' || stop?.is_pickup === true || stop?.has_pickup === true;
+}
+
+export function isDeliveryStop(stop) {
+  return stop?.stop_type === 'delivery' || stop?.stop_type === 'combined' || stop?.has_delivery === true || !isPickupStop(stop);
 }
 
 export function getPickupStopCount(route) {
@@ -167,6 +171,18 @@ export function getPickupStopCount(route) {
   }
 
   return (route?.stops || []).filter((stop) => isPickupStop(stop)).length;
+}
+
+export function getDeliveryStopCount(route) {
+  if (route?.delivery_stop_count != null) {
+    return Number(route.delivery_stop_count || 0);
+  }
+
+  if (route?.delivery_stops != null && !Array.isArray(route.delivery_stops)) {
+    return Number(route.delivery_stops || 0);
+  }
+
+  return (route?.stops || []).filter((stop) => isDeliveryStop(stop)).length || Number(route?.total_stops || 0);
 }
 
 export function toMapCoordinate(point) {
