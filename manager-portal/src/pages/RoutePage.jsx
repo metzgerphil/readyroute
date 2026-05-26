@@ -76,6 +76,7 @@ export default function RoutePage() {
   const [propertyDraft, setPropertyDraft] = useState({
     property_type: '',
     building: '',
+    access_code: '',
     access_note: '',
     parking_note: '',
     warning_flags: ''
@@ -954,6 +955,7 @@ export default function RoutePage() {
     setPropertyDraft({
       property_type: propertyIntel.location_type || '',
       building: propertyIntel.building || '',
+      access_code: propertyIntel.access_code || '',
       access_note: propertyIntel.access_note || propertyIntel.entry_note || '',
       parking_note: propertyIntel.parking_note || '',
       warning_flags: warningFlagsToDraft(propertyIntel.warning_flags)
@@ -966,6 +968,7 @@ export default function RoutePage() {
     setPropertyDraft({
       property_type: '',
       building: '',
+      access_code: '',
       access_note: '',
       parking_note: '',
       warning_flags: ''
@@ -1043,6 +1046,8 @@ export default function RoutePage() {
       await api.patch(`/manager/routes/stops/${propertyEditorStop.id}/property-intel`, {
         property_type: propertyDraft.property_type || null,
         building: propertyDraft.building || null,
+        access_code: propertyDraft.access_code || null,
+        access_code_source: propertyDraft.access_code ? 'manager' : null,
         access_note: propertyDraft.access_note || null,
         parking_note: propertyDraft.parking_note || null,
         warning_flags: propertyDraft.warning_flags
@@ -1571,6 +1576,17 @@ export default function RoutePage() {
                   />
                 </label>
               </div>
+
+              <label className="route-property-field">
+                <span>Access Code</span>
+                <input
+                  className="route-property-input"
+                  type="text"
+                  placeholder="Gate, callbox, or building code..."
+                  value={propertyDraft.access_code}
+                  onChange={(event) => setPropertyDraft((current) => ({ ...current, access_code: event.target.value }))}
+                />
+              </label>
 
               <label className="route-property-field">
                 <span>Access Note</span>

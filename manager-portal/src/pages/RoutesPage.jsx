@@ -106,10 +106,11 @@ function RoutesTable({ routes, date }) {
         </div>
         {routes.map((route) => {
           const status = getRouteStatus(route);
+          const routeUrl = `/routes/${route.id}?date=${date}`;
 
           return (
             <div className="routes-operations-table-row" key={route.id}>
-              <strong className="routes-route-name">Route {formatRouteName(route)}</strong>
+              <Link className="routes-route-name" to={routeUrl}>Route {formatRouteName(route)}</Link>
               <span>{route.driver_name || 'Unassigned'}</span>
               <span>{route.vehicle_name || route.vehicle_plate || 'Unassigned'}</span>
               <span>{getStopProgress(route)}</span>
@@ -118,7 +119,7 @@ function RoutesTable({ routes, date }) {
               <span>{safeNumber(route.exception_count || route.exceptions) || '—'}</span>
               <span><StatusBadge tone={status.tone}>{status.label}</StatusBadge></span>
               <span className="routes-row-actions">
-                <Link className="secondary-inline-button" to={`/routes/${route.id}?date=${date}`}>
+                <Link className="secondary-inline-button" to={routeUrl}>
                   View
                 </Link>
               </span>
@@ -130,12 +131,13 @@ function RoutesTable({ routes, date }) {
       <div className="routes-operations-card-list">
         {routes.map((route) => {
           const status = getRouteStatus(route);
+          const routeUrl = `/routes/${route.id}?date=${date}`;
 
           return (
             <article className="card routes-operations-card" key={route.id}>
               <div className="routes-operations-card-topline">
                 <div>
-                  <strong>Route {formatRouteName(route)}</strong>
+                  <Link className="routes-route-name" to={routeUrl}>Route {formatRouteName(route)}</Link>
                   <span>{route.driver_name || 'Unassigned driver'}</span>
                 </div>
                 <StatusBadge tone={status.tone}>{status.label}</StatusBadge>
@@ -147,7 +149,7 @@ function RoutesTable({ routes, date }) {
                 <span>Pickups: {getPickupSummary(route)}</span>
                 <span>Exceptions: {safeNumber(route.exception_count || route.exceptions) || 'None'}</span>
               </div>
-              <Link className="secondary-button" to={`/routes/${route.id}?date=${date}`}>
+              <Link className="secondary-button" to={routeUrl}>
                 View Route
               </Link>
             </article>
@@ -190,7 +192,7 @@ export default function RoutesPage() {
         title="Routes"
         description={`${accountName ? `${accountName} · ` : ''}${formatDisplayDate(date)}`}
         actions={(
-          <>
+          <div className="routes-header-toolbar">
             <label className="weekly-date-picker routes-date-picker">
               <span className="field-label">Selected Day</span>
               <input
@@ -206,7 +208,7 @@ export default function RoutesPage() {
             <Link className="primary-cta manifest-button" to={`/manifest?date=${date}`}>
               Add Routes
             </Link>
-          </>
+          </div>
         )}
       />
 

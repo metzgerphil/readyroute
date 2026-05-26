@@ -154,6 +154,7 @@ describe('MyDriveScreen helpers', () => {
       location_correction: { label: 'Driver verified pin' },
       property_intel: {
         location_type: 'office',
+        access_code: '4455',
         access_note: 'Front desk check-in',
         grouped_stop_count: 3
       },
@@ -174,7 +175,7 @@ describe('MyDriveScreen helpers', () => {
     const quickIntel = getQuickIntel(stop);
     expect(quickIntel.length).toBeLessThanOrEqual(3);
     expect(quickIntel.map((item) => item.label)).toEqual(
-      expect.arrayContaining(['Floor 3', 'Access note', '3 grouped stops'])
+      expect.arrayContaining(['Floor 3', 'CODE 4455', '3 grouped stops'])
     );
 
     const tools = getStopTools(stop);

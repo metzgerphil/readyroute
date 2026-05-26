@@ -150,7 +150,15 @@ function getDisplayLocationType(stop) {
   if (!locationType || locationType === 'house') {
     return null;
   }
+  if (stop?.is_apartment_unit && String(locationType).toLowerCase() === 'apartment') {
+    return null;
+  }
   return String(locationType).toUpperCase();
+}
+
+function getConfirmedAccessCode(stop) {
+  const code = String(stop?.property_intel?.access_code || '').trim();
+  return code ? code.toUpperCase() : null;
 }
 
 function filterStops(stops, activeFilter, searchTerm) {
@@ -395,6 +403,7 @@ export default function StopListDrawer({
                   <div className="stop-list-row-badges">
                     {stop.is_business ? <span className="stop-mini-badge business">BUSINESS</span> : null}
                     {stop.is_apartment_unit ? <span className="stop-mini-badge apartment">APARTMENT</span> : null}
+                    {getConfirmedAccessCode(stop) ? <span className="stop-mini-badge apartment">{`CODE ${getConfirmedAccessCode(stop)}`}</span> : null}
                     {getDisplayLocationType(stop) ? <span className="stop-mini-badge combined">{getDisplayLocationType(stop)}</span> : null}
                     {stop.suite_label ? <span className="stop-mini-badge combined">{`SUITE ${stop.suite_label}`}</span> : null}
                     {stop.unit_label && !stop.apartment_intelligence?.unit_number ? <span className="stop-mini-badge apartment">{`UNIT ${stop.unit_label}`}</span> : null}

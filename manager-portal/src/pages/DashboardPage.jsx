@@ -20,6 +20,8 @@ import {
   getMapCoverageSummary,
   getMissingRoutesState,
   getPendingTimeCommitMetadata,
+  getRemainingDeliveries,
+  getRemainingPickups,
   getRemainingStops,
   getRouteCentroid,
   getRouteColorMap,
@@ -414,20 +416,32 @@ export default function DashboardPage() {
 
       {activeDashboard && bannerState !== 'missing' ? (
         <>
-          <div className="stats-grid">
-            <div className="stat-card">
-              <div className="stat-label">Total Stops Today</div>
-              <div className="stat-value">{activeDashboard.total_stops ?? 0}</div>
+          <div className="stats-grid dashboard-compact-stats">
+            <div className="stat-card dashboard-metric-card delivery">
+              <div className="stat-label">Total Deliveries</div>
+              <div className="stat-value">{activeDashboard.delivery_stops ?? activeDashboard.total_delivery_stops ?? activeDashboard.total_stops ?? 0}</div>
             </div>
-            <div className="stat-card">
-              <div className="stat-label">Completed Stops</div>
-              <div className="stat-value">{activeDashboard.completed_stops ?? 0}</div>
+            <div className="stat-card dashboard-metric-card delivery">
+              <div className="stat-label">Completed Deliveries</div>
+              <div className="stat-value">{activeDashboard.delivery_stops_completed ?? 0}</div>
             </div>
-            <div className="stat-card">
-              <div className="stat-label">Remaining Stops</div>
-              <div className="stat-value">{getRemainingStops(activeDashboard)}</div>
+            <div className="stat-card dashboard-metric-card delivery">
+              <div className="stat-label">Remaining Deliveries</div>
+              <div className="stat-value">{(activeDashboard.delivery_stops ?? activeDashboard.total_delivery_stops) != null ? getRemainingDeliveries(activeDashboard) : getRemainingStops(activeDashboard)}</div>
             </div>
-            <div className="stat-card">
+            <div className="stat-card dashboard-metric-card pickup">
+              <div className="stat-label">Total Pickups</div>
+              <div className="stat-value">{activeDashboard.pickup_stops ?? activeDashboard.total_pickup_stops ?? 0}</div>
+            </div>
+            <div className="stat-card dashboard-metric-card pickup">
+              <div className="stat-label">Completed Pickups</div>
+              <div className="stat-value">{activeDashboard.pickup_stops_completed ?? 0}</div>
+            </div>
+            <div className="stat-card dashboard-metric-card pickup">
+              <div className="stat-label">Remaining Pickups</div>
+              <div className="stat-value">{getRemainingPickups(activeDashboard)}</div>
+            </div>
+            <div className="stat-card dashboard-metric-card speed">
               <div className="stat-label">Fleet Stops/Hr</div>
               <div className="stat-value">{getFleetStopsPerHour(routeRows)}</div>
             </div>

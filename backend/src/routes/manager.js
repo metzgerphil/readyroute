@@ -1749,10 +1749,19 @@ function isPickupStop(stop) {
   );
 }
 
-function getPickupStopSummary(stops = []) {
+function isDeliveryStop(stop) {
+  return Boolean(
+    stop?.has_delivery ||
+    stop?.stop_type === 'delivery' ||
+    stop?.stop_type === 'combined' ||
+    !isPickupStop(stop)
+  );
+}
+
+function getTypedStopSummary(stops = [], predicate) {
   return (stops || []).reduce(
     (summary, stop) => {
-      if (!isPickupStop(stop)) {
+      if (!predicate(stop)) {
         return summary;
       }
 
@@ -1769,6 +1778,14 @@ function getPickupStopSummary(stops = []) {
       total: 0
     }
   );
+}
+
+function getPickupStopSummary(stops = []) {
+  return getTypedStopSummary(stops, isPickupStop);
+}
+
+function getDeliveryStopSummary(stops = []) {
+  return getTypedStopSummary(stops, isDeliveryStop);
 }
 
 function getStopStatusSummary(stops = []) {
@@ -2124,12 +2141,14 @@ function createManagerRouter(options = {}) {
       const stopStatusSummary = getStopStatusSummary(stops);
       const packageStatusSummary = getPackageStatusSummary(packages, stopsById);
       const pickupStopSummary = getPickupStopSummary(stops);
+      const deliveryStopSummary = getDeliveryStopSummary(stops);
 
       const driverSnapshot = visibleRoutes.map((route) => {
         const driver = route.driver_id ? driverById.get(route.driver_id) || null : null;
         const routeStops = stopsByRouteId.get(route.id) || [];
         const routeTimeCommitCounts = getTimeCommitCounts(routeStops);
         const routePickupStopSummary = getPickupStopSummary(routeStops);
+        const routeDeliveryStopSummary = getDeliveryStopSummary(routeStops);
         const completedRouteStops = routeStops.filter((stop) => stop.completed_at);
         const firstScan = completedRouteStops.reduce((earliest, stop) => {
           if (!stop.completed_at) {
@@ -2165,6 +2184,9 @@ function createManagerRouter(options = {}) {
           current_stop_address: nextPendingStop ? nextPendingStop.address : null,
           total_stops: Number(route.total_stops || 0),
           completed_stops: Number(route.completed_stops || 0),
+          delivery_stops: routeDeliveryStopSummary.total,
+          delivery_stops_completed: routeDeliveryStopSummary.completed,
+          delivery_stop_count: routeDeliveryStopSummary.total,
           pickup_stops: routePickupStopSummary.total,
           pickup_stops_completed: routePickupStopSummary.completed,
           pickup_stop_count: routePickupStopSummary.total,
@@ -2191,6 +2213,9 @@ function createManagerRouter(options = {}) {
         date: operationsDate,
         total_stops: totalStops,
         completed_stops: completedStops,
+        total_delivery_stops: deliveryStopSummary.total,
+        delivery_stops: deliveryStopSummary.total,
+        delivery_stops_completed: deliveryStopSummary.completed,
         total_pickup_stops: pickupStopSummary.total,
         pickup_stops: pickupStopSummary.total,
         pickup_stops_completed: pickupStopSummary.completed,
@@ -5509,6 +5534,8 @@ function createManagerRouter(options = {}) {
         property_name: req.body?.property_name,
         property_type: req.body?.property_type,
         building: req.body?.building,
+        access_code: req.body?.access_code,
+        access_code_source: req.body?.access_code_source || 'manager',
         access_note: req.body?.access_note,
         parking_note: req.body?.parking_note,
         entry_note: req.body?.entry_note,

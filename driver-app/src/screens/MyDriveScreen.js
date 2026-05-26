@@ -650,6 +650,7 @@ export function getQuickIntel(stop) {
   const displayLocationType = propertyIntel?.location_type || stop?.location_type;
   const groupedCount = Number(propertyIntel?.grouped_stop_count || propertyIntel?.grouped_stops?.length || 0);
   const warningFlags = propertyIntel?.warning_flags || [];
+  const accessCode = String(propertyIntel?.access_code || '').trim();
 
   if (apartmentIntel?.floor != null) {
     intel.push({
@@ -668,7 +669,9 @@ export function getQuickIntel(stop) {
     intel.push({ key: 'location-type', label: String(displayLocationType).toUpperCase(), tone: 'building' });
   }
 
-  if (propertyIntel?.access_note) {
+  if (accessCode) {
+    intel.push({ key: 'access-code', label: `CODE ${accessCode.toUpperCase()}`, tone: 'warning' });
+  } else if (propertyIntel?.access_note) {
     intel.push({ key: 'access', label: 'Access note', tone: 'warning' });
   } else if (warningFlags[0]) {
     intel.push({ key: `flag-${warningFlags[0]}`, label: formatWarningFlag(warningFlags[0]), tone: 'warning' });

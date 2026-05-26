@@ -167,6 +167,9 @@ function mergePropertyIntel(baseIntel, persistedRow) {
     property_name: persistedRow.property_name || baseIntel.property_name,
     location_type: persistedRow.property_type || baseIntel.location_type,
     building: persistedRow.building || baseIntel.building,
+    access_code: persistedRow.access_code || baseIntel.access_code || null,
+    access_code_confirmed_at: persistedRow.access_code_confirmed_at || null,
+    access_code_source: persistedRow.access_code_source || null,
     access_note: persistedRow.access_note || persistedRow.entry_note || baseIntel.access_note,
     parking_note: persistedRow.parking_note || baseIntel.parking_note,
     entry_note: persistedRow.entry_note || null,
@@ -217,7 +220,7 @@ async function loadPropertyIntelRows(supabase, accountId, stops) {
 
   const { data, error } = await supabase
     .from('property_intel')
-    .select('id, normalized_address, property_name, property_type, building, access_note, parking_note, entry_note, business_hours, shared_note, warning_flags, updated_at')
+    .select('id, normalized_address, property_name, property_type, building, access_code, access_code_confirmed_at, access_code_source, access_note, parking_note, entry_note, business_hours, shared_note, warning_flags, updated_at')
     .eq('account_id', accountId)
     .in('normalized_address', normalizedAddresses);
 
@@ -286,6 +289,9 @@ async function savePropertyIntel(supabase, accountId, stop, input = {}) {
     property_name: normalizeString(input.property_name) || null,
     property_type: normalizeString(input.property_type) || null,
     building: normalizeString(input.building) || null,
+    access_code: normalizeString(input.access_code) || null,
+    access_code_confirmed_at: normalizeString(input.access_code) ? new Date().toISOString() : null,
+    access_code_source: normalizeString(input.access_code) ? normalizeString(input.access_code_source) || 'manager' : null,
     access_note: normalizeString(input.access_note) || null,
     parking_note: normalizeString(input.parking_note) || null,
     entry_note: normalizeString(input.entry_note) || null,

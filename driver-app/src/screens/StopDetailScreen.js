@@ -546,6 +546,7 @@ export default function StopDetailScreen({ navigation, route }) {
   const apartmentIntel = stop.apartment_intelligence;
   const propertyIntel = stop.property_intel;
   const displayLocationType = propertyIntel?.location_type || stop.location_type || null;
+  const accessCode = String(propertyIntel?.access_code || '').trim();
   const secondaryAddressDetails = formatSecondaryAddressDetails(stop);
   const hasApartmentInfo = Boolean(stop.is_apartment_unit || apartmentIntel);
   const isFloorDraftValid = Number.isInteger(Number(floorDraft)) && Number(floorDraft) > 0;
@@ -570,8 +571,9 @@ export default function StopDetailScreen({ navigation, route }) {
   const warningFlags = propertyIntel?.warning_flags || [];
   const contactDetails = getStopContactDetails(stop);
   const hasPropertyIntel = Boolean(
-    propertyIntel?.location_type ||
+      propertyIntel?.location_type ||
       propertyIntel?.building ||
+      accessCode ||
       propertyIntel?.access_note ||
       propertyIntel?.parking_note ||
       warningFlags.length ||
@@ -803,6 +805,13 @@ export default function StopDetailScreen({ navigation, route }) {
                   </View>
                 ))}
               </View>
+
+              {accessCode ? (
+                <View style={styles.intelRow}>
+                  <Text style={styles.intelLabel}>Access code</Text>
+                  <Text style={styles.intelText}>{accessCode.toUpperCase()}</Text>
+                </View>
+              ) : null}
 
               {propertyIntel?.access_note ? (
                 <View style={styles.intelRow}>

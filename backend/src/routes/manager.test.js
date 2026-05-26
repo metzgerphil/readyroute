@@ -4110,6 +4110,7 @@ test('PATCH /manager/routes/stops/:stop_id/property-intel saves building intel f
       body: JSON.stringify({
         property_type: 'apartment',
         building: 'Building B',
+        access_code: '4455',
         access_note: 'Gate code 4455 at south entrance',
         parking_note: 'Visitor parking near leasing office',
         warning_flags: ['gate', 'stairs']
@@ -4120,6 +4121,9 @@ test('PATCH /manager/routes/stops/:stop_id/property-intel saves building intel f
     assert.deepEqual(await response.json(), { ok: true });
     assert.equal(savedPayload.property_type, 'apartment');
     assert.equal(savedPayload.building, 'Building B');
+    assert.equal(savedPayload.access_code, '4455');
+    assert.equal(savedPayload.access_code_source, 'manager');
+    assert.ok(savedPayload.access_code_confirmed_at);
     assert.equal(savedPayload.access_note, 'Gate code 4455 at south entrance');
     assert.deepEqual(savedPayload.warning_flags, ['gate', 'stairs']);
   } finally {
