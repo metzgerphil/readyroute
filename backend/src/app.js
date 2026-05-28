@@ -6,6 +6,8 @@ const { createAuthRouter } = require('./routes/auth');
 const { createBillingRouter } = require('./routes/billing');
 const managerRoutes = require('./routes/manager');
 const { createManagerRouter } = require('./routes/manager');
+const propertyIntelManagerRoutes = require('./routes/propertyIntelManager');
+const { createPropertyIntelManagerRouter } = require('./routes/propertyIntelManager');
 const { requireManager } = require('./middleware/auth');
 const { createRequireActiveSubscription } = require('./middleware/billing');
 const timecardRoutes = require('./routes/timecards');
@@ -97,6 +99,9 @@ function createApp(options = {}) {
         billingService: options.billingService
       })
     : managerRoutes;
+  const propertyIntelManagerRouter = options.supabase
+    ? createPropertyIntelManagerRouter({ supabase: options.supabase })
+    : propertyIntelManagerRoutes;
   const timecardsRouter = options.supabase
     ? createTimecardsRouter({ supabase: options.supabase })
     : timecardRoutes;
@@ -160,6 +165,7 @@ function createApp(options = {}) {
   app.use('/auth', authRouter);
   app.use('/waitlist', waitlistRouter);
   app.use('/internal', internalSyncRouter);
+  app.use('/manager/property-intel', requireManager, requireActiveSubscription, propertyIntelManagerRouter);
   app.use('/manager', requireManager, requireActiveSubscription, managerRouter);
   app.use('/api/vedr', requireManager, requireActiveSubscription, vedrRouter);
   app.use('/routes', routesRouter);
