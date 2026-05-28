@@ -69,11 +69,11 @@ function toForm(row = {}) {
   };
 }
 
-function AccessCodeForm({ form, isSaving, onCancel, onChange, onSubmit }) {
+function AccessCodeForm({ form, isInline = false, isSaving, onCancel, onChange, onSubmit }) {
   const isNew = !form.id;
 
   return (
-    <form className="card access-code-editor" onSubmit={onSubmit}>
+    <form className={isInline ? 'access-code-editor access-code-inline-editor' : 'card access-code-editor'} onSubmit={onSubmit}>
       <div className="section-title-row">
         <div>
           <div className="card-title">{isNew ? 'Add access code' : 'Edit access code'}</div>
@@ -177,7 +177,7 @@ export default function AccessCodesPage() {
     }
   });
 
-  const rows = accessCodesQuery.data?.property_intel || [];
+  const rows = useMemo(() => accessCodesQuery.data?.property_intel || [], [accessCodesQuery.data]);
   const filteredRows = useMemo(() => {
     const searchValue = normalizeSearch(search);
 
@@ -243,6 +243,18 @@ export default function AccessCodesPage() {
     }));
   }
 
+  function handleStartAdd() {
+    setEditingForm({ ...EMPTY_FORM });
+    setStatusMessage('');
+    setErrorMessage('');
+  }
+
+  function handleStartEdit(row) {
+    setEditingForm(toForm(row));
+    setStatusMessage('');
+    setErrorMessage('');
+  }
+
   function handleSubmit(event) {
     event.preventDefault();
     if (!editingForm) {
@@ -258,7 +270,7 @@ export default function AccessCodesPage() {
         title="Access Codes"
         description={`${selectedCsaName || 'Current CSA'} reusable gate codes, entry notes, and building access details.`}
         actions={(
-          <button className="primary-cta" onClick={() => setEditingForm({ ...EMPTY_FORM })} type="button">
+          <button className="primary-cta" onClick={handleStartAdd} type="button">
             Add Access Code
           </button>
         )}
@@ -274,7 +286,7 @@ export default function AccessCodesPage() {
       {statusMessage ? <div className="success-banner">{statusMessage}</div> : null}
       {errorMessage ? <div className="error-banner">{errorMessage}</div> : null}
 
-      {editingForm ? (
+      {editingForm && !editingForm.id ? (
         <AccessCodeForm
           form={editingForm}
           isSaving={saveMutation.isPending}
@@ -323,34 +335,54 @@ export default function AccessCodesPage() {
               <span>Source</span>
               <span>Action</span>
             </div>
-            {filteredRows.map((row) => (
-              <div className="access-code-table-row" key={row.id || row.normalized_address}>
-                <div>
-                  <div className="access-code-address">{row.display_address || row.normalized_address}</div>
-                  <div className="driver-meta">{row.property_name || row.building || 'No property label yet'}</div>
+            {filteredRows.map((row) => {
+              const rowKey = row.id || row.normalized_address;
+              const isEditing = editingForm?.id && editingForm.id === row.id;
+
+              return (
+                <div className="access-code-table-row-group" key={rowKey}>
+                  <div className={`access-code-table-row${isEditing ? ' access-code-table-row-active' : ''}`}>
+                    <div>
+                      <div className="access-code-address">{row.display_address || row.normalized_address}</div>
+                      <div className="driver-meta">{row.property_name || row.building || 'No property label yet'}</div>
+                    </div>
+                    <div>
+                      <div className="access-code-value">{row.access_code || 'No code'}</div>
+                      <div className="driver-meta">{row.access_code_confirmed_at ? 'Confirmed' : 'Not confirmed'}</div>
+                    </div>
+                    <div className="access-code-notes">
+                      {row.entry_note || row.access_note || row.shared_note || 'No notes'}
+                    </div>
+                    <StatusBadge tone={getSourceTone(row.access_code_source)}>
+                      {getSourceLabel(row.access_code_source)}
+                    </StatusBadge>
+                    <button className="secondary-inline-button" onClick={() => handleStartEdit(row)} type="button">
+                      Edit
+                    </button>
+                  </div>
+                  {isEditing ? (
+                    <AccessCodeForm
+                      form={editingForm}
+                      isInline
+                      isSaving={saveMutation.isPending}
+                      onCancel={() => {
+                        setEditingForm(null);
+                        setErrorMessage('');
+                      }}
+                      onChange={handleFormChange}
+                      onSubmit={handleSubmit}
+                    />
+                  ) : null}
                 </div>
-                <div>
-                  <div className="access-code-value">{row.access_code || 'No code'}</div>
-                  <div className="driver-meta">{row.access_code_confirmed_at ? 'Confirmed' : 'Not confirmed'}</div>
-                </div>
-                <div className="access-code-notes">
-                  {row.entry_note || row.access_note || row.shared_note || 'No notes'}
-                </div>
-                <StatusBadge tone={getSourceTone(row.access_code_source)}>
-                  {getSourceLabel(row.access_code_source)}
-                </StatusBadge>
-                <button className="secondary-inline-button" onClick={() => setEditingForm(toForm(row))} type="button">
-                  Edit
-                </button>
-              </div>
-            ))}
+              );
+            })}
           </div>
         ) : (
           <EmptyState
             title="No access codes found"
             description="Try a different search, or add the property manually."
             actions={(
-              <button className="primary-cta" onClick={() => setEditingForm({ ...EMPTY_FORM })} type="button">
+              <button className="primary-cta" onClick={handleStartAdd} type="button">
                 Add Access Code
               </button>
             )}

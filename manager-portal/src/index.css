@@ -5094,8 +5094,13 @@ button {
   text-transform: uppercase;
 }
 
-.access-code-table-row {
+.access-code-table-row-group {
   border-top: 1px solid var(--rr-color-border);
+  min-width: 920px;
+}
+
+.access-code-table-row-active {
+  background: rgba(245, 97, 31, 0.04);
 }
 
 .access-code-address,
@@ -5115,6 +5120,12 @@ button {
   font-size: 0.86rem;
   font-weight: 680;
   line-height: 1.35;
+}
+
+.access-code-inline-editor {
+  border-top: 1px solid var(--rr-color-border);
+  background: rgba(248, 250, 252, 0.86);
+  padding: 18px 22px 20px;
 }
 
 @media (max-width: 1100px) {
