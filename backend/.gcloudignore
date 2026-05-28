@@ -1,0 +1,17 @@
+.git
+.gitignore
+.env
+.env.*
+node_modules
+npm-debug.log
+coverage
+tests
+*.test.js
+.*.swp
+.*.swo
+schema.sql
+.railwayignore
+nixpacks.toml
+railpack.json
+CI_DEPLOY_PROBE.md
+google-service-account*.json
