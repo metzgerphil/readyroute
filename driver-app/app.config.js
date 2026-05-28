@@ -1,6 +1,10 @@
 const googleMapsApiKey = process.env.EXPO_PUBLIC_GOOGLE_MAPS_API_KEY || undefined;
 const bundleIdentifier = 'com.readyroute.driverapp';
 
+if (process.env.EAS_BUILD === 'true' && !googleMapsApiKey) {
+  throw new Error('Missing EXPO_PUBLIC_GOOGLE_MAPS_API_KEY for EAS build. Add it to the EAS build environment before creating Android builds.');
+}
+
 module.exports = {
   expo: {
     name: 'Ready Route',
@@ -9,7 +13,7 @@ module.exports = {
     orientation: 'portrait',
     icon: './assets/icon.png',
     userInterfaceStyle: 'light',
-    newArchEnabled: false,
+    newArchEnabled: true,
     splash: {
       image: './assets/splash-icon.png',
       resizeMode: 'contain',
