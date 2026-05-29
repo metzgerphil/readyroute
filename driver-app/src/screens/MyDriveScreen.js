@@ -1590,19 +1590,6 @@ export default function MyDriveScreen({ navigation, route: screenRoute }) {
   async function handleDriverLocationUpdate(position, { forcePost = false } = {}) {
     if (position?.coords) {
       setCurrentLocation(position);
-
-      if (mapRef.current) {
-        mapRef.current.animateCamera(
-          {
-            center: {
-              latitude: position.coords.latitude,
-              longitude: position.coords.longitude
-            },
-            zoom: 17
-          },
-          { duration: 800 }
-        );
-      }
     }
 
     if (!route?.id) {
@@ -1872,6 +1859,25 @@ export default function MyDriveScreen({ navigation, route: screenRoute }) {
 
   function handleSelectMapItem(itemId) {
     setSelectedMapItemId((current) => (current === itemId ? null : itemId));
+  }
+
+  function handleCenterOnDriver() {
+    const map = mapRef.current;
+
+    if (!map || !currentLocation?.coords) {
+      return;
+    }
+
+    map.animateCamera(
+      {
+        center: {
+          latitude: currentLocation.coords.latitude,
+          longitude: currentLocation.coords.longitude
+        },
+        zoom: 17
+      },
+      { duration: 500 }
+    );
   }
 
   function handleRecenter() {
@@ -2254,6 +2260,15 @@ export default function MyDriveScreen({ navigation, route: screenRoute }) {
         <MapLegend expanded={legendExpanded} onToggle={() => setLegendExpanded((current) => !current)} />
 
         <View style={styles.mapControlStack}>
+          {currentLocation?.coords ? (
+            <Pressable
+              accessibilityLabel="Center on my location"
+              onPress={handleCenterOnDriver}
+              style={styles.mapControlButton}
+            >
+              <Text style={styles.mapControlButtonText}>Me</Text>
+            </Pressable>
+          ) : null}
           <Pressable onPress={handleRecenter} style={styles.mapControlButton}>
             <Text style={styles.mapControlButtonText}>Center</Text>
           </Pressable>

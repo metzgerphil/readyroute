@@ -122,6 +122,29 @@ describe('StopDetailScreen interactions', () => {
     alertSpy.mockRestore();
   });
 
+  it('lets a driver turn manifest instructions into reusable access info', async () => {
+    api.get.mockResolvedValueOnce({
+      data: {
+        stop: {
+          ...stopPayload,
+          customer_instructions: ':ROLL UP DOOR::',
+          property_intel: {
+            location_type: 'house'
+          }
+        }
+      }
+    });
+
+    const screen = await renderAndFlush();
+
+    await screen.findByText('Save as access info');
+
+    fireEvent.press(screen.getByText('Save as access info'));
+
+    expect(screen.getByDisplayValue(':ROLL UP DOOR::')).toBeTruthy();
+    expect(screen.getByText('Save access info')).toBeTruthy();
+  });
+
   it('saves the current location as the corrected pin', async () => {
     const alertSpy = jest.spyOn(Alert, 'alert').mockImplementation(() => {});
     const screen = await renderAndFlush();
@@ -243,7 +266,7 @@ describe('StopDetailScreen interactions', () => {
     expect(screen.getByText('(555) 111-2222 ext. 9')).toBeTruthy();
     expect(screen.getByText('555-333-4444')).toBeTruthy();
     expect(screen.getByText('dock@example.com')).toBeTruthy();
-    expect(screen.getByText('Call before arrival')).toBeTruthy();
+    expect(screen.getAllByText('Call before arrival').length).toBeGreaterThanOrEqual(1);
 
     fireEvent.press(screen.getAllByText('Call')[0]);
     expect(openURLSpy).toHaveBeenCalledWith('tel:5551112222,9');

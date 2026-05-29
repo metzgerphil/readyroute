@@ -179,6 +179,11 @@ describe('MyDriveScreen interactions', () => {
     expect(screen.getByTestId('signature-badge-stop-2')).toBeTruthy();
     expect(screen.getByText('Signature required')).toBeTruthy();
 
+    expect(mockMapMethods.animateCamera).not.toHaveBeenCalled();
+    expect(mockMapMethods.animateToRegion).not.toHaveBeenCalled();
+
+    fireEvent.press(screen.getByLabelText('Center on my location'));
+
     expect(mockMapMethods.animateCamera).toHaveBeenCalledWith(
       {
         center: {
@@ -187,9 +192,8 @@ describe('MyDriveScreen interactions', () => {
         },
         zoom: 17
       },
-      { duration: 800 }
+      { duration: 500 }
     );
-    expect(mockMapMethods.animateToRegion).not.toHaveBeenCalled();
 
     fireEvent.press(screen.getByTestId('selected-stop-card-action'));
 
