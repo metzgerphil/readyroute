@@ -9,9 +9,9 @@ const FCC_AUTOMATION_DISABLED_SUMMARY = 'FedEx/FCC automation is paused pending 
 const FCC_SYNC_BEFORE_WINDOW_SUMMARY = 'FCC sync is blocked until the morning manifest window opens.';
 const MIN_FCC_SYNC_START_HOUR = 9;
 
-function isFccAutomationEnabled(options = {}) {
-  const value = options.fccAutomationEnabled ?? process.env.FEDEX_FCC_AUTOMATION_ENABLED;
-  return String(value || '').trim().toLowerCase() === 'true';
+function isFccAutomationEnabled(_options = {}) {
+  // FCC portal scraping is disabled pending removal — do not re-enable via env var
+  return false;
 }
 
 function getCurrentDateString(now = new Date(), timeZone = process.env.APP_TIME_ZONE || 'America/Los_Angeles') {
