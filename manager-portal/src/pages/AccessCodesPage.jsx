@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useMemo, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 
-import { EmptyState, PageHeader, StatCard, StatusBadge } from '../components/PortalDesignSystem';
+import { EmptyState, PageHeader, StatCard } from '../components/PortalDesignSystem';
 import { useSelectedCsa } from '../context/SelectedCsaContext';
 import api from '../services/api';
 
@@ -20,36 +20,13 @@ const EMPTY_FORM = {
   shared_note: ''
 };
 
-const SOURCE_LABELS = {
-  manager: 'Manager',
-  manager_manual: 'Manager',
-  driver: 'Driver',
-  imported_gate_code_doc: 'DOCX import',
-  imported_gate_codes_xlsx: 'Spreadsheet import'
-};
+const ACCESS_CODE_TEMPLATE_ROWS = [
+  ['Address', 'Access Code', 'Entry Note', 'Driver Note', 'Property Name', 'Building', 'Property Type', 'Parking Note', 'Shared Note'],
+  ['250 W 15th Ave, Escondido, CA', '#1357', 'Use left call box, then enter through north gate.', '', 'Fifteenth Apartments', 'Building A', 'apartment', '', '']
+];
 
 function normalizeSearch(value) {
   return String(value || '').trim().toLowerCase();
-}
-
-function getSourceLabel(source) {
-  return SOURCE_LABELS[source] || source || 'No source';
-}
-
-function getSourceTone(source) {
-  if (source === 'driver') {
-    return 'warning';
-  }
-
-  if (String(source || '').startsWith('imported_')) {
-    return 'purple';
-  }
-
-  if (source) {
-    return 'active';
-  }
-
-  return 'neutral';
 }
 
 function toForm(row = {}) {
@@ -67,6 +44,27 @@ function toForm(row = {}) {
     parking_note: row.parking_note || '',
     shared_note: row.shared_note || ''
   };
+}
+
+function escapeCsvCell(value) {
+  const text = String(value ?? '');
+  if (/[",\n\r]/.test(text)) {
+    return `"${text.replace(/"/g, '""')}"`;
+  }
+  return text;
+}
+
+function downloadCsvTemplate() {
+  const csv = ACCESS_CODE_TEMPLATE_ROWS
+    .map((row) => row.map(escapeCsvCell).join(','))
+    .join('\n');
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = 'readyroute-access-code-template.csv';
+  link.click();
+  URL.revokeObjectURL(url);
 }
 
 function AccessCodeForm({ form, isInline = false, isSaving, onCancel, onChange, onSubmit }) {
@@ -162,11 +160,12 @@ function AccessCodeForm({ form, isInline = false, isSaving, onCancel, onChange, 
 export default function AccessCodesPage() {
   const queryClient = useQueryClient();
   const { selectedCsaId, selectedCsaName } = useSelectedCsa();
+  const importInputRef = useRef(null);
   const [search, setSearch] = useState('');
-  const [sourceFilter, setSourceFilter] = useState('all');
   const [editingForm, setEditingForm] = useState(null);
   const [statusMessage, setStatusMessage] = useState('');
   const [errorMessage, setErrorMessage] = useState('');
+  const [importSummary, setImportSummary] = useState(null);
 
   const accessCodesQuery = useQuery({
     queryKey: ['property-intel', selectedCsaId],
@@ -182,7 +181,6 @@ export default function AccessCodesPage() {
     const searchValue = normalizeSearch(search);
 
     return rows.filter((row) => {
-      const sourceMatches = sourceFilter === 'all' || row.access_code_source === sourceFilter;
       const searchMatches = !searchValue || [
         row.display_address,
         row.normalized_address,
@@ -193,14 +191,9 @@ export default function AccessCodesPage() {
         row.entry_note
       ].some((value) => normalizeSearch(value).includes(searchValue));
 
-      return sourceMatches && searchMatches;
+      return searchMatches;
     });
-  }, [rows, search, sourceFilter]);
-
-  const sourceOptions = useMemo(() => {
-    const sources = [...new Set(rows.map((row) => row.access_code_source).filter(Boolean))].sort();
-    return sources;
-  }, [rows]);
+  }, [rows, search]);
 
   const codedCount = rows.filter((row) => row.access_code).length;
   const driverSubmittedCount = rows.filter((row) => row.access_code_source === 'driver').length;
@@ -236,6 +229,32 @@ export default function AccessCodesPage() {
     }
   });
 
+  const importMutation = useMutation({
+    mutationFn: async (file) => {
+      const formData = new FormData();
+      formData.append('file', file);
+      const response = await api.post('/manager/property-intel/import', formData);
+      return response.data;
+    },
+    onSuccess: (result) => {
+      queryClient.invalidateQueries({ queryKey: ['property-intel', selectedCsaId] });
+      setImportSummary(result);
+      setErrorMessage('');
+      setStatusMessage(`Imported ${result.imported || 0} access code ${result.imported === 1 ? 'record' : 'records'}.`);
+      if (importInputRef.current) {
+        importInputRef.current.value = '';
+      }
+    },
+    onError: (error) => {
+      setStatusMessage('');
+      setImportSummary(null);
+      setErrorMessage(error.response?.data?.error || 'Unable to import access codes.');
+      if (importInputRef.current) {
+        importInputRef.current.value = '';
+      }
+    }
+  });
+
   function handleFormChange(key, value) {
     setEditingForm((current) => ({
       ...(current || EMPTY_FORM),
@@ -247,12 +266,14 @@ export default function AccessCodesPage() {
     setEditingForm({ ...EMPTY_FORM });
     setStatusMessage('');
     setErrorMessage('');
+    setImportSummary(null);
   }
 
   function handleStartEdit(row) {
     setEditingForm(toForm(row));
     setStatusMessage('');
     setErrorMessage('');
+    setImportSummary(null);
   }
 
   function handleSubmit(event) {
@@ -263,6 +284,18 @@ export default function AccessCodesPage() {
     saveMutation.mutate(editingForm);
   }
 
+  function handleImportFile(event) {
+    const file = event.target.files?.[0];
+    if (!file) {
+      return;
+    }
+    setEditingForm(null);
+    setStatusMessage('');
+    setErrorMessage('');
+    setImportSummary(null);
+    importMutation.mutate(file);
+  }
+
   return (
     <section className="page-section access-codes-page">
       <PageHeader
@@ -270,9 +303,24 @@ export default function AccessCodesPage() {
         title="Access Codes"
         description={`${selectedCsaName || 'Current CSA'} reusable gate codes, entry notes, and building access details.`}
         actions={(
-          <button className="primary-cta" onClick={handleStartAdd} type="button">
-            Add Access Code
-          </button>
+          <div className="access-code-header-actions">
+            <button className="secondary-button" onClick={downloadCsvTemplate} type="button">
+              Download CSV Template
+            </button>
+            <button className="secondary-button" disabled={importMutation.isPending} onClick={() => importInputRef.current?.click()} type="button">
+              {importMutation.isPending ? 'Importing...' : 'Import Spreadsheet'}
+            </button>
+            <button className="primary-cta" onClick={handleStartAdd} type="button">
+              Add Access Code
+            </button>
+            <input
+              accept=".csv,.xls,.xlsx"
+              className="visually-hidden-file-input"
+              onChange={handleImportFile}
+              ref={importInputRef}
+              type="file"
+            />
+          </div>
         )}
       />
 
@@ -285,6 +333,15 @@ export default function AccessCodesPage() {
 
       {statusMessage ? <div className="success-banner">{statusMessage}</div> : null}
       {errorMessage ? <div className="error-banner">{errorMessage}</div> : null}
+      {importSummary?.errors?.length ? (
+        <div className="info-banner access-code-import-summary">
+          <strong>{importSummary.skipped || importSummary.errors.length} row{(importSummary.skipped || importSummary.errors.length) === 1 ? '' : 's'} need review.</strong>
+          <span>
+            {importSummary.errors.slice(0, 3).map((error) => `Row ${error.row}: ${error.error}`).join(' ')}
+            {importSummary.errors.length > 3 ? ` ${importSummary.errors.length - 3} more not shown.` : ''}
+          </span>
+        </div>
+      ) : null}
 
       {editingForm && !editingForm.id ? (
         <AccessCodeForm
@@ -313,12 +370,6 @@ export default function AccessCodesPage() {
               type="search"
               value={search}
             />
-            <select className="text-field" onChange={(event) => setSourceFilter(event.target.value)} value={sourceFilter}>
-              <option value="all">All sources</option>
-              {sourceOptions.map((source) => (
-                <option key={source} value={source}>{getSourceLabel(source)}</option>
-              ))}
-            </select>
           </div>
         </div>
 
@@ -332,7 +383,6 @@ export default function AccessCodesPage() {
               <span>Property</span>
               <span>Access</span>
               <span>Notes</span>
-              <span>Source</span>
               <span>Action</span>
             </div>
             {filteredRows.map((row) => {
@@ -353,9 +403,6 @@ export default function AccessCodesPage() {
                     <div className="access-code-notes">
                       {row.entry_note || row.access_note || row.shared_note || 'No notes'}
                     </div>
-                    <StatusBadge tone={getSourceTone(row.access_code_source)}>
-                      {getSourceLabel(row.access_code_source)}
-                    </StatusBadge>
                     <button className="secondary-inline-button" onClick={() => handleStartEdit(row)} type="button">
                       Edit
                     </button>

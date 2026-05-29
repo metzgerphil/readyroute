@@ -77,7 +77,23 @@ function parseVehicleImportRows(file) {
   }));
 }
 
+function parseAccessCodeImportRows(file) {
+  return parseTabularUpload(file).map((row, index) => ({
+    row_number: index + 2,
+    display_address: getCell(row, ['address', 'property address', 'display address', 'street address']),
+    access_code: getCell(row, ['access code', 'gate code', 'code', 'entry code']),
+    entry_note: getCell(row, ['entry note', 'instructions', 'instruction', 'entry instructions']),
+    access_note: getCell(row, ['driver note', 'access note', 'note', 'notes']),
+    property_name: getCell(row, ['property name', 'property', 'complex name', 'building name']),
+    building: getCell(row, ['building', 'building/group', 'building group']),
+    property_type: getCell(row, ['property type', 'type']),
+    parking_note: getCell(row, ['parking note', 'parking']),
+    shared_note: getCell(row, ['shared note', 'shared notes'])
+  }));
+}
+
 module.exports = {
+  parseAccessCodeImportRows,
   parseDriverImportRows,
   parseVehicleImportRows,
   parseTabularUpload

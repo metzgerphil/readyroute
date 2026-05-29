@@ -1,7 +1,9 @@
 const express = require('express');
 
 const defaultSupabase = require('../lib/supabase');
+const { parseMultipartForm } = require('../middleware/multipart');
 const { buildPropertyIntelKey, savePropertyIntel } = require('../services/propertyIntel');
+const { parseAccessCodeImportRows } = require('../services/resourceImport');
 
 function normalizePropertyIntelText(value) {
   return String(value ?? '').replace(/\s+/g, ' ').trim();
@@ -109,6 +111,70 @@ function createPropertyIntelManagerRouter(options = {}) {
       console.error('Manager property intel create endpoint failed:', error);
       return res.status(500).json({ error: 'Failed to save access code' });
     }
+  });
+
+  router.post('/import', parseMultipartForm, async (req, res) => {
+    if (!req.file) {
+      return res.status(400).json({ error: 'Access code import file is required.' });
+    }
+
+    let rows;
+    try {
+      rows = parseAccessCodeImportRows(req.file);
+    } catch (error) {
+      return res.status(400).json({ error: error.message || 'Unable to read access code import file.' });
+    }
+
+    const result = {
+      total: rows.length,
+      imported: 0,
+      skipped: 0,
+      errors: []
+    };
+
+    for (const row of rows) {
+      const hasAccessInfo = Boolean(row.access_code || row.entry_note || row.access_note || row.parking_note || row.shared_note);
+
+      if (!row.display_address) {
+        result.skipped += 1;
+        result.errors.push({ row: row.row_number, error: 'Address is required.' });
+        continue;
+      }
+
+      if (!hasAccessInfo) {
+        result.skipped += 1;
+        result.errors.push({ row: row.row_number, error: 'Add an access code or an entry/access note.' });
+        continue;
+      }
+
+      try {
+        await savePropertyIntel(
+          supabase,
+          req.account.account_id,
+          { address: row.display_address, address_line2: null, contact_name: row.property_name || null },
+          {
+            property_name: row.property_name,
+            property_type: row.property_type,
+            building: row.building,
+            access_code: row.access_code,
+            access_code_source: 'imported_gate_codes_xlsx',
+            access_note: row.access_note || row.entry_note,
+            parking_note: row.parking_note,
+            entry_note: row.entry_note,
+            shared_note: row.shared_note,
+            warning_flags: ['gate']
+          },
+          { preserveExisting: true }
+        );
+        result.imported += 1;
+      } catch (error) {
+        console.error('Access code import row failed:', error);
+        result.skipped += 1;
+        result.errors.push({ row: row.row_number, error: 'Unable to save this access code.' });
+      }
+    }
+
+    return res.status(200).json(result);
   });
 
   router.patch('/:propertyIntelId', async (req, res) => {

@@ -5032,6 +5032,23 @@ button {
   gap: 14px;
 }
 
+.access-code-header-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  justify-content: flex-end;
+}
+
+.visually-hidden-file-input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  clip-path: inset(50%);
+}
+
 .access-code-list-card,
 .access-code-editor {
   display: grid;
@@ -5045,8 +5062,13 @@ button {
 
 .access-code-toolbar-controls {
   display: grid;
-  grid-template-columns: minmax(260px, 420px) minmax(160px, 220px);
+  grid-template-columns: minmax(260px, 520px);
   gap: 10px;
+}
+
+.access-code-import-summary {
+  display: grid;
+  gap: 4px;
 }
 
 .access-code-form-grid {
@@ -5078,10 +5100,10 @@ button {
 .access-code-table-header,
 .access-code-table-row {
   display: grid;
-  grid-template-columns: minmax(240px, 1.35fr) minmax(120px, 0.55fr) minmax(240px, 1.25fr) minmax(140px, 0.6fr) minmax(88px, 0.35fr);
+  grid-template-columns: minmax(260px, 1.35fr) minmax(140px, 0.55fr) minmax(300px, 1.25fr) minmax(88px, 0.35fr);
   gap: 14px;
   align-items: center;
-  min-width: 920px;
+  min-width: 820px;
   padding: 12px 14px;
 }
 
@@ -5096,7 +5118,7 @@ button {
 
 .access-code-table-row-group {
   border-top: 1px solid var(--rr-color-border);
-  min-width: 920px;
+  min-width: 820px;
 }
 
 .access-code-table-row-active {
@@ -5150,6 +5172,14 @@ button {
 
   .access-code-editor-actions {
     flex-direction: column-reverse;
+  }
+
+  .access-code-header-actions {
+    justify-content: stretch;
+  }
+
+  .access-code-header-actions > * {
+    flex: 1 1 100%;
   }
 }
 

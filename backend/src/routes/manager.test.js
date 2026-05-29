@@ -182,6 +182,42 @@ async function startTestServer({ supabase, now, sendManagerInviteEmail, sendMana
   };
 }
 
+function buildMultipartBody({ boundary, fields = {}, file, files = [] }) {
+  const chunks = [];
+
+  for (const [key, value] of Object.entries(fields)) {
+    chunks.push(
+      Buffer.from(
+        `--${boundary}\r\nContent-Disposition: form-data; name="${key}"\r\n\r\n${value}\r\n`,
+        'utf8'
+      )
+    );
+  }
+
+  const allFiles = [];
+  if (file) {
+    allFiles.push({
+      fieldName: 'file',
+      ...file
+    });
+  }
+  allFiles.push(...files);
+
+  for (const currentFile of allFiles) {
+    chunks.push(
+      Buffer.from(
+        `--${boundary}\r\nContent-Disposition: form-data; name="${currentFile.fieldName}"; filename="${currentFile.filename}"\r\nContent-Type: ${currentFile.contentType}\r\n\r\n`,
+        'utf8'
+      )
+    );
+    chunks.push(currentFile.buffer);
+    chunks.push(Buffer.from('\r\n', 'utf8'));
+  }
+
+  chunks.push(Buffer.from(`--${boundary}--\r\n`, 'utf8'));
+  return Buffer.concat(chunks);
+}
+
 test('GET /manager/dashboard returns stops_per_hour using the first-scan formula', async () => {
   const now = () => new Date('2026-04-08T18:00:00.000Z');
   const supabase = new MockSupabase((query) => {
@@ -4759,6 +4795,81 @@ test('GET /manager/property-intel returns access-code records for the manager ac
     assert.equal(body.property_intel[0].display_address, '250 W 15TH AVE');
     assert.equal(body.property_intel[0].access_code, '04563');
     assert.deepEqual(body.property_intel[0].warning_flags, ['gate']);
+  } finally {
+    await server.close();
+  }
+});
+
+test('POST /manager/property-intel/import imports access-code spreadsheet rows for the manager account', async () => {
+  const insertPayloads = [];
+  const supabase = new MockSupabase((query) => {
+    if (query.table === 'accounts' && query.operation === 'select') {
+      return {
+        data: {
+          id: 'acct-1',
+          company_name: 'Bridge Transportation Inc',
+          manager_email: 'owner@example.com'
+        },
+        error: null
+      };
+    }
+
+    if (query.table === 'property_intel' && query.operation === 'select') {
+      assert.equal(query.filters.find((filter) => filter.column === 'account_id')?.value, 'acct-1');
+      return {
+        data: [],
+        error: null
+      };
+    }
+
+    if (query.table === 'property_intel' && query.operation === 'insert') {
+      insertPayloads.push(query.payload);
+      return {
+        data: null,
+        error: null
+      };
+    }
+
+    throw new Error(`Unexpected query ${query.table}:${query.operation}:${query.mode}`);
+  });
+
+  const server = await startTestServer({ supabase });
+  const boundary = '----readyroute-access-code-import-test';
+  const csv = [
+    'Address,Access Code,Entry Note,Driver Note,Property Name',
+    '"250 W 15th Ave, Escondido, CA",#1357,"Use north gate",Helpful driver note,Fifteenth Apartments'
+  ].join('\n');
+
+  try {
+    const response = await fetch(`${server.baseUrl}/manager/property-intel/import`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${signManagerToken()}`,
+        'Content-Type': `multipart/form-data; boundary=${boundary}`
+      },
+      body: buildMultipartBody({
+        boundary,
+        file: {
+          filename: 'readyroute-access-code-template.csv',
+          contentType: 'text/csv',
+          buffer: Buffer.from(csv)
+        }
+      })
+    });
+
+    assert.equal(response.status, 200);
+    const body = await response.json();
+    assert.equal(body.total, 1);
+    assert.equal(body.imported, 1);
+    assert.equal(body.skipped, 0);
+    assert.equal(insertPayloads.length, 1);
+    assert.equal(insertPayloads[0].account_id, 'acct-1');
+    assert.equal(insertPayloads[0].display_address, '250 W 15th Ave, Escondido, CA');
+    assert.equal(insertPayloads[0].access_code, '#1357');
+    assert.equal(insertPayloads[0].access_code_source, 'imported_gate_codes_xlsx');
+    assert.equal(insertPayloads[0].access_note, 'Helpful driver note');
+    assert.equal(insertPayloads[0].entry_note, 'Use north gate');
+    assert.deepEqual(insertPayloads[0].warning_flags, ['gate']);
   } finally {
     await server.close();
   }
