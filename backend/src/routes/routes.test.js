@@ -1657,6 +1657,101 @@ test('PATCH /routes/stops/:stop_id/note clears an existing note and resets has_n
   }
 });
 
+test('PATCH /routes/stops/:stop_id/property-intel lets a driver save access info without clearing existing intel', async () => {
+  let savedPayload = null;
+
+  const supabase = new MockSupabase((query) => {
+    if (query.table === 'stops' && query.operation === 'select' && query.mode === 'maybeSingle') {
+      if (query.filters.some((filter) => filter.column === 'routes.driver_id')) {
+        return {
+          data: {
+            id: 'stop-1',
+            route_id: 'route-1',
+            sequence_order: 1,
+            address: '702 N Fig St, Apt 101, Escondido, CA',
+            status: 'pending',
+            completed_at: null,
+            routes: {
+              id: 'route-1',
+              driver_id: 'driver-1',
+              account_id: 'acct-1',
+              dispatch_state: 'dispatched',
+              total_stops: 2,
+              completed_stops: 0,
+              status: 'pending'
+            }
+          },
+          error: null
+        };
+      }
+
+      return {
+        data: {
+          id: 'stop-1',
+          address: '702 N Fig St, Escondido, CA',
+          address_line2: 'Apt 101',
+          contact_name: 'Melanie Randall',
+          is_business: false
+        },
+        error: null
+      };
+    }
+
+    if (query.table === 'property_intel' && query.operation === 'select') {
+      return {
+        data: [{
+          id: 'intel-1',
+          normalized_address: '702 n fig st',
+          property_type: 'apartment',
+          building: 'Building A',
+          access_code: null,
+          access_note: 'Old note',
+          parking_note: 'Park near lobby',
+          warning_flags: ['stairs']
+        }],
+        error: null
+      };
+    }
+
+    if (query.table === 'property_intel' && query.operation === 'update') {
+      savedPayload = query.payload;
+      return { data: null, error: null };
+    }
+
+    throw new Error(`Unexpected query ${query.table}:${query.operation}:${query.mode}`);
+  });
+
+  const server = await startTestServer(supabase);
+
+  try {
+    const response = await fetch(`${server.baseUrl}/routes/stops/stop-1/property-intel`, {
+      method: 'PATCH',
+      headers: {
+        Authorization: `Bearer ${signDriverToken()}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        access_code: '#7526',
+        access_note: 'Use north gate keypad',
+        warning_flags: ['gate']
+      })
+    });
+
+    assert.equal(response.status, 200);
+    assert.deepEqual(await response.json(), { ok: true });
+    assert.equal(savedPayload.property_type, 'apartment');
+    assert.equal(savedPayload.building, 'Building A');
+    assert.equal(savedPayload.access_code, '#7526');
+    assert.equal(savedPayload.access_code_source, 'driver');
+    assert.ok(savedPayload.access_code_confirmed_at);
+    assert.equal(savedPayload.access_note, 'Use north gate keypad');
+    assert.equal(savedPayload.parking_note, 'Park near lobby');
+    assert.deepEqual(savedPayload.warning_flags, ['stairs', 'gate']);
+  } finally {
+    await server.close();
+  }
+});
+
 test('driver cannot update a stop assigned to a different driver', async () => {
   const supabase = new MockSupabase((query) => {
     if (query.table === 'stops' && query.operation === 'select' && query.mode === 'maybeSingle') {

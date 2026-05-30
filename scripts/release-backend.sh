@@ -21,6 +21,11 @@ gcloud run deploy "$CLOUD_RUN_SERVICE" \
   --allow-unauthenticated \
   --port 8080
 
+gcloud run services update-traffic "$CLOUD_RUN_SERVICE" \
+  --project "$CLOUD_RUN_PROJECT" \
+  --region "$CLOUD_RUN_REGION" \
+  --to-latest
+
 echo "==> Verifying backend health"
 curl -sS "$BACKEND_HEALTH_URL"
 echo

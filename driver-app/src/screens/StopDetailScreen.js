@@ -280,10 +280,16 @@ export default function StopDetailScreen({ navigation, route }) {
   const initialStop = route.params?.stop || null;
   const [stop, setStop] = useState(initialStop);
   const [noteDraft, setNoteDraft] = useState(initialStop?.note_text || '');
+  const [accessCodeDraft, setAccessCodeDraft] = useState(initialStop?.property_intel?.access_code || '');
+  const [accessNoteDraft, setAccessNoteDraft] = useState(
+    initialStop?.property_intel?.access_note || initialStop?.property_intel?.entry_note || ''
+  );
   const [floorDraft, setFloorDraft] = useState(
     initialStop?.apartment_intelligence?.floor != null ? String(initialStop.apartment_intelligence.floor) : ''
   );
   const [isEditingNote, setIsEditingNote] = useState(false);
+  const [isEditingAccessIntel, setIsEditingAccessIntel] = useState(false);
+  const [isSavingAccessIntel, setIsSavingAccessIntel] = useState(false);
   const [isSavingNote, setIsSavingNote] = useState(false);
   const [isSavingFloor, setIsSavingFloor] = useState(false);
   const [isSavingLocation, setIsSavingLocation] = useState(false);
@@ -309,6 +315,8 @@ export default function StopDetailScreen({ navigation, route }) {
         if (isMounted) {
           setStop(response.data?.stop || null);
           setNoteDraft(response.data?.stop?.note_text || '');
+          setAccessCodeDraft(response.data?.stop?.property_intel?.access_code || '');
+          setAccessNoteDraft(response.data?.stop?.property_intel?.access_note || response.data?.stop?.property_intel?.entry_note || '');
           setFloorDraft(
             response.data?.stop?.apartment_intelligence?.floor != null
               ? String(response.data.stop.apartment_intelligence.floor)
@@ -345,6 +353,8 @@ export default function StopDetailScreen({ navigation, route }) {
       const response = await fetchStopDetail();
       setStop(response.data?.stop || null);
       setNoteDraft(response.data?.stop?.note_text || '');
+      setAccessCodeDraft(response.data?.stop?.property_intel?.access_code || '');
+      setAccessNoteDraft(response.data?.stop?.property_intel?.access_note || response.data?.stop?.property_intel?.entry_note || '');
       setFloorDraft(
         response.data?.stop?.apartment_intelligence?.floor != null
           ? String(response.data.stop.apartment_intelligence.floor)
@@ -420,6 +430,41 @@ export default function StopDetailScreen({ navigation, route }) {
       Alert.alert('Save failed', message);
     } finally {
       setIsSavingNote(false);
+    }
+  }
+
+  async function handleSaveAccessIntel() {
+    const normalizedAccessCode = accessCodeDraft.trim();
+    const normalizedAccessNote = accessNoteDraft.trim();
+
+    if (!normalizedAccessCode && !normalizedAccessNote) {
+      Alert.alert('Access info required', 'Enter a gate/access code or a short entry note before saving.');
+      return;
+    }
+
+    setIsSavingAccessIntel(true);
+
+    try {
+      await api.patch(`/routes/stops/${stopId}/property-intel`, {
+        access_code: normalizedAccessCode,
+        access_note: normalizedAccessNote,
+        entry_note: normalizedAccessNote,
+        warning_flags: normalizedAccessCode || normalizedAccessNote ? ['gate'] : []
+      });
+
+      const refreshed = await refreshStop({ silent: true });
+      setIsEditingAccessIntel(false);
+      Alert.alert(
+        'Access info saved',
+        refreshed
+          ? 'This access info will show for future deliveries to this building.'
+          : 'Access info saved. Stop details may take a moment to refresh.'
+      );
+    } catch (error) {
+      const message = getApiErrorMessage(error, 'Unable to save access info right now.');
+      Alert.alert('Save failed', message);
+    } finally {
+      setIsSavingAccessIntel(false);
     }
   }
 
@@ -546,6 +591,8 @@ export default function StopDetailScreen({ navigation, route }) {
   const apartmentIntel = stop.apartment_intelligence;
   const propertyIntel = stop.property_intel;
   const displayLocationType = propertyIntel?.location_type || stop.location_type || null;
+  const accessCode = String(propertyIntel?.access_code || '').trim();
+  const hasAccessIntelDraft = Boolean(accessCodeDraft.trim() || accessNoteDraft.trim());
   const secondaryAddressDetails = formatSecondaryAddressDetails(stop);
   const hasApartmentInfo = Boolean(stop.is_apartment_unit || apartmentIntel);
   const isFloorDraftValid = Number.isInteger(Number(floorDraft)) && Number(floorDraft) > 0;
@@ -570,13 +617,15 @@ export default function StopDetailScreen({ navigation, route }) {
   const warningFlags = propertyIntel?.warning_flags || [];
   const contactDetails = getStopContactDetails(stop);
   const hasPropertyIntel = Boolean(
-    propertyIntel?.location_type ||
+      propertyIntel?.location_type ||
       propertyIntel?.building ||
+      accessCode ||
       propertyIntel?.access_note ||
       propertyIntel?.parking_note ||
       warningFlags.length ||
       allGroupedStops.length > 1
   );
+  const shouldShowPropertyIntel = hasPropertyIntel || !isManagerMode;
 
   return (
     <SafeAreaView style={styles.safeArea}>
@@ -767,12 +816,13 @@ export default function StopDetailScreen({ navigation, route }) {
           </View>
         ) : null}
 
-        {hasPropertyIntel ? (
+        {shouldShowPropertyIntel ? (
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>Delivery Intel</Text>
             <View style={styles.intelCard}>
-              <View style={styles.intelBadgeRow}>
-              {displayLocationType ? (
+              {hasPropertyIntel ? (
+                <View style={styles.intelBadgeRow}>
+                {displayLocationType ? (
                   <View style={styles.intelBadge}>
                     <Text style={styles.intelBadgeText}>{String(displayLocationType).toUpperCase()}</Text>
                   </View>
@@ -802,13 +852,25 @@ export default function StopDetailScreen({ navigation, route }) {
                     <Text style={styles.warningPillText}>{formatWarningFlag(flag)}</Text>
                   </View>
                 ))}
-              </View>
+                </View>
+              ) : null}
+
+              {accessCode ? (
+                <View style={styles.intelRow}>
+                  <Text style={styles.intelLabel}>Access code</Text>
+                  <Text style={styles.intelText}>{accessCode.toUpperCase()}</Text>
+                </View>
+              ) : null}
 
               {propertyIntel?.access_note ? (
                 <View style={styles.intelRow}>
                   <Text style={styles.intelLabel}>Access</Text>
                   <Text style={styles.intelText}>{propertyIntel.access_note}</Text>
                 </View>
+              ) : null}
+
+              {!hasPropertyIntel ? (
+                <Text style={styles.intelEmptyText}>No access info saved for this building yet.</Text>
               ) : null}
 
               {propertyIntel?.parking_note ? (
@@ -875,6 +937,55 @@ export default function StopDetailScreen({ navigation, route }) {
                       );
                     })}
                   </View>
+                </View>
+              ) : null}
+
+              {!isManagerMode ? (
+                <View style={styles.accessEditorBlock}>
+                  {isEditingAccessIntel ? (
+                    <>
+                      <Text style={styles.accessEditorLabel}>Gate / access code</Text>
+                      <TextInput
+                        autoCapitalize="characters"
+                        onChangeText={setAccessCodeDraft}
+                        placeholder="Example: #4455"
+                        placeholderTextColor="#8b8b8b"
+                        style={styles.accessCodeInput}
+                        value={accessCodeDraft}
+                      />
+                      <Text style={styles.accessEditorLabel}>Entry note</Text>
+                      <TextInput
+                        multiline
+                        onChangeText={setAccessNoteDraft}
+                        placeholder="Example: Use left call box or side gate"
+                        placeholderTextColor="#8b8b8b"
+                        style={styles.noteInput}
+                        value={accessNoteDraft}
+                      />
+                      <Pressable
+                        disabled={isSavingAccessIntel || !hasAccessIntelDraft}
+                        onPress={handleSaveAccessIntel}
+                        style={[styles.primaryButton, (isSavingAccessIntel || !hasAccessIntelDraft) && styles.buttonDisabled]}
+                      >
+                        {isSavingAccessIntel ? <ActivityIndicator color="#ffffff" /> : <Text style={styles.primaryButtonText}>Save access info</Text>}
+                      </Pressable>
+                      <Pressable
+                        disabled={isSavingAccessIntel}
+                        onPress={() => {
+                          setAccessCodeDraft(accessCode);
+                          setAccessNoteDraft(propertyIntel?.access_note || propertyIntel?.entry_note || '');
+                          setIsEditingAccessIntel(false);
+                        }}
+                        style={styles.secondaryButton}
+                      >
+                        <Text style={styles.secondaryButtonText}>Cancel</Text>
+                      </Pressable>
+                    </>
+                  ) : (
+                    <Pressable onPress={() => setIsEditingAccessIntel(true)} style={styles.secondaryButton}>
+                      <Text style={styles.secondaryButtonText}>{accessCode || propertyIntel?.access_note ? 'Update access info' : 'Add access info'}</Text>
+                    </Pressable>
+                  )}
                 </View>
               ) : null}
             </View>
@@ -1289,6 +1400,35 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: '600',
     lineHeight: 21
+  },
+  intelEmptyText: {
+    color: '#66737c',
+    fontSize: 14,
+    fontWeight: '700',
+    lineHeight: 20
+  },
+  accessEditorBlock: {
+    borderTopColor: '#e2e8f0',
+    borderTopWidth: 1,
+    gap: 10,
+    paddingTop: 12
+  },
+  accessEditorLabel: {
+    color: '#66737c',
+    fontSize: 12,
+    fontWeight: '800',
+    letterSpacing: 0.8,
+    textTransform: 'uppercase'
+  },
+  accessCodeInput: {
+    borderColor: '#d7dce0',
+    borderRadius: 16,
+    borderWidth: 1,
+    color: '#173042',
+    fontSize: 18,
+    fontWeight: '800',
+    minHeight: 52,
+    paddingHorizontal: 14
   },
   groupedStopTable: {
     gap: 10

@@ -167,6 +167,9 @@ function mergePropertyIntel(baseIntel, persistedRow) {
     property_name: persistedRow.property_name || baseIntel.property_name,
     location_type: persistedRow.property_type || baseIntel.location_type,
     building: persistedRow.building || baseIntel.building,
+    access_code: persistedRow.access_code || baseIntel.access_code || null,
+    access_code_confirmed_at: persistedRow.access_code_confirmed_at || null,
+    access_code_source: persistedRow.access_code_source || null,
     access_note: persistedRow.access_note || persistedRow.entry_note || baseIntel.access_note,
     parking_note: persistedRow.parking_note || baseIntel.parking_note,
     entry_note: persistedRow.entry_note || null,
@@ -217,7 +220,7 @@ async function loadPropertyIntelRows(supabase, accountId, stops) {
 
   const { data, error } = await supabase
     .from('property_intel')
-    .select('id, normalized_address, property_name, property_type, building, access_note, parking_note, entry_note, business_hours, shared_note, warning_flags, updated_at')
+    .select('id, normalized_address, property_name, property_type, building, access_code, access_code_confirmed_at, access_code_source, access_note, parking_note, entry_note, business_hours, shared_note, warning_flags, updated_at')
     .eq('account_id', accountId)
     .in('normalized_address', normalizedAddresses);
 
@@ -272,30 +275,65 @@ async function loadPropertyIntel(supabase, accountId, stop) {
   return rows.get(key.normalized_address) || null;
 }
 
-async function savePropertyIntel(supabase, accountId, stop, input = {}) {
+function getPreservedString(input, key, existingRow, preserveExisting) {
+  if (preserveExisting && !Object.prototype.hasOwnProperty.call(input, key)) {
+    return normalizeString(existingRow?.[key]) || null;
+  }
+
+  return normalizeString(input[key]) || null;
+}
+
+function getPreservedWarningFlags(input, existingRow, preserveExisting) {
+  if (preserveExisting && !Object.prototype.hasOwnProperty.call(input, 'warning_flags')) {
+    return normalizeWarningFlags(existingRow?.warning_flags);
+  }
+
+  if (preserveExisting) {
+    return [...new Set([
+      ...normalizeWarningFlags(existingRow?.warning_flags),
+      ...normalizeWarningFlags(input.warning_flags)
+    ])];
+  }
+
+  return normalizeWarningFlags(input.warning_flags);
+}
+
+async function savePropertyIntel(supabase, accountId, stop, input = {}, options = {}) {
   const key = buildPropertyIntelKey(stop);
 
   if (!key.normalized_address) {
     throw new Error('Property intel requires a normalized address.');
   }
 
+  const existingRow = await loadPropertyIntel(supabase, accountId, stop);
+  const preserveExisting = Boolean(options.preserveExisting);
+  const accessCode = getPreservedString(input, 'access_code', existingRow, preserveExisting);
+  const providedAccessCode = Object.prototype.hasOwnProperty.call(input, 'access_code');
+  const accessCodeSource = accessCode
+    ? getPreservedString(input, 'access_code_source', existingRow, preserveExisting) || 'manager'
+    : null;
+  const accessCodeConfirmedAt = accessCode
+    ? (providedAccessCode ? new Date().toISOString() : existingRow?.access_code_confirmed_at || new Date().toISOString())
+    : null;
+
   const payload = {
     account_id: accountId,
     normalized_address: key.normalized_address,
     display_address: key.display_address,
-    property_name: normalizeString(input.property_name) || null,
-    property_type: normalizeString(input.property_type) || null,
-    building: normalizeString(input.building) || null,
-    access_note: normalizeString(input.access_note) || null,
-    parking_note: normalizeString(input.parking_note) || null,
-    entry_note: normalizeString(input.entry_note) || null,
-    business_hours: normalizeString(input.business_hours) || null,
-    shared_note: normalizeString(input.shared_note) || null,
-    warning_flags: normalizeWarningFlags(input.warning_flags),
+    property_name: getPreservedString(input, 'property_name', existingRow, preserveExisting),
+    property_type: getPreservedString(input, 'property_type', existingRow, preserveExisting),
+    building: getPreservedString(input, 'building', existingRow, preserveExisting),
+    access_code: accessCode,
+    access_code_confirmed_at: accessCodeConfirmedAt,
+    access_code_source: accessCodeSource,
+    access_note: getPreservedString(input, 'access_note', existingRow, preserveExisting),
+    parking_note: getPreservedString(input, 'parking_note', existingRow, preserveExisting),
+    entry_note: getPreservedString(input, 'entry_note', existingRow, preserveExisting),
+    business_hours: getPreservedString(input, 'business_hours', existingRow, preserveExisting),
+    shared_note: getPreservedString(input, 'shared_note', existingRow, preserveExisting),
+    warning_flags: getPreservedWarningFlags(input, existingRow, preserveExisting),
     updated_at: new Date().toISOString()
   };
-
-  const existingRow = await loadPropertyIntel(supabase, accountId, stop);
 
   if (existingRow?.id) {
     const { error } = await supabase

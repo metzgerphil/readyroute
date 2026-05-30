@@ -1,31 +1,49 @@
-const appJson = require('./app.json');
 const googleMapsApiKey = process.env.EXPO_PUBLIC_GOOGLE_MAPS_API_KEY || undefined;
 const bundleIdentifier = 'com.readyroute.driverapp';
+
 module.exports = {
   expo: {
-    ...appJson.expo,
-    extra: {
-      eas: {
-        projectId: "3de49618-8973-4330-b335-f2901d75ac46"
-      }
+    name: 'Ready Route',
+    slug: 'driver-app',
+    version: '1.0.0',
+    orientation: 'portrait',
+    icon: './assets/icon.png',
+    userInterfaceStyle: 'light',
+    newArchEnabled: true,
+    splash: {
+      image: './assets/splash-icon.png',
+      resizeMode: 'contain',
+      backgroundColor: '#ffffff'
     },
     ios: {
-      ...appJson.expo.ios,
-      bundleIdentifier: appJson.expo.ios?.bundleIdentifier || bundleIdentifier,
+      supportsTablet: true,
+      bundleIdentifier,
       infoPlist: {
-        ...(appJson.expo.ios?.infoPlist || {}),
-        ITSAppUsesNonExemptEncryption: false
+        ITSAppUsesNonExemptEncryption: false,
+        LSApplicationQueriesSchemes: [
+          'comgooglemaps',
+          'maps'
+        ],
+        NSLocationWhenInUseUsageDescription:
+          'ReadyRoute uses your location while you are on route so your manager can see route progress, support dispatch decisions, and locate drivers during the workday.'
       },
       config: {
-        ...(appJson.expo.ios?.config || {}),
         ...(googleMapsApiKey ? { googleMapsApiKey } : {})
       }
     },
     android: {
-      ...appJson.expo.android,
-      package: appJson.expo.android?.package || bundleIdentifier,
+      package: bundleIdentifier,
+      adaptiveIcon: {
+        foregroundImage: './assets/adaptive-icon.png',
+        backgroundColor: '#ffffff'
+      },
+      edgeToEdgeEnabled: true,
+      permissions: [
+        'ACCESS_COARSE_LOCATION',
+        'ACCESS_FINE_LOCATION',
+        'ACCESS_BACKGROUND_LOCATION'
+      ],
       config: {
-        ...(appJson.expo.android?.config || {}),
         ...(googleMapsApiKey
           ? {
               googleMaps: {
@@ -33,6 +51,14 @@ module.exports = {
               }
             }
           : {})
+      }
+    },
+    web: {
+      favicon: './assets/favicon.png'
+    },
+    extra: {
+      eas: {
+        projectId: '3de49618-8973-4330-b335-f2901d75ac46'
       }
     }
   }

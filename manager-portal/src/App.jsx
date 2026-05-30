@@ -8,6 +8,7 @@ import { SelectedCsaProvider } from './context/SelectedCsaContext';
 import { getManagerToken } from './services/auth';
 
 const DashboardPage = lazy(() => import('./pages/DashboardPage'));
+const AccessCodesPage = lazy(() => import('./pages/AccessCodesPage'));
 const CsaPage = lazy(() => import('./pages/CsaPage'));
 const DebugGoogleMapPage = lazy(() => import('./pages/DebugGoogleMapPage'));
 const DriversPage = lazy(() => import('./pages/DriversPage'));
@@ -61,6 +62,7 @@ function ProtectedApp() {
               <Route element={<RecordsPage />} path="/records" />
               <Route element={<DriversPage />} path="/drivers" />
               <Route element={<VehiclesPage />} path="/vehicles" />
+              <Route element={<AccessCodesPage />} path="/access-codes" />
               <Route element={<VedrPage />} path="/vedr" />
               <Route element={<SetupPage />} path="/setup" />
               <Route element={<FleetMapPage />} path="/fleet-map" />

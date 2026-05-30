@@ -440,6 +440,9 @@ create table if not exists public.property_intel (
   property_name text,
   property_type text,
   building text,
+  access_code text,
+  access_code_confirmed_at timestamptz,
+  access_code_source text,
   access_note text,
   parking_note text,
   entry_note text,
@@ -638,6 +641,9 @@ alter table public.property_intel add column if not exists display_address text;
 alter table public.property_intel add column if not exists property_name text;
 alter table public.property_intel add column if not exists property_type text;
 alter table public.property_intel add column if not exists building text;
+alter table public.property_intel add column if not exists access_code text;
+alter table public.property_intel add column if not exists access_code_confirmed_at timestamptz;
+alter table public.property_intel add column if not exists access_code_source text;
 alter table public.property_intel add column if not exists access_note text;
 alter table public.property_intel add column if not exists parking_note text;
 alter table public.property_intel add column if not exists entry_note text;

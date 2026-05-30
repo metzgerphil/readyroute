@@ -13,7 +13,6 @@ describe('shellNavigation helpers', () => {
     expect(getDrawerMenuItems('manager').map((item) => item.label)).toEqual([
       'Map View',
       'Routes',
-      'Notifications',
       'Vehicles',
       'Settings'
     ]);

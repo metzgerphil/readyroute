@@ -19,6 +19,14 @@ export function getRemainingStops(dashboard) {
   return Math.max(0, Number(dashboard?.total_stops || 0) - Number(dashboard?.completed_stops || 0));
 }
 
+export function getRemainingDeliveries(dashboard) {
+  return Math.max(0, Number(dashboard?.delivery_stops || dashboard?.total_delivery_stops || 0) - Number(dashboard?.delivery_stops_completed || 0));
+}
+
+export function getRemainingPickups(dashboard) {
+  return Math.max(0, Number(dashboard?.pickup_stops || dashboard?.total_pickup_stops || 0) - Number(dashboard?.pickup_stops_completed || 0));
+}
+
 export function getFleetStopsPerHour(routeRows) {
   const activeValues = (routeRows || [])
     .filter((row) => Boolean(row.name))
@@ -50,6 +58,10 @@ function buildFallbackDriverRows(routes) {
       current_stop_address: pendingStop?.address || null,
       total_stops: Number(route.total_stops || 0),
       completed_stops: Number(route.completed_stops || 0),
+      delivery_stops: Number(route.delivery_stops || route.delivery_stop_count || route.total_stops || 0),
+      delivery_stops_completed: Number(route.delivery_stops_completed || 0),
+      pickup_stops: Number(route.pickup_stops || route.pickup_stop_count || 0),
+      pickup_stops_completed: Number(route.pickup_stops_completed || 0),
       time_commits_total: Number(route.time_commits_total || 0),
       time_commits_completed: Number(route.time_commits_completed || 0),
       stops_per_hour: route.stops_per_hour ?? null,
@@ -66,6 +78,12 @@ export function buildFallbackDashboard(routes, date) {
     date,
     total_stops: safeRoutes.reduce((sum, route) => sum + Number(route.total_stops || 0), 0),
     completed_stops: safeRoutes.reduce((sum, route) => sum + Number(route.completed_stops || 0), 0),
+    total_delivery_stops: safeRoutes.reduce((sum, route) => sum + Number(route.delivery_stops || route.delivery_stop_count || route.total_stops || 0), 0),
+    delivery_stops: safeRoutes.reduce((sum, route) => sum + Number(route.delivery_stops || route.delivery_stop_count || route.total_stops || 0), 0),
+    delivery_stops_completed: safeRoutes.reduce((sum, route) => sum + Number(route.delivery_stops_completed || 0), 0),
+    total_pickup_stops: safeRoutes.reduce((sum, route) => sum + Number(route.pickup_stops || route.pickup_stop_count || 0), 0),
+    pickup_stops: safeRoutes.reduce((sum, route) => sum + Number(route.pickup_stops || route.pickup_stop_count || 0), 0),
+    pickup_stops_completed: safeRoutes.reduce((sum, route) => sum + Number(route.pickup_stops_completed || 0), 0),
     sync_status: {
       routes_today: safeRoutes.length,
       routes_assigned: safeRoutes.filter((route) => Boolean(route.driver_id)).length,

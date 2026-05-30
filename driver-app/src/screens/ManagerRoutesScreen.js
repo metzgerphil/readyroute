@@ -238,7 +238,7 @@ function EmptyRoutesState({ hasActiveFilters }) {
       <Text style={styles.emptyStateBody}>
         {hasActiveFilters
           ? ‘Try clearing your search or filter to see all routes.’
-          : ‘Upload routes manually to start reviewing today’s work areas.’}
+          : ‘Upload routes manually to start reviewing today\’s work areas.’}
       </Text>
     </AppCard>
   );

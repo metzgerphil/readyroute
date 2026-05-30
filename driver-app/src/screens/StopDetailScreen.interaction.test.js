@@ -94,6 +94,34 @@ describe('StopDetailScreen interactions', () => {
     expect(api.get).toHaveBeenCalledWith('/routes/stops/stop-1');
   });
 
+  it('lets a driver add building access info for future stops', async () => {
+    const alertSpy = jest.spyOn(Alert, 'alert').mockImplementation(() => {});
+    const screen = await renderAndFlush();
+
+    await screen.findByText('Add access info');
+
+    fireEvent.press(screen.getByText('Add access info'));
+    fireEvent.changeText(screen.getByPlaceholderText('Example: #4455'), '#4455');
+    fireEvent.changeText(screen.getByPlaceholderText('Example: Use left call box or side gate'), 'Use the south gate call box');
+    fireEvent.press(screen.getByText('Save access info'));
+
+    await waitFor(() => {
+      expect(api.patch).toHaveBeenCalledWith('/routes/stops/stop-1/property-intel', {
+        access_code: '#4455',
+        access_note: 'Use the south gate call box',
+        entry_note: 'Use the south gate call box',
+        warning_flags: ['gate']
+      });
+    });
+
+    expect(alertSpy).toHaveBeenCalledWith(
+      'Access info saved',
+      'This access info will show for future deliveries to this building.'
+    );
+
+    alertSpy.mockRestore();
+  });
+
   it('saves the current location as the corrected pin', async () => {
     const alertSpy = jest.spyOn(Alert, 'alert').mockImplementation(() => {});
     const screen = await renderAndFlush();

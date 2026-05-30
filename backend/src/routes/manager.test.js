@@ -4110,6 +4110,7 @@ test('PATCH /manager/routes/stops/:stop_id/property-intel saves building intel f
       body: JSON.stringify({
         property_type: 'apartment',
         building: 'Building B',
+        access_code: '4455',
         access_note: 'Gate code 4455 at south entrance',
         parking_note: 'Visitor parking near leasing office',
         warning_flags: ['gate', 'stairs']
@@ -4120,6 +4121,9 @@ test('PATCH /manager/routes/stops/:stop_id/property-intel saves building intel f
     assert.deepEqual(await response.json(), { ok: true });
     assert.equal(savedPayload.property_type, 'apartment');
     assert.equal(savedPayload.building, 'Building B');
+    assert.equal(savedPayload.access_code, '4455');
+    assert.equal(savedPayload.access_code_source, 'manager');
+    assert.ok(savedPayload.access_code_confirmed_at);
     assert.equal(savedPayload.access_note, 'Gate code 4455 at south entrance');
     assert.deepEqual(savedPayload.warning_flags, ['gate', 'stairs']);
   } finally {
@@ -4692,6 +4696,143 @@ test('POST /manager/manager-users/:id/password-reset falls back to a shareable l
     assert.equal(body.email_delivery, 'not_configured');
     assert.match(body.reset_url, /\/reset-password\?token=/);
     assert.equal(body.manager_user.email, 'vladfed0801@gmail.com');
+  } finally {
+    await server.close();
+  }
+});
+
+test('GET /manager/property-intel returns access-code records for the manager account', async () => {
+  const supabase = new MockSupabase((query) => {
+    if (query.table === 'accounts' && query.operation === 'select') {
+      return {
+        data: {
+          id: 'acct-1',
+          company_name: 'Bridge Transportation Inc',
+          manager_email: 'owner@example.com'
+        },
+        error: null
+      };
+    }
+
+    if (query.table === 'property_intel' && query.operation === 'select') {
+      assert.equal(query.filters.find((filter) => filter.column === 'account_id')?.value, 'acct-1');
+      return {
+        data: [
+          {
+            id: 'intel-1',
+            normalized_address: '250 w 15th ave',
+            display_address: '250 W 15TH AVE',
+            property_name: 'Fifteenth Apartments',
+            property_type: null,
+            building: null,
+            access_code: '04563',
+            access_code_confirmed_at: '2026-05-28T10:00:00.000Z',
+            access_code_source: 'imported_gate_codes_xlsx',
+            access_note: null,
+            parking_note: null,
+            entry_note: 'Use call box',
+            business_hours: null,
+            shared_note: null,
+            warning_flags: ['gate'],
+            updated_at: '2026-05-28T10:00:00.000Z'
+          }
+        ],
+        error: null
+      };
+    }
+
+    throw new Error(`Unexpected query ${query.table}:${query.operation}`);
+  });
+
+  const server = await startTestServer({ supabase });
+
+  try {
+    const response = await fetch(`${server.baseUrl}/manager/property-intel`, {
+      headers: {
+        Authorization: `Bearer ${signManagerToken()}`
+      }
+    });
+
+    assert.equal(response.status, 200);
+    const body = await response.json();
+    assert.equal(body.property_intel.length, 1);
+    assert.equal(body.property_intel[0].display_address, '250 W 15TH AVE');
+    assert.equal(body.property_intel[0].access_code, '04563');
+    assert.deepEqual(body.property_intel[0].warning_flags, ['gate']);
+  } finally {
+    await server.close();
+  }
+});
+
+test('PATCH /manager/property-intel/:id updates an access code for the manager account', async () => {
+  let updatePayload = null;
+  const supabase = new MockSupabase((query) => {
+    if (query.table === 'accounts' && query.operation === 'select') {
+      return {
+        data: {
+          id: 'acct-1',
+          company_name: 'Bridge Transportation Inc',
+          manager_email: 'owner@example.com'
+        },
+        error: null
+      };
+    }
+
+    if (query.table === 'property_intel' && query.operation === 'select' && query.mode === 'maybeSingle') {
+      assert.equal(query.filters.find((filter) => filter.column === 'id')?.value, 'intel-1');
+      assert.equal(query.filters.find((filter) => filter.column === 'account_id')?.value, 'acct-1');
+      return {
+        data: {
+          id: 'intel-1',
+          account_id: 'acct-1',
+          access_code_confirmed_at: '2026-05-28T10:00:00.000Z'
+        },
+        error: null
+      };
+    }
+
+    if (query.table === 'property_intel' && query.operation === 'update') {
+      updatePayload = query.payload;
+      assert.equal(query.filters.find((filter) => filter.column === 'id')?.value, 'intel-1');
+      assert.equal(query.filters.find((filter) => filter.column === 'account_id')?.value, 'acct-1');
+      return {
+        data: [
+          {
+            id: 'intel-1',
+            normalized_address: '250 w 15th ave',
+            display_address: '250 W 15TH AVE',
+            ...query.payload
+          }
+        ],
+        error: null
+      };
+    }
+
+    throw new Error(`Unexpected query ${query.table}:${query.operation}:${query.mode}`);
+  });
+
+  const server = await startTestServer({ supabase });
+
+  try {
+    const response = await fetch(`${server.baseUrl}/manager/property-intel/intel-1`, {
+      method: 'PATCH',
+      headers: {
+        Authorization: `Bearer ${signManagerToken()}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        property_name: 'Fifteenth Apartments',
+        access_code: '9999#',
+        access_code_source: 'manager',
+        entry_note: 'Use north gate'
+      })
+    });
+
+    assert.equal(response.status, 200);
+    const body = await response.json();
+    assert.equal(body.property_intel.access_code, '9999#');
+    assert.equal(body.property_intel.entry_note, 'Use north gate');
+    assert.equal(updatePayload.access_code_source, 'manager');
   } finally {
     await server.close();
   }

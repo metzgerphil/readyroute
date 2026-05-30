@@ -26,7 +26,7 @@ const {
   bootstrapApartmentRecords,
   confirmApartmentFloor
 } = require('../services/apartmentIntelligence');
-const { attachPropertyIntel, attachPropertyIntelToStops } = require('../services/propertyIntel');
+const { attachPropertyIntel, attachPropertyIntelToStops, savePropertyIntel } = require('../services/propertyIntel');
 const {
   applyLocationCorrectionsToStops,
   attachLocationCorrection,
@@ -2069,6 +2069,61 @@ function createRoutesRouter(options = {}) {
     } catch (error) {
       console.error('Stop note endpoint failed:', error);
       return res.status(500).json({ error: 'Failed to save stop note' });
+    }
+  });
+
+  router.patch('/stops/:stop_id/property-intel', requireDriver, async (req, res) => {
+    const stopId = req.params.stop_id;
+
+    try {
+      const { data: stop, error: stopError } = await loadAuthorizedStop(supabase, {
+        stopId,
+        driverId: req.driver.driver_id,
+        accountId: req.driver.account_id
+      });
+
+      if (stopError) {
+        console.error('Driver property intel lookup failed:', stopError);
+        return res.status(500).json({ error: 'Failed to validate stop assignment' });
+      }
+
+      if (!stop) {
+        return res.status(403).json({ error: 'Stop not assigned to this driver' });
+      }
+
+      const { data: stopRecord, error: recordError } = await supabase
+        .from('stops')
+        .select('id, address, address_line2, contact_name, is_business')
+        .eq('id', stopId)
+        .maybeSingle();
+
+      if (recordError) {
+        console.error('Driver property intel stop lookup failed:', recordError);
+        return res.status(500).json({ error: 'Failed to load stop for property intel' });
+      }
+
+      if (!stopRecord) {
+        return res.status(404).json({ error: 'Stop not found' });
+      }
+
+      await savePropertyIntel(
+        supabase,
+        req.driver.account_id,
+        stopRecord,
+        {
+          access_code: req.body?.access_code,
+          access_code_source: 'driver',
+          access_note: req.body?.access_note,
+          entry_note: req.body?.entry_note,
+          warning_flags: req.body?.warning_flags
+        },
+        { preserveExisting: true }
+      );
+
+      return res.status(200).json({ ok: true });
+    } catch (error) {
+      console.error('Driver property intel save endpoint failed:', error);
+      return res.status(500).json({ error: 'Failed to save property intel' });
     }
   });
 

@@ -23,6 +23,7 @@ const navGroups = [
       { to: '/time-commits', label: 'P&D Time Commit', icon: 'commits' },
       { to: '/drivers', label: 'Drivers', icon: 'drivers' },
       { to: '/vehicles', label: 'Vehicles', icon: 'vehicles' },
+      { to: '/access-codes', label: 'Access Codes', icon: 'access' },
       { to: '/records', label: 'Records', icon: 'records' }
     ]
   },
@@ -90,6 +91,13 @@ function SidebarIcon({ type }) {
       return (
         <svg aria-hidden="true" className="sidebar-link-icon-svg" viewBox="0 0 24 24">
           <path d="M5 16l1.3-5.2A2 2 0 0 1 8.24 9h7.52a2 2 0 0 1 1.94 1.8L19 16M4 16h16v3H4zm3 3a1.5 1.5 0 1 1 0 3 1.5 1.5 0 0 1 0-3zm10 0a1.5 1.5 0 1 1 0 3 1.5 1.5 0 0 1 0-3z" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+      );
+    case 'access':
+      return (
+        <svg aria-hidden="true" className="sidebar-link-icon-svg" viewBox="0 0 24 24">
+          <path d="M7 11V8a5 5 0 0 1 10 0v3M6 11h12v9H6z" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+          <path d="M12 15v2" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
         </svg>
       );
     case 'vedr':
