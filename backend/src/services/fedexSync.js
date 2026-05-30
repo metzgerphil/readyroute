@@ -118,7 +118,7 @@ async function loadAccountsForScheduledSync(supabase, accountIds = null) {
 async function loadConnectedFedexAccount(supabase, accountId) {
   const { data, error } = await supabase
     .from('fedex_accounts')
-    .select('id, nickname, account_number, connection_status, is_default, fcc_username, fcc_password_encrypted')
+    .select('id, nickname, account_number, connection_status, is_default')
     .eq('account_id', accountId)
     .eq('connection_status', 'connected')
     .is('disconnected_at', null)
@@ -293,28 +293,6 @@ function createFedexSyncService(options = {}) {
       });
 
       run.summary = 'No connected FedEx account configured.';
-      return buildSyncResponse({
-        triggerSource,
-        run,
-        backgroundSyncEnabled: false
-      });
-    }
-
-    if (!fedexAccount.fcc_username || !fedexAccount.fcc_password_encrypted) {
-      run = await updateSyncRun(supabase, run.id, {
-        run_status: 'skipped',
-        fedex_account_id: fedexAccount.id,
-        error_summary: 'FCC credentials are missing for the default FedEx account.',
-        details: {
-          ...run.details,
-          reason: 'fcc_credentials_missing',
-          route_sync_settings: routeSyncSettings,
-          fedex_account_number: fedexAccount.account_number
-        },
-        finished_at: nowProvider().toISOString()
-      });
-
-      run.summary = 'Save the FCC username and password for the default FedEx account before syncing.';
       return buildSyncResponse({
         triggerSource,
         run,
@@ -532,24 +510,6 @@ function createFedexSyncService(options = {}) {
       });
 
       run.summary = 'No connected FedEx account configured.';
-      return buildSyncResponse({ triggerSource: 'progress_sync', run, backgroundSyncEnabled: false });
-    }
-
-    if (!fedexAccount.fcc_username || !fedexAccount.fcc_password_encrypted) {
-      run = await updateSyncRun(supabase, run.id, {
-        run_status: 'skipped',
-        fedex_account_id: fedexAccount.id,
-        error_summary: 'FCC credentials are missing for the default FedEx account.',
-        details: {
-          ...run.details,
-          reason: 'fcc_credentials_missing',
-          route_sync_settings: routeSyncSettings,
-          fedex_account_number: fedexAccount.account_number
-        },
-        finished_at: nowProvider().toISOString()
-      });
-
-      run.summary = 'Save the FCC username and password for the default FedEx account before syncing progress.';
       return buildSyncResponse({ triggerSource: 'progress_sync', run, backgroundSyncEnabled: false });
     }
 

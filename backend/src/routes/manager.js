@@ -7,7 +7,6 @@ const defaultSupabase = require('../lib/supabase');
 const { requireManager } = require('../middleware/auth');
 const { parseMultipartForm } = require('../middleware/multipart');
 const { createBillingService } = require('../services/billing');
-const { encryptFedexSecret } = require('../services/fedexCredentials');
 const { isFccAutomationEnabled } = require('../services/fedexSync');
 const { attachApartmentIntelligenceToStops } = require('../services/apartmentIntelligence');
 const { isUsableCoordinate, summarizeCoordinateHealth } = require('../services/coordinates');
