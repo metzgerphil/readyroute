@@ -7,7 +7,6 @@ const defaultSupabase = require('../lib/supabase');
 const { requireManager } = require('../middleware/auth');
 const { parseMultipartForm } = require('../middleware/multipart');
 const { createBillingService } = require('../services/billing');
-const { encryptFedexSecret } = require('../services/fedexCredentials');
 const { isFccAutomationEnabled } = require('../services/fedexSync');
 const { attachApartmentIntelligenceToStops } = require('../services/apartmentIntelligence');
 const { isUsableCoordinate, summarizeCoordinateHealth } = require('../services/coordinates');
@@ -914,36 +913,6 @@ function normalizeFedexAccountNumber(value) {
   return String(value || '').trim().replace(/\s+/g, '');
 }
 
-function buildFccPortalAccountNumber(accountId, username) {
-  const digest = crypto
-    .createHash('sha256')
-    .update(`${accountId || 'account'}:${String(username || '').trim().toLowerCase()}`)
-    .digest('hex')
-    .slice(0, 12)
-    .toUpperCase();
-
-  return `FCC${digest}`;
-}
-
-function withFccPortalDefaults(input, accountId) {
-  if (!input.fcc_username) {
-    return input;
-  }
-
-  return {
-    ...input,
-    nickname: input.nickname || 'FCC Portal Access',
-    account_number: input.account_number || buildFccPortalAccountNumber(accountId, input.fcc_username),
-    billing_contact_name: input.billing_contact_name || 'FCC Portal',
-    billing_company_name: input.billing_company_name || 'ReadyRoute FCC Access',
-    billing_address_line1: input.billing_address_line1 || 'FCC Portal Credential',
-    billing_city: input.billing_city || 'FCC Portal',
-    billing_state_or_province: input.billing_state_or_province || 'NA',
-    billing_postal_code: input.billing_postal_code || '00000',
-    billing_country_code: input.billing_country_code || 'US',
-    connection_status: input.connection_status === 'not_started' ? 'connected' : input.connection_status
-  };
-}
 
 function maskFedexAccountNumber(value) {
   const normalized = normalizeFedexAccountNumber(value);
@@ -1087,9 +1056,6 @@ function parseFedexAccountInput(body = {}) {
     billing_country_code: String(body.billing_country_code || 'US').trim().toUpperCase(),
     connection_status: String(body.connection_status || 'not_started').trim().toLowerCase(),
     connection_reference: String(body.connection_reference || '').trim(),
-    fcc_username: String(body.fcc_username || '').trim(),
-    fcc_password: String(body.fcc_password || ''),
-    clear_saved_fcc_password: body.clear_saved_fcc_password === true
   };
 }
 
@@ -1118,44 +1084,9 @@ function validateFedexAccountInput(input) {
     return 'connection_status must be not_started, pending_mfa, connected, or failed';
   }
 
-  if (input.fcc_username.length > 120) {
-    return 'fcc_username must be 120 characters or fewer';
-  }
-
-  if (input.fcc_password && !input.fcc_username) {
-    return 'fcc_username is required when saving an FCC password';
-  }
-
   return null;
 }
 
-function isFccPortalCredentialInput(input) {
-  return (
-    Boolean(input.fcc_username) ||
-    /^FCC/i.test(input.account_number || '') ||
-    /fcc portal/i.test(input.nickname || '')
-  );
-}
-
-function validateFccPortalCredentialInput(input, { isExistingAccount = false, hasSavedPassword = false } = {}) {
-  if (!isFccPortalCredentialInput(input)) {
-    return null;
-  }
-
-  if (!input.fcc_username) {
-    return 'MyBizAccount / FCC username is required for FCC Portal Access.';
-  }
-
-  if (!isExistingAccount && !input.fcc_password) {
-    return 'MyBizAccount password is required for FCC Portal Access.';
-  }
-
-  if (isExistingAccount && !input.fcc_password && !hasSavedPassword && !input.clear_saved_fcc_password) {
-    return 'Re-enter the MyBizAccount password before saving this FCC Portal Access login.';
-  }
-
-  return null;
-}
 
 function normalizeEmail(value) {
   return String(value || '').trim().toLowerCase();
@@ -3003,17 +2934,9 @@ function createManagerRouter(options = {}) {
   });
 
   router.post('/fedex-accounts', requireManager, async (req, res) => {
-    const input = withFccPortalDefaults(parseFedexAccountInput(req.body), req.account.account_id);
+    const input = parseFedexAccountInput(req.body);
 
-    if (!isFccAutomationEnabled() && isFccPortalCredentialInput(input)) {
-      return res.status(403).json({
-        error: 'FCC/MyBizAccount credential collection is paused pending FedEx-approved access.'
-      });
-    }
-
-    const validationError =
-      validateFedexAccountInput(input) ||
-      validateFccPortalCredentialInput(input);
+    const validationError = validateFedexAccountInput(input);
 
     if (validationError) {
       return res.status(400).json({ error: validationError });
@@ -3028,9 +2951,6 @@ function createManagerRouter(options = {}) {
 
       const shouldBeDefault = Boolean(req.body?.is_default) || existingAccounts.accounts.filter((account) => !account.disconnected_at).length === 0;
       const timestamp = nowProvider().toISOString();
-      const encryptedFccPassword = input.fcc_password
-        ? encryptFedexSecret(input.fcc_password)
-        : null;
 
       if (shouldBeDefault) {
         const { error: clearDefaultError } = await supabase
@@ -3064,9 +2984,6 @@ function createManagerRouter(options = {}) {
           billing_country_code: input.billing_country_code,
           connection_status: input.connection_status,
           connection_reference: input.connection_reference || null,
-          fcc_username: input.fcc_username || null,
-          fcc_password_encrypted: encryptedFccPassword,
-          fcc_password_updated_at: encryptedFccPassword ? timestamp : null,
           last_verified_at: input.connection_status === 'connected' ? timestamp : null,
           is_default: shouldBeDefault,
           created_by_manager_user_id: req.account.manager_user_id || null,
@@ -3101,13 +3018,7 @@ function createManagerRouter(options = {}) {
 
   router.patch('/fedex-accounts/:fedexAccountId', requireManager, async (req, res) => {
     const fedexAccountId = String(req.params.fedexAccountId || '').trim();
-    const input = withFccPortalDefaults(parseFedexAccountInput(req.body), req.account.account_id);
-
-    if (!isFccAutomationEnabled() && isFccPortalCredentialInput(input)) {
-      return res.status(403).json({
-        error: 'FCC/MyBizAccount credential collection is paused pending FedEx-approved access.'
-      });
-    }
+    const input = parseFedexAccountInput(req.body);
 
     const validationError = validateFedexAccountInput(input);
 
@@ -3130,20 +3041,7 @@ function createManagerRouter(options = {}) {
         return res.status(404).json({ error: 'FedEx account not found' });
       }
 
-      const fccValidationError = validateFccPortalCredentialInput(input, {
-        isExistingAccount: true,
-        hasSavedPassword: Boolean(existingFedexAccount.account.fcc_password_encrypted)
-      });
-
-      if (fccValidationError) {
-        return res.status(400).json({ error: fccValidationError });
-      }
-
       const timestamp = nowProvider().toISOString();
-      const encryptedFccPassword = input.fcc_password
-        ? encryptFedexSecret(input.fcc_password)
-        : existingFedexAccount.account.fcc_password_encrypted;
-      const shouldClearSavedPassword = input.clear_saved_fcc_password === true;
       const { data: updatedAccount, error: updateError } = await supabase
         .from('fedex_accounts')
         .update({
@@ -3159,13 +3057,6 @@ function createManagerRouter(options = {}) {
           billing_country_code: input.billing_country_code,
           connection_status: input.connection_status,
           connection_reference: input.connection_reference || null,
-          fcc_username: input.fcc_username || null,
-          fcc_password_encrypted: shouldClearSavedPassword ? null : encryptedFccPassword,
-          fcc_password_updated_at: shouldClearSavedPassword
-            ? null
-            : input.fcc_password
-              ? timestamp
-              : existingFedexAccount.account.fcc_password_updated_at || null,
           last_verified_at: input.connection_status === 'connected'
             ? (existingFedexAccount.account.last_verified_at || timestamp)
             : null,

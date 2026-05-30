@@ -3,7 +3,6 @@ const path = require('path');
 const { execFile } = require('child_process');
 const { promisify } = require('util');
 
-const { decryptFedexSecret } = require('./fedexCredentials');
 const { normalizeRouteWorkAreaName, parseFccWorkAreaIdentity } = require('./routeIdentity');
 
 const execFileAsync = promisify(execFile);
@@ -66,61 +65,8 @@ function createCliFedexFccAdapter(options = {}) {
     return null;
   }
 
-  async function runFccAutomation({ account, fedexAccount, workDate, routeSyncSettings, triggerSource, runMode }) {
-    const username = String(fedexAccount?.fcc_username || '').trim();
-    const password = decryptFedexSecret(fedexAccount?.fcc_password_encrypted || null);
-
-    if (!username || !password) {
-      throw new Error('FCC credentials are missing for the default FedEx account.');
-    }
-
-    const runWorkingDirectory = path.join(
-      getBaseWorkingDirectory(),
-      sanitizeSegment(account?.id, 'account'),
-      sanitizeSegment(workDate, 'work-date'),
-      `${Date.now()}`
-    );
-    const sessionStatePath = getSessionStatePath(fedexAccount);
-
-    await fs.mkdir(runWorkingDirectory, { recursive: true });
-    await fs.mkdir(path.dirname(sessionStatePath), { recursive: true });
-
-    const environment = {
-      ...process.env,
-      READYROUTE_FCC_USERNAME: username,
-      READYROUTE_FCC_PASSWORD: password,
-      READYROUTE_FCC_WORK_DATE: workDate,
-      READYROUTE_FCC_ACCOUNT_NUMBER: String(fedexAccount?.account_number || ''),
-      READYROUTE_FCC_CONNECTION_REFERENCE: String(fedexAccount?.connection_reference || ''),
-      READYROUTE_FCC_TIMEZONE: String(routeSyncSettings?.operations_timezone || account?.operations_timezone || ''),
-      READYROUTE_FCC_TRIGGER: String(triggerSource || 'manual'),
-      READYROUTE_FCC_DOWNLOAD_DIR: runWorkingDirectory,
-      READYROUTE_FCC_SESSION_STATE_PATH: sessionStatePath,
-      READYROUTE_FCC_RUN_MODE: String(runMode || 'daily')
-    };
-
-    const { stdout, stderr } = await runCommand({
-      executable: command,
-      args: commandArgs,
-      env: environment
-    });
-
-    if (stderr) {
-      logger.warn('FCC automation stderr:', stderr);
-    }
-
-    let payload;
-    try {
-      payload = JSON.parse(String(stdout || '{}'));
-    } catch (_error) {
-      throw new Error('FCC automation returned invalid JSON.');
-    }
-
-    return {
-      payload,
-      runWorkingDirectory,
-      sessionStatePath
-    };
+  async function runFccAutomation(_options) {
+    throw new Error('FCC portal automation is disabled. Download manifests from the FCC portal and upload them to ReadyRoute manually.');
   }
 
   return {

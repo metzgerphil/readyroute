@@ -1341,6 +1341,9 @@ async function collectWorkAreaSnapshot(page, config, workAreaName, workDate, dow
 }
 
 async function main() {
+  console.error(JSON.stringify({ error: 'FCC portal automation is disabled. Download manifests from the FCC portal and upload them to ReadyRoute manually.' }));
+  process.exit(1);
+
   const config = resolveFccAutomationConfig(process.env);
   const username = requiredEnv('READYROUTE_FCC_USERNAME');
   const password = requiredEnv('READYROUTE_FCC_PASSWORD');

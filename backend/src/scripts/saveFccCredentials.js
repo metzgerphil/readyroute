@@ -1,12 +1,9 @@
 #!/usr/bin/env node
 
-const path = require('path');
-const readline = require('readline');
-
-require('dotenv').config({ path: path.join(__dirname, '../../.env') });
-
-const supabase = require('../lib/supabase');
-const { encryptFedexSecret } = require('../services/fedexCredentials');
+// FCC credential management is disabled pending FedEx-approved access.
+// Manifests must be downloaded manually from the FCC portal and uploaded to ReadyRoute.
+console.error('FCC credential management is disabled. Do not store FCC/MyBizAccount credentials in ReadyRoute.');
+process.exit(1);
 
 const DEFAULT_ACCOUNT_ID = '2f1f7045-93ec-42d4-aa61-272077496482';
 const DEFAULT_FEDEX_ACCOUNT_ID = 'f616f2e7-6095-4581-9446-7c8a8df24058';
