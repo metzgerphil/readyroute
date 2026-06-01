@@ -11,7 +11,7 @@ module.exports = {
     slug: 'driver-app',
     version: '1.0.0',
     orientation: 'portrait',
-    icon: './assets/icon.png',
+    icon: './assets/readyroute-app-icon.png',
     userInterfaceStyle: 'light',
     newArchEnabled: true,
     splash: {
@@ -38,7 +38,7 @@ module.exports = {
     android: {
       package: bundleIdentifier,
       adaptiveIcon: {
-        foregroundImage: './assets/adaptive-icon.png',
+        foregroundImage: './assets/readyroute-adaptive-icon.png',
         backgroundColor: '#ffffff'
       },
       edgeToEdgeEnabled: true,

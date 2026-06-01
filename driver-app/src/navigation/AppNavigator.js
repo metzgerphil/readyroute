@@ -10,12 +10,14 @@ import api from '../services/api';
 import { saveLastPortalMode, saveSessionTokens } from '../services/auth';
 import HomeScreen from '../screens/HomeScreen';
 import LoginScreen from '../screens/LoginScreen';
+import ManagerAccessCodesScreen from '../screens/ManagerAccessCodesScreen';
 import ManagerDashboardScreen from '../screens/ManagerDashboardScreen';
 import ManagerDriversScreen from '../screens/ManagerDriversScreen';
 import ManagerManifestScreen from '../screens/ManagerManifestScreen';
 import ManagerMapScreen from '../screens/ManagerMapScreen';
 import ManagerRoutesScreen from '../screens/ManagerRoutesScreen';
 import ManagerSettingsScreen from '../screens/ManagerSettingsScreen';
+import ManagerVedrScreen from '../screens/ManagerVedrScreen';
 import ManagerVehiclesScreen from '../screens/ManagerVehiclesScreen';
 import ManifestScreen from '../screens/ManifestScreen';
 import MyDriveScreen from '../screens/MyDriveScreen';
@@ -28,11 +30,13 @@ const SHELL_NAVIGATION_SCREENS = new Set([
   'Home',
   'Manifest',
   'ManagerDashboard',
+  'ManagerAccessCodes',
   'ManagerDrivers',
   'ManagerManifest',
   'ManagerMap',
   'ManagerRoutes',
   'ManagerSettings',
+  'ManagerVedr',
   'ManagerVehicles',
   'MyDrive'
 ]);
@@ -340,10 +344,32 @@ export default function AppNavigator() {
                 </TrackedScreen>
               )}
             </Stack.Screen>
+            <Stack.Screen name="ManagerAccessCodes" options={{ headerShown: false }}>
+              {(props) => (
+                <TrackedScreen navigation={props.navigation} onFocus={attachNavigation} screenName="ManagerAccessCodes">
+                  <ManagerAccessCodesScreen
+                    {...props}
+                    csaWorkspaceVersion={managerWorkspaceVersion + managerDataVersion}
+                    identity={identity}
+                  />
+                </TrackedScreen>
+              )}
+            </Stack.Screen>
             <Stack.Screen name="ManagerVehicles" options={{ headerShown: false }}>
               {(props) => (
                 <TrackedScreen navigation={props.navigation} onFocus={attachNavigation} screenName="ManagerVehicles">
                   <ManagerVehiclesScreen
+                    {...props}
+                    csaWorkspaceVersion={managerWorkspaceVersion + managerDataVersion}
+                    identity={identity}
+                  />
+                </TrackedScreen>
+              )}
+            </Stack.Screen>
+            <Stack.Screen name="ManagerVedr" options={{ headerShown: false }}>
+              {(props) => (
+                <TrackedScreen navigation={props.navigation} onFocus={attachNavigation} screenName="ManagerVedr">
+                  <ManagerVedrScreen
                     {...props}
                     csaWorkspaceVersion={managerWorkspaceVersion + managerDataVersion}
                     identity={identity}

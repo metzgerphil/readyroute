@@ -201,6 +201,8 @@ describe('MobileNavigationDrawer', () => {
 
     expect(screen.getByText('Map View')).toBeTruthy();
     expect(screen.getByText('Routes')).toBeTruthy();
+    expect(screen.getByText('Access Codes')).toBeTruthy();
+    expect(screen.getByText('VEDR')).toBeTruthy();
     expect(screen.queryByText('Notifications')).toBeNull();
     expect(screen.getByText('Settings')).toBeTruthy();
     expect(screen.queryByText('MV')).toBeNull();
@@ -232,11 +234,15 @@ describe('MobileNavigationDrawer', () => {
 
     fireEvent.press(screen.getByText('Routes'));
     fireEvent.press(screen.getByText('Map View'));
+    fireEvent.press(screen.getByText('Access Codes'));
     fireEvent.press(screen.getByText('Vehicles'));
+    fireEvent.press(screen.getByText('VEDR'));
 
     expect(onNavigate).toHaveBeenCalledWith('ManagerRoutes');
     expect(onNavigate).toHaveBeenCalledWith('ManagerOverview');
+    expect(onNavigate).toHaveBeenCalledWith('ManagerAccessCodes');
     expect(onNavigate).toHaveBeenCalledWith('ManagerVehicles');
+    expect(onNavigate).toHaveBeenCalledWith('ManagerVedr');
   });
 
   it('shows linked CSA workspaces and switches from the drawer', () => {

@@ -12,9 +12,19 @@ export function getDrawerMenuItems(activeMode) {
         screen: 'ManagerRoutes'
       },
       {
+        key: 'manager-access-codes',
+        label: 'Access Codes',
+        screen: 'ManagerAccessCodes'
+      },
+      {
         key: 'manager-vehicles',
         label: 'Vehicles',
         screen: 'ManagerVehicles'
+      },
+      {
+        key: 'manager-vedr',
+        label: 'VEDR',
+        screen: 'ManagerVedr'
       },
       {
         key: 'manager-settings',

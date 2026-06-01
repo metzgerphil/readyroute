@@ -71,6 +71,7 @@ jest.mock('../services/auth', () => ({
 jest.mock('../services/api', () => ({
   __esModule: true,
   default: {
+    get: jest.fn(),
     post: jest.fn()
   }
 }));
@@ -88,6 +89,11 @@ jest.mock('../screens/LoginScreen', () => function MockLoginScreen() {
 jest.mock('../screens/ManagerDashboardScreen', () => function MockManagerDashboardScreen() {
   const { Text: MockText } = require('react-native');
   return <MockText>ManagerDashboardScreen</MockText>;
+});
+
+jest.mock('../screens/ManagerAccessCodesScreen', () => function MockManagerAccessCodesScreen() {
+  const { Text: MockText } = require('react-native');
+  return <MockText>ManagerAccessCodesScreen</MockText>;
 });
 
 jest.mock('../screens/ManagerDriversScreen', () => function MockManagerDriversScreen() {
@@ -125,6 +131,11 @@ jest.mock('../screens/ManagerSettingsScreen', () => function MockManagerSettings
   return <MockText>ManagerSettingsScreen</MockText>;
 });
 
+jest.mock('../screens/ManagerVedrScreen', () => function MockManagerVedrScreen() {
+  const { Text: MockText } = require('react-native');
+  return <MockText>ManagerVedrScreen</MockText>;
+});
+
 jest.mock('../screens/MyDriveScreen', () => function MockMyDriveScreen() {
   const { Text: MockText } = require('react-native');
   return <MockText>MyDriveScreen</MockText>;
@@ -148,6 +159,7 @@ describe('AppNavigator', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     mockDrawerProps.current = null;
+    api.get.mockResolvedValue({ data: { current_csa: null, csas: [] } });
     usePortalSession.mockReturnValue({
       activeMode: null,
       authenticate,
@@ -257,10 +269,12 @@ describe('AppNavigator', () => {
 
     const screenLabels = tree.root.findAllByType(Text).map((node) => node.props.children);
     expect(screenLabels).toContain('ManagerDashboardScreen');
+    expect(screenLabels).toContain('ManagerAccessCodesScreen');
     expect(screenLabels).toContain('ManagerDriversScreen');
     expect(screenLabels).toContain('ManagerManifestScreen');
     expect(screenLabels).toContain('ManagerMapScreen');
     expect(screenLabels).toContain('ManagerRoutesScreen');
+    expect(screenLabels).toContain('ManagerVedrScreen');
     expect(screenLabels).toContain('ManagerVehiclesScreen');
     expect(screenLabels).toContain('ManagerSettingsScreen');
     expect(screenLabels).not.toContain('Routes');
