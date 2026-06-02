@@ -10,7 +10,9 @@ const {
 } = require('./vedrSettings');
 
 test('vedr settings helpers normalize and validate providers', () => {
-  assert.deepEqual(VEDR_PROVIDERS, ['groundcloud', 'velocitor']);
+  assert.ok(VEDR_PROVIDERS.includes('groundcloud'));
+  assert.ok(VEDR_PROVIDERS.includes('velocitor'));
+  assert.ok(VEDR_PROVIDERS.includes('samsara'));
 
   assert.equal(normalizeVedrProvider(' GroundCloud '), 'groundcloud');
   assert.equal(normalizeVedrProvider(''), null);
@@ -18,6 +20,7 @@ test('vedr settings helpers normalize and validate providers', () => {
 
   assert.equal(isValidVedrProvider('groundcloud'), true);
   assert.equal(isValidVedrProvider('velocitor'), true);
+  assert.equal(isValidVedrProvider('samsara'), true);
   assert.equal(isValidVedrProvider(null), true);
   assert.equal(isValidVedrProvider('other'), false);
 });
@@ -39,20 +42,19 @@ test('vedr settings payload validation requires account_id and constrains provid
     }
   });
 
-  assert.deepEqual(validateVedrSettingsPayload({
+  const invalidProviderResult = validateVedrSettingsPayload({
     provider: 'unknown'
-  }), {
-    valid: false,
-    errors: {
-      account_id: 'account_id is required',
-      provider: 'provider must be one of: groundcloud, velocitor'
-    },
-    value: {
-      account_id: null,
-      provider: 'unknown',
-      provider_login_url: null,
-      provider_username_hint: null
-    }
+  });
+  assert.equal(invalidProviderResult.valid, false);
+  assert.equal(invalidProviderResult.errors.account_id, 'account_id is required');
+  assert.match(invalidProviderResult.errors.provider, /provider must be one of:/);
+  assert.match(invalidProviderResult.errors.provider, /groundcloud/);
+  assert.match(invalidProviderResult.errors.provider, /velocitor/);
+  assert.deepEqual(invalidProviderResult.value, {
+    account_id: null,
+    provider: 'unknown',
+    provider_login_url: null,
+    provider_username_hint: null
   });
 
   assert.deepEqual(validateVedrSettingsPayload({

@@ -13,15 +13,6 @@ function formatMorningDate(dateValue) {
   return format(new Date(`${dateValue}T12:00:00`), 'EEEE, MMMM d');
 }
 
-function formatSyncLine(timestamp) {
-  if (!timestamp) {
-    return 'Not synced today';
-  }
-
-  const date = new Date(timestamp);
-  return `Last synced today at ${format(date, 'h:mm a')}`;
-}
-
 function formatAuditEventTime(timestamp) {
   if (!timestamp) {
     return 'Unknown time';
@@ -37,7 +28,7 @@ function getDispatchWindowCopy(routeSyncSettings) {
 
   switch (routeSyncSettings.dispatch_window_state) {
     case 'before_window':
-      return `It is still before this CSA’s local dispatch window (${routeSyncSettings.dispatch_window_label} ${routeSyncSettings.operations_timezone}). ReadyRoute should keep staging morning changes.`;
+      return `It is still before this CSA’s local dispatch window (${routeSyncSettings.dispatch_window_label} ${routeSyncSettings.operations_timezone}). ReadyRoute should keep uploaded route changes staged.`;
     case 'active_window':
       return `This CSA is inside its active dispatch window (${routeSyncSettings.dispatch_window_label} ${routeSyncSettings.operations_timezone}). Dispatch can happen as soon as blockers are cleared.`;
     case 'after_window':
@@ -46,7 +37,7 @@ function getDispatchWindowCopy(routeSyncSettings) {
       return `You are reviewing a historical date. Dispatch timing is shown using ${routeSyncSettings.operations_timezone}.`;
     case 'scheduled':
     default:
-      return `ReadyRoute will use ${routeSyncSettings.operations_timezone} and the ${routeSyncSettings.dispatch_window_label} window for this CSA’s morning route sync logic.`;
+      return `ReadyRoute will use ${routeSyncSettings.operations_timezone} and the ${routeSyncSettings.dispatch_window_label} window for this CSA’s morning route review.`;
   }
 }
 
@@ -360,7 +351,6 @@ export default function ManifestPage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const initialDate = searchParams.get('date') || loadStoredOperationsDate() || getTodayString();
   const [date, setDate] = useState(initialDate);
-  const [activeTab, setActiveTab] = useState('upload');
   const [selectedFile, setSelectedFile] = useState(null);
   const [selectedGpxFile, setSelectedGpxFile] = useState(null);
   const [manifestBundleFiles, setManifestBundleFiles] = useState({
@@ -409,9 +399,7 @@ export default function ManifestPage() {
 
   const routePayload = routesQuery.data || {};
   const routeSummaries = useMemo(() => routePayload.routes || EMPTY_ARRAY, [routePayload.routes]);
-  const syncStatus = routePayload.sync_status || { routes_today: 0, routes_assigned: 0, last_sync_at: null };
   const routeSyncSettings = routePayload.route_sync_settings || null;
-  const fedexConnection = routePayload.fedex_connection || { is_connected: false, terminal_label: null };
   const warningRows = useMemo(() => createWarningRows(routeSummaries, editedWarnings), [routeSummaries, editedWarnings]);
   const selectedFileName = selectedFile?.name?.toLowerCase() || '';
   const bundleFileList = useMemo(
@@ -500,24 +488,6 @@ export default function ManifestPage() {
       current.includes(routeId) ? current.filter((value) => value !== routeId) : [...current, routeId]
     );
   }
-
-  const pullManifestMutation = useMutation({
-    mutationFn: async () => {
-      const response = await api.post('/routes/pull-fedex');
-      return response.data;
-    },
-    onSuccess: async () => {
-      const refreshed = await queryClient.fetchQuery({
-        queryKey: ['manager-routes', date],
-        queryFn: async () => {
-          const response = await api.get('/manager/routes', { params: { date } });
-          return response.data;
-        }
-      });
-
-      return refreshed;
-    }
-  });
 
   const dispatchRoutesMutation = useMutation({
     mutationFn: async () => {
@@ -920,73 +890,10 @@ export default function ManifestPage() {
         </div>
 
         <div className="manifest-sync-panel">
-            <div className="toggle-group">
-              <button
-                className={activeTab === 'auto' ? 'toggle-button active' : 'toggle-button'}
-                onClick={() => setActiveTab('auto')}
-                type="button"
-              >
-                FedEx Auto-Sync
-              </button>
-              <button
-                className={activeTab === 'upload' ? 'toggle-button active' : 'toggle-button'}
-                onClick={() => setActiveTab('upload')}
-                type="button"
-              >
-                Upload Manifest
-              </button>
-            </div>
-
-            {activeTab === 'auto' ? (
               <div className="manifest-sync-body">
-                <div className="fedex-connection-row">
-                  <span className={fedexConnection.is_connected ? 'status-dot online' : 'status-dot offline'} />
-                  <div>
-                    <strong>
-                      {fedexConnection.is_connected
-                        ? `FedEx Connected — ${fedexConnection.default_account_label || fedexConnection.terminal_label || '--'}`
-                        : 'Not connected'}
-                    </strong>
-                    {!fedexConnection.is_connected ? (
-                      <div>
-                        <a className="configure-link" href="/csa?focus=fedex">
-                          Configure
-                        </a>
-                      </div>
-                    ) : null}
-                  </div>
+                <div className="info-banner">
+                  FedEx Customer Connection automation is paused. Download manifests directly from FCC and upload the files here.
                 </div>
-
-                <div className="integration-meta">{formatSyncLine(syncStatus.last_sync_at)}</div>
-
-                <button
-                  className="primary-cta manifest-button"
-                  disabled={pullManifestMutation.isPending || isPastDate}
-                  onClick={() => pullManifestMutation.mutate()}
-                  type="button"
-                >
-                  {pullManifestMutation.isPending ? 'Pulling routes from FedEx...' : `Sync Routes For ${format(new Date(`${date}T12:00:00`), 'MMM d')}`}
-                </button>
-
-                {pullManifestMutation.isPending ? <div className="progress-bar"><div className="progress-bar-fill indeterminate" /></div> : null}
-
-                {pullManifestMutation.isError ? (
-                  <div className="error-banner manifest-error-row">
-                    <span>{pullManifestMutation.error?.response?.data?.error || 'Sync failed. Try again.'}</span>
-                    <button className="secondary-inline-button" onClick={() => pullManifestMutation.mutate()} type="button">
-                      Retry
-                    </button>
-                  </div>
-                ) : null}
-
-                {pullManifestMutation.data?.message ? <div className="info-banner">{pullManifestMutation.data.message}</div> : null}
-
-                <div className="manifest-note">
-                  Make sure ReadyRoute is set as a Vendor under Data Subscriptions in your FCC portal.
-                </div>
-              </div>
-            ) : (
-              <div className="manifest-sync-body">
                 <div
                   className="upload-dropzone"
                   onClick={() => fileInputRef.current?.click()}
@@ -1172,7 +1079,6 @@ export default function ManifestPage() {
                   </div>
                 ) : null}
               </div>
-            )}
 
             {routesQuery.isError ? (
               <div className="error-banner">
@@ -1237,11 +1143,11 @@ export default function ManifestPage() {
                       : `${readyDispatchRoutes.length} route${readyDispatchRoutes.length === 1 ? '' : 's'} are ready to dispatch`}
                 </div>
                 <div className="manifest-step-subtitle">
-                  ReadyRoute is staging FCC route data in the background. Use this board to clear blockers, review changed routes, and dispatch when the day is ready.
+                  ReadyRoute stages uploaded route files here. Use this board to clear blockers, review changed routes, and dispatch when the day is ready.
                 </div>
                 {routeSyncSettings ? (
                   <div className="manifest-note">
-                    {getDispatchWindowCopy(routeSyncSettings)} FCC polling target: every {routeSyncSettings.manifest_sync_interval_minutes} minutes.
+                    {getDispatchWindowCopy(routeSyncSettings)}
                   </div>
                 ) : null}
               </div>

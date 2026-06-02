@@ -4614,6 +4614,221 @@ test('POST /manager/manager-users/invite links an existing manager from another 
   }
 });
 
+test('POST /manager/manager-users/invite upgrades a pending manager when the same email has access to another CSA', async () => {
+  let updatePayload = null;
+  const supabase = new MockSupabase((query) => {
+    if (query.table === 'accounts' && query.operation === 'select') {
+      return {
+        data: {
+          id: 'acct-2',
+          company_name: 'PVD Delivery Inc',
+          manager_email: 'owner@pvd.com'
+        },
+        error: null
+      };
+    }
+
+    if (query.table === 'manager_users' && query.operation === 'select') {
+      const accountFilter = query.filters.find((filter) => filter.column === 'account_id');
+      const emailFilter = query.filters.find((filter) => filter.column === 'email');
+
+      if (accountFilter?.value === 'acct-2' && emailFilter?.value === 'shared@example.com') {
+        return {
+          data: {
+            id: 'manager-pending',
+            account_id: 'acct-2',
+            email: 'shared@example.com',
+            full_name: 'Shared Manager',
+            password_hash: null,
+            is_active: true,
+            invited_at: '2026-04-22T15:00:00.000Z',
+            accepted_at: null
+          },
+          error: null
+        };
+      }
+
+      if (emailFilter?.value === 'shared@example.com') {
+        return {
+          data: [
+            {
+              id: 'manager-bridge',
+              account_id: 'acct-1',
+              email: 'shared@example.com',
+              full_name: 'Shared Manager',
+              password_hash: '$2b$10$sharedhash',
+              is_active: true,
+              invited_at: '2026-04-20T10:00:00.000Z',
+              accepted_at: '2026-04-20T10:05:00.000Z',
+              created_at: '2026-04-20T10:00:00.000Z'
+            }
+          ],
+          error: null
+        };
+      }
+
+      return { data: null, error: null };
+    }
+
+    if (query.table === 'manager_users' && query.operation === 'update') {
+      updatePayload = query.payload;
+      assert.equal(query.filters.find((filter) => filter.column === 'id')?.value, 'manager-pending');
+      return {
+        data: {
+          id: 'manager-pending',
+          account_id: 'acct-2',
+          email: 'shared@example.com',
+          full_name: updatePayload.full_name,
+          password_hash: updatePayload.password_hash,
+          is_active: true,
+          invited_at: updatePayload.invited_at,
+          accepted_at: updatePayload.accepted_at
+        },
+        error: null
+      };
+    }
+
+    throw new Error(`Unexpected query ${query.table}:${query.operation}`);
+  });
+
+  const server = await startTestServer({
+    supabase,
+    now: () => new Date('2026-04-23T15:00:00.000Z'),
+    sendManagerInviteEmail: async () => {
+      throw new Error('Should not send invite email when linking an existing manager');
+    }
+  });
+
+  try {
+    const response = await fetch(`${server.baseUrl}/manager/manager-users/invite`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${signManagerToken({ account_id: 'acct-2' })}`
+      },
+      body: JSON.stringify({
+        email: 'shared@example.com',
+        full_name: 'Shared Manager'
+      })
+    });
+
+    assert.equal(response.status, 200);
+    const body = await response.json();
+    assert.equal(body.email_delivery, 'linked_existing_manager');
+    assert.equal(body.invite_url, null);
+    assert.equal(body.manager_user.status, 'active');
+    assert.equal(updatePayload.password_hash, '$2b$10$sharedhash');
+    assert.equal(updatePayload.accepted_at, '2026-04-23T15:00:00.000Z');
+  } finally {
+    await server.close();
+  }
+});
+
+test('POST /manager/manager-users/:id/invite links a pending manager when the same email has access to another CSA', async () => {
+  let updatePayload = null;
+  const supabase = new MockSupabase((query) => {
+    if (query.table === 'accounts' && query.operation === 'select') {
+      return {
+        data: {
+          id: 'acct-2',
+          company_name: 'PVD Delivery Inc',
+          manager_email: 'owner@pvd.com'
+        },
+        error: null
+      };
+    }
+
+    if (query.table === 'manager_users' && query.operation === 'select') {
+      const idFilter = query.filters.find((filter) => filter.column === 'id');
+      const emailFilter = query.filters.find((filter) => filter.column === 'email');
+
+      if (idFilter?.value === 'manager-pending') {
+        return {
+          data: {
+            id: 'manager-pending',
+            account_id: 'acct-2',
+            email: 'shared@example.com',
+            full_name: 'Shared Manager',
+            password_hash: null,
+            is_active: true,
+            invited_at: '2026-04-22T15:00:00.000Z',
+            accepted_at: null
+          },
+          error: null
+        };
+      }
+
+      if (emailFilter?.value === 'shared@example.com') {
+        return {
+          data: [
+            {
+              id: 'manager-bridge',
+              account_id: 'acct-1',
+              email: 'shared@example.com',
+              full_name: 'Shared Manager',
+              password_hash: '$2b$10$sharedhash',
+              is_active: true,
+              invited_at: '2026-04-20T10:00:00.000Z',
+              accepted_at: '2026-04-20T10:05:00.000Z',
+              created_at: '2026-04-20T10:00:00.000Z'
+            }
+          ],
+          error: null
+        };
+      }
+
+      return { data: null, error: null };
+    }
+
+    if (query.table === 'manager_users' && query.operation === 'update') {
+      updatePayload = query.payload;
+      assert.equal(query.filters.find((filter) => filter.column === 'id')?.value, 'manager-pending');
+      return {
+        data: {
+          id: 'manager-pending',
+          account_id: 'acct-2',
+          email: 'shared@example.com',
+          full_name: updatePayload.full_name,
+          password_hash: updatePayload.password_hash,
+          is_active: true,
+          invited_at: updatePayload.invited_at,
+          accepted_at: updatePayload.accepted_at
+        },
+        error: null
+      };
+    }
+
+    throw new Error(`Unexpected query ${query.table}:${query.operation}`);
+  });
+
+  const server = await startTestServer({
+    supabase,
+    now: () => new Date('2026-04-23T15:00:00.000Z'),
+    sendManagerInviteEmail: async () => {
+      throw new Error('Should not send invite email when linking an existing manager');
+    }
+  });
+
+  try {
+    const response = await fetch(`${server.baseUrl}/manager/manager-users/manager-pending/invite`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${signManagerToken({ account_id: 'acct-2' })}`
+      }
+    });
+
+    assert.equal(response.status, 200);
+    const body = await response.json();
+    assert.equal(body.email_delivery, 'linked_existing_manager');
+    assert.equal(body.invite_url, null);
+    assert.equal(body.manager_user.status, 'active');
+    assert.equal(updatePayload.password_hash, '$2b$10$sharedhash');
+    assert.equal(updatePayload.accepted_at, '2026-04-23T15:00:00.000Z');
+  } finally {
+    await server.close();
+  }
+});
+
 test('POST /manager/manager-users/:id/password-reset sends a manager reset link', async () => {
   const sentResets = [];
   const managerPasswordHash = await bcrypt.hash('OldPass!2026', 10);

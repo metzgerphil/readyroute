@@ -7,8 +7,6 @@ const defaultSupabase = require('../lib/supabase');
 const { requireManager } = require('../middleware/auth');
 const { parseMultipartForm } = require('../middleware/multipart');
 const { createBillingService } = require('../services/billing');
-const { encryptFedexSecret } = require('../services/fedexCredentials');
-const { isFccAutomationEnabled } = require('../services/fedexSync');
 const { attachApartmentIntelligenceToStops } = require('../services/apartmentIntelligence');
 const { isUsableCoordinate, summarizeCoordinateHealth } = require('../services/coordinates');
 const { attachPropertyIntelToStops, buildPropertyIntelKey, savePropertyIntel } = require('../services/propertyIntel');
@@ -39,6 +37,15 @@ function getCurrentDateString(now = new Date(), timeZone = process.env.APP_TIME_
 }
 
 const DEFAULT_DRIVER_STARTER_PIN = '1234';
+const DRIVER_DOCUMENT_BUCKET = process.env.DRIVER_DOCUMENT_BUCKET || 'driver-documents';
+const DRIVER_DOCUMENT_TYPES = Object.freeze({
+  driver_license: { label: 'Driver License', required: true, allowMultiple: false, expires: true },
+  mec: { label: 'MEC', required: true, allowMultiple: false, expires: true },
+  qualification_certificate: { label: 'Qualification Certificate', required: true, allowMultiple: false, expires: false },
+  signed_policy: { label: 'Signed Policy', required: true, allowMultiple: false, expires: false },
+  write_up: { label: 'Write-ups', required: false, allowMultiple: true, expires: false },
+  other: { label: 'Other Documents', required: false, allowMultiple: true, expires: false }
+});
 const DEFAULT_ROUTE_SYNC_SETTINGS = Object.freeze({
   operations_timezone: process.env.APP_TIME_ZONE || 'America/Los_Angeles',
   dispatch_window_start_hour: 9,
@@ -85,6 +92,115 @@ function compareRouteWorkAreas(left, right) {
 
 function sortRoutesByWorkArea(routes = []) {
   return [...(routes || [])].sort(compareRouteWorkAreas);
+}
+
+function isMissingDriverProfileColumn(error) {
+  const message = String(error?.message || error?.details || '');
+  return /date_of_birth|daily_flat_rate/i.test(message) && /column|schema|cache/i.test(message);
+}
+
+function isMissingDriverDocumentsTable(error) {
+  const message = String(error?.message || error?.details || '');
+  return /driver_documents/i.test(message) && /(does not exist|schema cache|relation|table|unexpected query)/i.test(message);
+}
+
+function sanitizeStorageSegment(value) {
+  return String(value || 'file')
+    .trim()
+    .replace(/[^a-zA-Z0-9._-]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 80) || 'file';
+}
+
+function getDriverDocumentDefinition(documentType) {
+  return DRIVER_DOCUMENT_TYPES[String(documentType || '').trim()] || null;
+}
+
+function buildDriverDocumentSummary(documents = []) {
+  const byType = Object.keys(DRIVER_DOCUMENT_TYPES).reduce((summary, type) => {
+    summary[type] = [];
+    return summary;
+  }, {});
+
+  (documents || []).forEach((document) => {
+    if (!byType[document.document_type]) {
+      byType[document.document_type] = [];
+    }
+    byType[document.document_type].push(document);
+  });
+
+  const requiredTypes = Object.entries(DRIVER_DOCUMENT_TYPES)
+    .filter(([, definition]) => definition.required)
+    .map(([type]) => type);
+  const completedRequired = requiredTypes.filter((type) => (byType[type] || []).length > 0);
+  const now = Date.now();
+  const expirationWindowMs = 30 * 24 * 60 * 60 * 1000;
+  const expiringSoon = (documents || []).filter((document) => {
+    if (!document.expires_on) {
+      return false;
+    }
+    const expiresAt = new Date(document.expires_on).getTime();
+    return Number.isFinite(expiresAt) && expiresAt >= now && expiresAt <= now + expirationWindowMs;
+  });
+  const expired = (documents || []).filter((document) => {
+    if (!document.expires_on) {
+      return false;
+    }
+    const expiresAt = new Date(document.expires_on).getTime();
+    return Number.isFinite(expiresAt) && expiresAt < now;
+  });
+
+  return {
+    required_total: requiredTypes.length,
+    required_complete: completedRequired.length,
+    missing_required: requiredTypes.filter((type) => !completedRequired.includes(type)),
+    expiring_soon: expiringSoon.length,
+    expired: expired.length,
+    write_up_count: (byType.write_up || []).length,
+    other_count: (byType.other || []).length,
+    by_type: byType
+  };
+}
+
+async function loadDriverDocumentsForAccount(supabase, accountId, driverIds = []) {
+  if (!driverIds.length) {
+    return new Map();
+  }
+
+  let data = [];
+  let error = null;
+
+  try {
+    const result = await supabase
+      .from('driver_documents')
+      .select('id, driver_id, document_type, file_name, mime_type, file_size, storage_bucket, storage_path, public_url, expires_on, notes, uploaded_by_manager_id, created_at, updated_at')
+      .eq('account_id', accountId)
+      .in('driver_id', driverIds)
+      .order('created_at', { ascending: false });
+
+    data = result.data || [];
+    error = result.error || null;
+  } catch (queryError) {
+    if (isMissingDriverDocumentsTable(queryError)) {
+      return new Map();
+    }
+    throw queryError;
+  }
+
+  if (error) {
+    if (isMissingDriverDocumentsTable(error)) {
+      return new Map();
+    }
+    throw error;
+  }
+
+  const documentsByDriverId = new Map();
+  (data || []).forEach((document) => {
+    const documents = documentsByDriverId.get(document.driver_id) || [];
+    documents.push(document);
+    documentsByDriverId.set(document.driver_id, documents);
+  });
+  return documentsByDriverId;
 }
 
 function parseIsoDateToUtcMidday(value) {
@@ -914,37 +1030,6 @@ function normalizeFedexAccountNumber(value) {
   return String(value || '').trim().replace(/\s+/g, '');
 }
 
-function buildFccPortalAccountNumber(accountId, username) {
-  const digest = crypto
-    .createHash('sha256')
-    .update(`${accountId || 'account'}:${String(username || '').trim().toLowerCase()}`)
-    .digest('hex')
-    .slice(0, 12)
-    .toUpperCase();
-
-  return `FCC${digest}`;
-}
-
-function withFccPortalDefaults(input, accountId) {
-  if (!input.fcc_username) {
-    return input;
-  }
-
-  return {
-    ...input,
-    nickname: input.nickname || 'FCC Portal Access',
-    account_number: input.account_number || buildFccPortalAccountNumber(accountId, input.fcc_username),
-    billing_contact_name: input.billing_contact_name || 'FCC Portal',
-    billing_company_name: input.billing_company_name || 'ReadyRoute FCC Access',
-    billing_address_line1: input.billing_address_line1 || 'FCC Portal Credential',
-    billing_city: input.billing_city || 'FCC Portal',
-    billing_state_or_province: input.billing_state_or_province || 'NA',
-    billing_postal_code: input.billing_postal_code || '00000',
-    billing_country_code: input.billing_country_code || 'US',
-    connection_status: input.connection_status === 'not_started' ? 'connected' : input.connection_status
-  };
-}
-
 function maskFedexAccountNumber(value) {
   const normalized = normalizeFedexAccountNumber(value);
 
@@ -973,9 +1058,9 @@ function toFedexAccountRecord(row) {
     billing_country_code: row.billing_country_code || 'US',
     connection_status: row.connection_status || 'not_started',
     connection_reference: row.connection_reference || null,
-    fcc_username: row.fcc_username || null,
-    has_saved_fcc_password: Boolean(row.fcc_password_encrypted),
-    fcc_password_updated_at: row.fcc_password_updated_at || null,
+    fcc_username: null,
+    has_saved_fcc_password: false,
+    fcc_password_updated_at: null,
     last_verified_at: row.last_verified_at || null,
     is_default: row.is_default === true,
     created_by_manager_user_id: row.created_by_manager_user_id || null,
@@ -989,7 +1074,7 @@ async function listFedexAccountsForAccount(supabase, accountId) {
   const fedexAccountsQuery = await supabase
     .from('fedex_accounts')
     .select(
-      'id, account_id, nickname, account_number, billing_contact_name, billing_company_name, billing_address_line1, billing_address_line2, billing_city, billing_state_or_province, billing_postal_code, billing_country_code, connection_status, connection_reference, fcc_username, fcc_password_encrypted, fcc_password_updated_at, last_verified_at, is_default, created_by_manager_user_id, created_at, updated_at, disconnected_at'
+      'id, account_id, nickname, account_number, billing_contact_name, billing_company_name, billing_address_line1, billing_address_line2, billing_city, billing_state_or_province, billing_postal_code, billing_country_code, connection_status, connection_reference, last_verified_at, is_default, created_by_manager_user_id, created_at, updated_at, disconnected_at'
     )
     .eq('account_id', accountId)
     .order('is_default', { ascending: false })
@@ -1045,7 +1130,7 @@ async function getFedexAccountForManager(supabase, accountId, fedexAccountId) {
   const fedexAccountQuery = await supabase
     .from('fedex_accounts')
     .select(
-      'id, account_id, nickname, account_number, billing_contact_name, billing_company_name, billing_address_line1, billing_address_line2, billing_city, billing_state_or_province, billing_postal_code, billing_country_code, connection_status, connection_reference, fcc_username, fcc_password_encrypted, fcc_password_updated_at, last_verified_at, is_default, created_by_manager_user_id, created_at, updated_at, disconnected_at'
+      'id, account_id, nickname, account_number, billing_contact_name, billing_company_name, billing_address_line1, billing_address_line2, billing_city, billing_state_or_province, billing_postal_code, billing_country_code, connection_status, connection_reference, last_verified_at, is_default, created_by_manager_user_id, created_at, updated_at, disconnected_at'
     )
     .eq('account_id', accountId)
     .eq('id', fedexAccountId)
@@ -1067,7 +1152,7 @@ async function getFedexAccountForManager(supabase, accountId, fedexAccountId) {
     account: fedexAccountQuery.data
       ? {
           ...toFedexAccountRecord(fedexAccountQuery.data),
-          fcc_password_encrypted: fedexAccountQuery.data.fcc_password_encrypted || null
+          fcc_password_encrypted: null
         }
       : null
   };
@@ -1086,10 +1171,7 @@ function parseFedexAccountInput(body = {}) {
     billing_postal_code: String(body.billing_postal_code || '').trim(),
     billing_country_code: String(body.billing_country_code || 'US').trim().toUpperCase(),
     connection_status: String(body.connection_status || 'not_started').trim().toLowerCase(),
-    connection_reference: String(body.connection_reference || '').trim(),
-    fcc_username: String(body.fcc_username || '').trim(),
-    fcc_password: String(body.fcc_password || ''),
-    clear_saved_fcc_password: body.clear_saved_fcc_password === true
+    connection_reference: String(body.connection_reference || '').trim()
   };
 }
 
@@ -1116,42 +1198,6 @@ function validateFedexAccountInput(input) {
 
   if (!['not_started', 'pending_mfa', 'connected', 'failed'].includes(input.connection_status)) {
     return 'connection_status must be not_started, pending_mfa, connected, or failed';
-  }
-
-  if (input.fcc_username.length > 120) {
-    return 'fcc_username must be 120 characters or fewer';
-  }
-
-  if (input.fcc_password && !input.fcc_username) {
-    return 'fcc_username is required when saving an FCC password';
-  }
-
-  return null;
-}
-
-function isFccPortalCredentialInput(input) {
-  return (
-    Boolean(input.fcc_username) ||
-    /^FCC/i.test(input.account_number || '') ||
-    /fcc portal/i.test(input.nickname || '')
-  );
-}
-
-function validateFccPortalCredentialInput(input, { isExistingAccount = false, hasSavedPassword = false } = {}) {
-  if (!isFccPortalCredentialInput(input)) {
-    return null;
-  }
-
-  if (!input.fcc_username) {
-    return 'MyBizAccount / FCC username is required for FCC Portal Access.';
-  }
-
-  if (!isExistingAccount && !input.fcc_password) {
-    return 'MyBizAccount password is required for FCC Portal Access.';
-  }
-
-  if (isExistingAccount && !input.fcc_password && !hasSavedPassword && !input.clear_saved_fcc_password) {
-    return 'Re-enter the MyBizAccount password before saving this FCC Portal Access login.';
   }
 
   return null;
@@ -1286,6 +1332,34 @@ function buildCsaLinkCode() {
   }
 
   return code;
+}
+
+async function findSharedManagerIdentityByEmail(supabase, email, currentAccountId = null) {
+  const normalizedEmail = normalizeEmail(email);
+
+  if (!normalizedEmail) {
+    return null;
+  }
+
+  const existingManagerIdentityQuery = await supabase
+    .from('manager_users')
+    .select('id, account_id, email, full_name, password_hash, is_active, invited_at, accepted_at, created_at')
+    .eq('email', normalizedEmail)
+    .limit(25);
+
+  if (existingManagerIdentityQuery.error) {
+    if (isMissingManagerUsersTable(existingManagerIdentityQuery.error)) {
+      throw existingManagerIdentityQuery.error;
+    }
+
+    throw existingManagerIdentityQuery.error;
+  }
+
+  return (existingManagerIdentityQuery.data || []).find((row) =>
+    row.account_id !== currentAccountId &&
+    row.is_active !== false &&
+    row.password_hash
+  ) || null;
 }
 
 async function findManagerIdentityForAccount(supabase, accountId, email) {
@@ -2290,11 +2364,11 @@ function createManagerRouter(options = {}) {
     try {
       let driversQuery = await supabase
         .from('drivers')
-        .select('id, account_id, name, email, fedex_driver_id, phone, hourly_rate, is_active')
+        .select('id, account_id, name, email, fedex_driver_id, phone, date_of_birth, hourly_rate, daily_flat_rate, is_active')
         .eq('account_id', req.account.account_id)
         .order('name');
 
-      if (driversQuery.error && isMissingFedexDriverIdColumn(driversQuery.error)) {
+      if (driversQuery.error && (isMissingFedexDriverIdColumn(driversQuery.error) || isMissingDriverProfileColumn(driversQuery.error))) {
         driversQuery = await supabase
           .from('drivers')
           .select('id, account_id, name, email, phone, hourly_rate, is_active')
@@ -2307,10 +2381,17 @@ function createManagerRouter(options = {}) {
         return res.status(500).json({ error: 'Failed to load drivers' });
       }
 
+      const driverIds = (driversQuery.data || []).map((driver) => driver.id);
+      const documentsByDriverId = await loadDriverDocumentsForAccount(supabase, req.account.account_id, driverIds);
+
       return res.status(200).json({
         drivers: (driversQuery.data || []).map((driver) => ({
           fedex_driver_id: null,
-          ...driver
+          date_of_birth: null,
+          daily_flat_rate: 0,
+          ...driver,
+          documents: documentsByDriverId.get(driver.id) || [],
+          document_summary: buildDriverDocumentSummary(documentsByDriverId.get(driver.id) || [])
         }))
       });
     } catch (error) {
@@ -3003,17 +3084,14 @@ function createManagerRouter(options = {}) {
   });
 
   router.post('/fedex-accounts', requireManager, async (req, res) => {
-    const input = withFccPortalDefaults(parseFedexAccountInput(req.body), req.account.account_id);
-
-    if (!isFccAutomationEnabled() && isFccPortalCredentialInput(input)) {
+    if (req.body?.fcc_username || req.body?.fcc_password || req.body?.clear_saved_fcc_password) {
       return res.status(403).json({
         error: 'FCC/MyBizAccount credential collection is paused pending FedEx-approved access.'
       });
     }
 
-    const validationError =
-      validateFedexAccountInput(input) ||
-      validateFccPortalCredentialInput(input);
+    const input = parseFedexAccountInput(req.body);
+    const validationError = validateFedexAccountInput(input);
 
     if (validationError) {
       return res.status(400).json({ error: validationError });
@@ -3028,10 +3106,6 @@ function createManagerRouter(options = {}) {
 
       const shouldBeDefault = Boolean(req.body?.is_default) || existingAccounts.accounts.filter((account) => !account.disconnected_at).length === 0;
       const timestamp = nowProvider().toISOString();
-      const encryptedFccPassword = input.fcc_password
-        ? encryptFedexSecret(input.fcc_password)
-        : null;
-
       if (shouldBeDefault) {
         const { error: clearDefaultError } = await supabase
           .from('fedex_accounts')
@@ -3064,16 +3138,13 @@ function createManagerRouter(options = {}) {
           billing_country_code: input.billing_country_code,
           connection_status: input.connection_status,
           connection_reference: input.connection_reference || null,
-          fcc_username: input.fcc_username || null,
-          fcc_password_encrypted: encryptedFccPassword,
-          fcc_password_updated_at: encryptedFccPassword ? timestamp : null,
           last_verified_at: input.connection_status === 'connected' ? timestamp : null,
           is_default: shouldBeDefault,
           created_by_manager_user_id: req.account.manager_user_id || null,
           updated_at: timestamp
         })
         .select(
-          'id, account_id, nickname, account_number, billing_contact_name, billing_company_name, billing_address_line1, billing_address_line2, billing_city, billing_state_or_province, billing_postal_code, billing_country_code, connection_status, connection_reference, fcc_username, fcc_password_encrypted, fcc_password_updated_at, last_verified_at, is_default, created_by_manager_user_id, created_at, updated_at, disconnected_at'
+          'id, account_id, nickname, account_number, billing_contact_name, billing_company_name, billing_address_line1, billing_address_line2, billing_city, billing_state_or_province, billing_postal_code, billing_country_code, connection_status, connection_reference, last_verified_at, is_default, created_by_manager_user_id, created_at, updated_at, disconnected_at'
         )
         .single();
 
@@ -3101,14 +3172,14 @@ function createManagerRouter(options = {}) {
 
   router.patch('/fedex-accounts/:fedexAccountId', requireManager, async (req, res) => {
     const fedexAccountId = String(req.params.fedexAccountId || '').trim();
-    const input = withFccPortalDefaults(parseFedexAccountInput(req.body), req.account.account_id);
 
-    if (!isFccAutomationEnabled() && isFccPortalCredentialInput(input)) {
+    if (req.body?.fcc_username || req.body?.fcc_password || req.body?.clear_saved_fcc_password) {
       return res.status(403).json({
         error: 'FCC/MyBizAccount credential collection is paused pending FedEx-approved access.'
       });
     }
 
+    const input = parseFedexAccountInput(req.body);
     const validationError = validateFedexAccountInput(input);
 
     if (!fedexAccountId) {
@@ -3130,20 +3201,7 @@ function createManagerRouter(options = {}) {
         return res.status(404).json({ error: 'FedEx account not found' });
       }
 
-      const fccValidationError = validateFccPortalCredentialInput(input, {
-        isExistingAccount: true,
-        hasSavedPassword: Boolean(existingFedexAccount.account.fcc_password_encrypted)
-      });
-
-      if (fccValidationError) {
-        return res.status(400).json({ error: fccValidationError });
-      }
-
       const timestamp = nowProvider().toISOString();
-      const encryptedFccPassword = input.fcc_password
-        ? encryptFedexSecret(input.fcc_password)
-        : existingFedexAccount.account.fcc_password_encrypted;
-      const shouldClearSavedPassword = input.clear_saved_fcc_password === true;
       const { data: updatedAccount, error: updateError } = await supabase
         .from('fedex_accounts')
         .update({
@@ -3159,13 +3217,6 @@ function createManagerRouter(options = {}) {
           billing_country_code: input.billing_country_code,
           connection_status: input.connection_status,
           connection_reference: input.connection_reference || null,
-          fcc_username: input.fcc_username || null,
-          fcc_password_encrypted: shouldClearSavedPassword ? null : encryptedFccPassword,
-          fcc_password_updated_at: shouldClearSavedPassword
-            ? null
-            : input.fcc_password
-              ? timestamp
-              : existingFedexAccount.account.fcc_password_updated_at || null,
           last_verified_at: input.connection_status === 'connected'
             ? (existingFedexAccount.account.last_verified_at || timestamp)
             : null,
@@ -3175,7 +3226,7 @@ function createManagerRouter(options = {}) {
         .eq('account_id', req.account.account_id)
         .eq('id', fedexAccountId)
         .select(
-          'id, account_id, nickname, account_number, billing_contact_name, billing_company_name, billing_address_line1, billing_address_line2, billing_city, billing_state_or_province, billing_postal_code, billing_country_code, connection_status, connection_reference, fcc_username, fcc_password_encrypted, fcc_password_updated_at, last_verified_at, is_default, created_by_manager_user_id, created_at, updated_at, disconnected_at'
+          'id, account_id, nickname, account_number, billing_contact_name, billing_company_name, billing_address_line1, billing_address_line2, billing_city, billing_state_or_province, billing_postal_code, billing_country_code, connection_status, connection_reference, last_verified_at, is_default, created_by_manager_user_id, created_at, updated_at, disconnected_at'
         )
         .single();
 
@@ -3247,7 +3298,7 @@ function createManagerRouter(options = {}) {
         .eq('account_id', req.account.account_id)
         .eq('id', fedexAccountId)
         .select(
-          'id, account_id, nickname, account_number, billing_contact_name, billing_company_name, billing_address_line1, billing_address_line2, billing_city, billing_state_or_province, billing_postal_code, billing_country_code, connection_status, connection_reference, fcc_username, fcc_password_encrypted, fcc_password_updated_at, last_verified_at, is_default, created_by_manager_user_id, created_at, updated_at, disconnected_at'
+          'id, account_id, nickname, account_number, billing_contact_name, billing_company_name, billing_address_line1, billing_address_line2, billing_city, billing_state_or_province, billing_postal_code, billing_country_code, connection_status, connection_reference, last_verified_at, is_default, created_by_manager_user_id, created_at, updated_at, disconnected_at'
         )
         .single();
 
@@ -3294,7 +3345,7 @@ function createManagerRouter(options = {}) {
         .eq('account_id', req.account.account_id)
         .eq('id', fedexAccountId)
         .select(
-          'id, account_id, nickname, account_number, billing_contact_name, billing_company_name, billing_address_line1, billing_address_line2, billing_city, billing_state_or_province, billing_postal_code, billing_country_code, connection_status, connection_reference, fcc_username, fcc_password_encrypted, fcc_password_updated_at, last_verified_at, is_default, created_by_manager_user_id, created_at, updated_at, disconnected_at'
+          'id, account_id, nickname, account_number, billing_contact_name, billing_company_name, billing_address_line1, billing_address_line2, billing_city, billing_state_or_province, billing_postal_code, billing_country_code, connection_status, connection_reference, last_verified_at, is_default, created_by_manager_user_id, created_at, updated_at, disconnected_at'
         )
         .single();
 
@@ -3373,41 +3424,34 @@ function createManagerRouter(options = {}) {
         return res.status(409).json({ error: 'That email is already assigned to another ReadyRoute account' });
       }
 
+      const invitedAt = nowProvider().toISOString();
+      let sharedManagerIdentity = null;
+
+      try {
+        sharedManagerIdentity = await findSharedManagerIdentityByEmail(supabase, email, req.account.account_id);
+      } catch (identityError) {
+        if (isMissingManagerUsersTable(identityError)) {
+          return res.status(500).json({ error: 'Manager user invites are not available until the latest database migration is run' });
+        }
+
+        throw identityError;
+      }
+
       if (managerUser && managerUser.password_hash) {
         return res.status(409).json({ error: 'That manager already has active access. Use password reset if they need a new password.' });
       }
 
-      const invitedAt = nowProvider().toISOString();
-      let sharedManagerIdentity = null;
-
-      if (!managerUser) {
-        const existingManagerIdentityQuery = await supabase
-          .from('manager_users')
-          .select('id, account_id, email, full_name, password_hash, is_active, invited_at, accepted_at, created_at')
-          .eq('email', email)
-          .limit(25);
-
-        if (existingManagerIdentityQuery.error) {
-          if (isMissingManagerUsersTable(existingManagerIdentityQuery.error)) {
-            return res.status(500).json({ error: 'Manager user invites are not available until the latest database migration is run' });
-          }
-
-          throw existingManagerIdentityQuery.error;
-        }
-
-        sharedManagerIdentity = (existingManagerIdentityQuery.data || []).find((row) =>
-          row.account_id !== req.account.account_id && row.password_hash
-        ) || null;
-      }
-
       if (managerUser) {
+        const alreadyActive = Boolean(managerUser.password_hash);
+        const linkedExistingManager = !alreadyActive && Boolean(sharedManagerIdentity?.password_hash);
         const { data: updatedManagerUser, error: updateError } = await supabase
           .from('manager_users')
           .update({
-            full_name: fullName,
+            full_name: fullName || sharedManagerIdentity?.full_name || managerUser.full_name || null,
+            password_hash: linkedExistingManager ? sharedManagerIdentity.password_hash : managerUser.password_hash || null,
             is_active: true,
             invited_at: invitedAt,
-            accepted_at: null
+            accepted_at: linkedExistingManager ? invitedAt : null
           })
           .eq('id', managerUser.id)
           .select('id, account_id, email, full_name, password_hash, is_active, invited_at, accepted_at')
@@ -3543,11 +3587,27 @@ function createManagerRouter(options = {}) {
         return res.status(409).json({ error: 'This manager already has active access. Use password reset if they need a new password.' });
       }
 
+      let sharedManagerIdentity = null;
+
+      try {
+        sharedManagerIdentity = await findSharedManagerIdentityByEmail(supabase, managerUser.email, req.account.account_id);
+      } catch (identityError) {
+        if (isMissingManagerUsersTable(identityError)) {
+          return res.status(500).json({ error: 'Manager user invites are not available until the latest database migration is run' });
+        }
+
+        throw identityError;
+      }
+
+      const invitedAt = nowProvider().toISOString();
+      const linkedExistingManager = Boolean(sharedManagerIdentity?.password_hash);
       const { data: updatedManagerUser, error: updateError } = await supabase
         .from('manager_users')
         .update({
-          invited_at: nowProvider().toISOString(),
-          accepted_at: null,
+          full_name: managerUser.full_name || sharedManagerIdentity?.full_name || null,
+          password_hash: linkedExistingManager ? sharedManagerIdentity.password_hash : null,
+          invited_at: invitedAt,
+          accepted_at: linkedExistingManager ? invitedAt : null,
           is_active: true
         })
         .eq('id', managerUser.id)
@@ -3556,6 +3616,17 @@ function createManagerRouter(options = {}) {
 
       if (updateError) {
         throw updateError;
+      }
+
+      if (linkedExistingManager) {
+        console.log(`Manager invite link for ${updatedManagerUser.email}: null`);
+
+        return res.status(200).json({
+          message: `${updatedManagerUser.email} already has ReadyRoute access, so they were linked to this CSA immediately.`,
+          invite_url: null,
+          email_delivery: 'linked_existing_manager',
+          manager_user: toManagerAccessRecord(updatedManagerUser, account?.manager_email || null)
+        });
       }
 
       const inviteToken = jwt.sign(
@@ -3721,10 +3792,20 @@ function createManagerRouter(options = {}) {
   });
 
   router.post('/drivers', requireManager, async (req, res) => {
-    const { name, email, fedex_driver_id: fedexDriverId, phone, hourly_rate: hourlyRate, pin } = req.body || {};
+    const {
+      name,
+      email,
+      fedex_driver_id: fedexDriverId,
+      phone,
+      date_of_birth: dateOfBirth,
+      hourly_rate: hourlyRate,
+      daily_flat_rate: dailyFlatRate,
+      pin
+    } = req.body || {};
     const parsedHourlyRate = hourlyRate == null || hourlyRate === '' ? 0 : Number(hourlyRate);
+    const parsedDailyFlatRate = dailyFlatRate == null || dailyFlatRate === '' ? 0 : Number(dailyFlatRate);
 
-    if (!name || !email || !Number.isFinite(parsedHourlyRate)) {
+    if (!name || !email || !Number.isFinite(parsedHourlyRate) || !Number.isFinite(parsedDailyFlatRate)) {
       return res.status(400).json({ error: 'name and email are required' });
     }
 
@@ -3766,7 +3847,9 @@ function createManagerRouter(options = {}) {
         email: normalizedEmail,
         fedex_driver_id: String(fedexDriverId || '').trim() || null,
         phone: String(phone || '').trim() || null,
+        date_of_birth: String(dateOfBirth || '').trim() || null,
         hourly_rate: parsedHourlyRate,
+        daily_flat_rate: parsedDailyFlatRate,
         pin: pinHash,
         is_active: true
       };
@@ -3777,8 +3860,8 @@ function createManagerRouter(options = {}) {
         .select('id')
         .single();
 
-      if (insertQuery.error && isMissingFedexDriverIdColumn(insertQuery.error)) {
-        const { fedex_driver_id: _fedexDriverId, ...fallbackPayload } = driverPayload;
+      if (insertQuery.error && (isMissingFedexDriverIdColumn(insertQuery.error) || isMissingDriverProfileColumn(insertQuery.error))) {
+        const { fedex_driver_id: _fedexDriverId, date_of_birth: _dateOfBirth, daily_flat_rate: _dailyFlatRate, ...fallbackPayload } = driverPayload;
         insertQuery = await supabase
           .from('drivers')
           .insert(fallbackPayload)
@@ -3896,11 +3979,26 @@ function createManagerRouter(options = {}) {
 
   router.put('/drivers/:driver_id', requireManager, async (req, res) => {
     const driverId = req.params.driver_id;
-    const { name, fedex_driver_id: fedexDriverId, phone, hourly_rate: hourlyRate, pin } = req.body || {};
+    const {
+      name,
+      fedex_driver_id: fedexDriverId,
+      phone,
+      date_of_birth: dateOfBirth,
+      hourly_rate: hourlyRate,
+      daily_flat_rate: dailyFlatRate,
+      pin
+    } = req.body || {};
     const hasHourlyRateUpdate = hourlyRate != null && hourlyRate !== '';
     const parsedHourlyRate = hasHourlyRateUpdate ? Number(hourlyRate) : null;
+    const hasDailyFlatRateUpdate = dailyFlatRate != null && dailyFlatRate !== '';
+    const parsedDailyFlatRate = hasDailyFlatRateUpdate ? Number(dailyFlatRate) : null;
 
-    if (!name || !phone || (hasHourlyRateUpdate && !Number.isFinite(parsedHourlyRate))) {
+    if (
+      !name ||
+      !phone ||
+      (hasHourlyRateUpdate && !Number.isFinite(parsedHourlyRate)) ||
+      (hasDailyFlatRateUpdate && !Number.isFinite(parsedDailyFlatRate))
+    ) {
       return res.status(400).json({ error: 'name and phone are required' });
     }
 
@@ -3928,11 +4026,16 @@ function createManagerRouter(options = {}) {
       const updatePayload = {
         name: String(name).trim(),
         fedex_driver_id: String(fedexDriverId || '').trim() || null,
-        phone: String(phone).trim()
+        phone: String(phone).trim(),
+        date_of_birth: String(dateOfBirth || '').trim() || null
       };
 
       if (hasHourlyRateUpdate) {
         updatePayload.hourly_rate = parsedHourlyRate;
+      }
+
+      if (hasDailyFlatRateUpdate) {
+        updatePayload.daily_flat_rate = parsedDailyFlatRate;
       }
 
       if (pin) {
@@ -3944,8 +4047,8 @@ function createManagerRouter(options = {}) {
         .update(updatePayload)
         .eq('id', driverId);
 
-      if (updateQuery.error && isMissingFedexDriverIdColumn(updateQuery.error)) {
-        const { fedex_driver_id: _fedexDriverId, ...fallbackPayload } = updatePayload;
+      if (updateQuery.error && (isMissingFedexDriverIdColumn(updateQuery.error) || isMissingDriverProfileColumn(updateQuery.error))) {
+        const { fedex_driver_id: _fedexDriverId, date_of_birth: _dateOfBirth, daily_flat_rate: _dailyFlatRate, ...fallbackPayload } = updatePayload;
         updateQuery = await supabase
           .from('drivers')
           .update(fallbackPayload)
@@ -3961,6 +4064,173 @@ function createManagerRouter(options = {}) {
     } catch (error) {
       console.error('Manager driver update endpoint failed:', error);
       return res.status(500).json({ error: 'Failed to update driver' });
+    }
+  });
+
+  router.post('/drivers/:driver_id/documents', requireManager, parseMultipartForm, async (req, res) => {
+    const driverId = req.params.driver_id;
+    const documentType = String(req.body?.document_type || '').trim();
+    const documentDefinition = getDriverDocumentDefinition(documentType);
+
+    if (!documentDefinition) {
+      return res.status(400).json({ error: 'Valid document_type is required' });
+    }
+
+    if (!req.file) {
+      return res.status(400).json({ error: 'Document file is required' });
+    }
+
+    try {
+      const { data: driver, error: driverLookupError } = await supabase
+        .from('drivers')
+        .select('id')
+        .eq('id', driverId)
+        .eq('account_id', req.account.account_id)
+        .maybeSingle();
+
+      if (driverLookupError) {
+        console.error('Driver document driver lookup failed:', driverLookupError);
+        return res.status(500).json({ error: 'Failed to validate driver document' });
+      }
+
+      if (!driver) {
+        return res.status(404).json({ error: 'Driver not found' });
+      }
+
+      if (!documentDefinition.allowMultiple) {
+        const { data: existingDocuments, error: existingDocumentsError } = await supabase
+          .from('driver_documents')
+          .select('id, storage_bucket, storage_path')
+          .eq('account_id', req.account.account_id)
+          .eq('driver_id', driverId)
+          .eq('document_type', documentType);
+
+        if (existingDocumentsError) {
+          console.error('Driver document existing lookup failed:', existingDocumentsError);
+          return res.status(500).json({ error: 'Failed to check existing driver documents' });
+        }
+
+        for (const existingDocument of existingDocuments || []) {
+          await supabase.storage
+            .from(existingDocument.storage_bucket || DRIVER_DOCUMENT_BUCKET)
+            .remove([existingDocument.storage_path])
+            .catch(() => null);
+        }
+
+        if ((existingDocuments || []).length) {
+          const { error: deleteExistingError } = await supabase
+            .from('driver_documents')
+            .delete()
+            .eq('account_id', req.account.account_id)
+            .eq('driver_id', driverId)
+            .eq('document_type', documentType);
+
+          if (deleteExistingError) {
+            console.error('Driver document replace cleanup failed:', deleteExistingError);
+            return res.status(500).json({ error: 'Failed to replace existing driver document' });
+          }
+        }
+      }
+
+      const originalName = req.file.originalname || `${documentType}.bin`;
+      const storagePath = [
+        req.account.account_id,
+        driverId,
+        documentType,
+        `${Date.now()}-${crypto.randomBytes(4).toString('hex')}-${sanitizeStorageSegment(originalName)}`
+      ].join('/');
+
+      const { error: uploadError } = await supabase.storage
+        .from(DRIVER_DOCUMENT_BUCKET)
+        .upload(storagePath, req.file.buffer, {
+          contentType: req.file.mimetype || 'application/octet-stream',
+          upsert: false
+        });
+
+      if (uploadError) {
+        console.error('Driver document storage upload failed:', uploadError);
+        return res.status(500).json({ error: 'Failed to upload driver document. Confirm the driver-documents storage bucket exists.' });
+      }
+
+      const { data: publicUrlData } = supabase.storage
+        .from(DRIVER_DOCUMENT_BUCKET)
+        .getPublicUrl(storagePath);
+
+      const expiresOn = String(req.body?.expires_on || '').trim() || null;
+      const { data: documentRow, error: insertDocumentError } = await supabase
+        .from('driver_documents')
+        .insert({
+          account_id: req.account.account_id,
+          driver_id: driverId,
+          document_type: documentType,
+          file_name: originalName,
+          mime_type: req.file.mimetype || 'application/octet-stream',
+          file_size: req.file.buffer.length,
+          storage_bucket: DRIVER_DOCUMENT_BUCKET,
+          storage_path: storagePath,
+          public_url: publicUrlData?.publicUrl || null,
+          expires_on: expiresOn,
+          notes: String(req.body?.notes || '').trim() || null,
+          uploaded_by_manager_id: req.account.manager_user_id || null
+        })
+        .select('id, driver_id, document_type, file_name, mime_type, file_size, storage_bucket, storage_path, public_url, expires_on, notes, uploaded_by_manager_id, created_at, updated_at')
+        .single();
+
+      if (insertDocumentError) {
+        console.error('Driver document insert failed:', insertDocumentError);
+        await supabase.storage.from(DRIVER_DOCUMENT_BUCKET).remove([storagePath]).catch(() => null);
+        return res.status(500).json({ error: 'Failed to save driver document metadata' });
+      }
+
+      return res.status(201).json({ document: documentRow });
+    } catch (error) {
+      console.error('Driver document upload endpoint failed:', error);
+      return res.status(500).json({ error: 'Failed to upload driver document' });
+    }
+  });
+
+  router.delete('/drivers/:driver_id/documents/:document_id', requireManager, async (req, res) => {
+    const driverId = req.params.driver_id;
+    const documentId = req.params.document_id;
+
+    try {
+      const { data: documentRow, error: documentLookupError } = await supabase
+        .from('driver_documents')
+        .select('id, storage_bucket, storage_path')
+        .eq('id', documentId)
+        .eq('driver_id', driverId)
+        .eq('account_id', req.account.account_id)
+        .maybeSingle();
+
+      if (documentLookupError) {
+        console.error('Driver document delete lookup failed:', documentLookupError);
+        return res.status(500).json({ error: 'Failed to load driver document' });
+      }
+
+      if (!documentRow) {
+        return res.status(404).json({ error: 'Driver document not found' });
+      }
+
+      await supabase.storage
+        .from(documentRow.storage_bucket || DRIVER_DOCUMENT_BUCKET)
+        .remove([documentRow.storage_path])
+        .catch(() => null);
+
+      const { error: deleteError } = await supabase
+        .from('driver_documents')
+        .delete()
+        .eq('id', documentId)
+        .eq('account_id', req.account.account_id);
+
+      if (deleteError) {
+        console.error('Driver document delete failed:', deleteError);
+        return res.status(500).json({ error: 'Failed to remove driver document' });
+      }
+
+      return res.status(200).json({ ok: true });
+    } catch (error) {
+      console.error('Driver document delete endpoint failed:', error);
+      return res.status(500).json({ error: 'Failed to remove driver document' });
     }
   });
 

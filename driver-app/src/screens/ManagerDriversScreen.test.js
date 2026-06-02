@@ -180,7 +180,7 @@ describe('ManagerDriversScreen', () => {
     expect(screen.getByText('Edit Driver')).toBeTruthy();
     expect(screen.getByText('Leave PIN blank to keep the current PIN.')).toBeTruthy();
     expect(screen.getByDisplayValue('luis@example.com')).toBeTruthy();
-    expect(screen.queryByText(/Hourly/i)).toBeNull();
+    expect(screen.getByText('Daily hourly rate')).toBeTruthy();
 
     fireEvent.changeText(screen.getByDisplayValue('FX123'), 'FX124');
     fireEvent.changeText(screen.getByDisplayValue('5551234567'), '5559876543');
@@ -189,8 +189,11 @@ describe('ManagerDriversScreen', () => {
     await waitFor(() => {
       expect(api.put).toHaveBeenCalledWith('/manager/drivers/driver-1', {
         name: 'Luis Perez',
+        date_of_birth: null,
         fedex_driver_id: 'FX124',
         phone: '5559876543',
+        hourly_rate: 0,
+        daily_flat_rate: 0,
         pin: undefined
       }, {
         authMode: 'manager'

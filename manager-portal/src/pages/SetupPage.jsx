@@ -178,7 +178,7 @@ export default function SetupPage() {
               ? 'ready'
               : 'needs-attention',
         detail: FCC_AUTOMATION_PAUSED
-          ? `No CSA FedEx password is required. ${fedexAccounts.length} legacy portal login${fedexAccounts.length === 1 ? '' : 's'} will stay disabled.`
+          ? 'No CSA FedEx password is required. Use manual manifest upload until FedEx-approved access is available.'
           : fedexMigrationRequired
           ? 'Run the latest FedEx accounts migration before CSA-level FedEx setup can be saved.'
           : fedexConnectedCount > 0

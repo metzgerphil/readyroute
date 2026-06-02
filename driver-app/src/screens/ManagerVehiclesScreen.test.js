@@ -125,7 +125,7 @@ describe('ManagerVehiclesScreen', () => {
     expect(screen.queryByText('Odometer')).toBeNull();
     expect(screen.queryByText('More')).toBeNull();
     expect(screen.queryByText('Route 816')).toBeNull();
-    expect(screen.getByPlaceholderText('Search trucks by number or description')).toBeTruthy();
+    expect(screen.getByPlaceholderText('Search vehicles by ID or description')).toBeTruthy();
   });
 
   it('shows manager maintenance program, records, inspections, and settings in app tabs', async () => {
@@ -196,7 +196,7 @@ describe('ManagerVehiclesScreen', () => {
         data: {
           template: {
             fields: [
-              { id: 'truck_number', label: 'Truck Number', enabled: true },
+              { id: 'truck_number', label: 'Vehicle ID', enabled: true },
               { id: 'driver_notes', label: 'Driver notes', enabled: true }
             ]
           }
@@ -224,7 +224,7 @@ describe('ManagerVehiclesScreen', () => {
     await waitFor(() => {
       expect(screen.getByText('Vehicle Check Requirements')).toBeTruthy();
       expect(screen.getByText('Checklist Template')).toBeTruthy();
-      expect(screen.getByText('Truck Number')).toBeTruthy();
+      expect(screen.getByText('Vehicle ID')).toBeTruthy();
     });
 
     fireEvent.press(screen.getByText('Settings'));
@@ -303,7 +303,7 @@ describe('ManagerVehiclesScreen', () => {
     await waitFor(() => {
       expect(screen.getByText('Daily Odometer + Issue Note')).toBeTruthy();
       expect(screen.getByText('Date')).toBeTruthy();
-      expect(screen.getByText('Truck Number')).toBeTruthy();
+      expect(screen.getByText('Vehicle ID')).toBeTruthy();
       expect(screen.getByText('Driver notes')).toBeTruthy();
     });
 
@@ -362,7 +362,7 @@ describe('ManagerVehiclesScreen', () => {
         data: {
           template: {
             fields: [
-              { id: 'truck_number', label: 'Truck Number', detail: 'Truck identifier', enabled: true },
+              { id: 'truck_number', label: 'Vehicle ID', detail: 'Vehicle identifier', enabled: true },
               { id: 'driver_notes', label: 'Driver notes', detail: 'Free-text notes', enabled: true }
             ]
           }
@@ -384,7 +384,7 @@ describe('ManagerVehiclesScreen', () => {
         data: {
           template: {
             fields: [
-              { id: 'truck_number', label: 'Truck Number', detail: 'Truck identifier', enabled: false },
+              { id: 'truck_number', label: 'Vehicle ID', detail: 'Vehicle identifier', enabled: false },
               { id: 'driver_notes', label: 'Driver notes', detail: 'Free-text notes', enabled: true }
             ]
           }
@@ -401,7 +401,7 @@ describe('ManagerVehiclesScreen', () => {
 
     await waitFor(() => {
       expect(screen.getByText('Reminder Schedule')).toBeTruthy();
-      expect(screen.getByText('Truck Number')).toBeTruthy();
+      expect(screen.getByText('Vehicle ID')).toBeTruthy();
     });
 
     fireEvent.press(screen.getAllByText('Friday').at(-1));
@@ -570,7 +570,8 @@ describe('ManagerVehiclesScreen', () => {
     await waitFor(() => {
       expect(api.put).toHaveBeenCalledWith('/vehicles/vehicle-1', expect.objectContaining({
         current_mileage: 13000,
-        name: 'V-42',
+        name: 'ABC123',
+        plate: 'ABC123',
         truck_type: 'P1200',
         year: 2022
       }), {
@@ -684,6 +685,79 @@ describe('ManagerVehiclesScreen', () => {
     });
   });
 
+  it('lets managers run and save a vehicle inspection', async () => {
+    api.get
+      .mockResolvedValueOnce({
+        data: {
+          vehicles: [
+            {
+              id: 'vehicle-1',
+              name: 'V-42',
+              make: 'Ford',
+              model: 'Transit',
+              year: 2022,
+              plate: 'ABC123',
+              registration_expiration: '2026-12-31',
+              current_mileage: 12345
+            }
+          ]
+        }
+      })
+      .mockResolvedValueOnce({ data: { settings: [] } })
+      .mockResolvedValueOnce({ data: { maintenance: [] } })
+      .mockResolvedValueOnce({ data: { setting: { maintenance_requirement_mode: 'option_1', weekly_inspection_day: 'Monday' } } })
+      .mockResolvedValueOnce({ data: { schedule: { weekly_inspection_day: 'Monday', maintenance_warning_miles: 1000, maintenance_warning_days: 14, document_warning_days: 30 } } })
+      .mockResolvedValueOnce({
+        data: {
+          template: {
+            fields: [
+              { id: 'tires', label: 'Tires', enabled: true },
+              { id: 'lights', label: 'Lights', enabled: true }
+            ]
+          }
+        }
+      })
+      .mockResolvedValueOnce({ data: { vehicles: [] } })
+      .mockResolvedValueOnce({ data: { settings: [] } })
+      .mockResolvedValueOnce({ data: { maintenance: [] } })
+      .mockResolvedValueOnce({ data: { setting: { maintenance_requirement_mode: 'option_1', weekly_inspection_day: 'Monday' } } })
+      .mockResolvedValueOnce({ data: { schedule: { weekly_inspection_day: 'Monday', maintenance_warning_miles: 1000, maintenance_warning_days: 14, document_warning_days: 30 } } })
+      .mockResolvedValueOnce({ data: { template: { fields: [] } } });
+    api.post.mockResolvedValue({ data: { inspection: { id: 'inspection-1' } } });
+
+    const screen = render(<ManagerVehiclesScreen />);
+
+    await waitFor(() => {
+      expect(screen.getByText('V-42')).toBeTruthy();
+    });
+
+    fireEvent.press(screen.getByText('Edit'));
+    fireEvent.press(screen.getByText('Run Inspection'));
+
+    await waitFor(() => {
+      expect(screen.getByText('Run Inspection')).toBeTruthy();
+      expect(screen.getByText('Tires')).toBeTruthy();
+      expect(screen.getByText('Lights')).toBeTruthy();
+    });
+
+    fireEvent.press(screen.getAllByText('Issue')[0]);
+    fireEvent.changeText(screen.getByPlaceholderText('Optional notes or issue details'), 'Left rear tire needs review');
+    fireEvent.press(screen.getByText('Save Inspection'));
+
+    await waitFor(() => {
+      expect(api.post).toHaveBeenCalledWith('/vehicles/vehicle-1/inspections', expect.objectContaining({
+        inspection_date: getTodayDateParam(),
+        issue_note: 'Left rear tire needs review',
+        odometer: 12345,
+        items: expect.arrayContaining([
+          expect.objectContaining({ checklist_item_key: 'tires', status: 'fail' })
+        ])
+      }), {
+        authMode: 'manager'
+      });
+    });
+  });
+
   it('loads service history from the existing endpoint', async () => {
     api.get
       .mockResolvedValueOnce({
@@ -732,6 +806,54 @@ describe('ManagerVehiclesScreen', () => {
     await waitFor(() => {
       expect(api.get).toHaveBeenCalledWith('/vehicles/vehicle-1/maintenance', { authMode: 'manager' });
       expect(screen.getByText('Oil and filter')).toBeTruthy();
+    });
+  });
+
+  it('loads inspection history from the vehicle history endpoint', async () => {
+    api.get
+      .mockResolvedValueOnce({
+        data: {
+          vehicles: [
+            {
+              id: 'vehicle-1',
+              name: 'V-42',
+              make: 'Ford',
+              model: 'Transit',
+              year: 2022,
+              plate: 'ABC123',
+              registration_expiration: '2026-12-31'
+            }
+          ]
+        }
+      })
+      .mockResolvedValueOnce({
+        data: {
+          inspections: [
+            {
+              id: 'inspection-1',
+              inspection_date: '2026-06-02',
+              inspection_type_label: 'Manager Inspection',
+              status_label: 'Needs Review',
+              odometer: 12345,
+              failed_items_count: 1,
+              issue_note: 'Light out'
+            }
+          ]
+        }
+      });
+
+    const screen = render(<ManagerVehiclesScreen />);
+
+    await waitFor(() => {
+      expect(screen.getByText('V-42')).toBeTruthy();
+    });
+
+    fireEvent.press(screen.getByText('View'));
+    fireEvent.press(screen.getByText('Inspection History'));
+
+    await waitFor(() => {
+      expect(api.get).toHaveBeenCalledWith('/vehicles/vehicle-1/inspection-history', { authMode: 'manager' });
+      expect(screen.getByText('Light out')).toBeTruthy();
     });
   });
 });

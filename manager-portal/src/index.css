@@ -733,6 +733,182 @@ button {
   min-width: 0;
 }
 
+.driver-profile-table .drivers-manager-table-header,
+.driver-profile-table .drivers-manager-table-row {
+  grid-template-columns:
+    minmax(170px, 1.25fr)
+    minmax(170px, 1.1fr)
+    minmax(126px, 0.74fr)
+    minmax(126px, 0.74fr)
+    minmax(92px, 0.52fr)
+    minmax(82px, 0.48fr)
+    minmax(150px, 0.82fr);
+}
+
+.driver-contact-cell {
+  display: grid;
+  gap: 3px;
+}
+
+.driver-contact-cell span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.driver-profile-modal-card {
+  max-width: min(980px, calc(100vw - 28px));
+  max-height: min(92vh, 920px);
+  overflow: auto;
+}
+
+.driver-profile-form {
+  display: grid;
+  gap: 14px;
+}
+
+.driver-profile-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.money-input-wrap {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  border: 1px solid var(--rr-color-border);
+  border-radius: 12px;
+  background: #ffffff;
+  padding-left: 12px;
+}
+
+.money-input-wrap > span {
+  color: var(--rr-color-text-muted);
+  font-weight: 900;
+}
+
+.money-input-wrap .text-field {
+  border: 0;
+  min-height: 42px;
+  padding-left: 0;
+}
+
+.driver-documents-section {
+  margin-top: 16px;
+}
+
+.driver-document-slot {
+  display: grid;
+  gap: 10px;
+  padding: 14px;
+  border: 1px solid var(--rr-color-border);
+  border-radius: 12px;
+  background: #ffffff;
+}
+
+.driver-document-slot-header,
+.driver-document-file,
+.driver-document-upload-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.driver-document-slot-header {
+  justify-content: space-between;
+}
+
+.driver-document-slot-header > div,
+.driver-document-file > div {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.driver-document-slot-header strong,
+.driver-document-file a {
+  color: var(--rr-color-text-strong);
+  font-weight: 900;
+}
+
+.driver-document-slot-header span,
+.driver-document-file span {
+  color: var(--rr-color-text-muted);
+  font-size: 0.8rem;
+  font-weight: 760;
+}
+
+.driver-document-files {
+  display: grid;
+  gap: 8px;
+}
+
+.driver-document-file {
+  justify-content: space-between;
+  padding: 10px;
+  border-radius: 10px;
+  background: var(--rr-color-surface-muted);
+}
+
+.driver-document-upload-row {
+  align-items: stretch;
+  flex-wrap: wrap;
+}
+
+.driver-document-upload-row .text-field {
+  flex: 1 1 170px;
+  min-height: 38px;
+}
+
+.driver-document-upload-row .primary-inline-button {
+  flex: 0 0 auto;
+}
+
+.driver-document-file-input {
+  padding-top: 8px;
+}
+
+.driver-doc-chip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: fit-content;
+  max-width: 100%;
+  min-height: 28px;
+  padding: 0 10px;
+  border-radius: 999px;
+  font-size: 0.72rem;
+  font-weight: 950;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+}
+
+.driver-doc-chip-success {
+  border: 1px solid var(--rr-color-success-border);
+  background: var(--rr-color-success-soft);
+  color: var(--rr-color-success);
+}
+
+.driver-doc-chip-warning {
+  border: 1px solid var(--rr-color-orange-border);
+  background: var(--rr-color-orange-soft);
+  color: var(--rr-color-orange-hover);
+}
+
+.driver-doc-chip-danger {
+  border: 1px solid #f4b5b5;
+  background: #fff2f2;
+  color: #b4372f;
+}
+
+.driver-doc-chip-neutral {
+  border: 1px solid var(--rr-color-border);
+  background: var(--rr-color-surface-muted);
+  color: var(--rr-color-text-muted);
+}
+
 .drivers-manager-table-header {
   min-height: 30px;
   padding: 0 4px;
@@ -970,6 +1146,41 @@ button {
   .driver-modal-status-row {
     align-items: stretch;
     flex-direction: column;
+  }
+
+  .driver-profile-table.drivers-manager-table {
+    display: grid;
+  }
+
+  .driver-profile-table .drivers-manager-table-header {
+    display: none;
+  }
+
+  .driver-profile-table .drivers-manager-table-row {
+    grid-template-columns: 1fr;
+    gap: 10px;
+    padding: 14px;
+    border: 1px solid var(--rr-color-border);
+    border-radius: 12px;
+    margin-bottom: 10px;
+  }
+
+  .driver-profile-table .drivers-table-actions {
+    justify-content: flex-start;
+  }
+
+  .driver-profile-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .driver-document-slot-header,
+  .driver-document-file {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .driver-document-upload-row .primary-inline-button {
+    width: 100%;
   }
 }
 

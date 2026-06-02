@@ -18,16 +18,12 @@ const DEFAULT_FEDEX_FORM = {
   billing_postal_code: '',
   billing_country_code: 'US',
   connection_status: 'connected',
-  connection_reference: '',
-  fcc_username: '',
-  fcc_password: '',
-  has_saved_fcc_password: false,
-  clear_saved_fcc_password: false
+  connection_reference: ''
 };
 
 const FCC_AUTOMATION_PAUSED = true;
 const FCC_PORTAL_URL = 'https://customerconnection.fedex.com/';
-const FCC_TABLE_COLUMNS = ['Portal name', 'Portal URL', 'Username', 'Last updated', 'Status', 'Actions'];
+const FCC_TABLE_COLUMNS = ['Portal name', 'Portal URL', 'Last updated', 'Status', 'Actions'];
 
 const FEDEX_STATUS_LABELS = {
   not_started: 'Not started',
@@ -37,48 +33,21 @@ const FEDEX_STATUS_LABELS = {
   disconnected: 'Disconnected'
 };
 
-function buildFccPortalAccountNumber(username) {
-  const normalized = String(username || '').trim().replace(/[^a-zA-Z0-9]/g, '').toUpperCase();
-  return `FCC${normalized || 'PORTAL'}`.slice(0, 32);
-}
-
 function buildFccPortalPayload(form) {
-  const username = String(form.fcc_username || '').trim();
-
   return {
-    ...form,
     nickname: String(form.nickname || '').trim() || 'FCC Portal Access',
-    account_number: String(form.account_number || '').trim() || buildFccPortalAccountNumber(username),
+    account_number: String(form.account_number || '').trim(),
     billing_contact_name: form.billing_contact_name || 'FCC Portal',
     billing_company_name: form.billing_company_name || 'ReadyRoute FCC Access',
-    billing_address_line1: form.billing_address_line1 || 'FCC Portal Credential',
+    billing_address_line1: form.billing_address_line1 || 'FedEx Customer Connection',
     billing_address_line2: form.billing_address_line2 || '',
     billing_city: form.billing_city || 'FCC Portal',
     billing_state_or_province: form.billing_state_or_province || 'NA',
     billing_postal_code: form.billing_postal_code || '00000',
     billing_country_code: form.billing_country_code || 'US',
     connection_status: form.connection_status || 'connected',
-    fcc_username: username
+    connection_reference: form.connection_reference || ''
   };
-}
-
-function maskCredential(value) {
-  const normalized = String(value || '').trim();
-  if (!normalized) {
-    return '';
-  }
-
-  if (normalized.includes('@')) {
-    const [name, domain] = normalized.split('@');
-    const visibleName = name.length > 1 ? `${name.slice(0, 1)}***${name.slice(-1)}` : `${name}***`;
-    return `${visibleName}@${domain}`;
-  }
-
-  if (normalized.length <= 4) {
-    return `${normalized.slice(0, 1)}***`;
-  }
-
-  return `${normalized.slice(0, 2)}***${normalized.slice(-2)}`;
 }
 
 function formatDateTime(value) {
@@ -201,11 +170,7 @@ export default function CsaPage() {
       billing_postal_code: account.billing_postal_code || '',
       billing_country_code: account.billing_country_code || 'US',
       connection_status: account.connection_status || 'not_started',
-      connection_reference: account.connection_reference || '',
-      fcc_username: '',
-      fcc_password: '',
-      has_saved_fcc_password: account.has_saved_fcc_password === true,
-      clear_saved_fcc_password: false
+      connection_reference: account.connection_reference || ''
     });
   }
 
@@ -312,37 +277,23 @@ export default function CsaPage() {
     setSuccessMessage('');
     setFedexFormMessage({ type: '', text: '' });
 
-    if (!editingFedexAccountId && !String(fedexForm.fcc_username || '').trim()) {
-      setFedexFormMessage({ type: 'error', text: 'Enter the MyBizAccount/FCC username before saving.' });
-      return;
-    }
-
-    if ((!editingFedexAccountId || fedexForm.has_saved_fcc_password !== true) && !String(fedexForm.fcc_password || '').trim()) {
-      setFedexFormMessage({ type: 'error', text: 'Enter the MyBizAccount password before saving this FCC login.' });
+    if (!editingFedexAccountId) {
+      setFedexFormMessage({ type: 'error', text: 'FCC credential entry is disabled. Download manifests manually and upload them in ReadyRoute.' });
       return;
     }
 
     setIsSavingFedexAccount(true);
 
     try {
-      const payload = buildFccPortalPayload({
-        ...fedexForm,
-        fcc_username: String(fedexForm.fcc_username || '').trim() || editingFedexAccount?.fcc_username || ''
-      });
-      if (editingFedexAccountId) {
-        await api.patch(`/manager/fedex-accounts/${editingFedexAccountId}`, payload);
-        setSuccessMessage('FCC portal login updated.');
-        setFedexFormMessage({ type: 'success', text: 'FCC portal login saved.' });
-      } else {
-        await api.post('/manager/fedex-accounts', payload);
-        setSuccessMessage('FCC portal login added to this CSA.');
-        setFedexFormMessage({ type: 'success', text: 'FCC portal login saved. ReadyRoute can now use this saved portal access.' });
-      }
+      const payload = buildFccPortalPayload(fedexForm);
+      await api.patch(`/manager/fedex-accounts/${editingFedexAccountId}`, payload);
+      setSuccessMessage('FCC portal entry updated.');
+      setFedexFormMessage({ type: 'success', text: 'FCC portal entry saved.' });
 
       resetFedexForm({ keepMessage: true });
       await refreshFedexQueries();
     } catch (error) {
-      const message = error.response?.data?.error || error.message || 'Could not save this FCC portal login.';
+      const message = error.response?.data?.error || error.message || 'Could not save this FCC portal entry.';
       setErrorMessage(message);
       setFedexFormMessage({ type: 'error', text: message });
     } finally {
@@ -357,10 +308,10 @@ export default function CsaPage() {
 
     try {
       await api.post(`/manager/fedex-accounts/${accountId}/default`);
-      setSuccessMessage('Default FCC portal login updated.');
+      setSuccessMessage('Default FCC portal entry updated.');
       await refreshFedexQueries();
     } catch (error) {
-      setErrorMessage(error.response?.data?.error || 'Could not change the default FCC portal login.');
+      setErrorMessage(error.response?.data?.error || 'Could not change the default FCC portal entry.');
     } finally {
       setFedexActionAccountId(null);
     }
@@ -384,19 +335,18 @@ export default function CsaPage() {
         billing_postal_code: account.billing_postal_code,
         billing_country_code: account.billing_country_code || 'US',
         connection_status: nextStatus,
-        connection_reference: account.connection_reference || '',
-        fcc_username: account.fcc_username || ''
+        connection_reference: account.connection_reference || ''
       });
       setSuccessMessage(
         nextStatus === 'connected'
-          ? 'FCC portal login marked connected.'
+          ? 'FCC portal entry marked connected.'
           : nextStatus === 'pending_mfa'
-            ? 'FCC portal login moved to pending MFA.'
-            : 'FCC portal login updated.'
+            ? 'FCC portal entry moved to pending MFA.'
+            : 'FCC portal entry updated.'
       );
       await refreshFedexQueries();
     } catch (error) {
-      setErrorMessage(error.response?.data?.error || 'Could not update the FCC portal login status.');
+      setErrorMessage(error.response?.data?.error || 'Could not update the FCC portal entry status.');
     } finally {
       setFedexActionAccountId(null);
     }
@@ -412,10 +362,10 @@ export default function CsaPage() {
       if (editingFedexAccountId === accountId) {
         resetFedexForm();
       }
-      setSuccessMessage('FCC portal login disconnected from this CSA.');
+      setSuccessMessage('FCC portal entry disconnected from this CSA.');
       await refreshFedexQueries();
     } catch (error) {
-      setErrorMessage(error.response?.data?.error || 'Could not disconnect that FCC portal login.');
+      setErrorMessage(error.response?.data?.error || 'Could not disconnect that FCC portal entry.');
     } finally {
       setFedexActionAccountId(null);
     }
@@ -555,20 +505,19 @@ export default function CsaPage() {
             <div>
               <div className="card-title">FCC Connection</div>
               <div className="driver-meta">
-                Manage saved FedEx Customer Connection portal access for this CSA.
+                Track FedEx Customer Connection status for this CSA. ReadyRoute does not store FCC usernames or passwords.
               </div>
             </div>
             <div className="csa-fcc-heading-actions">
-              <StatusBadge tone={fedexConnectedCount > 0 ? 'active' : 'neutral'}>
-                {fedexConnectedCount > 0 ? 'Connected' : 'Not connected'}
+              <StatusBadge tone="neutral">
+                Manual upload only
               </StatusBadge>
-              <a className="primary-button" href="#fcc-access-form">Add FCC Portal Access</a>
             </div>
           </div>
 
           {isFedexSetupFocus ? (
             <div className="info-banner">
-              FedEx Customer Connection setup is managed here. Saved FCC Portal Access entries stay masked in the portal.
+              Download manifests directly from the FCC portal and upload them in ReadyRoute. FCC login credentials cannot be entered or stored here.
             </div>
           ) : null}
 
@@ -580,7 +529,7 @@ export default function CsaPage() {
 
           {FCC_AUTOMATION_PAUSED ? (
             <div className="info-banner">
-              FedEx Customer Connection automation is paused while ReadyRoute prepares approved access. Saved FCC Portal Access entries can still be managed securely here.
+              FCC portal credentials cannot be entered through ReadyRoute. Download manifests directly from the FCC portal and upload them here manually.
             </div>
           ) : null}
 
@@ -615,7 +564,6 @@ export default function CsaPage() {
                       <span>{account.account_number_masked || 'Masked account unavailable'}</span>
                     </div>
                     <a href={FCC_PORTAL_URL} rel="noreferrer" target="_blank">customerconnection.fedex.com</a>
-                    <span>{account.fcc_username ? maskCredential(account.fcc_username) : 'Not configured'}</span>
                     <span>{getFedexLastUpdated(account)}</span>
                     <div className="csa-fcc-status-cell">
                       {account.is_default ? <StatusBadge tone="purple">Default</StatusBadge> : null}
@@ -676,21 +624,19 @@ export default function CsaPage() {
             <div className="csa-fcc-empty-state">
               <div>
                 <strong>No FCC portal access saved</strong>
-                <span>Add FCC Portal Access when you are ready to connect this CSA.</span>
+                <span>FCC credentials cannot be added through ReadyRoute. Download manifests from the FCC portal and upload them manually.</span>
               </div>
-              <a className="primary-button" href="#fcc-access-form">Add FCC Portal Access</a>
             </div>
           )}
 
+          {editingFedexAccountId ? (
           <form className="csa-form csa-fcc-form" id="fcc-access-form" onSubmit={handleSaveFedexAccount}>
             <div>
               <div className="card-title">
-                {editingFedexAccountId ? 'Edit FCC Portal Access' : 'Add FCC Portal Access'}
+                Edit FCC Portal Entry
               </div>
               <div className="driver-meta">
-                {editingFedexAccount
-                  ? `Current MyBizAccount: ${maskCredential(editingFedexAccount.fcc_username)}`
-                  : 'Add the MyBizAccount login used for FedEx Customer Connection.'}
+                Update the nickname or connection status for this entry. FCC credentials cannot be stored in ReadyRoute.
               </div>
             </div>
 
@@ -701,39 +647,10 @@ export default function CsaPage() {
                 placeholder="Login nickname"
                 value={fedexForm.nickname}
               />
-              <input
-                className="text-field"
-                onChange={(event) => updateFedexField('fcc_username', event.target.value)}
-                placeholder={editingFedexAccountId ? 'New MyBizAccount username (optional)' : 'MyBizAccount / FCC username'}
-                value={fedexForm.fcc_username}
-              />
-              <input
-                className="text-field"
-                onChange={(event) => {
-                  updateFedexField('fcc_password', event.target.value);
-                  if (event.target.value) {
-                    updateFedexField('clear_saved_fcc_password', false);
-                  }
-                }}
-                placeholder={editingFedexAccountId ? 'New password (leave blank to keep encrypted password)' : 'MyBizAccount password'}
-                type="password"
-                value={fedexForm.fcc_password}
-              />
             </div>
 
-            {editingFedexAccountId ? (
-              <label className="checkbox-row">
-                <input
-                  checked={fedexForm.clear_saved_fcc_password === true}
-                  onChange={(event) => updateFedexField('clear_saved_fcc_password', event.target.checked)}
-                  type="checkbox"
-                />
-                Clear the saved FCC password
-              </label>
-            ) : null}
-
             <div className="csa-security-note">
-              Passwords are stored encrypted and are never returned in API responses. ReadyRoute only displays masked FCC Portal Access details.
+              ReadyRoute does not store FCC/MyBizAccount usernames or passwords. Use manual manifest upload until FedEx-approved access is available.
             </div>
 
             {fedexFormMessage.text ? (
@@ -745,16 +662,15 @@ export default function CsaPage() {
             <div className="csa-fedex-actions">
               <button className="primary-button" disabled={isSavingFedexAccount} type="submit">
                 {isSavingFedexAccount
-                  ? (editingFedexAccountId ? 'Saving login...' : 'Adding login...')
-                  : (editingFedexAccountId ? 'Save FCC Portal Login' : 'Add FCC Portal Access')}
+                  ? 'Saving entry...'
+                  : 'Save FCC Portal Entry'}
               </button>
-              {editingFedexAccountId ? (
-                <button className="secondary-button" onClick={() => resetFedexForm()} type="button">
-                  Cancel edit
-                </button>
-              ) : null}
+              <button className="secondary-button" onClick={() => resetFedexForm()} type="button">
+                Cancel edit
+              </button>
             </div>
           </form>
+          ) : null}
         </section>
 
       </div>

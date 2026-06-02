@@ -26,8 +26,21 @@ const emptyEditVehicleForm = {
   notes: ''
 };
 
+function buildVehiclePayload(form) {
+  const vehicleId = String(form.plate || form.name || '').trim();
+
+  return {
+    ...form,
+    name: vehicleId,
+    plate: vehicleId,
+    year: Number(form.year),
+    current_mileage: Number(form.current_mileage || 0)
+  };
+}
+
 const TRUCK_TYPE_OPTIONS = [
   'P700',
+  'P900',
   'P1000',
   'P1100',
   'P1200',
@@ -142,7 +155,7 @@ const MAINTENANCE_REQUIREMENT_OPTIONS = [
 const DEFAULT_CHECKLIST_TEMPLATE_FIELDS = [
   { id: 'date', label: 'Date', detail: 'Inspection date', enabled: true },
   { id: 'company_name', label: 'Company name', detail: 'CSA or company name', enabled: true },
-  { id: 'truck_number', label: 'Truck Number', detail: 'Truck identifier for the inspection', enabled: true },
+  { id: 'truck_number', label: 'Vehicle ID', detail: 'Vehicle identifier for the inspection', enabled: true },
   { id: 'driver_name', label: 'Driver first and last name', detail: 'Driver completing the inspection', enabled: true },
   { id: 'tires', label: 'Tires, front, rear inner, rear outer', detail: 'Tire condition across front and rear positions', enabled: true },
   { id: 'check_engine_light', label: 'Check engine light', detail: 'On or Off', enabled: true },
@@ -344,7 +357,7 @@ function downloadCsv(filename, rows = []) {
 
 function buildMaintenanceRecordsCsvRows(records = []) {
   return [
-    ['Date', 'Truck Number', 'Vehicle Description', 'Vehicle Type', 'Service Type', 'Notes', 'Vendor', 'Mileage', 'Cost', 'Next Due Mileage', 'Next Due Date'],
+    ['Date', 'Vehicle ID', 'Vehicle Description', 'Vehicle Type', 'Service Type', 'Notes', 'Vendor', 'Mileage', 'Cost', 'Next Due Mileage', 'Next Due Date'],
     ...records.map((record) => [
       record.service_date || '',
       record.vehicle?.name || record.vehicle_name || '',
@@ -363,7 +376,7 @@ function buildMaintenanceRecordsCsvRows(records = []) {
 
 function buildInspectionCsvRows(inspections = []) {
   return [
-    ['Inspection Date', 'Submitted Time', 'Truck Number', 'Driver', 'Inspection Type', 'Odometer', 'Status', 'Issue Note', 'Failed Checklist Count', 'Failed Checklist Items', 'Manager Review Note'],
+    ['Inspection Date', 'Submitted Time', 'Vehicle ID', 'Driver', 'Inspection Type', 'Odometer', 'Status', 'Issue Note', 'Failed Checklist Count', 'Failed Checklist Items', 'Manager Review Note'],
     ...inspections.map((inspection) => {
       const failedItems = inspection.failed_items?.length
         ? inspection.failed_items
@@ -702,7 +715,7 @@ function OdometerModal({ errorMessage, form, isSaving, onChange, onClose, onConf
         <form className="form-card modal-form" onSubmit={onSubmit}>
           <div className="odometer-summary-card">
             <div>
-              <span>Truck Number</span>
+              <span>Vehicle ID</span>
               <strong>{vehicle.name || 'Not recorded'}</strong>
             </div>
             <div>
@@ -1067,8 +1080,14 @@ function VehicleFormSections({ form, mode = 'create', onChange, vehicle }) {
         </div>
         <div className="vehicle-form-grid vehicle-identity-grid">
           <label className="driver-modal-field">
-            <span className="field-label">Truck Number</span>
-            <input className="text-field" onChange={(event) => onChange('name', event.target.value)} placeholder="Truck Number / FedEx ID" value={form.name} />
+            <span className="field-label">Vehicle ID</span>
+            <input
+              className="text-field"
+              onChange={(event) => onChange('plate', event.target.value.toUpperCase())}
+              placeholder="Vehicle ID"
+              value={form.plate}
+            />
+            {showFormHints && !form.plate ? <small className="vehicle-form-helper">Vehicle ID not recorded</small> : null}
           </label>
           <label className="driver-modal-field">
             <span className="field-label">Make</span>
@@ -1111,16 +1130,6 @@ function VehicleFormSections({ form, mode = 'create', onChange, vehicle }) {
           <span>Registration</span>
         </div>
         <div className="vehicle-form-grid vehicle-registration-grid">
-          <label className="driver-modal-field">
-            <span className="field-label">Vehicle ID</span>
-            <input
-              className="text-field"
-              onChange={(event) => onChange('plate', event.target.value.toUpperCase())}
-              placeholder="Vehicle ID"
-              value={form.plate}
-            />
-            {showFormHints && !form.plate ? <small className="vehicle-form-helper">Vehicle ID not recorded</small> : null}
-          </label>
           <label className="driver-modal-field">
             <span className="field-label">Registration expiration date</span>
             <input
@@ -1305,7 +1314,7 @@ function MaintenanceModal({ vehicle, form, errorMessage, isSubmitting, onChange,
         <form className="form-card modal-form" onSubmit={onSubmit}>
           <div className="odometer-summary-card">
             <div>
-              <span>Truck Number</span>
+              <span>Vehicle ID</span>
               <strong>{vehicle.name || 'Not recorded'}</strong>
             </div>
             <div>
@@ -1665,7 +1674,7 @@ function MaintenanceRecordsPanel({
           <input
             className="text-field"
             onChange={(event) => onChangeFilters('truck', event.target.value)}
-            placeholder="Truck Number"
+            placeholder="Vehicle ID"
             value={filters.truck}
           />
         </label>
@@ -2449,11 +2458,7 @@ export default function VehiclesPage() {
 
   const createVehicleMutation = useMutation({
     mutationFn: async () => {
-      const response = await api.post('/vehicles', {
-        ...vehicleForm,
-        year: Number(vehicleForm.year),
-        current_mileage: Number(vehicleForm.current_mileage || 0)
-      });
+      const response = await api.post('/vehicles', buildVehiclePayload(vehicleForm));
       return response.data;
     },
     onSuccess: async () => {
@@ -2512,11 +2517,7 @@ export default function VehiclesPage() {
 
   const updateVehicleMutation = useMutation({
     mutationFn: async () => {
-      const response = await api.put(`/vehicles/${editingVehicle.id}`, {
-        ...editVehicleForm,
-        year: Number(editVehicleForm.year),
-        current_mileage: Number(editVehicleForm.current_mileage || 0)
-      });
+      const response = await api.put(`/vehicles/${editingVehicle.id}`, buildVehiclePayload(editVehicleForm));
       return response.data;
     },
     onSuccess: async () => {
@@ -3127,8 +3128,8 @@ export default function VehiclesPage() {
     event.preventDefault();
     setVehicleError('');
 
-    if (!vehicleForm.name || !vehicleForm.make || !vehicleForm.model || !vehicleForm.year || !vehicleForm.plate) {
-      setVehicleError('Truck Number, make, model, year, and plate are required.');
+    if (!vehicleForm.plate || !vehicleForm.make || !vehicleForm.model || !vehicleForm.year) {
+      setVehicleError('Vehicle ID, make, model, and year are required.');
       return;
     }
 
@@ -3150,7 +3151,7 @@ export default function VehiclesPage() {
       make: vehicle.make || '',
       model: vehicle.model || '',
       year: vehicle.year ? String(vehicle.year) : '',
-      plate: vehicle.plate || '',
+      plate: vehicle.plate || vehicle.name || '',
       registration_expiration: vehicle.registration_expiration || '',
       insurance_expiration: vehicle.insurance_expiration || '',
       vehicle_status: vehicle.vehicle_status || (vehicle.is_active === false ? 'out_of_service' : 'active'),
@@ -3163,8 +3164,8 @@ export default function VehiclesPage() {
     event.preventDefault();
     setEditVehicleError('');
 
-    if (!editVehicleForm.name || !editVehicleForm.make || !editVehicleForm.model || !editVehicleForm.year || !editVehicleForm.plate) {
-      setEditVehicleError('Truck Number, make, model, year, and plate are required.');
+    if (!editVehicleForm.plate || !editVehicleForm.make || !editVehicleForm.model || !editVehicleForm.year) {
+      setEditVehicleError('Vehicle ID, make, model, and year are required.');
       return;
     }
 
@@ -3345,7 +3346,7 @@ export default function VehiclesPage() {
           </div>
           <div className="vehicles-table">
             <div className="vehicles-table-header">
-              <span>Truck Number</span>
+              <span>Vehicle ID</span>
               <span>Status</span>
               <span>Driver / Route</span>
               <span>Odometer</span>
@@ -3374,7 +3375,7 @@ export default function VehiclesPage() {
               <input
                 className="text-field"
                 onChange={(event) => setVehicleSearch(event.target.value)}
-                placeholder="Search trucks by number or description"
+                placeholder="Search vehicles by ID or description"
                 type="search"
                 value={vehicleSearch}
               />
@@ -3397,7 +3398,7 @@ export default function VehiclesPage() {
             <>
               <div className="vehicles-table">
                 <div className="vehicles-table-header">
-                  <span>Truck Number</span>
+                  <span>Vehicle ID</span>
                   <span>Status</span>
                   <span>Driver / Route</span>
                   <span>Odometer</span>

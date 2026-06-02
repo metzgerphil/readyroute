@@ -185,7 +185,7 @@ describe('MobileNavigationDrawer', () => {
     const onNavigate = jest.fn();
     const screen = renderDrawer({
       activeMode: 'manager',
-      currentRouteName: 'ManagerOverview',
+      currentRouteName: 'ManagerMap',
       identity: {
         fullName: 'Vlad Fedoryshyn',
         companyName: 'ReadyRoute CSA West',
@@ -211,14 +211,14 @@ describe('MobileNavigationDrawer', () => {
     expect(screen.queryByText('Switch to Driver Mode')).toBeNull();
 
     fireEvent.press(screen.getByText('Map View'));
-    expect(onNavigate).toHaveBeenCalledWith('ManagerOverview');
+    expect(onNavigate).toHaveBeenCalledWith('ManagerMap');
   });
 
   it('navigates manager rows through the existing destinations', () => {
     const onNavigate = jest.fn();
     const screen = renderDrawer({
       activeMode: 'manager',
-      currentRouteName: 'ManagerOverview',
+      currentRouteName: 'ManagerMap',
       identity: {
         fullName: 'Vlad Fedoryshyn',
         companyName: 'ReadyRoute CSA West',
@@ -239,7 +239,7 @@ describe('MobileNavigationDrawer', () => {
     fireEvent.press(screen.getByText('VEDR'));
 
     expect(onNavigate).toHaveBeenCalledWith('ManagerRoutes');
-    expect(onNavigate).toHaveBeenCalledWith('ManagerOverview');
+    expect(onNavigate).toHaveBeenCalledWith('ManagerMap');
     expect(onNavigate).toHaveBeenCalledWith('ManagerAccessCodes');
     expect(onNavigate).toHaveBeenCalledWith('ManagerVehicles');
     expect(onNavigate).toHaveBeenCalledWith('ManagerVedr');
@@ -283,7 +283,7 @@ describe('MobileNavigationDrawer', () => {
     const onSwitchMode = jest.fn();
     const screen = renderDrawer({
       activeMode: 'manager',
-      currentRouteName: 'ManagerOverview',
+      currentRouteName: 'ManagerMap',
       identity: {
         fullName: 'Vlad Fedoryshyn',
         companyName: 'ReadyRoute CSA West',
@@ -331,7 +331,7 @@ describe('MobileNavigationDrawer', () => {
     const onClose = jest.fn();
     const screen = renderDrawer({
       activeMode: 'manager',
-      currentRouteName: 'ManagerOverview',
+      currentRouteName: 'ManagerMap',
       identity: {
         fullName: 'Vlad Fedoryshyn',
         companyName: 'ReadyRoute CSA West',

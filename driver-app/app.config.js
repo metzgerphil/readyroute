@@ -7,7 +7,7 @@ if (process.env.EAS_BUILD === 'true' && !googleMapsApiKey) {
 
 module.exports = {
   expo: {
-    name: 'Ready Route',
+    name: 'ReadyRoute',
     slug: 'driver-app',
     version: '1.0.0',
     orientation: 'portrait',

@@ -77,10 +77,27 @@ const CODE_LABELS = {
 const emptyForm = {
   name: '',
   email: '',
+  date_of_birth: '',
   phone: '',
   hourly_rate: '',
+  daily_flat_rate: '',
   pin: '',
   confirmPin: ''
+};
+
+const DRIVER_DOCUMENT_TYPES = [
+  { key: 'driver_license', label: 'Driver License', required: true, expires: true, multiple: false },
+  { key: 'mec', label: 'MEC', required: true, expires: true, multiple: false },
+  { key: 'qualification_certificate', label: 'Qualification Certificate', required: true, expires: false, multiple: false },
+  { key: 'signed_policy', label: 'Signed Policy', required: true, expires: false, multiple: false },
+  { key: 'write_up', label: 'Write-ups', required: false, expires: false, multiple: true },
+  { key: 'other', label: 'Other Documents', required: false, expires: false, multiple: true }
+];
+
+const emptyDocumentDraft = {
+  file: null,
+  expires_on: '',
+  notes: ''
 };
 
 const emptyManagerInviteForm = {
@@ -99,43 +116,257 @@ const emptyLaborForm = {
   adjustment_reason: ''
 };
 
-function DriverModal({ form, mode, errorMessage, isSubmitting, onChange, onClose, onSubmit }) {
+function getDocumentsForType(driver, documentType) {
+  return (driver?.documents || []).filter((document) => document.document_type === documentType);
+}
+
+function getDocumentStatus(driver, documentType) {
+  const documents = getDocumentsForType(driver, documentType);
+  if (!documents.length) {
+    return { label: 'Missing', tone: 'warning' };
+  }
+
+  const hasExpired = documents.some((document) => {
+    if (!document.expires_on) return false;
+    return new Date(document.expires_on).getTime() < Date.now();
+  });
+
+  if (hasExpired) {
+    return { label: 'Expired', tone: 'danger' };
+  }
+
+  const hasExpiringSoon = documents.some((document) => {
+    if (!document.expires_on) return false;
+    const expiresAt = new Date(document.expires_on).getTime();
+    return Number.isFinite(expiresAt) && expiresAt >= Date.now() && expiresAt <= Date.now() + 30 * 24 * 60 * 60 * 1000;
+  });
+
+  if (hasExpiringSoon) {
+    return { label: 'Expiring soon', tone: 'warning' };
+  }
+
+  return { label: documents.length > 1 ? `${documents.length} files` : 'Uploaded', tone: 'success' };
+}
+
+function getDocumentSummaryLabel(driver) {
+  const summary = driver?.document_summary;
+  if (!summary) {
+    return 'No docs yet';
+  }
+
+  if (summary.expired > 0) {
+    return `${summary.expired} expired`;
+  }
+
+  if (summary.expiring_soon > 0) {
+    return `${summary.expiring_soon} expiring`;
+  }
+
+  if (summary.missing_required?.length) {
+    return `${summary.required_complete}/${summary.required_total} complete`;
+  }
+
+  return 'Required complete';
+}
+
+function getComplianceLabel(driver) {
+  const summary = driver?.document_summary;
+  if (!summary) return 'Not reviewed';
+  if (summary.expired > 0) return 'Expired docs';
+  if (summary.expiring_soon > 0) return 'Expiring soon';
+  if (summary.missing_required?.length) return 'Needs documents';
+  return 'Good standing';
+}
+
+function getStatusToneClass(tone) {
+  switch (tone) {
+    case 'success':
+      return 'driver-doc-chip-success';
+    case 'danger':
+      return 'driver-doc-chip-danger';
+    case 'warning':
+    default:
+      return 'driver-doc-chip-warning';
+  }
+}
+
+function DriverDocumentSlot({
+  documentType,
+  driver,
+  draft,
+  isUploading,
+  onDraftChange,
+  onRemove,
+  onUpload
+}) {
+  const documents = getDocumentsForType(driver, documentType.key);
+  const status = getDocumentStatus(driver, documentType.key);
+
+  return (
+    <div className="driver-document-slot">
+      <div className="driver-document-slot-header">
+        <div>
+          <strong>{documentType.label}</strong>
+          <span>{documentType.required ? 'Required' : 'Optional'}{documentType.multiple ? ' · multiple files' : ''}</span>
+        </div>
+        <span className={`driver-doc-chip ${getStatusToneClass(status.tone)}`}>{status.label}</span>
+      </div>
+
+      {documents.length ? (
+        <div className="driver-document-files">
+          {documents.map((document) => (
+            <div className="driver-document-file" key={document.id}>
+              <div>
+                <a href={document.public_url || '#'} rel="noreferrer" target="_blank">{document.file_name}</a>
+                <span>
+                  {document.expires_on ? `Expires ${document.expires_on}` : 'No expiration'}
+                  {document.notes ? ` · ${document.notes}` : ''}
+                </span>
+              </div>
+              <button className="secondary-inline-button" onClick={() => onRemove(document)} type="button">Remove</button>
+            </div>
+          ))}
+        </div>
+      ) : null}
+
+      <div className="driver-document-upload-row">
+        <input
+          className="text-field driver-document-file-input"
+          onChange={(event) => onDraftChange(documentType.key, 'file', event.target.files?.[0] || null)}
+          type="file"
+        />
+        {documentType.expires ? (
+          <input
+            className="text-field"
+            onChange={(event) => onDraftChange(documentType.key, 'expires_on', event.target.value)}
+            type="date"
+            value={draft?.expires_on || ''}
+          />
+        ) : null}
+        <input
+          className="text-field"
+          onChange={(event) => onDraftChange(documentType.key, 'notes', event.target.value)}
+          placeholder="Notes"
+          value={draft?.notes || ''}
+        />
+        <button
+          className="primary-inline-button"
+          disabled={!draft?.file || isUploading}
+          onClick={() => onUpload(documentType.key)}
+          type="button"
+        >
+          {isUploading ? 'Uploading...' : documents.length && !documentType.multiple ? 'Replace' : 'Upload'}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function DriverModal({
+  documentDrafts,
+  documentError,
+  form,
+  mode,
+  errorMessage,
+  isDocumentBusy,
+  isSubmitting,
+  selectedDriver,
+  onChange,
+  onClose,
+  onDocumentDraftChange,
+  onDocumentRemove,
+  onDocumentUpload,
+  onSubmit
+}) {
   const isEdit = mode === 'edit';
 
   return (
     <div className="modal-backdrop">
-      <div className="modal-card">
+      <div className="modal-card driver-profile-modal-card">
         <div className="modal-header">
-          <div className="card-title">{isEdit ? 'Edit Driver' : 'Add Driver'}</div>
+          <div>
+            <div className="card-title">{isEdit ? 'Edit Driver Profile' : 'Add Driver'}</div>
+            <div className="driver-meta">{isEdit ? 'Update driver details, pay, documents, and app access.' : 'Create the driver first, then upload documents from the saved profile.'}</div>
+          </div>
           <button className="icon-button" onClick={onClose} type="button">×</button>
         </div>
 
-        <form className="form-card modal-form" onSubmit={onSubmit}>
-          <input className="text-field" onChange={(event) => onChange('name', event.target.value)} placeholder="Full Name" value={form.name} />
-          <input
-            className="text-field"
-            disabled={isEdit}
-            onChange={(event) => onChange('email', event.target.value)}
-            placeholder="Email"
-            type="email"
-            value={form.email}
-          />
-          <input className="text-field" onChange={(event) => onChange('phone', event.target.value)} placeholder="Phone" value={form.phone} />
-          <label className="money-field">
-            <span>$</span>
-            <input
-              className="text-field money-input"
-              min="0"
-              onChange={(event) => onChange('hourly_rate', event.target.value)}
-              placeholder="Hourly Rate"
-              step="0.01"
-              type="number"
-              value={form.hourly_rate}
-            />
-          </label>
+        <form className="form-card modal-form driver-profile-form" onSubmit={onSubmit}>
+          <div className="driver-modal-section">
+            <div className="driver-modal-section-title">Personal Info</div>
+            <div className="driver-profile-grid">
+              <label className="driver-modal-field">
+                <span className="field-label">First and Last Name</span>
+                <input className="text-field" onChange={(event) => onChange('name', event.target.value)} placeholder="Full Name" value={form.name} />
+              </label>
+              <label className="driver-modal-field">
+                <span className="field-label">Date of Birth</span>
+                <input className="text-field" onChange={(event) => onChange('date_of_birth', event.target.value)} type="date" value={form.date_of_birth} />
+              </label>
+            </div>
+          </div>
 
-          {!isEdit ? (
-            <>
+          <div className="driver-modal-section">
+            <div className="driver-modal-section-title">Contact Details</div>
+            <div className="driver-profile-grid">
+              <label className="driver-modal-field">
+                <span className="field-label">Email Address</span>
+                <input
+                  className="text-field"
+                  disabled={isEdit}
+                  onChange={(event) => onChange('email', event.target.value)}
+                  placeholder="Email"
+                  type="email"
+                  value={form.email}
+                />
+              </label>
+              <label className="driver-modal-field">
+                <span className="field-label">Phone Number</span>
+                <input className="text-field" onChange={(event) => onChange('phone', event.target.value)} placeholder="Phone" value={form.phone} />
+              </label>
+            </div>
+          </div>
+
+          <div className="driver-modal-section">
+            <div className="driver-modal-section-title">Compensation</div>
+            <div className="driver-profile-grid">
+              <label className="driver-modal-field money-field">
+                <span className="field-label">Daily Hourly Rate</span>
+                <div className="money-input-wrap">
+                  <span>$</span>
+                  <input
+                    className="text-field money-input"
+                    min="0"
+                    onChange={(event) => onChange('hourly_rate', event.target.value)}
+                    placeholder="Hourly Rate"
+                    step="0.01"
+                    type="number"
+                    value={form.hourly_rate}
+                  />
+                </div>
+              </label>
+              <label className="driver-modal-field money-field">
+                <span className="field-label">Daily Flat Rate</span>
+                <div className="money-input-wrap">
+                  <span>$</span>
+                  <input
+                    className="text-field money-input"
+                    min="0"
+                    onChange={(event) => onChange('daily_flat_rate', event.target.value)}
+                    placeholder="Flat Rate"
+                    step="0.01"
+                    type="number"
+                    value={form.daily_flat_rate}
+                  />
+                </div>
+              </label>
+            </div>
+          </div>
+
+          <div className="driver-modal-section">
+            <div className="driver-modal-section-title">App Access</div>
+            {!isEdit ? (
+              <>
               <div className="driver-meta">
                 Leave the PIN fields blank to use this CSA&apos;s starter driver PIN.
               </div>
@@ -157,9 +388,9 @@ function DriverModal({ form, mode, errorMessage, isSubmitting, onChange, onClose
                 type="password"
                 value={form.confirmPin}
               />
-            </>
-          ) : (
-            <>
+              </>
+            ) : (
+              <>
               <div className="driver-meta">
                 Leave the PIN fields blank to keep the current driver PIN. Add a new 4-digit PIN only when you want to reset it.
               </div>
@@ -181,8 +412,9 @@ function DriverModal({ form, mode, errorMessage, isSubmitting, onChange, onClose
                 type="password"
                 value={form.confirmPin}
               />
-            </>
-          )}
+              </>
+            )}
+          </div>
 
           {errorMessage ? <div className="error-banner">{errorMessage}</div> : null}
 
@@ -193,6 +425,28 @@ function DriverModal({ form, mode, errorMessage, isSubmitting, onChange, onClose
             </button>
           </div>
         </form>
+
+        {isEdit ? (
+          <div className="driver-modal-section driver-documents-section">
+            <div>
+              <div className="driver-modal-section-title">Driver Documents</div>
+              <div className="driver-meta">Required files are tracked separately from optional write-ups and other documents.</div>
+            </div>
+            {documentError ? <div className="error-banner">{documentError}</div> : null}
+            {DRIVER_DOCUMENT_TYPES.map((documentType) => (
+              <DriverDocumentSlot
+                documentType={documentType}
+                draft={documentDrafts[documentType.key] || emptyDocumentDraft}
+                driver={selectedDriver}
+                isUploading={isDocumentBusy}
+                key={documentType.key}
+                onDraftChange={onDocumentDraftChange}
+                onRemove={onDocumentRemove}
+                onUpload={onDocumentUpload}
+              />
+            ))}
+          </div>
+        ) : null}
       </div>
     </div>
   );
@@ -523,6 +777,9 @@ export default function DriversPage() {
   const [modalMode, setModalMode] = useState('add');
   const [form, setForm] = useState(emptyForm);
   const [errorMessage, setErrorMessage] = useState('');
+  const [selectedDriverId, setSelectedDriverId] = useState(null);
+  const [documentDrafts, setDocumentDrafts] = useState({});
+  const [documentError, setDocumentError] = useState('');
   const [laborForm, setLaborForm] = useState(emptyLaborForm);
   const [laborErrorMessage, setLaborErrorMessage] = useState('');
   const [expandedLiveLaborDriverId, setExpandedLiveLaborDriverId] = useState(null);
@@ -612,8 +869,10 @@ export default function DriversPage() {
       await api.post('/manager/drivers', {
         name: form.name,
         email: form.email,
+        date_of_birth: form.date_of_birth || null,
         phone: form.phone,
         hourly_rate: Number(form.hourly_rate),
+        daily_flat_rate: Number(form.daily_flat_rate || 0),
         pin: form.pin
       });
     },
@@ -632,8 +891,10 @@ export default function DriversPage() {
     mutationFn: async () => {
       await api.put(`/manager/drivers/${form.id}`, {
         name: form.name,
+        date_of_birth: form.date_of_birth || null,
         phone: form.phone,
         hourly_rate: Number(form.hourly_rate),
+        daily_flat_rate: Number(form.daily_flat_rate || 0),
         pin: form.pin || undefined
       });
     },
@@ -656,6 +917,51 @@ export default function DriversPage() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['manager-drivers'] });
+    }
+  });
+
+  const uploadDriverDocument = useMutation({
+    mutationFn: async ({ documentType }) => {
+      const draft = documentDrafts[documentType] || emptyDocumentDraft;
+      const formData = new FormData();
+      formData.append('file', draft.file);
+      formData.append('document_type', documentType);
+      if (draft.expires_on) {
+        formData.append('expires_on', draft.expires_on);
+      }
+      if (draft.notes) {
+        formData.append('notes', draft.notes);
+      }
+
+      await api.post(`/manager/drivers/${selectedDriverId}/documents`, formData, {
+        headers: {
+          'Content-Type': 'multipart/form-data'
+        }
+      });
+    },
+    onSuccess: (_data, variables) => {
+      setDocumentError('');
+      setDocumentDrafts((current) => ({
+        ...current,
+        [variables.documentType]: emptyDocumentDraft
+      }));
+      queryClient.invalidateQueries({ queryKey: ['manager-drivers'] });
+    },
+    onError: (error) => {
+      setDocumentError(error.response?.data?.error || 'Unable to upload driver document.');
+    }
+  });
+
+  const removeDriverDocument = useMutation({
+    mutationFn: async (document) => {
+      await api.delete(`/manager/drivers/${selectedDriverId}/documents/${document.id}`);
+    },
+    onSuccess: () => {
+      setDocumentError('');
+      queryClient.invalidateQueries({ queryKey: ['manager-drivers'] });
+    },
+    onError: (error) => {
+      setDocumentError(error.response?.data?.error || 'Unable to remove driver document.');
     }
   });
 
@@ -734,7 +1040,12 @@ export default function DriversPage() {
   });
 
   const isSubmitting = createDriver.isPending || updateDriver.isPending;
+  const isDocumentBusy = uploadDriverDocument.isPending || removeDriverDocument.isPending;
   const drivers = useMemo(() => driversQuery.data || [], [driversQuery.data]);
+  const selectedDriver = useMemo(
+    () => drivers.find((driver) => driver.id === selectedDriverId) || null,
+    [drivers, selectedDriverId]
+  );
   const managerUsers = useMemo(() => managerUsersQuery.data || [], [managerUsersQuery.data]);
   const isSetupFlow = searchParams.get('source') === 'setup';
   const setupFocus = searchParams.get('focus') || '';
@@ -808,6 +1119,9 @@ export default function DriversPage() {
     setModalMode('add');
     setForm(emptyForm);
     setErrorMessage('');
+    setSelectedDriverId(null);
+    setDocumentDrafts({});
+    setDocumentError('');
     setIsModalOpen(true);
   }
 
@@ -836,21 +1150,58 @@ export default function DriversPage() {
 
   function openEditModal(driver) {
     setModalMode('edit');
+    setSelectedDriverId(driver.id);
     setForm({
       id: driver.id,
       name: driver.name || '',
       email: driver.email || '',
+      date_of_birth: driver.date_of_birth || '',
       phone: driver.phone || '',
       hourly_rate: String(driver.hourly_rate ?? ''),
+      daily_flat_rate: String(driver.daily_flat_rate ?? ''),
       pin: '',
       confirmPin: ''
     });
     setErrorMessage('');
+    setDocumentDrafts({});
+    setDocumentError('');
     setIsModalOpen(true);
   }
 
   function updateField(field, value) {
     setForm((current) => ({ ...current, [field]: value }));
+  }
+
+  function updateDocumentDraft(documentType, field, value) {
+    setDocumentDrafts((current) => ({
+      ...current,
+      [documentType]: {
+        ...(current[documentType] || emptyDocumentDraft),
+        [field]: value
+      }
+    }));
+  }
+
+  function handleDocumentUpload(documentType) {
+    setDocumentError('');
+    const draft = documentDrafts[documentType] || emptyDocumentDraft;
+
+    if (!selectedDriverId || !draft.file) {
+      setDocumentError('Choose a file before uploading.');
+      return;
+    }
+
+    uploadDriverDocument.mutate({ documentType });
+  }
+
+  function handleDocumentRemove(document) {
+    const shouldContinue = window.confirm(`Remove ${document.file_name}?`);
+
+    if (!shouldContinue) {
+      return;
+    }
+
+    removeDriverDocument.mutate(document);
   }
 
   function handleModalSubmit(event) {
@@ -1077,28 +1428,45 @@ export default function DriversPage() {
         ) : driversQuery.isError ? (
           <div className="error-banner">Unable to load drivers.</div>
         ) : drivers.length ? (
-          <div className="driver-directory-list">
+          <div className="drivers-manager-table driver-profile-table">
+            <div className="drivers-manager-table-header">
+              <span>Driver</span>
+              <span>Contact</span>
+              <span>Documents</span>
+              <span>Compliance</span>
+              <span>App Access</span>
+              <span>Status</span>
+              <span>Actions</span>
+            </div>
             {drivers.map((driver) => (
-              <div className="driver-directory-card" key={driver.id}>
-                <div className="driver-directory-row">
-                  <div className="driver-directory-identity">
+              <div className="drivers-manager-table-row" key={driver.id}>
+                <div className="drivers-manager-driver-cell">
+                  <div className="drivers-avatar">{String(driver.name || '?').slice(0, 1).toUpperCase()}</div>
+                  <div>
                     <strong>{driver.name}</strong>
-                    <span>{driver.email}</span>
-                  </div>
-                  <div className="driver-directory-meta">
-                    <span>{formatPhoneDisplay(driver.phone)}</span>
-                    <span>{driver.is_active ? 'Active' : 'Inactive'}</span>
-                  </div>
-                  <div className="driver-directory-rate">
-                    {formatCurrency(driver.hourly_rate || 0)}/hr
+                    <span>{driver.fedex_driver_id ? `FedEx ID ${driver.fedex_driver_id}` : 'No FedEx ID'}</span>
                   </div>
                 </div>
-                <div className="driver-directory-actions">
+                <div className="drivers-table-value driver-contact-cell">
+                  <span>{formatPhoneDisplay(driver.phone)}</span>
+                  <span>{driver.email}</span>
+                </div>
+                <span className={`driver-doc-chip ${driver.document_summary?.missing_required?.length ? 'driver-doc-chip-warning' : 'driver-doc-chip-success'}`}>
+                  {getDocumentSummaryLabel(driver)}
+                </span>
+                <span className={`driver-doc-chip ${driver.document_summary?.expired ? 'driver-doc-chip-danger' : driver.document_summary?.expiring_soon || driver.document_summary?.missing_required?.length ? 'driver-doc-chip-warning' : 'driver-doc-chip-success'}`}>
+                  {getComplianceLabel(driver)}
+                </span>
+                <span className="drivers-muted-value">PIN enabled</span>
+                <span className={`driver-doc-chip ${driver.is_active ? 'driver-doc-chip-success' : 'driver-doc-chip-neutral'}`}>
+                  {driver.is_active ? 'Active' : 'Inactive'}
+                </span>
+                <div className="drivers-table-actions">
                   <button className="secondary-inline-button" onClick={() => openEditModal(driver)} type="button">
-                    Edit Driver
+                    Edit
                   </button>
                   <button className="secondary-inline-button" onClick={() => handleStatusToggle(driver)} type="button">
-                    {driver.is_active ? 'Deactivate Driver' : 'Activate Driver'}
+                    {driver.is_active ? 'Deactivate' : 'Activate'}
                   </button>
                 </div>
               </div>
@@ -1606,13 +1974,20 @@ export default function DriversPage() {
 
       {isModalOpen ? (
         <DriverModal
+          documentDrafts={documentDrafts}
+          documentError={documentError}
           errorMessage={errorMessage}
           form={form}
+          isDocumentBusy={isDocumentBusy}
           isSubmitting={isSubmitting}
           mode={modalMode}
           onChange={updateField}
           onClose={() => setIsModalOpen(false)}
+          onDocumentDraftChange={updateDocumentDraft}
+          onDocumentRemove={handleDocumentRemove}
+          onDocumentUpload={handleDocumentUpload}
           onSubmit={handleModalSubmit}
+          selectedDriver={selectedDriver}
         />
       ) : null}
 
