@@ -860,41 +860,6 @@ function getInspectionStatusClass(status) {
   return 'neutral';
 }
 
-function getRegistrationStatus(vehicle, warningDays = DEFAULT_REMINDER_SCHEDULE.document_warning_days) {
-  if (!vehicle.registration_expiration) {
-    return {
-      label: 'Registration not recorded',
-      className: 'vehicle-registration-row missing',
-      metaLabel: 'Registration'
-    };
-  }
-
-  const expirationDate = parseISO(vehicle.registration_expiration);
-  const daysRemaining = differenceInCalendarDays(expirationDate, new Date());
-
-  if (daysRemaining < 0) {
-    return {
-      label: `Expired ${formatDate(vehicle.registration_expiration)}`,
-      className: 'vehicle-registration-row expired',
-      metaLabel: 'Registration'
-    };
-  }
-
-  if (daysRemaining <= warningDays) {
-    return {
-      label: `Expires ${formatDate(vehicle.registration_expiration)}`,
-      className: 'vehicle-registration-row warning',
-      metaLabel: 'Registration'
-    };
-  }
-
-  return {
-    label: formatDate(vehicle.registration_expiration),
-    className: 'vehicle-registration-row',
-    metaLabel: 'Registration'
-  };
-}
-
 function getExpirationStatus(value, label, warningDays = DEFAULT_REMINDER_SCHEDULE.document_warning_days) {
   if (!value) {
     return {
@@ -928,6 +893,15 @@ function getExpirationStatus(value, label, warningDays = DEFAULT_REMINDER_SCHEDU
     className: 'vehicle-registration-row',
     metaLabel: label
   };
+}
+
+function getRegistrationStatus(vehicle, warningDays = DEFAULT_REMINDER_SCHEDULE.document_warning_days) {
+  return getExpirationStatus(vehicle.registration_expiration, 'Registration', warningDays);
+}
+
+function needsRegistrationAttention(vehicle, warningDays = DEFAULT_REMINDER_SCHEDULE.document_warning_days) {
+  const registration = getRegistrationStatus(vehicle, warningDays);
+  return ['missing', 'warning', 'expired'].some((statusClass) => registration.className.includes(statusClass));
 }
 
 function getReadinessMeta(vehicle) {
@@ -1065,7 +1039,7 @@ function getLatestIssueLabel(vehicle, warningDays = DEFAULT_REMINDER_SCHEDULE.do
     };
   }
 
-  const registration = getExpirationStatus(vehicle.registration_expiration, 'Registration', warningDays);
+  const registration = getRegistrationStatus(vehicle, warningDays);
   if (registration.className.includes('expired') || registration.className.includes('warning')) {
     return { label: registration.metaLabel, detail: registration.label };
   }
@@ -2937,10 +2911,10 @@ export default function VehiclesPage() {
     [vehicles]
   );
   const registrationAttentionVehicles = useMemo(
-    () => vehicles.filter((vehicle) => {
-      const registration = getRegistrationStatus(vehicle, Number(activeReminderScheduleDraft.document_warning_days));
-      return registration.className.includes('warning') || registration.className.includes('expired');
-    }),
+    () => vehicles.filter((vehicle) => needsRegistrationAttention(
+      vehicle,
+      Number(activeReminderScheduleDraft.document_warning_days)
+    )),
     [activeReminderScheduleDraft.document_warning_days, vehicles]
   );
   const onRoadCount = useMemo(
@@ -3646,11 +3620,7 @@ export default function VehiclesPage() {
                 {filteredVehicles.map((vehicle) => {
                   const statusMeta = getReadinessMeta(vehicle);
                   const maintenanceAlert = getNextServiceLabel(vehicle);
-                  const registration = getExpirationStatus(
-                    vehicle.registration_expiration,
-                    'Registration',
-                    Number(activeReminderScheduleDraft.document_warning_days)
-                  );
+                  const registration = getRegistrationStatus(vehicle, Number(activeReminderScheduleDraft.document_warning_days));
                   const insurance = getExpirationStatus(
                     vehicle.insurance_expiration,
                     'Insurance',
