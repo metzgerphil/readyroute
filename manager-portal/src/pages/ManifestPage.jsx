@@ -262,6 +262,14 @@ function routeNeedsDispatchReview(route) {
   );
 }
 
+function areRouteIdListsEqual(left = [], right = []) {
+  if (left.length !== right.length) {
+    return false;
+  }
+
+  return left.every((value, index) => value === right[index]);
+}
+
 function getRouteDispatchSummary(route) {
   if (routeBlocksDispatch(route)) {
     if (!route?.driver_id && !route?.vehicle_id) {
@@ -426,25 +434,26 @@ export default function ManifestPage() {
   const latestUploadRoute = latestUpload ? routeSummaries.find((route) => route.id === latestUpload.route_id) : null;
   const hasRoutesToday = routeSummaries.length > 0;
   const canModifyExistingRoutes = hasRoutesToday;
-  const routesNeedingDrivers = routeSummaries.filter((route) => !route.driver_id);
-  const routesNeedingVehicles = routeSummaries.filter((route) => !route.vehicle_id);
-  const routesNeedingPins = routeSummaries.filter((route) => route.map_status === 'needs_pins');
-  const partiallyMappedRoutes = routeSummaries.filter((route) => route.map_status === 'partially_mapped');
-  const routesWithWarnings = routeSummaries.filter((route) => routeHasAddressWarnings(route));
-  const routesWithSyncWarnings = routeSummaries.filter((route) => route.sync_state === 'staged_changed');
-  const routesChangedAfterDispatch = routeSummaries.filter((route) => route.sync_state === 'changed_after_dispatch');
-  const routesWithSyncFailures = routeSummaries.filter((route) => route.sync_state === 'sync_failed');
-  const stagedRoutes = routeSummaries.filter((route) => route.dispatch_state !== 'dispatched');
-  const dispatchedRoutes = routeSummaries.filter((route) => route.dispatch_state === 'dispatched');
-  const blockedDispatchRoutes = routeSummaries.filter((route) => routeBlocksDispatch(route));
-  const reviewDispatchRoutes = routeSummaries.filter((route) => routeNeedsDispatchReview(route));
-  const readyDispatchRoutes = routeSummaries.filter(
+  const routesNeedingDrivers = useMemo(() => routeSummaries.filter((route) => !route.driver_id), [routeSummaries]);
+  const routesNeedingVehicles = useMemo(() => routeSummaries.filter((route) => !route.vehicle_id), [routeSummaries]);
+  const routesNeedingPins = useMemo(() => routeSummaries.filter((route) => route.map_status === 'needs_pins'), [routeSummaries]);
+  const partiallyMappedRoutes = useMemo(() => routeSummaries.filter((route) => route.map_status === 'partially_mapped'), [routeSummaries]);
+  const routesWithWarnings = useMemo(() => routeSummaries.filter((route) => routeHasAddressWarnings(route)), [routeSummaries]);
+  const routesWithSyncWarnings = useMemo(() => routeSummaries.filter((route) => route.sync_state === 'staged_changed'), [routeSummaries]);
+  const routesChangedAfterDispatch = useMemo(() => routeSummaries.filter((route) => route.sync_state === 'changed_after_dispatch'), [routeSummaries]);
+  const routesWithSyncFailures = useMemo(() => routeSummaries.filter((route) => route.sync_state === 'sync_failed'), [routeSummaries]);
+  const stagedRoutes = useMemo(() => routeSummaries.filter((route) => route.dispatch_state !== 'dispatched'), [routeSummaries]);
+  const dispatchedRoutes = useMemo(() => routeSummaries.filter((route) => route.dispatch_state === 'dispatched'), [routeSummaries]);
+  const blockedDispatchRoutes = useMemo(() => routeSummaries.filter((route) => routeBlocksDispatch(route)), [routeSummaries]);
+  const reviewDispatchRoutes = useMemo(() => routeSummaries.filter((route) => routeNeedsDispatchReview(route)), [routeSummaries]);
+  const readyDispatchRoutes = useMemo(() => routeSummaries.filter(
     (route) =>
       route.dispatch_state !== 'dispatched' && !routeBlocksDispatch(route) && !routeNeedsDispatchReview(route)
-  );
-  const dispatchableRoutes = routeSummaries.filter(
+  ), [routeSummaries]);
+  const dispatchableRoutes = useMemo(() => routeSummaries.filter(
     (route) => route.dispatch_state !== 'dispatched' && !routeBlocksDispatch(route)
-  );
+  ), [routeSummaries]);
+  const dispatchableRouteIds = useMemo(() => dispatchableRoutes.map((route) => route.id), [dispatchableRoutes]);
   const isSetupFlow = searchParams.get('source') === 'setup';
   const setupFocus = searchParams.get('focus') || '';
   const setupBanner = useMemo(() => {
@@ -474,8 +483,10 @@ export default function ManifestPage() {
   }, [date]);
 
   useEffect(() => {
-    setSelectedDispatchRouteIds(dispatchableRoutes.map((route) => route.id));
-  }, [dispatchableRoutes]);
+    setSelectedDispatchRouteIds((current) => (
+      areRouteIdListsEqual(current, dispatchableRouteIds) ? current : dispatchableRouteIds
+    ));
+  }, [dispatchableRouteIds]);
 
   useEffect(() => {
     saveStoredManifestUpload(date, latestUpload);
