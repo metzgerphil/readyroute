@@ -54,6 +54,7 @@ const DEFAULT_ROUTE_SYNC_SETTINGS = Object.freeze({
   manifest_sync_interval_minutes: 15
 });
 const MIN_FCC_SYNC_START_HOUR = 9;
+const LIVE_ROUTE_POSITION_MAX_AGE_MS = 2 * 60 * 1000;
 
 function getRouteSortLabel(route) {
   return String(route?.work_area_name || route?.route_number || route?.route_name || route?.route_id || route?.id || '').trim();
@@ -6329,6 +6330,7 @@ function createManagerRouter(options = {}) {
       const routeIds = visibleRoutes.map((route) => route.id);
       const driverIds = [...new Set(visibleRoutes.map((route) => route.driver_id).filter(Boolean))];
       const vehicleIds = [...new Set(visibleRoutes.map((route) => route.vehicle_id).filter(Boolean))];
+      const currentTime = nowProvider();
       let stopsByRouteId = new Map();
       let packagesByStopId = new Map();
       let lastPositionByDriverId = new Map();
@@ -6375,11 +6377,13 @@ function createManagerRouter(options = {}) {
         }
       }
 
-      if (driverIds.length > 0) {
+      if (routeIds.length > 0 && driverIds.length > 0) {
+        const livePositionCutoff = new Date(currentTime.getTime() - LIVE_ROUTE_POSITION_MAX_AGE_MS).toISOString();
         const { data: positionRows, error: positionsError } = await supabase
           .from('driver_positions')
           .select('driver_id, route_id, lat, lng, timestamp')
-          .in('driver_id', driverIds)
+          .in('route_id', routeIds)
+          .gte('timestamp', livePositionCutoff)
           .order('timestamp', { ascending: false });
 
         if (positionsError) {
@@ -6479,8 +6483,6 @@ function createManagerRouter(options = {}) {
         }, new Map());
       }
 
-      const currentTime = nowProvider();
-
       return res.status(200).json({
         account: {
           id: req.account.account_id,
@@ -6525,7 +6527,7 @@ function createManagerRouter(options = {}) {
             : null;
           const isOnline = Boolean(
             lastPositionTimestamp &&
-            currentTime.getTime() - new Date(lastPositionTimestamp).getTime() < 2 * 60 * 1000
+            currentTime.getTime() - new Date(lastPositionTimestamp).getTime() < LIVE_ROUTE_POSITION_MAX_AGE_MS
           );
 
           return {

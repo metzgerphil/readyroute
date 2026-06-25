@@ -14,6 +14,9 @@ import {
 import { getRouteStatusMeta } from '../utils/routeStatus';
 import { sortRoutesByWorkArea } from '../utils/routeSort';
 
+const ROUTES_SKELETON_ROWS = Array.from({ length: 5 }, (_, index) => index);
+const ROUTES_SKELETON_CELLS = Array.from({ length: 9 }, (_, index) => index);
+
 function formatDisplayDate(value) {
   if (!value) {
     return 'Selected day';
@@ -61,6 +64,32 @@ function getPickupSummary(route) {
 
   const completed = safeNumber(route.pickup_stops_completed);
   return `${completed} / ${total}`;
+}
+
+function RoutesLoadingSkeleton() {
+  return (
+    <div className="routes-loading-skeleton" role="status" aria-busy="true" aria-live="polite">
+      <span className="sr-only">Loading routes</span>
+      <div className="routes-loading-status" aria-hidden="true">
+        <span className="routes-loading-spinner" />
+        <span className="skeleton-line routes-loading-title" />
+      </div>
+      <div className="routes-operations-table routes-loading-table" aria-hidden="true">
+        <div className="routes-operations-table-header routes-loading-row">
+          {ROUTES_SKELETON_CELLS.map((cell) => (
+            <span className="skeleton-line" key={`header-${cell}`} />
+          ))}
+        </div>
+        {ROUTES_SKELETON_ROWS.map((row) => (
+          <div className="routes-operations-table-row routes-loading-row" key={row}>
+            {ROUTES_SKELETON_CELLS.map((cell) => (
+              <span className="skeleton-line" key={`${row}-${cell}`} />
+            ))}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
 }
 
 function RoutesTable({ routes, date }) {
@@ -219,7 +248,7 @@ export default function RoutesPage() {
         </div>
 
         {routesQuery.isLoading ? (
-          <div className="driver-meta">Loading routes...</div>
+          <RoutesLoadingSkeleton />
         ) : routesQuery.isError ? (
           <div className="error-banner">Unable to load routes.</div>
         ) : routes.length ? (

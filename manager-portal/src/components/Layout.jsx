@@ -182,9 +182,7 @@ export default function Layout({ children }) {
           </a>
           <div className="sidebar-csa-card">
             <div className="sidebar-csa-name">
-              {csaQuery.isLoading
-                ? 'Loading...'
-                : selectedCsaName || 'No CSA selected'}
+              {selectedCsaName || (csaQuery.isLoading ? 'Loading...' : 'No CSA selected')}
             </div>
             {linkedCsas.length > 1 ? (
               <select
@@ -199,7 +197,7 @@ export default function Layout({ children }) {
                   </option>
                 ))}
               </select>
-            ) : (
+            ) : csaQuery.isLoading && selectedCsaName ? null : (
               <div className="sidebar-csa-hint">
                 Link another CSA here, or open ReadyRoute to start a separate workspace.
               </div>
@@ -222,7 +220,6 @@ export default function Layout({ children }) {
                       className={({ isActive }) => `sidebar-link${isActive ? ' active' : ''}`}
                       end={link.end}
                       key={link.to}
-                      reloadDocument
                       to={linkTo}
                     >
                       <span className="sidebar-link-content">

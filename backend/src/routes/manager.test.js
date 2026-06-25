@@ -3455,6 +3455,127 @@ test('GET /manager/routes returns sync status and fedex connection metadata', as
   }
 });
 
+test('GET /manager/routes bounds driver position lookup to current fresh route positions', async () => {
+  const now = () => new Date('2026-04-09T14:30:00.000Z');
+  const supabase = new MockSupabase((query) => {
+    if (query.table === 'accounts' && query.operation === 'select') {
+      return {
+        data: {
+          id: 'acct-1',
+          company_name: 'Bridge Transportation',
+          fedex_csp_id: null,
+          operations_timezone: 'America/Chicago',
+          dispatch_window_start_hour: 5,
+          dispatch_window_end_hour: 10,
+          manifest_sync_interval_minutes: 20
+        },
+        error: null
+      };
+    }
+
+    if (query.table === 'fedex_accounts' && query.operation === 'select') {
+      return { data: [], error: null };
+    }
+
+    if (query.table === 'routes' && query.operation === 'select') {
+      return {
+        data: [
+          {
+            id: 'route-1',
+            account_id: 'acct-1',
+            driver_id: 'driver-1',
+            vehicle_id: null,
+            work_area_name: '810',
+            date: '2026-04-09',
+            source: 'gpx_upload',
+            total_stops: 1,
+            completed_stops: 0,
+            status: 'in_progress',
+            dispatch_state: 'dispatched',
+            dispatched_at: '2026-04-09T13:00:00.000Z',
+            sync_state: 'staged_stable',
+            last_manifest_sync_at: '2026-04-09T12:47:00.000Z',
+            last_manifest_change_at: '2026-04-09T12:47:00.000Z',
+            manifest_stop_count: 1,
+            manifest_package_count: 1,
+            manifest_fingerprint: 'fingerprint-1',
+            last_manifest_sync_error: null,
+            created_at: '2026-04-09T12:47:00.000Z',
+            completed_at: null,
+            archived_at: null
+          }
+        ],
+        error: null
+      };
+    }
+
+    if (query.table === 'stops' && query.operation === 'select') {
+      return { data: [], error: null };
+    }
+
+    if (query.table === 'driver_positions' && query.operation === 'select') {
+      return {
+        data: [
+          {
+            driver_id: 'driver-1',
+            route_id: 'route-1',
+            lat: 33.125,
+            lng: -117.085,
+            timestamp: '2026-04-09T14:29:00.000Z'
+          }
+        ],
+        error: null
+      };
+    }
+
+    if (query.table === 'drivers' && query.operation === 'select') {
+      return { data: [{ id: 'driver-1', name: 'Luis Jimenez' }], error: null };
+    }
+
+    if (query.table === 'route_sync_events' && query.operation === 'select') {
+      return { data: [], error: null };
+    }
+
+    throw new Error(`Unexpected query ${query.table}:${query.operation}`);
+  });
+
+  const server = await startTestServer({ supabase, now });
+
+  try {
+    const response = await fetch(`${server.baseUrl}/manager/routes?date=2026-04-09`, {
+      headers: {
+        Authorization: `Bearer ${signManagerToken()}`
+      }
+    });
+
+    assert.equal(response.status, 200);
+    const body = await response.json();
+    assert.equal(body.routes[0].is_online, true);
+    assert.deepEqual(body.routes[0].last_position, {
+      lat: 33.125,
+      lng: -117.085,
+      timestamp: '2026-04-09T14:29:00.000Z'
+    });
+
+    const positionQuery = supabase.calls.find((query) => query.table === 'driver_positions');
+    assert.ok(positionQuery);
+    assert.deepEqual(
+      positionQuery.filters.find((filter) => filter.op === 'in' && filter.column === 'route_id')?.value,
+      ['route-1']
+    );
+    assert.equal(
+      positionQuery.filters.find((filter) => filter.op === 'gte' && filter.column === 'timestamp')?.value,
+      '2026-04-09T14:28:00.000Z'
+    );
+    assert.equal(
+      positionQuery.filters.some((filter) => filter.column === 'driver_id'),
+      false
+    );
+  } finally {
+    await server.close();
+  }
+});
+
 test('POST /manager/routes/archive-date archives only past-date routes and preserves route rows', async () => {
   const supabase = new MockSupabase((query) => {
     if (query.table === 'routes' && query.operation === 'select') {

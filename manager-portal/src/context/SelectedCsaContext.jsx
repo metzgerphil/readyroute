@@ -3,8 +3,10 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 
 import api from '../services/api';
 import {
+  getCachedSelectedCsaContext,
   getManagerAccountId,
   getSelectedCsaId,
+  saveCachedSelectedCsaContext,
   saveManagerToken,
   saveSelectedCsaId
 } from '../services/auth';
@@ -20,6 +22,7 @@ export function SelectedCsaProvider({ children }) {
   const queryClient = useQueryClient();
   const attemptedStoredSwitchRef = useRef(false);
   const [selectedCsaId, setSelectedCsaIdState] = useState(() => getManagerAccountId() || null);
+  const [cachedSelectedCsa] = useState(() => getCachedSelectedCsaContext());
   const [isSwitchingCsa, setIsSwitchingCsa] = useState(false);
   const [csaSelectionError, setCsaSelectionError] = useState('');
 
@@ -28,12 +31,13 @@ export function SelectedCsaProvider({ children }) {
     queryFn: async () => {
       const response = await api.get('/manager/csas');
       return response.data || { current_csa: null, csas: [] };
-    }
+    },
+    staleTime: 5 * 60 * 1000
   });
 
   const csaOptions = useMemo(() => csaQuery.data?.csas || [], [csaQuery.data?.csas]);
   const tokenCsaId = csaQuery.data?.current_csa?.id || getManagerAccountId() || null;
-  const selectedCsa = useMemo(() => (
+  const liveSelectedCsa = useMemo(() => (
     deriveSelectedCsa({
       csas: csaOptions,
       selectedCsaId,
@@ -41,6 +45,18 @@ export function SelectedCsaProvider({ children }) {
       currentCsa: csaQuery.data?.current_csa
     })
   ), [csaOptions, csaQuery.data?.current_csa, selectedCsaId, tokenCsaId]);
+  const selectedCsa = useMemo(() => {
+    if (liveSelectedCsa) {
+      return liveSelectedCsa;
+    }
+
+    const activeCsaId = selectedCsaId || tokenCsaId;
+    if (cachedSelectedCsa?.id && cachedSelectedCsa.id === activeCsaId) {
+      return cachedSelectedCsa;
+    }
+
+    return null;
+  }, [cachedSelectedCsa, liveSelectedCsa, selectedCsaId, tokenCsaId]);
   const selectedCsaName = deriveSelectedCsaName(selectedCsa);
 
   const switchCsa = useCallback(async (nextCsaId, options = {}) => {
@@ -106,6 +122,21 @@ export function SelectedCsaProvider({ children }) {
       switchCsa(initialization.storedSwitchId, { redirectTo: window.location.pathname || '/setup' });
     }
   }, [csaOptions, csaQuery.data, isSwitchingCsa, selectedCsaId, switchCsa, tokenCsaId]);
+
+  useEffect(() => {
+    const selectedCsaIdForCache = liveSelectedCsa?.id;
+    const selectedCsaNameForCache = deriveSelectedCsaName(liveSelectedCsa);
+
+    if (!selectedCsaIdForCache || !selectedCsaNameForCache) {
+      return;
+    }
+
+    const nextCachedCsa = {
+      id: selectedCsaIdForCache,
+      company_name: selectedCsaNameForCache
+    };
+    saveCachedSelectedCsaContext(nextCachedCsa);
+  }, [liveSelectedCsa]);
 
   const value = useMemo(() => ({
     csaOptions,

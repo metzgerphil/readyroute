@@ -703,18 +703,71 @@ button {
 
 .drivers-directory-toolbar {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: space-between;
-  gap: 10px;
+  gap: 14px;
   flex-wrap: wrap;
 }
 
-.drivers-directory-toolbar .text-field {
-  max-width: 390px;
-  min-width: min(100%, 280px);
-  min-height: 34px;
+.drivers-directory-toolbar-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  flex: 1 1 760px;
+  flex-wrap: wrap;
+}
+
+.drivers-directory-toolbar-actions .text-field {
+  min-height: 36px;
   border-radius: 12px;
-  font-size: 0.88rem;
+  font-size: 0.86rem;
+}
+
+.drivers-directory-toolbar-actions input {
+  flex: 1 1 280px;
+  max-width: 390px;
+}
+
+.drivers-directory-filter {
+  flex: 0 0 160px;
+}
+
+.drivers-directory-sort {
+  flex: 0 0 178px;
+}
+
+.drivers-directory-count {
+  white-space: nowrap;
+}
+
+.drivers-pagination {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  padding-top: 12px;
+}
+
+.drivers-page-size,
+.drivers-pagination-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.drivers-page-size .text-field {
+  width: 84px;
+  min-height: 34px;
+  border-radius: 10px;
+}
+
+.drivers-pagination-page {
+  color: var(--rr-color-text-muted);
+  font-size: 0.82rem;
+  font-weight: 850;
+  white-space: nowrap;
 }
 
 .drivers-manager-table {
@@ -1128,6 +1181,31 @@ button {
 }
 
 @media (max-width: 900px) {
+  .drivers-directory-toolbar {
+    align-items: stretch;
+  }
+
+  .drivers-directory-toolbar-actions {
+    justify-content: stretch;
+    width: 100%;
+  }
+
+  .drivers-directory-toolbar-actions input,
+  .drivers-directory-filter,
+  .drivers-directory-sort {
+    flex: 1 1 100%;
+    max-width: none;
+  }
+
+  .drivers-pagination {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .drivers-pagination-actions {
+    justify-content: space-between;
+  }
+
   .drivers-manager-table {
     display: none;
   }
@@ -6944,6 +7022,73 @@ button.manifest-attention-chip {
   gap: 18px;
 }
 
+.routes-loading-skeleton {
+  display: grid;
+  gap: 12px;
+}
+
+.routes-loading-status {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 24px;
+}
+
+.routes-loading-spinner {
+  width: 18px;
+  height: 18px;
+  border: 3px solid #e4eaf0;
+  border-top-color: var(--rr-color-orange);
+  border-radius: 999px;
+  animation: routesSpinner 0.8s linear infinite;
+}
+
+.routes-loading-title {
+  width: min(190px, 48%);
+  height: 14px;
+}
+
+.routes-loading-table {
+  overflow: hidden;
+}
+
+.routes-loading-table .skeleton-line {
+  display: block;
+  height: 13px;
+  width: 100%;
+}
+
+.routes-loading-row .skeleton-line:nth-child(1) {
+  width: 78%;
+}
+
+.routes-loading-row .skeleton-line:nth-child(2),
+.routes-loading-row .skeleton-line:nth-child(3) {
+  width: 68%;
+}
+
+.routes-loading-row .skeleton-line:nth-child(4),
+.routes-loading-row .skeleton-line:nth-child(5),
+.routes-loading-row .skeleton-line:nth-child(6),
+.routes-loading-row .skeleton-line:nth-child(7) {
+  width: 52%;
+}
+
+.routes-loading-row .skeleton-line:nth-child(8) {
+  width: 74%;
+}
+
+.routes-loading-row .skeleton-line:nth-child(9) {
+  width: 46px;
+  justify-self: end;
+}
+
+@keyframes routesSpinner {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
 .routes-operations-table {
   border: 1px solid var(--rr-color-border);
   border-radius: var(--rr-radius-lg);
@@ -7150,7 +7295,8 @@ button.manifest-attention-chip {
   padding: 10px 12px;
 }
 
-.vehicles-tab-bar {
+.vehicles-tab-bar,
+.drivers-tab-bar {
   display: flex;
   align-items: center;
   gap: 6px;
@@ -7164,7 +7310,8 @@ button.manifest-attention-chip {
   overflow-x: auto;
 }
 
-.vehicles-tab-button {
+.vehicles-tab-button,
+.drivers-tab-button {
   min-height: 34px;
   padding: 0 14px;
   border: 0;
@@ -7177,12 +7324,14 @@ button.manifest-attention-chip {
   white-space: nowrap;
 }
 
-.vehicles-tab-button:hover {
+.vehicles-tab-button:hover,
+.drivers-tab-button:hover {
   color: var(--rr-color-text-strong);
   background: var(--rr-color-surface-muted);
 }
 
-.vehicles-tab-button.active {
+.vehicles-tab-button.active,
+.drivers-tab-button.active {
   background: var(--rr-color-orange);
   color: #ffffff;
   box-shadow: 0 6px 14px rgba(255, 98, 0, 0.18);

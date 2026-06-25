@@ -144,6 +144,29 @@ const emptyLaborForm = {
   adjustment_reason: ''
 };
 
+const DRIVER_TABS = [
+  { key: 'directory', label: 'Driver Directory' },
+  { key: 'labor', label: 'Labor' }
+];
+
+const DRIVER_PAGE_SIZE_OPTIONS = [10, 25, 50];
+
+const DRIVER_SORT_OPTIONS = [
+  { value: 'name', label: 'Name' },
+  { value: 'status', label: 'Status' },
+  { value: 'compliance', label: 'Compliance' },
+  { value: 'hourly_rate', label: 'Hourly rate' },
+  { value: 'daily_flat_rate', label: 'Daily flat rate' }
+];
+
+const DRIVER_COMPLIANCE_RANK = {
+  expired: 0,
+  expiring_soon: 1,
+  needs_documents: 2,
+  not_reviewed: 3,
+  good: 4
+};
+
 function getDocumentsForType(driver, documentType) {
   return (driver?.documents || []).filter((document) => document.document_type === documentType);
 }
@@ -206,6 +229,55 @@ function getComplianceLabel(driver) {
   return 'Good standing';
 }
 
+function getComplianceStatus(driver) {
+  const summary = driver?.document_summary;
+  if (!summary) return 'not_reviewed';
+  if (summary.expired > 0) return 'expired';
+  if (summary.expiring_soon > 0) return 'expiring_soon';
+  if (summary.missing_required?.length) return 'needs_documents';
+  return 'good';
+}
+
+function getDriverSearchText(driver) {
+  return [
+    driver.name,
+    driver.email,
+    driver.phone,
+    driver.fedex_driver_id,
+    driver.is_active ? 'active' : 'inactive',
+    getDocumentSummaryLabel(driver),
+    getComplianceLabel(driver)
+  ].filter(Boolean).join(' ').toLowerCase();
+}
+
+function getDriverSortValue(driver, sortKey) {
+  switch (sortKey) {
+    case 'status':
+      return driver.is_active ? 0 : 1;
+    case 'compliance':
+      return DRIVER_COMPLIANCE_RANK[getComplianceStatus(driver)] ?? DRIVER_COMPLIANCE_RANK.not_reviewed;
+    case 'hourly_rate':
+      return Number(driver.hourly_rate || 0);
+    case 'daily_flat_rate':
+      return Number(driver.daily_flat_rate || 0);
+    case 'name':
+    default:
+      return String(driver.name || '').toLowerCase();
+  }
+}
+
+function compareDrivers(aDriver, bDriver, sortKey, sortDirection) {
+  const aValue = getDriverSortValue(aDriver, sortKey);
+  const bValue = getDriverSortValue(bDriver, sortKey);
+  const directionMultiplier = sortDirection === 'desc' ? -1 : 1;
+
+  if (typeof aValue === 'number' && typeof bValue === 'number') {
+    return (aValue - bValue) * directionMultiplier;
+  }
+
+  return String(aValue).localeCompare(String(bValue), undefined, { numeric: true }) * directionMultiplier;
+}
+
 function getStatusToneClass(tone) {
   switch (tone) {
     case 'success':
@@ -216,6 +288,25 @@ function getStatusToneClass(tone) {
     default:
       return 'driver-doc-chip-warning';
   }
+}
+
+function DriverTabs({ activeTab, onChange }) {
+  return (
+    <div className="drivers-tab-bar" role="tablist" aria-label="Driver sections">
+      {DRIVER_TABS.map((tab) => (
+        <button
+          aria-selected={activeTab === tab.key}
+          className={`drivers-tab-button${activeTab === tab.key ? ' active' : ''}`}
+          key={tab.key}
+          onClick={() => onChange(tab.key)}
+          role="tab"
+          type="button"
+        >
+          {tab.label}
+        </button>
+      ))}
+    </div>
+  );
 }
 
 function DriverDocumentSlot({
@@ -838,6 +929,14 @@ export default function DriversPage() {
   const [managerInviteResult, setManagerInviteResult] = useState(null);
   const [starterPinDraft, setStarterPinDraft] = useState(null);
   const [starterPinError, setStarterPinError] = useState('');
+  const [activeDriversTab, setActiveDriversTab] = useState('directory');
+  const [driverSearch, setDriverSearch] = useState('');
+  const [driverStatusFilter, setDriverStatusFilter] = useState('all');
+  const [driverComplianceFilter, setDriverComplianceFilter] = useState('all');
+  const [driverSortKey, setDriverSortKey] = useState('name');
+  const [driverSortDirection, setDriverSortDirection] = useState('asc');
+  const [driverPage, setDriverPage] = useState(1);
+  const [driverPageSize, setDriverPageSize] = useState(10);
 
   const driversQuery = useQuery({
     queryKey: ['manager-drivers'],
@@ -1091,6 +1190,28 @@ export default function DriversPage() {
   const isSubmitting = createDriver.isPending || updateDriver.isPending;
   const isDocumentBusy = uploadDriverDocument.isPending || removeDriverDocument.isPending;
   const drivers = useMemo(() => driversQuery.data || [], [driversQuery.data]);
+  const filteredDrivers = useMemo(() => {
+    const searchQuery = driverSearch.trim().toLowerCase();
+
+    return [...drivers]
+      .filter((driver) => {
+        const statusMatches = driverStatusFilter === 'all'
+          || (driverStatusFilter === 'active' && driver.is_active)
+          || (driverStatusFilter === 'inactive' && !driver.is_active);
+        const complianceStatus = getComplianceStatus(driver);
+        const complianceMatches = driverComplianceFilter === 'all' || complianceStatus === driverComplianceFilter;
+        const searchMatches = !searchQuery || getDriverSearchText(driver).includes(searchQuery);
+
+        return statusMatches && complianceMatches && searchMatches;
+      })
+      .sort((aDriver, bDriver) => compareDrivers(aDriver, bDriver, driverSortKey, driverSortDirection));
+  }, [driverComplianceFilter, driverSearch, driverSortDirection, driverSortKey, driverStatusFilter, drivers]);
+  const driverPageCount = Math.max(1, Math.ceil(filteredDrivers.length / driverPageSize));
+  const visibleDriverPage = Math.min(driverPage, driverPageCount);
+  const driverPageStartIndex = (visibleDriverPage - 1) * driverPageSize;
+  const pagedDrivers = filteredDrivers.slice(driverPageStartIndex, driverPageStartIndex + driverPageSize);
+  const driverPaginationStart = filteredDrivers.length ? driverPageStartIndex + 1 : 0;
+  const driverPaginationEnd = Math.min(driverPageStartIndex + driverPageSize, filteredDrivers.length);
   const selectedDriver = useMemo(
     () => drivers.find((driver) => driver.id === selectedDriverId) || null,
     [drivers, selectedDriverId]
@@ -1414,6 +1535,10 @@ export default function DriversPage() {
         </div>
       ) : null}
 
+      <DriverTabs activeTab={activeDriversTab} onChange={setActiveDriversTab} />
+
+      {activeDriversTab === 'directory' ? (
+        <>
       <div className="card driver-access-card">
         <div className="section-title-row">
           <div>
@@ -1449,15 +1574,82 @@ export default function DriversPage() {
       </div>
 
       <div className="card">
-        <div className="section-title-row">
+        <div className="section-title-row drivers-directory-toolbar">
           <div>
             <div className="card-title">Driver Directory</div>
             <div className="driver-meta">
               Every driver added to this CSA appears here, even before they have any labor activity.
             </div>
           </div>
-          <div className="driver-meta">
-            {drivers.length} driver{drivers.length === 1 ? '' : 's'}
+          <div className="drivers-directory-toolbar-actions">
+            <input
+              aria-label="Search drivers"
+              className="text-field"
+              onChange={(event) => {
+                setDriverSearch(event.target.value);
+                setDriverPage(1);
+              }}
+              placeholder="Search name, email, phone, or document status"
+              type="search"
+              value={driverSearch}
+            />
+            <select
+              aria-label="Filter drivers by status"
+              className="text-field drivers-directory-filter"
+              onChange={(event) => {
+                setDriverStatusFilter(event.target.value);
+                setDriverPage(1);
+              }}
+              value={driverStatusFilter}
+            >
+              <option value="all">All Statuses</option>
+              <option value="active">Active</option>
+              <option value="inactive">Inactive</option>
+            </select>
+            <select
+              aria-label="Filter drivers by compliance"
+              className="text-field drivers-directory-filter"
+              onChange={(event) => {
+                setDriverComplianceFilter(event.target.value);
+                setDriverPage(1);
+              }}
+              value={driverComplianceFilter}
+            >
+              <option value="all">All Compliance</option>
+              <option value="good">Good Standing</option>
+              <option value="needs_documents">Needs Documents</option>
+              <option value="expiring_soon">Expiring Soon</option>
+              <option value="expired">Expired Docs</option>
+              <option value="not_reviewed">Not Reviewed</option>
+            </select>
+            <select
+              aria-label="Sort drivers"
+              className="text-field drivers-directory-sort"
+              onChange={(event) => {
+                setDriverSortKey(event.target.value);
+                setDriverPage(1);
+              }}
+              value={driverSortKey}
+            >
+              {DRIVER_SORT_OPTIONS.map((option) => (
+                <option key={option.value} value={option.value}>{`Sort by ${option.label}`}</option>
+              ))}
+            </select>
+            <select
+              aria-label="Driver sort direction"
+              className="text-field drivers-directory-filter"
+              onChange={(event) => {
+                setDriverSortDirection(event.target.value);
+                setDriverPage(1);
+              }}
+              value={driverSortDirection}
+            >
+              <option value="asc">Ascending</option>
+              <option value="desc">Descending</option>
+            </select>
+            <span className="driver-meta drivers-directory-count">
+              {filteredDrivers.length} of {drivers.length} driver{drivers.length === 1 ? '' : 's'}
+            </span>
           </div>
         </div>
 
@@ -1466,54 +1658,106 @@ export default function DriversPage() {
         ) : driversQuery.isError ? (
           <div className="error-banner">Unable to load drivers.</div>
         ) : drivers.length ? (
-          <div className="drivers-manager-table driver-profile-table">
-            <div className="drivers-manager-table-header">
-              <span>Driver</span>
-              <span>Contact</span>
-              <span>Documents</span>
-              <span>Compliance</span>
-              <span>App Access</span>
-              <span>Status</span>
-              <span>Actions</span>
-            </div>
-            {drivers.map((driver) => (
-              <div className="drivers-manager-table-row" key={driver.id}>
-                <div className="drivers-manager-driver-cell">
-                  <div>
-                    <strong>{driver.name}</strong>
-                    <span>{driver.fedex_driver_id ? `FedEx ID ${driver.fedex_driver_id}` : 'No FedEx ID'}</span>
+          <>
+            {filteredDrivers.length ? (
+              <>
+                <div className="drivers-manager-table driver-profile-table">
+                  <div className="drivers-manager-table-header">
+                    <span>Driver</span>
+                    <span>Contact</span>
+                    <span>Documents</span>
+                    <span>Compliance</span>
+                    <span>App Access</span>
+                    <span>Status</span>
+                    <span>Actions</span>
+                  </div>
+                  {pagedDrivers.map((driver) => (
+                    <div className="drivers-manager-table-row" key={driver.id}>
+                      <div className="drivers-manager-driver-cell">
+                        <div>
+                          <strong>{driver.name}</strong>
+                          <span>{driver.fedex_driver_id ? `FedEx ID ${driver.fedex_driver_id}` : 'No FedEx ID'}</span>
+                        </div>
+                      </div>
+                      <div className="drivers-table-value driver-contact-cell">
+                        <span>{formatPhoneDisplay(driver.phone)}</span>
+                        <span>{driver.email}</span>
+                      </div>
+                      <span className={`driver-doc-chip ${driver.document_summary?.missing_required?.length ? 'driver-doc-chip-warning' : 'driver-doc-chip-success'}`}>
+                        {getDocumentSummaryLabel(driver)}
+                      </span>
+                      <span className={`driver-doc-chip ${driver.document_summary?.expired ? 'driver-doc-chip-danger' : driver.document_summary?.expiring_soon || driver.document_summary?.missing_required?.length ? 'driver-doc-chip-warning' : 'driver-doc-chip-success'}`}>
+                        {getComplianceLabel(driver)}
+                      </span>
+                      <span className="drivers-muted-value">PIN enabled</span>
+                      <span className={`driver-doc-chip ${driver.is_active ? 'driver-doc-chip-success' : 'driver-doc-chip-neutral'}`}>
+                        {driver.is_active ? 'Active' : 'Inactive'}
+                      </span>
+                      <div className="drivers-table-actions">
+                        <button className="secondary-inline-button" onClick={() => openEditModal(driver)} type="button">
+                          Edit
+                        </button>
+                        <button className="secondary-inline-button" onClick={() => handleStatusToggle(driver)} type="button">
+                          {driver.is_active ? 'Deactivate' : 'Activate'}
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+
+                <div className="drivers-pagination" aria-label="Driver directory pagination">
+                  <span className="driver-meta">
+                    Showing {driverPaginationStart}-{driverPaginationEnd} of {filteredDrivers.length}
+                  </span>
+                  <label className="drivers-page-size">
+                    <span className="field-label">Rows</span>
+                    <select
+                      className="text-field"
+                      onChange={(event) => {
+                        setDriverPageSize(Number(event.target.value));
+                        setDriverPage(1);
+                      }}
+                      value={driverPageSize}
+                    >
+                      {DRIVER_PAGE_SIZE_OPTIONS.map((option) => (
+                        <option key={option} value={option}>{option}</option>
+                      ))}
+                    </select>
+                  </label>
+                  <div className="drivers-pagination-actions">
+                    <button
+                      className="secondary-inline-button"
+                      disabled={visibleDriverPage <= 1}
+                      onClick={() => setDriverPage(Math.max(1, visibleDriverPage - 1))}
+                      type="button"
+                    >
+                      Previous
+                    </button>
+                    <span className="drivers-pagination-page">Page {visibleDriverPage} of {driverPageCount}</span>
+                    <button
+                      className="secondary-inline-button"
+                      disabled={visibleDriverPage >= driverPageCount}
+                      onClick={() => setDriverPage(Math.min(driverPageCount, visibleDriverPage + 1))}
+                      type="button"
+                    >
+                      Next
+                    </button>
                   </div>
                 </div>
-                <div className="drivers-table-value driver-contact-cell">
-                  <span>{formatPhoneDisplay(driver.phone)}</span>
-                  <span>{driver.email}</span>
-                </div>
-                <span className={`driver-doc-chip ${driver.document_summary?.missing_required?.length ? 'driver-doc-chip-warning' : 'driver-doc-chip-success'}`}>
-                  {getDocumentSummaryLabel(driver)}
-                </span>
-                <span className={`driver-doc-chip ${driver.document_summary?.expired ? 'driver-doc-chip-danger' : driver.document_summary?.expiring_soon || driver.document_summary?.missing_required?.length ? 'driver-doc-chip-warning' : 'driver-doc-chip-success'}`}>
-                  {getComplianceLabel(driver)}
-                </span>
-                <span className="drivers-muted-value">PIN enabled</span>
-                <span className={`driver-doc-chip ${driver.is_active ? 'driver-doc-chip-success' : 'driver-doc-chip-neutral'}`}>
-                  {driver.is_active ? 'Active' : 'Inactive'}
-                </span>
-                <div className="drivers-table-actions">
-                  <button className="secondary-inline-button" onClick={() => openEditModal(driver)} type="button">
-                    Edit
-                  </button>
-                  <button className="secondary-inline-button" onClick={() => handleStatusToggle(driver)} type="button">
-                    {driver.is_active ? 'Deactivate' : 'Activate'}
-                  </button>
-                </div>
-              </div>
-            ))}
-          </div>
+              </>
+            ) : (
+              <div className="labor-empty-state">No drivers match the current search or filters.</div>
+            )}
+          </>
         ) : (
           <div className="labor-empty-state">No drivers have been added to this CSA yet.</div>
         )}
       </div>
+        </>
+      ) : null}
 
+      {activeDriversTab === 'labor' ? (
+        <>
       <div className="card">
         <div className="section-title-row">
           <div>
@@ -2008,6 +2252,8 @@ export default function DriversPage() {
           </>
         )}
       </div>
+        </>
+      ) : null}
 
       {isModalOpen ? (
         <DriverModal
