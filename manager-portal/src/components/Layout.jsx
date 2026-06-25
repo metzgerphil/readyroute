@@ -6,6 +6,13 @@ import { VEDR_CONNECTION_STATUSES } from '../config/constants';
 import { useSelectedCsa } from '../context/SelectedCsaContext';
 import { clearManagerToken } from '../services/auth';
 import api from '../services/api';
+import {
+  buildOperationsDatePath,
+  getOperationsDateFromSearch,
+  getTodayString,
+  isOperationsDatePath,
+  loadStoredOperationsDate
+} from '../utils/operationsDate';
 
 const navGroups = [
   {
@@ -142,6 +149,7 @@ export default function Layout({ children }) {
   const showVedrSetupBadge = !vedrSettingsQuery.isLoading
     && !vedrSettingsQuery.isError
     && vedrSettingsQuery.data?.connection_status !== VEDR_CONNECTION_STATUSES.CONNECTED;
+  const currentOperationsDate = getOperationsDateFromSearch(location.search) || loadStoredOperationsDate() || getTodayString();
 
   async function handleCsaSwitch(event) {
     const nextAccountId = event.target.value;
@@ -204,23 +212,29 @@ export default function Layout({ children }) {
             <div className="sidebar-nav-group" key={group.label}>
               <div className="sidebar-nav-group-label">{group.label}</div>
               <div className="sidebar-nav-group-links">
-                {group.links.map((link) => (
-                  <NavLink
-                    className={({ isActive }) => `sidebar-link${isActive ? ' active' : ''}`}
-                    end={link.end}
-                    key={link.to}
-                    reloadDocument
-                    to={link.to}
-                  >
-                    <span className="sidebar-link-content">
-                      <span className="sidebar-link-icon" aria-hidden="true">
-                        <SidebarIcon type={link.icon} />
-                        {link.showsSetupBadge && showVedrSetupBadge ? <span className="sidebar-link-badge-dot" /> : null}
+                {group.links.map((link) => {
+                  const linkTo = isOperationsDatePath(link.to)
+                    ? buildOperationsDatePath(link.to, currentOperationsDate)
+                    : link.to;
+
+                  return (
+                    <NavLink
+                      className={({ isActive }) => `sidebar-link${isActive ? ' active' : ''}`}
+                      end={link.end}
+                      key={link.to}
+                      reloadDocument
+                      to={linkTo}
+                    >
+                      <span className="sidebar-link-content">
+                        <span className="sidebar-link-icon" aria-hidden="true">
+                          <SidebarIcon type={link.icon} />
+                          {link.showsSetupBadge && showVedrSetupBadge ? <span className="sidebar-link-badge-dot" /> : null}
+                        </span>
+                        <span>{link.label}</span>
                       </span>
-                      <span>{link.label}</span>
-                    </span>
-                  </NavLink>
-                ))}
+                    </NavLink>
+                  );
+                })}
               </div>
             </div>
           ))}

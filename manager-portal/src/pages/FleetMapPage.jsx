@@ -6,7 +6,12 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import api from '../services/api';
 import { loadGoogleMaps } from '../lib/googleMapsLoader';
 import { createDriverPositionMarker } from '../utils/stopMarkers';
-import { getTodayString, loadStoredOperationsDate, saveStoredOperationsDate } from '../utils/operationsDate';
+import {
+  buildOperationsDatePath,
+  getTodayString,
+  loadStoredOperationsDate,
+  saveStoredOperationsDate
+} from '../utils/operationsDate';
 import { toUsableMapPoint } from '../utils/routePageHelpers';
 import './FleetMapPage.css';
 
@@ -74,18 +79,30 @@ export default function FleetMapPage() {
   const stopMarkersRef = useRef([]);
   const driverMarkersRef = useRef(new Map());
   const routeLinesRef = useRef([]);
-  const initialDate = searchParams.get('date') || loadStoredOperationsDate() || getTodayString();
-  const [date, setDate] = useState(initialDate);
+  const date = searchParams.get('date') || loadStoredOperationsDate() || getTodayString();
   const [mapError, setMapError] = useState('');
   const [mapReady, setMapReady] = useState(false);
   const [selectedRouteId, setSelectedRouteId] = useState(null);
 
   useEffect(() => {
     saveStoredOperationsDate(date);
+
+    if (searchParams.get('date') === date) {
+      return;
+    }
+
     const nextParams = new URLSearchParams(searchParams);
     nextParams.set('date', date);
     setSearchParams(nextParams, { replace: true });
   }, [date, searchParams, setSearchParams]);
+
+  function handleDateChange(nextDate) {
+    saveStoredOperationsDate(nextDate);
+
+    const nextParams = new URLSearchParams(searchParams);
+    nextParams.set('date', nextDate);
+    setSearchParams(nextParams);
+  }
 
   const routesQuery = useQuery({
     queryKey: ['fleet-map-routes', date],
@@ -360,7 +377,7 @@ export default function FleetMapPage() {
       <div className="card fleet-map-toolbar">
         <label className="route-page-field">
           <span>Date</span>
-          <input className="date-field route-toolbar-input" type="date" value={date} onChange={(event) => setDate(event.target.value)} />
+          <input className="date-field route-toolbar-input" type="date" value={date} onChange={(event) => handleDateChange(event.target.value)} />
         </label>
       </div>
 
@@ -381,10 +398,10 @@ export default function FleetMapPage() {
                 the Manifest page.
               </p>
               <div className="fleet-map-empty-state-actions">
-                <button className="primary-cta" onClick={() => navigate(`/manifest?date=${date}&action=sync`)} type="button">
+                <button className="primary-cta" onClick={() => navigate(buildOperationsDatePath('/manifest?action=sync', date))} type="button">
                   Open Route Sync
                 </button>
-                <button className="secondary-button" onClick={() => navigate(`/manifest?date=${date}`)} type="button">
+                <button className="secondary-button" onClick={() => navigate(buildOperationsDatePath('/manifest', date))} type="button">
                   Open Manifest
                 </button>
               </div>

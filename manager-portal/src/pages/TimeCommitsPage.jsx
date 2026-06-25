@@ -1,11 +1,16 @@
 import { useQuery } from '@tanstack/react-query';
-import { useMemo, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { useEffect, useMemo, useState } from 'react';
+import { Link, useSearchParams } from 'react-router-dom';
 
 import api from '../services/api';
 import { EmptyState, PageHeader, StatCard, StatusBadge } from '../components/PortalDesignSystem';
 import { useSelectedCsa } from '../context/SelectedCsaContext';
-import { getTodayString, loadStoredOperationsDate, saveStoredOperationsDate } from '../utils/operationsDate';
+import {
+  buildOperationsDatePath,
+  getTodayString,
+  loadStoredOperationsDate,
+  saveStoredOperationsDate
+} from '../utils/operationsDate';
 import { compareRouteLabels, sortRoutesByWorkArea } from '../utils/routeSort';
 
 function formatDisplayDate(value) {
@@ -149,7 +154,7 @@ function TimeCommitsTable({ rows, date }) {
         </div>
         {rows.map((row) => (
           <div className="time-commits-table-row" key={row.id}>
-            <Link className="time-commits-route-link" to={`/routes/${row.routeId}?date=${date}`}>{row.routeName}</Link>
+            <Link className="time-commits-route-link" to={buildOperationsDatePath(`/routes/${row.routeId}`, date)}>{row.routeName}</Link>
             <span>{row.stopType}</span>
             <span>{row.sid}</span>
             <span className="time-commits-address">{row.address}</span>
@@ -160,7 +165,7 @@ function TimeCommitsTable({ rows, date }) {
             <span>{row.eventTime}</span>
             <span><StatusBadge tone={row.status.tone}>{row.status.label}</StatusBadge></span>
             <span className="routes-row-actions">
-              <Link className="secondary-inline-button" to={`/routes/${row.routeId}?date=${date}`}>
+              <Link className="secondary-inline-button" to={buildOperationsDatePath(`/routes/${row.routeId}`, date)}>
                 View
               </Link>
             </span>
@@ -186,7 +191,7 @@ function TimeCommitsTable({ rows, date }) {
               <span>Packages: {row.packageCount || '—'}</span>
               <span>Time: {row.eventTime}</span>
             </div>
-            <Link className="secondary-button" to={`/routes/${row.routeId}?date=${date}`}>
+            <Link className="secondary-button" to={buildOperationsDatePath(`/routes/${row.routeId}`, date)}>
               View Stop Details
             </Link>
           </article>
@@ -197,11 +202,24 @@ function TimeCommitsTable({ rows, date }) {
 }
 
 export default function TimeCommitsPage() {
-  const [date, setDate] = useState(loadStoredOperationsDate() || getTodayString());
+  const [searchParams, setSearchParams] = useSearchParams();
+  const date = searchParams.get('date') || loadStoredOperationsDate() || getTodayString();
   const [routeFilter, setRouteFilter] = useState('all');
   const [typeFilter, setTypeFilter] = useState('all');
   const [statusFilter, setStatusFilter] = useState('all');
   const { selectedCsaId, selectedCsaName } = useSelectedCsa();
+
+  useEffect(() => {
+    saveStoredOperationsDate(date);
+
+    if (searchParams.get('date') === date) {
+      return;
+    }
+
+    const nextParams = new URLSearchParams(searchParams);
+    nextParams.set('date', date);
+    setSearchParams(nextParams, { replace: true });
+  }, [date, searchParams, setSearchParams]);
 
   const routesQuery = useQuery({
     queryKey: ['operations-time-commits', selectedCsaId, date],
@@ -259,8 +277,11 @@ export default function TimeCommitsPage() {
   const accountName = selectedCsaName || routesQuery.data?.account?.company_name || '';
 
   function handleDateChange(nextDate) {
-    setDate(nextDate);
     saveStoredOperationsDate(nextDate);
+
+    const nextParams = new URLSearchParams(searchParams);
+    nextParams.set('date', nextDate);
+    setSearchParams(nextParams);
   }
 
   return (
@@ -279,7 +300,7 @@ export default function TimeCommitsPage() {
                 value={date}
               />
             </label>
-            <Link className="secondary-button" to={`/routes?date=${date}`}>
+            <Link className="secondary-button" to={buildOperationsDatePath('/routes', date)}>
               Routes
             </Link>
           </>
@@ -346,8 +367,8 @@ export default function TimeCommitsPage() {
             title="No P&D time commits for this day"
             description="When manifests include pickup or delivery commit windows, they will appear here across all routes."
             actions={(
-              <Link className="primary-cta manifest-button" to={`/manifest?date=${date}`}>
-                Add Routes
+              <Link className="primary-cta manifest-button" to={buildOperationsDatePath('/manifest', date)}>
+                Upload Manifest
               </Link>
             )}
           />

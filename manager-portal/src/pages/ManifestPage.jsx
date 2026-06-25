@@ -4,7 +4,12 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link, useSearchParams } from 'react-router-dom';
 
 import api from '../services/api';
-import { getTodayString, loadStoredOperationsDate, saveStoredOperationsDate } from '../utils/operationsDate';
+import {
+  buildOperationsDatePath,
+  getTodayString,
+  loadStoredOperationsDate,
+  saveStoredOperationsDate
+} from '../utils/operationsDate';
 
 const MANIFEST_UPLOAD_STORAGE_KEY = 'readyroute:manifest-latest-upload';
 const EMPTY_ARRAY = [];
@@ -339,7 +344,7 @@ function getRouteDetailPath(route, date) {
     return null;
   }
 
-  return `/routes/${routeId}?date=${date}`;
+  return buildOperationsDatePath(`/routes/${routeId}`, date);
 }
 
 export default function ManifestPage() {
@@ -349,8 +354,7 @@ export default function ManifestPage() {
   const routeCardRefs = useRef(new Map());
   const routeFieldRefs = useRef(new Map());
   const [searchParams, setSearchParams] = useSearchParams();
-  const initialDate = searchParams.get('date') || loadStoredOperationsDate() || getTodayString();
-  const [date, setDate] = useState(initialDate);
+  const date = searchParams.get('date') || loadStoredOperationsDate() || getTodayString();
   const [selectedFile, setSelectedFile] = useState(null);
   const [selectedGpxFile, setSelectedGpxFile] = useState(null);
   const [manifestBundleFiles, setManifestBundleFiles] = useState({
@@ -363,7 +367,7 @@ export default function ManifestPage() {
   const [workAreaName, setWorkAreaName] = useState('');
   const [driverId, setDriverId] = useState('');
   const [vehicleId, setVehicleId] = useState('');
-  const [latestUpload, setLatestUpload] = useState(() => loadStoredManifestUpload(initialDate));
+  const [latestUpload, setLatestUpload] = useState(() => loadStoredManifestUpload(date));
   const [warningsExpanded, setWarningsExpanded] = useState(true);
   const [editedWarnings, setEditedWarnings] = useState({});
   const [editingWarningIds, setEditingWarningIds] = useState({});
@@ -453,7 +457,7 @@ export default function ManifestPage() {
         tone: 'done',
         title: 'First routes are in ReadyRoute',
         body: `${routeSummaries.length} route${routeSummaries.length === 1 ? '' : 's'} loaded for ${formatMorningDate(date)}. You can assign, review, and dispatch from here.`,
-        actionTo: `/?date=${date}`,
+        actionTo: buildOperationsDatePath('/', date),
         actionLabel: 'Open Dashboard'
       };
     }
@@ -479,9 +483,7 @@ export default function ManifestPage() {
 
   useEffect(() => {
     saveStoredOperationsDate(date);
-  }, [date]);
 
-  useEffect(() => {
     if (searchParams.get('date') === date) {
       return;
     }
@@ -490,6 +492,14 @@ export default function ManifestPage() {
     nextParams.set('date', date);
     setSearchParams(nextParams, { replace: true });
   }, [date, searchParams, setSearchParams]);
+
+  function handleDateChange(nextDate, options) {
+    saveStoredOperationsDate(nextDate);
+
+    const nextParams = new URLSearchParams(searchParams);
+    nextParams.set('date', nextDate);
+    setSearchParams(nextParams, options);
+  }
 
   function toggleDispatchRoute(routeId) {
     setSelectedDispatchRouteIds((current) =>
@@ -597,7 +607,7 @@ export default function ManifestPage() {
         ...data,
         upload_mode: uploadMode
       });
-      setDate(resolvedDate);
+      handleDateChange(resolvedDate, { replace: true });
 
       if (fileInputRef.current) {
         fileInputRef.current.value = '';
@@ -854,7 +864,7 @@ export default function ManifestPage() {
         <div className="page-header-actions">
           <input
             className="date-field"
-            onChange={(event) => setDate(event.target.value)}
+            onChange={(event) => handleDateChange(event.target.value)}
             type="date"
             value={date}
           />

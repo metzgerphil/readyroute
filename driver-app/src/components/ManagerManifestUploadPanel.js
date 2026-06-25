@@ -152,7 +152,7 @@ export default function ManagerManifestUploadPanel({
   return (
     <View style={styles.panel}>
       <Text style={styles.body}>
-        Upload today’s route files. ReadyRoute will use them to build routes, stops, packages, pickups, customer contact detail, and map pins.
+        Upload today’s manifest files. ReadyRoute will use them to build routes, stops, packages, pickups, customer contact detail, and map pins.
       </Text>
       <Text style={styles.helperText}>
         For best results, attach Combined, Delivery, Pickup, and the matching GPX files together so ReadyRoute can merge route pins, package detail, service codes, and customer contact data in one pass.

@@ -1,11 +1,16 @@
 import { useQuery } from '@tanstack/react-query';
-import { useMemo, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { useEffect, useMemo } from 'react';
+import { Link, useSearchParams } from 'react-router-dom';
 
 import api from '../services/api';
 import { EmptyState, PageHeader, StatCard, StatusBadge } from '../components/PortalDesignSystem';
 import { useSelectedCsa } from '../context/SelectedCsaContext';
-import { getTodayString, loadStoredOperationsDate, saveStoredOperationsDate } from '../utils/operationsDate';
+import {
+  buildOperationsDatePath,
+  getTodayString,
+  loadStoredOperationsDate,
+  saveStoredOperationsDate
+} from '../utils/operationsDate';
 import { getRouteStatusMeta } from '../utils/routeStatus';
 import { sortRoutesByWorkArea } from '../utils/routeSort';
 
@@ -75,7 +80,7 @@ function RoutesTable({ routes, date }) {
         </div>
         {routes.map((route) => {
           const status = getRouteStatusMeta(route);
-          const routeUrl = `/routes/${route.id}?date=${date}`;
+          const routeUrl = buildOperationsDatePath(`/routes/${route.id}`, date);
 
           return (
             <div className="routes-operations-table-row" key={route.id}>
@@ -100,7 +105,7 @@ function RoutesTable({ routes, date }) {
       <div className="routes-operations-card-list">
         {routes.map((route) => {
           const status = getRouteStatusMeta(route);
-          const routeUrl = `/routes/${route.id}?date=${date}`;
+          const routeUrl = buildOperationsDatePath(`/routes/${route.id}`, date);
 
           return (
             <article className="card routes-operations-card" key={route.id}>
@@ -130,8 +135,21 @@ function RoutesTable({ routes, date }) {
 }
 
 export default function RoutesPage() {
-  const [date, setDate] = useState(loadStoredOperationsDate() || getTodayString());
+  const [searchParams, setSearchParams] = useSearchParams();
+  const date = searchParams.get('date') || loadStoredOperationsDate() || getTodayString();
   const { selectedCsaId, selectedCsaName } = useSelectedCsa();
+
+  useEffect(() => {
+    saveStoredOperationsDate(date);
+
+    if (searchParams.get('date') === date) {
+      return;
+    }
+
+    const nextParams = new URLSearchParams(searchParams);
+    nextParams.set('date', date);
+    setSearchParams(nextParams, { replace: true });
+  }, [date, searchParams, setSearchParams]);
 
   const routesQuery = useQuery({
     queryKey: ['operations-routes', selectedCsaId, date],
@@ -151,8 +169,11 @@ export default function RoutesPage() {
   const pickupCount = routes.reduce((sum, route) => sum + safeNumber(route.pickup_stops || route.pickup_stop_count), 0);
 
   function handleDateChange(nextDate) {
-    setDate(nextDate);
     saveStoredOperationsDate(nextDate);
+
+    const nextParams = new URLSearchParams(searchParams);
+    nextParams.set('date', nextDate);
+    setSearchParams(nextParams);
   }
 
   return (
@@ -171,11 +192,11 @@ export default function RoutesPage() {
                 value={date}
               />
             </label>
-            <Link className="secondary-button" to={`/fleet-map?date=${date}`}>
+            <Link className="secondary-button" to={buildOperationsDatePath('/fleet-map', date)}>
               Fleet Map
             </Link>
-            <Link className="primary-cta manifest-button" to={`/manifest?date=${date}`}>
-              Add Routes
+            <Link className="primary-cta manifest-button" to={buildOperationsDatePath('/manifest', date)}>
+              Upload Manifest
             </Link>
           </div>
         )}
@@ -208,8 +229,8 @@ export default function RoutesPage() {
             title="No routes for this day"
             description="Upload today’s manifest or route files to start reviewing work areas."
             actions={(
-              <Link className="primary-cta manifest-button" to={`/manifest?date=${date}`}>
-                Add Routes
+              <Link className="primary-cta manifest-button" to={buildOperationsDatePath('/manifest', date)}>
+                Upload Manifest
               </Link>
             )}
           />

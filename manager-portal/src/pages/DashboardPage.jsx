@@ -27,7 +27,12 @@ import {
   getRouteColorMap,
   getValidCoordinatePoints
 } from '../utils/dashboardHelpers';
-import { getTodayString, saveStoredOperationsDate } from '../utils/operationsDate';
+import {
+  buildOperationsDatePath,
+  getTodayString,
+  loadStoredOperationsDate,
+  saveStoredOperationsDate
+} from '../utils/operationsDate';
 
 const EMPTY_ARRAY = [];
 
@@ -47,7 +52,7 @@ export default function DashboardPage() {
   const [viewMode, setViewMode] = useState('map');
   const [compactBannerKey, setCompactBannerKey] = useState(null);
   const [vehiclePickerRouteId, setVehiclePickerRouteId] = useState(null);
-  const dashboardDate = searchParams.get('date') || getTodayString();
+  const dashboardDate = searchParams.get('date') || loadStoredOperationsDate() || getTodayString();
   const isSelectedDateToday = dashboardDate === getTodayString();
 
   useEffect(() => {
@@ -307,11 +312,11 @@ export default function DashboardPage() {
   );
 
   function handleSyncRoutes() {
-    navigate(`/manifest?date=${dashboardDate}&action=sync`);
+    navigate(buildOperationsDatePath('/manifest?action=sync', dashboardDate));
   }
 
   function handleAssignDrivers() {
-    navigate(`/manifest?date=${dashboardDate}`);
+    navigate(buildOperationsDatePath('/manifest', dashboardDate));
   }
 
   return (
@@ -407,7 +412,7 @@ export default function DashboardPage() {
             <button className="primary-cta" onClick={handleSyncRoutes} type="button">
               Open Route Sync
             </button>
-            <button className="secondary-button" onClick={() => navigate(`/fleet-map?date=${dashboardDate}`)} type="button">
+            <button className="secondary-button" onClick={() => navigate(buildOperationsDatePath('/fleet-map', dashboardDate))} type="button">
               View Fleet Map
             </button>
           </div>
@@ -485,7 +490,7 @@ export default function DashboardPage() {
                   <button
                     className="dispatch-health-chip assignment"
                     key={`assignment-${route.id}`}
-                    onClick={() => navigate(`/manifest?date=${dashboardDate}`)}
+                    onClick={() => navigate(buildOperationsDatePath('/manifest', dashboardDate))}
                     type="button"
                   >
                     {route.work_area_name}: assign driver
@@ -495,7 +500,7 @@ export default function DashboardPage() {
                   <button
                     className="dispatch-health-chip vehicle"
                     key={`vehicle-${route.id}`}
-                    onClick={() => navigate(`/manifest?date=${dashboardDate}`)}
+                    onClick={() => navigate(buildOperationsDatePath('/manifest', dashboardDate))}
                     type="button"
                   >
                     {route.work_area_name}: assign vehicle
@@ -505,7 +510,7 @@ export default function DashboardPage() {
                   <button
                     className={`dispatch-health-chip ${route.map_status === 'needs_pins' ? 'pins' : 'partial'}`}
                     key={`pins-${route.id}`}
-                    onClick={() => navigate(`/routes/${route.id}?date=${dashboardDate}`)}
+                    onClick={() => navigate(buildOperationsDatePath(`/routes/${route.id}`, dashboardDate))}
                     type="button"
                   >
                     {route.work_area_name}: {route.map_status === 'needs_pins' ? 'needs pins' : `${route.missing_stops || 0} pins missing`}
@@ -515,7 +520,7 @@ export default function DashboardPage() {
                   <button
                     className="dispatch-health-chip warning"
                     key={`warning-${route.id}`}
-                    onClick={() => navigate(`/routes/${route.id}?date=${dashboardDate}`)}
+                    onClick={() => navigate(buildOperationsDatePath(`/routes/${route.id}`, dashboardDate))}
                     type="button"
                   >
                     {route.work_area_name}: review route warnings
@@ -579,7 +584,7 @@ export default function DashboardPage() {
 
                         assignVehicleMutation.mutate({ routeId: driver.route_id, vehicleId });
                       }}
-                      onClick={() => driver.name && driver.route_id && navigate(`/routes/${driver.route_id}?date=${dashboardDate}`)}
+                      onClick={() => driver.name && driver.route_id && navigate(buildOperationsDatePath(`/routes/${driver.route_id}`, dashboardDate))}
                       showVehiclePicker={vehiclePickerRouteId === driver.route_id}
                       vehicles={(vehiclesQuery.data || []).filter((vehicle) => vehicle.is_active !== false)}
                     />

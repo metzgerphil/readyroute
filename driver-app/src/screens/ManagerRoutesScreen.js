@@ -325,7 +325,7 @@ export default function ManagerRoutesScreen({ csaWorkspaceVersion = 0, identity,
           style={styles.actionButton}
           variant="outline"
         />
-        <AppButton label="Add Routes" onPress={openAddRoutesFlow} style={styles.actionButton} />
+        <AppButton label="Upload Manifest" onPress={openAddRoutesFlow} style={styles.actionButton} />
       </View>
 
       {isStopSearchVisible ? (
@@ -438,12 +438,12 @@ export default function ManagerRoutesScreen({ csaWorkspaceVersion = 0, identity,
       <Modal animationType="fade" onRequestClose={closeAddRoutesFlow} transparent visible={isAddRoutesVisible}>
         <Pressable onPress={closeAddRoutesFlow} style={styles.modalBackdrop}>
           <Pressable style={styles.modalCard}>
-            <Text style={styles.modalTitle}>Add Routes</Text>
+            <Text style={styles.modalTitle}>Upload Manifest</Text>
             <ManagerManifestUploadPanel
-              failureMessage="Could not upload routes. Check the file and try again."
+              failureMessage="Could not upload manifest. Check the file and try again."
               onUploaded={handleRoutesUploaded}
-              submitLabel="Upload Routes"
-              successMessage="Routes uploaded successfully."
+              submitLabel="Upload Manifest"
+              successMessage="Manifest uploaded successfully."
             />
             <AppButton label="View Routes" onPress={closeAddRoutesFlow} style={styles.modalButton} variant="outline" />
           </Pressable>
