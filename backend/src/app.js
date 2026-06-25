@@ -8,12 +8,14 @@ const managerRoutes = require('./routes/manager');
 const { createManagerRouter } = require('./routes/manager');
 const propertyIntelManagerRoutes = require('./routes/propertyIntelManager');
 const { createPropertyIntelManagerRouter } = require('./routes/propertyIntelManager');
-const { requireManager } = require('./middleware/auth');
+const { requireDriver, requireManager } = require('./middleware/auth');
 const { createRequireActiveSubscription } = require('./middleware/billing');
 const timecardRoutes = require('./routes/timecards');
 const { createTimecardsRouter } = require('./routes/timecards');
 const vehicleRoutes = require('./routes/vehicles');
 const { createVehiclesRouter } = require('./routes/vehicles');
+const safetyFocusesRoutes = require('./routes/safetyFocuses');
+const { createSafetyFocusesRouter } = require('./routes/safetyFocuses');
 const { createVedrRouter } = require('./routes/vedr');
 const routeRoutes = require('./routes/routes');
 const { createRoutesRouter } = require('./routes/routes');
@@ -108,6 +110,9 @@ function createApp(options = {}) {
   const vehiclesRouter = options.supabase || options.now
     ? createVehiclesRouter({ supabase: options.supabase, now: options.now })
     : vehicleRoutes;
+  const safetyFocusesRouter = options.supabase || options.now
+    ? createSafetyFocusesRouter({ supabase: options.supabase, now: options.now })
+    : safetyFocusesRoutes;
   const vedrRouter = createVedrRouter({ supabase: options.supabase, now: options.now });
   const internalSyncRouter = createInternalSyncRouter({
     supabase: options.supabase,
@@ -128,7 +133,7 @@ function createApp(options = {}) {
   app.use(
     cors({
       origin(origin, callback) {
-        if (isAllowedCorsOrigin(origin) || origin.startsWith('exp://')) {
+        if (isAllowedCorsOrigin(origin) || (typeof origin === 'string' && origin.startsWith('exp://'))) {
           return callback(null, true);
         }
 
@@ -171,6 +176,7 @@ function createApp(options = {}) {
   app.use('/routes', routesRouter);
   app.use('/timecards', timecardsRouter);
   app.use('/vehicles', vehiclesRouter);
+  app.use('/safety-focuses', requireDriver, safetyFocusesRouter);
 
   app.use((error, _req, res, _next) => {
     console.error('Unhandled server error:', error);

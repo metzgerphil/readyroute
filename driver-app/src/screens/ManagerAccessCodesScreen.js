@@ -2,7 +2,6 @@ import { useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   FlatList,
-  Modal,
   Pressable,
   RefreshControl,
   ScrollView,
@@ -17,6 +16,7 @@ import AppButton from '../components/ui/AppButton';
 import AppCard from '../components/ui/AppCard';
 import EmptyState from '../components/ui/EmptyState';
 import ErrorState from '../components/ui/ErrorState';
+import KeyboardAwareModal from '../components/ui/KeyboardAwareModal';
 import StatusBadge from '../components/ui/StatusBadge';
 import api from '../services/api';
 import appTheme from '../theme/appTheme';
@@ -274,9 +274,7 @@ export default function ManagerAccessCodesScreen({ csaWorkspaceVersion = 0, iden
         />
       )}
 
-      <Modal animationType="slide" onRequestClose={() => setIsEditorOpen(false)} transparent visible={isEditorOpen}>
-        <Pressable onPress={() => setIsEditorOpen(false)} style={styles.modalBackdrop}>
-          <Pressable style={styles.modalCard}>
+      <KeyboardAwareModal animationType="slide" onClose={() => setIsEditorOpen(false)} visible={isEditorOpen}>
             <View style={styles.modalHeader}>
               <View>
                 <Text style={styles.modalTitle}>{form.id ? 'Edit Access Code' : 'Add Access Code'}</Text>
@@ -287,7 +285,14 @@ export default function ManagerAccessCodesScreen({ csaWorkspaceVersion = 0, iden
               </Pressable>
             </View>
 
-            <ScrollView contentContainerStyle={styles.modalContent} showsVerticalScrollIndicator={false}>
+            <ScrollView
+              automaticallyAdjustKeyboardInsets
+              contentContainerStyle={styles.modalContent}
+              keyboardDismissMode="interactive"
+              keyboardShouldPersistTaps="handled"
+              showsVerticalScrollIndicator={false}
+              style={styles.modalScroll}
+            >
               <Field
                 editable={!form.id}
                 label="Address"
@@ -311,9 +316,7 @@ export default function ManagerAccessCodesScreen({ csaWorkspaceVersion = 0, iden
                 {isSaving ? <ActivityIndicator color="#ffffff" /> : <Text style={styles.saveButtonText}>Save access code</Text>}
               </Pressable>
             </ScrollView>
-          </Pressable>
-        </Pressable>
-      </Modal>
+      </KeyboardAwareModal>
     </ManagerSectionLayout>
   );
 }
@@ -456,6 +459,9 @@ const styles = StyleSheet.create({
     color: appTheme.colors.textPrimary,
     fontSize: 24,
     fontWeight: appTheme.typography.weights.heavy
+  },
+  modalScroll: {
+    flexShrink: 1
   },
   modalContent: {
     gap: appTheme.spacing.md,

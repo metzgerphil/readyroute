@@ -5,6 +5,7 @@ import {
   buildRouteClusterMarkers,
   clampSheetOffset,
   getClusterRadiusMiles,
+  getDriverInitials,
   getGpsFreshness,
   getRouteColor,
   getSheetSnapLayout,
@@ -89,9 +90,16 @@ describe('managerOperations helpers', () => {
     expect(model.selectedRoute.id).toBe('route-1');
     expect(model.routeMarkers).toHaveLength(0);
     expect(model.driverMarkers).toHaveLength(1);
+    expect(model.driverMarkers[0].driverInitials).toBe('LU');
     expect(model.stopMarkers).toHaveLength(1);
     expect(model.stopMarkers[0].routeColor).toBe('#ff7a1a');
     expect(model.region.latitude).toBeCloseTo(33.115, 2);
+  });
+
+  it('builds readable driver initials for map markers', () => {
+    expect(getDriverInitials('Luis Perez')).toBe('LP');
+    expect(getDriverInitials('Vlad')).toBe('VL');
+    expect(getDriverInitials('')).toBe('--');
   });
 
   it('uses canonical stop ids for map pin to list synchronization', () => {

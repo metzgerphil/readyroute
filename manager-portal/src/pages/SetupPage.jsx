@@ -256,7 +256,7 @@ export default function SetupPage() {
 
           {searchParams.get('source') === 'trial' ? (
             <div className="info-banner">
-              Your free trial is active. Work straight down this list and you’ll reach a fully running CSA much faster.
+              Your ReadyRoute workspace is active. Work straight down this list and you’ll reach a fully running CSA much faster.
             </div>
           ) : null}
 

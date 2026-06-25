@@ -411,6 +411,14 @@ export default function ManifestPage() {
   const isSpreadsheetUpload = selectedFileName.endsWith('.xls') || selectedFileName.endsWith('.xlsx');
   const isManifestBundleUpload = hasManifestBundleFiles;
   const needsGpxUploadFields = hasSelectedFile && !isSpreadsheetUpload && !isManifestBundleUpload && (!workAreaName.trim() || !driverId || !vehicleId);
+  const processManifestDisabledReason = isPastDate
+    ? 'Upload is disabled for historical dates.'
+    : !hasSelectedFile
+      ? 'Add a file to continue.'
+      : needsGpxUploadFields
+        ? 'Add a route name, driver, and vehicle to continue.'
+        : '';
+  const processManifestHelperId = processManifestDisabledReason ? 'process-manifest-disabled-helper' : undefined;
   const latestUploadRoute = latestUpload ? routeSummaries.find((route) => route.id === latestUpload.route_id) : null;
   const hasRoutesToday = routeSummaries.length > 0;
   const canModifyExistingRoutes = hasRoutesToday;
@@ -620,6 +628,7 @@ export default function ManifestPage() {
       setWarningsExpanded((data.address_warnings || []).length > 0);
     }
   });
+  const isProcessManifestDisabled = uploadManifestMutation.isPending || Boolean(processManifestDisabledReason);
 
   async function handleAssignmentChange(route, field, value) {
     setSavingRouteIds((current) => new Set(current).add(route.id));
@@ -902,6 +911,14 @@ export default function ManifestPage() {
                     event.preventDefault();
                     handleFileSelection(event.dataTransfer.files);
                   }}
+                  onKeyDown={(event) => {
+                    if (event.target !== event.currentTarget || (event.key !== 'Enter' && event.key !== ' ')) {
+                      return;
+                    }
+
+                    event.preventDefault();
+                    fileInputRef.current?.click();
+                  }}
                   role="button"
                   tabIndex={0}
                 >
@@ -921,22 +938,25 @@ export default function ManifestPage() {
                       <span>.gpx</span>
                     </div>
                   ) : null}
-                  <button
-                    className="primary-cta manifest-button"
-                    disabled={
-                      !hasSelectedFile ||
-                      uploadManifestMutation.isPending ||
-                      isPastDate ||
-                      (!isSpreadsheetUpload && !isManifestBundleUpload && (!workAreaName.trim() || !driverId || !vehicleId))
-                    }
-                    onClick={(event) => {
-                      event.stopPropagation();
-                      uploadManifestMutation.mutate();
-                    }}
-                    type="button"
-                  >
-                    {uploadManifestMutation.isPending ? 'Processing...' : 'Process Manifest'}
-                  </button>
+                  <div className="manifest-upload-action" title={processManifestDisabledReason || undefined}>
+                    <button
+                      aria-describedby={processManifestHelperId}
+                      className="primary-cta manifest-button"
+                      disabled={isProcessManifestDisabled}
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        uploadManifestMutation.mutate();
+                      }}
+                      type="button"
+                    >
+                      {uploadManifestMutation.isPending ? 'Processing...' : 'Process Manifest'}
+                    </button>
+                    {processManifestDisabledReason ? (
+                      <span className="manifest-button-helper" id={processManifestHelperId}>
+                        {processManifestDisabledReason}
+                      </span>
+                    ) : null}
+                  </div>
                 </div>
 
                 <input

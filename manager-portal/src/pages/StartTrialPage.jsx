@@ -1,174 +1,23 @@
-import axios from 'axios';
-import { useEffect, useState } from 'react';
-import { Link, useSearchParams } from 'react-router-dom';
+import { useEffect } from 'react';
 
-import api from '../services/api';
-
-const DEFAULT_FORM = {
-  company_name: '',
-  full_name: '',
-  email: '',
-  password: '',
-  vehicle_count: '15'
-};
+const MVP_URL = 'https://readyroute.org/mvp';
 
 export default function StartTrialPage() {
-  const [searchParams] = useSearchParams();
-  const [form, setForm] = useState({
-    ...DEFAULT_FORM,
-    email: searchParams.get('email') || ''
-  });
-  const [errorMessage, setErrorMessage] = useState('');
-  const [infoMessage, setInfoMessage] = useState(
-    searchParams.get('canceled') === '1'
-      ? 'Your billing setup was canceled. You can start the free trial again whenever you are ready.'
-      : ''
-  );
-  const [isSubmitting, setIsSubmitting] = useState(false);
-  const estimatedVehicleCount = Math.max(Number(form.vehicle_count) || 0, 0);
-  const estimatedMonthlyTotal = estimatedVehicleCount * 15;
-
   useEffect(() => {
-    document.title = 'Start Free Trial | ReadyRoute';
+    document.title = 'ReadyRoute MVP | ReadyRoute';
+    window.location.replace(MVP_URL);
   }, []);
-
-  function updateField(field, value) {
-    setForm((current) => ({ ...current, [field]: value }));
-  }
-
-  async function handleSubmit(event) {
-    event.preventDefault();
-    setErrorMessage('');
-    setInfoMessage('');
-    setIsSubmitting(true);
-
-    try {
-      const response = await axios.post(`${api.defaults.baseURL}/auth/manager/start-trial`, {
-        ...form,
-        vehicle_count: Number(form.vehicle_count)
-      });
-
-      const checkoutUrl = response.data?.checkout_url;
-
-      if (!checkoutUrl) {
-        throw new Error('Missing checkout URL');
-      }
-
-      window.location.assign(checkoutUrl);
-    } catch (error) {
-      if (!error.response) {
-        setErrorMessage('ReadyRoute is temporarily unavailable. Please try again.');
-      } else {
-        setErrorMessage(error.response?.data?.error || 'Could not start your free trial.');
-      }
-    } finally {
-      setIsSubmitting(false);
-    }
-  }
 
   return (
     <div className="login-page">
       <div className="login-shell">
-        <section className="login-hero-panel">
-          <div className="login-hero-badge">ReadyRoute Free Trial</div>
-          <div className="brand login-brand">
+        <div className="login-card">
+          <div className="brand">
             <span className="brand-ready">ready</span>
             <span className="brand-route">Route</span>
           </div>
-          <h1 className="login-hero-title">Start your 14-day trial and set up your workspace.</h1>
-          <p className="login-hero-copy">
-            Create your company workspace, save your billing method, and continue into setup for managers,
-            drivers, vehicles, VEDR, and route import.
-          </p>
-
-          <div className="login-hero-points">
-            <div className="login-hero-point">
-              <strong>$15 per active vehicle/month</strong>
-              <span>Simple monthly pricing starts after the 14-day trial unless you cancel first.</span>
-            </div>
-            <div className="login-hero-point">
-              <strong>Guided setup</strong>
-              <span>Continue into a clean company setup flow after checkout is complete.</span>
-            </div>
-            <div className="login-hero-point">
-              <strong>Manager access</strong>
-              <span>Your company account and lead manager sign-in are created before setup starts.</span>
-            </div>
-          </div>
-        </section>
-
-        <div className="login-card login-card-elevated">
-          <div className="login-card-header">
-            <div className="brand">
-              <span className="brand-ready">ready</span>
-              <span className="brand-route">Route</span>
-            </div>
-            <div className="brand-subtitle login-brand-subtitle">Start your free trial</div>
-          </div>
-
-          <form className="login-form" onSubmit={handleSubmit}>
-            <label className="field-label" htmlFor="trial-company-name">Company / CSA name</label>
-            <input
-              className="text-field"
-              id="trial-company-name"
-              onChange={(event) => updateField('company_name', event.target.value)}
-              value={form.company_name}
-            />
-
-            <label className="field-label" htmlFor="trial-full-name">Lead manager name</label>
-            <input
-              className="text-field"
-              id="trial-full-name"
-              onChange={(event) => updateField('full_name', event.target.value)}
-              value={form.full_name}
-            />
-
-            <label className="field-label" htmlFor="trial-email">Lead manager email</label>
-            <input
-              className="text-field"
-              id="trial-email"
-              onChange={(event) => updateField('email', event.target.value)}
-              type="email"
-              value={form.email}
-            />
-
-            <label className="field-label" htmlFor="trial-password">Password</label>
-            <input
-              className="text-field"
-              id="trial-password"
-              onChange={(event) => updateField('password', event.target.value)}
-              type="password"
-              value={form.password}
-            />
-
-            <label className="field-label" htmlFor="trial-vehicle-count">Estimated vehicles</label>
-            <input
-              className="text-field"
-              id="trial-vehicle-count"
-              min="1"
-              onChange={(event) => updateField('vehicle_count', event.target.value)}
-              type="number"
-              value={form.vehicle_count}
-            />
-
-            {infoMessage ? <div className="info-banner">{infoMessage}</div> : null}
-            {errorMessage ? <div className="error-banner">{errorMessage}</div> : null}
-
-            <div className="trial-billing-note">
-              Start your free trial at $15 per active vehicle per month. Based on {estimatedVehicleCount || 0} vehicles,
-              your estimated monthly total after trial is ${estimatedMonthlyTotal.toLocaleString()}/month. Billing
-              begins automatically in 14 days unless you cancel first.
-            </div>
-
-            <div className="login-action-row">
-              <button className="primary-cta" disabled={isSubmitting} type="submit">
-                {isSubmitting ? 'Preparing checkout...' : 'Continue to secure checkout'}
-              </button>
-              <Link className="secondary-button trial-secondary-link" to="/login">
-                Back to sign in
-              </Link>
-            </div>
-          </form>
+          <div className="brand-subtitle login-brand-subtitle">Redirecting to ReadyRoute MVP...</div>
+          <a className="primary-button" href={MVP_URL}>Continue to MVP page</a>
         </div>
       </div>
     </div>

@@ -205,6 +205,26 @@ export function getDailySafetyReminder(date = new Date()) {
   return DAILY_SAFETY_REMINDERS[(index + DAILY_SAFETY_REMINDERS.length) % DAILY_SAFETY_REMINDERS.length];
 }
 
+export function normalizeSafetyFocusResponse(safetyFocus) {
+  if (!safetyFocus?.title || !Array.isArray(safetyFocus.bullets)) {
+    return null;
+  }
+
+  const bullets = safetyFocus.bullets.filter((bullet) => typeof bullet === 'string' && bullet.trim());
+
+  if (!bullets.length) {
+    return null;
+  }
+
+  return {
+    id: safetyFocus.id || safetyFocus.slug || 'database-safety-focus',
+    title: safetyFocus.title,
+    source: safetyFocus.source || 'ReadyRoute safety focus',
+    bullets,
+    takeaway: safetyFocus.takeaway || null
+  };
+}
+
 export function getRoutePresentation(status) {
   switch (status) {
     case 'in_progress':
@@ -271,6 +291,42 @@ export function getOdometerRequirement(driverDay, route) {
     last_recorded_odometer: Number.isFinite(lastRecorded) ? lastRecorded : 0,
     minimum_odometer: Number.isFinite(minimum) ? minimum : 0,
     maximum_odometer: Number.isFinite(maximum) ? maximum : 300
+  };
+}
+
+export function getInspectionRequirement(driverDay, route) {
+  const requirement = driverDay?.inspection_requirement || null;
+
+  if (!route || !requirement?.required || requirement.submitted) {
+    return null;
+  }
+
+  const lastRecorded = Number(requirement.last_recorded_odometer ?? route.vehicle?.current_mileage ?? 0);
+  const minimum = Number(requirement.minimum_odometer ?? lastRecorded);
+  const maximum = Number(requirement.maximum_odometer ?? minimum + 300);
+
+  return {
+    ...requirement,
+    vehicle_id: requirement.vehicle_id || route.vehicle_id || route.vehicle?.id || null,
+    vehicle_name: requirement.vehicle_name || route.vehicle_name || route.vehicle?.name || null,
+    inspection_date: requirement.inspection_date || route.date || getTodayStorageDate(),
+    last_recorded_odometer: Number.isFinite(lastRecorded) ? lastRecorded : 0,
+    minimum_odometer: Number.isFinite(minimum) ? minimum : 0,
+    maximum_odometer: Number.isFinite(maximum) ? maximum : 300,
+    checklist_items: Array.isArray(requirement.checklist_items) ? requirement.checklist_items : []
+  };
+}
+
+export function getInspectionForm(requirement) {
+  return {
+    odometer: '',
+    issue_note: '',
+    items: (requirement?.checklist_items || []).map((item) => ({
+      checklist_item_key: item.checklist_item_key || item.id,
+      label: item.label || item.checklist_item_key || item.id,
+      status: 'pass',
+      note: ''
+    }))
   };
 }
 
@@ -364,8 +420,11 @@ export default function HomeScreen({ navigation, onLogout }) {
   const [isLoading, setIsLoading] = useState(true);
   const [isStartingRoute, setIsStartingRoute] = useState(false);
   const [isSubmittingOdometer, setIsSubmittingOdometer] = useState(false);
+  const [isSubmittingInspection, setIsSubmittingInspection] = useState(false);
   const [odometerInput, setOdometerInput] = useState('');
   const [odometerError, setOdometerError] = useState('');
+  const [inspectionForm, setInspectionForm] = useState(null);
+  const [inspectionError, setInspectionError] = useState('');
   const [isUpdatingClock, setIsUpdatingClock] = useState(false);
   const [isUpdatingBreak, setIsUpdatingBreak] = useState(false);
   const [isRetryingLoad, setIsRetryingLoad] = useState(false);
@@ -375,6 +434,7 @@ export default function HomeScreen({ navigation, onLogout }) {
   const [isLocationPermissionDenied, setIsLocationPermissionDenied] = useState(false);
   const [loadError, setLoadError] = useState(null);
   const [driverDay, setDriverDay] = useState({ status: 'unknown' });
+  const [databaseSafetyFocus, setDatabaseSafetyFocus] = useState(null);
 
   async function ensureLocationPermission({ showAlert = false } = {}) {
     setIsResolvingLocationPermission(true);
@@ -453,9 +513,10 @@ export default function HomeScreen({ navigation, onLogout }) {
     }
 
     try {
-      const [routeResponse, timecardStatusResponse] = await Promise.all([
+      const [routeResponse, timecardStatusResponse, safetyFocusResponse] = await Promise.all([
         api.get('/routes/today'),
-        api.get('/timecards/status')
+        api.get('/timecards/status'),
+        api.get('/safety-focuses/today').catch(() => null)
       ]);
 
       if (!isMountedRef.current) {
@@ -475,6 +536,7 @@ export default function HomeScreen({ navigation, onLogout }) {
       setActiveBreak(activeBreakState);
       setRoute(nextRoute);
       setDriverDay(nextDriverDay);
+      setDatabaseSafetyFocus(normalizeSafetyFocusResponse(safetyFocusResponse?.data?.safety_focus));
       setLoadError(null);
 
       if (resolvedClockIn) {
@@ -578,6 +640,33 @@ export default function HomeScreen({ navigation, onLogout }) {
     };
   }, [activeBreak]);
 
+  useEffect(() => {
+    const requirement = getInspectionRequirement(driverDay, route);
+
+    if (!requirement) {
+      setInspectionForm(null);
+      setInspectionError('');
+      return;
+    }
+
+    setInspectionForm((current) => {
+      const sameRequirement = current
+        && current.route_id === route?.id
+        && current.vehicle_id === requirement.vehicle_id
+        && current.inspection_date === requirement.inspection_date;
+
+      return sameRequirement
+        ? current
+        : {
+            ...getInspectionForm(requirement),
+            route_id: route?.id || null,
+            vehicle_id: requirement.vehicle_id || null,
+            inspection_date: requirement.inspection_date || null
+          };
+    });
+    setInspectionError('');
+  }, [driverDay, route]);
+
   async function handleRetryLoad() {
     setIsRetryingLoad(true);
     await loadHomeData({ showAlert: false, isRetry: true });
@@ -642,7 +731,108 @@ export default function HomeScreen({ navigation, onLogout }) {
       return;
     }
 
+    const inspectionRequirement = getInspectionRequirement(driverDay, route);
+    if (inspectionRequirement) {
+      setInspectionError('Complete the required vehicle inspection before continuing.');
+      return;
+    }
+
     await continueIntoRouteWorkflow();
+  }
+
+  function updateInspectionItemStatus(itemKey, status) {
+    setInspectionForm((current) => {
+      if (!current) {
+        return current;
+      }
+
+      return {
+        ...current,
+        items: current.items.map((item) => (
+          item.checklist_item_key === itemKey
+            ? { ...item, status }
+            : item
+        ))
+      };
+    });
+    setInspectionError('');
+  }
+
+  async function handleSubmitInspection() {
+    if (!route) {
+      return;
+    }
+
+    const requirement = getInspectionRequirement(driverDay, route);
+    if (!requirement) {
+      await continueIntoRouteWorkflow();
+      return;
+    }
+
+    const parsedOdometer = Number(inspectionForm?.odometer);
+
+    if (!Number.isInteger(parsedOdometer)) {
+      setInspectionError('Enter the current odometer reading as a whole number.');
+      return;
+    }
+
+    if (parsedOdometer < requirement.minimum_odometer || parsedOdometer > requirement.maximum_odometer) {
+      setInspectionError('Odometer reading is outside the allowed range. Please recheck the truck odometer or contact your manager.');
+      return;
+    }
+
+    if (!inspectionForm?.items?.length) {
+      setInspectionError('Inspection checklist is not available. Contact your manager before starting the route.');
+      return;
+    }
+
+    setIsSubmittingInspection(true);
+    setInspectionError('');
+
+    try {
+      const response = await api.post('/routes/inspection', {
+        vehicle_id: requirement.vehicle_id,
+        route_id: route.id,
+        inspection_date: requirement.inspection_date,
+        odometer: parsedOdometer,
+        issue_note: inspectionForm.issue_note || '',
+        items: inspectionForm.items
+      });
+      const inspection = response.data?.inspection || {
+        odometer: parsedOdometer
+      };
+
+      setDriverDay((current) => ({
+        ...current,
+        inspection_requirement: {
+          ...(current?.inspection_requirement || {}),
+          submitted: true,
+          latest_inspection: inspection
+        },
+        odometer_requirement: {
+          ...(current?.odometer_requirement || {}),
+          submitted: true,
+          latest_entry: {
+            odometer_reading: parsedOdometer
+          }
+        }
+      }));
+      setRoute((current) => current
+        ? {
+            ...current,
+            vehicle: current.vehicle
+              ? { ...current.vehicle, current_mileage: parsedOdometer }
+              : current.vehicle,
+            vehicle_current_mileage: parsedOdometer
+          }
+        : current);
+      setInspectionForm(null);
+      await continueIntoRouteWorkflow();
+    } catch (error) {
+      setInspectionError(getApiErrorMessage(error, 'Unable to save this inspection right now.'));
+    } finally {
+      setIsSubmittingInspection(false);
+    }
   }
 
   async function handleSubmitOdometer() {
@@ -808,6 +998,7 @@ export default function HomeScreen({ navigation, onLogout }) {
   const waitingCopy = getDriverWaitingCopy(driverDay);
   const postDispatchNotice = getPostDispatchChangeNotice(route);
   const odometerRequirement = getOdometerRequirement(driverDay, route);
+  const inspectionRequirement = getInspectionRequirement(driverDay, route);
   const parsedOdometerValue = odometerInput.length > 0 ? Number(odometerInput) : null;
   const isOdometerInRange = parsedOdometerValue !== null && odometerRequirement
     ? parsedOdometerValue >= odometerRequirement.minimum_odometer && parsedOdometerValue <= odometerRequirement.maximum_odometer
@@ -821,7 +1012,22 @@ export default function HomeScreen({ navigation, onLogout }) {
   const locationPermissionDenied = isLocationPermissionBlocked || isLocationPermissionDenied;
   const locationButtonLabel = locationPermissionDenied ? 'Open Settings' : 'Enable Location';
   const breakButtonLabel = activeBreak ? `End ${formatBreakLabel(activeBreak.break_type)}` : 'Break';
-  const dailyReminder = useMemo(() => getDailySafetyReminder(new Date()), []);
+  const fallbackDailyReminder = useMemo(() => getDailySafetyReminder(new Date()), []);
+  const dailyReminder = databaseSafetyFocus || fallbackDailyReminder;
+  const parsedInspectionOdometerValue = inspectionForm?.odometer?.length > 0 ? Number(inspectionForm.odometer) : null;
+  const isInspectionOdometerInRange = parsedInspectionOdometerValue !== null && inspectionRequirement
+    ? parsedInspectionOdometerValue >= inspectionRequirement.minimum_odometer && parsedInspectionOdometerValue <= inspectionRequirement.maximum_odometer
+    : true;
+  const isInspectionSubmittable = Boolean(
+    inspectionForm?.items?.length
+      && parsedInspectionOdometerValue !== null
+      && isInspectionOdometerInRange
+  );
+  const inspectionRangeHint = parsedInspectionOdometerValue !== null
+    && inspectionForm?.odometer?.length >= 4
+    && !isInspectionOdometerInRange
+    ? 'Value is outside the accepted range.'
+    : '';
 
   if (isLoading) {
     return (
@@ -933,6 +1139,10 @@ export default function HomeScreen({ navigation, onLogout }) {
                 ))}
               </View>
 
+              {dailyReminder.takeaway ? (
+                <Text style={styles.safetyTakeaway}>{dailyReminder.takeaway}</Text>
+              ) : null}
+
               {route ? (
                 <View style={styles.routeMetaRow}>
                   {routeSummary.map((item) => (
@@ -962,7 +1172,122 @@ export default function HomeScreen({ navigation, onLogout }) {
               </View>
             ) : null}
 
-            {odometerRequirement && hasLocationAccess ? (
+            {inspectionRequirement && hasLocationAccess ? (
+              <View style={styles.inspectionCard}>
+                <Text style={styles.inspectionEyebrow}>Required before route start</Text>
+                <Text style={styles.inspectionTitle}>{inspectionRequirement.label || 'Weekly vehicle inspection'}</Text>
+                <Text style={styles.inspectionBody}>
+                  Complete the inspection for {inspectionRequirement.vehicle_name || inspectionRequirement.vehicle_id || 'this vehicle'} before route actions unlock.
+                </Text>
+                <View style={styles.odometerDetailGrid}>
+                  <View style={styles.odometerDetail}>
+                    <Text style={styles.odometerDetailLabel}>Last recorded</Text>
+                    <Text style={styles.odometerDetailValue}>{formatMileage(inspectionRequirement.last_recorded_odometer)}</Text>
+                  </View>
+                  <View style={styles.odometerDetail}>
+                    <Text style={styles.odometerDetailLabel}>Acceptable range</Text>
+                    <Text style={styles.odometerDetailValue}>
+                      {formatMileage(inspectionRequirement.minimum_odometer)} to {formatMileage(inspectionRequirement.maximum_odometer)}
+                    </Text>
+                  </View>
+                </View>
+                <TextInput
+                  keyboardType="number-pad"
+                  onChangeText={(value) => {
+                    setInspectionForm((current) => current
+                      ? { ...current, odometer: value.replace(/[^\d]/g, '') }
+                      : current);
+                    setInspectionError('');
+                  }}
+                  placeholder="Current odometer reading"
+                  placeholderTextColor={appTheme.colors.textMuted}
+                  style={styles.odometerInput}
+                  value={inspectionForm?.odometer || ''}
+                />
+
+                <View style={styles.inspectionChecklist}>
+                  {(inspectionForm?.items || []).map((item) => (
+                    <View key={item.checklist_item_key} style={styles.inspectionChecklistRow}>
+                      <Text style={styles.inspectionChecklistText}>{item.label}</Text>
+                      <View style={styles.inspectionStatusActions}>
+                        <Pressable
+                          accessibilityLabel={`Mark ${item.label} passed`}
+                          onPress={() => updateInspectionItemStatus(item.checklist_item_key, 'pass')}
+                          style={({ pressed }) => [
+                            styles.inspectionStatusButton,
+                            item.status === 'pass' && styles.inspectionStatusButtonPass,
+                            pressed ? styles.buttonPressed : null
+                          ]}
+                        >
+                          <Text
+                            style={[
+                              styles.inspectionStatusButtonText,
+                              item.status === 'pass' && styles.inspectionStatusButtonTextPass
+                            ]}
+                          >
+                            Pass
+                          </Text>
+                        </Pressable>
+                        <Pressable
+                          accessibilityLabel={`Mark ${item.label} has an issue`}
+                          onPress={() => updateInspectionItemStatus(item.checklist_item_key, 'fail')}
+                          style={({ pressed }) => [
+                            styles.inspectionStatusButton,
+                            item.status === 'fail' && styles.inspectionStatusButtonFail,
+                            pressed ? styles.buttonPressed : null
+                          ]}
+                        >
+                          <Text
+                            style={[
+                              styles.inspectionStatusButtonText,
+                              item.status === 'fail' && styles.inspectionStatusButtonTextFail
+                            ]}
+                          >
+                            Issue
+                          </Text>
+                        </Pressable>
+                      </View>
+                    </View>
+                  ))}
+                </View>
+
+                <TextInput
+                  multiline
+                  onChangeText={(value) => {
+                    setInspectionForm((current) => current
+                      ? { ...current, issue_note: value }
+                      : current);
+                    setInspectionError('');
+                  }}
+                  placeholder="Notes for any issue or inspection detail"
+                  placeholderTextColor={appTheme.colors.textMuted}
+                  style={styles.inspectionNoteInput}
+                  textAlignVertical="top"
+                  value={inspectionForm?.issue_note || ''}
+                />
+                {inspectionRangeHint && !inspectionError ? <Text style={styles.odometerError}>{inspectionRangeHint}</Text> : null}
+                {inspectionError ? <Text style={styles.odometerError}>{inspectionError}</Text> : null}
+                <Pressable
+                  accessibilityLabel="Complete vehicle inspection"
+                  disabled={isSubmittingInspection || !isInspectionSubmittable}
+                  onPress={handleSubmitInspection}
+                  style={({ pressed }) => [
+                    styles.primaryButton,
+                    styles.startRouteButton,
+                    (isSubmittingInspection || !isInspectionSubmittable) && styles.buttonDisabled,
+                    pressed && !isSubmittingInspection && isInspectionSubmittable ? styles.buttonPressed : null
+                  ]}
+                >
+                  {isSubmittingInspection ? (
+                    <ActivityIndicator color="#ffffff" />
+                  ) : (
+                    <Text style={styles.primaryButtonText}>Complete Inspection</Text>
+                  )}
+                </Pressable>
+              </View>
+            ) : null}
+
+            {odometerRequirement && !inspectionRequirement && hasLocationAccess ? (
               <View style={styles.odometerCard}>
                 <Text style={styles.odometerEyebrow}>Required before route start</Text>
                 <Text style={styles.odometerTitle}>Enter truck odometer</Text>
@@ -1014,7 +1339,7 @@ export default function HomeScreen({ navigation, onLogout }) {
               </View>
             ) : null}
 
-            {routePresentation?.actionLabel && !odometerRequirement ? (
+            {routePresentation?.actionLabel && !odometerRequirement && !inspectionRequirement ? (
               <Pressable
                 disabled={isStartingRoute || !hasLocationAccess}
                 onPress={handleRouteAction}
@@ -1293,6 +1618,104 @@ const styles = StyleSheet.create({
     fontWeight: appTheme.typography.weights.bold,
     lineHeight: appTheme.typography.lineHeights.bodySmall
   },
+  inspectionCard: {
+    ...appTheme.shadows.card,
+    backgroundColor: appTheme.colors.surface,
+    borderColor: appTheme.colors.purple,
+    borderRadius: appTheme.radius.xl,
+    borderWidth: 1,
+    gap: appTheme.spacing.sm,
+    padding: appTheme.spacing.lg
+  },
+  inspectionEyebrow: {
+    color: appTheme.colors.purple,
+    fontSize: appTheme.typography.eyebrow,
+    fontWeight: appTheme.typography.weights.heavy,
+    letterSpacing: 0.8,
+    textTransform: 'uppercase'
+  },
+  inspectionTitle: {
+    color: appTheme.colors.textPrimary,
+    fontSize: appTheme.typography.titleSmall,
+    fontWeight: appTheme.typography.weights.heavy
+  },
+  inspectionBody: {
+    color: appTheme.colors.textSecondary,
+    fontSize: appTheme.typography.body,
+    lineHeight: appTheme.typography.lineHeights.body
+  },
+  inspectionChecklist: {
+    borderColor: appTheme.colors.border,
+    borderRadius: appTheme.radius.md,
+    borderWidth: 1,
+    overflow: 'hidden'
+  },
+  inspectionChecklistRow: {
+    alignItems: 'center',
+    backgroundColor: appTheme.colors.surface,
+    borderBottomColor: appTheme.colors.divider,
+    borderBottomWidth: 1,
+    flexDirection: 'row',
+    gap: appTheme.spacing.sm,
+    justifyContent: 'space-between',
+    minHeight: 62,
+    paddingHorizontal: appTheme.spacing.md,
+    paddingVertical: appTheme.spacing.sm
+  },
+  inspectionChecklistText: {
+    color: appTheme.colors.textPrimary,
+    flex: 1,
+    fontSize: appTheme.typography.body,
+    fontWeight: appTheme.typography.weights.bold,
+    lineHeight: appTheme.typography.lineHeights.body
+  },
+  inspectionStatusActions: {
+    flexDirection: 'row',
+    flexShrink: 0,
+    gap: appTheme.spacing.xs
+  },
+  inspectionStatusButton: {
+    alignItems: 'center',
+    backgroundColor: appTheme.colors.surface,
+    borderColor: appTheme.colors.borderStrong,
+    borderRadius: appTheme.radius.pill,
+    borderWidth: 1,
+    justifyContent: 'center',
+    minHeight: 38,
+    minWidth: 72,
+    paddingHorizontal: appTheme.spacing.sm
+  },
+  inspectionStatusButtonPass: {
+    backgroundColor: appTheme.colors.greenSoft,
+    borderColor: '#aee8c9'
+  },
+  inspectionStatusButtonFail: {
+    backgroundColor: appTheme.colors.dangerSoft,
+    borderColor: '#f5b2a8'
+  },
+  inspectionStatusButtonText: {
+    color: appTheme.colors.textSecondary,
+    fontSize: appTheme.typography.bodySmall,
+    fontWeight: appTheme.typography.weights.heavy
+  },
+  inspectionStatusButtonTextPass: {
+    color: appTheme.colors.greenText
+  },
+  inspectionStatusButtonTextFail: {
+    color: appTheme.colors.dangerText
+  },
+  inspectionNoteInput: {
+    backgroundColor: appTheme.colors.surface,
+    borderColor: appTheme.colors.border,
+    borderRadius: appTheme.radius.md,
+    borderWidth: 1,
+    color: appTheme.colors.textPrimary,
+    fontSize: appTheme.typography.body,
+    fontWeight: appTheme.typography.weights.bold,
+    minHeight: 92,
+    paddingHorizontal: appTheme.spacing.md,
+    paddingTop: appTheme.spacing.sm
+  },
   safetyCard: {
     ...appTheme.shadows.card,
     backgroundColor: appTheme.colors.surface,
@@ -1363,6 +1786,16 @@ const styles = StyleSheet.create({
     flex: 1,
     fontSize: appTheme.typography.body,
     lineHeight: appTheme.typography.lineHeights.body
+  },
+  safetyTakeaway: {
+    backgroundColor: appTheme.colors.orangeSoft,
+    borderRadius: appTheme.radius.md,
+    color: appTheme.colors.orangeDeep,
+    fontSize: appTheme.typography.bodySmall,
+    fontWeight: appTheme.typography.weights.bold,
+    lineHeight: appTheme.typography.lineHeights.bodySmall,
+    marginTop: appTheme.spacing.md,
+    padding: appTheme.spacing.md
   },
   badgeBase: {
     borderRadius: appTheme.radius.pill,

@@ -11,6 +11,7 @@ const emptyVehicleForm = {
   name: '',
   truck_type: '',
   custom_truck_type: '',
+  fuel_type: '',
   make: '',
   model: '',
   year: '',
@@ -51,6 +52,8 @@ const TRUCK_TYPE_OPTIONS = [
   'Cutaway',
   'Other'
 ];
+
+const FUEL_TYPE_OPTIONS = ['Gas', 'Diesel', 'EV'];
 
 const VEHICLE_STATUS_OPTIONS = [
   { value: 'active', label: 'Active' },
@@ -260,6 +263,28 @@ function normalizeChecklistTemplateFields(fields = []) {
       enabled: typeof submitted?.enabled === 'boolean' ? submitted.enabled : defaultField.enabled
     };
   });
+}
+
+function getInspectionChecklistFields(template) {
+  return normalizeChecklistTemplateFields(template)
+    .filter((field) => field.enabled !== false)
+    .filter((field) => !['date', 'company_name', 'truck_number', 'driver_name', 'driver_notes'].includes(field.id));
+}
+
+function getInspectionForm(vehicle, template) {
+  return {
+    inspection_date: getTodayString(),
+    odometer: vehicle?.current_mileage === null || vehicle?.current_mileage === undefined
+      ? ''
+      : String(vehicle.current_mileage),
+    issue_note: '',
+    items: getInspectionChecklistFields(template).map((field) => ({
+      checklist_item_key: field.id,
+      label: field.label,
+      status: 'pass',
+      note: ''
+    }))
+  };
 }
 
 function getServiceTypeOptions(settings = []) {
@@ -1122,6 +1147,15 @@ function VehicleFormSections({ form, mode = 'create', onChange, vehicle }) {
               />
             </label>
           ) : null}
+          <label className="driver-modal-field">
+            <span className="field-label">Fuel type</span>
+            <select className="text-field" onChange={(event) => onChange('fuel_type', event.target.value)} value={form.fuel_type}>
+              <option value="">Select fuel type</option>
+              {FUEL_TYPE_OPTIONS.map((option) => (
+                <option key={option} value={option}>{option}</option>
+              ))}
+            </select>
+          </label>
         </div>
       </section>
 
@@ -1253,6 +1287,7 @@ function VehicleDetailsDrawer({
   onAddService,
   onChange,
   onClose,
+  onRunInspection,
   onViewAssignmentHistory,
   onSubmit,
   onViewInspectionHistory,
@@ -1279,6 +1314,7 @@ function VehicleDetailsDrawer({
           {errorMessage ? <div className="error-banner">{errorMessage}</div> : null}
 
           <div className="vehicle-detail-actions">
+            <button className="secondary-inline-button" onClick={onRunInspection} type="button">Run Inspection</button>
             <button className="secondary-inline-button" onClick={onAddService} type="button">Log Maintenance</button>
             <button className="secondary-inline-button" onClick={onViewHistory} type="button">View Maintenance History</button>
             <button className="secondary-inline-button" onClick={onViewInspectionHistory} type="button">View Inspection History</button>
@@ -1291,6 +1327,127 @@ function VehicleDetailsDrawer({
           </div>
         </form>
       </aside>
+    </div>
+  );
+}
+
+function InspectionRunnerModal({
+  vehicle,
+  form,
+  errorMessage,
+  isSubmitting,
+  onChange,
+  onChangeStatus,
+  onClose,
+  onSubmit
+}) {
+  if (!vehicle) {
+    return null;
+  }
+
+  const failedCount = (form.items || []).filter((item) => item.status === 'fail').length;
+
+  return (
+    <div className="modal-backdrop">
+      <div className="modal-card inspection-runner-modal">
+        <div className="modal-header">
+          <div>
+            <div className="card-title">Run Inspection</div>
+            <div className="driver-meta">{vehicle.name || 'Vehicle'}</div>
+          </div>
+          <button className="icon-button" onClick={onClose} type="button">×</button>
+        </div>
+
+        <form className="form-card modal-form inspection-runner-form" onSubmit={onSubmit}>
+          <div className="odometer-summary-card">
+            <div>
+              <span>Vehicle ID</span>
+              <strong>{vehicle.name || 'Not recorded'}</strong>
+            </div>
+            <div>
+              <span>Current odometer</span>
+              <strong>{formatMileage(vehicle.current_mileage)} miles</strong>
+            </div>
+            <div>
+              <span>Issues marked</span>
+              <strong>{failedCount}</strong>
+            </div>
+          </div>
+
+          <div className="inspection-runner-fields">
+            <label>
+              <span className="field-label">Inspection date</span>
+              <input
+                className="text-field"
+                onChange={(event) => onChange('inspection_date', event.target.value)}
+                type="date"
+                value={form.inspection_date}
+              />
+            </label>
+            <label>
+              <span className="field-label">Odometer</span>
+              <input
+                className="text-field"
+                min="0"
+                onChange={(event) => onChange('odometer', event.target.value)}
+                placeholder="Current odometer"
+                type="number"
+                value={form.odometer}
+              />
+            </label>
+          </div>
+
+          {(form.items || []).length ? (
+            <div className="inspection-runner-checklist">
+              {form.items.map((item) => (
+                <div className={`inspection-runner-item ${item.status === 'fail' ? 'fail' : ''}`} key={item.checklist_item_key}>
+                  <div>
+                    <strong>{item.label}</strong>
+                    <span>{item.status === 'fail' ? 'Issue marked' : 'Passed'}</span>
+                  </div>
+                  <div className="inspection-runner-status-actions">
+                    <button
+                      className={item.status === 'pass' ? 'selected pass' : ''}
+                      onClick={() => onChangeStatus(item.checklist_item_key, 'pass')}
+                      type="button"
+                    >
+                      Pass
+                    </button>
+                    <button
+                      className={item.status === 'fail' ? 'selected fail' : ''}
+                      onClick={() => onChangeStatus(item.checklist_item_key, 'fail')}
+                      type="button"
+                    >
+                      Issue
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="driver-meta">No inspection checklist items are enabled.</div>
+          )}
+
+          <label>
+            <span className="field-label">Inspection notes</span>
+            <textarea
+              className="text-field maintenance-item-notes"
+              onChange={(event) => onChange('issue_note', event.target.value)}
+              placeholder="Optional notes or issue details"
+              value={form.issue_note}
+            />
+          </label>
+
+          {errorMessage ? <div className="error-banner">{errorMessage}</div> : null}
+
+          <div className="modal-actions">
+            <button className="secondary-inline-button" onClick={onClose} type="button">Cancel</button>
+            <button className="primary-inline-button" disabled={isSubmitting} type="submit">
+              {isSubmitting ? 'Saving...' : 'Save Inspection'}
+            </button>
+          </div>
+        </form>
+      </div>
     </div>
   );
 }
@@ -2339,6 +2496,7 @@ export default function VehiclesPage() {
   const [maintenanceVehicle, setMaintenanceVehicle] = useState(null);
   const [historyVehicle, setHistoryVehicle] = useState(null);
   const [inspectionHistoryVehicle, setInspectionHistoryVehicle] = useState(null);
+  const [inspectionRunnerVehicle, setInspectionRunnerVehicle] = useState(null);
   const [odometerHistoryVehicle, setOdometerHistoryVehicle] = useState(null);
   const [assignmentHistoryVehicle, setAssignmentHistoryVehicle] = useState(null);
   const [maintenanceSettingsDraft, setMaintenanceSettingsDraft] = useState(null);
@@ -2375,6 +2533,8 @@ export default function VehiclesPage() {
     next_service_date: ''
   });
   const [maintenanceError, setMaintenanceError] = useState('');
+  const [inspectionRunnerForm, setInspectionRunnerForm] = useState(getInspectionForm(null, null));
+  const [inspectionRunnerError, setInspectionRunnerError] = useState('');
 
   const maintenanceSettingsQuery = useQuery({
     queryKey: ['vehicle-maintenance-settings', selectedCsaId],
@@ -2597,6 +2757,33 @@ export default function VehiclesPage() {
     },
     onError: (error) => {
       setMaintenanceError(error.response?.data?.error || 'Unable to save service record.');
+    }
+  });
+
+  const createInspectionMutation = useMutation({
+    mutationFn: async () => {
+      const response = await api.post(`/vehicles/${inspectionRunnerVehicle.id}/inspections`, {
+        inspection_date: inspectionRunnerForm.inspection_date,
+        odometer: Number(inspectionRunnerForm.odometer),
+        issue_note: inspectionRunnerForm.issue_note || undefined,
+        items: inspectionRunnerForm.items
+      });
+      return response.data?.inspection;
+    },
+    onSuccess: async () => {
+      const inspectedVehicleId = inspectionRunnerVehicle?.id;
+      setInspectionRunnerVehicle(null);
+      setInspectionRunnerForm(getInspectionForm(null, activeChecklistTemplateFields));
+      setInspectionRunnerError('');
+      setToastMessage('Inspection saved');
+      await queryClient.invalidateQueries({ queryKey: ['fleet-vehicles', selectedCsaId] });
+      await queryClient.invalidateQueries({ queryKey: ['vehicle-inspections', selectedCsaId] });
+      if (inspectedVehicleId) {
+        await queryClient.invalidateQueries({ queryKey: ['vehicle-inspection-history', selectedCsaId, inspectedVehicleId] });
+      }
+    },
+    onError: (error) => {
+      setInspectionRunnerError(error.response?.data?.error || 'Unable to save inspection.');
     }
   });
 
@@ -3124,6 +3311,54 @@ export default function VehiclesPage() {
     setMaintenanceSettingsEditingIndex(null);
   }
 
+  function openInspectionRunner(vehicle) {
+    setInspectionRunnerVehicle(vehicle);
+    setInspectionRunnerForm(getInspectionForm(vehicle, activeChecklistTemplateFields));
+    setInspectionRunnerError('');
+  }
+
+  function updateInspectionRunnerField(field, value) {
+    setInspectionRunnerForm((current) => ({
+      ...current,
+      [field]: value
+    }));
+    setInspectionRunnerError('');
+  }
+
+  function updateInspectionRunnerStatus(checklistItemKey, status) {
+    setInspectionRunnerForm((current) => ({
+      ...current,
+      items: (current.items || []).map((item) => (
+        item.checklist_item_key === checklistItemKey
+          ? { ...item, status }
+          : item
+      ))
+    }));
+    setInspectionRunnerError('');
+  }
+
+  function handleCreateInspection(event) {
+    event.preventDefault();
+    setInspectionRunnerError('');
+
+    if (!inspectionRunnerVehicle) {
+      setInspectionRunnerError('Choose a vehicle before saving an inspection.');
+      return;
+    }
+
+    if (!inspectionRunnerForm.inspection_date || !inspectionRunnerForm.odometer) {
+      setInspectionRunnerError('Inspection date and odometer are required.');
+      return;
+    }
+
+    if (!inspectionRunnerForm.items?.length) {
+      setInspectionRunnerError('No inspection checklist items are enabled.');
+      return;
+    }
+
+    createInspectionMutation.mutate();
+  }
+
   function handleCreateVehicle(event) {
     event.preventDefault();
     setVehicleError('');
@@ -3148,6 +3383,7 @@ export default function VehiclesPage() {
       name: vehicle.name || '',
       truck_type: vehicle.truck_type || '',
       custom_truck_type: vehicle.custom_truck_type || '',
+      fuel_type: vehicle.fuel_type || '',
       make: vehicle.make || '',
       model: vehicle.model || '',
       year: vehicle.year ? String(vehicle.year) : '',
@@ -3491,6 +3727,7 @@ export default function VehiclesPage() {
                       </div>
                       <div className="vehicles-table-actions">
                         <button
+                          aria-label={`Edit odometer for vehicle ${vehicle.name}`}
                           className="secondary-inline-button"
                           onClick={(event) => {
                             event.stopPropagation();
@@ -3498,7 +3735,7 @@ export default function VehiclesPage() {
                           }}
                           type="button"
                         >
-                          Edit Odometer
+                          Odometer
                         </button>
                         <button
                           className="secondary-inline-button"
@@ -3712,6 +3949,10 @@ export default function VehiclesPage() {
           }}
           onChange={updateEditVehicleField}
           onClose={() => setEditingVehicle(null)}
+          onRunInspection={() => {
+            openInspectionRunner(editingVehicle);
+            setEditingVehicle(null);
+          }}
           onViewAssignmentHistory={() => {
             setAssignmentHistoryVehicle(editingVehicle);
             setEditingVehicle(null);
@@ -3732,6 +3973,21 @@ export default function VehiclesPage() {
           vehicle={editingVehicle}
         />
       ) : null}
+
+      <InspectionRunnerModal
+        errorMessage={inspectionRunnerError}
+        form={inspectionRunnerForm}
+        isSubmitting={createInspectionMutation.isPending}
+        onChange={updateInspectionRunnerField}
+        onChangeStatus={updateInspectionRunnerStatus}
+        onClose={() => {
+          setInspectionRunnerVehicle(null);
+          setInspectionRunnerForm(getInspectionForm(null, activeChecklistTemplateFields));
+          setInspectionRunnerError('');
+        }}
+        onSubmit={handleCreateInspection}
+        vehicle={inspectionRunnerVehicle}
+      />
 
       {maintenanceVehicle ? (
         <MaintenanceModal

@@ -6,6 +6,7 @@ import api from '../services/api';
 import { EmptyState, PageHeader, StatCard, StatusBadge } from '../components/PortalDesignSystem';
 import { useSelectedCsa } from '../context/SelectedCsaContext';
 import { getTodayString, loadStoredOperationsDate, saveStoredOperationsDate } from '../utils/operationsDate';
+import { getRouteStatusMeta } from '../utils/routeStatus';
 import { sortRoutesByWorkArea } from '../utils/routeSort';
 
 function formatDisplayDate(value) {
@@ -33,38 +34,6 @@ function safeNumber(value) {
 
 function formatRouteName(route) {
   return route.work_area_name || route.route_number || route.id || 'Route';
-}
-
-function getRouteStatus(route) {
-  if (route.dispatch_state === 'dispatched') {
-    return { label: 'Dispatched', tone: 'active' };
-  }
-
-  if (route.sync_state === 'dispatch_blocked' || route.sync_state === 'needs_attention') {
-    return { label: 'Needs review', tone: 'warning' };
-  }
-
-  if (route.sync_state === 'staged_changed' || route.sync_state === 'changed_after_dispatch') {
-    return { label: 'Changed', tone: 'warning' };
-  }
-
-  if (route.sync_state === 'sync_failed') {
-    return { label: 'Sync failed', tone: 'warning' };
-  }
-
-  if (route.sync_state === 'staged' || route.dispatch_state === 'staged') {
-    return { label: 'Staged', tone: 'purple' };
-  }
-
-  if (route.status === 'in_progress') {
-    return { label: 'In progress', tone: 'active' };
-  }
-
-  if (route.status === 'complete') {
-    return { label: 'Complete', tone: 'active' };
-  }
-
-  return { label: route.sync_state || route.status || 'Available', tone: 'neutral' };
 }
 
 function getStopProgress(route) {
@@ -105,7 +74,7 @@ function RoutesTable({ routes, date }) {
           <span>Actions</span>
         </div>
         {routes.map((route) => {
-          const status = getRouteStatus(route);
+          const status = getRouteStatusMeta(route);
           const routeUrl = `/routes/${route.id}?date=${date}`;
 
           return (
@@ -130,7 +99,7 @@ function RoutesTable({ routes, date }) {
 
       <div className="routes-operations-card-list">
         {routes.map((route) => {
-          const status = getRouteStatus(route);
+          const status = getRouteStatusMeta(route);
           const routeUrl = `/routes/${route.id}?date=${date}`;
 
           return (

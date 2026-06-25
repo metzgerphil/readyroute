@@ -255,14 +255,34 @@ export function getRouteDispatchWarnings({ route, allStops, roadFlags = [] }) {
   return warnings;
 }
 
+export function isUsableMapCoordinate(lat, lng) {
+  const parsedLat = Number(lat);
+  const parsedLng = Number(lng);
+
+  if (!Number.isFinite(parsedLat) || !Number.isFinite(parsedLng)) {
+    return false;
+  }
+
+  if (parsedLat === 0 && parsedLng === 0) {
+    return false;
+  }
+
+  return parsedLat >= -90 && parsedLat <= 90 && parsedLng >= -180 && parsedLng <= 180;
+}
+
+export function toUsableMapPoint(value) {
+  if (!value || !isUsableMapCoordinate(value.lat, value.lng)) {
+    return null;
+  }
+
+  return {
+    lat: Number(value.lat),
+    lng: Number(value.lng)
+  };
+}
+
 export function buildBoundary(stops) {
-  const mappableStops = (stops || []).filter(
-    (stop) =>
-      stop?.lat != null &&
-      stop?.lng != null &&
-      Number.isFinite(Number(stop.lat)) &&
-      Number.isFinite(Number(stop.lng))
-  );
+  const mappableStops = (stops || []).filter((stop) => isUsableMapCoordinate(stop?.lat, stop?.lng));
 
   if (!mappableStops.length) {
     return null;
@@ -294,13 +314,7 @@ export function getDistanceMiles(left, right) {
 }
 
 export function getRouteCentroid(stops = []) {
-  const validStops = (stops || []).filter(
-    (stop) =>
-      stop?.lat != null &&
-      stop?.lng != null &&
-      Number.isFinite(Number(stop.lat)) &&
-      Number.isFinite(Number(stop.lng))
-  );
+  const validStops = (stops || []).filter((stop) => isUsableMapCoordinate(stop?.lat, stop?.lng));
 
   if (!validStops.length) {
     return null;

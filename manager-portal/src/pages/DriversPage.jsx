@@ -85,6 +85,34 @@ const emptyForm = {
   confirmPin: ''
 };
 
+const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+function validateDriverForm(form) {
+  const errors = {};
+
+  if (!form.name.trim()) {
+    errors.name = 'Driver name is required.';
+  }
+
+  if (!form.email.trim()) {
+    errors.email = 'Driver email is required.';
+  } else if (!emailPattern.test(form.email.trim())) {
+    errors.email = 'Enter a valid email address.';
+  }
+
+  if (!/^\d{4}$/.test(String(form.pin))) {
+    errors.pin = 'Enter a 4-digit numeric PIN.';
+  }
+
+  if (!form.confirmPin) {
+    errors.confirmPin = 'Confirm the driver PIN.';
+  } else if (form.pin !== form.confirmPin) {
+    errors.confirmPin = 'PINs must match.';
+  }
+
+  return errors;
+}
+
 const DRIVER_DOCUMENT_TYPES = [
   { key: 'driver_license', label: 'Driver License', required: true, expires: true, multiple: false },
   { key: 'mec', label: 'MEC', required: true, expires: true, multiple: false },
@@ -265,6 +293,7 @@ function DriverDocumentSlot({
 function DriverModal({
   documentDrafts,
   documentError,
+  fieldErrors,
   form,
   mode,
   errorMessage,
@@ -297,7 +326,14 @@ function DriverModal({
             <div className="driver-profile-grid">
               <label className="driver-modal-field">
                 <span className="field-label">First and Last Name</span>
-                <input className="text-field" onChange={(event) => onChange('name', event.target.value)} placeholder="Full Name" value={form.name} />
+                <input
+                  aria-invalid={Boolean(fieldErrors.name)}
+                  className="text-field"
+                  onChange={(event) => onChange('name', event.target.value)}
+                  placeholder="Full Name"
+                  value={form.name}
+                />
+                {fieldErrors.name ? <span className="field-error">{fieldErrors.name}</span> : null}
               </label>
               <label className="driver-modal-field">
                 <span className="field-label">Date of Birth</span>
@@ -312,6 +348,7 @@ function DriverModal({
               <label className="driver-modal-field">
                 <span className="field-label">Email Address</span>
                 <input
+                  aria-invalid={Boolean(fieldErrors.email)}
                   className="text-field"
                   disabled={isEdit}
                   onChange={(event) => onChange('email', event.target.value)}
@@ -319,6 +356,7 @@ function DriverModal({
                   type="email"
                   value={form.email}
                 />
+                {fieldErrors.email ? <span className="field-error">{fieldErrors.email}</span> : null}
               </label>
               <label className="driver-modal-field">
                 <span className="field-label">Phone Number</span>
@@ -368,18 +406,21 @@ function DriverModal({
             {!isEdit ? (
               <>
               <div className="driver-meta">
-                Leave the PIN fields blank to use this CSA&apos;s starter driver PIN.
+                Enter a 4-digit PIN for this driver. Confirm PIN must match.
               </div>
               <input
+                aria-invalid={Boolean(fieldErrors.pin)}
                 className="text-field"
                 inputMode="numeric"
                 maxLength={4}
                 onChange={(event) => onChange('pin', event.target.value)}
-                placeholder="4-digit PIN (optional)"
+                placeholder="4-digit PIN"
                 type="password"
                 value={form.pin}
               />
+              {fieldErrors.pin ? <span className="field-error">{fieldErrors.pin}</span> : null}
               <input
+                aria-invalid={Boolean(fieldErrors.confirmPin)}
                 className="text-field"
                 inputMode="numeric"
                 maxLength={4}
@@ -388,22 +429,26 @@ function DriverModal({
                 type="password"
                 value={form.confirmPin}
               />
+              {fieldErrors.confirmPin ? <span className="field-error">{fieldErrors.confirmPin}</span> : null}
               </>
             ) : (
               <>
               <div className="driver-meta">
-                Leave the PIN fields blank to keep the current driver PIN. Add a new 4-digit PIN only when you want to reset it.
+                Enter a 4-digit PIN for this driver. Confirm PIN must match.
               </div>
               <input
+                aria-invalid={Boolean(fieldErrors.pin)}
                 className="text-field"
                 inputMode="numeric"
                 maxLength={4}
                 onChange={(event) => onChange('pin', event.target.value)}
-                placeholder="New 4-digit PIN (optional)"
+                placeholder="New 4-digit PIN"
                 type="password"
                 value={form.pin}
               />
+              {fieldErrors.pin ? <span className="field-error">{fieldErrors.pin}</span> : null}
               <input
+                aria-invalid={Boolean(fieldErrors.confirmPin)}
                 className="text-field"
                 inputMode="numeric"
                 maxLength={4}
@@ -412,6 +457,7 @@ function DriverModal({
                 type="password"
                 value={form.confirmPin}
               />
+              {fieldErrors.confirmPin ? <span className="field-error">{fieldErrors.confirmPin}</span> : null}
               </>
             )}
           </div>
@@ -472,7 +518,7 @@ function ManagerModal({
           <button className="icon-button" onClick={onClose} type="button">×</button>
         </div>
 
-        <form className="form-card modal-form" onSubmit={onSubmit}>
+        <form className="form-card modal-form manager-invite-form" onSubmit={onSubmit}>
           <input
             className="text-field"
             onChange={(event) => onChange('full_name', event.target.value)}
@@ -776,6 +822,7 @@ export default function DriversPage() {
   const [isLaborModalOpen, setIsLaborModalOpen] = useState(false);
   const [modalMode, setModalMode] = useState('add');
   const [form, setForm] = useState(emptyForm);
+  const [fieldErrors, setFieldErrors] = useState({});
   const [errorMessage, setErrorMessage] = useState('');
   const [selectedDriverId, setSelectedDriverId] = useState(null);
   const [documentDrafts, setDocumentDrafts] = useState({});
@@ -879,6 +926,7 @@ export default function DriversPage() {
     onSuccess: () => {
       setIsModalOpen(false);
       setForm(emptyForm);
+      setFieldErrors({});
       setErrorMessage('');
       queryClient.invalidateQueries({ queryKey: ['manager-drivers'] });
     },
@@ -895,12 +943,13 @@ export default function DriversPage() {
         phone: form.phone,
         hourly_rate: Number(form.hourly_rate),
         daily_flat_rate: Number(form.daily_flat_rate || 0),
-        pin: form.pin || undefined
+        pin: form.pin
       });
     },
     onSuccess: () => {
       setIsModalOpen(false);
       setForm(emptyForm);
+      setFieldErrors({});
       setErrorMessage('');
       queryClient.invalidateQueries({ queryKey: ['manager-drivers'] });
     },
@@ -1118,6 +1167,7 @@ export default function DriversPage() {
   function openAddModal() {
     setModalMode('add');
     setForm(emptyForm);
+    setFieldErrors({});
     setErrorMessage('');
     setSelectedDriverId(null);
     setDocumentDrafts({});
@@ -1163,6 +1213,7 @@ export default function DriversPage() {
       confirmPin: ''
     });
     setErrorMessage('');
+    setFieldErrors({});
     setDocumentDrafts({});
     setDocumentError('');
     setIsModalOpen(true);
@@ -1170,6 +1221,12 @@ export default function DriversPage() {
 
   function updateField(field, value) {
     setForm((current) => ({ ...current, [field]: value }));
+    setFieldErrors((current) => {
+      if (!current[field]) return current;
+      const next = { ...current };
+      delete next[field];
+      return next;
+    });
   }
 
   function updateDocumentDraft(documentType, field, value) {
@@ -1207,37 +1264,18 @@ export default function DriversPage() {
   function handleModalSubmit(event) {
     event.preventDefault();
     setErrorMessage('');
+    const nextFieldErrors = validateDriverForm(form);
 
-    if (modalMode === 'add') {
-      if (form.pin || form.confirmPin) {
-        if (form.pin !== form.confirmPin) {
-          setErrorMessage('PINs must match.');
-          return;
-        }
-
-        if (!/^\d{4}$/.test(String(form.pin))) {
-          setErrorMessage('PIN must be a 4-digit code.');
-          return;
-        }
-      } else if (!driverAccessQuery.data?.starter_pin) {
-        setErrorMessage('Set a CSA starter PIN first, or enter a PIN for this driver.');
-        return;
-      }
-
-      createDriver.mutate();
+    if (Object.keys(nextFieldErrors).length > 0) {
+      setFieldErrors(nextFieldErrors);
       return;
     }
 
-    if (form.pin || form.confirmPin) {
-      if (form.pin !== form.confirmPin) {
-        setErrorMessage('PINs must match.');
-        return;
-      }
+    setFieldErrors({});
 
-      if (!/^\d{4}$/.test(String(form.pin))) {
-        setErrorMessage('PIN must be a 4-digit code.');
-        return;
-      }
+    if (modalMode === 'add') {
+      createDriver.mutate();
+      return;
     }
 
     updateDriver.mutate();
@@ -1441,7 +1479,6 @@ export default function DriversPage() {
             {drivers.map((driver) => (
               <div className="drivers-manager-table-row" key={driver.id}>
                 <div className="drivers-manager-driver-cell">
-                  <div className="drivers-avatar">{String(driver.name || '?').slice(0, 1).toUpperCase()}</div>
                   <div>
                     <strong>{driver.name}</strong>
                     <span>{driver.fedex_driver_id ? `FedEx ID ${driver.fedex_driver_id}` : 'No FedEx ID'}</span>
@@ -1977,6 +2014,7 @@ export default function DriversPage() {
           documentDrafts={documentDrafts}
           documentError={documentError}
           errorMessage={errorMessage}
+          fieldErrors={fieldErrors}
           form={form}
           isDocumentBusy={isDocumentBusy}
           isSubmitting={isSubmitting}

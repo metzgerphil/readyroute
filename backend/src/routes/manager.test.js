@@ -1132,8 +1132,8 @@ test('POST /manager/csas/switch returns a new token for an accessible CSA', asyn
   }
 });
 
-test('POST /manager/csas/link-existing grants reciprocal manager access for linked CSAs', async () => {
-  const insertedManagerUsers = [];
+test('POST /manager/csas/link-existing activates only pre-invited manager access for linked CSAs', async () => {
+  const updatedManagerUsers = [];
 
   const supabase = new MockSupabase((query) => {
     if (query.table === 'manager_users' && query.operation === 'select') {
@@ -1171,11 +1171,35 @@ test('POST /manager/csas/link-existing grants reciprocal manager access for link
       }
 
       if (accountFilter?.value === 'acct-2' && emailFilter?.value === 'phillovesjoy@gmail.com') {
-        return { data: null, error: null };
+        return {
+          data: {
+            id: 'manager-bridge-pending',
+            account_id: 'acct-2',
+            email: 'phillovesjoy@gmail.com',
+            full_name: 'Bridge Manager',
+            password_hash: null,
+            is_active: true,
+            invited_at: '2026-04-19T18:00:00.000Z',
+            accepted_at: null
+          },
+          error: null
+        };
       }
 
       if (accountFilter?.value === 'acct-1' && emailFilter?.value === 'pv@example.com') {
-        return { data: null, error: null };
+        return {
+          data: {
+            id: 'manager-pv-pending',
+            account_id: 'acct-1',
+            email: 'pv@example.com',
+            full_name: 'PV Manager',
+            password_hash: null,
+            is_active: true,
+            invited_at: '2026-04-19T18:00:00.000Z',
+            accepted_at: null
+          },
+          error: null
+        };
       }
 
       if (emailFilter?.value === 'phillovesjoy@gmail.com') {
@@ -1201,12 +1225,20 @@ test('POST /manager/csas/link-existing grants reciprocal manager access for link
       }
     }
 
-    if (query.table === 'manager_users' && query.operation === 'insert') {
-      insertedManagerUsers.push(query.payload);
+    if (query.table === 'manager_users' && query.operation === 'update') {
+      const idFilter = query.filters.find((filter) => filter.column === 'id');
+      updatedManagerUsers.push({
+        id: idFilter?.value,
+        ...query.payload
+      });
       return {
         data: {
-          id: `inserted-${insertedManagerUsers.length}`,
-          ...query.payload
+          id: idFilter?.value,
+          account_id: idFilter?.value === 'manager-bridge-pending' ? 'acct-2' : 'acct-1',
+          email: idFilter?.value === 'manager-bridge-pending' ? 'phillovesjoy@gmail.com' : 'pv@example.com',
+          full_name: query.payload.full_name,
+          password_hash: query.payload.password_hash,
+          is_active: query.payload.is_active
         },
         error: null
       };
@@ -1291,17 +1323,87 @@ test('POST /manager/csas/link-existing grants reciprocal manager access for link
 
     assert.equal(response.status, 200);
     assert.deepEqual(
-      insertedManagerUsers.map((row) => ({
-        account_id: row.account_id,
-        email: row.email
+      updatedManagerUsers.map((row) => ({
+        id: row.id,
+        is_active: row.is_active,
+        accepted_at: row.accepted_at
       })),
       [
-        { account_id: 'acct-2', email: 'phillovesjoy@gmail.com' },
-        { account_id: 'acct-1', email: 'pv@example.com' }
+        { id: 'manager-bridge-pending', is_active: true, accepted_at: '2026-04-20T18:00:00.000Z' },
+        { id: 'manager-pv-pending', is_active: true, accepted_at: '2026-04-20T18:00:00.000Z' }
       ]
     );
     const body = await response.json();
     assert.deepEqual(body.csas.map((csa) => csa.company_name), ['Bridge Transportation', 'PV Delivery']);
+  } finally {
+    await server.close();
+  }
+});
+
+test('POST /manager/csas/link-existing rejects managers who were not invited to the target CSA', async () => {
+  const supabase = new MockSupabase((query) => {
+    if (query.table === 'manager_users' && query.operation === 'select') {
+      const accountFilter = query.filters.find((filter) => filter.column === 'account_id' && filter.op === 'eq');
+      const emailFilter = query.filters.find((filter) => filter.column === 'email');
+
+      if (accountFilter?.value === 'acct-1' && emailFilter?.value === 'phillovesjoy@gmail.com') {
+        return {
+          data: {
+            id: 'manager-1',
+            account_id: 'acct-1',
+            email: 'phillovesjoy@gmail.com',
+            full_name: 'Bridge Manager',
+            password_hash: 'bridge-hash',
+            is_active: true
+          },
+          error: null
+        };
+      }
+
+      if (accountFilter?.value === 'acct-2' && emailFilter?.value === 'phillovesjoy@gmail.com') {
+        return { data: null, error: null };
+      }
+    }
+
+    if (query.table === 'account_link_codes' && query.operation === 'select') {
+      return {
+        data: {
+          id: 'code-1',
+          account_id: 'acct-2',
+          code: 'CSA-ABCDEFGH',
+          expires_at: '2026-04-21T18:00:00.000Z',
+          used_at: null,
+          created_by_manager_user_id: 'manager-2'
+        },
+        error: null
+      };
+    }
+
+    if (query.table === 'accounts' && query.operation === 'select') {
+      return { data: null, error: null };
+    }
+
+    throw new Error(`Unexpected query ${query.table}:${query.operation}`);
+  });
+
+  const server = await startTestServer({ supabase, now: () => new Date('2026-04-20T18:00:00.000Z') });
+
+  try {
+    const response = await fetch(`${server.baseUrl}/manager/csas/link-existing`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${signManagerToken()}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        code: 'CSA-ABCDEFGH'
+      })
+    });
+
+    assert.equal(response.status, 403);
+    const body = await response.json();
+    assert.equal(body.invite_required, true);
+    assert.equal(body.error, 'You must be invited as a manager to that CSA before you can link it to this login.');
   } finally {
     await server.close();
   }
@@ -1898,12 +2000,9 @@ test('POST /manager/fedex-accounts creates the first FedEx account as default', 
   }
 });
 
-test('POST /manager/fedex-accounts rejects FCC portal credentials while automation is paused', async () => {
-  const originalAutomationEnabled = process.env.FEDEX_FCC_AUTOMATION_ENABLED;
-  process.env.FEDEX_FCC_AUTOMATION_ENABLED = 'false';
-
+test('POST /manager/fedex-accounts rejects FedEx/MyBizAccount credentials', async () => {
   const supabase = new MockSupabase((query) => {
-    throw new Error(`Paused FCC credential collection should not query ${query.table}:${query.operation}`);
+    throw new Error(`Credential rejection should not query ${query.table}:${query.operation}`);
   });
 
   const server = await startTestServer({ supabase });
@@ -1916,6 +2015,14 @@ test('POST /manager/fedex-accounts rejects FCC portal credentials while automati
         'Content-Type': 'application/json'
       },
       body: JSON.stringify({
+        nickname: 'Bridge MyBizAccount',
+        account_number: '123456789',
+        billing_address_line1: 'FedEx Customer Connection',
+        billing_city: 'FCC Portal',
+        billing_state_or_province: 'NA',
+        billing_postal_code: '00000',
+        billing_country_code: 'US',
+        connection_status: 'not_started',
         fcc_username: 'bridge@example.com',
         fcc_password: 'super-secret-password'
       })
@@ -1923,13 +2030,8 @@ test('POST /manager/fedex-accounts rejects FCC portal credentials while automati
 
     assert.equal(response.status, 403);
     const body = await response.json();
-    assert.equal(body.error, 'FCC/MyBizAccount credential collection is paused pending FedEx-approved access.');
+    assert.equal(body.error, 'ReadyRoute does not collect or store FedEx/MyBizAccount usernames or passwords.');
   } finally {
-    if (originalAutomationEnabled === undefined) {
-      delete process.env.FEDEX_FCC_AUTOMATION_ENABLED;
-    } else {
-      process.env.FEDEX_FCC_AUTOMATION_ENABLED = originalAutomationEnabled;
-    }
     await server.close();
   }
 });
@@ -3907,7 +4009,15 @@ test('GET /manager/routes/:route_id/stops returns full stop detail for the selec
           date: '2026-04-13',
           total_stops: 2,
           completed_stops: 1,
-          status: 'in_progress',
+          status: 'pending',
+          dispatch_state: 'dispatched',
+          dispatched_at: '2026-04-13T15:45:00.000Z',
+          sync_state: 'synced',
+          last_manifest_sync_at: '2026-04-13T14:00:00.000Z',
+          last_manifest_change_at: null,
+          manifest_stop_count: 2,
+          manifest_package_count: 2,
+          last_manifest_sync_error: null,
           sa_number: '919',
           contractor_name: 'Bridge Transportation Inc'
         },
@@ -4062,6 +4172,13 @@ test('GET /manager/routes/:route_id/stops returns full stop detail for the selec
     assert.equal(response.status, 200);
     const body = await response.json();
     assert.equal(body.route.work_area_name, '810');
+    assert.equal(body.route.status, 'pending');
+    assert.equal(body.route.dispatch_state, 'dispatched');
+    assert.equal(body.route.dispatched_at, '2026-04-13T15:45:00.000Z');
+    assert.equal(body.route.sync_state, 'synced');
+    assert.equal(body.route.last_manifest_sync_at, '2026-04-13T14:00:00.000Z');
+    assert.equal(body.route.manifest_stop_count, 2);
+    assert.equal(body.route.manifest_package_count, 2);
     assert.equal(body.route.driver_name, 'Adrian Morales');
     assert.equal(body.route.vehicle_name, '204526');
     assert.equal(body.route.stops_per_hour, 2);

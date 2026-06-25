@@ -12,6 +12,11 @@ export function getDrawerMenuItems(activeMode) {
         screen: 'ManagerRoutes'
       },
       {
+        key: 'manager-drivers',
+        label: 'Drivers',
+        screen: 'ManagerDrivers'
+      },
+      {
         key: 'manager-access-codes',
         label: 'Access Codes',
         screen: 'ManagerAccessCodes'

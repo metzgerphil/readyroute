@@ -7,6 +7,7 @@ import api from '../services/api';
 import { loadGoogleMaps } from '../lib/googleMapsLoader';
 import { createDriverPositionMarker } from '../utils/stopMarkers';
 import { getTodayString, loadStoredOperationsDate, saveStoredOperationsDate } from '../utils/operationsDate';
+import { toUsableMapPoint } from '../utils/routePageHelpers';
 import './FleetMapPage.css';
 
 const EMPTY_ARRAY = [];
@@ -128,16 +129,27 @@ export default function FleetMapPage() {
 
   const routeRows = useMemo(
     () =>
-      routesWithColors.map((route) => ({
-        route,
-        position: driverPositions[route.id] || null,
-        stops: (route.stops || []).filter((stop) => Number.isFinite(Number(stop.lat)) && Number.isFinite(Number(stop.lng)))
-      })),
+      routesWithColors.map((route) => {
+        const stops = route.stops || EMPTY_ARRAY;
+        const mappableStops = stops.filter((stop) => toUsableMapPoint(stop));
+        const driverPoint = toUsableMapPoint(driverPositions[route.id]);
+
+        return {
+          route,
+          position: driverPoint ? { ...driverPositions[route.id], ...driverPoint } : null,
+          stops: mappableStops,
+          unmappedStopCount: Math.max(0, stops.length - mappableStops.length)
+        };
+      }),
     [driverPositions, routesWithColors]
   );
 
   const totalVisibleStops = useMemo(
     () => routeRows.reduce((sum, row) => sum + row.stops.length, 0),
+    [routeRows]
+  );
+  const totalUnmappedStops = useMemo(
+    () => routeRows.reduce((sum, row) => sum + row.unmappedStopCount, 0),
     [routeRows]
   );
 
@@ -225,7 +237,7 @@ export default function FleetMapPage() {
       if (stops.length > 1) {
         const routeLine = new google.maps.Polyline({
           map,
-          path: stops.map((stop) => ({ lat: Number(stop.lat), lng: Number(stop.lng) })),
+          path: stops.map((stop) => toUsableMapPoint(stop)).filter(Boolean),
           strokeColor: route.routeColor,
           strokeOpacity: selectedRouteId === route.id ? 0.9 : 0.45,
           strokeWeight: selectedRouteId === route.id ? 4 : 2,
@@ -235,9 +247,14 @@ export default function FleetMapPage() {
       }
 
       stops.forEach((stop) => {
+        const stopPoint = toUsableMapPoint(stop);
+        if (!stopPoint) {
+          return;
+        }
+
         const stopMarker = new google.maps.Marker({
           map,
-          position: { lat: Number(stop.lat), lng: Number(stop.lng) },
+          position: stopPoint,
           title: `${route.work_area_name || 'Route'} · Stop ${stop.sequence_order}`,
           icon: {
             path: google.maps.SymbolPath.CIRCLE,
@@ -265,13 +282,13 @@ export default function FleetMapPage() {
         });
 
         stopMarkersRef.current.push(stopMarker);
-        bounds.extend({ lat: Number(stop.lat), lng: Number(stop.lng) });
+        bounds.extend(stopPoint);
       });
 
-      if (position?.lat != null && position?.lng != null) {
+      if (position) {
         const driverMarker = new google.maps.Marker({
           map,
-          position: { lat: Number(position.lat), lng: Number(position.lng) },
+          position,
           title: route.driver_name || route.work_area_name || 'Route',
           icon: createDriverPositionMarker(route.driver_name, route.status),
           zIndex: selectedRouteId === route.id ? 50 : 30
@@ -291,7 +308,7 @@ export default function FleetMapPage() {
         });
 
         driverMarkersRef.current.set(route.id, driverMarker);
-        bounds.extend({ lat: Number(position.lat), lng: Number(position.lng) });
+        bounds.extend(position);
       }
     });
 
@@ -323,7 +340,10 @@ export default function FleetMapPage() {
 
     const bounds = new window.google.maps.LatLngBounds();
     selectedRoute.stops.forEach((stop) => {
-      bounds.extend({ lat: Number(stop.lat), lng: Number(stop.lng) });
+      const stopPoint = toUsableMapPoint(stop);
+      if (stopPoint) {
+        bounds.extend(stopPoint);
+      }
     });
     map.fitBounds(bounds, 72);
   }, [routeRows, selectedRouteId]);
@@ -343,6 +363,12 @@ export default function FleetMapPage() {
           <input className="date-field route-toolbar-input" type="date" value={date} onChange={(event) => setDate(event.target.value)} />
         </label>
       </div>
+
+      {totalUnmappedStops > 0 ? (
+        <div className="fleet-map-coordinate-warning" role="status">
+          {totalUnmappedStops} stop{totalUnmappedStops === 1 ? '' : 's'} could not be mapped.
+        </div>
+      ) : null}
 
       <div className="fleet-map-layout">
         <div className="card fleet-map-canvas-card">
@@ -374,7 +400,7 @@ export default function FleetMapPage() {
             <div className="fleet-map-empty">Waiting for route sync or manual upload.</div>
           ) : null}
           <div className="fleet-map-route-key">
-            {routesWithColors.map((route) => (
+            {routeRows.map(({ route }) => (
               <div className="fleet-map-route-key-row" key={route.id}>
                 <span className="fleet-map-route-key-dot" style={{ backgroundColor: route.routeColor }} />
                 <span>{route.work_area_name || '—'}</span>
@@ -382,7 +408,7 @@ export default function FleetMapPage() {
             ))}
           </div>
           <div className="fleet-map-summary-list">
-            {routesWithColors.map((route) => (
+            {routeRows.map(({ route, position, stops, unmappedStopCount }) => (
               <button
                 key={route.id}
                 type="button"
@@ -396,9 +422,14 @@ export default function FleetMapPage() {
                 <div className="fleet-map-summary-driver">{route.driver_name || 'Unassigned'}</div>
                 <div className="fleet-map-summary-progress">{getProgressText(route)}</div>
                 <div className="fleet-map-summary-muted">
-                  {route.stops?.length ? `${route.stops.length} mapped points` : 'No mapped stops'}
+                  {stops.length ? `${stops.length} mapped points` : 'No mapped stops'}
                 </div>
-                {!driverPositions[route.id]?.lat ? <div className="fleet-map-summary-muted">Driver GPS not live yet</div> : null}
+                {unmappedStopCount > 0 ? (
+                  <div className="fleet-map-summary-warning">
+                    {unmappedStopCount} stop{unmappedStopCount === 1 ? '' : 's'} could not be mapped
+                  </div>
+                ) : null}
+                {!position ? <div className="fleet-map-summary-muted">Driver GPS not live yet</div> : null}
               </button>
             ))}
           </div>

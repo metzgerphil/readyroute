@@ -336,6 +336,8 @@ test('POST /vehicles creates a vehicle for the authenticated account', async () 
       assert.equal(query.payload.truck_type, 'Other');
       assert.equal(query.payload.custom_truck_type, 'P900 Reefer');
       assert.equal(query.payload.registration_expiration, '2026-09-30');
+      assert.equal(query.payload.fuel_type, 'Diesel');
+      assert.equal(query.payload.notes, 'No DEF');
       assert.equal(query.payload.current_mileage, 0);
       return {
         data: { id: 'vehicle-new' },
@@ -363,7 +365,9 @@ test('POST /vehicles creates a vehicle for the authenticated account', async () 
         model: 'Transit',
         year: 2024,
         plate: 'NEW123',
-        registration_expiration: '2026-09-30'
+        registration_expiration: '2026-09-30',
+        fuel_type: 'diesel',
+        notes: 'No DEF'
       })
     });
 
@@ -484,6 +488,38 @@ test('POST /vehicles validates custom truck type when Other is selected', async 
 
     assert.equal(response.status, 400);
     assert.deepEqual(await response.json(), { error: 'custom_truck_type is required when truck_type is Other' });
+  } finally {
+    await server.close();
+  }
+});
+
+test('POST /vehicles validates fuel type', async () => {
+  const supabase = new MockSupabase(() => {
+    throw new Error('Should not hit supabase');
+  });
+
+  const server = await startTestServer(supabase);
+
+  try {
+    const response = await fetch(`${server.baseUrl}/vehicles`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${signManagerToken()}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        name: '329310',
+        truck_type: 'P700',
+        make: 'Freightliner',
+        model: 'MT45',
+        year: 2012,
+        plate: '329310',
+        fuel_type: 'Hydrogen'
+      })
+    });
+
+    assert.equal(response.status, 400);
+    assert.deepEqual(await response.json(), { error: 'fuel_type must be Gas, Diesel, or EV' });
   } finally {
     await server.close();
   }

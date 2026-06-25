@@ -15,6 +15,7 @@ describe('shellNavigation helpers', () => {
     expect(managerItems.map((item) => item.label)).toEqual([
       'Map View',
       'Routes',
+      'Drivers',
       'Access Codes',
       'Vehicles',
       'VEDR',

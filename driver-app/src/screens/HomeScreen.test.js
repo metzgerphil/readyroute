@@ -26,7 +26,10 @@ import {
   getLocationRequirementCopy,
   getPostDispatchChangeNotice,
   getDriverWaitingCopy,
+  getInspectionForm,
+  getInspectionRequirement,
   getOdometerRequirement,
+  normalizeSafetyFocusResponse,
   hasGrantedLocationPermission,
   isDeniedLocationPermission,
   shouldPromptForLocationPermission,
@@ -76,6 +79,26 @@ describe('HomeScreen helpers', () => {
     expect(getDailySafetyReminder(reminderDate).bullets.length).toBeGreaterThan(2);
   });
 
+  it('normalizes a database-backed safety focus for the driver card', () => {
+    expect(
+      normalizeSafetyFocusResponse({
+        id: 'focus-1',
+        title: 'Set the parking brake every time',
+        source: null,
+        bullets: ['Use it at every stop.', '', null],
+        takeaway: 'Small habits prevent incidents.'
+      })
+    ).toEqual({
+      id: 'focus-1',
+      title: 'Set the parking brake every time',
+      source: 'ReadyRoute safety focus',
+      bullets: ['Use it at every stop.'],
+      takeaway: 'Small habits prevent incidents.'
+    });
+
+    expect(normalizeSafetyFocusResponse({ title: 'Missing bullets', bullets: [] })).toBeNull();
+  });
+
   it('builds a compact route summary for the home card', () => {
     expect(
       getRouteSummary({
@@ -107,6 +130,47 @@ describe('HomeScreen helpers', () => {
       minimum_odometer: 54250,
       maximum_odometer: 54550
     });
+  });
+
+  it('derives the route-specific inspection gate and default checklist form', () => {
+    const requirement = getInspectionRequirement(
+      {
+        inspection_requirement: {
+          required: true,
+          submitted: false,
+          route_id: 'route-1',
+          vehicle_id: 'vehicle-1',
+          inspection_date: '2026-06-24',
+          last_recorded_odometer: 12000,
+          checklist_items: [
+            { checklist_item_key: 'tires', label: 'Tires' },
+            { checklist_item_key: 'lights', label: 'Lights' }
+          ]
+        }
+      },
+      { id: 'route-1', vehicle_id: 'vehicle-1' }
+    );
+
+    expect(requirement).toMatchObject({
+      route_id: 'route-1',
+      vehicle_id: 'vehicle-1',
+      minimum_odometer: 12000,
+      maximum_odometer: 12300
+    });
+    expect(getInspectionForm(requirement)).toEqual({
+      odometer: '',
+      issue_note: '',
+      items: [
+        { checklist_item_key: 'tires', label: 'Tires', status: 'pass', note: '' },
+        { checklist_item_key: 'lights', label: 'Lights', status: 'pass', note: '' }
+      ]
+    });
+    expect(
+      getInspectionRequirement(
+        { inspection_requirement: { required: true, submitted: true } },
+        { id: 'route-1' }
+      )
+    ).toBeNull();
   });
 
   it('derives the staged waiting state for drivers before dispatch', () => {

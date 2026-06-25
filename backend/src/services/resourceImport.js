@@ -72,6 +72,7 @@ function parseVehicleImportRows(file) {
     plate: getCell(row, ['plate', 'registration number', 'license plate']),
     registration_expiration: getCell(row, ['registration expiration', 'registration expiry', 'registration expires', 'registration_expiration']),
     insurance_expiration: getCell(row, ['insurance expiration', 'insurance expiry', 'insurance expires', 'insurance_expiration']),
+    fuel_type: getCell(row, ['fuel type', 'fuel', 'fuel_type']),
     current_mileage: getCell(row, ['mileage', 'current mileage', 'current_mileage', 'odometer']),
     notes: getCell(row, ['notes', 'description'])
   }));

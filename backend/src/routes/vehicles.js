@@ -4,6 +4,7 @@ const defaultSupabase = require('../lib/supabase');
 const { requireManager } = require('../middleware/auth');
 const { parseMultipartForm } = require('../middleware/multipart');
 const { parseVehicleImportRows } = require('../services/resourceImport');
+const { filterProductionRows, isProductionTestArtifact } = require('../services/testDataFilter');
 
 const ALLOWED_TRUCK_TYPES = new Set([
   'P700',
@@ -74,6 +75,8 @@ const VEHICLE_STATUS_LABELS = {
   needs_repair: 'Needs Repair'
 };
 
+const FUEL_TYPE_OPTIONS = new Set(['Gas', 'Diesel', 'EV']);
+
 const DEFAULT_CHECKLIST_TEMPLATE_FIELDS = [
   { id: 'date', label: 'Date', detail: 'Inspection date', enabled: true },
   { id: 'company_name', label: 'Company name', detail: 'CSA or company name', enabled: true },
@@ -99,6 +102,11 @@ const INSPECTION_STATUS_LABELS = {
 
 function isMissingRelationError(error) {
   return ['42P01', 'PGRST106', 'PGRST204', 'PGRST205'].includes(error?.code);
+}
+
+function isMissingTestDataColumn(error) {
+  const message = String(error?.message || error?.details || '');
+  return /is_test|test_data/i.test(message) && /column|schema|cache/i.test(message);
 }
 
 function createDefaultMaintenanceSettings() {
@@ -495,6 +503,24 @@ function normalizeTruckType({ truckType, customTruckType }) {
   };
 }
 
+function normalizeFuelType(value) {
+  const normalized = value === null || value === undefined || value === ''
+    ? null
+    : String(value).trim();
+
+  if (normalized === null) {
+    return null;
+  }
+
+  const matched = Array.from(FUEL_TYPE_OPTIONS).find((option) => option.toLowerCase() === normalized.toLowerCase());
+
+  if (!matched) {
+    return { error: 'fuel_type must be Gas, Diesel, or EV' };
+  }
+
+  return matched;
+}
+
 function mapLatestMaintenance(records) {
   return (records || []).reduce((map, record) => {
     const existing = map.get(record.vehicle_id);
@@ -804,7 +830,8 @@ function createVehiclesRouter(options = {}) {
         return res.status(500).json({ error: 'Failed to load vehicles' });
       }
 
-      const vehicleIds = (vehicles || []).map((vehicle) => vehicle.id);
+      const productionVehicles = filterProductionRows(vehicles || [], ['name', 'plate', 'make', 'model', 'custom_truck_type']);
+      const vehicleIds = productionVehicles.map((vehicle) => vehicle.id);
       let maintenanceByVehicleId = new Map();
       let maintenanceByVehicleAndType = new Map();
       let assignmentsByVehicleId = new Map();
@@ -855,8 +882,16 @@ function createVehiclesRouter(options = {}) {
           return res.status(500).json({ error: 'Failed to load vehicle maintenance' });
         }
 
-        maintenanceByVehicleId = mapLatestMaintenance(maintenanceRows);
-        maintenanceByVehicleAndType = getLatestMaintenanceByVehicleAndType(maintenanceRows);
+        const productionMaintenanceRows = filterProductionRows(maintenanceRows || [], [
+          'service_type',
+          'description',
+          'condition_notes',
+          'vendor_name',
+          'notes'
+        ]);
+
+        maintenanceByVehicleId = mapLatestMaintenance(productionMaintenanceRows);
+        maintenanceByVehicleAndType = getLatestMaintenanceByVehicleAndType(productionMaintenanceRows);
 
         const { data: routeAssignments, error: assignmentsError } = await supabase
           .from('routes')
@@ -892,7 +927,7 @@ function createVehiclesRouter(options = {}) {
       }
 
       return res.status(200).json({
-        vehicles: (vehicles || []).map((vehicle) => {
+        vehicles: productionVehicles.map((vehicle) => {
           const nextServiceMileage = toInteger(vehicle.next_service_mileage);
           const currentMileage = toInteger(vehicle.current_mileage) || 0;
           const serviceDue = Number.isInteger(nextServiceMileage)
@@ -941,7 +976,7 @@ function createVehiclesRouter(options = {}) {
         return res.status(500).json({ error: 'Failed to load vehicles due for service' });
       }
 
-      const dueSoon = (vehicles || []).filter((vehicle) => {
+      const dueSoon = filterProductionRows(vehicles || [], ['name', 'plate', 'make', 'model', 'custom_truck_type']).filter((vehicle) => {
         const nextServiceMileage = toInteger(vehicle.next_service_mileage);
         const currentMileage = toInteger(vehicle.current_mileage) || 0;
         return Number.isInteger(nextServiceMileage) && currentMileage >= nextServiceMileage - 500;
@@ -969,29 +1004,49 @@ function createVehiclesRouter(options = {}) {
         return res.status(500).json({ error: 'Failed to load maintenance records' });
       }
 
-      const vehicleIds = [...new Set((records || []).map((record) => record.vehicle_id).filter(Boolean))];
+      const productionRecords = filterProductionRows(records || [], [
+        'service_type',
+        'description',
+        'condition_notes',
+        'vendor_name',
+        'notes'
+      ]);
+      const vehicleIds = [...new Set(productionRecords.map((record) => record.vehicle_id).filter(Boolean))];
       let vehiclesById = new Map();
 
       if (vehicleIds.length > 0) {
-        const { data: vehicles, error: vehiclesError } = await supabase
+        let vehiclesQuery = await supabase
           .from('vehicles')
-          .select('id, name, make, model, year, truck_type, custom_truck_type')
+          .select('id, name, make, model, year, truck_type, custom_truck_type, is_test, test_data')
           .eq('account_id', req.account.account_id)
           .in('id', vehicleIds);
 
-        if (vehiclesError) {
-          console.error('Vehicle maintenance records vehicle lookup failed:', vehiclesError);
+        if (vehiclesQuery.error && isMissingTestDataColumn(vehiclesQuery.error)) {
+          vehiclesQuery = await supabase
+            .from('vehicles')
+            .select('id, name, make, model, year, truck_type, custom_truck_type')
+            .eq('account_id', req.account.account_id)
+            .in('id', vehicleIds);
+        }
+
+        if (vehiclesQuery.error) {
+          console.error('Vehicle maintenance records vehicle lookup failed:', vehiclesQuery.error);
           return res.status(500).json({ error: 'Failed to load maintenance records' });
         }
 
-        vehiclesById = new Map((vehicles || []).map((vehicle) => [vehicle.id, vehicle]));
+        vehiclesById = new Map(
+          filterProductionRows(vehiclesQuery.data || [], ['name', 'make', 'model', 'custom_truck_type'])
+            .map((vehicle) => [vehicle.id, vehicle])
+        );
       }
 
       return res.status(200).json({
-        maintenance: (records || []).map((record) => ({
-          ...record,
-          vehicle: vehiclesById.get(record.vehicle_id) || null
-        }))
+        maintenance: productionRecords
+          .filter((record) => !isProductionTestArtifact(vehiclesById.get(record.vehicle_id), ['name', 'make', 'model', 'custom_truck_type']))
+          .map((record) => ({
+            ...record,
+            vehicle: vehiclesById.get(record.vehicle_id) || null
+          }))
       });
     } catch (error) {
       console.error('Vehicle maintenance records endpoint failed:', error);
@@ -1313,13 +1368,16 @@ function createVehiclesRouter(options = {}) {
       plate,
       registration_expiration: registrationExpiration,
       insurance_expiration: insuranceExpiration,
-      current_mileage: currentMileage
+      current_mileage: currentMileage,
+      fuel_type: fuelType,
+      notes
     } = req.body || {};
 
     const vehicleIdentifier = String(plate || name || '').trim();
     const parsedYear = toInteger(year);
     const parsedCurrentMileage = currentMileage === undefined ? 0 : toInteger(currentMileage);
     const normalizedTruckType = normalizeTruckType({ truckType, customTruckType });
+    const normalizedFuelType = normalizeFuelType(fuelType);
 
     if (!vehicleIdentifier || !make || !model || parsedYear === null || parsedCurrentMileage === null) {
       return res.status(400).json({ error: 'Vehicle ID, make, model, and year are required' });
@@ -1327,6 +1385,10 @@ function createVehiclesRouter(options = {}) {
 
     if (normalizedTruckType.error) {
       return res.status(400).json({ error: normalizedTruckType.error });
+    }
+
+    if (normalizedFuelType?.error) {
+      return res.status(400).json({ error: normalizedFuelType.error });
     }
 
     try {
@@ -1343,7 +1405,9 @@ function createVehiclesRouter(options = {}) {
           name: vehicleIdentifier,
           registration_expiration: registrationExpiration || null,
           insurance_expiration: insuranceExpiration || null,
-          current_mileage: parsedCurrentMileage
+          current_mileage: parsedCurrentMileage,
+          fuel_type: normalizedFuelType,
+          notes: notes ? String(notes).trim() : null
         })
         .select('id')
         .single();
@@ -1393,6 +1457,7 @@ function createVehiclesRouter(options = {}) {
           truckType: row.truck_type,
           customTruckType: row.custom_truck_type
         });
+        const normalizedFuelType = normalizeFuelType(row.fuel_type);
         const vehicleIdentifier = String(row.plate || row.name || '').trim();
         const nameKey = vehicleIdentifier.toLowerCase();
 
@@ -1403,6 +1468,11 @@ function createVehiclesRouter(options = {}) {
 
         if (normalizedTruckType.error) {
           result.errors.push({ row: row.row_number, error: normalizedTruckType.error });
+          continue;
+        }
+
+        if (normalizedFuelType?.error) {
+          result.errors.push({ row: row.row_number, error: normalizedFuelType.error });
           continue;
         }
 
@@ -1424,6 +1494,7 @@ function createVehiclesRouter(options = {}) {
             plate: vehicleIdentifier,
             registration_expiration: row.registration_expiration || null,
             insurance_expiration: row.insurance_expiration || null,
+            fuel_type: normalizedFuelType,
             current_mileage: parsedCurrentMileage,
             notes: row.notes || null
           })
@@ -1863,6 +1934,7 @@ function createVehiclesRouter(options = {}) {
       'plate',
       'registration_expiration',
       'insurance_expiration',
+      'fuel_type',
       'current_mileage',
       'vehicle_status',
       'notes',
@@ -1911,6 +1983,15 @@ function createVehiclesRouter(options = {}) {
 
       if (field === 'registration_expiration' || field === 'insurance_expiration') {
         payload[field] = req.body[field] || null;
+        continue;
+      }
+
+      if (field === 'fuel_type') {
+        const normalizedFuelType = normalizeFuelType(req.body[field]);
+        if (normalizedFuelType?.error) {
+          return res.status(400).json({ error: normalizedFuelType.error });
+        }
+        payload.fuel_type = normalizedFuelType;
         continue;
       }
 

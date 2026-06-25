@@ -79,7 +79,7 @@ describe('ReadyRoute end-to-end workflow', () => {
       const { data: account, error: accountError } = await supabase
         .from('accounts')
         .insert({
-          company_name: `ReadyRoute Test ${uniqueSuffix}`,
+          company_name: `ReadyRoute E2E ${uniqueSuffix}`,
           manager_email: managerEmail,
           manager_password_hash: managerPasswordHash,
           plan: 'starter'
@@ -94,7 +94,7 @@ describe('ReadyRoute end-to-end workflow', () => {
         .from('drivers')
         .insert({
           account_id: cleanup.accountId,
-          name: `Test Driver ${uniqueSuffix}`,
+          name: `E2E Driver ${uniqueSuffix}`,
           email: driverEmail,
           phone: '619-555-0101',
           hourly_rate: 25,
@@ -111,7 +111,7 @@ describe('ReadyRoute end-to-end workflow', () => {
         .from('vehicles')
         .insert({
           account_id: cleanup.accountId,
-          name: `Test Van ${uniqueSuffix}`,
+          name: `E2E Van ${uniqueSuffix}`,
           make: 'Ford',
           model: 'Transit',
           year: 2023,
@@ -142,7 +142,7 @@ describe('ReadyRoute end-to-end workflow', () => {
         .field('driver_id', cleanup.driverId)
         .field('vehicle_id', cleanup.vehicleId)
         .field('date', today)
-        .attach('file', Buffer.from(gpxContent, 'utf8'), 'test-manifest.gpx');
+        .attach('file', Buffer.from(gpxContent, 'utf8'), 'e2e-manifest.gpx');
 
       expect(uploadResponse.status).toBe(201);
       expect(uploadResponse.body.total_stops).toBe(5);

@@ -324,6 +324,17 @@ function createAuthRouter(options = {}) {
   }
 
   router.post('/manager/start-trial', async (req, res) => {
+    const publicTrialsEnabled = String(process.env.READYROUTE_ENABLE_PUBLIC_TRIALS || '')
+      .trim()
+      .toLowerCase() === 'true';
+
+    if (!publicTrialsEnabled) {
+      return res.status(403).json({
+        error: 'Public workspace creation is currently disabled. Please request access through readyroute.org/mvp.',
+        redirect_url: 'https://readyroute.org/mvp'
+      });
+    }
+
     const companyName = String(req.body?.company_name || '').trim();
     const fullName = String(req.body?.full_name || '').trim();
     const email = String(req.body?.email || '').trim().toLowerCase();

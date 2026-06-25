@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Link, useSearchParams } from 'react-router-dom';
+import { useSearchParams } from 'react-router-dom';
 import { useNavigate } from 'react-router-dom';
 
 import api from '../services/api';
@@ -181,7 +181,7 @@ export default function LoginPage() {
           ) : null}
 
           <div className="login-secondary-links">
-            <Link to="/start-trial">Start free trial</Link>
+            <a href="https://readyroute.org/mvp">Request access</a>
             <a href="https://readyroute.org/">Back to ReadyRoute</a>
           </div>
         </div>

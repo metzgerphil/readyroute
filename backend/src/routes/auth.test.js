@@ -227,6 +227,36 @@ test('mobile login returns both portal tokens for a linked manager-driver identi
   assert.equal(managerPayload.role, 'manager');
 });
 
+test('public manager trial signup is disabled unless explicitly enabled', async () => {
+  const originalPublicTrials = process.env.READYROUTE_ENABLE_PUBLIC_TRIALS;
+  delete process.env.READYROUTE_ENABLE_PUBLIC_TRIALS;
+
+  try {
+    const supabase = createSupabaseStub();
+    const app = createApp({ supabase, jwtSecret: 'test-secret', enforceBilling: false });
+
+    const response = await request(app)
+      .post('/auth/manager/start-trial')
+      .send({
+        company_name: 'Bridge Transportation',
+        full_name: 'Phillip Metzger',
+        email: 'phillovesjoy@gmail.com',
+        password: 'StrongPass!2026',
+        vehicle_count: 15
+      });
+
+    assert.equal(response.status, 403);
+    assert.equal(response.body.error, 'Public workspace creation is currently disabled. Please request access through readyroute.org/mvp.');
+    assert.equal(response.body.redirect_url, 'https://readyroute.org/mvp');
+  } finally {
+    if (originalPublicTrials === undefined) {
+      delete process.env.READYROUTE_ENABLE_PUBLIC_TRIALS;
+    } else {
+      process.env.READYROUTE_ENABLE_PUBLIC_TRIALS = originalPublicTrials;
+    }
+  }
+});
+
 test('manager session can request driver mode even before a route is assigned', async () => {
   const originalJwtSecret = process.env.JWT_SECRET;
   process.env.JWT_SECRET = 'test-secret';

@@ -11,7 +11,8 @@ import ManagerVehiclesScreen, {
   getStatusMeta,
   getTodayDateParam,
   getVehicleDescription,
-  getVehicleForm
+  getVehicleForm,
+  buildVehiclePayload
 } from './ManagerVehiclesScreen';
 import api from '../services/api';
 
@@ -53,7 +54,9 @@ describe('ManagerVehiclesScreen', () => {
       name: 'V-42',
       plate: 'ABC123',
       registration_expiration: '2026-12-31',
+      insurance_expiration: '2027-01-31',
       truck_type: 'P1100',
+      fuel_type: 'Gas',
       today_assignment: {
         driver_name: 'Luis Perez',
         work_area_name: '816'
@@ -75,7 +78,20 @@ describe('ManagerVehiclesScreen', () => {
     expect(getVehicleForm(vehicle)).toMatchObject({
       name: 'V-42',
       truck_type: 'P1100',
+      fuel_type: 'Gas',
+      insurance_expiration: '2027-01-31',
       current_mileage: '12345'
+    });
+    expect(buildVehiclePayload({
+      ...getVehicleForm(vehicle),
+      truck_type: 'P700',
+      fuel_type: 'Diesel',
+      plate: '329310'
+    })).toMatchObject({
+      name: '329310',
+      plate: '329310',
+      truck_type: 'P700',
+      fuel_type: 'Diesel'
     });
   });
 
@@ -121,7 +137,7 @@ describe('ManagerVehiclesScreen', () => {
     expect(screen.getByText('Oil Change')).toBeTruthy();
     expect(screen.getByText('816')).toBeTruthy();
     expect(screen.getByText('Edit')).toBeTruthy();
-    expect(screen.getByText('View')).toBeTruthy();
+    expect(screen.getByText('Open')).toBeTruthy();
     expect(screen.queryByText('Odometer')).toBeNull();
     expect(screen.queryByText('More')).toBeNull();
     expect(screen.queryByText('Route 816')).toBeNull();
@@ -201,7 +217,8 @@ describe('ManagerVehiclesScreen', () => {
             ]
           }
         }
-      });
+      })
+      .mockResolvedValueOnce({ data: { inspections: [] } });
 
     const screen = render(<ManagerVehiclesScreen />);
 
@@ -214,25 +231,26 @@ describe('ManagerVehiclesScreen', () => {
     await waitFor(() => {
       expect(api.get).toHaveBeenCalledWith('/vehicles/settings/maintenance', { authMode: 'manager' });
       expect(api.get).toHaveBeenCalledWith('/vehicles/maintenance-records', { authMode: 'manager' });
-      expect(screen.getByText('Maintenance Program')).toBeTruthy();
-      expect(screen.getByText('Recent Maintenance Records')).toBeTruthy();
-      expect(screen.getByText('Truck V-42')).toBeTruthy();
+      expect(api.get).toHaveBeenCalledWith('/vehicles/inspections', { authMode: 'manager' });
+      expect(screen.getByText('Maintenance Records')).toBeTruthy();
+      expect(screen.getByText('Vehicle V-42')).toBeTruthy();
     });
 
     fireEvent.press(screen.getByText('Inspections'));
 
     await waitFor(() => {
-      expect(screen.getByText('Vehicle Check Requirements')).toBeTruthy();
-      expect(screen.getByText('Checklist Template')).toBeTruthy();
-      expect(screen.getByText('Vehicle ID')).toBeTruthy();
+      expect(screen.getByText('Inspection Records')).toBeTruthy();
+      expect(screen.getByText('No inspection records yet.')).toBeTruthy();
     });
 
     fireEvent.press(screen.getByText('Settings'));
 
     await waitFor(() => {
+      expect(screen.getByText('Maintenance Program')).toBeTruthy();
+      expect(screen.getByText('Vehicle Settings')).toBeTruthy();
+      expect(screen.getByText('Vehicle Check Requirements')).toBeTruthy();
       expect(screen.getByText('Reminder Schedule')).toBeTruthy();
-      expect(screen.getByText('Checklist Template')).toBeTruthy();
-      expect(screen.getByText('Save Template')).toBeTruthy();
+      expect(screen.getAllByText('Checklist Template').length).toBeGreaterThanOrEqual(1);
     });
   });
 
@@ -278,7 +296,8 @@ describe('ManagerVehiclesScreen', () => {
             fields: []
           }
         }
-      });
+      })
+      .mockResolvedValueOnce({ data: { inspections: [] } });
 
     api.put.mockResolvedValue({
       data: {
@@ -301,10 +320,13 @@ describe('ManagerVehiclesScreen', () => {
     fireEvent.press(screen.getByText('Settings'));
 
     await waitFor(() => {
-      expect(screen.getByText('Daily Odometer + Issue Note')).toBeTruthy();
-      expect(screen.getByText('Date')).toBeTruthy();
-      expect(screen.getByText('Vehicle ID')).toBeTruthy();
-      expect(screen.getByText('Driver notes')).toBeTruthy();
+      expect(screen.getAllByText('Daily Odometer + Issue Note').length).toBeGreaterThanOrEqual(1);
+    });
+
+    fireEvent.press(screen.getByText('Maintenance Requirements'));
+
+    await waitFor(() => {
+      expect(screen.getByText('Save Requirements')).toBeTruthy();
     });
 
     fireEvent.press(screen.getByText('Daily Odometer + Full Inspection'));
@@ -367,7 +389,8 @@ describe('ManagerVehiclesScreen', () => {
             ]
           }
         }
-      });
+      })
+      .mockResolvedValueOnce({ data: { inspections: [] } });
 
     api.put
       .mockResolvedValueOnce({
@@ -401,7 +424,12 @@ describe('ManagerVehiclesScreen', () => {
 
     await waitFor(() => {
       expect(screen.getByText('Reminder Schedule')).toBeTruthy();
-      expect(screen.getByText('Vehicle ID')).toBeTruthy();
+    });
+
+    fireEvent.press(screen.getByText('Reminder Schedule'));
+
+    await waitFor(() => {
+      expect(screen.getByText('Save Schedule')).toBeTruthy();
     });
 
     fireEvent.press(screen.getAllByText('Friday').at(-1));
@@ -415,6 +443,13 @@ describe('ManagerVehiclesScreen', () => {
       }), {
         authMode: 'manager'
       });
+    });
+
+    fireEvent.press(screen.getByText('‹ Back to Settings'));
+    fireEvent.press(screen.getAllByText('Checklist Template')[0]);
+
+    await waitFor(() => {
+      expect(screen.getByText('Save Template')).toBeTruthy();
     });
 
     fireEvent.press(screen.getAllByText('On')[0]);
@@ -464,7 +499,8 @@ describe('ManagerVehiclesScreen', () => {
       .mockResolvedValueOnce({ data: { maintenance: [] } })
       .mockResolvedValueOnce({ data: { setting: { maintenance_requirement_mode: 'option_1', weekly_inspection_day: 'Monday' } } })
       .mockResolvedValueOnce({ data: { schedule: { weekly_inspection_day: 'Monday', maintenance_warning_miles: 1000, maintenance_warning_days: 14, document_warning_days: 30 } } })
-      .mockResolvedValueOnce({ data: { template: { fields: [] } } });
+      .mockResolvedValueOnce({ data: { template: { fields: [] } } })
+      .mockResolvedValueOnce({ data: { inspections: [] } });
 
     api.put.mockResolvedValue({
       data: {
@@ -485,10 +521,16 @@ describe('ManagerVehiclesScreen', () => {
       expect(screen.getByText('V-42')).toBeTruthy();
     });
 
-    fireEvent.press(screen.getAllByText('Maintenance')[0]);
+    fireEvent.press(screen.getByText('Settings'));
 
     await waitFor(() => {
       expect(screen.getByText('Maintenance Program')).toBeTruthy();
+    });
+
+    fireEvent.press(screen.getByText('Maintenance Program'));
+
+    await waitFor(() => {
+      expect(screen.getByText('Save Maintenance Program')).toBeTruthy();
     });
 
     fireEvent.changeText(screen.getByDisplayValue('5000'), '6000');
@@ -533,6 +575,7 @@ describe('ManagerVehiclesScreen', () => {
               plate: 'ABC123',
               registration_expiration: '2026-12-31',
               truck_type: 'P1100',
+              fuel_type: 'Gas',
               current_mileage: 12345,
               notes: ''
             }
@@ -563,7 +606,8 @@ describe('ManagerVehiclesScreen', () => {
     fireEvent.press(screen.getByText('Edit Truck Info'));
     expect(screen.getByText('Edit Vehicle')).toBeTruthy();
     expect(screen.getByText('Vehicle Type')).toBeTruthy();
-    fireEvent.changeText(screen.getByDisplayValue('P1100'), 'P1200');
+    fireEvent.press(screen.getAllByText('P1200')[0]);
+    fireEvent.press(screen.getAllByText('Diesel')[0]);
     fireEvent.changeText(screen.getByDisplayValue('12345'), '13000');
     fireEvent.press(screen.getByText('Save Changes'));
 
@@ -572,6 +616,7 @@ describe('ManagerVehiclesScreen', () => {
         current_mileage: 13000,
         name: 'ABC123',
         plate: 'ABC123',
+        fuel_type: 'Diesel',
         truck_type: 'P1200',
         year: 2022
       }), {
@@ -795,13 +840,13 @@ describe('ManagerVehiclesScreen', () => {
       expect(screen.getByText('V-42')).toBeTruthy();
     });
 
-    fireEvent.press(screen.getByText('View'));
-    expect(screen.getByText('View Truck V-42')).toBeTruthy();
-    expect(screen.getByText('Open records and history.')).toBeTruthy();
+    fireEvent.press(screen.getByText('Open'));
+    expect(screen.getByText('Vehicle V-42')).toBeTruthy();
+    expect(screen.getByText('Manager Actions')).toBeTruthy();
     expect(screen.getByText('Inspection History')).toBeTruthy();
     expect(screen.getByText('Odometer History')).toBeTruthy();
     expect(screen.getByText('Assignment History')).toBeTruthy();
-    fireEvent.press(screen.getByText('Service History'));
+    fireEvent.press(screen.getByText('Maintenance History'));
 
     await waitFor(() => {
       expect(api.get).toHaveBeenCalledWith('/vehicles/vehicle-1/maintenance', { authMode: 'manager' });
@@ -848,7 +893,7 @@ describe('ManagerVehiclesScreen', () => {
       expect(screen.getByText('V-42')).toBeTruthy();
     });
 
-    fireEvent.press(screen.getByText('View'));
+    fireEvent.press(screen.getByText('Open'));
     fireEvent.press(screen.getByText('Inspection History'));
 
     await waitFor(() => {

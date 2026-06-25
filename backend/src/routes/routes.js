@@ -144,6 +144,250 @@ function getCurrentDateString(now = new Date(), timeZone = process.env.APP_TIME_
   }).format(now);
 }
 
+const WEEKLY_INSPECTION_DAYS = new Set([
+  'Monday',
+  'Tuesday',
+  'Wednesday',
+  'Thursday',
+  'Friday',
+  'Saturday',
+  'Sunday'
+]);
+
+const DEFAULT_VEHICLE_CHECK_REQUIREMENT_SETTING = {
+  maintenance_requirement_mode: 'option_1',
+  weekly_inspection_day: 'Monday',
+  custom_daily_requirements: {
+    require_full_checklist_daily: false
+  },
+  custom_weekly_requirements: {
+    require_full_checklist_weekly: true
+  }
+};
+
+const DEFAULT_CHECKLIST_TEMPLATE_FIELDS = [
+  { id: 'tires', label: 'Tires, front, rear inner, rear outer', enabled: true },
+  { id: 'check_engine_light', label: 'Check engine light', enabled: true },
+  { id: 'coolant', label: 'Coolant', enabled: true },
+  { id: 'engine_oil', label: 'Engine oil', enabled: true },
+  { id: 'brake_fluid', label: 'Brake fluid', enabled: true },
+  { id: 'windshield_fluid', label: 'Windshield fluid', enabled: true },
+  { id: 'wipers', label: 'Wipers', enabled: true },
+  { id: 'lights', label: 'Lights', enabled: true },
+  { id: 'truck_cleanliness', label: 'Truck cleanliness', enabled: true }
+];
+
+function getWeekdayName(dateString, timeZone = process.env.APP_TIME_ZONE || 'America/Los_Angeles') {
+  const date = dateString ? new Date(`${dateString}T12:00:00`) : new Date();
+
+  if (Number.isNaN(date.getTime())) {
+    return null;
+  }
+
+  return new Intl.DateTimeFormat('en-US', {
+    timeZone,
+    weekday: 'long'
+  }).format(date);
+}
+
+function normalizeBooleanMap(value, defaults) {
+  const source = value && typeof value === 'object' && !Array.isArray(value) ? value : {};
+
+  return Object.entries(defaults).reduce((normalized, [key, defaultValue]) => ({
+    ...normalized,
+    [key]: typeof source[key] === 'boolean' ? source[key] : defaultValue
+  }), {});
+}
+
+function normalizeInspectionItems(items = []) {
+  return (Array.isArray(items) ? items : [])
+    .filter((item) => item && typeof item === 'object')
+    .map((item) => {
+      const key = String(item.checklist_item_key || item.id || '').trim();
+      const label = String(item.label || item.checklist_item_label || key || 'Inspection item').trim();
+      const rawStatus = String(item.status || 'pass').trim().toLowerCase().replace(/\s+/g, '_');
+      const status = ['pass', 'fail', 'not_applicable'].includes(rawStatus) ? rawStatus : 'pass';
+
+      return {
+        checklist_item_key: key || label.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, ''),
+        label,
+        status,
+        note: item.note ? String(item.note).trim() : null
+      };
+    });
+}
+
+function getInspectionChecklistFields(template = null) {
+  const submittedFields = Array.isArray(template?.fields) ? template.fields : [];
+  const fields = submittedFields.length ? submittedFields : DEFAULT_CHECKLIST_TEMPLATE_FIELDS;
+
+  return fields
+    .filter((field) => field?.enabled !== false)
+    .filter((field) => !['date', 'company_name', 'truck_number', 'driver_name', 'driver_notes'].includes(field.id))
+    .map((field) => ({
+      checklist_item_key: field.id,
+      label: field.label || field.id
+    }));
+}
+
+function normalizeVehicleCheckRequirementSetting(setting = {}) {
+  const mode = String(setting?.maintenance_requirement_mode || DEFAULT_VEHICLE_CHECK_REQUIREMENT_SETTING.maintenance_requirement_mode).trim();
+  const weeklyInspectionDay = String(setting?.weekly_inspection_day || DEFAULT_VEHICLE_CHECK_REQUIREMENT_SETTING.weekly_inspection_day).trim();
+
+  return {
+    maintenance_requirement_mode: ['option_1', 'option_2', 'custom'].includes(mode) ? mode : 'option_1',
+    weekly_inspection_day: WEEKLY_INSPECTION_DAYS.has(weeklyInspectionDay) ? weeklyInspectionDay : 'Monday',
+    custom_daily_requirements: normalizeBooleanMap(
+      setting?.custom_daily_requirements,
+      DEFAULT_VEHICLE_CHECK_REQUIREMENT_SETTING.custom_daily_requirements
+    ),
+    custom_weekly_requirements: normalizeBooleanMap(
+      setting?.custom_weekly_requirements,
+      DEFAULT_VEHICLE_CHECK_REQUIREMENT_SETTING.custom_weekly_requirements
+    )
+  };
+}
+
+function shouldRequireVehicleInspection({ setting, routeDate }) {
+  const normalizedSetting = normalizeVehicleCheckRequirementSetting(setting);
+  const weekdayName = getWeekdayName(routeDate);
+  const requiresDailyInspection =
+    normalizedSetting.maintenance_requirement_mode === 'option_2' ||
+    normalizedSetting.custom_daily_requirements.require_full_checklist_daily === true;
+  const requiresWeeklyInspection =
+    normalizedSetting.maintenance_requirement_mode === 'option_1' ||
+    normalizedSetting.custom_weekly_requirements.require_full_checklist_weekly === true;
+  const isAssignedWeeklyDay = weekdayName === normalizedSetting.weekly_inspection_day;
+
+  if (requiresDailyInspection) {
+    return {
+      required: true,
+      reason: 'daily',
+      label: 'Daily inspection required'
+    };
+  }
+
+  if (requiresWeeklyInspection && isAssignedWeeklyDay) {
+    return {
+      required: true,
+      reason: 'weekly',
+      label: 'Weekly inspection required'
+    };
+  }
+
+  return {
+    required: false,
+    reason: null,
+    label: null
+  };
+}
+
+function isMissingInspectionRouteColumnError(error) {
+  return isMissingColumnError(error, 'route_id');
+}
+
+async function loadVehicleInspectionRequirement(supabase, {
+  accountId,
+  driverId,
+  route,
+  vehicle = null
+}) {
+  if (!route?.vehicle_id) {
+    return {
+      required: false,
+      submitted: true
+    };
+  }
+
+  const { data: setting, error: settingError } = await supabase
+    .from('vehicle_check_requirement_settings')
+    .select('maintenance_requirement_mode, weekly_inspection_day, custom_daily_requirements, custom_weekly_requirements')
+    .eq('account_id', accountId)
+    .maybeSingle();
+
+  if (settingError && !['42P01', 'PGRST106', 'PGRST204', 'PGRST205'].includes(settingError.code)) {
+    return { error: settingError };
+  }
+
+  const requirement = shouldRequireVehicleInspection({
+    setting: setting || DEFAULT_VEHICLE_CHECK_REQUIREMENT_SETTING,
+    routeDate: route.date
+  });
+
+  if (!requirement.required) {
+    return {
+      required: false,
+      submitted: true
+    };
+  }
+
+  let inspectionQuery = supabase
+    .from('vehicle_inspections')
+    .select('id, inspection_date, odometer, status, submitted_at')
+    .eq('account_id', accountId)
+    .eq('vehicle_id', route.vehicle_id)
+    .eq('submitted_by_driver_id', driverId)
+    .eq('route_id', route.id)
+    .eq('inspection_date', route.date)
+    .order('submitted_at', { ascending: false })
+    .limit(1);
+
+  let { data: inspectionRows, error: inspectionError } = await inspectionQuery;
+
+  if (inspectionError && isMissingInspectionRouteColumnError(inspectionError)) {
+    inspectionRows = [];
+    inspectionError = null;
+  }
+
+  if (inspectionError) {
+    if (['42P01', 'PGRST106', 'PGRST204', 'PGRST205'].includes(inspectionError.code)) {
+      return {
+        required: false,
+        submitted: true
+      };
+    }
+
+    return { error: inspectionError };
+  }
+
+  const latestInspection = (inspectionRows || [])[0] || null;
+  const { data: checklistTemplate, error: checklistTemplateError } = await supabase
+    .from('vehicle_checklist_template_settings')
+    .select('fields')
+    .eq('account_id', accountId)
+    .maybeSingle();
+
+  if (checklistTemplateError && !['42P01', 'PGRST106', 'PGRST204', 'PGRST205'].includes(checklistTemplateError.code)) {
+    return { error: checklistTemplateError };
+  }
+
+  const lastRecordedOdometer = toInteger(vehicle?.current_mileage) || 0;
+
+  return {
+    required: true,
+    submitted: Boolean(latestInspection),
+    reason: requirement.reason,
+    label: requirement.label,
+    route_id: route.id,
+    vehicle_id: route.vehicle_id,
+    vehicle_name: vehicle?.name || route.vehicle_name || null,
+    inspection_date: route.date,
+    last_recorded_odometer: lastRecordedOdometer,
+    minimum_odometer: lastRecordedOdometer,
+    maximum_odometer: lastRecordedOdometer + 300,
+    checklist_items: getInspectionChecklistFields(checklistTemplate),
+    latest_inspection: latestInspection
+      ? {
+          id: latestInspection.id,
+          inspection_date: latestInspection.inspection_date,
+          odometer: Number(latestInspection.odometer),
+          status: latestInspection.status || 'submitted',
+          submitted_at: latestInspection.submitted_at || null
+        }
+      : null
+  };
+}
+
 function getUtcTimestamp() {
   return new Date().toISOString();
 }
@@ -1134,6 +1378,10 @@ function createRoutesRouter(options = {}) {
       const pickupStopSummary = getPickupStopSummary(routeStops);
       let vehicle = null;
       let odometerEntry = null;
+      let inspectionRequirement = {
+        required: false,
+        submitted: true
+      };
 
       if (route.vehicle_id) {
         const { data: vehicleRow, error: vehicleError } = await supabase
@@ -1166,6 +1414,18 @@ function createRoutesRouter(options = {}) {
         }
 
         odometerEntry = (odometerRows || [])[0] || null;
+
+        inspectionRequirement = await loadVehicleInspectionRequirement(supabase, {
+          accountId: req.driver.account_id,
+          driverId: req.driver.driver_id,
+          route,
+          vehicle
+        });
+
+        if (inspectionRequirement.error) {
+          console.error('Today inspection requirement lookup failed:', inspectionRequirement.error);
+          return res.status(500).json({ error: 'Failed to load inspection requirement' });
+        }
       }
 
       const lastRecordedOdometer = toInteger(vehicle?.current_mileage) || 0;
@@ -1229,7 +1489,7 @@ function createRoutesRouter(options = {}) {
           odometer_requirement: route.vehicle_id
             ? {
                 required: true,
-                submitted: Boolean(odometerEntry),
+                submitted: Boolean(odometerEntry || inspectionRequirement.latest_inspection),
                 vehicle_id: route.vehicle_id,
                 vehicle_name: vehicle?.name || null,
                 last_recorded_odometer: lastRecordedOdometer,
@@ -1246,7 +1506,8 @@ function createRoutesRouter(options = {}) {
             : {
                 required: false,
                 submitted: true
-              }
+              },
+          inspection_requirement: inspectionRequirement
         }
       });
     } catch (error) {
@@ -1300,6 +1561,163 @@ function createRoutesRouter(options = {}) {
     } catch (error) {
       console.error('Driver position endpoint failed:', error);
       return res.status(500).json({ error: 'Failed to save driver position' });
+    }
+  });
+
+  router.post('/inspection', requireDriver, async (req, res) => {
+    const {
+      vehicle_id: vehicleId,
+      route_id: routeId,
+      inspection_date: inspectionDateInput,
+      odometer,
+      issue_note: issueNoteInput,
+      items: submittedItems
+    } = req.body || {};
+    const inspectionDate = String(inspectionDateInput || getCurrentDateString(nowProvider())).trim();
+    const parsedOdometer = toInteger(odometer);
+    const items = normalizeInspectionItems(submittedItems);
+    const issueNote = issueNoteInput ? String(issueNoteInput).trim() : null;
+    const failedItems = items.filter((item) => item.status === 'fail');
+
+    if (!routeId || !vehicleId) {
+      return res.status(400).json({ error: 'route_id and vehicle_id are required' });
+    }
+
+    if (!inspectionDate || Number.isNaN(new Date(`${inspectionDate}T12:00:00`).getTime())) {
+      return res.status(400).json({ error: 'inspection_date is required' });
+    }
+
+    if (parsedOdometer === null || parsedOdometer < 0) {
+      return res.status(400).json({ error: 'odometer is required' });
+    }
+
+    if (!items.length) {
+      return res.status(400).json({ error: 'At least one inspection item is required' });
+    }
+
+    try {
+      const { data: route, error: routeError } = await loadDriverRoute(supabase, {
+        driverId: req.driver.driver_id,
+        accountId: req.driver.account_id,
+        routeId,
+        date: inspectionDate
+      });
+
+      if (routeError) {
+        console.error('Driver inspection route lookup failed:', routeError);
+        return res.status(500).json({ error: 'Failed to validate driver route' });
+      }
+
+      if (!route) {
+        return res.status(403).json({ error: 'Route not assigned to this driver' });
+      }
+
+      if (route.vehicle_id !== vehicleId) {
+        return res.status(400).json({ error: 'Vehicle does not match this route' });
+      }
+
+      const { data: vehicle, error: vehicleError } = await supabase
+        .from('vehicles')
+        .select('id, name, current_mileage')
+        .eq('id', vehicleId)
+        .eq('account_id', req.driver.account_id)
+        .maybeSingle();
+
+      if (vehicleError) {
+        console.error('Driver inspection vehicle lookup failed:', vehicleError);
+        return res.status(500).json({ error: 'Failed to validate vehicle' });
+      }
+
+      if (!vehicle) {
+        return res.status(403).json({ error: 'Vehicle does not belong to this CSA' });
+      }
+
+      const lastRecordedOdometer = toInteger(vehicle.current_mileage) || 0;
+      const maximumOdometer = lastRecordedOdometer + 300;
+
+      if (parsedOdometer < lastRecordedOdometer || parsedOdometer > maximumOdometer) {
+        return res.status(400).json({
+          error: 'Odometer reading is outside the allowed range. Please recheck the truck odometer or contact your manager.',
+          minimum_odometer: lastRecordedOdometer,
+          maximum_odometer: maximumOdometer
+        });
+      }
+
+      const status = failedItems.length || issueNote ? 'needs_review' : 'submitted';
+      const submittedAt = nowProvider().toISOString();
+      const { data: inspection, error: inspectionError } = await supabase
+        .from('vehicle_inspections')
+        .insert({
+          account_id: req.driver.account_id,
+          vehicle_id: vehicleId,
+          route_id: routeId,
+          inspection_date: inspectionDate,
+          inspection_type: 'driver',
+          odometer: parsedOdometer,
+          status,
+          issue_note: issueNote,
+          items,
+          submitted_by_type: 'driver',
+          submitted_by_driver_id: req.driver.driver_id,
+          submitted_by_name: req.driver.name || 'Driver',
+          submitted_at: submittedAt
+        })
+        .select('*')
+        .single();
+
+      if (inspectionError) {
+        console.error('Driver inspection insert failed:', inspectionError);
+        return res.status(500).json({ error: 'Failed to save vehicle inspection' });
+      }
+
+      const recordedAt = getUtcTimestamp();
+      const { error: odometerInsertError } = await supabase
+        .from('vehicle_odometer_entries')
+        .insert({
+          vehicle_id: vehicleId,
+          driver_id: req.driver.driver_id,
+          account_id: req.driver.account_id,
+          route_id: routeId,
+          old_odometer_reading: lastRecordedOdometer,
+          new_odometer_reading: parsedOdometer,
+          odometer_reading: parsedOdometer,
+          source: 'driver',
+          notes: 'Recorded from required vehicle inspection',
+          recorded_at: recordedAt
+        });
+
+      if (odometerInsertError) {
+        console.error('Driver inspection odometer insert failed:', odometerInsertError);
+      }
+
+      if (parsedOdometer > lastRecordedOdometer) {
+        const { error: vehicleUpdateError } = await supabase
+          .from('vehicles')
+          .update({ current_mileage: parsedOdometer })
+          .eq('id', vehicleId)
+          .eq('account_id', req.driver.account_id);
+
+        if (vehicleUpdateError) {
+          console.error('Driver inspection vehicle mileage update failed:', vehicleUpdateError);
+        }
+      }
+
+      return res.status(201).json({
+        inspection: {
+          id: inspection.id,
+          inspection_date: inspection.inspection_date,
+          odometer: Number(inspection.odometer),
+          status: inspection.status || status,
+          submitted_at: inspection.submitted_at || submittedAt
+        },
+        vehicle: {
+          id: vehicleId,
+          current_mileage: parsedOdometer
+        }
+      });
+    } catch (error) {
+      console.error('Driver inspection endpoint failed:', error);
+      return res.status(500).json({ error: 'Failed to save vehicle inspection' });
     }
   });
 
@@ -1432,6 +1850,39 @@ function createRoutesRouter(options = {}) {
 
       if (!route) {
         return res.status(403).json({ error: 'Route not assigned to this driver' });
+      }
+
+      if (status === 'in_progress' && route.vehicle_id) {
+        const { data: vehicle, error: vehicleError } = await supabase
+          .from('vehicles')
+          .select('id, name, current_mileage')
+          .eq('id', route.vehicle_id)
+          .eq('account_id', req.driver.account_id)
+          .maybeSingle();
+
+        if (vehicleError) {
+          console.error('Route status vehicle lookup failed:', vehicleError);
+          return res.status(500).json({ error: 'Failed to validate vehicle inspection requirement' });
+        }
+
+        const inspectionRequirement = await loadVehicleInspectionRequirement(supabase, {
+          accountId: req.driver.account_id,
+          driverId: req.driver.driver_id,
+          route,
+          vehicle
+        });
+
+        if (inspectionRequirement.error) {
+          console.error('Route status inspection requirement lookup failed:', inspectionRequirement.error);
+          return res.status(500).json({ error: 'Failed to validate vehicle inspection requirement' });
+        }
+
+        if (inspectionRequirement.required && !inspectionRequirement.submitted) {
+          return res.status(409).json({
+            error: 'Vehicle inspection is required before starting this route.',
+            inspection_requirement: inspectionRequirement
+          });
+        }
       }
 
       const { error: updateError } = await supabase
