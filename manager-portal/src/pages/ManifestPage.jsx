@@ -916,25 +916,25 @@ export default function ManifestPage() {
                 </div>
                 <div
                   className="upload-dropzone"
-                  onClick={() => fileInputRef.current?.click()}
                   onDragOver={(event) => event.preventDefault()}
                   onDrop={(event) => {
                     event.preventDefault();
                     handleFileSelection(event.dataTransfer.files);
                   }}
-                  onKeyDown={(event) => {
-                    if (event.target !== event.currentTarget || (event.key !== 'Enter' && event.key !== ' ')) {
-                      return;
-                    }
-
-                    event.preventDefault();
-                    fileInputRef.current?.click();
-                  }}
-                  role="button"
-                  tabIndex={0}
+                  aria-label="Manifest file drop zone"
                 >
                   <span className="upload-cloud-icon" aria-hidden="true">↑</span>
                   <span className="upload-title">Drop Combined, Delivery, Pickup, or GPX files here</span>
+                  <button
+                    className="secondary-inline-button upload-picker-button"
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      fileInputRef.current?.click();
+                    }}
+                    type="button"
+                  >
+                    Choose files
+                  </button>
                   <span className="upload-subtitle">
                     {hasManifestBundleFiles
                       ? bundleFileList.map((file) => file.name).join(' + ')
