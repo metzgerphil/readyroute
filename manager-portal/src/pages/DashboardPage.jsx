@@ -29,8 +29,8 @@ import {
 } from '../utils/dashboardHelpers';
 import {
   buildOperationsDatePath,
+  getResolvedOperationsDate,
   getTodayString,
-  loadStoredOperationsDate,
   saveStoredOperationsDate
 } from '../utils/operationsDate';
 
@@ -45,6 +45,18 @@ function SkeletonCard() {
   );
 }
 
+function getCombinedStopCount(dashboard) {
+  return Number(dashboard?.combined_stops || dashboard?.total_combined_stops || dashboard?.combined_stop_count || 0);
+}
+
+function getCombinedStopMessage(count) {
+  if (!count) {
+    return '';
+  }
+
+  return `${count} physical stop${count === 1 ? '' : 's'} include both a delivery and pickup, so delivery and pickup stop counts can add up higher than total stops.`;
+}
+
 export default function DashboardPage() {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -52,7 +64,7 @@ export default function DashboardPage() {
   const [viewMode, setViewMode] = useState('map');
   const [compactBannerKey, setCompactBannerKey] = useState(null);
   const [vehiclePickerRouteId, setVehiclePickerRouteId] = useState(null);
-  const dashboardDate = searchParams.get('date') || loadStoredOperationsDate() || getTodayString();
+  const dashboardDate = getResolvedOperationsDate(searchParams);
   const isSelectedDateToday = dashboardDate === getTodayString();
 
   useEffect(() => {
@@ -165,6 +177,7 @@ export default function DashboardPage() {
     [overviewRoutes]
   );
   const activeDashboard = isSelectedDateToday ? (dashboard || fallbackDashboard) : fallbackDashboard;
+  const combinedStopCount = getCombinedStopCount(activeDashboard);
   const routeRows = useMemo(() => activeDashboard?.drivers || EMPTY_ARRAY, [activeDashboard?.drivers]);
   const syncStatus = activeDashboard?.sync_status;
   const bannerState =
@@ -423,7 +436,7 @@ export default function DashboardPage() {
         <>
           <div className="stats-grid dashboard-compact-stats">
             <div className="stat-card dashboard-metric-card delivery">
-              <div className="stat-label">Total Deliveries</div>
+              <div className="stat-label">Delivery Stops</div>
               <div className="stat-value">{activeDashboard.delivery_stops ?? activeDashboard.total_delivery_stops ?? activeDashboard.total_stops ?? 0}</div>
             </div>
             <div className="stat-card dashboard-metric-card delivery">
@@ -435,7 +448,7 @@ export default function DashboardPage() {
               <div className="stat-value">{(activeDashboard.delivery_stops ?? activeDashboard.total_delivery_stops) != null ? getRemainingDeliveries(activeDashboard) : getRemainingStops(activeDashboard)}</div>
             </div>
             <div className="stat-card dashboard-metric-card pickup">
-              <div className="stat-label">Total Pickups</div>
+              <div className="stat-label">Pickup Stops</div>
               <div className="stat-value">{activeDashboard.pickup_stops ?? activeDashboard.total_pickup_stops ?? 0}</div>
             </div>
             <div className="stat-card dashboard-metric-card pickup">
@@ -451,6 +464,9 @@ export default function DashboardPage() {
               <div className="stat-value">{getFleetStopsPerHour(routeRows)}</div>
             </div>
           </div>
+          {combinedStopCount ? (
+            <div className="info-banner">{getCombinedStopMessage(combinedStopCount)}</div>
+          ) : null}
 
           <div className="card dispatch-health-card">
             <div className="dispatch-health-header">

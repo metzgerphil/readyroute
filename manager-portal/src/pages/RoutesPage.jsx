@@ -7,8 +7,7 @@ import { EmptyState, PageHeader, StatCard, StatusBadge } from '../components/Por
 import { useSelectedCsa } from '../context/SelectedCsaContext';
 import {
   buildOperationsDatePath,
-  getTodayString,
-  loadStoredOperationsDate,
+  getResolvedOperationsDate,
   saveStoredOperationsDate
 } from '../utils/operationsDate';
 import { getRouteStatusMeta } from '../utils/routeStatus';
@@ -63,7 +62,12 @@ function getPickupSummary(route) {
   }
 
   const completed = safeNumber(route.pickup_stops_completed);
-  return `${completed} / ${total}`;
+  const combined = getCombinedStopCount(route);
+  return `${completed} / ${total}${combined ? ` (${combined} also delivery)` : ''}`;
+}
+
+function getCombinedStopCount(route) {
+  return safeNumber(route.combined_stops || route.combined_stop_count || route.total_combined_stops);
 }
 
 function RoutesLoadingSkeleton() {
@@ -165,7 +169,7 @@ function RoutesTable({ routes, date }) {
 
 export default function RoutesPage() {
   const [searchParams, setSearchParams] = useSearchParams();
-  const date = searchParams.get('date') || loadStoredOperationsDate() || getTodayString();
+  const date = getResolvedOperationsDate(searchParams);
   const { selectedCsaId, selectedCsaName } = useSelectedCsa();
 
   useEffect(() => {
@@ -196,6 +200,7 @@ export default function RoutesPage() {
   const dispatchedCount = safeNumber(syncStatus.routes_dispatched || routes.filter((route) => route.dispatch_state === 'dispatched').length);
   const exceptionCount = routes.reduce((sum, route) => sum + safeNumber(route.exception_count || route.exceptions), 0);
   const pickupCount = routes.reduce((sum, route) => sum + safeNumber(route.pickup_stops || route.pickup_stop_count), 0);
+  const combinedStopCount = routes.reduce((sum, route) => sum + getCombinedStopCount(route), 0);
 
   function handleDateChange(nextDate) {
     saveStoredOperationsDate(nextDate);
@@ -235,7 +240,12 @@ export default function RoutesPage() {
         <StatCard label="Routes" value={routes.length} detail={`${assignedCount} assigned`} />
         <StatCard label="Dispatched" value={dispatchedCount} detail="Visible to drivers" tone={dispatchedCount ? 'active' : 'default'} />
         <StatCard label="Exceptions" value={exceptionCount} detail="Routes needing attention" tone={exceptionCount ? 'warning' : 'default'} />
-        <StatCard label="Pickups" value={pickupCount} detail="From manifest data" tone={pickupCount ? 'info' : 'default'} />
+        <StatCard
+          label="Pickup Stops"
+          value={pickupCount}
+          detail={combinedStopCount ? `${combinedStopCount} also count as delivery stops` : 'From manifest data'}
+          tone={pickupCount ? 'info' : 'default'}
+        />
       </div>
 
       <div className="card routes-operations-list-card">

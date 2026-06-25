@@ -272,7 +272,7 @@ test('GET /manager/dashboard returns stops_per_hour using the first-scan formula
           { id: 'stop-2', route_id: 'route-1', sequence_order: 2, address: '200 Main St', status: 'delivered', completed_at: '2026-04-08T16:30:00.000Z', delivery_type_code: '014', has_time_commit: false, exception_code: null },
           { id: 'stop-3', route_id: 'route-1', sequence_order: 3, address: '300 Main St', status: 'incomplete', completed_at: '2026-04-08T17:00:00.000Z', delivery_type_code: '021', has_time_commit: true, exception_code: '07' },
           { id: 'stop-4', route_id: 'route-1', sequence_order: 4, address: '400 Main St', status: 'delivered', completed_at: '2026-04-08T17:15:00.000Z', delivery_type_code: '013', has_time_commit: false, exception_code: null },
-          { id: 'stop-5', route_id: 'route-1', sequence_order: 5, address: '500 Main St', status: 'pending', completed_at: null, delivery_type_code: null, has_time_commit: true, exception_code: null, stop_type: 'pickup', has_pickup: true, has_delivery: false, is_pickup: true }
+          { id: 'stop-5', route_id: 'route-1', sequence_order: 5, address: '500 Main St', status: 'pending', completed_at: null, delivery_type_code: null, has_time_commit: true, exception_code: null, stop_type: 'combined', has_pickup: true, has_delivery: true, is_pickup: false }
         ],
         error: null
       };
@@ -359,9 +359,14 @@ test('GET /manager/dashboard returns stops_per_hour using the first-scan formula
     const body = await response.json();
     assert.equal(body.total_stops, 10);
     assert.equal(body.completed_stops, 4);
+    assert.equal(body.total_delivery_stops, 5);
+    assert.equal(body.delivery_stops, 5);
     assert.equal(body.total_pickup_stops, 1);
     assert.equal(body.pickup_stops, 1);
     assert.equal(body.pickup_stops_completed, 0);
+    assert.equal(body.total_combined_stops, 1);
+    assert.equal(body.combined_stops, 1);
+    assert.equal(body.combined_stop_count, 1);
     assert.equal(body.time_commits_total, 3);
     assert.equal(body.time_commits_completed, 2);
     assert.equal(body.route_summary.completed, 0);
@@ -383,6 +388,7 @@ test('GET /manager/dashboard returns stops_per_hour using the first-scan formula
     assert.equal(body.sync_status.routes_assigned, 1);
     assert.equal(body.sync_status.drivers_on_road, 1);
     assert.equal(body.sync_status.total_pickup_stops, 1);
+    assert.equal(body.sync_status.total_combined_stops, 1);
     assert.equal(body.sync_status.last_sync_at, '2026-04-08T17:45:00.000Z');
     assert.equal(body.drivers[0].work_area_name, '810');
     assert.equal(body.drivers[0].vehicle_name, 'Van 1');
@@ -393,6 +399,8 @@ test('GET /manager/dashboard returns stops_per_hour using the first-scan formula
     assert.equal(body.drivers[0].pickup_stops_completed, 0);
     assert.equal(body.drivers[0].pickup_stop_count, 1);
     assert.equal(body.drivers[0].driver_pickup_stops, 1);
+    assert.equal(body.drivers[0].combined_stops, 1);
+    assert.equal(body.drivers[0].combined_stop_count, 1);
     assert.equal(body.drivers[0].stops_per_hour, 2);
     assert.equal(body.drivers[0].current_stop_number, 5);
     assert.equal(body.drivers[0].current_stop_address, '500 Main St');
@@ -3157,7 +3165,7 @@ test('PATCH /manager/routes/:route_id/assign updates route driver and vehicle', 
 
     if (query.table === 'drivers' && query.operation === 'select') {
       return {
-        data: { id: 'driver-1' },
+        data: { id: 'driver-1', name: 'Phil Driver' },
         error: null
       };
     }
@@ -3215,6 +3223,8 @@ test('PATCH /manager/routes/:route_id/assign updates route driver and vehicle', 
     const body = await response.json();
     assert.equal(body.ok, true);
     assert.equal(body.route.work_area_name, '810');
+    assert.equal(body.route.driver_id, 'driver-1');
+    assert.equal(body.route.driver_name, 'Phil Driver');
   } finally {
     await server.close();
   }
@@ -3328,10 +3338,10 @@ test('GET /manager/routes returns sync status and fedex connection metadata', as
             scanned_at: null,
             completed_at: null,
             has_time_commit: true,
-            stop_type: 'pickup',
+            stop_type: 'combined',
             has_pickup: true,
-            has_delivery: false,
-            is_pickup: true
+            has_delivery: true,
+            is_pickup: false
           },
           {
             id: 'stop-2',
@@ -3438,6 +3448,11 @@ test('GET /manager/routes returns sync status and fedex connection metadata', as
     assert.equal(body.routes[0].pickup_stops, 1);
     assert.equal(body.routes[0].pickup_stops_completed, 0);
     assert.equal(body.routes[0].pickup_stop_count, 1);
+    assert.equal(body.routes[0].delivery_stops, 2);
+    assert.equal(body.routes[0].delivery_stop_count, 2);
+    assert.equal(body.routes[0].combined_stops, 1);
+    assert.equal(body.routes[0].combined_stop_count, 1);
+    assert.equal(body.routes[0].combined_stops_completed, 0);
     assert.equal(body.routes[0].delivered_packages, 2);
     assert.equal(body.routes[0].total_packages, 3);
     assert.equal(body.routes[0].stops_per_hour, 0.8);
@@ -4303,9 +4318,14 @@ test('GET /manager/routes/:route_id/stops returns full stop detail for the selec
     assert.equal(body.route.driver_name, 'Adrian Morales');
     assert.equal(body.route.vehicle_name, '204526');
     assert.equal(body.route.stops_per_hour, 2);
+    assert.equal(body.route.delivery_stops, 2);
+    assert.equal(body.route.delivery_stop_count, 2);
     assert.equal(body.route.pickup_stops, 1);
     assert.equal(body.route.pickup_stop_count, 1);
     assert.equal(body.route.pickup_stops_completed, 1);
+    assert.equal(body.route.combined_stops, 1);
+    assert.equal(body.route.combined_stop_count, 1);
+    assert.equal(body.route.combined_stops_completed, 1);
     assert.equal(body.route.sa_number, '919');
     assert.equal(body.route.contractor_name, 'Bridge Transportation Inc');
     assert.equal(body.stops.length, 2);

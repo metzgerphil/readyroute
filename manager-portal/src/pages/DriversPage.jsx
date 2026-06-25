@@ -1680,8 +1680,8 @@ export default function DriversPage() {
                         </div>
                       </div>
                       <div className="drivers-table-value driver-contact-cell">
-                        <span>{formatPhoneDisplay(driver.phone)}</span>
-                        <span>{driver.email}</span>
+                        <span className="driver-phone-text">{formatPhoneDisplay(driver.phone)}</span>
+                        <span className="driver-email-text" title={driver.email}>{driver.email}</span>
                       </div>
                       <span className={`driver-doc-chip ${driver.document_summary?.missing_required?.length ? 'driver-doc-chip-warning' : 'driver-doc-chip-success'}`}>
                         {getDocumentSummaryLabel(driver)}

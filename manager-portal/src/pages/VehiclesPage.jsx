@@ -85,7 +85,7 @@ const VEHICLE_TABS = ['Fleet', 'Maintenance', 'Inspections', 'Settings'];
 const VEHICLE_SETTINGS_CARDS = [
   {
     title: 'Maintenance Requirements',
-    description: 'Choose Option 1, Option 2, or Custom driver requirements.',
+    description: 'Choose weekly full inspection, daily full inspection, or custom driver requirements.',
     actionLabel: 'Open'
   },
   {
@@ -127,7 +127,7 @@ const DEFAULT_REMINDER_SCHEDULE = {
 const MAINTENANCE_REQUIREMENT_OPTIONS = [
   {
     id: 'option_1',
-    optionLabel: 'Option 1',
+    optionLabel: 'Weekly Full Inspection',
     title: 'Daily Odometer + Issue Note',
     badge: 'Recommended',
     badgeClassName: 'recommended',
@@ -137,7 +137,7 @@ const MAINTENANCE_REQUIREMENT_OPTIONS = [
   },
   {
     id: 'option_2',
-    optionLabel: 'Option 2',
+    optionLabel: 'Daily Full Inspection',
     title: 'Daily Odometer + Full Inspection',
     badge: 'Stricter',
     badgeClassName: 'stricter',
@@ -147,7 +147,7 @@ const MAINTENANCE_REQUIREMENT_OPTIONS = [
   },
   {
     id: 'custom',
-    optionLabel: 'Option 3',
+    optionLabel: 'Custom Requirements',
     title: 'Custom',
     description: 'Managers choose the exact daily and weekly vehicle check requirements.',
     dailyRequirements: ['Choose daily truck checks below'],
@@ -2005,7 +2005,7 @@ function ReminderScheduleScreen({
               <option key={day} value={day}>{day}</option>
             ))}
           </select>
-          <small className="vehicle-form-helper">Used for weekly full inspections in Option 1 and Custom.</small>
+          <small className="vehicle-form-helper">Used for weekly full inspections in Weekly Full Inspection and Custom Requirements.</small>
         </label>
 
         <label className="driver-modal-field">
@@ -2079,7 +2079,7 @@ function ChecklistTemplateScreen({
       </div>
 
       <p className="vehicle-settings-helper checklist-template-note">
-        Enable or disable checklist fields for weekly full inspections in Option 1 and daily full inspections in Option 2.
+        Enable or disable checklist fields for weekly full inspections in Weekly Full Inspection and daily full inspections in Daily Full Inspection.
       </p>
 
       {isLoading ? <div className="driver-meta">Loading saved checklist template...</div> : null}

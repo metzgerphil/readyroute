@@ -1174,10 +1174,12 @@ function createRoutesRouter(options = {}) {
         return res.status(404).json({ error: 'Route not found' });
       }
 
+      let assignedDriver = null;
+
       if (driverId) {
         const { data: driver, error: driverError } = await supabase
           .from('drivers')
-          .select('id')
+          .select('id, name')
           .eq('id', driverId)
           .eq('account_id', req.account.account_id)
           .eq('is_active', true)
@@ -1191,6 +1193,8 @@ function createRoutesRouter(options = {}) {
         if (!driver) {
           return res.status(400).json({ error: 'Driver is not available for this account' });
         }
+
+        assignedDriver = driver;
       }
 
       if (vehicleId) {
@@ -1233,7 +1237,34 @@ function createRoutesRouter(options = {}) {
         return res.status(500).json({ error: 'Failed to update route assignment' });
       }
 
-      return res.status(200).json({ route: updatedRoute });
+      let updatedDriver = null;
+
+      if (updatedRoute.driver_id) {
+        if (assignedDriver?.id === updatedRoute.driver_id) {
+          updatedDriver = assignedDriver;
+        } else {
+          const { data: driver, error: driverError } = await supabase
+            .from('drivers')
+            .select('id, name')
+            .eq('id', updatedRoute.driver_id)
+            .eq('account_id', req.account.account_id)
+            .maybeSingle();
+
+          if (driverError) {
+            console.error('Route assignment driver name lookup failed:', driverError);
+            return res.status(500).json({ error: 'Failed to load updated driver assignment' });
+          }
+
+          updatedDriver = driver || null;
+        }
+      }
+
+      return res.status(200).json({
+        route: {
+          ...updatedRoute,
+          driver_name: updatedDriver?.name || null
+        }
+      });
     } catch (error) {
       console.error('Route assignment endpoint failed:', error);
       return res.status(500).json({ error: 'Failed to update route assignment' });

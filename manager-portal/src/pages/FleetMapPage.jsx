@@ -8,8 +8,7 @@ import { loadGoogleMaps } from '../lib/googleMapsLoader';
 import { createDriverPositionMarker } from '../utils/stopMarkers';
 import {
   buildOperationsDatePath,
-  getTodayString,
-  loadStoredOperationsDate,
+  getResolvedOperationsDate,
   saveStoredOperationsDate
 } from '../utils/operationsDate';
 import { toUsableMapPoint } from '../utils/routePageHelpers';
@@ -79,7 +78,7 @@ export default function FleetMapPage() {
   const stopMarkersRef = useRef([]);
   const driverMarkersRef = useRef(new Map());
   const routeLinesRef = useRef([]);
-  const date = searchParams.get('date') || loadStoredOperationsDate() || getTodayString();
+  const date = getResolvedOperationsDate(searchParams);
   const [mapError, setMapError] = useState('');
   const [mapReady, setMapReady] = useState(false);
   const [selectedRouteId, setSelectedRouteId] = useState(null);

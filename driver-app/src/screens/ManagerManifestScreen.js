@@ -119,7 +119,7 @@ export default function ManagerManifestScreen({ csaWorkspaceVersion = 0, identit
             <RouteMetricIcon color={appTheme.colors.orangeDeep} name="notes" size={appTheme.icons.md} />
           </View>
           <View style={styles.cardCopy}>
-            <Text style={styles.cardTitle}>Add routes from files</Text>
+            <Text style={styles.cardTitle}>Upload Manifest Files</Text>
             <Text style={styles.cardSubtitle}>Upload route files and prepare today’s routes.</Text>
           </View>
         </View>

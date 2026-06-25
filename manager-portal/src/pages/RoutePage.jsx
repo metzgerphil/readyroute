@@ -7,6 +7,7 @@ import StopListDrawer from '../components/StopListDrawer';
 import api from '../services/api';
 import { loadGoogleMaps } from '../lib/googleMapsLoader';
 import { getPropertyWorkflowHint } from '../utils/pinWorkflow';
+import { buildOperationsDatePath, saveStoredOperationsDate } from '../utils/operationsDate';
 import { getRouteStatusMeta } from '../utils/routeStatus';
 import {
   buildBoundary,
@@ -158,16 +159,31 @@ export default function RoutePage() {
     }
 
     if (routeOptions.length && !routeOptions.some((route) => route.id === id)) {
-      navigate(`/routes/${routeOptions[0].id}?date=${date}`, { replace: true });
+      navigate(buildOperationsDatePath(`/routes/${routeOptions[0].id}`, date), { replace: true });
     }
   }, [date, id, navigate, routeOptions, routesQuery.isLoading]);
 
   useEffect(() => {
     const requestedDate = searchParams.get('date');
+
+    if (requestedDate) {
+      saveStoredOperationsDate(requestedDate);
+    }
+
     if (requestedDate && requestedDate !== date) {
       setDate(requestedDate);
+      return;
     }
-  }, [date, searchParams]);
+
+    if (requestedDate === date) {
+      return;
+    }
+
+    saveStoredOperationsDate(date);
+    const nextParams = new URLSearchParams(searchParams);
+    nextParams.set('date', date);
+    setSearchParams(nextParams, { replace: true });
+  }, [date, searchParams, setSearchParams]);
 
   const routeDetailQuery = useQuery({
     queryKey: ['route-page-detail', id, date],
@@ -237,7 +253,7 @@ export default function RoutePage() {
     [allStops]
   );
   const livePosition = driverPositionQuery.data || null;
-  const routeDriverName = livePosition?.driver_name || route?.driver_name || 'Unassigned';
+  const routeDriverName = route?.driver_name || livePosition?.driver_name || 'Unassigned';
   const routeStatusMeta = getRouteStatusMeta(route);
   const selectedStop = allStops.find((stop) => stop.id === selectedStopId) || null;
   const noteEditorStop = allStops.find((stop) => stop.id === noteEditorStopId) || null;
@@ -896,12 +912,15 @@ export default function RoutePage() {
     if (!nextRouteId) {
       return;
     }
-    navigate(`/routes/${nextRouteId}?date=${date}`);
+    navigate(buildOperationsDatePath(`/routes/${nextRouteId}`, date));
   }
 
   function handleDateChange(nextDate) {
     setDate(nextDate);
-    setSearchParams({ date: nextDate });
+    saveStoredOperationsDate(nextDate);
+    const nextParams = new URLSearchParams(searchParams);
+    nextParams.set('date', nextDate);
+    setSearchParams(nextParams);
     setSelectedStopId(null);
   }
 

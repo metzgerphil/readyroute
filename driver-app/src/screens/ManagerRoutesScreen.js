@@ -253,7 +253,7 @@ export default function ManagerRoutesScreen({ csaWorkspaceVersion = 0, identity,
   const [isStopSearchVisible, setIsStopSearchVisible] = useState(false);
   const [selectedTerminal, setSelectedTerminal] = useState('');
   const [editingRoute, setEditingRoute] = useState(null);
-  const [isAddRoutesVisible, setIsAddRoutesVisible] = useState(false);
+  const [isUploadManifestVisible, setIsUploadManifestVisible] = useState(false);
   const date = getTodayDateParam();
 
   async function loadRoutes() {
@@ -297,12 +297,12 @@ export default function ManagerRoutesScreen({ csaWorkspaceVersion = 0, identity,
     });
   }
 
-  function openAddRoutesFlow() {
-    setIsAddRoutesVisible(true);
+  function openUploadManifestFlow() {
+    setIsUploadManifestVisible(true);
   }
 
-  function closeAddRoutesFlow() {
-    setIsAddRoutesVisible(false);
+  function closeUploadManifestFlow() {
+    setIsUploadManifestVisible(false);
   }
 
   async function handleRoutesUploaded() {
@@ -325,7 +325,7 @@ export default function ManagerRoutesScreen({ csaWorkspaceVersion = 0, identity,
           style={styles.actionButton}
           variant="outline"
         />
-        <AppButton label="Upload Manifest" onPress={openAddRoutesFlow} style={styles.actionButton} />
+        <AppButton label="Upload Manifest" onPress={openUploadManifestFlow} style={styles.actionButton} />
       </View>
 
       {isStopSearchVisible ? (
@@ -435,8 +435,8 @@ export default function ManagerRoutesScreen({ csaWorkspaceVersion = 0, identity,
         </Pressable>
       </Modal>
 
-      <Modal animationType="fade" onRequestClose={closeAddRoutesFlow} transparent visible={isAddRoutesVisible}>
-        <Pressable onPress={closeAddRoutesFlow} style={styles.modalBackdrop}>
+      <Modal animationType="fade" onRequestClose={closeUploadManifestFlow} transparent visible={isUploadManifestVisible}>
+        <Pressable onPress={closeUploadManifestFlow} style={styles.modalBackdrop}>
           <Pressable style={styles.modalCard}>
             <Text style={styles.modalTitle}>Upload Manifest</Text>
             <ManagerManifestUploadPanel
@@ -445,7 +445,7 @@ export default function ManagerRoutesScreen({ csaWorkspaceVersion = 0, identity,
               submitLabel="Upload Manifest"
               successMessage="Manifest uploaded successfully."
             />
-            <AppButton label="View Routes" onPress={closeAddRoutesFlow} style={styles.modalButton} variant="outline" />
+            <AppButton label="View Routes" onPress={closeUploadManifestFlow} style={styles.modalButton} variant="outline" />
           </Pressable>
         </Pressable>
       </Modal>

@@ -2206,7 +2206,7 @@ test('PATCH /routes/:route_id/assign updates route assignments for managers', as
 
     if (query.table === 'drivers' && query.operation === 'select') {
       return {
-        data: { id: 'driver-1' },
+        data: { id: 'driver-1', name: 'Driver One' },
         error: null
       };
     }
@@ -2263,6 +2263,7 @@ test('PATCH /routes/:route_id/assign updates route assignments for managers', as
     const body = await response.json();
     assert.equal(body.route.work_area_name, '810');
     assert.equal(body.route.driver_id, 'driver-1');
+    assert.equal(body.route.driver_name, 'Driver One');
   } finally {
     await server.close();
   }

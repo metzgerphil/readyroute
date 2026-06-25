@@ -6,8 +6,8 @@ import { Link, useSearchParams } from 'react-router-dom';
 import api from '../services/api';
 import {
   buildOperationsDatePath,
+  getResolvedOperationsDate,
   getTodayString,
-  loadStoredOperationsDate,
   saveStoredOperationsDate
 } from '../utils/operationsDate';
 
@@ -354,7 +354,7 @@ export default function ManifestPage() {
   const routeCardRefs = useRef(new Map());
   const routeFieldRefs = useRef(new Map());
   const [searchParams, setSearchParams] = useSearchParams();
-  const date = searchParams.get('date') || loadStoredOperationsDate() || getTodayString();
+  const date = getResolvedOperationsDate(searchParams);
   const [selectedFile, setSelectedFile] = useState(null);
   const [selectedGpxFile, setSelectedGpxFile] = useState(null);
   const [manifestBundleFiles, setManifestBundleFiles] = useState({
@@ -780,16 +780,17 @@ export default function ManifestPage() {
       return [];
     }
 
+    const combinedCount = Number(latestUpload.combined_count || 0);
+    const stopTypeSummary = combinedCount
+      ? `${latestUpload.delivery_count} delivery-only, ${latestUpload.pickup_count} pickup-only, ${combinedCount} both delivery/pickup`
+      : `${latestUpload.delivery_count} deliveries, ${latestUpload.pickup_count} pickups`;
+
     const lines = [
-      `${latestUpload.total_stops} stops loaded — ${latestUpload.delivery_count} deliveries, ${latestUpload.pickup_count} pickups`
+      `${latestUpload.total_stops} physical stops loaded — ${stopTypeSummary}`
     ];
 
     if (latestUpload.merged_into_existing_route) {
       lines.unshift('Existing pending route updated in place with the new manifest upload');
-    }
-
-    if (latestUpload.combined_count > 0) {
-      lines.push(`${latestUpload.combined_count} stops have both a delivery and pickup`);
     }
 
     if (latestUpload.time_commit_count > 0) {

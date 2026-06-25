@@ -1,6 +1,10 @@
 import { format } from 'date-fns';
 
 import { buildTelHref, getStopContactDetails } from './contactInfo';
+import {
+  getResolvedOperationsDate,
+  getTodayString as getOperationsTodayString
+} from './operationsDate';
 
 export const ROUTE_STATUS_META = {
   pending: { label: 'Pending', color: '#9ca3af' },
@@ -10,12 +14,11 @@ export const ROUTE_STATUS_META = {
 };
 
 export function getTodayString() {
-  return format(new Date(), 'yyyy-MM-dd');
+  return getOperationsTodayString();
 }
 
 export function getInitialRouteDate(searchParams) {
-  const requestedDate = searchParams.get('date');
-  return requestedDate || getTodayString();
+  return getResolvedOperationsDate(searchParams);
 }
 
 export function getGoogleMapsErrorMessage(error) {

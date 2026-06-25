@@ -3,6 +3,7 @@ import { useMutation, useQuery } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 
 import api from '../services/api';
+import { buildOperationsDatePath } from '../utils/operationsDate';
 import './OverviewRoutesSection.css';
 
 function formatMinutes(minutes) {
@@ -54,9 +55,20 @@ function getPackageTotals(route) {
   };
 }
 
+function isPickupStop(stop) {
+  const stopType = stop?.stop_type || (stop?.is_pickup ? 'pickup' : 'delivery');
+  return Boolean(stop?.has_pickup || stop?.is_pickup || stopType === 'pickup' || stopType === 'combined');
+}
+
+function isDeliveryStop(stop) {
+  const stopType = stop?.stop_type || (stop?.is_pickup ? 'pickup' : 'delivery');
+  return Boolean(stop?.has_delivery || stopType === 'delivery' || stopType === 'combined' || !isPickupStop(stop));
+}
+
 function getStopBreakdown(stops = []) {
-  const deliveryStops = stops.filter((stop) => !stop.is_pickup);
-  const pickupStops = stops.filter((stop) => stop.is_pickup);
+  const deliveryStops = stops.filter(isDeliveryStop);
+  const pickupStops = stops.filter(isPickupStop);
+  const combinedStops = stops.filter((stop) => isDeliveryStop(stop) && isPickupStop(stop));
 
   const countCompleted = (items) => items.filter((stop) => stop.status !== 'pending').length;
 
@@ -66,7 +78,8 @@ function getStopBreakdown(stops = []) {
     deliveriesLeft: Math.max(0, deliveryStops.length - countCompleted(deliveryStops)),
     pickupsTotal: pickupStops.length,
     pickupsCompleted: countCompleted(pickupStops),
-    pickupsLeft: Math.max(0, pickupStops.length - countCompleted(pickupStops))
+    pickupsLeft: Math.max(0, pickupStops.length - countCompleted(pickupStops)),
+    combinedTotal: combinedStops.length
   };
 }
 
@@ -108,6 +121,7 @@ function buildSummary(routes) {
       summary.deliveriesTotal += stopBreakdown.deliveriesTotal;
       summary.pickupsCompleted += stopBreakdown.pickupsCompleted;
       summary.pickupsTotal += stopBreakdown.pickupsTotal;
+      summary.combinedTotal += stopBreakdown.combinedTotal;
 
       summary.deliveredPackages += packageTotals.delivered;
       summary.totalPackages += packageTotals.total;
@@ -149,6 +163,7 @@ function buildSummary(routes) {
       deliveriesTotal: 0,
       pickupsCompleted: 0,
       pickupsTotal: 0,
+      combinedTotal: 0,
       deliveredPackages: 0,
       totalPackages: 0,
       timeCommitsActual: 0,
@@ -390,17 +405,15 @@ export default function OverviewRoutesSection({ date, routes }) {
 
   const assignMutation = useMutation({
     mutationFn: async ({ routeId, driverId }) => {
-      await api.patch(`/manager/routes/${routeId}/assign`, { driver_id: driverId });
-      return { routeId, driverId };
+      const response = await api.patch(`/manager/routes/${routeId}/assign`, { driver_id: driverId });
+      return { routeId, driverId, route: response.data?.route || null };
     },
-    onSuccess: ({ routeId, driverId }) => {
-      const selectedDriver = (driversQuery.data || []).find((driver) => driver.id === driverId) || null;
-
+    onSuccess: ({ routeId, driverId, route }) => {
       setRouteOverrides((current) => ({
         ...current,
         [routeId]: {
-          driver_id: driverId,
-          driver_name: selectedDriver?.name || null
+          driver_id: route?.driver_id ?? driverId,
+          driver_name: route?.driver_name || null
         }
       }));
       setReassigningRoute(null);
@@ -467,18 +480,18 @@ export default function OverviewRoutesSection({ date, routes }) {
             title="Drivers Assigned"
           />
           <StatCard
-            footer={`Deliveries (${summary.averageStopsPerHour}/Hour)`}
+            footer={`Delivery stops (${summary.averageStopsPerHour}/Hour)`}
             primary={`${summary.deliveriesCompleted}/${summary.deliveriesTotal}`}
             progress={getProgressPercent(summary.deliveriesCompleted, summary.deliveriesTotal)}
             secondary={`(${summary.deliveriesLeft} left)`}
-            title="Deliveries"
+            title="Delivery Stops"
           />
           <StatCard
-            footer="Pick-Ups"
+            footer={summary.combinedTotal ? `${summary.combinedTotal} also delivery` : 'Pickup stops'}
             primary={`${summary.pickupsCompleted}/${summary.pickupsTotal}`}
             progress={getProgressPercent(summary.pickupsCompleted, summary.pickupsTotal)}
             secondary={`(${summary.pickupsLeft} left)`}
-            title="Pick-Ups"
+            title="Pickup Stops"
           />
           <StatCard
             footer="Packages"
@@ -533,8 +546,8 @@ export default function OverviewRoutesSection({ date, routes }) {
             <div className="overview-table-head-cell col-name">Name</div>
             <div className="overview-table-head-cell col-driver">Driver</div>
             <div className="overview-table-head-cell col-vehicle">Vehicle</div>
-            <div className="overview-table-head-cell col-stops">Deliveries</div>
-            <div className="overview-table-head-cell col-stops">Pick-Ups</div>
+            <div className="overview-table-head-cell col-stops">Delivery Stops</div>
+            <div className="overview-table-head-cell col-stops">Pickup Stops</div>
             <div className="overview-table-head-cell col-tcs">
               <InfoLabel
                 label="TCs"
@@ -565,7 +578,7 @@ export default function OverviewRoutesSection({ date, routes }) {
             return (
               <div className={`overview-table-row${index % 2 ? ' alt' : ''}`} key={route.id} style={{ gridTemplateColumns: tableColumns }}>
                 <div className="overview-table-cell col-name">
-                  <button className="overview-link route-link" onClick={() => navigate(`/routes/${route.id}?date=${date}`)} type="button">
+                  <button className="overview-link route-link" onClick={() => navigate(buildOperationsDatePath(`/routes/${route.id}`, date))} type="button">
                     {route.work_area_name || ''}
                   </button>
                   {route.has_bad_address ? <span className="overview-gear-badge">⚙</span> : null}
@@ -628,7 +641,9 @@ export default function OverviewRoutesSection({ date, routes }) {
                       <div className="overview-metric-primary">
                         {stats.pickupsCompleted}/{stats.pickupsTotal}
                       </div>
-                      <div className="overview-metric-secondary">({stats.pickupsLeft} left)</div>
+                      <div className="overview-metric-secondary">
+                        {`(${stats.pickupsLeft} left${stats.combinedTotal ? ` · ${stats.combinedTotal} also delivery` : ''})`}
+                      </div>
                       <div className="overview-progress-track compact">
                         <div className="overview-progress-fill" style={{ width: `${stats.pickupsProgress}%` }} />
                       </div>

@@ -4,6 +4,7 @@ import test from 'node:test';
 import {
   buildOperationsDatePath,
   getOperationsDateFromSearch,
+  getResolvedOperationsDate,
   isOperationsDatePath
 } from './operationsDate.js';
 
@@ -16,6 +17,10 @@ test('operation date path builder adds and replaces date on date-sensitive pages
   assert.equal(
     buildOperationsDatePath('/fleet-map?date=2026-05-07#map', '2026-05-08'),
     '/fleet-map?date=2026-05-08#map'
+  );
+  assert.equal(
+    buildOperationsDatePath('/routes/route-123?tab=stops', '2026-05-08'),
+    '/routes/route-123?tab=stops&date=2026-05-08'
   );
 });
 
@@ -31,4 +36,5 @@ test('operation date search reader handles strings and URLSearchParams', () => {
   assert.equal(getOperationsDateFromSearch('?date=2026-05-08'), '2026-05-08');
   assert.equal(getOperationsDateFromSearch(new URLSearchParams('date=2026-05-09')), '2026-05-09');
   assert.equal(getOperationsDateFromSearch(''), null);
+  assert.equal(getResolvedOperationsDate(new URLSearchParams('date=2026-05-10')), '2026-05-10');
 });

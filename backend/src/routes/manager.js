@@ -1858,6 +1858,10 @@ function isDeliveryStop(stop) {
   );
 }
 
+function isCombinedStop(stop) {
+  return isPickupStop(stop) && isDeliveryStop(stop);
+}
+
 function getTypedStopSummary(stops = [], predicate) {
   return (stops || []).reduce(
     (summary, stop) => {
@@ -1886,6 +1890,10 @@ function getPickupStopSummary(stops = []) {
 
 function getDeliveryStopSummary(stops = []) {
   return getTypedStopSummary(stops, isDeliveryStop);
+}
+
+function getCombinedStopSummary(stops = []) {
+  return getTypedStopSummary(stops, isCombinedStop);
 }
 
 function getStopStatusSummary(stops = []) {
@@ -2331,6 +2339,7 @@ function createManagerRouter(options = {}) {
       const packageStatusSummary = getPackageStatusSummary(packages, stopsById);
       const pickupStopSummary = getPickupStopSummary(stops);
       const deliveryStopSummary = getDeliveryStopSummary(stops);
+      const combinedStopSummary = getCombinedStopSummary(stops);
 
       const driverSnapshot = visibleRoutes.map((route) => {
         const driver = route.driver_id ? driverById.get(route.driver_id) || null : null;
@@ -2338,6 +2347,7 @@ function createManagerRouter(options = {}) {
         const routeTimeCommitCounts = getTimeCommitCounts(routeStops);
         const routePickupStopSummary = getPickupStopSummary(routeStops);
         const routeDeliveryStopSummary = getDeliveryStopSummary(routeStops);
+        const routeCombinedStopSummary = getCombinedStopSummary(routeStops);
         const completedRouteStops = routeStops.filter((stop) => stop.completed_at);
         const firstScan = completedRouteStops.reduce((earliest, stop) => {
           if (!stop.completed_at) {
@@ -2380,6 +2390,9 @@ function createManagerRouter(options = {}) {
           pickup_stops_completed: routePickupStopSummary.completed,
           pickup_stop_count: routePickupStopSummary.total,
           driver_pickup_stops: routePickupStopSummary.total,
+          combined_stops: routeCombinedStopSummary.total,
+          combined_stops_completed: routeCombinedStopSummary.completed,
+          combined_stop_count: routeCombinedStopSummary.total,
           time_commits_total: routeTimeCommitCounts.total,
           time_commits_completed: routeTimeCommitCounts.completed,
           stops_per_hour: getStopsPerHour({
@@ -2408,6 +2421,10 @@ function createManagerRouter(options = {}) {
         total_pickup_stops: pickupStopSummary.total,
         pickup_stops: pickupStopSummary.total,
         pickup_stops_completed: pickupStopSummary.completed,
+        total_combined_stops: combinedStopSummary.total,
+        combined_stops: combinedStopSummary.total,
+        combined_stops_completed: combinedStopSummary.completed,
+        combined_stop_count: combinedStopSummary.total,
         time_commits_total: timeCommitTotals.total,
         time_commits_completed: timeCommitTotals.completed,
         route_summary: {
@@ -2428,6 +2445,7 @@ function createManagerRouter(options = {}) {
           routes_assigned: routesAssigned,
           drivers_on_road: driversOnRoad,
           total_pickup_stops: pickupStopSummary.total,
+          total_combined_stops: combinedStopSummary.total,
           last_sync_at: latestRouteSyncRow?.created_at || getLatestTimestamp(visibleRoutes.map((route) => route.created_at))
         },
         drivers: driverSnapshot
@@ -5560,10 +5578,12 @@ function createManagerRouter(options = {}) {
         return res.status(404).json({ error: 'Route not found' });
       }
 
+      let assignedDriver = null;
+
       if (driverId) {
         const { data: driver, error: driverError } = await supabase
           .from('drivers')
-          .select('id')
+          .select('id, name')
           .eq('id', driverId)
           .eq('account_id', req.account.account_id)
           .eq('is_active', true)
@@ -5577,6 +5597,8 @@ function createManagerRouter(options = {}) {
         if (!driver) {
           return res.status(400).json({ error: 'Driver is not available for this account' });
         }
+
+        assignedDriver = driver;
       }
 
       if (vehicleId) {
@@ -5619,6 +5641,33 @@ function createManagerRouter(options = {}) {
         return res.status(500).json({ error: 'Failed to update route assignment' });
       }
 
+      let updatedDriver = null;
+
+      if (updatedRoute.driver_id) {
+        if (assignedDriver?.id === updatedRoute.driver_id) {
+          updatedDriver = assignedDriver;
+        } else {
+          const { data: driver, error: driverError } = await supabase
+            .from('drivers')
+            .select('id, name')
+            .eq('id', updatedRoute.driver_id)
+            .eq('account_id', req.account.account_id)
+            .maybeSingle();
+
+          if (driverError) {
+            console.error('Manager route assignment driver name lookup failed:', driverError);
+            return res.status(500).json({ error: 'Failed to load updated driver assignment' });
+          }
+
+          updatedDriver = driver || null;
+        }
+      }
+
+      const responseRoute = {
+        ...updatedRoute,
+        driver_name: updatedDriver?.name || null
+      };
+
       await recordRouteSyncEvents(supabase, [
         {
           account_id: req.account.account_id,
@@ -5638,7 +5687,7 @@ function createManagerRouter(options = {}) {
         }
       ]);
 
-      return res.status(200).json({ ok: true, route: updatedRoute });
+      return res.status(200).json({ ok: true, route: responseRoute });
     } catch (error) {
       console.error('Manager route assignment endpoint failed:', error);
       return res.status(500).json({ error: 'Failed to update route assignment' });
@@ -5972,6 +6021,8 @@ function createManagerRouter(options = {}) {
       );
       const enrichedStops = await attachPropertyIntelToStops(supabase, req.account.account_id, apartmentStops);
       const pickupStopSummary = getPickupStopSummary(enrichedStops);
+      const deliveryStopSummary = getDeliveryStopSummary(enrichedStops);
+      const combinedStopSummary = getCombinedStopSummary(enrichedStops);
 
       return res.status(200).json({
         route: {
@@ -5993,9 +6044,15 @@ function createManagerRouter(options = {}) {
           vehicle_name: vehicle?.name || null,
           total_stops: Number(route.total_stops || 0),
           completed_stops: Number(route.completed_stops || 0),
+          delivery_stops: deliveryStopSummary.total,
+          delivery_stops_completed: deliveryStopSummary.completed,
+          delivery_stop_count: deliveryStopSummary.total,
           pickup_stops: pickupStopSummary.total,
           pickup_stops_completed: pickupStopSummary.completed,
           pickup_stop_count: pickupStopSummary.total,
+          combined_stops: combinedStopSummary.total,
+          combined_stops_completed: combinedStopSummary.completed,
+          combined_stop_count: combinedStopSummary.total,
           stops_per_hour: getStopsPerHour({
             completedStops: Number(route.completed_stops || 0),
             firstScan,
@@ -6505,6 +6562,7 @@ function createManagerRouter(options = {}) {
           const packageSummary = getPackageStatusSummary(routePackages, stopsById);
           const pickupStopSummary = getPickupStopSummary(routeStops);
           const deliveryStopSummary = getDeliveryStopSummary(routeStops);
+          const combinedStopSummary = getCombinedStopSummary(routeStops);
           const exceptionCount = routeStops.filter((stop) =>
             Boolean(stop.exception_code) ||
             ['attempted', 'incomplete', 'pickup_attempted'].includes(stop.status)
@@ -6547,6 +6605,9 @@ function createManagerRouter(options = {}) {
             pickup_stops: pickupStopSummary.total,
             pickup_stops_completed: pickupStopSummary.completed,
             pickup_stop_count: pickupStopSummary.total,
+            combined_stops: combinedStopSummary.total,
+            combined_stops_completed: combinedStopSummary.completed,
+            combined_stop_count: combinedStopSummary.total,
             delivered_packages: packageSummary.completed,
             total_packages: routePackages.length,
             exception_count: exceptionCount,

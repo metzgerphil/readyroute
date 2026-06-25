@@ -120,6 +120,10 @@ export default function CsaPage() {
     selectedCsaId,
     setSelectedCsaId
   } = useSelectedCsa();
+  const otherLinkedCsas = useMemo(
+    () => csas.filter((csa) => !csa.is_current && csa.id !== selectedCsaId && csa.id !== currentCsa?.id),
+    [csas, currentCsa?.id, selectedCsaId]
+  );
 
   useEffect(() => {
     document.title = 'CSA Access | ReadyRoute';
@@ -382,43 +386,40 @@ export default function CsaPage() {
                   <div className="csa-workspace-name">Manager login</div>
                   <div className="driver-meta">{currentCsa.manager_email || 'No manager login email recorded'}</div>
                 </div>
-                <StatusBadge tone="active">Current</StatusBadge>
               </article>
             </div>
           ) : (
             <div className="labor-empty-state">Choose a CSA workspace to continue.</div>
           )}
 
-          {csas.length ? (
+          {otherLinkedCsas.length ? (
             <div className="csa-linked-workspaces">
-              <div className="csa-mini-heading">Linked workspaces</div>
-              {csas.map((csa) => (
-                <article className={`csa-settings-row csa-linked-row${csa.is_current ? ' current' : ''}`} key={csa.id}>
+              <div className="csa-mini-heading">Other linked workspaces</div>
+              {otherLinkedCsas.map((csa) => (
+                <article className="csa-settings-row csa-linked-row" key={csa.id}>
                   <div>
                     <div className="csa-workspace-name">{csa.company_name}</div>
                     <div className="driver-meta">{csa.manager_email || 'No primary email'}</div>
                   </div>
-                  <StatusBadge tone={csa.is_current ? 'active' : 'neutral'}>{csa.is_current ? 'Current' : 'Linked'}</StatusBadge>
-                  {!csa.is_current ? (
-                    <div className="csa-linked-row-actions">
-                      <button
-                        className="secondary-button"
-                        disabled={switchingAccountId === csa.id || unlinkingAccountId === csa.id}
-                        onClick={() => handleSwitch(csa.id)}
-                        type="button"
-                      >
-                        {switchingAccountId === csa.id ? 'Switching...' : 'Switch workspace'}
-                      </button>
-                      <button
-                        className="secondary-button csa-danger-button"
-                        disabled={switchingAccountId === csa.id || unlinkingAccountId === csa.id}
-                        onClick={() => handleUnlink(csa)}
-                        type="button"
-                      >
-                        {unlinkingAccountId === csa.id ? 'Unlinking...' : 'Unlink'}
-                      </button>
-                    </div>
-                  ) : <span aria-hidden="true" />}
+                  <StatusBadge tone="neutral">Linked</StatusBadge>
+                  <div className="csa-linked-row-actions">
+                    <button
+                      className="secondary-button"
+                      disabled={switchingAccountId === csa.id || unlinkingAccountId === csa.id}
+                      onClick={() => handleSwitch(csa.id)}
+                      type="button"
+                    >
+                      {switchingAccountId === csa.id ? 'Switching...' : 'Switch workspace'}
+                    </button>
+                    <button
+                      className="secondary-button csa-danger-button"
+                      disabled={switchingAccountId === csa.id || unlinkingAccountId === csa.id}
+                      onClick={() => handleUnlink(csa)}
+                      type="button"
+                    >
+                      {unlinkingAccountId === csa.id ? 'Unlinking...' : 'Unlink'}
+                    </button>
+                  </div>
                 </article>
               ))}
             </div>
@@ -489,7 +490,7 @@ export default function CsaPage() {
               className="text-field"
               id="new-csa-name"
               onChange={(event) => setNewCsaName(event.target.value)}
-              placeholder="PV Delivery Inc Washington"
+              placeholder="Example: North Region CSA"
               value={newCsaName}
             />
 
@@ -610,7 +611,7 @@ export default function CsaPage() {
                 <input
                   className="text-field"
                   onChange={(event) => updateFedexField('nickname', event.target.value)}
-                  placeholder="Bridge Transportation FedEx access"
+                  placeholder="Primary FedEx access"
                   value={fedexForm.nickname}
                 />
               </label>

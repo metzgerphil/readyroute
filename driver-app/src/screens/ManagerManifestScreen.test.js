@@ -76,11 +76,11 @@ describe('ManagerManifestScreen', () => {
       }
     });
     expect(screen.getByText('Bridge Transportation Inc.')).toBeTruthy();
-    expect(screen.getByText('Add routes from files')).toBeTruthy();
     expect(screen.getByText('Combined XLS')).toBeTruthy();
     expect(screen.getByText('Combined GPX')).toBeTruthy();
     expect(screen.getByText('Delivery XLS')).toBeTruthy();
     expect(screen.getByText('Pickup XLS')).toBeTruthy();
+    expect(screen.getByText('Upload Manifest Files')).toBeTruthy();
     expect(screen.getByText('Upload Manifest')).toBeTruthy();
     expect(screen.getByText('No manifest uploaded for this day.')).toBeTruthy();
     expect(screen.queryByText(/FCC/i)).toBeNull();

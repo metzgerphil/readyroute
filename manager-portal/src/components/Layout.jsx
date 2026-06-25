@@ -8,10 +8,8 @@ import { clearManagerToken } from '../services/auth';
 import api from '../services/api';
 import {
   buildOperationsDatePath,
-  getOperationsDateFromSearch,
-  getTodayString,
+  getResolvedOperationsDate,
   isOperationsDatePath,
-  loadStoredOperationsDate
 } from '../utils/operationsDate';
 
 const navGroups = [
@@ -27,7 +25,7 @@ const navGroups = [
     label: 'Operations',
     links: [
       { to: '/routes', label: 'Routes', icon: 'routes', end: true },
-      { to: '/time-commits', label: 'P&D Time Commit', icon: 'commits' },
+      { to: '/time-commits', label: 'P&D Time Commits', icon: 'commits' },
       { to: '/drivers', label: 'Drivers', icon: 'drivers' },
       { to: '/vehicles', label: 'Vehicles', icon: 'vehicles' },
       { to: '/access-codes', label: 'Access Codes', icon: 'access' },
@@ -149,7 +147,7 @@ export default function Layout({ children }) {
   const showVedrSetupBadge = !vedrSettingsQuery.isLoading
     && !vedrSettingsQuery.isError
     && vedrSettingsQuery.data?.connection_status !== VEDR_CONNECTION_STATUSES.CONNECTED;
-  const currentOperationsDate = getOperationsDateFromSearch(location.search) || loadStoredOperationsDate() || getTodayString();
+  const currentOperationsDate = getResolvedOperationsDate(location.search);
 
   async function handleCsaSwitch(event) {
     const nextAccountId = event.target.value;

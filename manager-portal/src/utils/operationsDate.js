@@ -54,6 +54,10 @@ export function getOperationsDateFromSearch(searchParams) {
   return searchParams.get('date');
 }
 
+export function getResolvedOperationsDate(searchParams) {
+  return getOperationsDateFromSearch(searchParams) || loadStoredOperationsDate() || getTodayString();
+}
+
 export function isOperationsDatePath(pathname = '') {
   const normalizedPath = pathname || '/';
 

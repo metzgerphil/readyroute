@@ -816,9 +816,21 @@ button {
 
 .driver-contact-cell span {
   min-width: 0;
+}
+
+.driver-contact-cell .driver-phone-text {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.driver-contact-cell .driver-email-text {
+  display: block;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  white-space: normal;
+  word-break: break-word;
+  line-height: 1.35;
 }
 
 .driver-profile-modal-card {

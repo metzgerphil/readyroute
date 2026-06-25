@@ -7,8 +7,7 @@ import { EmptyState, PageHeader, StatCard, StatusBadge } from '../components/Por
 import { useSelectedCsa } from '../context/SelectedCsaContext';
 import {
   buildOperationsDatePath,
-  getTodayString,
-  loadStoredOperationsDate,
+  getResolvedOperationsDate,
   saveStoredOperationsDate
 } from '../utils/operationsDate';
 import { compareRouteLabels, sortRoutesByWorkArea } from '../utils/routeSort';
@@ -203,7 +202,7 @@ function TimeCommitsTable({ rows, date }) {
 
 export default function TimeCommitsPage() {
   const [searchParams, setSearchParams] = useSearchParams();
-  const date = searchParams.get('date') || loadStoredOperationsDate() || getTodayString();
+  const date = getResolvedOperationsDate(searchParams);
   const [routeFilter, setRouteFilter] = useState('all');
   const [typeFilter, setTypeFilter] = useState('all');
   const [statusFilter, setStatusFilter] = useState('all');
