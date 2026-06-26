@@ -99,6 +99,14 @@ function getBillingTotalDetail(billing) {
   return `${formatCurrency(billing?.billing_rate_cents, billing?.currency)} per route`;
 }
 
+function getCommitmentSourceDetail(source) {
+  if (source === 'legacy_vehicle_count') {
+    return 'Legacy account route count';
+  }
+
+  return 'Selected at signup or account setup';
+}
+
 function BillingRouteRow({ route }) {
   return (
     <div className="billing-route-row">
@@ -130,6 +138,7 @@ export default function BillingPage() {
   const [billingMonth, setBillingMonth] = useState(getCurrentBillingMonth);
   const [committedRouteDraft, setCommittedRouteDraft] = useState('');
   const [hasTouchedCommitment, setHasTouchedCommitment] = useState(false);
+  const [isEditingCommitment, setIsEditingCommitment] = useState(false);
   const [saveMessage, setSaveMessage] = useState('');
   const billingQueryKey = ['billing-summary', selectedCsaId, billingMonth];
 
@@ -165,7 +174,8 @@ export default function BillingPage() {
       }
       setCommittedRouteDraft('');
       setHasTouchedCommitment(false);
-      setSaveMessage('Billing commitment saved.');
+      setIsEditingCommitment(false);
+      setSaveMessage('Route commitment updated.');
     },
     onError: () => {
       setSaveMessage('');
@@ -208,6 +218,21 @@ export default function BillingPage() {
     setBillingMonth(event.target.value || getCurrentBillingMonth());
     setCommittedRouteDraft('');
     setHasTouchedCommitment(false);
+    setIsEditingCommitment(false);
+    setSaveMessage('');
+  }
+
+  function handleStartEditingCommitment() {
+    setCommittedRouteDraft(String(billing?.committed_route_count ?? ''));
+    setHasTouchedCommitment(false);
+    setSaveMessage('');
+    setIsEditingCommitment(true);
+  }
+
+  function handleCancelEditingCommitment() {
+    setCommittedRouteDraft('');
+    setHasTouchedCommitment(false);
+    setIsEditingCommitment(false);
     setSaveMessage('');
   }
 
@@ -258,7 +283,7 @@ export default function BillingPage() {
             <StatCard
               label="Monthly Commitment"
               value={billing.committed_route_count}
-              detail={billing.commitment_source === 'legacy_vehicle_count' ? 'Defaulted from vehicle count' : 'Billing settings'}
+              detail={getCommitmentSourceDetail(billing.commitment_source)}
             />
             <StatCard
               label="Imported Routes"
@@ -283,28 +308,41 @@ export default function BillingPage() {
           <div className="billing-workspace-grid">
             <form className="card billing-settings-card" onSubmit={handleSaveSettings}>
               <div>
-                <div className="card-title">Monthly route commitment</div>
-                <p>Set the number of routes this CSA expects to run each month.</p>
+                <div className="card-title">Route commitment</div>
+                <p>
+                  This route count comes from signup or CSA setup. Imported routes above this count are
+                  counted as additional billable routes for the month.
+                </p>
               </div>
 
-              <label className="billing-route-count-field">
-                <span className="field-label">Committed Routes</span>
-                <input
-                  aria-describedby="billing-route-count-help"
-                  aria-invalid={Boolean(visibleRouteCountError)}
-                  className="text-field"
-                  inputMode="numeric"
-                  max={MAX_COMMITTED_ROUTE_COUNT}
-                  min="0"
-                  onChange={handleCommittedRouteChange}
-                  step="1"
-                  type="number"
-                  value={committedRouteValue}
-                />
-              </label>
-              <div className="driver-meta" id="billing-route-count-help">
-                Imports above this count are counted as additional billable routes for the month.
-              </div>
+              {!isEditingCommitment ? (
+                <div className="billing-commitment-summary">
+                  <span className="field-label">Committed Routes</span>
+                  <strong>{billing.committed_route_count}</strong>
+                  <span>{getCommitmentSourceDetail(billing.commitment_source)}</span>
+                </div>
+              ) : (
+                <>
+                  <label className="billing-route-count-field">
+                    <span className="field-label">Committed Routes</span>
+                    <input
+                      aria-describedby="billing-route-count-help"
+                      aria-invalid={Boolean(visibleRouteCountError)}
+                      className="text-field"
+                      inputMode="numeric"
+                      max={MAX_COMMITTED_ROUTE_COUNT}
+                      min="0"
+                      onChange={handleCommittedRouteChange}
+                      step="1"
+                      type="number"
+                      value={committedRouteValue}
+                    />
+                  </label>
+                  <div className="driver-meta" id="billing-route-count-help">
+                    Update this only when the CSA's expected monthly route count changes.
+                  </div>
+                </>
+              )}
 
               {visibleRouteCountError ? <div className="error-banner">{visibleRouteCountError}</div> : null}
               {saveSettingsMutation.isError ? (
@@ -315,9 +353,20 @@ export default function BillingPage() {
               {saveMessage ? <div className="success-banner">{saveMessage}</div> : null}
 
               <div className="billing-settings-actions">
-                <button className="primary-cta" disabled={!canSave} type="submit">
-                  {isSaving ? 'Saving...' : 'Save Commitment'}
-                </button>
+                {isEditingCommitment ? (
+                  <>
+                    <button className="primary-cta" disabled={!canSave} type="submit">
+                      {isSaving ? 'Saving...' : 'Save Change'}
+                    </button>
+                    <button className="secondary-button" disabled={isSaving} onClick={handleCancelEditingCommitment} type="button">
+                      Cancel
+                    </button>
+                  </>
+                ) : (
+                  <button className="secondary-button" onClick={handleStartEditingCommitment} type="button">
+                    Change Commitment
+                  </button>
+                )}
               </div>
             </form>
 

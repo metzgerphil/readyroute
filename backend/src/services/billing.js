@@ -1,6 +1,7 @@
 const Stripe = require('stripe');
 
 const defaultSupabase = require('../lib/supabase');
+const { updateRouteBillingSettings } = require('./routeBilling');
 
 function getStripeClient(stripeClient) {
   if (stripeClient) {
@@ -121,6 +122,16 @@ function createBillingService(options = {}) {
       throw updateError;
     }
 
+    const billingSettingsResult = await updateRouteBillingSettings({
+      supabase,
+      accountId,
+      committedRouteCount: vehicleCount
+    });
+
+    if (!billingSettingsResult.valid) {
+      throw new Error(billingSettingsResult.error);
+    }
+
     return {
       subscription_id: subscription.id,
       client_secret: subscription.latest_invoice?.payment_intent?.client_secret || null,
@@ -214,6 +225,16 @@ function createBillingService(options = {}) {
 
     if (updateError) {
       throw updateError;
+    }
+
+    const billingSettingsResult = await updateRouteBillingSettings({
+      supabase,
+      accountId,
+      committedRouteCount: newVehicleCount
+    });
+
+    if (!billingSettingsResult.valid) {
+      throw new Error(billingSettingsResult.error);
     }
 
     return updatedSubscription.id;

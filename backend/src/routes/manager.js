@@ -2663,14 +2663,15 @@ function createManagerRouter(options = {}) {
 
   router.post('/csas', requireManager, async (req, res) => {
     const companyName = String(req.body?.company_name || '').trim();
-    const vehicleCount = Math.max(0, Number(req.body?.vehicle_count || 0));
+    const requestedRouteCount = req.body?.route_count ?? req.body?.routes ?? req.body?.vehicle_count ?? 0;
+    const routeCommitment = Number(requestedRouteCount);
 
     if (!companyName) {
       return res.status(400).json({ error: 'company_name is required' });
     }
 
-    if (!Number.isFinite(vehicleCount) || vehicleCount < 0) {
-      return res.status(400).json({ error: 'vehicle_count must be 0 or greater' });
+    if (!Number.isFinite(routeCommitment) || routeCommitment < 0) {
+      return res.status(400).json({ error: 'route_count must be 0 or greater' });
     }
 
     if (!jwtSecret) {
@@ -2689,6 +2690,7 @@ function createManagerRouter(options = {}) {
       }
 
       const nowIso = nowProvider().toISOString();
+      const committedRouteCount = Math.round(routeCommitment);
       const { data: account, error: accountError } = await supabase
         .from('accounts')
         .insert({
@@ -2696,7 +2698,7 @@ function createManagerRouter(options = {}) {
           // Linked CSA access now lives in manager_users so one manager can own multiple CSAs.
           manager_email: null,
           manager_password_hash: managerIdentity.password_hash,
-          vehicle_count: Math.round(vehicleCount),
+          vehicle_count: committedRouteCount,
           plan: 'starter'
         })
         .select('id, company_name, manager_email, created_at')
@@ -2704,6 +2706,17 @@ function createManagerRouter(options = {}) {
 
       if (accountError || !account) {
         throw accountError || new Error('Failed to create CSA account');
+      }
+
+      const billingSettingsResult = await updateRouteBillingSettings({
+        supabase,
+        accountId: account.id,
+        committedRouteCount,
+        updatedAt: nowIso
+      });
+
+      if (!billingSettingsResult.valid) {
+        return res.status(400).json({ error: billingSettingsResult.error });
       }
 
       const linkedIdentity = await ensureLinkedManagerAccess(supabase, account.id, managerIdentity, nowIso);

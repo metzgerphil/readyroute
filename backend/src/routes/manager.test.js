@@ -1025,12 +1025,30 @@ test('POST /manager/csas creates a new CSA and returns a switched manager token'
     if (query.table === 'accounts' && query.operation === 'insert') {
       assert.equal(query.payload.company_name, 'Bridge Transportation - CSA 999');
       assert.equal(query.payload.manager_email, null);
+      assert.equal(query.payload.vehicle_count, 12);
       return {
         data: {
           id: 'acct-999',
           company_name: 'Bridge Transportation - CSA 999',
           manager_email: null,
           created_at: '2026-04-20T18:05:00.000Z'
+        },
+        error: null
+      };
+    }
+
+    if (query.table === 'account_billing_settings' && query.operation === 'upsert') {
+      assert.equal(query.payload.account_id, 'acct-999');
+      assert.equal(query.payload.committed_route_count, 12);
+      assert.equal(query.options.onConflict, 'account_id');
+      return {
+        data: {
+          committed_route_count: 12,
+          billing_rate_cents: 1500,
+          currency: 'usd',
+          free_month_started_on: null,
+          free_month_ends_on: null,
+          is_billing_exempt: false
         },
         error: null
       };

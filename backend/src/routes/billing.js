@@ -32,11 +32,15 @@ function createBillingRouter(options = {}) {
     return getStripeClient(stripeClient);
   }
 
-  router.post('/setup', express.json(), requireManager, async (req, res) => {
-    const vehicleCount = Number(req.body?.vehicle_count);
+  function getRequestedRouteCommitment(body = {}) {
+    return Number(body.route_count ?? body.routes ?? body.vehicle_count);
+  }
 
-    if (!Number.isInteger(vehicleCount) || vehicleCount <= 0) {
-      return res.status(400).json({ error: 'vehicle_count must be a positive integer' });
+  router.post('/setup', express.json(), requireManager, async (req, res) => {
+    const routeCommitment = getRequestedRouteCommitment(req.body);
+
+    if (!Number.isInteger(routeCommitment) || routeCommitment <= 0) {
+      return res.status(400).json({ error: 'route_count must be a positive integer' });
     }
 
     try {
@@ -56,7 +60,7 @@ function createBillingRouter(options = {}) {
       }
 
       await billingService.createCustomer(account.manager_email, account.company_name, account.id);
-      const subscription = await billingService.createSubscription(account.id, vehicleCount);
+      const subscription = await billingService.createSubscription(account.id, routeCommitment);
 
       return res.status(200).json({
         client_secret: subscription.client_secret,

@@ -20,7 +20,7 @@ class MockQueryBuilder {
   }
 
   select(columns) {
-    if (this.operation === 'insert' || this.operation === 'update') {
+    if (this.operation === 'insert' || this.operation === 'update' || this.operation === 'upsert') {
       this.state.returning = columns;
       return this;
     }
@@ -39,6 +39,13 @@ class MockQueryBuilder {
   update(payload) {
     this.operation = 'update';
     this.state.payload = payload;
+    return this;
+  }
+
+  upsert(payload, options = {}) {
+    this.operation = 'upsert';
+    this.state.payload = payload;
+    this.state.options = options;
     return this;
   }
 
@@ -154,6 +161,23 @@ test('POST /billing/setup creates a Stripe customer and subscription', async () 
 
     if (query.table === 'accounts' && query.operation === 'update') {
       return { data: null, error: null };
+    }
+
+    if (query.table === 'account_billing_settings' && query.operation === 'upsert') {
+      assert.equal(query.payload.account_id, 'acct-1');
+      assert.equal(query.payload.committed_route_count, 3);
+      assert.equal(query.options.onConflict, 'account_id');
+      return {
+        data: {
+          committed_route_count: 3,
+          billing_rate_cents: 1500,
+          currency: 'usd',
+          free_month_started_on: null,
+          free_month_ends_on: null,
+          is_billing_exempt: false
+        },
+        error: null
+      };
     }
 
     throw new Error(`Unexpected query ${query.table}:${query.operation}`);

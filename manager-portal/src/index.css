@@ -2782,6 +2782,29 @@ button {
   line-height: 1.5;
 }
 
+.billing-commitment-summary {
+  display: grid;
+  gap: 4px;
+  padding: 14px;
+  border: 1px solid var(--rr-color-border);
+  border-radius: var(--rr-radius-md);
+  background: var(--rr-color-surface-muted);
+}
+
+.billing-commitment-summary strong {
+  color: var(--rr-color-text-strong);
+  font-size: 2rem;
+  font-weight: 900;
+  line-height: 1;
+}
+
+.billing-commitment-summary span:last-child {
+  color: var(--rr-color-text-muted);
+  font-size: 0.86rem;
+  font-weight: 760;
+  line-height: 1.45;
+}
+
 .billing-route-count-field {
   display: grid;
   gap: 6px;
@@ -3009,7 +3032,8 @@ button {
   .billing-month-picker,
   .billing-month-picker .date-field,
   .billing-route-count-field .text-field,
-  .billing-settings-actions .primary-cta {
+  .billing-settings-actions .primary-cta,
+  .billing-settings-actions .secondary-button {
     width: 100%;
     max-width: none;
   }

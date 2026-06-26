@@ -6,6 +6,7 @@ const jwt = require('jsonwebtoken');
 const defaultSupabase = require('../lib/supabase');
 const { requireManager } = require('../middleware/auth');
 const { createBillingService } = require('../services/billing');
+const { updateRouteBillingSettings } = require('../services/routeBilling');
 const { sendManagerPasswordResetEmail: defaultSendManagerPasswordResetEmail } = require('../services/managerInviteEmail');
 
 function createAuthRouter(options = {}) {
@@ -70,6 +71,10 @@ function createAuthRouter(options = {}) {
 
   function isValidEmail(email) {
     return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizeEmail(email));
+  }
+
+  function getRequestedRouteCommitment(body = {}) {
+    return Number(body.route_count ?? body.routes ?? body.vehicle_count);
   }
 
   function normalizeManagerIdentity(row) {
@@ -339,7 +344,7 @@ function createAuthRouter(options = {}) {
     const fullName = String(req.body?.full_name || '').trim();
     const email = String(req.body?.email || '').trim().toLowerCase();
     const password = String(req.body?.password || '');
-    const vehicleCount = Number(req.body?.vehicle_count);
+    const routeCommitment = getRequestedRouteCommitment(req.body);
 
     if (!companyName || !fullName || !email || !password) {
       return res.status(400).json({ error: 'company_name, full_name, email, and password are required' });
@@ -349,8 +354,8 @@ function createAuthRouter(options = {}) {
       return res.status(400).json({ error: 'A valid email is required' });
     }
 
-    if (!Number.isInteger(vehicleCount) || vehicleCount <= 0) {
-      return res.status(400).json({ error: 'vehicle_count must be a positive integer' });
+    if (!Number.isInteger(routeCommitment) || routeCommitment <= 0) {
+      return res.status(400).json({ error: 'route_count must be a positive integer' });
     }
 
     if (!isStrongEnoughPassword(password)) {
@@ -372,7 +377,7 @@ function createAuthRouter(options = {}) {
           company_name: companyName,
           manager_email: email,
           manager_password_hash: passwordHash,
-          vehicle_count: vehicleCount,
+          vehicle_count: routeCommitment,
           plan: 'starter',
           driver_starter_pin: '1234'
         })
@@ -401,6 +406,17 @@ function createAuthRouter(options = {}) {
       }
 
       try {
+        const billingSettingsResult = await updateRouteBillingSettings({
+          supabase,
+          accountId: account.id,
+          committedRouteCount: routeCommitment,
+          updatedAt: createdAt
+        });
+
+        if (!billingSettingsResult.valid) {
+          throw new Error(billingSettingsResult.error);
+        }
+
         await billingService.createCustomer(email, companyName, account.id);
         const activationToken = signToken(
           {
@@ -411,7 +427,7 @@ function createAuthRouter(options = {}) {
           '24h'
         );
 
-        const checkoutSession = await billingService.createTrialCheckoutSession(account.id, vehicleCount, {
+        const checkoutSession = await billingService.createTrialCheckoutSession(account.id, routeCommitment, {
           successUrl: buildTrialActivationUrl(activationToken),
           cancelUrl: buildTrialCancelUrl(email)
         });
@@ -501,6 +517,18 @@ function createAuthRouter(options = {}) {
 
       if (accountUpdateError) {
         throw accountUpdateError;
+      }
+
+      if (Number.isInteger(quantity) && quantity > 0) {
+        const billingSettingsResult = await updateRouteBillingSettings({
+          supabase,
+          accountId: payload.account_id,
+          committedRouteCount: quantity
+        });
+
+        if (!billingSettingsResult.valid) {
+          throw new Error(billingSettingsResult.error);
+        }
       }
 
       const loginToken = signToken(
