@@ -21,6 +21,7 @@ import {
   removeToken,
   saveClockInTime
 } from '../services/auth';
+import { prefetchDriverManifest, saveDriverRouteSummary } from '../services/driverRouteCache';
 import { loadStatusCodes } from '../services/statusCodes';
 
 export const DAILY_SAFETY_REMINDERS = [
@@ -536,6 +537,8 @@ export default function HomeScreen({ navigation, onLogout }) {
         status: nextRoute ? 'dispatched' : 'unassigned'
       };
 
+      Promise.resolve(saveDriverRouteSummary(routeResponse.data || {})).catch(() => {});
+
       setClockedInAt(resolvedClockIn);
       setActiveBreak(activeBreakState);
       setRoute(nextRoute);
@@ -550,6 +553,9 @@ export default function HomeScreen({ navigation, onLogout }) {
       }
 
       Promise.resolve(loadStatusCodes()).catch(() => {});
+      if (nextRoute?.id) {
+        Promise.resolve(prefetchDriverManifest()).catch(() => {});
+      }
     } catch (error) {
       if (!isMountedRef.current) {
         return;

@@ -13,6 +13,7 @@ import {
   removeToken,
   saveClockInTime
 } from '../services/auth';
+import { prefetchDriverManifest, saveDriverRouteSummary } from '../services/driverRouteCache';
 import { loadStatusCodes } from '../services/statusCodes';
 
 jest.mock('../services/api', () => ({
@@ -35,6 +36,11 @@ jest.mock('../services/auth', () => ({
 
 jest.mock('../services/statusCodes', () => ({
   loadStatusCodes: jest.fn()
+}));
+
+jest.mock('../services/driverRouteCache', () => ({
+  prefetchDriverManifest: jest.fn(),
+  saveDriverRouteSummary: jest.fn()
 }));
 
 jest.mock('expo-location', () => ({
@@ -70,6 +76,8 @@ describe('HomeScreen interactions', () => {
     getClockInTime.mockResolvedValue(null);
     getDriverFromToken.mockReturnValue({ name: 'Phil' });
     loadStatusCodes.mockResolvedValue(undefined);
+    prefetchDriverManifest.mockResolvedValue(null);
+    saveDriverRouteSummary.mockResolvedValue(null);
     Location.getForegroundPermissionsAsync.mockResolvedValue({ status: 'granted', granted: true });
     Location.requestForegroundPermissionsAsync.mockResolvedValue({ granted: true });
 

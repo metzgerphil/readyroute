@@ -12,8 +12,8 @@ import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 import Svg, { Path } from 'react-native-svg';
 
 import ErrorState from '../components/ui/ErrorState';
-import api from '../services/api';
 import { getPinColorMode, savePinColorMode, subscribePinColorMode } from '../services/auth';
+import { fetchDriverManifest, getCachedDriverManifest } from '../services/driverRouteCache';
 import appTheme from '../theme/appTheme';
 import { getSidBucketTheme } from '../utils/sidBuckets';
 
@@ -198,25 +198,37 @@ export default function ManifestScreen({ navigation, route }) {
     let isMounted = true;
 
     async function loadRoute() {
-      try {
-        const response = await api.get('/routes/today', {
-          params: {
-            view: 'manifest'
+      let hasCachedRoute = false;
+
+      const cachedManifest = await getCachedDriverManifest().catch(() => null);
+
+      if (isMounted && cachedManifest?.route) {
+        hasCachedRoute = true;
+        setErrorMessage('');
+        setRouteData(cachedManifest.route);
+        setDriverDay(
+          cachedManifest.driver_day || {
+            status: 'dispatched'
           }
-        });
-        const nextRoute = response.data?.route || null;
+        );
+        setIsLoading(false);
+      }
+
+      try {
+        const response = await fetchDriverManifest();
+        const nextRoute = response?.route || null;
 
         if (isMounted) {
           setErrorMessage('');
           setRouteData(nextRoute);
           setDriverDay(
-            response.data?.driver_day || {
+            response?.driver_day || {
               status: nextRoute ? 'dispatched' : 'unassigned'
             }
           );
         }
       } catch (_error) {
-        if (isMounted) {
+        if (isMounted && !hasCachedRoute) {
           setErrorMessage('Unable to load your route right now.');
         }
       } finally {
