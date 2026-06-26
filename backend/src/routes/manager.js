@@ -4,6 +4,7 @@ const crypto = require('crypto');
 const jwt = require('jsonwebtoken');
 
 const defaultSupabase = require('../lib/supabase');
+const { PRIVILEGED_MANAGER_ROLES } = require('../config/constants');
 const { requireManager } = require('../middleware/auth');
 const { parseMultipartForm } = require('../middleware/multipart');
 const { createBillingService } = require('../services/billing');
@@ -27,7 +28,7 @@ const {
 const { attachStopNotesToStops, saveStopNote } = require('../services/stopNotes');
 const { parseDriverImportRows } = require('../services/resourceImport');
 const { filterProductionRows, isProductionTestArtifact } = require('../services/testDataFilter');
-const { getRouteBillingSummary } = require('../services/routeBilling');
+const { getRouteBillingSummary, parseBillingMonth, updateRouteBillingSettings } = require('../services/routeBilling');
 
 function getCurrentDateString(now = new Date(), timeZone = process.env.APP_TIME_ZONE || 'America/Los_Angeles') {
   return new Intl.DateTimeFormat('en-CA', {
@@ -2124,6 +2125,19 @@ function presentPropertyIntelRow(row) {
   };
 }
 
+function canManageAccountSettings(req) {
+  const managerRole = String(req.account?.manager_role || 'owner').trim().toLowerCase();
+  return PRIVILEGED_MANAGER_ROLES.includes(managerRole);
+}
+
+function requireAccountSettingsAccess(req, res, next) {
+  if (!canManageAccountSettings(req)) {
+    return res.status(403).json({ error: 'Admin or owner access required' });
+  }
+
+  return next();
+}
+
 function createManagerRouter(options = {}) {
   const router = express.Router();
   const supabase = options.supabase || defaultSupabase;
@@ -2600,6 +2614,50 @@ function createManagerRouter(options = {}) {
     } catch (error) {
       console.error('Manager billing summary failed:', error);
       return res.status(500).json({ error: 'Failed to load billing summary' });
+    }
+  });
+
+  router.patch('/billing/settings', requireManager, requireAccountSettingsAccess, async (req, res) => {
+    const month = String(req.body?.month || req.query?.month || '').trim();
+
+    if (month && !parseBillingMonth(month, nowProvider)) {
+      return res.status(400).json({ error: 'month must be in YYYY-MM format' });
+    }
+
+    try {
+      const updateResult = await updateRouteBillingSettings({
+        supabase,
+        accountId: req.account.account_id,
+        committedRouteCount: req.body?.committed_route_count,
+        updatedAt: nowProvider().toISOString()
+      });
+
+      if (!updateResult.valid) {
+        return res.status(400).json({ error: updateResult.error });
+      }
+
+      const summary = await getRouteBillingSummary({
+        supabase,
+        accountId: req.account.account_id,
+        month,
+        nowProvider
+      });
+
+      if (!summary) {
+        return res.status(400).json({ error: 'month must be in YYYY-MM format' });
+      }
+
+      if (summary.not_found) {
+        return res.status(404).json({ error: 'Account not found' });
+      }
+
+      return res.status(200).json({
+        billing: summary,
+        settings: updateResult.settings
+      });
+    } catch (error) {
+      console.error('Manager billing settings update failed:', error);
+      return res.status(500).json({ error: 'Failed to update billing settings' });
     }
   });
 

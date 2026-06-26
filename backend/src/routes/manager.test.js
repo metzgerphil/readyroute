@@ -46,6 +46,13 @@ class MockQueryBuilder {
     return this;
   }
 
+  upsert(payload, options = {}) {
+    this.operation = 'upsert';
+    this.state.payload = payload;
+    this.state.options = options;
+    return this;
+  }
+
   delete() {
     this.operation = 'delete';
     return this;
@@ -141,6 +148,7 @@ function signManagerToken(overrides = {}) {
       manager_email: overrides.manager_email || 'phillovesjoy@gmail.com',
       manager_user_id: overrides.manager_user_id || 'manager-1',
       manager_name: overrides.manager_name || 'Phil Manager',
+      manager_role: overrides.manager_role,
       role: 'manager'
     },
     process.env.JWT_SECRET,
@@ -1763,6 +1771,144 @@ test('GET /manager/billing/summary returns shadow route billing estimate', async
     assert.equal(body.billing.imported_billable_routes, 3);
     assert.equal(body.billing.billable_quantity, 3);
     assert.equal(body.billing.estimated_total_cents, 4500);
+  } finally {
+    await server.close();
+  }
+});
+
+test('PATCH /manager/billing/settings updates committed route count and returns refreshed summary', async () => {
+  const supabase = new MockSupabase((query) => {
+    if (query.table === 'account_billing_settings' && query.operation === 'upsert') {
+      assert.equal(query.payload.account_id, 'acct-1');
+      assert.equal(query.payload.committed_route_count, 14);
+      assert.equal(query.options.onConflict, 'account_id');
+      return {
+        data: {
+          committed_route_count: 14,
+          billing_rate_cents: 1500,
+          currency: 'usd',
+          free_month_started_on: null,
+          free_month_ends_on: null,
+          is_billing_exempt: false
+        },
+        error: null
+      };
+    }
+
+    if (query.table === 'accounts' && query.operation === 'select') {
+      return {
+        data: {
+          id: 'acct-1',
+          vehicle_count: 0
+        },
+        error: null
+      };
+    }
+
+    if (query.table === 'account_billing_settings' && query.operation === 'select') {
+      return {
+        data: {
+          committed_route_count: 14,
+          billing_rate_cents: 1500,
+          currency: 'usd',
+          free_month_started_on: null,
+          free_month_ends_on: null,
+          is_billing_exempt: false
+        },
+        error: null
+      };
+    }
+
+    if (query.table === 'billable_route_months' && query.operation === 'select') {
+      return {
+        data: [
+          { id: 'ledger-817', route_key: '817', route_display_name: '817', status: 'pending' },
+          { id: 'ledger-818', route_key: '818', route_display_name: '818', status: 'pending' }
+        ],
+        error: null
+      };
+    }
+
+    throw new Error(`Unexpected query ${query.table}:${query.operation}`);
+  });
+
+  const server = await startTestServer({
+    supabase,
+    now: () => new Date('2026-06-26T12:00:00.000Z')
+  });
+
+  try {
+    const response = await fetch(`${server.baseUrl}/manager/billing/settings`, {
+      method: 'PATCH',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${signManagerToken()}`
+      },
+      body: JSON.stringify({
+        month: '2026-06',
+        committed_route_count: 14
+      })
+    });
+
+    assert.equal(response.status, 200);
+    const body = await response.json();
+    assert.equal(body.settings.committed_route_count, 14);
+    assert.equal(body.billing.committed_route_count, 14);
+    assert.equal(body.billing.imported_billable_routes, 2);
+    assert.equal(body.billing.billable_quantity, 14);
+    assert.equal(body.billing.estimated_total_cents, 21000);
+  } finally {
+    await server.close();
+  }
+});
+
+test('PATCH /manager/billing/settings rejects invalid committed route count', async () => {
+  const supabase = new MockSupabase((query) => {
+    throw new Error(`Unexpected query ${query.table}:${query.operation}`);
+  });
+  const server = await startTestServer({ supabase });
+
+  try {
+    const response = await fetch(`${server.baseUrl}/manager/billing/settings`, {
+      method: 'PATCH',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${signManagerToken()}`
+      },
+      body: JSON.stringify({
+        month: '2026-06',
+        committed_route_count: -1
+      })
+    });
+
+    assert.equal(response.status, 400);
+    assert.equal(supabase.calls.length, 0);
+  } finally {
+    await server.close();
+  }
+});
+
+test('PATCH /manager/billing/settings requires owner or admin access', async () => {
+  const supabase = new MockSupabase((query) => {
+    throw new Error(`Unexpected query ${query.table}:${query.operation}`);
+  });
+  const server = await startTestServer({ supabase });
+
+  try {
+    const response = await fetch(`${server.baseUrl}/manager/billing/settings`, {
+      method: 'PATCH',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${signManagerToken({ manager_role: 'viewer' })}`
+      },
+      body: JSON.stringify({
+        month: '2026-06',
+        committed_route_count: 14
+      })
+    });
+
+    assert.equal(response.status, 403);
+    assert.equal(supabase.calls.length, 0);
   } finally {
     await server.close();
   }

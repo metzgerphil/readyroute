@@ -5,7 +5,8 @@ const {
   getBillingPeriodForDate,
   getRouteBillingSummary,
   normalizeRouteBillingKey,
-  recordBillableManifestImport
+  recordBillableManifestImport,
+  updateRouteBillingSettings
 } = require('./routeBilling');
 
 class QueryStub {
@@ -17,10 +18,12 @@ class QueryStub {
     this.filters = [];
     this.orders = [];
     this.columns = null;
+    this.options = {};
+    this.returning = null;
   }
 
   select(columns) {
-    if (this.operation === 'insert' || this.operation === 'update') {
+    if (this.operation === 'insert' || this.operation === 'update' || this.operation === 'upsert') {
       this.returning = columns;
       return this;
     }
@@ -39,6 +42,13 @@ class QueryStub {
   update(payload) {
     this.operation = 'update';
     this.payload = payload;
+    return this;
+  }
+
+  upsert(payload, options = {}) {
+    this.operation = 'upsert';
+    this.payload = payload;
+    this.options = options;
     return this;
   }
 
@@ -68,6 +78,8 @@ class QueryStub {
       filters: this.filters,
       orders: this.orders,
       columns: this.columns,
+      options: this.options,
+      returning: this.returning,
       mode
     }));
   }
@@ -257,4 +269,62 @@ test('getRouteBillingSummary uses committed route floor and imported route ledge
   assert.equal(summary.additional_route_count, 1);
   assert.equal(summary.estimated_total_cents, 4500);
   assert.equal(summary.billing_mode, 'shadow');
+});
+
+test('updateRouteBillingSettings upserts committed route count only', async () => {
+  const supabase = createSupabaseStub((query) => {
+    if (query.table === 'account_billing_settings' && query.operation === 'upsert') {
+      assert.equal(query.payload.account_id, 'acct-1');
+      assert.equal(query.payload.committed_route_count, 14);
+      assert.equal(query.payload.updated_at, '2026-06-26T12:00:00.000Z');
+      assert.deepEqual(query.options, { onConflict: 'account_id' });
+      assert.equal(query.returning.includes('billing_rate_cents'), true);
+      return {
+        data: {
+          committed_route_count: 14,
+          billing_rate_cents: 1500,
+          currency: 'usd',
+          free_month_started_on: null,
+          free_month_ends_on: null,
+          is_billing_exempt: false
+        },
+        error: null
+      };
+    }
+
+    throw new Error(`Unexpected query ${query.table}:${query.operation}`);
+  });
+
+  const result = await updateRouteBillingSettings({
+    supabase,
+    accountId: 'acct-1',
+    committedRouteCount: 14,
+    updatedAt: '2026-06-26T12:00:00.000Z'
+  });
+
+  assert.equal(result.valid, true);
+  assert.equal(result.settings.committed_route_count, 14);
+});
+
+test('updateRouteBillingSettings rejects invalid committed route counts before writing', async () => {
+  const supabase = createSupabaseStub((query) => {
+    throw new Error(`Unexpected query ${query.table}:${query.operation}`);
+  });
+
+  const result = await updateRouteBillingSettings({
+    supabase,
+    accountId: 'acct-1',
+    committedRouteCount: 1.5
+  });
+
+  assert.equal(result.valid, false);
+
+  const whitespaceResult = await updateRouteBillingSettings({
+    supabase,
+    accountId: 'acct-1',
+    committedRouteCount: '  '
+  });
+
+  assert.equal(whitespaceResult.valid, false);
+  assert.equal(supabase.calls.length, 0);
 });

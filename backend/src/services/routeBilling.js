@@ -1,5 +1,6 @@
 const DEFAULT_ROUTE_RATE_CENTS = 1500;
 const DEFAULT_CURRENCY = 'usd';
+const MAX_COMMITTED_ROUTE_COUNT = 10000;
 
 function normalizeRouteBillingKey(workAreaName) {
   const normalized = String(workAreaName || '')
@@ -76,6 +77,22 @@ function isMissingBillingTableError(error) {
   return /account_billing_settings|billing_manifest_imports|billable_route_months|schema cache|does not exist/i.test(message);
 }
 
+function normalizeCommittedRouteCount(value) {
+  const rawValue = typeof value === 'string' ? value.trim() : value;
+
+  if (rawValue === null || rawValue === undefined || rawValue === '') {
+    return null;
+  }
+
+  const parsed = Number(rawValue);
+
+  if (!Number.isFinite(parsed) || !Number.isInteger(parsed) || parsed < 0 || parsed > MAX_COMMITTED_ROUTE_COUNT) {
+    return null;
+  }
+
+  return parsed;
+}
+
 async function loadBillingSettings(supabase, accountId) {
   const { data, error } = await supabase
     .from('account_billing_settings')
@@ -92,6 +109,47 @@ async function loadBillingSettings(supabase, accountId) {
   }
 
   return data || null;
+}
+
+async function updateRouteBillingSettings({
+  supabase,
+  accountId,
+  committedRouteCount,
+  updatedAt = new Date().toISOString()
+}) {
+  if (!supabase) {
+    throw new Error('updateRouteBillingSettings requires a Supabase client');
+  }
+
+  const normalizedCommittedRouteCount = normalizeCommittedRouteCount(committedRouteCount);
+
+  if (normalizedCommittedRouteCount === null) {
+    return {
+      valid: false,
+      error: `committed_route_count must be a whole number from 0 to ${MAX_COMMITTED_ROUTE_COUNT}`
+    };
+  }
+
+  const { data, error } = await supabase
+    .from('account_billing_settings')
+    .upsert({
+      account_id: accountId,
+      committed_route_count: normalizedCommittedRouteCount,
+      updated_at: updatedAt
+    }, { onConflict: 'account_id' })
+    .select('committed_route_count, billing_rate_cents, currency, free_month_started_on, free_month_ends_on, is_billing_exempt')
+    .maybeSingle();
+
+  if (error) {
+    throw error;
+  }
+
+  return {
+    valid: true,
+    settings: data || {
+      committed_route_count: normalizedCommittedRouteCount
+    }
+  };
 }
 
 function buildSettingsWithDefaults(settings = null, account = {}) {
@@ -344,13 +402,16 @@ async function getRouteBillingSummary({
 module.exports = {
   DEFAULT_ROUTE_RATE_CENTS,
   DEFAULT_CURRENCY,
+  MAX_COMMITTED_ROUTE_COUNT,
   normalizeRouteBillingKey,
   getBillingPeriodForDate,
   parseBillingMonth,
   recordBillableManifestImport,
   getRouteBillingSummary,
+  updateRouteBillingSettings,
   __private: {
     buildSettingsWithDefaults,
-    isPeriodInsideFreeMonth
+    isPeriodInsideFreeMonth,
+    normalizeCommittedRouteCount
   }
 };
