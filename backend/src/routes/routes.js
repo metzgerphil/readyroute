@@ -525,6 +525,238 @@ async function selectPackagesForStops(queryBuilder) {
   return queryBuilder('id, stop_id, tracking_number, requires_signature, hazmat');
 }
 
+const TODAY_ROUTE_FULL_STOP_SELECT = [
+  'id',
+  'route_id',
+  'sequence_order',
+  'address',
+  'contact_name',
+  'address_line2',
+  'business_name',
+  'company_name',
+  'primary_phone',
+  'alternate_phone',
+  'email',
+  'customer_instructions',
+  'delivery_instructions',
+  'consignee',
+  'shipper',
+  'sid',
+  'ready_time',
+  'close_time',
+  'has_time_commit',
+  'stop_type',
+  'has_pickup',
+  'has_delivery',
+  'is_business',
+  'has_note',
+  'geocode_source',
+  'geocode_accuracy',
+  'lat',
+  'lng',
+  'status',
+  'exception_code',
+  'delivery_type_code',
+  'signer_name',
+  'signature_url',
+  'age_confirmed',
+  'is_pickup',
+  'pod_photo_url',
+  'pod_signature_url',
+  'scanned_at',
+  'completed_at'
+].join(', ');
+
+const TODAY_ROUTE_MANIFEST_STOP_SELECT = [
+  'id',
+  'route_id',
+  'sequence_order',
+  'address',
+  'contact_name',
+  'address_line2',
+  'sid',
+  'ready_time',
+  'close_time',
+  'has_time_commit',
+  'stop_type',
+  'has_pickup',
+  'has_delivery',
+  'is_business',
+  'has_note',
+  'status',
+  'exception_code',
+  'delivery_type_code',
+  'is_pickup',
+  'completed_at',
+  'notes'
+].join(', ');
+
+const TODAY_ROUTE_SUMMARY_STOP_SELECT = [
+  'id',
+  'status',
+  'completed_at',
+  'stop_type',
+  'has_pickup',
+  'is_pickup'
+].join(', ');
+
+function isManifestTodayRouteView(value) {
+  const normalized = String(value || '').trim().toLowerCase();
+  return normalized === 'manifest' || normalized === 'manifest_list';
+}
+
+function isSummaryTodayRouteView(value) {
+  const normalized = String(value || '').trim().toLowerCase();
+  return normalized === 'summary' || normalized === 'home';
+}
+
+function createPackagesByStopId(packages = []) {
+  return (packages || []).reduce((map, pkg) => {
+    const current = map.get(pkg.stop_id) || [];
+    current.push(pkg);
+    map.set(pkg.stop_id, current);
+    return map;
+  }, new Map());
+}
+
+function createPackageCountByStopId(packages = []) {
+  return (packages || []).reduce((map, pkg) => {
+    map.set(pkg.stop_id, Number(map.get(pkg.stop_id) || 0) + 1);
+    return map;
+  }, new Map());
+}
+
+function getFirstCompletedScan(stops = []) {
+  return (stops || [])
+    .filter((stop) => stop.completed_at)
+    .reduce((earliest, stop) => {
+      if (!earliest) {
+        return stop.completed_at;
+      }
+
+      return new Date(stop.completed_at).getTime() < new Date(earliest).getTime()
+        ? stop.completed_at
+        : earliest;
+    }, null);
+}
+
+function presentManifestStop(stop, packageCount = 0) {
+  const presentedStop = presentStopStatus({
+    ...stop,
+    package_count: Number(packageCount || 0)
+  });
+
+  return {
+    id: presentedStop.id,
+    route_id: presentedStop.route_id,
+    sequence_order: presentedStop.sequence_order,
+    address: presentedStop.address,
+    contact_name: presentedStop.contact_name || null,
+    address_line2: presentedStop.address_line2 || null,
+    sid: presentedStop.sid || null,
+    ready_time: presentedStop.ready_time || null,
+    close_time: presentedStop.close_time || null,
+    has_time_commit: Boolean(presentedStop.has_time_commit),
+    stop_type: presentedStop.stop_type || null,
+    has_pickup: Boolean(presentedStop.has_pickup),
+    has_delivery: presentedStop.has_delivery !== false,
+    is_business: Boolean(presentedStop.is_business),
+    has_note: Boolean(presentedStop.has_note),
+    status: presentedStop.status || 'pending',
+    exception_code: presentedStop.exception_code || null,
+    delivery_type_code: presentedStop.delivery_type_code || null,
+    is_pickup: Boolean(presentedStop.is_pickup),
+    completed_at: presentedStop.completed_at || null,
+    package_count: Number(packageCount || 0),
+    notes: presentedStop.notes || null,
+    has_contact_info: Boolean(presentedStop.has_contact_info),
+    is_apartment_unit: Boolean(presentedStop.is_apartment_unit),
+    secondary_address_type: presentedStop.secondary_address_type || null,
+    unit_label: presentedStop.unit_label || null,
+    suite_label: presentedStop.suite_label || null,
+    building_label: presentedStop.building_label || null,
+    floor_label: presentedStop.floor_label || null,
+    location_type: presentedStop.location_type || null
+  };
+}
+
+async function loadTodayVehicleContext(supabase, { accountId, driverId, route }) {
+  let vehicle = null;
+  let odometerEntry = null;
+  let inspectionRequirement = {
+    required: false,
+    submitted: true
+  };
+
+  if (!route?.vehicle_id) {
+    return {
+      vehicle,
+      odometerEntry,
+      inspectionRequirement,
+      lastRecordedOdometer: 0
+    };
+  }
+
+  const { data: vehicleRow, error: vehicleError } = await supabase
+    .from('vehicles')
+    .select('id, name, current_mileage')
+    .eq('id', route.vehicle_id)
+    .eq('account_id', accountId)
+    .maybeSingle();
+
+  if (vehicleError) {
+    return {
+      error: vehicleError,
+      logMessage: 'Today vehicle lookup failed:',
+      publicMessage: 'Failed to load route vehicle'
+    };
+  }
+
+  vehicle = vehicleRow || null;
+
+  const { data: odometerRows, error: odometerError } = await supabase
+    .from('vehicle_odometer_entries')
+    .select('id, odometer_reading, created_at')
+    .eq('account_id', accountId)
+    .eq('driver_id', driverId)
+    .eq('vehicle_id', route.vehicle_id)
+    .eq('route_id', route.id)
+    .order('created_at', { ascending: false })
+    .limit(1);
+
+  if (odometerError) {
+    return {
+      error: odometerError,
+      logMessage: 'Today odometer lookup failed:',
+      publicMessage: 'Failed to load odometer status'
+    };
+  }
+
+  odometerEntry = (odometerRows || [])[0] || null;
+
+  inspectionRequirement = await loadVehicleInspectionRequirement(supabase, {
+    accountId,
+    driverId,
+    route,
+    vehicle
+  });
+
+  if (inspectionRequirement.error) {
+    return {
+      error: inspectionRequirement.error,
+      logMessage: 'Today inspection requirement lookup failed:',
+      publicMessage: 'Failed to load inspection requirement'
+    };
+  }
+
+  return {
+    vehicle,
+    odometerEntry,
+    inspectionRequirement,
+    lastRecordedOdometer: toInteger(vehicle?.current_mileage) || 0
+  };
+}
+
 const STOP_CONTACT_INFO_FIELDS = [
   'primary_phone',
   'alternate_phone',
@@ -1295,6 +1527,8 @@ function createRoutesRouter(options = {}) {
 
   router.get('/today', requireDriver, async (req, res) => {
     try {
+      const manifestView = isManifestTodayRouteView(req.query?.view);
+      const summaryView = isSummaryTodayRouteView(req.query?.view);
       const currentDate = getCurrentDateString();
       const { data: route, error: routeError } = await loadDriverRoute(supabase, {
         driverId: req.driver.driver_id,
@@ -1345,7 +1579,11 @@ function createRoutesRouter(options = {}) {
       const { data: stops, error: stopsError } = await supabase
         .from('stops')
         .select(
-          'id, route_id, sequence_order, address, contact_name, address_line2, business_name, company_name, primary_phone, alternate_phone, email, customer_instructions, delivery_instructions, consignee, shipper, sid, ready_time, close_time, has_time_commit, stop_type, has_pickup, has_delivery, is_business, has_note, geocode_source, geocode_accuracy, lat, lng, status, exception_code, delivery_type_code, signer_name, signature_url, age_confirmed, is_pickup, pod_photo_url, pod_signature_url, scanned_at, completed_at'
+          summaryView
+            ? TODAY_ROUTE_SUMMARY_STOP_SELECT
+            : manifestView
+              ? TODAY_ROUTE_MANIFEST_STOP_SELECT
+              : TODAY_ROUTE_FULL_STOP_SELECT
         )
         .eq('route_id', route.id)
         .order('sequence_order');
@@ -1358,26 +1596,156 @@ function createRoutesRouter(options = {}) {
       const stopIds = (stops || []).map((stop) => stop.id);
       let packagesByStopId = new Map();
 
-      if (stopIds.length > 0) {
-        const { data: packages, error: packagesError } = await selectPackagesForStops((selectClause) =>
+      if (!summaryView && stopIds.length > 0) {
+        const packageQuery = (selectClause) =>
           supabase
             .from('packages')
             .select(selectClause)
             .in('stop_id', stopIds)
-            .order('id')
-        );
+            .order('id');
+        const { data: packages, error: packagesError } = manifestView
+          ? await packageQuery('id, stop_id')
+          : await selectPackagesForStops(packageQuery);
 
         if (packagesError) {
           console.error('Today package lookup failed:', packagesError);
           return res.status(500).json({ error: 'Failed to load route packages' });
         }
 
-        packagesByStopId = (packages || []).reduce((map, pkg) => {
-          const current = map.get(pkg.stop_id) || [];
-          current.push(pkg);
-          map.set(pkg.stop_id, current);
-          return map;
-        }, new Map());
+        packagesByStopId = manifestView
+          ? createPackageCountByStopId(packages)
+          : createPackagesByStopId(packages);
+      }
+
+      if (summaryView) {
+        const routeStops = (stops || []).map((stop) => presentStopStatus(stop));
+        const postDispatchChangePolicy = getPostDispatchChangePolicy(route);
+        const pickupStopSummary = getPickupStopSummary(routeStops);
+        const vehicleContext = await loadTodayVehicleContext(supabase, {
+          accountId: req.driver.account_id,
+          driverId: req.driver.driver_id,
+          route
+        });
+
+        if (vehicleContext.error) {
+          console.error(vehicleContext.logMessage, vehicleContext.error);
+          return res.status(500).json({ error: vehicleContext.publicMessage });
+        }
+
+        const {
+          vehicle,
+          odometerEntry,
+          inspectionRequirement,
+          lastRecordedOdometer
+        } = vehicleContext;
+
+        return res.status(200).json({
+          route: {
+            id: route.id,
+            date: route.date,
+            work_area_name: route.work_area_name || null,
+            status: presentRouteStatus(route).status,
+            dispatch_state: route.dispatch_state || 'dispatched',
+            dispatched_at: route.dispatched_at || null,
+            sync_state: route.sync_state || 'staged_stable',
+            last_manifest_change_at: route.last_manifest_change_at || null,
+            manifest_changed_after_dispatch: hasRouteChangedAfterDispatch(route),
+            post_dispatch_change_policy: postDispatchChangePolicy,
+            total_stops: Number(route.total_stops || 0),
+            completed_stops: Number(route.completed_stops || 0),
+            vehicle_id: route.vehicle_id || null,
+            vehicle_name: vehicle?.name || null,
+            vehicle: vehicle
+              ? {
+                  id: vehicle.id,
+                  name: vehicle.name || null,
+                  current_mileage: lastRecordedOdometer
+                }
+              : null,
+            pickup_stops: pickupStopSummary.total,
+            pickup_stops_completed: pickupStopSummary.completed,
+            pickup_stop_count: pickupStopSummary.total,
+            driver_pickup_stops: pickupStopSummary.total,
+            stops_per_hour: getStopsPerHour({
+              completedStops: Number(route.completed_stops || 0),
+              firstScan: getFirstCompletedScan(stops || []),
+              currentTime: new Date()
+            }),
+            response_view: 'summary'
+          },
+          driver_day: {
+            status: 'dispatched',
+            manifest_changed_after_dispatch: hasRouteChangedAfterDispatch(route),
+            post_dispatch_change_policy: postDispatchChangePolicy,
+            dispatched_at: route.dispatched_at || null,
+            last_manifest_change_at: route.last_manifest_change_at || null,
+            odometer_requirement: route.vehicle_id
+              ? {
+                  required: true,
+                  submitted: Boolean(odometerEntry || inspectionRequirement.latest_inspection),
+                  vehicle_id: route.vehicle_id,
+                  vehicle_name: vehicle?.name || null,
+                  last_recorded_odometer: lastRecordedOdometer,
+                  minimum_odometer: lastRecordedOdometer,
+                  maximum_odometer: lastRecordedOdometer + 300,
+                  latest_entry: odometerEntry
+                    ? {
+                        id: odometerEntry.id,
+                        odometer_reading: Number(odometerEntry.odometer_reading),
+                        created_at: odometerEntry.created_at || null
+                      }
+                    : null
+                }
+              : {
+                  required: false,
+                  submitted: true
+                },
+            inspection_requirement: inspectionRequirement
+          }
+        });
+      }
+
+      if (manifestView) {
+        const routeStops = (stops || []).map((stop) => (
+          presentManifestStop(stop, packagesByStopId.get(stop.id) || 0)
+        ));
+        const postDispatchChangePolicy = getPostDispatchChangePolicy(route);
+        const pickupStopSummary = getPickupStopSummary(routeStops);
+
+        return res.status(200).json({
+          route: {
+            id: route.id,
+            date: route.date,
+            work_area_name: route.work_area_name || null,
+            status: presentRouteStatus(route).status,
+            dispatch_state: route.dispatch_state || 'dispatched',
+            dispatched_at: route.dispatched_at || null,
+            sync_state: route.sync_state || 'staged_stable',
+            last_manifest_change_at: route.last_manifest_change_at || null,
+            manifest_changed_after_dispatch: hasRouteChangedAfterDispatch(route),
+            post_dispatch_change_policy: postDispatchChangePolicy,
+            total_stops: Number(route.total_stops || 0),
+            completed_stops: Number(route.completed_stops || 0),
+            pickup_stops: pickupStopSummary.total,
+            pickup_stops_completed: pickupStopSummary.completed,
+            pickup_stop_count: pickupStopSummary.total,
+            driver_pickup_stops: pickupStopSummary.total,
+            stops_per_hour: getStopsPerHour({
+              completedStops: Number(route.completed_stops || 0),
+              firstScan: getFirstCompletedScan(stops || []),
+              currentTime: new Date()
+            }),
+            response_view: 'manifest',
+            stops: routeStops
+          },
+          driver_day: {
+            status: 'dispatched',
+            manifest_changed_after_dispatch: hasRouteChangedAfterDispatch(route),
+            post_dispatch_change_policy: postDispatchChangePolicy,
+            dispatched_at: route.dispatched_at || null,
+            last_manifest_change_at: route.last_manifest_change_at || null
+          }
+        });
       }
 
       const notedStops = await attachStopNotesToStops(
@@ -1406,59 +1774,23 @@ function createRoutesRouter(options = {}) {
       );
       const postDispatchChangePolicy = getPostDispatchChangePolicy(route);
       const pickupStopSummary = getPickupStopSummary(routeStops);
-      let vehicle = null;
-      let odometerEntry = null;
-      let inspectionRequirement = {
-        required: false,
-        submitted: true
-      };
+      const vehicleContext = await loadTodayVehicleContext(supabase, {
+        accountId: req.driver.account_id,
+        driverId: req.driver.driver_id,
+        route
+      });
 
-      if (route.vehicle_id) {
-        const { data: vehicleRow, error: vehicleError } = await supabase
-          .from('vehicles')
-          .select('id, name, current_mileage')
-          .eq('id', route.vehicle_id)
-          .eq('account_id', req.driver.account_id)
-          .maybeSingle();
-
-        if (vehicleError) {
-          console.error('Today vehicle lookup failed:', vehicleError);
-          return res.status(500).json({ error: 'Failed to load route vehicle' });
-        }
-
-        vehicle = vehicleRow || null;
-
-        const { data: odometerRows, error: odometerError } = await supabase
-          .from('vehicle_odometer_entries')
-          .select('id, odometer_reading, created_at')
-          .eq('account_id', req.driver.account_id)
-          .eq('driver_id', req.driver.driver_id)
-          .eq('vehicle_id', route.vehicle_id)
-          .eq('route_id', route.id)
-          .order('created_at', { ascending: false })
-          .limit(1);
-
-        if (odometerError) {
-          console.error('Today odometer lookup failed:', odometerError);
-          return res.status(500).json({ error: 'Failed to load odometer status' });
-        }
-
-        odometerEntry = (odometerRows || [])[0] || null;
-
-        inspectionRequirement = await loadVehicleInspectionRequirement(supabase, {
-          accountId: req.driver.account_id,
-          driverId: req.driver.driver_id,
-          route,
-          vehicle
-        });
-
-        if (inspectionRequirement.error) {
-          console.error('Today inspection requirement lookup failed:', inspectionRequirement.error);
-          return res.status(500).json({ error: 'Failed to load inspection requirement' });
-        }
+      if (vehicleContext.error) {
+        console.error(vehicleContext.logMessage, vehicleContext.error);
+        return res.status(500).json({ error: vehicleContext.publicMessage });
       }
 
-      const lastRecordedOdometer = toInteger(vehicle?.current_mileage) || 0;
+      const {
+        vehicle,
+        odometerEntry,
+        inspectionRequirement,
+        lastRecordedOdometer
+      } = vehicleContext;
 
       return res.status(200).json({
         route: {
@@ -1489,17 +1821,7 @@ function createRoutesRouter(options = {}) {
           driver_pickup_stops: pickupStopSummary.total,
           stops_per_hour: getStopsPerHour({
             completedStops: Number(route.completed_stops || 0),
-            firstScan: (stops || [])
-              .filter((stop) => stop.completed_at)
-              .reduce((earliest, stop) => {
-                if (!earliest) {
-                  return stop.completed_at;
-                }
-
-                return new Date(stop.completed_at).getTime() < new Date(earliest).getTime()
-                  ? stop.completed_at
-                  : earliest;
-              }, null),
+            firstScan: getFirstCompletedScan(stops || []),
             currentTime: new Date()
           }),
           stops: routeStops,

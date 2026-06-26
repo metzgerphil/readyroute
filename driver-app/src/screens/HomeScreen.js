@@ -514,7 +514,11 @@ export default function HomeScreen({ navigation, onLogout }) {
 
     try {
       const [routeResponse, timecardStatusResponse, safetyFocusResponse] = await Promise.all([
-        api.get('/routes/today'),
+        api.get('/routes/today', {
+          params: {
+            view: 'summary'
+          }
+        }),
         api.get('/timecards/status'),
         api.get('/safety-focuses/today').catch(() => null)
       ]);

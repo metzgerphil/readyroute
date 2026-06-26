@@ -199,7 +199,11 @@ export default function ManifestScreen({ navigation, route }) {
 
     async function loadRoute() {
       try {
-        const response = await api.get('/routes/today');
+        const response = await api.get('/routes/today', {
+          params: {
+            view: 'manifest'
+          }
+        });
         const nextRoute = response.data?.route || null;
 
         if (isMounted) {
@@ -489,14 +493,14 @@ export default function ManifestScreen({ navigation, route }) {
           <FlatList
             contentContainerStyle={[styles.listContent, { paddingBottom: appTheme.spacing.xxl + insets.bottom }]}
             data={visibleStops}
-            getItemLayout={(_, index) => ({
-              index,
-              length: 82,
-              offset: 82 * index
-            })}
+            initialNumToRender={14}
             keyExtractor={(item) => item.id}
             ListEmptyComponent={<Text style={styles.emptyText}>No stops match that search.</Text>}
+            maxToRenderPerBatch={12}
+            removeClippedSubviews
             renderItem={renderStopRow}
+            updateCellsBatchingPeriod={50}
+            windowSize={7}
           />
         ) : null}
       </View>

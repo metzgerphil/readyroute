@@ -515,6 +515,200 @@ test('GET /routes/today returns the driver route with stops and nested packages'
   }
 });
 
+test('GET /routes/today?view=manifest returns lean list stops with package counts', async () => {
+  const supabase = new MockSupabase((query) => {
+    if (query.table === 'routes' && query.operation === 'select') {
+      return {
+        data: {
+          id: 'route-1',
+          date: '2026-04-08',
+          status: 'in_progress',
+          dispatch_state: 'dispatched',
+          dispatched_at: '2026-04-08T13:00:00.000Z',
+          last_manifest_change_at: null,
+          total_stops: 2,
+          completed_stops: 1,
+          completed_at: null,
+          vehicle_id: 'vehicle-1'
+        },
+        error: null
+      };
+    }
+
+    if (query.table === 'stops' && query.operation === 'select') {
+      assert.equal(query.columns.includes('primary_phone'), false);
+      assert.equal(query.columns.includes('customer_instructions'), false);
+      assert.equal(query.columns.includes('notes'), true);
+
+      return {
+        data: [
+          {
+            id: 'stop-1',
+            route_id: 'route-1',
+            sequence_order: 1,
+            address: '100 Main St',
+            contact_name: 'PALOMAR REHABILITATION',
+            address_line2: 'Suite 100',
+            sid: 'SID123',
+            ready_time: '09:00',
+            close_time: '10:00',
+            has_time_commit: true,
+            stop_type: 'delivery',
+            has_pickup: false,
+            has_delivery: true,
+            is_business: true,
+            has_note: true,
+            status: 'pending',
+            exception_code: null,
+            delivery_type_code: null,
+            is_pickup: false,
+            completed_at: null,
+            notes: 'Priority entrance'
+          },
+          {
+            id: 'stop-2',
+            route_id: 'route-1',
+            sequence_order: 2,
+            address: '200 Oak St',
+            contact_name: 'John Smith',
+            address_line2: '',
+            sid: '0',
+            ready_time: null,
+            close_time: null,
+            has_time_commit: false,
+            stop_type: 'combined',
+            has_pickup: true,
+            has_delivery: true,
+            is_business: false,
+            has_note: false,
+            status: 'delivered',
+            exception_code: '07',
+            delivery_type_code: null,
+            is_pickup: true,
+            completed_at: '2026-04-08T16:00:00.000Z',
+            notes: null
+          }
+        ],
+        error: null
+      };
+    }
+
+    if (query.table === 'packages' && query.operation === 'select') {
+      assert.equal(query.columns, 'id, stop_id');
+
+      return {
+        data: [
+          { id: 'pkg-1', stop_id: 'stop-1' },
+          { id: 'pkg-2', stop_id: 'stop-2' },
+          { id: 'pkg-3', stop_id: 'stop-2' }
+        ],
+        error: null
+      };
+    }
+
+    throw new Error(`Unexpected query ${query.table}:${query.operation}:${query.mode}`);
+  });
+
+  const server = await startTestServer(supabase);
+
+  try {
+    const response = await fetch(`${server.baseUrl}/routes/today?view=manifest`, {
+      headers: {
+        Authorization: `Bearer ${signDriverToken()}`
+      }
+    });
+
+    assert.equal(response.status, 200);
+    const body = await response.json();
+    assert.equal(body.route.response_view, 'manifest');
+    assert.equal(body.route.stops.length, 2);
+    assert.equal(body.route.stops[0].package_count, 1);
+    assert.equal(body.route.stops[1].package_count, 2);
+    assert.equal(body.route.stops[0].packages, undefined);
+    assert.equal(body.route.vehicle, undefined);
+    assert.equal(body.driver_day.odometer_requirement, undefined);
+    assert.deepEqual(
+      [...new Set(supabase.calls.map((query) => query.table))],
+      ['routes', 'stops', 'packages']
+    );
+  } finally {
+    await server.close();
+  }
+});
+
+test('GET /routes/today?view=summary returns route metadata without manifest detail', async () => {
+  const supabase = new MockSupabase((query) => {
+    if (query.table === 'routes' && query.operation === 'select') {
+      return {
+        data: {
+          id: 'route-1',
+          date: '2026-04-08',
+          work_area_name: '810',
+          status: 'pending',
+          dispatch_state: 'dispatched',
+          total_stops: 2,
+          completed_stops: 1,
+          completed_at: null,
+          vehicle_id: null
+        },
+        error: null
+      };
+    }
+
+    if (query.table === 'stops' && query.operation === 'select') {
+      assert.equal(query.columns, 'id, status, completed_at, stop_type, has_pickup, is_pickup');
+
+      return {
+        data: [
+          {
+            id: 'stop-1',
+            status: 'pending',
+            completed_at: null,
+            stop_type: 'delivery',
+            has_pickup: false,
+            is_pickup: false
+          },
+          {
+            id: 'stop-2',
+            status: 'delivered',
+            completed_at: '2026-04-08T16:00:00.000Z',
+            stop_type: 'pickup',
+            has_pickup: true,
+            is_pickup: true
+          }
+        ],
+        error: null
+      };
+    }
+
+    throw new Error(`Unexpected query ${query.table}:${query.operation}:${query.mode}`);
+  });
+
+  const server = await startTestServer(supabase);
+
+  try {
+    const response = await fetch(`${server.baseUrl}/routes/today?view=summary`, {
+      headers: {
+        Authorization: `Bearer ${signDriverToken()}`
+      }
+    });
+
+    assert.equal(response.status, 200);
+    const body = await response.json();
+    assert.equal(body.route.response_view, 'summary');
+    assert.equal(body.route.work_area_name, '810');
+    assert.equal(body.route.pickup_stops, 1);
+    assert.equal(body.route.stops, undefined);
+    assert.equal(body.driver_day.odometer_requirement.required, false);
+    assert.deepEqual(
+      [...new Set(supabase.calls.map((query) => query.table))],
+      ['routes', 'stops']
+    );
+  } finally {
+    await server.close();
+  }
+});
+
 test('GET /routes/today preserves same-address stops as distinct operational stops', async () => {
   const sameAddressStops = [
     {
