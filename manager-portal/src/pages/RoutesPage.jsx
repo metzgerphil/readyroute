@@ -3,7 +3,7 @@ import { useEffect, useMemo } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 
 import api from '../services/api';
-import { EmptyState, PageHeader, StatCard, StatusBadge } from '../components/PortalDesignSystem';
+import { EmptyState, ErrorState, PageHeader, StatCard, StatusBadge } from '../components/PortalDesignSystem';
 import { useSelectedCsa } from '../context/SelectedCsaContext';
 import {
   buildOperationsDatePath,
@@ -260,11 +260,16 @@ export default function RoutesPage() {
         {routesQuery.isLoading ? (
           <RoutesLoadingSkeleton />
         ) : routesQuery.isError ? (
-          <div className="error-banner">Unable to load routes.</div>
+          <ErrorState
+            title="Unable to load routes"
+            description="Route operations could not be loaded for this day."
+            onRetry={() => routesQuery.refetch()}
+          />
         ) : routes.length ? (
           <RoutesTable routes={routes} date={date} />
         ) : (
           <EmptyState
+            variant="inline"
             title="No routes for this day"
             description="Upload today’s manifest or route files to start reviewing work areas."
             actions={(

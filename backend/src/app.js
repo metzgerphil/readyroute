@@ -17,7 +17,6 @@ const { createVehiclesRouter } = require('./routes/vehicles');
 const safetyFocusesRoutes = require('./routes/safetyFocuses');
 const { createSafetyFocusesRouter } = require('./routes/safetyFocuses');
 const { createVedrRouter } = require('./routes/vedr');
-const routeRoutes = require('./routes/routes');
 const { createRoutesRouter } = require('./routes/routes');
 const { createInternalSyncRouter } = require('./routes/internalSync');
 const waitlistRoutes = require('./routes/waitlist');
@@ -78,16 +77,18 @@ function createApp(options = {}) {
         webhookSecret: options.webhookSecret,
         stripePriceId: options.stripePriceId
       });
-  const routesRouter = options.supabase
-    ? createRoutesRouter({
-        supabase: options.supabase,
-        now: options.now,
-        fedexSyncService: options.fedexSyncService,
-        fccProgressSyncService: options.fccProgressSyncService,
-        manifestIngestService: options.manifestIngestService,
-        inboundIngestSecret: options.inboundIngestSecret
-      })
-    : routeRoutes;
+  const requireActiveSubscription = options.enforceBilling === false || (Boolean(options.supabase) && options.enforceBilling !== true)
+    ? (_req, _res, next) => next()
+    : createRequireActiveSubscription({ supabase: options.supabase });
+  const routesRouter = createRoutesRouter({
+    supabase: options.supabase,
+    now: options.now,
+    fedexSyncService: options.fedexSyncService,
+    fccProgressSyncService: options.fccProgressSyncService,
+    manifestIngestService: options.manifestIngestService,
+    inboundIngestSecret: options.inboundIngestSecret,
+    requireActiveSubscription
+  });
   const managerRouter = options.supabase || options.now
     ? createManagerRouter({
         supabase: options.supabase,
@@ -126,10 +127,6 @@ function createApp(options = {}) {
   const waitlistRouter = options.supabase
     ? createWaitlistRouter({ supabase: options.supabase, sendFeedbackEmail: options.sendFeedbackEmail })
     : waitlistRoutes;
-  const requireActiveSubscription = options.enforceBilling === false || (Boolean(options.supabase) && options.enforceBilling !== true)
-    ? (_req, _res, next) => next()
-    : createRequireActiveSubscription({ supabase: options.supabase });
-
   app.use(
     cors({
       origin(origin, callback) {
@@ -175,7 +172,7 @@ function createApp(options = {}) {
   app.use('/api/vedr', requireManager, requireActiveSubscription, vedrRouter);
   app.use('/routes', routesRouter);
   app.use('/timecards', timecardsRouter);
-  app.use('/vehicles', vehiclesRouter);
+  app.use('/vehicles', requireManager, requireActiveSubscription, vehiclesRouter);
   app.use('/safety-focuses', requireDriver, safetyFocusesRouter);
 
   app.use((error, _req, res, _next) => {

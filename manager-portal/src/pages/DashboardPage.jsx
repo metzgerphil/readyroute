@@ -5,6 +5,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import DashboardFleetMap from '../components/dashboard/DashboardFleetMap';
 import DriverRow from '../components/DriverRow';
 import OverviewRoutesSection from '../components/OverviewRoutesSection';
+import { ErrorState } from '../components/PortalDesignSystem';
 import api from '../services/api';
 import {
   buildFallbackDashboard,
@@ -382,11 +383,12 @@ export default function DashboardPage() {
         </div>
       </div>
 
-      {dashboardQuery.isLoading && bannerState !== 'missing' ? <div className="card">Loading dashboard...</div> : null}
       {dashboardQuery.isError ? (
-        <div className="card">
-          {dashboardQuery.error?.response?.data?.error || 'Dashboard failed to load. Refresh and try again.'}
-        </div>
+        <ErrorState
+          title="Unable to load dashboard"
+          description={dashboardQuery.error?.response?.data?.error || 'Dashboard failed to load for this date.'}
+          onRetry={() => dashboardQuery.refetch()}
+        />
       ) : null}
 
       {dashboardQuery.isLoading ? (
@@ -656,6 +658,8 @@ export default function DashboardPage() {
 
           <OverviewRoutesSection
             date={dashboardDate}
+            isError={routesOverviewQuery.isError}
+            onRetry={() => routesOverviewQuery.refetch()}
             routes={routesOverviewQuery.isLoading ? null : overviewRoutes}
           />
         </>

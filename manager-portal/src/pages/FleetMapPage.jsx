@@ -4,6 +4,7 @@ import { useQuery } from '@tanstack/react-query';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 
 import api from '../services/api';
+import { EmptyState, ErrorState, LoadingState } from '../components/PortalDesignSystem';
 import { loadGoogleMaps } from '../lib/googleMapsLoader';
 import { createDriverPositionMarker } from '../utils/stopMarkers';
 import {
@@ -11,7 +12,7 @@ import {
   getResolvedOperationsDate,
   saveStoredOperationsDate
 } from '../utils/operationsDate';
-import { toUsableMapPoint } from '../utils/routePageHelpers';
+import { escapeHtml, toUsableMapPoint } from '../utils/routePageHelpers';
 import './FleetMapPage.css';
 
 const EMPTY_ARRAY = [];
@@ -112,7 +113,7 @@ export default function FleetMapPage() {
   });
 
   const routes = useMemo(() => routesQuery.data || EMPTY_ARRAY, [routesQuery.data]);
-  const hasNoRoutes = !routesQuery.isLoading && routes.length === 0;
+  const hasNoRoutes = !routesQuery.isLoading && !routesQuery.isError && routes.length === 0;
   const routesWithColors = useMemo(
     () => routes.map((route, index) => ({ ...route, routeColor: getRouteColor(route, index) })),
     [routes]
@@ -288,10 +289,10 @@ export default function FleetMapPage() {
           setSelectedRouteId(route.id);
           infoWindow.setContent(`
             <div style="min-width:220px; color:#173042; padding:8px 6px;">
-              <div style="font-size:14px; font-weight:900; color:${route.routeColor};">Route ${route.work_area_name || '—'}</div>
-              <div style="margin-top:4px; font-size:13px; font-weight:900;">Stop ${stop.sequence_order}</div>
-              <div style="margin-top:6px; font-size:12px; color:#374151;">${stop.address || 'No address available'}</div>
-              <div style="margin-top:8px; font-size:12px; color:#5f6b76;">${route.driver_name || 'Unassigned driver'}</div>
+              <div style="font-size:14px; font-weight:900; color:${route.routeColor};">Route ${escapeHtml(route.work_area_name || '—')}</div>
+              <div style="margin-top:4px; font-size:13px; font-weight:900;">Stop ${escapeHtml(stop.sequence_order)}</div>
+              <div style="margin-top:6px; font-size:12px; color:#374151;">${escapeHtml(stop.address || 'No address available')}</div>
+              <div style="margin-top:8px; font-size:12px; color:#5f6b76;">${escapeHtml(route.driver_name || 'Unassigned driver')}</div>
             </div>
           `);
           infoWindow.open({ anchor: stopMarker, map });
@@ -314,10 +315,10 @@ export default function FleetMapPage() {
           setSelectedRouteId(route.id);
           infoWindow.setContent(`
             <div style="min-width:220px; color:#173042; padding:8px 6px;">
-              <div style="font-size:15px; font-weight:900;">${route.driver_name || 'Unassigned'}</div>
-              <div style="margin-top:4px; font-size:13px; color:${route.routeColor}; font-weight:900;">Work Area ${route.work_area_name || '—'}</div>
-              <div style="margin-top:10px; font-size:12px; color:#5f6b76;">${getProgressText(route)}</div>
-              <div style="margin-top:4px; font-size:12px; color:#5f6b76;">Status: ${getDisplayStatusLabel(route)}</div>
+              <div style="font-size:15px; font-weight:900;">${escapeHtml(route.driver_name || 'Unassigned')}</div>
+              <div style="margin-top:4px; font-size:13px; color:${route.routeColor}; font-weight:900;">Work Area ${escapeHtml(route.work_area_name || '—')}</div>
+              <div style="margin-top:10px; font-size:12px; color:#5f6b76;">${escapeHtml(getProgressText(route))}</div>
+              <div style="margin-top:4px; font-size:12px; color:#5f6b76;">Status: ${escapeHtml(getDisplayStatusLabel(route))}</div>
             </div>
           `);
           infoWindow.open({ anchor: driverMarker, map });
@@ -389,6 +390,20 @@ export default function FleetMapPage() {
       <div className="fleet-map-layout">
         <div className="card fleet-map-canvas-card">
           <div ref={mapContainerRef} className="fleet-map-canvas" />
+          {routesQuery.isLoading ? (
+            <div className="fleet-map-empty-state">
+              <LoadingState title="Loading fleet map routes" />
+            </div>
+          ) : null}
+          {routesQuery.isError ? (
+            <div className="fleet-map-empty-state">
+              <ErrorState
+                title="Unable to load fleet map routes"
+                description="Routes for this map could not be loaded."
+                onRetry={() => routesQuery.refetch()}
+              />
+            </div>
+          ) : null}
           {hasNoRoutes ? (
             <div className="fleet-map-empty-state">
               <div className="fleet-map-empty-state-title">No routes loaded for this date yet.</div>
@@ -411,9 +426,20 @@ export default function FleetMapPage() {
 
         <aside className="card fleet-map-summary-card">
           <div className="card-title">Active Routes</div>
-          {routesQuery.isLoading ? <div className="fleet-map-empty">Loading routes...</div> : null}
-          {!routesQuery.isLoading && routesWithColors.length === 0 ? (
-            <div className="fleet-map-empty">Waiting for route sync or manual upload.</div>
+          {routesQuery.isLoading ? <LoadingState skeletonRows={2} title="Loading routes" /> : null}
+          {routesQuery.isError ? (
+            <ErrorState
+              title="Unable to load routes"
+              description="Active route rows could not be loaded for this date."
+              onRetry={() => routesQuery.refetch()}
+            />
+          ) : null}
+          {hasNoRoutes ? (
+            <EmptyState
+              variant="inline"
+              title="Waiting for route sync or manual upload"
+              description="Routes will appear here after a manifest or route file is loaded for this date."
+            />
           ) : null}
           <div className="fleet-map-route-key">
             {routeRows.map(({ route }) => (

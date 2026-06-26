@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 
 import { loadGoogleMaps } from '../lib/googleMapsLoader';
+import { escapeHtml } from '../utils/routePageHelpers';
 
 export default function MapView({ center, markers = [] }) {
   const mapRef = useRef(null);
@@ -72,10 +73,10 @@ export default function MapView({ center, markers = [] }) {
             marker.addListener('click', () => {
               infoWindow.setContent(`
                 <div style="min-width: 180px; padding: 4px 2px;">
-                  <div style="font-weight: 800; color: #173042;">${markerData.label || 'Driver'}</div>
-                  ${markerData.secondaryLine ? `<div style="color: #66737c; margin-top: 3px;">${markerData.secondaryLine}</div>` : ''}
-                  <div style="color: #66737c; margin-top: 4px;">${markerData.subtitle || ''}</div>
-                  <div style="color: #ff6200; font-weight: 700; margin-top: 6px;">${markerData.metric || ''}</div>
+                  <div style="font-weight: 800; color: #173042;">${escapeHtml(markerData.label || 'Driver')}</div>
+                  ${markerData.secondaryLine ? `<div style="color: #66737c; margin-top: 3px;">${escapeHtml(markerData.secondaryLine)}</div>` : ''}
+                  <div style="color: #66737c; margin-top: 4px;">${escapeHtml(markerData.subtitle || '')}</div>
+                  <div style="color: #ff6200; font-weight: 700; margin-top: 6px;">${escapeHtml(markerData.metric || '')}</div>
                 </div>
               `);
               infoWindow.open({ anchor: marker, map });

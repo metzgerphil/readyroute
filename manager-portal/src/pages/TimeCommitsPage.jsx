@@ -3,7 +3,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 
 import api from '../services/api';
-import { EmptyState, PageHeader, StatCard, StatusBadge } from '../components/PortalDesignSystem';
+import { EmptyState, ErrorState, LoadingState, PageHeader, StatCard, StatusBadge } from '../components/PortalDesignSystem';
 import { useSelectedCsa } from '../context/SelectedCsaContext';
 import {
   buildOperationsDatePath,
@@ -351,18 +351,24 @@ export default function TimeCommitsPage() {
         </div>
 
         {routesQuery.isLoading ? (
-          <div className="driver-meta">Loading time commits...</div>
+          <LoadingState title="Loading time commits" />
         ) : routesQuery.isError ? (
-          <div className="error-banner">Unable to load P&D time commits.</div>
+          <ErrorState
+            title="Unable to load P&D time commits"
+            description="Manifest commit stops could not be loaded for this day."
+            onRetry={() => routesQuery.refetch()}
+          />
         ) : filteredRows.length ? (
           <TimeCommitsTable rows={filteredRows} date={date} />
         ) : rows.length ? (
           <EmptyState
+            variant="inline"
             title="No time commits match these filters"
             description="Clear or adjust the filters to see the remaining manifest time commits."
           />
         ) : (
           <EmptyState
+            variant="inline"
             title="No P&D time commits for this day"
             description="When manifests include pickup or delivery commit windows, they will appear here across all routes."
             actions={(

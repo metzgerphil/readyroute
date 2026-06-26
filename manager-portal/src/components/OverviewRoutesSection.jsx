@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 
+import { ErrorState } from './PortalDesignSystem';
 import api from '../services/api';
 import { buildOperationsDatePath } from '../utils/operationsDate';
 import './OverviewRoutesSection.css';
@@ -382,7 +383,7 @@ function SkeletonTable() {
   );
 }
 
-export default function OverviewRoutesSection({ date, routes }) {
+export default function OverviewRoutesSection({ date, isError = false, onRetry, routes }) {
   const navigate = useNavigate();
   const [routeOverrides, setRouteOverrides] = useState({});
   const [dismissedAlertDate, setDismissedAlertDate] = useState(null);
@@ -441,6 +442,21 @@ export default function OverviewRoutesSection({ date, routes }) {
         </div>
         <div className="overview-table-shell">
           <SkeletonTable />
+        </div>
+      </section>
+    );
+  }
+
+  if (isError) {
+    return (
+      <section className="overview-routes-section">
+        <div className="overview-stats-shell">
+          <div className="overview-stats-title">TODAY&apos;S ROUTES</div>
+          <ErrorState
+            title="Unable to load route overview"
+            description="Dashboard route details could not be loaded."
+            onRetry={onRetry}
+          />
         </div>
       </section>
     );
@@ -589,7 +605,7 @@ export default function OverviewRoutesSection({ date, routes }) {
                     <div className="overview-driver-cell">
                       <button
                         className="overview-link"
-                        onClick={() => navigate(`/drivers/${route.driver_id}`)}
+                        onClick={() => navigate('/drivers')}
                         type="button"
                       >
                         {route.driver_name || ''}
@@ -613,7 +629,7 @@ export default function OverviewRoutesSection({ date, routes }) {
                   {route.vehicle_id && route.vehicle_name ? (
                     <button
                       className="overview-link"
-                      onClick={() => navigate(`/vehicles/${route.vehicle_id}`)}
+                      onClick={() => navigate('/vehicles')}
                       type="button"
                     >
                       {route.vehicle_name}

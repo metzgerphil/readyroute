@@ -2,7 +2,7 @@ import { useEffect, useMemo } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 
-import { PageHeader, RouteCard, StatusBadge } from '../components/PortalDesignSystem';
+import { ErrorState, LoadingState, PageHeader, RouteCard, StatusBadge } from '../components/PortalDesignSystem';
 import { useSelectedCsa } from '../context/SelectedCsaContext';
 import api from '../services/api';
 
@@ -237,11 +237,25 @@ export default function SetupPage() {
   }, [dashboardQuery.data, driverAccessQuery.data?.starter_pin, driversQuery.data, fedexAccountsQuery.data, managerUsersQuery.data, vedrQuery.data, vehiclesQuery.data]);
 
   if (isLoading) {
-    return <div className="card page-loading-card">Loading company setup...</div>;
+    return <LoadingState className="page-loading-card" title="Loading company setup" variant="card" />;
   }
 
   if (hasError) {
-    return <div className="card">Company setup could not load right now.</div>;
+    return (
+      <ErrorState
+        title="Unable to load company setup"
+        description="One or more setup checks could not be loaded right now."
+        onRetry={() => {
+          vedrQuery.refetch();
+          managerUsersQuery.refetch();
+          driverAccessQuery.refetch();
+          driversQuery.refetch();
+          vehiclesQuery.refetch();
+          fedexAccountsQuery.refetch();
+          dashboardQuery.refetch();
+        }}
+      />
+    );
   }
 
   return (

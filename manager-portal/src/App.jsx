@@ -3,7 +3,7 @@ import { Navigate, Route, Routes, useLocation } from 'react-router-dom';
 
 import ErrorBoundary from './components/ErrorBoundary';
 import Layout from './components/Layout';
-import { EmptyState } from './components/PortalDesignSystem';
+import { LoadingState } from './components/PortalDesignSystem';
 import { SelectedCsaProvider } from './context/SelectedCsaContext';
 import { getManagerToken } from './services/auth';
 
@@ -28,13 +28,11 @@ const VehiclesPage = lazy(() => import('./pages/VehiclesPage'));
 
 function RouteLoadingFallback() {
   return (
-    <EmptyState className="page-loading-card" title="Loading...">
-      <div className="page-loading-skeleton" aria-hidden="true">
-        <span className="skeleton-line skeleton-label" />
-        <span className="skeleton-line skeleton-value" />
-        <span className="skeleton-line skeleton-label" />
-      </div>
-    </EmptyState>
+    <LoadingState
+      className="page-loading-card"
+      title="Loading page"
+      variant="card"
+    />
   );
 }
 

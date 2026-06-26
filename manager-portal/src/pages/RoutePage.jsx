@@ -3,6 +3,7 @@ import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 
 import MapLegend from '../components/MapLegend';
+import { EmptyState, ErrorState, LoadingState } from '../components/PortalDesignSystem';
 import StopListDrawer from '../components/StopListDrawer';
 import api from '../services/api';
 import { loadGoogleMaps } from '../lib/googleMapsLoader';
@@ -1078,7 +1079,7 @@ export default function RoutePage() {
   if (routesQuery.isLoading || routeDetailQuery.isLoading) {
     return (
       <section className="page-section route-page-shell">
-        <div className="card">Loading route detail...</div>
+        <LoadingState title="Loading route detail" variant="card" />
       </section>
     );
   }
@@ -1086,11 +1087,18 @@ export default function RoutePage() {
   if (routesQuery.isError || routeDetailQuery.isError) {
     return (
       <section className="page-section route-page-shell">
-        <div className="card">
-          {routeDetailQuery.error?.response?.data?.error ||
+        <ErrorState
+          title="Unable to load route detail"
+          description={
+            routeDetailQuery.error?.response?.data?.error ||
             routesQuery.error?.response?.data?.error ||
-            'Route detail failed to load.'}
-        </div>
+            'Route detail failed to load for this date.'
+          }
+          onRetry={() => {
+            routesQuery.refetch();
+            routeDetailQuery.refetch();
+          }}
+        />
       </section>
     );
   }
@@ -1098,7 +1106,10 @@ export default function RoutePage() {
   if (!route) {
     return (
       <section className="page-section route-page-shell">
-        <div className="card">Route not found for this date.</div>
+        <EmptyState
+          title="Route not found for this date"
+          description="Choose another route or date to continue."
+        />
       </section>
     );
   }

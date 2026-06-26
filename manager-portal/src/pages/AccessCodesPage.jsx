@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useMemo, useRef, useState } from 'react';
 
-import { EmptyState, PageHeader, StatCard } from '../components/PortalDesignSystem';
+import { EmptyState, ErrorState, LoadingState, PageHeader, StatCard } from '../components/PortalDesignSystem';
 import { useSelectedCsa } from '../context/SelectedCsaContext';
 import api from '../services/api';
 
@@ -374,9 +374,13 @@ export default function AccessCodesPage() {
         </div>
 
         {accessCodesQuery.isLoading ? (
-          <div className="driver-meta">Loading access codes...</div>
+          <LoadingState title="Loading access codes" />
         ) : accessCodesQuery.isError ? (
-          <div className="error-banner">Unable to load access codes.</div>
+          <ErrorState
+            title="Unable to load access codes"
+            description="Saved property access records could not be loaded."
+            onRetry={() => accessCodesQuery.refetch()}
+          />
         ) : filteredRows.length ? (
           <div className="access-code-table">
             <div className="access-code-table-header">
@@ -426,6 +430,7 @@ export default function AccessCodesPage() {
           </div>
         ) : (
           <EmptyState
+            variant="inline"
             title="No access codes found"
             description="Try a different search, or add the property manually."
             actions={(

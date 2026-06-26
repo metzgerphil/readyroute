@@ -116,7 +116,7 @@ function formatTimeCommit(stop) {
   return `${stop.ready_time} — ${stop.close_time}`;
 }
 
-function escapeHtml(value) {
+export function escapeHtml(value) {
   return String(value ?? '')
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
@@ -485,18 +485,18 @@ export function buildDriverInfoWindow({ route, routeDriverName, nextStop, pendin
 
   return `
     <div style="min-width:280px; color:#173042; padding:8px 6px;">
-      <div style="font-size:15px; font-weight:900;">${routeDriverName}</div>
-      <div style="margin-top:4px; font-size:13px; color:#5f6b76; font-weight:700;">Work Area ${route?.work_area_name || '—'}</div>
-      <div style="margin-top:10px; font-size:12px; color:#5f6b76;">${route?.completed_stops || 0} / ${route?.total_stops || 0} completed</div>
-      <div style="margin-top:4px; font-size:12px; color:#5f6b76;">Stops/Hour: ${stopsPerHour}</div>
+      <div style="font-size:15px; font-weight:900;">${escapeHtml(routeDriverName)}</div>
+      <div style="margin-top:4px; font-size:13px; color:#5f6b76; font-weight:700;">Work Area ${escapeHtml(route?.work_area_name || '—')}</div>
+      <div style="margin-top:10px; font-size:12px; color:#5f6b76;">${escapeHtml(route?.completed_stops || 0)} / ${escapeHtml(route?.total_stops || 0)} completed</div>
+      <div style="margin-top:4px; font-size:12px; color:#5f6b76;">Stops/Hour: ${escapeHtml(stopsPerHour)}</div>
       <div style="margin-top:10px; font-size:12px; font-weight:900; color:#173042;">Next stop</div>
-      <div style="margin-top:4px; font-size:12px; color:#374151;">${nextStopAddress}</div>
+      <div style="margin-top:4px; font-size:12px; color:#374151;">${escapeHtml(nextStopAddress)}</div>
       ${
         nextStopTimeCommit
-          ? `<div style="margin-top:8px; font-size:12px; font-weight:900; color:#b45309;">TC: ${nextStopTimeCommit}</div>`
+          ? `<div style="margin-top:8px; font-size:12px; font-weight:900; color:#b45309;">TC: ${escapeHtml(nextStopTimeCommit)}</div>`
           : ''
       }
-      <div style="margin-top:8px; font-size:12px; color:#5f6b76;">Pending time commits remaining: ${pendingTimeCommitCount}</div>
+      <div style="margin-top:8px; font-size:12px; color:#5f6b76;">Pending time commits remaining: ${escapeHtml(pendingTimeCommitCount)}</div>
     </div>
   `;
 }

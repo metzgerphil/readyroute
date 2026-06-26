@@ -7,7 +7,7 @@ import {
   VEDR_PROVIDER_CONFIG,
   VEDR_PROVIDERS
 } from '../config/constants';
-import { PageHeader, StatusBadge } from '../components/PortalDesignSystem';
+import { ErrorState, LoadingState, PageHeader, StatusBadge } from '../components/PortalDesignSystem';
 import { useSelectedCsa } from '../context/SelectedCsaContext';
 import api from '../services/api';
 
@@ -279,7 +279,7 @@ export default function VedrPage() {
   if (settingsQuery.isLoading) {
     return (
       <section className="page-section">
-        <div className="card page-loading-card">Loading VEDR settings...</div>
+        <LoadingState title="Loading VEDR settings" variant="card" />
       </section>
     );
   }
@@ -287,10 +287,11 @@ export default function VedrPage() {
   if (settingsQuery.isError) {
     return (
       <section className="page-section">
-        <div className="card">
-          <div className="card-title">VEDR Setup</div>
-          <div className="error-banner">We couldn&apos;t load your VEDR settings right now.</div>
-        </div>
+        <ErrorState
+          title="Unable to load VEDR settings"
+          description="We couldn't load your VEDR settings right now."
+          onRetry={() => settingsQuery.refetch()}
+        />
       </section>
     );
   }

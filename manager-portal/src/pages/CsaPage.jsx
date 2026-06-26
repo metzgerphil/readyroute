@@ -3,7 +3,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 
 import api from '../services/api';
-import { PageHeader, StatusBadge } from '../components/PortalDesignSystem';
+import { EmptyState, ErrorState, LoadingState, PageHeader, StatusBadge } from '../components/PortalDesignSystem';
 import { useSelectedCsa } from '../context/SelectedCsaContext';
 import { saveManagerToken } from '../services/auth';
 
@@ -365,9 +365,13 @@ export default function CsaPage() {
           <div className="driver-meta">The CSA workspace your manager portal is using now.</div>
 
           {csaQuery.isLoading ? (
-            <div className="driver-meta">Loading CSA access...</div>
+            <LoadingState skeletonRows={2} title="Loading CSA access" />
           ) : csaQuery.isError ? (
-            <div className="error-banner">CSA access could not load right now.</div>
+            <ErrorState
+              title="Unable to load CSA access"
+              description="CSA workspace access could not load right now."
+              onRetry={() => csaQuery.refetch()}
+            />
           ) : currentCsa ? (
             <div className="csa-settings-list">
               <article className="csa-settings-row">
@@ -389,7 +393,11 @@ export default function CsaPage() {
               </article>
             </div>
           ) : (
-            <div className="labor-empty-state">Choose a CSA workspace to continue.</div>
+            <EmptyState
+              variant="inline"
+              title="Choose a CSA workspace to continue"
+              description="Link or select a CSA workspace before managing workspace-level settings."
+            />
           )}
 
           {otherLinkedCsas.length ? (
@@ -541,6 +549,12 @@ export default function CsaPage() {
                 </div>
               ))}
             </div>
+          ) : fedexAccountsQuery.isError ? (
+            <ErrorState
+              title="Unable to load FedEx access references"
+              description="Saved CSA FedEx references could not be loaded."
+              onRetry={() => fedexAccountsQuery.refetch()}
+            />
           ) : fedexAccounts.length ? (
             <div className="csa-fedex-access-list">
               {fedexAccounts.map((account) => {

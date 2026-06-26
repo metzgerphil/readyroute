@@ -179,8 +179,8 @@ export default function Layout({ children }) {
             <span className="brand-route">Route</span>
           </a>
           <div className="sidebar-csa-card">
-            <div className="sidebar-csa-name">
-              {selectedCsaName || (csaQuery.isLoading ? 'Loading...' : 'No CSA selected')}
+            <div className="sidebar-csa-name" aria-busy={csaQuery.isLoading && !selectedCsaName ? 'true' : undefined}>
+              {selectedCsaName || (csaQuery.isLoading ? 'Loading workspace...' : 'No CSA selected')}
             </div>
             {linkedCsas.length > 1 ? (
               <select

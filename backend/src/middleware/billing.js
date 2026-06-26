@@ -17,7 +17,7 @@ function createRequireActiveSubscription(options = {}) {
       }
 
       if (!account) {
-        return next();
+        return res.status(403).json({ error: 'Account is not available' });
       }
 
       if (account.plan === 'suspended') {

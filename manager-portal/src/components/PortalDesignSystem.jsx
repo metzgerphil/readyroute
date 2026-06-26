@@ -73,15 +73,70 @@ export function ActionBanner({
   );
 }
 
-export function EmptyState({ title, description, actions, children, className = '' }) {
+export function EmptyState({ title, description, actions, children, className = '', variant = 'card' }) {
   return (
-    <section className={cx('card rr-empty-state', className)}>
+    <section className={cx(variant === 'card' && 'card', 'rr-empty-state', variant === 'inline' && 'rr-empty-state-inline', className)}>
       <div>
         <div className="card-title">{title}</div>
         {description ? <p>{description}</p> : null}
       </div>
       {children}
       {actions ? <div className="rr-empty-state-actions">{actions}</div> : null}
+    </section>
+  );
+}
+
+export function LoadingState({
+  title = 'Loading...',
+  description,
+  className = '',
+  skeletonRows = 3,
+  variant = 'inline',
+  children
+}) {
+  return (
+    <section
+      aria-busy="true"
+      aria-live="polite"
+      className={cx(variant === 'card' && 'card', 'rr-loading-state', `variant-${variant}`, className)}
+      role="status"
+    >
+      <div className="rr-loading-state-status">
+        <span aria-hidden="true" className="rr-loading-spinner" />
+        <div>
+          <div className="rr-loading-state-title">{title}</div>
+          {description ? <p>{description}</p> : null}
+        </div>
+      </div>
+      {children || skeletonRows > 0 ? (
+        <div className="rr-loading-state-skeleton" aria-hidden="true">
+          {children || Array.from({ length: skeletonRows }, (_, index) => (
+            <span className="skeleton-line" key={index} />
+          ))}
+        </div>
+      ) : null}
+    </section>
+  );
+}
+
+export function ErrorState({
+  title = 'Unable to load this section',
+  description = 'Try again, or refresh the page if the problem continues.',
+  actionLabel = 'Retry',
+  className = '',
+  onRetry
+}) {
+  return (
+    <section className={cx('error-banner rr-error-state', className)} role="alert">
+      <div>
+        <div className="rr-error-state-title">{title}</div>
+        {description ? <p>{description}</p> : null}
+      </div>
+      {onRetry ? (
+        <button className="secondary-inline-button" onClick={onRetry} type="button">
+          {actionLabel}
+        </button>
+      ) : null}
     </section>
   );
 }

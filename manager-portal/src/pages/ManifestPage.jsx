@@ -3,6 +3,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link, useSearchParams } from 'react-router-dom';
 
+import { ErrorState } from '../components/PortalDesignSystem';
 import api from '../services/api';
 import {
   buildOperationsDatePath,
@@ -1116,16 +1117,19 @@ export default function ManifestPage() {
 
                 {uploadManifestMutation.isPending ? <div className="progress-bar"><div className="progress-bar-fill indeterminate" /></div> : null}
                 {uploadManifestMutation.isError ? (
-                  <div className="error-banner">
-                    {uploadManifestMutation.error?.response?.data?.error || 'Manifest upload failed. Please try again.'}
-                  </div>
+                  <ErrorState
+                    title="Manifest upload failed"
+                    description={uploadManifestMutation.error?.response?.data?.error || 'Please try again.'}
+                  />
                 ) : null}
               </div>
 
             {routesQuery.isError ? (
-              <div className="error-banner">
-                {routesQuery.error?.response?.data?.error || 'Unable to load routes for this date right now.'}
-              </div>
+              <ErrorState
+                title="Unable to load routes"
+                description={routesQuery.error?.response?.data?.error || 'Routes for this date could not be loaded right now.'}
+                onRetry={() => routesQuery.refetch()}
+              />
             ) : null}
             {isPastDate ? (
               <div className="info-banner">
@@ -1133,9 +1137,10 @@ export default function ManifestPage() {
               </div>
             ) : null}
             {archiveRoutesMutation.isError ? (
-              <div className="error-banner">
-                {archiveRoutesMutation.error?.response?.data?.error || 'Failed to archive routes for this date.'}
-              </div>
+              <ErrorState
+                title="Failed to archive routes"
+                description={archiveRoutesMutation.error?.response?.data?.error || 'Routes for this date could not be archived.'}
+              />
             ) : null}
             {archiveRoutesMutation.data?.archived_count ? (
               <div className="success-banner">
@@ -1246,9 +1251,10 @@ export default function ManifestPage() {
           </div>
 
           {dispatchRoutesMutation.isError ? (
-            <div className="error-banner">
-              {dispatchRoutesMutation.error?.response?.data?.error || 'Failed to dispatch routes.'}
-            </div>
+            <ErrorState
+              title="Failed to dispatch routes"
+              description={dispatchRoutesMutation.error?.response?.data?.error || 'Routes could not be dispatched.'}
+            />
           ) : null}
           {dispatchRoutesMutation.data?.dispatched_count ? (
             <div className="success-banner">

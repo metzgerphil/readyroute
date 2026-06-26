@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link, useSearchParams } from 'react-router-dom';
 
+import { EmptyState, ErrorState, LoadingState } from '../components/PortalDesignSystem';
 import api from '../services/api';
 import { getTodayString, loadStoredOperationsDate, saveStoredOperationsDate } from '../utils/operationsDate';
 
@@ -1566,7 +1567,7 @@ export default function DriversPage() {
           </button>
         </form>
         {starterPinError ? <div className="error-banner">{starterPinError}</div> : null}
-        {driverAccessQuery.isLoading ? <div className="driver-meta">Loading current starter PIN...</div> : null}
+        {driverAccessQuery.isLoading ? <LoadingState skeletonRows={1} title="Loading current starter PIN" /> : null}
       </div>
 
       <div className="info-banner">
@@ -1654,9 +1655,13 @@ export default function DriversPage() {
         </div>
 
         {driversQuery.isLoading ? (
-          <div className="driver-meta">Loading drivers...</div>
+          <LoadingState title="Loading drivers" />
         ) : driversQuery.isError ? (
-          <div className="error-banner">Unable to load drivers.</div>
+          <ErrorState
+            title="Unable to load drivers"
+            description="The driver directory could not be loaded."
+            onRetry={() => driversQuery.refetch()}
+          />
         ) : drivers.length ? (
           <>
             {filteredDrivers.length ? (
@@ -1746,11 +1751,19 @@ export default function DriversPage() {
                 </div>
               </>
             ) : (
-              <div className="labor-empty-state">No drivers match the current search or filters.</div>
+              <EmptyState
+                variant="inline"
+                title="No drivers match the current search or filters"
+                description="Clear or adjust the search, status, compliance, or sort controls to see more drivers."
+              />
             )}
           </>
         ) : (
-          <div className="labor-empty-state">No drivers have been added to this CSA yet.</div>
+          <EmptyState
+            variant="inline"
+            title="No drivers have been added to this CSA yet"
+            description="Add your first driver to make them available for route assignment and app access."
+          />
         )}
       </div>
         </>
@@ -1772,9 +1785,13 @@ export default function DriversPage() {
         </div>
 
         {liveLaborQuery.isLoading ? (
-          <div className="driver-meta">Loading live labor status...</div>
+          <LoadingState title="Loading live labor status" />
         ) : liveLaborQuery.isError ? (
-          <div className="error-banner">Unable to load live labor status.</div>
+          <ErrorState
+            title="Unable to load live labor status"
+            description="Live labor totals and driver rows could not be loaded."
+            onRetry={() => liveLaborQuery.refetch()}
+          />
         ) : (
           <>
             <div className="stats-grid">
@@ -1915,9 +1932,13 @@ export default function DriversPage() {
         </div>
 
         {dailyLaborQuery.isLoading ? (
-          <div className="driver-meta">Loading finalized labor snapshot...</div>
+          <LoadingState title="Loading finalized labor snapshot" />
         ) : dailyLaborQuery.isError ? (
-          <div className="error-banner">Unable to load finalized day snapshot.</div>
+          <ErrorState
+            title="Unable to load finalized day snapshot"
+            description="The finalized labor snapshot could not be loaded for this date."
+            onRetry={() => dailyLaborQuery.refetch()}
+          />
         ) : dailyLaborQuery.data?.snapshot ? (
           <>
             <div className="stats-grid">
@@ -2108,7 +2129,11 @@ export default function DriversPage() {
             <div className="stat-card skeleton-card"><div className="skeleton-line" style={{ height: 18, width: '55%' }} /><div className="skeleton-line" style={{ height: 32, width: '80%' }} /></div>
           </div>
         ) : weeklyTimecardsQuery.isError ? (
-          <div className="error-banner">Unable to load weekly labor data.</div>
+          <ErrorState
+            title="Unable to load weekly labor data"
+            description="Weekly labor totals and timecards could not be loaded."
+            onRetry={() => weeklyTimecardsQuery.refetch()}
+          />
         ) : (
           <>
             <div className="stats-grid">

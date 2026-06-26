@@ -1312,6 +1312,120 @@ button {
   width: 46%;
 }
 
+.rr-loading-state {
+  display: grid;
+  gap: 14px;
+  padding: 14px;
+  border: 1px solid var(--rr-color-border);
+  border-radius: var(--rr-radius-lg);
+  background: var(--rr-color-surface-muted);
+  color: var(--rr-color-text-muted);
+  animation: rrStateFadeIn 0.18s ease-out;
+}
+
+.rr-loading-state.variant-card {
+  background: var(--rr-color-surface);
+}
+
+.rr-loading-state-status {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+}
+
+.rr-loading-spinner {
+  flex: 0 0 auto;
+  width: 18px;
+  height: 18px;
+  margin-top: 2px;
+  border: 3px solid #e4eaf0;
+  border-top-color: var(--rr-color-orange);
+  border-radius: var(--rr-radius-pill);
+  animation: rrSpinner 0.8s linear infinite;
+}
+
+.rr-loading-state-title {
+  color: var(--rr-color-text-strong);
+  font-size: 0.94rem;
+  font-weight: 850;
+  line-height: 1.35;
+}
+
+.rr-loading-state p {
+  margin: 2px 0 0;
+  color: var(--rr-color-text-muted);
+  font-size: 0.9rem;
+  font-weight: 700;
+}
+
+.rr-loading-state-skeleton {
+  display: grid;
+  gap: 10px;
+}
+
+.rr-loading-state-skeleton .skeleton-line {
+  display: block;
+  height: 13px;
+}
+
+.rr-loading-state-skeleton .skeleton-line:nth-child(1) {
+  width: min(72%, 420px);
+}
+
+.rr-loading-state-skeleton .skeleton-line:nth-child(2) {
+  width: min(54%, 320px);
+}
+
+.rr-loading-state-skeleton .skeleton-line:nth-child(3) {
+  width: min(64%, 360px);
+}
+
+.rr-error-state {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 14px;
+  animation: rrStateFadeIn 0.18s ease-out;
+}
+
+.rr-error-state-title {
+  color: var(--rr-color-red);
+  font-weight: 850;
+}
+
+.rr-error-state p {
+  margin: 2px 0 0;
+  color: var(--rr-color-text-muted);
+  font-size: 0.88rem;
+  font-weight: 700;
+}
+
+@keyframes rrSpinner {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes rrStateFadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(3px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .rr-loading-spinner,
+  .rr-loading-state,
+  .rr-error-state,
+  .rr-empty-state-inline {
+    animation: none;
+  }
+}
+
 .card,
 .login-card,
 .stat-card {
@@ -2564,6 +2678,14 @@ button {
 .rr-empty-state {
   display: grid;
   gap: var(--rr-space-4);
+}
+
+.rr-empty-state-inline {
+  padding: 14px;
+  border: 1px dashed var(--rr-color-border-strong);
+  border-radius: var(--rr-radius-lg);
+  background: var(--rr-color-surface-muted);
+  animation: rrStateFadeIn 0.18s ease-out;
 }
 
 .rr-empty-state p {

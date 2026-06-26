@@ -294,7 +294,7 @@ test('POST /billing/webhook processes Stripe test events', async () => {
   }
 });
 
-test('suspended accounts get 402 on manager routes', async () => {
+test('suspended accounts get 402 on manager-owned routes', async () => {
   const supabase = new MockSupabase((query) => {
     if (query.table === 'accounts' && query.operation === 'select') {
       return {
@@ -321,15 +321,66 @@ test('suspended accounts get 402 on manager routes', async () => {
   });
 
   try {
-    const response = await fetch(`${server.baseUrl}/manager/drivers`, {
+    const requests = [
+      { path: '/manager/drivers', options: { method: 'GET' } },
+      { path: '/routes/pull-fedex', options: { method: 'POST' } },
+      { path: '/vehicles', options: { method: 'GET' } }
+    ];
+
+    for (const request of requests) {
+      const response = await fetch(`${server.baseUrl}${request.path}`, {
+        ...request.options,
+        headers: {
+          Authorization: `Bearer ${signManagerToken()}`
+        }
+      });
+
+      assert.equal(response.status, 402, request.path);
+      assert.deepEqual(await response.json(), {
+        error: 'Subscription payment failed. Update payment method.'
+      });
+    }
+  } finally {
+    await server.close();
+  }
+});
+
+test('missing accounts fail closed on subscription-protected routes', async () => {
+  const supabase = new MockSupabase((query) => {
+    if (query.table === 'accounts' && query.operation === 'select') {
+      return {
+        data: null,
+        error: null
+      };
+    }
+
+    throw new Error(`Unexpected query ${query.table}:${query.operation}`);
+  });
+
+  const stripeClient = {
+    customers: { create: async () => ({}) },
+    subscriptions: { create: async () => ({}) },
+    webhooks: { constructEvent: () => ({}) }
+  };
+
+  const server = await startTestServer({
+    supabase,
+    stripeClient,
+    webhookSecret: 'whsec_test',
+    stripePriceId: 'price_123',
+    enforceBilling: true
+  });
+
+  try {
+    const response = await fetch(`${server.baseUrl}/vehicles`, {
       headers: {
         Authorization: `Bearer ${signManagerToken()}`
       }
     });
 
-    assert.equal(response.status, 402);
+    assert.equal(response.status, 403);
     assert.deepEqual(await response.json(), {
-      error: 'Subscription payment failed. Update payment method.'
+      error: 'Account is not available'
     });
   } finally {
     await server.close();

@@ -992,6 +992,7 @@ function createRoutesRouter(options = {}) {
   const router = express.Router();
   const supabase = options.supabase || defaultSupabase;
   const nowProvider = options.now || (() => new Date());
+  const requireActiveSubscription = options.requireActiveSubscription || ((_req, _res, next) => next());
   const inboundIngestSecret = options.inboundIngestSecret || process.env.FEDEX_INGEST_SHARED_SECRET || '';
   const manifestIngestService =
     options.manifestIngestService ||
@@ -1015,7 +1016,7 @@ function createRoutesRouter(options = {}) {
       adapter: options.fedexFccAdapter || createCliFedexFccAdapter()
     });
 
-  router.post('/pull-fedex', requireManager, async (req, res) => {
+  router.post('/pull-fedex', requireManager, requireActiveSubscription, async (req, res) => {
     try {
       const result = await fedexSyncService.triggerManualSync({
         accountId: req.account.account_id,
@@ -1030,7 +1031,7 @@ function createRoutesRouter(options = {}) {
     }
   });
 
-  router.post('/pull-fedex-progress', requireManager, async (req, res) => {
+  router.post('/pull-fedex-progress', requireManager, requireActiveSubscription, async (req, res) => {
     try {
       const result = await fedexSyncService.syncRouteProgress({
         accountId: req.account.account_id,
@@ -1146,10 +1147,10 @@ function createRoutesRouter(options = {}) {
     }
   }
 
-  router.post('/upload-manifest', requireManager, parseMultipartForm, handleManifestUpload);
-  router.post('/upload-gpx', requireManager, parseMultipartForm, handleManifestUpload);
+  router.post('/upload-manifest', requireManager, requireActiveSubscription, parseMultipartForm, handleManifestUpload);
+  router.post('/upload-gpx', requireManager, requireActiveSubscription, parseMultipartForm, handleManifestUpload);
 
-  router.patch('/:route_id/assign', requireManager, async (req, res) => {
+  router.patch('/:route_id/assign', requireManager, requireActiveSubscription, async (req, res) => {
     const routeId = req.params.route_id;
     const { driver_id: driverId, vehicle_id: vehicleId } = req.body || {};
 

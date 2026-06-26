@@ -4,7 +4,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link, useSearchParams } from 'react-router-dom';
 
 import api from '../services/api';
-import { PageHeader, StatCard, StatusBadge } from '../components/PortalDesignSystem';
+import { EmptyState, ErrorState, LoadingState, PageHeader, StatCard, StatusBadge } from '../components/PortalDesignSystem';
 import { useSelectedCsa } from '../context/SelectedCsaContext';
 
 const emptyVehicleForm = {
@@ -578,7 +578,7 @@ function MaintenanceSettingsCard({
       </div>
 
       {isLoading ? (
-        <div className="driver-meta">Loading maintenance settings...</div>
+        <LoadingState title="Loading maintenance settings" />
       ) : (
         <div className="maintenance-settings-list">
           <div className="maintenance-settings-header">
@@ -1548,7 +1548,13 @@ function MaintenanceHistoryModal({ vehicle, open, onClose, selectedCsaId }) {
         </div>
 
         {historyQuery.isLoading ? (
-          <div className="driver-meta">Loading service history...</div>
+          <LoadingState title="Loading service history" />
+        ) : historyQuery.isError ? (
+          <ErrorState
+            title="Unable to load service history"
+            description="Service records for this truck could not be loaded."
+            onRetry={() => historyQuery.refetch()}
+          />
         ) : historyQuery.data?.length ? (
           <div className="history-table">
             <div className="history-table-header">
@@ -1573,7 +1579,11 @@ function MaintenanceHistoryModal({ vehicle, open, onClose, selectedCsaId }) {
             ))}
           </div>
         ) : (
-          <div className="driver-meta">No service records yet.</div>
+          <EmptyState
+            variant="inline"
+            title="No service records yet"
+            description="Service records logged for this truck will appear here."
+          />
         )}
 
         <div className="modal-actions">
@@ -1610,7 +1620,13 @@ function InspectionHistoryModal({ vehicle, open, onClose, onOpenInspection, sele
         </div>
 
         {historyQuery.isLoading ? (
-          <div className="driver-meta">Loading inspection history...</div>
+          <LoadingState title="Loading inspection history" />
+        ) : historyQuery.isError ? (
+          <ErrorState
+            title="Unable to load inspection history"
+            description="Inspection submissions for this truck could not be loaded."
+            onRetry={() => historyQuery.refetch()}
+          />
         ) : historyQuery.data?.length ? (
           <div className="inspection-history-list">
             {historyQuery.data.map((inspection) => {
@@ -1640,7 +1656,11 @@ function InspectionHistoryModal({ vehicle, open, onClose, onOpenInspection, sele
             })}
           </div>
         ) : (
-          <div className="driver-meta">No inspection submissions for this Truck yet.</div>
+          <EmptyState
+            variant="inline"
+            title="No inspection submissions for this truck yet"
+            description="Driver inspection submissions will appear here after this truck is checked."
+          />
         )}
 
         <div className="modal-actions">
@@ -1677,7 +1697,13 @@ function OdometerHistoryModal({ vehicle, open, onClose, selectedCsaId }) {
         </div>
 
         {historyQuery.isLoading ? (
-          <div className="driver-meta">Loading odometer history...</div>
+          <LoadingState title="Loading odometer history" />
+        ) : historyQuery.isError ? (
+          <ErrorState
+            title="Unable to load odometer history"
+            description="Odometer entries for this truck could not be loaded."
+            onRetry={() => historyQuery.refetch()}
+          />
         ) : historyQuery.data?.length ? (
           <div className="history-table compact-history-table">
             <div className="history-table-header odometer-history-header">
@@ -1700,7 +1726,11 @@ function OdometerHistoryModal({ vehicle, open, onClose, selectedCsaId }) {
             ))}
           </div>
         ) : (
-          <div className="driver-meta">No odometer history for this Truck yet.</div>
+          <EmptyState
+            variant="inline"
+            title="No odometer history for this truck yet"
+            description="Driver and manager odometer readings will appear here."
+          />
         )}
 
         <div className="modal-actions">
@@ -1737,7 +1767,13 @@ function AssignmentHistoryModal({ vehicle, open, onClose, selectedCsaId }) {
         </div>
 
         {historyQuery.isLoading ? (
-          <div className="driver-meta">Loading assignment history...</div>
+          <LoadingState title="Loading assignment history" />
+        ) : historyQuery.isError ? (
+          <ErrorState
+            title="Unable to load assignment history"
+            description="Route assignment history for this truck could not be loaded."
+            onRetry={() => historyQuery.refetch()}
+          />
         ) : historyQuery.data?.length ? (
           <div className="history-table compact-history-table">
             <div className="history-table-header assignment-history-header">
@@ -1762,7 +1798,11 @@ function AssignmentHistoryModal({ vehicle, open, onClose, selectedCsaId }) {
             ))}
           </div>
         ) : (
-          <div className="driver-meta">No assignment history for this Truck yet.</div>
+          <EmptyState
+            variant="inline"
+            title="No assignment history for this truck yet"
+            description="Route and driver assignments will appear here after this truck is scheduled."
+          />
         )}
 
         <div className="modal-actions">
@@ -1774,11 +1814,13 @@ function AssignmentHistoryModal({ vehicle, open, onClose, selectedCsaId }) {
 }
 
 function MaintenanceRecordsPanel({
+  errorMessage,
   filters,
   isLoading,
   onChangeFilters,
   onClearFilters,
   onExportCsv,
+  onRetry,
   onViewHistory,
   records,
   serviceTypeOptions,
@@ -1846,7 +1888,13 @@ function MaintenanceRecordsPanel({
       </div>
 
       {isLoading ? (
-        <div className="labor-empty-state">Loading maintenance records...</div>
+        <LoadingState title="Loading maintenance records" />
+      ) : errorMessage ? (
+        <ErrorState
+          title="Unable to load maintenance records"
+          description={errorMessage}
+          onRetry={onRetry}
+        />
       ) : records.length ? (
         <div className="maintenance-records-table">
           <div className="maintenance-records-table-header">
@@ -1882,9 +1930,11 @@ function MaintenanceRecordsPanel({
           ))}
         </div>
       ) : (
-        <div className="labor-empty-state">
-          {totalRecords ? 'No maintenance records match these filters.' : 'No maintenance records yet. Log maintenance from a truck row or vehicle details to see it here.'}
-        </div>
+        <EmptyState
+          variant="inline"
+          title={totalRecords ? 'No maintenance records match these filters' : 'No maintenance records yet'}
+          description={totalRecords ? 'Clear or adjust the filters to see more records.' : 'Log maintenance from a truck row or vehicle details to see it here.'}
+        />
       )}
     </section>
   );
@@ -1991,7 +2041,7 @@ function ReminderScheduleScreen({
         </button>
       </div>
 
-      {isLoading ? <div className="driver-meta">Loading reminder schedule...</div> : null}
+      {isLoading ? <LoadingState skeletonRows={1} title="Loading reminder schedule" /> : null}
 
       <div className="reminder-schedule-grid">
         <label className="driver-modal-field">
@@ -2082,7 +2132,7 @@ function ChecklistTemplateScreen({
         Enable or disable checklist fields for weekly full inspections in Weekly Full Inspection and daily full inspections in Daily Full Inspection.
       </p>
 
-      {isLoading ? <div className="driver-meta">Loading saved checklist template...</div> : null}
+      {isLoading ? <LoadingState skeletonRows={1} title="Loading saved checklist template" /> : null}
 
       <div className="checklist-template-list" aria-label="Default checklist fields">
         {fields.map((field, index) => (
@@ -2144,7 +2194,7 @@ function MaintenanceRequirementsScreen({
         </button>
       </div>
 
-      {isLoading ? <div className="driver-meta">Loading saved maintenance requirements...</div> : null}
+      {isLoading ? <LoadingState skeletonRows={1} title="Loading saved maintenance requirements" /> : null}
 
       <div className="maintenance-requirement-options">
         {MAINTENANCE_REQUIREMENT_OPTIONS.map((option) => {
@@ -2368,10 +2418,12 @@ function InspectionDetailModal({
 }
 
 function InspectionsPanel({
+  errorMessage,
   inspections,
   isLoading,
   onExportCsv,
   onOpenInspection,
+  onRetry,
   onStatusFilterChange,
   statusFilter
 }) {
@@ -2424,7 +2476,13 @@ function InspectionsPanel({
       </div>
 
       {isLoading ? (
-        <div className="labor-empty-state">Loading vehicle inspections...</div>
+        <LoadingState title="Loading vehicle inspections" />
+      ) : errorMessage ? (
+        <ErrorState
+          title="Unable to load vehicle inspections"
+          description={errorMessage}
+          onRetry={onRetry}
+        />
       ) : inspections.length ? (
         <div className="inspection-review-list">
           {inspections.map((inspection) => (
@@ -2449,7 +2507,11 @@ function InspectionsPanel({
           ))}
         </div>
       ) : (
-        <div className="labor-empty-state">No vehicle inspection submissions found for this filter.</div>
+        <EmptyState
+          variant="inline"
+          title="No vehicle inspection submissions found for this filter"
+          description="Choose another inspection status to review additional submissions."
+        />
       )}
     </section>
   );
@@ -3574,6 +3636,20 @@ export default function VehiclesPage() {
             ))}
           </div>
         </div>
+      ) : vehiclesQuery.isError ? (
+        <div className="card vehicles-table-card">
+          <div className="vehicles-table-toolbar">
+            <div>
+              <div className="card-title">Fleet Inventory</div>
+              <div className="driver-meta">Vehicle records, availability, mileage, and registration status.</div>
+            </div>
+          </div>
+          <ErrorState
+            title="Unable to load vehicles"
+            description="Fleet inventory could not be loaded."
+            onRetry={() => vehiclesQuery.refetch()}
+          />
+        </div>
       ) : (
         <div className="card vehicles-table-card">
           <div className="vehicles-table-toolbar">
@@ -3776,7 +3852,11 @@ export default function VehiclesPage() {
                 })}
               </div>
               {!filteredVehicles.length ? (
-                <div className="labor-empty-state">No vehicles match the current search or status filter.</div>
+                <EmptyState
+                  variant="inline"
+                  title="No vehicles match the current search or status filter"
+                  description="Clear or adjust the search and status filter to see more vehicles."
+                />
               ) : null}
               <div className="maintenance-alert-legend">
                 <span><strong>OK:</strong> Outside reminder windows</span>
@@ -3785,7 +3865,11 @@ export default function VehiclesPage() {
               </div>
             </>
           ) : (
-            <div className="labor-empty-state">No vehicles are in this fleet yet.</div>
+            <EmptyState
+              variant="inline"
+              title="No vehicles are in this fleet yet"
+              description="Add vehicles to make them available for route assignment, readiness, and maintenance tracking."
+            />
           )}
         </div>
           )}
@@ -3794,6 +3878,7 @@ export default function VehiclesPage() {
 
       {activeVehiclesTab === 'Maintenance' ? (
         <MaintenanceRecordsPanel
+          errorMessage={maintenanceRecordsQuery.isError ? 'Maintenance records could not be loaded.' : ''}
           filters={maintenanceRecordFilters}
           isLoading={maintenanceRecordsQuery.isLoading && !latestVehicleMaintenanceRecords.length}
           onChangeFilters={updateMaintenanceRecordFilter}
@@ -3802,6 +3887,7 @@ export default function VehiclesPage() {
             `readyroute-maintenance-records-${getTodayString()}.csv`,
             buildMaintenanceRecordsCsvRows(filteredMaintenanceRecords)
           )}
+          onRetry={() => maintenanceRecordsQuery.refetch()}
           onViewHistory={setHistoryVehicle}
           records={filteredMaintenanceRecords}
           serviceTypeOptions={serviceTypeOptions}
@@ -3811,6 +3897,7 @@ export default function VehiclesPage() {
 
       {activeVehiclesTab === 'Inspections' ? (
         <InspectionsPanel
+          errorMessage={inspectionsQuery.isError ? 'Vehicle inspection submissions could not be loaded.' : ''}
           inspections={filteredInspections}
           isLoading={inspectionsQuery.isLoading}
           onExportCsv={() => downloadCsv(
@@ -3821,6 +3908,7 @@ export default function VehiclesPage() {
             setSelectedInspection(inspection);
             setInspectionReviewNote(inspection.manager_review_note || '');
           }}
+          onRetry={() => inspectionsQuery.refetch()}
           onStatusFilterChange={setInspectionStatusFilter}
           statusFilter={inspectionStatusFilter}
         />
