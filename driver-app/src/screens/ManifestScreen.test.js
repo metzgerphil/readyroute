@@ -174,6 +174,8 @@ describe('ManifestScreen helpers', () => {
       expect(screen.getByText('508 E Mission Ave, Escondido, CA')).toBeTruthy();
     });
 
+    expect(screen.queryByText('By Stop #')).toBeNull();
+
     fireEvent.press(screen.getByText('508 E Mission Ave, Escondido, CA'));
 
     expect(navigation.navigate).toHaveBeenCalledWith('StopDetail', { stopId: 'stop-1' });
