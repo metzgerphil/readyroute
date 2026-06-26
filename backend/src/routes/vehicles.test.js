@@ -757,6 +757,92 @@ test('POST /vehicles/:id/inspections saves a manager inspection and updates mile
   }
 });
 
+test('POST /vehicles/:id/inspections retries with legacy payload when optional inspection columns are missing', async () => {
+  let insertAttempts = 0;
+  let vehicleUpdateSeen = false;
+
+  const supabase = new MockSupabase((query) => {
+    if (query.table === 'vehicles' && query.operation === 'select') {
+      return {
+        data: {
+          id: 'vehicle-1',
+          account_id: 'acct-1',
+          name: '204526',
+          make: 'Ford',
+          model: 'Transit',
+          year: 2022,
+          truck_type: 'P1100',
+          current_mileage: 12000
+        },
+        error: null
+      };
+    }
+
+    if (query.table === 'vehicle_inspections' && query.operation === 'insert') {
+      insertAttempts += 1;
+
+      if (insertAttempts === 1) {
+        assert.equal(query.payload.submitted_by_manager_user_id, 'manager-1');
+        return {
+          data: null,
+          error: {
+            code: 'PGRST204',
+            message: "Could not find the 'submitted_by_manager_user_id' column of 'vehicle_inspections' in the schema cache"
+          }
+        };
+      }
+
+      assert.equal(query.payload.account_id, 'acct-1');
+      assert.equal(query.payload.vehicle_id, 'vehicle-1');
+      assert.equal(query.payload.inspection_type, 'manager');
+      assert.equal(query.payload.submitted_by_manager_user_id, undefined);
+      assert.equal(query.payload.submitted_by_type, 'manager');
+      return {
+        data: {
+          id: 'inspection-legacy',
+          ...query.payload
+        },
+        error: null
+      };
+    }
+
+    if (query.table === 'vehicles' && query.operation === 'update') {
+      vehicleUpdateSeen = true;
+      assert.equal(query.payload.current_mileage, 12345);
+      return { data: null, error: null };
+    }
+
+    throw new Error(`Unexpected query ${query.table}:${query.operation}:${query.mode}`);
+  });
+
+  const server = await startTestServer(supabase);
+
+  try {
+    const response = await fetch(`${server.baseUrl}/vehicles/vehicle-1/inspections`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${signManagerToken()}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        inspection_date: '2026-06-02',
+        odometer: 12345,
+        items: [
+          { checklist_item_key: 'tires', label: 'Tires', status: 'pass' }
+        ]
+      })
+    });
+
+    const body = await response.json();
+    assert.equal(response.status, 201);
+    assert.equal(body.inspection.id, 'inspection-legacy');
+    assert.equal(insertAttempts, 2);
+    assert.equal(vehicleUpdateSeen, true);
+  } finally {
+    await server.close();
+  }
+});
+
 test('POST /vehicles/:id/maintenance calculates next due mileage from the maintenance item interval', async () => {
   const supabase = new MockSupabase((query) => {
     if (query.table === 'vehicles' && query.operation === 'select') {

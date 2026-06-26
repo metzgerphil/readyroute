@@ -101,7 +101,31 @@ const INSPECTION_STATUS_LABELS = {
 };
 
 function isMissingRelationError(error) {
-  return ['42P01', 'PGRST106', 'PGRST204', 'PGRST205'].includes(error?.code);
+  return ['42P01', 'PGRST106', 'PGRST205'].includes(error?.code);
+}
+
+function getMissingColumnName(error) {
+  const message = String(error?.message || error?.details || '');
+  const schemaCacheMatch = message.match(/Could not find the '([^']+)' column/i);
+  if (schemaCacheMatch?.[1]) {
+    return schemaCacheMatch[1];
+  }
+
+  const postgresMatch = message.match(/column "([^"]+)"(?: of relation "[^"]+")? does not exist/i);
+  if (postgresMatch?.[1]) {
+    return postgresMatch[1];
+  }
+
+  return null;
+}
+
+function isMissingColumnError(error) {
+  if (['42703', 'PGRST204'].includes(error?.code)) {
+    return true;
+  }
+
+  const message = String(error?.message || error?.details || '');
+  return /column/i.test(message) && /(does not exist|schema cache|could not find)/i.test(message);
 }
 
 function isMissingTestDataColumn(error) {
@@ -261,6 +285,66 @@ function normalizeInspectionItems(items = []) {
         note: item.note ? String(item.note).trim() : null
       };
     });
+}
+
+function createLegacyInspectionPayload(payload = {}) {
+  return {
+    account_id: payload.account_id,
+    vehicle_id: payload.vehicle_id,
+    inspection_date: payload.inspection_date,
+    inspection_type: payload.inspection_type,
+    odometer: payload.odometer,
+    status: payload.status,
+    issue_note: payload.issue_note,
+    items: payload.items,
+    submitted_at: payload.submitted_at
+  };
+}
+
+async function insertVehicleInspectionWithSchemaFallback(supabase, payload) {
+  let currentPayload = { ...payload };
+  const removedColumns = [];
+
+  for (let attempt = 0; attempt < 8; attempt += 1) {
+    const { data, error } = await supabase
+      .from('vehicle_inspections')
+      .insert(currentPayload)
+      .select('*')
+      .single();
+
+    if (!error) {
+      return { data, error: null, removedColumns };
+    }
+
+    if (!isMissingColumnError(error)) {
+      return { data: null, error };
+    }
+
+    const missingColumn = getMissingColumnName(error);
+    if (missingColumn && Object.prototype.hasOwnProperty.call(currentPayload, missingColumn)) {
+      currentPayload = { ...currentPayload };
+      delete currentPayload[missingColumn];
+      removedColumns.push(missingColumn);
+      continue;
+    }
+
+    const legacyPayload = createLegacyInspectionPayload(payload);
+    const changedToLegacyPayload = Object.keys(currentPayload).some((key) => legacyPayload[key] !== currentPayload[key]);
+    if (!changedToLegacyPayload) {
+      return { data: null, error };
+    }
+
+    currentPayload = legacyPayload;
+    removedColumns.push('legacy_inspection_payload');
+  }
+
+  return {
+    data: null,
+    error: {
+      code: 'INSPECTION_SCHEMA_FALLBACK_EXHAUSTED',
+      message: 'Vehicle inspection insert could not be matched to the current database schema.'
+    }
+  };
 }
 
 function presentInspection(inspection = {}, vehiclesById = new Map()) {
@@ -1733,32 +1817,41 @@ function createVehiclesRouter(options = {}) {
 
       const status = failedItems.length || issueNote ? 'needs_review' : 'submitted';
       const submittedAt = nowProvider().toISOString();
-      const { data: inspection, error: inspectionError } = await supabase
-        .from('vehicle_inspections')
-        .insert({
-          account_id: req.account.account_id,
-          vehicle_id: vehicleId,
-          inspection_date: inspectionDate,
-          inspection_type: 'manager',
-          odometer,
-          status,
-          issue_note: issueNote,
-          items,
-          submitted_by_type: 'manager',
-          submitted_by_manager_user_id: req.account.manager_user_id,
-          submitted_by_name: req.account.manager_name || req.account.manager_email || 'Manager',
-          submitted_at: submittedAt
-        })
-        .select('*')
-        .single();
+      const { data: inspection, error: inspectionError, removedColumns } = await insertVehicleInspectionWithSchemaFallback(supabase, {
+        account_id: req.account.account_id,
+        vehicle_id: vehicleId,
+        inspection_date: inspectionDate,
+        inspection_type: 'manager',
+        odometer,
+        status,
+        issue_note: issueNote,
+        items,
+        submitted_by_type: 'manager',
+        submitted_by_manager_user_id: req.account.manager_user_id,
+        submitted_by_name: req.account.manager_name || req.account.manager_email || 'Manager',
+        submitted_at: submittedAt
+      });
 
       if (inspectionError) {
         if (isMissingRelationError(inspectionError)) {
           return res.status(503).json({ error: 'Vehicle inspection records are not configured yet.' });
         }
 
+        if (isMissingColumnError(inspectionError) || inspectionError.code === 'INSPECTION_SCHEMA_FALLBACK_EXHAUSTED') {
+          console.error('Vehicle inspection insert schema mismatch:', inspectionError);
+          return res.status(500).json({ error: 'Vehicle inspection records need the latest database migration before saving inspections.' });
+        }
+
         console.error('Vehicle inspection insert failed:', inspectionError);
         return res.status(500).json({ error: 'Failed to save vehicle inspection' });
+      }
+
+      if (removedColumns?.length) {
+        console.warn('Vehicle inspection saved with legacy schema fallback:', {
+          removedColumns,
+          vehicle_id: vehicleId,
+          account_id: req.account.account_id
+        });
       }
 
       if (odometer > Number(vehicle.current_mileage || 0)) {
