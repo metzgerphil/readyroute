@@ -843,6 +843,86 @@ test('POST /vehicles/:id/inspections retries with legacy payload when optional i
   }
 });
 
+test('POST /vehicles/:id/inspections retries as daily_check when the legacy inspection type constraint rejects manager', async () => {
+  let insertAttempts = 0;
+
+  const supabase = new MockSupabase((query) => {
+    if (query.table === 'vehicles' && query.operation === 'select') {
+      return {
+        data: {
+          id: 'vehicle-1',
+          account_id: 'acct-1',
+          name: '204526',
+          make: 'Ford',
+          model: 'Transit',
+          year: 2022,
+          truck_type: 'P1100',
+          current_mileage: 65000
+        },
+        error: null
+      };
+    }
+
+    if (query.table === 'vehicle_inspections' && query.operation === 'insert') {
+      insertAttempts += 1;
+
+      if (insertAttempts === 1) {
+        assert.equal(query.payload.inspection_type, 'manager');
+        return {
+          data: null,
+          error: {
+            code: '23514',
+            message: 'new row for relation "vehicle_inspections" violates check constraint "vehicle_inspections_type_check"',
+            details: 'Failing row contains manager.'
+          }
+        };
+      }
+
+      assert.equal(query.payload.inspection_type, 'daily_check');
+      assert.equal(query.payload.issue_reported, true);
+      assert.equal(query.payload.submitted_by_type, 'manager');
+      assert.equal(query.payload.items, undefined);
+      return {
+        data: {
+          id: 'inspection-daily-check',
+          ...query.payload
+        },
+        error: null
+      };
+    }
+
+    throw new Error(`Unexpected query ${query.table}:${query.operation}:${query.mode}`);
+  });
+
+  const server = await startTestServer(supabase);
+
+  try {
+    const response = await fetch(`${server.baseUrl}/vehicles/vehicle-1/inspections`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${signManagerToken({ manager_name: 'Phillip Manager' })}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        inspection_date: '2026-06-26',
+        odometer: 65000,
+        issue_note: 'Needs manager review',
+        items: [
+          { checklist_item_key: 'tires', label: 'Tires', status: 'fail' }
+        ]
+      })
+    });
+
+    const body = await response.json();
+    assert.equal(response.status, 201);
+    assert.equal(body.inspection.id, 'inspection-daily-check');
+    assert.equal(body.inspection.inspection_type_label, 'Manager Inspection');
+    assert.equal(insertAttempts, 2);
+  } finally {
+    await server.close();
+  }
+});
+
 test('POST /vehicles/:id/maintenance calculates next due mileage from the maintenance item interval', async () => {
   const supabase = new MockSupabase((query) => {
     if (query.table === 'vehicles' && query.operation === 'select') {

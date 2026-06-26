@@ -40,6 +40,9 @@ const {
   normalizeCoordinatePair,
   summarizeCoordinateHealth
 } = require('../services/coordinates');
+const {
+  insertVehicleInspectionWithSchemaFallback
+} = require('../services/vehicleInspectionRecords');
 
 function parseMultipartForm(req, res, next) {
   const contentType = req.headers['content-type'] || '';
@@ -1677,29 +1680,36 @@ function createRoutesRouter(options = {}) {
 
       const status = failedItems.length || issueNote ? 'needs_review' : 'submitted';
       const submittedAt = nowProvider().toISOString();
-      const { data: inspection, error: inspectionError } = await supabase
-        .from('vehicle_inspections')
-        .insert({
-          account_id: req.driver.account_id,
-          vehicle_id: vehicleId,
-          route_id: routeId,
-          inspection_date: inspectionDate,
-          inspection_type: 'driver',
-          odometer: parsedOdometer,
-          status,
-          issue_note: issueNote,
-          items,
-          submitted_by_type: 'driver',
-          submitted_by_driver_id: req.driver.driver_id,
-          submitted_by_name: req.driver.name || 'Driver',
-          submitted_at: submittedAt
-        })
-        .select('*')
-        .single();
+      const { data: inspection, error: inspectionError, fallbackReasons } = await insertVehicleInspectionWithSchemaFallback(supabase, {
+        account_id: req.driver.account_id,
+        vehicle_id: vehicleId,
+        driver_id: req.driver.driver_id,
+        route_id: routeId,
+        inspection_date: inspectionDate,
+        inspection_type: 'driver',
+        odometer: parsedOdometer,
+        issue_reported: Boolean(failedItems.length || issueNote),
+        status,
+        issue_note: issueNote,
+        items,
+        submitted_by_type: 'driver',
+        submitted_by_driver_id: req.driver.driver_id,
+        submitted_by_name: req.driver.name || 'Driver',
+        submitted_at: submittedAt
+      });
 
       if (inspectionError) {
         console.error('Driver inspection insert failed:', inspectionError);
         return res.status(500).json({ error: 'Failed to save vehicle inspection' });
+      }
+
+      if (fallbackReasons?.length) {
+        console.warn('Driver inspection saved with legacy schema fallback:', {
+          fallbackReasons,
+          vehicle_id: vehicleId,
+          route_id: routeId,
+          account_id: req.driver.account_id
+        });
       }
 
       const recordedAt = getUtcTimestamp();

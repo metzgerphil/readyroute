@@ -1531,6 +1531,108 @@ test('POST /routes/inspection saves a route-specific driver vehicle inspection',
   }
 });
 
+test('POST /routes/inspection retries as daily_check when the legacy inspection type constraint rejects driver', async () => {
+  let insertAttempts = 0;
+
+  const supabase = new MockSupabase((query) => {
+    if (query.table === 'routes' && query.operation === 'select') {
+      return {
+        data: {
+          id: 'route-1',
+          date: '2026-06-22',
+          vehicle_id: 'vehicle-1',
+          dispatch_state: 'dispatched'
+        },
+        error: null
+      };
+    }
+
+    if (query.table === 'vehicles' && query.operation === 'select') {
+      return {
+        data: {
+          id: 'vehicle-1',
+          account_id: 'acct-1',
+          name: '538785',
+          current_mileage: 12000
+        },
+        error: null
+      };
+    }
+
+    if (query.table === 'vehicle_inspections' && query.operation === 'insert') {
+      insertAttempts += 1;
+
+      if (insertAttempts === 1) {
+        assert.equal(query.payload.inspection_type, 'driver');
+        return {
+          data: null,
+          error: {
+            code: '23514',
+            message: 'new row for relation "vehicle_inspections" violates check constraint "vehicle_inspections_type_check"',
+            details: 'Failing row contains driver.'
+          }
+        };
+      }
+
+      assert.equal(query.payload.inspection_type, 'daily_check');
+      assert.equal(query.payload.driver_id, 'driver-1');
+      assert.equal(query.payload.route_id, 'route-1');
+      assert.equal(query.payload.issue_reported, true);
+      assert.equal(query.payload.items, undefined);
+      return {
+        data: {
+          id: 'inspection-legacy',
+          inspection_date: '2026-06-22',
+          odometer: 12025,
+          status: 'needs_review',
+          submitted_at: query.payload.submitted_at
+        },
+        error: null
+      };
+    }
+
+    if (query.table === 'vehicle_odometer_entries' && query.operation === 'insert') {
+      return { data: null, error: null };
+    }
+
+    if (query.table === 'vehicles' && query.operation === 'update') {
+      return { data: null, error: null };
+    }
+
+    throw new Error(`Unexpected query ${query.table}:${query.operation}:${query.mode}`);
+  });
+
+  const server = await startTestServer(supabase);
+
+  try {
+    const response = await fetch(`${server.baseUrl}/routes/inspection`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${signDriverToken()}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        vehicle_id: 'vehicle-1',
+        route_id: 'route-1',
+        inspection_date: '2026-06-22',
+        odometer: 12025,
+        issue_note: 'Left tire needs review',
+        items: [
+          { checklist_item_key: 'tires', label: 'Tires', status: 'fail' }
+        ]
+      })
+    });
+
+    assert.equal(response.status, 201);
+    const body = await response.json();
+    assert.equal(body.inspection.id, 'inspection-legacy');
+    assert.equal(body.inspection.status, 'needs_review');
+    assert.equal(insertAttempts, 2);
+  } finally {
+    await server.close();
+  }
+});
+
 test('GET /routes/stops/:stop_id returns stop detail with packages and note text', async () => {
   const supabase = new MockSupabase((query) => {
     if (query.table === 'stops' && query.operation === 'select' && query.mode === 'maybeSingle') {
