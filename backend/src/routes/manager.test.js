@@ -1680,6 +1680,94 @@ test('POST /manager/account/cancel rejects non-owner managers', async () => {
   }
 });
 
+test('GET /manager/billing/summary returns shadow route billing estimate', async () => {
+  const supabase = new MockSupabase((query) => {
+    if (query.table === 'accounts' && query.operation === 'select') {
+      return {
+        data: {
+          id: 'acct-1',
+          vehicle_count: 0
+        },
+        error: null
+      };
+    }
+
+    if (query.table === 'account_billing_settings' && query.operation === 'select') {
+      return {
+        data: {
+          committed_route_count: 2,
+          billing_rate_cents: 1500,
+          currency: 'usd',
+          free_month_started_on: null,
+          free_month_ends_on: null,
+          is_billing_exempt: false
+        },
+        error: null
+      };
+    }
+
+    if (query.table === 'billable_route_months' && query.operation === 'select') {
+      return {
+        data: [
+          {
+            id: 'ledger-817',
+            route_key: '817',
+            route_display_name: '817',
+            first_route_id: 'route-817',
+            last_route_id: 'route-817',
+            first_imported_at: '2026-06-01T14:00:00.000Z',
+            last_imported_at: '2026-06-01T14:00:00.000Z',
+            status: 'pending'
+          },
+          {
+            id: 'ledger-818',
+            route_key: '818',
+            route_display_name: '818',
+            first_route_id: 'route-818',
+            last_route_id: 'route-818',
+            first_imported_at: '2026-06-02T14:00:00.000Z',
+            last_imported_at: '2026-06-02T14:00:00.000Z',
+            status: 'pending'
+          },
+          {
+            id: 'ledger-819',
+            route_key: '819',
+            route_display_name: '819',
+            first_route_id: 'route-819',
+            last_route_id: 'route-819',
+            first_imported_at: '2026-06-03T14:00:00.000Z',
+            last_imported_at: '2026-06-03T14:00:00.000Z',
+            status: 'pending'
+          }
+        ],
+        error: null
+      };
+    }
+
+    throw new Error(`Unexpected query ${query.table}:${query.operation}`);
+  });
+
+  const server = await startTestServer({ supabase });
+
+  try {
+    const response = await fetch(`${server.baseUrl}/manager/billing/summary?month=2026-06`, {
+      headers: {
+        Authorization: `Bearer ${signManagerToken()}`
+      }
+    });
+
+    assert.equal(response.status, 200);
+    const body = await response.json();
+    assert.equal(body.billing.billing_mode, 'shadow');
+    assert.equal(body.billing.committed_route_count, 2);
+    assert.equal(body.billing.imported_billable_routes, 3);
+    assert.equal(body.billing.billable_quantity, 3);
+    assert.equal(body.billing.estimated_total_cents, 4500);
+  } finally {
+    await server.close();
+  }
+});
+
 test('GET /manager/driver-access returns the account starter PIN', async () => {
   const supabase = new MockSupabase((query) => {
     if (query.table === 'accounts' && query.operation === 'select') {

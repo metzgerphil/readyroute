@@ -27,6 +27,7 @@ const {
 const { attachStopNotesToStops, saveStopNote } = require('../services/stopNotes');
 const { parseDriverImportRows } = require('../services/resourceImport');
 const { filterProductionRows, isProductionTestArtifact } = require('../services/testDataFilter');
+const { getRouteBillingSummary } = require('../services/routeBilling');
 
 function getCurrentDateString(now = new Date(), timeZone = process.env.APP_TIME_ZONE || 'America/Los_Angeles') {
   return new Intl.DateTimeFormat('en-CA', {
@@ -2573,6 +2574,32 @@ function createManagerRouter(options = {}) {
     } catch (error) {
       console.error('Manager account cancel failed:', error);
       return res.status(500).json({ error: 'Could not cancel ReadyRoute right now.' });
+    }
+  });
+
+  router.get('/billing/summary', requireManager, async (req, res) => {
+    const month = String(req.query?.month || '').trim();
+
+    try {
+      const summary = await getRouteBillingSummary({
+        supabase,
+        accountId: req.account.account_id,
+        month,
+        nowProvider
+      });
+
+      if (!summary) {
+        return res.status(400).json({ error: 'month must be in YYYY-MM format' });
+      }
+
+      if (summary.not_found) {
+        return res.status(404).json({ error: 'Account not found' });
+      }
+
+      return res.status(200).json({ billing: summary });
+    } catch (error) {
+      console.error('Manager billing summary failed:', error);
+      return res.status(500).json({ error: 'Failed to load billing summary' });
     }
   });
 

@@ -10,6 +10,7 @@ const { namesLookLikeMatch, normalizeRouteWorkAreaName } = require('./routeIdent
 const { bootstrapApartmentRecords } = require('./apartmentIntelligence');
 const { applyLocationCorrectionsToStops } = require('./locationCorrections');
 const { enrichManifestStopsWithGeocoding } = require('./manifestGeocoding');
+const { recordBillableManifestImport } = require('./routeBilling');
 const {
   detectSuspiciousCoordinateClusters,
   summarizeCoordinateHealth
@@ -189,6 +190,15 @@ async function recordRouteSyncEvent(supabase, {
 
   if (error) {
     console.error('Route sync event insert failed:', error);
+  }
+}
+
+async function recordManifestImportForBilling(input) {
+  try {
+    return await recordBillableManifestImport(input);
+  } catch (error) {
+    console.warn('Route billing ledger record failed after manifest import:', error);
+    return null;
   }
 }
 
@@ -1325,6 +1335,26 @@ function createManifestIngestService(options = {}) {
         managerUserId
       });
 
+      await recordManifestImportForBilling({
+        supabase,
+        accountId,
+        routeId: existingRoute.id,
+        routeDate: resolvedDate,
+        workAreaName: resolvedWorkAreaName,
+        source,
+        manifestFingerprint: protectedRouteSyncMetadata.manifest_fingerprint,
+        manifestLayers: manifestLayerSummary,
+        managerUserId,
+        importedAt: syncedAt,
+        metadata: {
+          live_route_protected: true,
+          post_dispatch_change_held: manifestChanged,
+          driver_route_unchanged: true,
+          manifest_stop_count: protectedRouteSyncMetadata.manifest_stop_count,
+          manifest_package_count: protectedRouteSyncMetadata.manifest_package_count
+        }
+      });
+
       const deliveryCount = routeStops.filter((stop) => stop.type === 'delivery').length;
       const pickupCount = routeStops.filter((stop) => stop.type === 'pickup').length;
       const combinedCount = routeStops.filter((stop) => stop.type === 'combined').length;
@@ -1590,6 +1620,26 @@ function createManifestIngestService(options = {}) {
         coordinate_status: coordinateHealth.status
       },
       managerUserId
+    });
+
+    await recordManifestImportForBilling({
+      supabase,
+      accountId,
+      routeId,
+      routeDate: resolvedDate,
+      workAreaName: resolvedWorkAreaName,
+      source,
+      manifestFingerprint: routeSyncMetadata?.manifest_fingerprint || null,
+      manifestLayers: manifestLayerSummary,
+      managerUserId,
+      importedAt: routeSyncMetadata?.last_manifest_sync_at || nowProvider().toISOString(),
+      metadata: {
+        merged_into_existing_route: mergedIntoExistingRoute,
+        applied_atomically: Boolean(appliedRoute.appliedAtomically),
+        manifest_stop_count: routeSyncMetadata?.manifest_stop_count || routeStops.length,
+        manifest_package_count: routeSyncMetadata?.manifest_package_count || packageInsertPayload.length,
+        sync_state: routeSyncMetadata?.sync_state || null
+      }
     });
 
     return {
