@@ -709,11 +709,6 @@ function decodeBase64Image(imageBase64) {
   return Buffer.from(cleaned, 'base64');
 }
 
-function isMissingBucketError(error) {
-  const message = String(error?.message || error?.error || '');
-  return /bucket/i.test(message) && /(not found|does not exist|missing)/i.test(message);
-}
-
 async function loadDriverRoute(supabase, { driverId, accountId, routeId, date }) {
   let query = supabase
     .from('routes')
@@ -2176,11 +2171,8 @@ function createRoutesRouter(options = {}) {
       status,
       exception_code: exceptionCode,
       pod_photo_url: podPhotoUrl,
-      pod_signature_url: podSignatureUrl,
       scanned_at: scannedAt,
-      delivery_type_code: deliveryTypeCode,
-      signer_name: signerName,
-      age_confirmed: ageConfirmed
+      delivery_type_code: deliveryTypeCode
     } = req.body || {};
 
     const allowedStatuses = new Set(['delivered', 'attempted', 'pickup_complete', 'pickup_attempted', 'incomplete']);
@@ -2220,19 +2212,6 @@ function createRoutesRouter(options = {}) {
 
       if (deliveryTypeCode !== undefined) {
         stopUpdate.delivery_type_code = deliveryTypeCode || null;
-      }
-
-      if (signerName !== undefined) {
-        stopUpdate.signer_name = signerName || null;
-      }
-
-      if (podSignatureUrl !== undefined) {
-        stopUpdate.signature_url = podSignatureUrl || null;
-        stopUpdate.pod_signature_url = podSignatureUrl || null;
-      }
-
-      if (typeof ageConfirmed === 'boolean') {
-        stopUpdate.age_confirmed = ageConfirmed;
       }
 
       if (podPhotoUrl !== undefined) {
@@ -2357,82 +2336,6 @@ function createRoutesRouter(options = {}) {
     } catch (error) {
       console.error('POD photo endpoint failed:', error);
       return res.status(500).json({ error: 'Failed to upload proof of delivery photo' });
-    }
-  });
-
-  router.post('/stops/:stop_id/signature', requireDriver, async (req, res) => {
-    const stopId = req.params.stop_id;
-    const {
-      image_base64: imageBase64,
-      signer_name: signerName,
-      age_confirmed: ageConfirmed
-    } = req.body || {};
-
-    if (!imageBase64 || !signerName) {
-      return res.status(400).json({ error: 'image_base64 and signer_name are required' });
-    }
-
-    try {
-      const { data: stop, error: stopError } = await loadAuthorizedStop(supabase, {
-        stopId,
-        driverId: req.driver.driver_id,
-        accountId: req.driver.account_id
-      });
-
-      if (stopError) {
-        console.error('Signature stop lookup failed:', stopError);
-        return res.status(500).json({ error: 'Failed to validate stop assignment' });
-      }
-
-      if (!stop) {
-        return res.status(403).json({ error: 'Stop not assigned to this driver' });
-      }
-
-      const filePath = `${req.driver.account_id}/${req.driver.driver_id}/${stopId}-sig-${Date.now()}.jpg`;
-      const imageBuffer = decodeBase64Image(imageBase64);
-      const { error: uploadError } = await supabase.storage
-        .from('signatures')
-        .upload(filePath, imageBuffer, {
-          contentType: 'image/jpeg',
-          upsert: false
-        });
-
-      if (uploadError) {
-        console.error('Signature upload failed:', uploadError);
-
-        if (isMissingBucketError(uploadError)) {
-          return res.status(500).json({ error: 'Supabase Storage bucket "signatures" does not exist. Create it before uploading signatures.' });
-        }
-
-        return res.status(500).json({ error: 'Failed to upload signature image' });
-      }
-
-      const { data: publicUrlData } = supabase.storage
-        .from('signatures')
-        .getPublicUrl(filePath);
-
-      const { error: updateError } = await supabase
-        .from('stops')
-        .update({
-          signature_url: publicUrlData.publicUrl,
-          signer_name: signerName,
-          age_confirmed: typeof ageConfirmed === 'boolean' ? ageConfirmed : false,
-          pod_signature_url: publicUrlData.publicUrl
-        })
-        .eq('id', stopId);
-
-      if (updateError) {
-        console.error('Signature stop update failed:', updateError);
-        return res.status(500).json({ error: 'Failed to save signature data on stop record' });
-      }
-
-      return res.status(201).json({
-        ok: true,
-        signature_url: publicUrlData.publicUrl
-      });
-    } catch (error) {
-      console.error('Signature endpoint failed:', error);
-      return res.status(500).json({ error: 'Failed to upload signature image' });
     }
   });
 

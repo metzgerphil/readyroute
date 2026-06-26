@@ -4089,48 +4089,6 @@ test('POST /manager/routes/archive-date rejects today so active dispatch data is
   }
 });
 
-test('GET /manager/stops/:stop_id/signature returns signature metadata for the portal', async () => {
-  const supabase = new MockSupabase((query) => {
-    if (query.table === 'stops' && query.operation === 'select') {
-      return {
-        data: {
-          id: 'stop-1',
-          route_id: 'route-1',
-          signature_url: 'https://cdn/signature.jpg',
-          signer_name: 'Taylor Receiver',
-          age_confirmed: true,
-          delivery_type_code: '013',
-          routes: {
-            account_id: 'acct-1'
-          }
-        },
-        error: null
-      };
-    }
-
-    throw new Error(`Unexpected query ${query.table}:${query.operation}`);
-  });
-
-  const server = await startTestServer({ supabase });
-
-  try {
-    const response = await fetch(`${server.baseUrl}/manager/stops/stop-1/signature`, {
-      headers: {
-        Authorization: `Bearer ${signManagerToken()}`
-      }
-    });
-
-    assert.equal(response.status, 200);
-    const body = await response.json();
-    assert.equal(body.stop.signature_url, 'https://cdn/signature.jpg');
-    assert.equal(body.stop.signer_name, 'Taylor Receiver');
-    assert.equal(body.stop.age_confirmed, true);
-    assert.equal(body.stop.delivery_type_code, '013');
-  } finally {
-    await server.close();
-  }
-});
-
 test('GET /manager/routes/:route_id/stops returns full stop detail for the selected route', async () => {
   const now = () => new Date('2026-04-13T16:30:00.000Z');
   const supabase = new MockSupabase((query) => {

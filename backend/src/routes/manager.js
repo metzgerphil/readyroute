@@ -5831,44 +5831,6 @@ function createManagerRouter(options = {}) {
     }
   });
 
-  router.get('/stops/:stop_id/signature', requireManager, async (req, res) => {
-    const stopId = req.params.stop_id;
-
-    try {
-      const { data: stop, error } = await supabase
-        .from('stops')
-        .select(
-          'id, route_id, signature_url, signer_name, age_confirmed, delivery_type_code, routes!inner(account_id)'
-        )
-        .eq('id', stopId)
-        .eq('routes.account_id', req.account.account_id)
-        .maybeSingle();
-
-      if (error) {
-        console.error('Manager signature stop lookup failed:', error);
-        return res.status(500).json({ error: 'Failed to load signature data' });
-      }
-
-      if (!stop) {
-        return res.status(404).json({ error: 'Stop not found' });
-      }
-
-      return res.status(200).json({
-        stop: {
-          id: stop.id,
-          route_id: stop.route_id,
-          signature_url: stop.signature_url || null,
-          signer_name: stop.signer_name || null,
-          age_confirmed: Boolean(stop.age_confirmed),
-          delivery_type_code: stop.delivery_type_code || null
-        }
-      });
-    } catch (error) {
-      console.error('Manager signature endpoint failed:', error);
-      return res.status(500).json({ error: 'Failed to load signature data' });
-    }
-  });
-
   router.get('/routes/:route_id/stops', requireManager, async (req, res) => {
     const routeId = req.params.route_id;
     const date = parseDateParam(req.query.date, nowProvider);

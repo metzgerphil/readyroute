@@ -1009,11 +1009,7 @@ test('PATCH /routes/stops/:stop_id/complete updates the stop and increments rout
       assert.equal(query.payload.status, 'delivered');
       assert.equal(query.payload.exception_code, null);
       assert.equal(query.payload.delivery_type_code, '013');
-      assert.equal(query.payload.signer_name, 'Pat Receiver');
-      assert.equal(query.payload.age_confirmed, true);
-      assert.equal(query.payload.signature_url, 'https://cdn/signature.png');
       assert.equal(query.payload.pod_photo_url, 'https://cdn/pod.jpg');
-      assert.equal(query.payload.pod_signature_url, 'https://cdn/signature.png');
       assert.equal(query.payload.scanned_at, '2026-04-08T15:30:00.000Z');
       assert.match(query.payload.completed_at, /^\d{4}-\d{2}-\d{2}T/);
       return { data: null, error: null };
@@ -1040,10 +1036,7 @@ test('PATCH /routes/stops/:stop_id/complete updates the stop and increments rout
       body: JSON.stringify({
         status: 'delivered',
         delivery_type_code: '013',
-        signer_name: 'Pat Receiver',
-        age_confirmed: true,
         pod_photo_url: 'https://cdn/pod.jpg',
-        pod_signature_url: 'https://cdn/signature.png',
         scanned_at: '2026-04-08T15:30:00.000Z'
       })
     });
@@ -3319,143 +3312,6 @@ test('PATCH /routes/stops/:stop_id/complete saves pickup statuses directly', asy
     });
 
     assert.equal(response.status, 200);
-  } finally {
-    await server.close();
-  }
-});
-
-test('POST /routes/stops/:stop_id/signature uploads image and saves signature metadata', async () => {
-  const supabase = new MockSupabase((query) => {
-    if (query.table === 'stops' && query.operation === 'select' && query.mode === 'maybeSingle') {
-      return {
-        data: {
-          id: 'stop-1',
-          route_id: 'route-1',
-          sequence_order: 1,
-          address: '100 Main St',
-          status: 'pending',
-          completed_at: null,
-          routes: {
-            id: 'route-1',
-            driver_id: 'driver-1',
-            account_id: 'acct-1',
-            total_stops: 2,
-            completed_stops: 0,
-            status: 'pending'
-          }
-        },
-        error: null
-      };
-    }
-
-    if (query.table === 'stops' && query.operation === 'update') {
-      assert.equal(query.payload.signer_name, 'Jamie Doe');
-      assert.equal(query.payload.age_confirmed, true);
-      assert.match(query.payload.signature_url, /^https:\/\/cdn\/signatures\/stop-1-sig-\d+\.jpg$/);
-      assert.match(query.payload.pod_signature_url, /^https:\/\/cdn\/signatures\/stop-1-sig-\d+\.jpg$/);
-      return { data: null, error: null };
-    }
-
-    throw new Error(`Unexpected query ${query.table}:${query.operation}:${query.mode}`);
-  });
-
-  supabase.storage = {
-    from(bucket) {
-      assert.equal(bucket, 'signatures');
-      return {
-        upload: async (path, buffer, options) => {
-          assert.match(path, /^acct-1\/driver-1\/stop-1-sig-\d+\.jpg$/);
-          assert.ok(Buffer.isBuffer(buffer));
-          assert.equal(options.contentType, 'image/jpeg');
-          return { data: { path }, error: null };
-        },
-        getPublicUrl: (path) => ({
-          data: { publicUrl: `https://cdn/signatures/${path.split('/').at(-1)}` }
-        })
-      };
-    }
-  };
-
-  const server = await startTestServer(supabase);
-
-  try {
-    const response = await fetch(`${server.baseUrl}/routes/stops/stop-1/signature`, {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${signDriverToken()}`,
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({
-        image_base64: Buffer.from('test-image').toString('base64'),
-        signer_name: 'Jamie Doe',
-        age_confirmed: true
-      })
-    });
-
-    assert.equal(response.status, 201);
-    const body = await response.json();
-    assert.equal(body.ok, true);
-    assert.match(body.signature_url, /^https:\/\/cdn\/signatures\/stop-1-sig-\d+\.jpg$/);
-  } finally {
-    await server.close();
-  }
-});
-
-test('POST /routes/stops/:stop_id/signature returns clear error when signatures bucket is missing', async () => {
-  const supabase = new MockSupabase((query) => {
-    if (query.table === 'stops' && query.operation === 'select' && query.mode === 'maybeSingle') {
-      return {
-        data: {
-          id: 'stop-1',
-          route_id: 'route-1',
-          sequence_order: 1,
-          address: '100 Main St',
-          status: 'pending',
-          completed_at: null,
-          routes: {
-            id: 'route-1',
-            driver_id: 'driver-1',
-            account_id: 'acct-1',
-            total_stops: 2,
-            completed_stops: 0,
-            status: 'pending'
-          }
-        },
-        error: null
-      };
-    }
-
-    throw new Error(`Unexpected query ${query.table}:${query.operation}:${query.mode}`);
-  });
-
-  supabase.storage = {
-    from(bucket) {
-      assert.equal(bucket, 'signatures');
-      return {
-        upload: async () => ({ data: null, error: { message: 'Bucket not found' } }),
-        getPublicUrl: () => ({ data: { publicUrl: null } })
-      };
-    }
-  };
-
-  const server = await startTestServer(supabase);
-
-  try {
-    const response = await fetch(`${server.baseUrl}/routes/stops/stop-1/signature`, {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${signDriverToken()}`,
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({
-        image_base64: Buffer.from('test-image').toString('base64'),
-        signer_name: 'Jamie Doe'
-      })
-    });
-
-    assert.equal(response.status, 500);
-    const body = await response.json();
-    assert.equal(body.error, 'Supabase Storage bucket "signatures" does not exist. Create it before uploading signatures.');
   } finally {
     await server.close();
   }
