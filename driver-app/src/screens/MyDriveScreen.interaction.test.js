@@ -6,6 +6,7 @@ import MyDriveScreen from './MyDriveScreen';
 import api from '../services/api';
 import * as Location from 'expo-location';
 import * as auth from '../services/auth';
+import { fetchDriverDriveRoute, getCachedDriverDriveRoute } from '../services/driverRouteCache';
 
 const mockMapMethods = {
   animateCamera: jest.fn(),
@@ -28,6 +29,11 @@ jest.mock('../services/auth', () => ({
   removeClockInTime: jest.fn(),
   saveClockInTime: jest.fn(),
   subscribePinColorMode: jest.fn(() => jest.fn())
+}));
+
+jest.mock('../services/driverRouteCache', () => ({
+  fetchDriverDriveRoute: jest.fn(),
+  getCachedDriverDriveRoute: jest.fn()
 }));
 
 jest.mock('expo-location', () => ({
@@ -98,42 +104,38 @@ describe('MyDriveScreen interactions', () => {
     auth.getPinColorMode.mockResolvedValue('sid');
     auth.removeClockInTime.mockResolvedValue();
     auth.saveClockInTime.mockResolvedValue();
+    getCachedDriverDriveRoute.mockResolvedValue(null);
+    fetchDriverDriveRoute.mockResolvedValue({
+      route: {
+        id: 'route-1',
+        stops_per_hour: 12,
+        stops: [
+          {
+            id: 'stop-1',
+            sequence_order: 1,
+            address: '100 Main St, Escondido, CA',
+            lat: 33.1,
+            lng: -117.2,
+            status: 'pending',
+            stop_type: 'delivery',
+            packages: []
+          },
+          {
+            id: 'stop-2',
+            sequence_order: 100,
+            address: '200 Oak St, Escondido, CA',
+            lat: 33.2,
+            lng: -117.3,
+            status: 'pending',
+            stop_type: 'delivery',
+            contact_name: 'Alex Driver',
+            packages: [{ id: 'pkg-1', requires_signature: true }]
+          }
+        ]
+      }
+    });
 
     api.get.mockImplementation((url) => {
-      if (url === '/routes/today') {
-        return Promise.resolve({
-          data: {
-            route: {
-              id: 'route-1',
-              stops_per_hour: 12,
-              stops: [
-                {
-                  id: 'stop-1',
-                  sequence_order: 1,
-                  address: '100 Main St, Escondido, CA',
-                  lat: 33.1,
-                  lng: -117.2,
-                  status: 'pending',
-                  stop_type: 'delivery',
-                  packages: []
-                },
-                {
-                  id: 'stop-2',
-                  sequence_order: 100,
-                  address: '200 Oak St, Escondido, CA',
-                  lat: 33.2,
-                  lng: -117.3,
-                  status: 'pending',
-                  stop_type: 'delivery',
-                  contact_name: 'Alex Driver',
-                  packages: [{ id: 'pkg-1', requires_signature: true }]
-                }
-              ]
-            }
-          }
-        });
-      }
-
       if (url === '/timecards/status') {
         return Promise.resolve({
           data: {
@@ -204,18 +206,14 @@ describe('MyDriveScreen interactions', () => {
   });
 
   it('shows the dispatch waiting state when the route is staged but not yet live', async () => {
-    api.get.mockImplementation((url) => {
-      if (url === '/routes/today') {
-        return Promise.resolve({
-          data: {
-            route: null,
-            driver_day: {
-              status: 'awaiting_dispatch'
-            }
-          }
-        });
+    fetchDriverDriveRoute.mockResolvedValue({
+      route: null,
+      driver_day: {
+        status: 'awaiting_dispatch'
       }
+    });
 
+    api.get.mockImplementation((url) => {
       if (url === '/timecards/status') {
         return Promise.resolve({
           data: {
@@ -233,6 +231,51 @@ describe('MyDriveScreen interactions', () => {
     await waitFor(() => {
       expect(screen.getByText('Route staged for dispatch')).toBeTruthy();
       expect(screen.getByText(/will appear here as soon as your lead manager dispatches the day/)).toBeTruthy();
+    });
+  });
+
+  it('renders a cached drive route while the fresh route is still loading', async () => {
+    let resolveFreshRoute;
+    getCachedDriverDriveRoute.mockResolvedValue({
+      route: {
+        id: 'route-cached',
+        stops_per_hour: 9,
+        stops: [
+          {
+            id: 'cached-stop-1',
+            sequence_order: 1,
+            address: '300 Cached Ave, Escondido, CA',
+            lat: 33.4,
+            lng: -117.4,
+            status: 'pending',
+            stop_type: 'delivery',
+            packages: []
+          }
+        ]
+      },
+      driver_day: {
+        status: 'dispatched'
+      }
+    });
+    fetchDriverDriveRoute.mockReturnValue(new Promise((resolve) => {
+      resolveFreshRoute = resolve;
+    }));
+
+    const screen = await renderAndFlush();
+
+    await waitFor(() => {
+      expect(screen.getByTestId('stop-marker-stop:cached-stop-1')).toBeTruthy();
+    });
+
+    await act(async () => {
+      resolveFreshRoute({
+        route: {
+          id: 'route-cached',
+          stops_per_hour: 9,
+          stops: []
+        }
+      });
+      await Promise.resolve();
     });
   });
 
@@ -348,30 +391,26 @@ describe('MyDriveScreen interactions', () => {
   });
 
   it('uses pickup_complete when completing a pickup stop', async () => {
-    api.get.mockImplementation((url) => {
-      if (url === '/routes/today') {
-        return Promise.resolve({
-          data: {
-            route: {
-              id: 'route-1',
-              stops_per_hour: 12,
-              stops: [
-                {
-                  id: 'stop-1',
-                  sequence_order: 1,
-                  address: '100 Main St, Escondido, CA',
-                  lat: 33.1,
-                  lng: -117.2,
-                  status: 'pending',
-                  stop_type: 'pickup',
-                  packages: []
-                }
-              ]
-            }
+    fetchDriverDriveRoute.mockResolvedValue({
+      route: {
+        id: 'route-1',
+        stops_per_hour: 12,
+        stops: [
+          {
+            id: 'stop-1',
+            sequence_order: 1,
+            address: '100 Main St, Escondido, CA',
+            lat: 33.1,
+            lng: -117.2,
+            status: 'pending',
+            stop_type: 'pickup',
+            packages: []
           }
-        });
+        ]
       }
+    });
 
+    api.get.mockImplementation((url) => {
       if (url === '/timecards/status') {
         return Promise.resolve({
           data: {
@@ -440,21 +479,17 @@ describe('MyDriveScreen interactions', () => {
       }
     ];
 
-    api.get.mockImplementation((url) => {
-      if (url === '/routes/today') {
-        return Promise.resolve({
-          data: {
-            route: {
-              id: 'route-1',
-              completed_stops: groupedStops.filter((stop) => stop.completed_at).length,
-              total_stops: groupedStops.length,
-              stops_per_hour: 12,
-              stops: groupedStops.map((stop) => ({ ...stop }))
-            }
-          }
-        });
+    fetchDriverDriveRoute.mockImplementation(() => Promise.resolve({
+      route: {
+        id: 'route-1',
+        completed_stops: groupedStops.filter((stop) => stop.completed_at).length,
+        total_stops: groupedStops.length,
+        stops_per_hour: 12,
+        stops: groupedStops.map((stop) => ({ ...stop }))
       }
+    }));
 
+    api.get.mockImplementation((url) => {
       if (url === '/timecards/status') {
         return Promise.resolve({
           data: {
@@ -571,21 +606,17 @@ describe('MyDriveScreen interactions', () => {
       }
     ];
 
-    api.get.mockImplementation((url) => {
-      if (url === '/routes/today') {
-        return Promise.resolve({
-          data: {
-            route: {
-              id: 'route-1',
-              completed_stops: 0,
-              total_stops: groupedStops.length,
-              stops_per_hour: 12,
-              stops: groupedStops.map((stop) => ({ ...stop }))
-            }
-          }
-        });
+    fetchDriverDriveRoute.mockImplementation(() => Promise.resolve({
+      route: {
+        id: 'route-1',
+        completed_stops: groupedStops.filter((stop) => stop.completed_at).length,
+        total_stops: groupedStops.length,
+        stops_per_hour: 12,
+        stops: groupedStops.map((stop) => ({ ...stop }))
       }
+    }));
 
+    api.get.mockImplementation((url) => {
       if (url === '/timecards/status') {
         return Promise.resolve({
           data: {
@@ -702,7 +733,7 @@ describe('MyDriveScreen interactions', () => {
   it('shows a retry state when the route fails to load, then recovers', async () => {
     const alertSpy = jest.spyOn(Alert, 'alert').mockImplementation(() => {});
 
-    api.get
+    fetchDriverDriveRoute
       .mockRejectedValueOnce({
         response: {
           data: {
@@ -710,30 +741,26 @@ describe('MyDriveScreen interactions', () => {
           }
         }
       })
-      .mockImplementation((url) => {
-        if (url === '/routes/today') {
-          return Promise.resolve({
-            data: {
-              route: {
-                id: 'route-1',
-                stops_per_hour: 12,
-                stops: [
-                  {
-                    id: 'stop-1',
-                    sequence_order: 1,
-                    address: '100 Main St, Escondido, CA',
-                    lat: 33.1,
-                    lng: -117.2,
-                    status: 'pending',
-                    stop_type: 'delivery',
-                    packages: []
-                  }
-                ]
-              }
+      .mockResolvedValue({
+        route: {
+          id: 'route-1',
+          stops_per_hour: 12,
+          stops: [
+            {
+              id: 'stop-1',
+              sequence_order: 1,
+              address: '100 Main St, Escondido, CA',
+              lat: 33.1,
+              lng: -117.2,
+              status: 'pending',
+              stop_type: 'delivery',
+              packages: []
             }
-          });
+          ]
         }
+      });
 
+    api.get.mockImplementation((url) => {
         if (url === '/timecards/status') {
           return Promise.resolve({
             data: {

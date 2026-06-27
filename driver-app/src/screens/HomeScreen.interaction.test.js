@@ -13,7 +13,7 @@ import {
   removeToken,
   saveClockInTime
 } from '../services/auth';
-import { prefetchDriverManifest, saveDriverRouteSummary } from '../services/driverRouteCache';
+import { prefetchDriverDriveRoute, prefetchDriverManifest, saveDriverRouteSummary } from '../services/driverRouteCache';
 import { loadStatusCodes } from '../services/statusCodes';
 
 jest.mock('../services/api', () => ({
@@ -39,6 +39,7 @@ jest.mock('../services/statusCodes', () => ({
 }));
 
 jest.mock('../services/driverRouteCache', () => ({
+  prefetchDriverDriveRoute: jest.fn(),
   prefetchDriverManifest: jest.fn(),
   saveDriverRouteSummary: jest.fn()
 }));
@@ -76,6 +77,7 @@ describe('HomeScreen interactions', () => {
     getClockInTime.mockResolvedValue(null);
     getDriverFromToken.mockReturnValue({ name: 'Phil' });
     loadStatusCodes.mockResolvedValue(undefined);
+    prefetchDriverDriveRoute.mockResolvedValue(null);
     prefetchDriverManifest.mockResolvedValue(null);
     saveDriverRouteSummary.mockResolvedValue(null);
     Location.getForegroundPermissionsAsync.mockResolvedValue({ status: 'granted', granted: true });
@@ -129,6 +131,9 @@ describe('HomeScreen interactions', () => {
       expect(screen.getByText("Today's safety focus")).toBeTruthy();
       expect(screen.getByText('Acknowledge')).toBeTruthy();
     });
+
+    expect(prefetchDriverManifest).toHaveBeenCalled();
+    expect(prefetchDriverDriveRoute).toHaveBeenCalled();
 
     const startButton = screen.getByText('Acknowledge');
     fireEvent.press(startButton);

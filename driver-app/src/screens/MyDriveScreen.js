@@ -8,6 +8,7 @@ import Svg, { Path } from 'react-native-svg';
 import api from '../services/api';
 import appTheme from '../theme/appTheme';
 import { getPinColorMode, removeClockInTime, saveClockInTime, subscribePinColorMode } from '../services/auth';
+import { fetchDriverDriveRoute, getCachedDriverDriveRoute } from '../services/driverRouteCache';
 import { getApiErrorMessage } from '../utils/apiError';
 import { getSidBucketTheme } from '../utils/sidBuckets';
 
@@ -1182,6 +1183,8 @@ export default function MyDriveScreen({ navigation, route: screenRoute }) {
   const lastPostedLocationAtRef = useRef(0);
   const lastPostedCoordinateRef = useRef(null);
   const isPostingLocationRef = useRef(false);
+  const isMountedRef = useRef(true);
+  const fullRouteHydrationVersionRef = useRef(0);
   const [route, setRoute] = useState(null);
   const [stops, setStops] = useState([]);
   const [currentLocation, setCurrentLocation] = useState(null);
@@ -1249,6 +1252,24 @@ export default function MyDriveScreen({ navigation, route: screenRoute }) {
     () => getMapRegion({ currentStop: selectedStop || selectedStopGroup?.representativeStop || null, currentLocation, mappableStops }),
     [currentLocation, mappableStops, selectedStop, selectedStopGroup]
   );
+
+  useEffect(() => () => {
+    isMountedRef.current = false;
+    fullRouteHydrationVersionRef.current += 1;
+  }, []);
+
+  function applyRoutePayload(payload = {}) {
+    const nextRoute = payload?.route || null;
+
+    setRoute(nextRoute);
+    setDriverDay(
+      payload?.driver_day || {
+        status: nextRoute ? 'dispatched' : 'unassigned'
+      }
+    );
+    setStops(nextRoute?.stops || []);
+    setLoadError(null);
+  }
 
   useEffect(() => {
     const incomingSelectedStopId = screenRoute?.params?.selectedStopId;
@@ -1372,12 +1393,12 @@ export default function MyDriveScreen({ navigation, route: screenRoute }) {
     const remainingMs = new Date(autoEndAt).getTime() - Date.now();
 
     if (!Number.isFinite(remainingMs) || remainingMs <= 0) {
-      refreshRoute({ allowStateUpdate: true, showAlert: false });
+      refreshRoute({ allowStateUpdate: true, hydrateDetails: false, showAlert: false });
       return undefined;
     }
 
     activeBreakTimerRef.current = setTimeout(() => {
-      refreshRoute({ allowStateUpdate: true, showAlert: false });
+      refreshRoute({ allowStateUpdate: true, hydrateDetails: false, showAlert: false });
     }, remainingMs + 250);
 
     return () => {
@@ -1392,6 +1413,13 @@ export default function MyDriveScreen({ navigation, route: screenRoute }) {
     let isMounted = true;
 
     async function bootstrap() {
+      const cachedDriveRoute = await getCachedDriverDriveRoute().catch(() => null);
+
+      if (isMounted && cachedDriveRoute?.route) {
+        applyRoutePayload(cachedDriveRoute);
+        setIsLoading(false);
+      }
+
       try {
         const currentPermission = await Location.getForegroundPermissionsAsync();
         const granted = hasGrantedLocationPermission(currentPermission);
@@ -1422,7 +1450,7 @@ export default function MyDriveScreen({ navigation, route: screenRoute }) {
       }
 
       try {
-        await refreshRoute({ allowStateUpdate: isMounted });
+        await refreshRoute({ allowStateUpdate: isMounted, hydrateDetails: true });
       } finally {
         if (isMounted) {
           setIsLoading(false);
@@ -1443,7 +1471,7 @@ export default function MyDriveScreen({ navigation, route: screenRoute }) {
     }
 
     const rateInterval = setInterval(() => {
-      refreshRoute({ allowStateUpdate: true, showAlert: false });
+      refreshRoute({ allowStateUpdate: true, hydrateDetails: false, showAlert: false });
     }, 60000);
 
     let isActive = true;
@@ -1534,20 +1562,44 @@ export default function MyDriveScreen({ navigation, route: screenRoute }) {
     lastFittedRouteIdRef.current = route.id;
   }, [mappableStops, route?.id, selectedMapItem]);
 
-  async function refreshRoute({ allowStateUpdate = true, showAlert = true, isRetry = false } = {}) {
+  async function hydrateFullRoute({ routeId, hydrationVersion }) {
+    try {
+      const routeResponse = await api.get('/routes/today');
+      const fullRoute = routeResponse.data?.route || null;
+
+      if (
+        !isMountedRef.current ||
+        hydrationVersion !== fullRouteHydrationVersionRef.current ||
+        (routeId && fullRoute?.id && fullRoute.id !== routeId)
+      ) {
+        return;
+      }
+
+      setRoute(fullRoute);
+      setDriverDay(
+        routeResponse.data?.driver_day || {
+          status: fullRoute ? 'dispatched' : 'unassigned'
+        }
+      );
+      setStops(fullRoute?.stops || []);
+    } catch (_error) {
+      // The fast drive payload is already on screen; keep this hydration silent.
+    }
+  }
+
+  async function refreshRoute({ allowStateUpdate = true, hydrateDetails = true, showAlert = true, isRetry = false } = {}) {
     if (allowStateUpdate && isRetry) {
       setIsRetryingLoad(true);
     }
 
     try {
+      const hydrationVersion = fullRouteHydrationVersionRef.current + 1;
+      fullRouteHydrationVersionRef.current = hydrationVersion;
       const [routeResponse, timecardStatusResponse] = await Promise.all([
-        api.get('/routes/today'),
+        fetchDriverDriveRoute(),
         api.get('/timecards/status')
       ]);
-      const nextRoute = routeResponse.data?.route || null;
-      const nextDriverDay = routeResponse.data?.driver_day || {
-        status: nextRoute ? 'dispatched' : 'unassigned'
-      };
+      const nextRoute = routeResponse?.route || null;
       const activeBreakState = timecardStatusResponse.data?.active_break || null;
       const serverClockInAt =
         timecardStatusResponse.data?.active_timecard?.clock_in || timecardStatusResponse.data?.clock_in_at || null;
@@ -1556,17 +1608,18 @@ export default function MyDriveScreen({ navigation, route: screenRoute }) {
         return;
       }
 
-      setRoute(nextRoute);
-      setDriverDay(nextDriverDay);
-      setStops(nextRoute?.stops || []);
+      applyRoutePayload(routeResponse);
       setClockedInAt(serverClockInAt);
       setActiveBreak(activeBreakState);
-      setLoadError(null);
 
       if (serverClockInAt) {
         Promise.resolve(saveClockInTime(serverClockInAt)).catch(() => {});
       } else {
         Promise.resolve(removeClockInTime()).catch(() => {});
+      }
+
+      if (hydrateDetails && nextRoute?.id && process.env.NODE_ENV !== 'test') {
+        Promise.resolve(hydrateFullRoute({ routeId: nextRoute.id, hydrationVersion })).catch(() => {});
       }
     } catch (error) {
       if (allowStateUpdate) {

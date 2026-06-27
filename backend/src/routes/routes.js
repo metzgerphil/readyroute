@@ -525,6 +525,16 @@ async function selectPackagesForStops(queryBuilder) {
   return queryBuilder('id, stop_id, tracking_number, requires_signature, hazmat');
 }
 
+async function selectDrivePackagesForStops(queryBuilder) {
+  const withDetails = await queryBuilder('id, stop_id, requires_signature, requires_adult_signature, hazmat');
+
+  if (!withDetails.error || !isOptionalPackageDetailColumnError(withDetails.error)) {
+    return withDetails;
+  }
+
+  return queryBuilder('id, stop_id, requires_signature, hazmat');
+}
+
 const TODAY_ROUTE_FULL_STOP_SELECT = [
   'id',
   'route_id',
@@ -591,6 +601,33 @@ const TODAY_ROUTE_MANIFEST_STOP_SELECT = [
   'notes'
 ].join(', ');
 
+const TODAY_ROUTE_DRIVE_STOP_SELECT = [
+  'id',
+  'route_id',
+  'sequence_order',
+  'address',
+  'contact_name',
+  'address_line2',
+  'sid',
+  'ready_time',
+  'close_time',
+  'has_time_commit',
+  'stop_type',
+  'has_pickup',
+  'has_delivery',
+  'is_business',
+  'has_note',
+  'lat',
+  'lng',
+  'status',
+  'exception_code',
+  'delivery_type_code',
+  'is_pickup',
+  'completed_at',
+  'scanned_at',
+  'notes'
+].join(', ');
+
 const TODAY_ROUTE_SUMMARY_STOP_SELECT = [
   'id',
   'status',
@@ -603,6 +640,11 @@ const TODAY_ROUTE_SUMMARY_STOP_SELECT = [
 function isManifestTodayRouteView(value) {
   const normalized = String(value || '').trim().toLowerCase();
   return normalized === 'manifest' || normalized === 'manifest_list';
+}
+
+function isDriveTodayRouteView(value) {
+  const normalized = String(value || '').trim().toLowerCase();
+  return normalized === 'drive' || normalized === 'map';
 }
 
 function isSummaryTodayRouteView(value) {
@@ -677,6 +719,30 @@ function presentManifestStop(stop, packageCount = 0) {
     building_label: presentedStop.building_label || null,
     floor_label: presentedStop.floor_label || null,
     location_type: presentedStop.location_type || null
+  };
+}
+
+function presentDriveStop(stop, packages = []) {
+  const packageRows = normalizePackageRows(packages).map((pkg) => ({
+    id: pkg.id,
+    requires_signature: Boolean(pkg.requires_signature),
+    requires_adult_signature: Boolean(pkg.requires_adult_signature),
+    hazmat: Boolean(pkg.hazmat)
+  }));
+  const presentedStop = presentManifestStop(
+    {
+      ...stop,
+      packages: packageRows
+    },
+    packageRows.length
+  );
+
+  return {
+    ...presentedStop,
+    lat: stop?.lat ?? null,
+    lng: stop?.lng ?? null,
+    scanned_at: stop?.scanned_at || null,
+    packages: packageRows
   };
 }
 
@@ -1528,6 +1594,7 @@ function createRoutesRouter(options = {}) {
   router.get('/today', requireDriver, async (req, res) => {
     try {
       const manifestView = isManifestTodayRouteView(req.query?.view);
+      const driveView = isDriveTodayRouteView(req.query?.view);
       const summaryView = isSummaryTodayRouteView(req.query?.view);
       const currentDate = getCurrentDateString();
       const { data: route, error: routeError } = await loadDriverRoute(supabase, {
@@ -1581,9 +1648,11 @@ function createRoutesRouter(options = {}) {
         .select(
           summaryView
             ? TODAY_ROUTE_SUMMARY_STOP_SELECT
-            : manifestView
-              ? TODAY_ROUTE_MANIFEST_STOP_SELECT
-              : TODAY_ROUTE_FULL_STOP_SELECT
+            : driveView
+              ? TODAY_ROUTE_DRIVE_STOP_SELECT
+              : manifestView
+                ? TODAY_ROUTE_MANIFEST_STOP_SELECT
+                : TODAY_ROUTE_FULL_STOP_SELECT
         )
         .eq('route_id', route.id)
         .order('sequence_order');
@@ -1605,7 +1674,9 @@ function createRoutesRouter(options = {}) {
             .order('id');
         const { data: packages, error: packagesError } = manifestView
           ? await packageQuery('id, stop_id')
-          : await selectPackagesForStops(packageQuery);
+          : driveView
+            ? await selectDrivePackagesForStops(packageQuery)
+            : await selectPackagesForStops(packageQuery);
 
         if (packagesError) {
           console.error('Today package lookup failed:', packagesError);
@@ -1615,6 +1686,50 @@ function createRoutesRouter(options = {}) {
         packagesByStopId = manifestView
           ? createPackageCountByStopId(packages)
           : createPackagesByStopId(packages);
+      }
+
+      if (driveView) {
+        const routeStops = (stops || []).map((stop) => (
+          presentDriveStop(stop, packagesByStopId.get(stop.id) || [])
+        ));
+        const postDispatchChangePolicy = getPostDispatchChangePolicy(route);
+        const pickupStopSummary = getPickupStopSummary(routeStops);
+
+        return res.status(200).json({
+          route: {
+            id: route.id,
+            date: route.date,
+            work_area_name: route.work_area_name || null,
+            status: presentRouteStatus(route).status,
+            dispatch_state: route.dispatch_state || 'dispatched',
+            dispatched_at: route.dispatched_at || null,
+            sync_state: route.sync_state || 'staged_stable',
+            last_manifest_change_at: route.last_manifest_change_at || null,
+            manifest_changed_after_dispatch: hasRouteChangedAfterDispatch(route),
+            post_dispatch_change_policy: postDispatchChangePolicy,
+            total_stops: Number(route.total_stops || 0),
+            completed_stops: Number(route.completed_stops || 0),
+            vehicle_id: route.vehicle_id || null,
+            pickup_stops: pickupStopSummary.total,
+            pickup_stops_completed: pickupStopSummary.completed,
+            pickup_stop_count: pickupStopSummary.total,
+            driver_pickup_stops: pickupStopSummary.total,
+            stops_per_hour: getStopsPerHour({
+              completedStops: Number(route.completed_stops || 0),
+              firstScan: getFirstCompletedScan(stops || []),
+              currentTime: new Date()
+            }),
+            response_view: 'drive',
+            stops: routeStops
+          },
+          driver_day: {
+            status: 'dispatched',
+            manifest_changed_after_dispatch: hasRouteChangedAfterDispatch(route),
+            post_dispatch_change_policy: postDispatchChangePolicy,
+            dispatched_at: route.dispatched_at || null,
+            last_manifest_change_at: route.last_manifest_change_at || null
+          }
+        });
       }
 
       if (summaryView) {

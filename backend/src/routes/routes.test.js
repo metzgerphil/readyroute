@@ -636,6 +636,142 @@ test('GET /routes/today?view=manifest returns lean list stops with package count
   }
 });
 
+test('GET /routes/today?view=drive returns mappable stops without full enrichment', async () => {
+  const supabase = new MockSupabase((query) => {
+    if (query.table === 'routes' && query.operation === 'select') {
+      return {
+        data: {
+          id: 'route-1',
+          date: '2026-04-08',
+          status: 'in_progress',
+          dispatch_state: 'dispatched',
+          dispatched_at: '2026-04-08T13:00:00.000Z',
+          last_manifest_change_at: null,
+          total_stops: 2,
+          completed_stops: 1,
+          completed_at: null,
+          vehicle_id: 'vehicle-1'
+        },
+        error: null
+      };
+    }
+
+    if (query.table === 'stops' && query.operation === 'select') {
+      assert.equal(query.columns.includes('lat'), true);
+      assert.equal(query.columns.includes('lng'), true);
+      assert.equal(query.columns.includes('primary_phone'), false);
+      assert.equal(query.columns.includes('customer_instructions'), false);
+
+      return {
+        data: [
+          {
+            id: 'stop-1',
+            route_id: 'route-1',
+            sequence_order: 1,
+            address: '508 E Mission Ave, Escondido, CA',
+            contact_name: 'Customer One',
+            address_line2: null,
+            sid: '1001',
+            ready_time: null,
+            close_time: null,
+            has_time_commit: false,
+            stop_type: 'delivery',
+            has_pickup: false,
+            has_delivery: true,
+            is_business: false,
+            has_note: false,
+            lat: 33.123,
+            lng: -117.123,
+            status: 'pending',
+            exception_code: null,
+            delivery_type_code: null,
+            is_pickup: false,
+            completed_at: null,
+            scanned_at: null,
+            notes: null
+          },
+          {
+            id: 'stop-2',
+            route_id: 'route-1',
+            sequence_order: 2,
+            address: '614 Valley Pkwy, Escondido, CA',
+            contact_name: 'Customer Two',
+            address_line2: 'Suite 3',
+            sid: '1002',
+            ready_time: '13:00',
+            close_time: '14:00',
+            has_time_commit: true,
+            stop_type: 'pickup',
+            has_pickup: true,
+            has_delivery: false,
+            is_business: true,
+            has_note: true,
+            lat: 33.456,
+            lng: -117.456,
+            status: 'delivered',
+            exception_code: null,
+            delivery_type_code: '07',
+            is_pickup: true,
+            completed_at: '2026-04-08T16:00:00.000Z',
+            scanned_at: '2026-04-08T16:00:00.000Z',
+            notes: 'Saved note'
+          }
+        ],
+        error: null
+      };
+    }
+
+    if (query.table === 'packages' && query.operation === 'select') {
+      assert.equal(query.columns, 'id, stop_id, requires_signature, requires_adult_signature, hazmat');
+
+      return {
+        data: [
+          { id: 'pkg-1', stop_id: 'stop-1', requires_signature: true, requires_adult_signature: false, hazmat: false },
+          { id: 'pkg-2', stop_id: 'stop-2', requires_signature: false, requires_adult_signature: false, hazmat: false }
+        ],
+        error: null
+      };
+    }
+
+    throw new Error(`Unexpected query ${query.table}:${query.operation}:${query.mode}`);
+  });
+
+  const server = await startTestServer(supabase);
+
+  try {
+    const response = await fetch(`${server.baseUrl}/routes/today?view=drive`, {
+      headers: {
+        Authorization: `Bearer ${signDriverToken()}`
+      }
+    });
+
+    assert.equal(response.status, 200);
+    const body = await response.json();
+    assert.equal(body.route.response_view, 'drive');
+    assert.equal(body.route.stops.length, 2);
+    assert.equal(body.route.stops[0].lat, 33.123);
+    assert.equal(body.route.stops[0].lng, -117.123);
+    assert.equal(body.route.stops[0].package_count, 1);
+    assert.deepEqual(body.route.stops[0].packages, [
+      {
+        id: 'pkg-1',
+        requires_signature: true,
+        requires_adult_signature: false,
+        hazmat: false
+      }
+    ]);
+    assert.equal(body.route.stops[0].primary_phone, undefined);
+    assert.equal(body.route.vehicle, undefined);
+    assert.equal(body.driver_day.odometer_requirement, undefined);
+    assert.deepEqual(
+      [...new Set(supabase.calls.map((query) => query.table))],
+      ['routes', 'stops', 'packages']
+    );
+  } finally {
+    await server.close();
+  }
+});
+
 test('GET /routes/today?view=summary returns route metadata without manifest detail', async () => {
   const supabase = new MockSupabase((query) => {
     if (query.table === 'routes' && query.operation === 'select') {

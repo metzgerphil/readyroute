@@ -21,7 +21,7 @@ import {
   removeToken,
   saveClockInTime
 } from '../services/auth';
-import { prefetchDriverManifest, saveDriverRouteSummary } from '../services/driverRouteCache';
+import { prefetchDriverDriveRoute, prefetchDriverManifest, saveDriverRouteSummary } from '../services/driverRouteCache';
 import { loadStatusCodes } from '../services/statusCodes';
 
 export const DAILY_SAFETY_REMINDERS = [
@@ -514,12 +514,20 @@ export default function HomeScreen({ navigation, onLogout }) {
     }
 
     try {
+      const routeRequest = api.get('/routes/today', {
+        params: {
+          view: 'summary'
+        }
+      }).then((response) => {
+        if (response.data?.route?.id) {
+          Promise.resolve(prefetchDriverManifest()).catch(() => {});
+          Promise.resolve(prefetchDriverDriveRoute()).catch(() => {});
+        }
+
+        return response;
+      });
       const [routeResponse, timecardStatusResponse, safetyFocusResponse] = await Promise.all([
-        api.get('/routes/today', {
-          params: {
-            view: 'summary'
-          }
-        }),
+        routeRequest,
         api.get('/timecards/status'),
         api.get('/safety-focuses/today').catch(() => null)
       ]);
@@ -553,9 +561,6 @@ export default function HomeScreen({ navigation, onLogout }) {
       }
 
       Promise.resolve(loadStatusCodes()).catch(() => {});
-      if (nextRoute?.id) {
-        Promise.resolve(prefetchDriverManifest()).catch(() => {});
-      }
     } catch (error) {
       if (!isMountedRef.current) {
         return;

@@ -15,6 +15,11 @@ jest.mock('../services/auth', () => ({
   subscribePinColorMode: jest.fn(() => jest.fn())
 }));
 
+jest.mock('../services/driverRouteCache', () => ({
+  fetchDriverDriveRoute: jest.fn(),
+  getCachedDriverDriveRoute: jest.fn()
+}));
+
 jest.mock('expo-location', () => ({
   Accuracy: {
     BestForNavigation: 6,

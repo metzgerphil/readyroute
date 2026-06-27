@@ -5,9 +5,11 @@ import { getDriverFromToken, getToken } from './auth';
 
 const CACHE_VERSION = 1;
 const MANIFEST_CACHE_PREFIX = `readyroute_driver_manifest:v${CACHE_VERSION}`;
+const DRIVE_ROUTE_CACHE_PREFIX = `readyroute_driver_drive_route:v${CACHE_VERSION}`;
 const ROUTE_SUMMARY_CACHE_PREFIX = `readyroute_driver_route_summary:v${CACHE_VERSION}`;
 
 let manifestPrefetchPromise = null;
+let driveRoutePrefetchPromise = null;
 
 export function getTodayStorageDate(date = new Date()) {
   return new Intl.DateTimeFormat('en-CA', {
@@ -78,6 +80,23 @@ function normalizeManifestPayload(payload = {}, savedAt = new Date().toISOString
   };
 }
 
+function normalizeDriveRoutePayload(payload = {}, savedAt = new Date().toISOString()) {
+  const route = payload?.route || null;
+
+  if (!route?.id || !Array.isArray(route.stops)) {
+    return null;
+  }
+
+  return {
+    cache_version: CACHE_VERSION,
+    cached_at: savedAt,
+    route,
+    driver_day: payload?.driver_day || {
+      status: 'dispatched'
+    }
+  };
+}
+
 function parseCachedJson(value) {
   if (!value) {
     return null;
@@ -88,6 +107,27 @@ function parseCachedJson(value) {
   } catch (_error) {
     return null;
   }
+}
+
+function isCachedRouteFresh(cached, { date, routeId, summary = null } = {}) {
+  if (
+    !cached ||
+    cached.cache_version !== CACHE_VERSION ||
+    cached.route?.id !== routeId ||
+    cached.route?.date !== date ||
+    !Array.isArray(cached.route?.stops)
+  ) {
+    return false;
+  }
+
+  if (
+    summary?.last_manifest_change_at &&
+    cached.route?.last_manifest_change_at !== summary.last_manifest_change_at
+  ) {
+    return false;
+  }
+
+  return true;
 }
 
 async function getCachedRouteSummary(date = getTodayStorageDate()) {
@@ -128,6 +168,23 @@ export async function saveDriverManifest(payload = {}) {
   return manifest;
 }
 
+export async function saveDriverDriveRoute(payload = {}) {
+  const driveRoute = normalizeDriveRoutePayload(payload);
+
+  if (!driveRoute) {
+    await saveDriverRouteSummary(payload);
+    return null;
+  }
+
+  const [driveRouteKey] = await Promise.all([
+    getDriveRouteCacheKey(driveRoute.route.id),
+    saveDriverRouteSummary(payload)
+  ]);
+
+  await AsyncStorage.setItem(driveRouteKey, JSON.stringify(driveRoute));
+  return driveRoute;
+}
+
 export async function getCachedDriverManifest({ date = getTodayStorageDate(), routeId = null } = {}) {
   const summary = routeId
     ? null
@@ -141,13 +198,41 @@ export async function getCachedDriverManifest({ date = getTodayStorageDate(), ro
   const key = await getManifestCacheKey(resolvedRouteId);
   const cached = parseCachedJson(await AsyncStorage.getItem(key));
 
-  if (
-    !cached ||
-    cached.cache_version !== CACHE_VERSION ||
-    cached.route?.id !== resolvedRouteId ||
-    cached.route?.date !== date ||
-    !Array.isArray(cached.route?.stops)
-  ) {
+  if (!isCachedRouteFresh(cached, { date, routeId: resolvedRouteId, summary })) {
+    if (cached) {
+      await AsyncStorage.removeItem(key);
+    }
+    return null;
+  }
+
+  return {
+    route: cached.route,
+    driver_day: cached.driver_day || {
+      status: 'dispatched'
+    },
+    cached_at: cached.cached_at || null
+  };
+}
+
+async function getDriveRouteCacheKey(routeId) {
+  const scope = await getDriverCacheScope();
+  return `${DRIVE_ROUTE_CACHE_PREFIX}:${scope}:${routeId}`;
+}
+
+export async function getCachedDriverDriveRoute({ date = getTodayStorageDate(), routeId = null } = {}) {
+  const summary = routeId
+    ? null
+    : await getCachedRouteSummary(date);
+  const resolvedRouteId = routeId || summary?.route_id || null;
+
+  if (!resolvedRouteId) {
+    return null;
+  }
+
+  const key = await getDriveRouteCacheKey(resolvedRouteId);
+  const cached = parseCachedJson(await AsyncStorage.getItem(key));
+
+  if (!isCachedRouteFresh(cached, { date, routeId: resolvedRouteId, summary })) {
     if (cached) {
       await AsyncStorage.removeItem(key);
     }
@@ -174,6 +259,17 @@ export async function fetchDriverManifest() {
   return response.data || {};
 }
 
+export async function fetchDriverDriveRoute() {
+  const response = await api.get('/routes/today', {
+    params: {
+      view: 'drive'
+    }
+  });
+
+  await saveDriverDriveRoute(response.data || {});
+  return response.data || {};
+}
+
 export function prefetchDriverManifest() {
   if (!manifestPrefetchPromise) {
     manifestPrefetchPromise = fetchDriverManifest()
@@ -186,8 +282,21 @@ export function prefetchDriverManifest() {
   return manifestPrefetchPromise;
 }
 
+export function prefetchDriverDriveRoute() {
+  if (!driveRoutePrefetchPromise) {
+    driveRoutePrefetchPromise = fetchDriverDriveRoute()
+      .catch(() => null)
+      .finally(() => {
+        driveRoutePrefetchPromise = null;
+      });
+  }
+
+  return driveRoutePrefetchPromise;
+}
+
 export {
   CACHE_VERSION,
+  DRIVE_ROUTE_CACHE_PREFIX,
   MANIFEST_CACHE_PREFIX,
   ROUTE_SUMMARY_CACHE_PREFIX
 };
