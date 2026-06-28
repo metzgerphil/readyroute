@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   FlatList,
@@ -10,6 +10,7 @@ import {
   TextInput,
   View
 } from 'react-native';
+import * as Clipboard from 'expo-clipboard';
 import * as DocumentPicker from 'expo-document-picker';
 
 import ManagerSectionLayout from '../components/ManagerSectionLayout';
@@ -107,20 +108,32 @@ const VEHICLE_TYPE_OPTIONS = [
 
 const FUEL_TYPE_OPTIONS = ['Gas', 'Diesel', 'EV'];
 
+const VEHICLE_STATUS_REVIEW_OPTIONS = [
+  { value: 'active', label: 'Active' },
+  { value: 'out_of_service', label: 'Out of Service' },
+  { value: 'at_the_shop', label: 'At the shop' },
+  { value: 'needs_repair', label: 'Needs Repair' }
+];
+
 const DEFAULT_CHECKLIST_TEMPLATE_FIELDS = [
   { id: 'date', label: 'Date', detail: 'Inspection date', enabled: true },
   { id: 'company_name', label: 'Company name', detail: 'CSA or company name', enabled: true },
   { id: 'truck_number', label: 'Vehicle ID', detail: 'Vehicle identifier for the inspection', enabled: true },
   { id: 'driver_name', label: 'Driver first and last name', detail: 'Driver completing the inspection', enabled: true },
-  { id: 'tires', label: 'Tires, front, rear inner, rear outer', detail: 'Tire condition across front and rear positions', enabled: true },
-  { id: 'check_engine_light', label: 'Check engine light', detail: 'On or Off', enabled: true },
-  { id: 'coolant', label: 'Coolant', detail: 'Good or Needs Added', enabled: true },
-  { id: 'engine_oil', label: 'Engine oil', detail: 'Good, Needs Added, or Needs Full Change', enabled: true },
-  { id: 'brake_fluid', label: 'Brake fluid', detail: 'Good or Needs Added', enabled: true },
-  { id: 'windshield_fluid', label: 'Windshield fluid', detail: 'Good or Needs Added', enabled: true },
-  { id: 'wipers', label: 'Wipers', detail: 'Good, Left Bad, Right Bad, or Both Bad', enabled: true },
-  { id: 'lights', label: 'Lights', detail: 'Headlights, stop lights, and turning signals', enabled: true },
-  { id: 'truck_cleanliness', label: 'Truck cleanliness', detail: 'Good or Bad', enabled: true },
+  { id: 'tires', label: 'Tires', detail: 'Front left, front right, back left, and back right tire condition', enabled: true },
+  { id: 'check_engine_light', label: 'Check engine light', detail: 'Dashboard warning state and driving symptoms', enabled: true },
+  { id: 'lights', label: 'Lights', detail: 'Marker, turn signal, headlight, cargo, and license plate lights', enabled: true },
+  { id: 'brake_fluid', label: 'Brake fluid', detail: 'Brake fluid level, warning light, leaks, or pedal concerns', enabled: true },
+  { id: 'vedr', label: 'VEDR', detail: 'Video event data recorder condition', enabled: true },
+  { id: 'back_up_camera', label: 'Back up camera', detail: 'Rear camera image and operation', enabled: true },
+  { id: 'turn_cameras', label: 'Turn cameras', detail: 'Side turn camera image and operation', enabled: true },
+  { id: 'parking_sensors', label: 'Parking sensors', detail: 'Parking sensor operation', enabled: true },
+  { id: 'horn', label: 'Horn', detail: 'Horn operation', enabled: true },
+  { id: 'coolant', label: 'Coolant', detail: 'Coolant level, leak, warning light, or overheating', enabled: true },
+  { id: 'engine_oil', label: 'Engine oil', detail: 'Engine oil level, leak, oil light, or service due', enabled: true },
+  { id: 'windshield_fluid', label: 'Windshield fluid', detail: 'Washer fluid level or leak', enabled: true },
+  { id: 'wipers', label: 'Wipers', detail: 'Left, right, or both wiper condition', enabled: true },
+  { id: 'truck_cleanliness', label: 'Truck cleanliness', detail: 'Clean, dirty, or needs attention', enabled: true },
   { id: 'driver_notes', label: 'Driver notes', detail: 'Free-text notes from the driver', enabled: true }
 ];
 
@@ -309,6 +322,23 @@ function buildVehiclePayload(form) {
   };
 }
 
+function getDriverDisplayName(driver) {
+  return [driver?.name, driver?.fedex_driver_id ? `#${driver.fedex_driver_id}` : null]
+    .filter(Boolean)
+    .join(' • ') || driver?.email || 'Driver';
+}
+
+function getInspectionAssignmentForm(vehicle = null, driver = null) {
+  return {
+    vehicle_id: vehicle?.id || '',
+    driver_id: driver?.id || '',
+    due_date: getTodayDateParam(),
+    priority: 'normal',
+    require_before_route_start: false,
+    note: ''
+  };
+}
+
 function normalizeMaintenanceSettings(settings = []) {
   return (Array.isArray(settings) ? settings : [])
     .filter((setting) => setting?.is_enabled !== false)
@@ -387,22 +417,140 @@ function getMaintenanceForm(vehicle) {
   };
 }
 
+function formatInspectionStatus(value) {
+  return String(value || '')
+    .replace(/_/g, ' ')
+    .replace(/\b\w/g, (letter) => letter.toUpperCase()) || 'Not recorded';
+}
+
+function isInspectionIssueItem(item) {
+  return item?.status === 'issue' || item?.status === 'fail';
+}
+
+function getInspectionIssueItems(inspection) {
+  if (Array.isArray(inspection?.issue_items) && inspection.issue_items.length) {
+    return inspection.issue_items;
+  }
+
+  if (Array.isArray(inspection?.failed_items) && inspection.failed_items.length) {
+    return inspection.failed_items;
+  }
+
+  return (inspection?.items || []).filter(isInspectionIssueItem);
+}
+
+function formatIssueDetailKey(key) {
+  return String(key || '')
+    .replace(/_/g, ' ')
+    .replace(/\b\w/g, (letter) => letter.toUpperCase());
+}
+
+function formatIssueDetailValue(value) {
+  if (Array.isArray(value)) {
+    return value.join(', ');
+  }
+
+  if (value && typeof value === 'object') {
+    return Object.entries(value)
+      .map(([key, nestedValue]) => `${formatIssueDetailKey(key)}: ${formatIssueDetailValue(nestedValue)}`)
+      .join(', ');
+  }
+
+  return String(value || '').trim();
+}
+
+function getInspectionIssueDetailLines(item = {}) {
+  const details = item.issue_details && typeof item.issue_details === 'object' && !Array.isArray(item.issue_details)
+    ? item.issue_details
+    : {};
+
+  return Object.entries(details)
+    .map(([key, value]) => [formatIssueDetailKey(key), formatIssueDetailValue(value)])
+    .filter(([, value]) => Boolean(value))
+    .map(([key, value]) => `${key}: ${value}`);
+}
+
+function getInspectionItemSummary(item = {}) {
+  return getInspectionItemSummaryLines(item).join(' • ');
+}
+
+function getInspectionItemSummaryLines(item = {}) {
+  const parts = [
+    item.severity ? `Severity: ${formatInspectionStatus(item.severity)}` : null,
+    ...getInspectionIssueDetailLines(item),
+    item.value ? `Value: ${item.value}` : null,
+    item.note ? `Note: ${item.note}` : null,
+    Array.isArray(item.photos) && item.photos.length ? `${item.photos.length} photo${item.photos.length === 1 ? '' : 's'}` : null
+  ].filter(Boolean);
+
+  return parts.length ? parts : [isInspectionIssueItem(item) ? 'Issue details not recorded' : 'Passed'];
+}
+
+function getInspectionReviewStatusLabel(inspection = {}) {
+  if (inspection.urgent_review) {
+    return 'Urgent Manager Review';
+  }
+
+  if (inspection.manager_review_required) {
+    return 'Manager Review Required';
+  }
+
+  return inspection.status_label || formatInspectionStatus(inspection.status || 'submitted');
+}
+
+function getInspectionVehicleLabel(inspection = {}) {
+  return inspection.vehicle_name || inspection.vehicle?.name || 'Vehicle not recorded';
+}
+
+function getInspectionDriverLabel(inspection = {}) {
+  return inspection.driver?.name
+    || inspection.submitted_by_driver?.name
+    || inspection.submitted_by_name
+    || inspection.driver_name
+    || 'Driver not recorded';
+}
+
+function buildInspectionSummary(inspection = {}) {
+  const issueItems = getInspectionIssueItems(inspection);
+  const issueLines = issueItems.length
+    ? issueItems.flatMap((item, index) => [
+        `${index + 1}. ${item.label || item.checklist_item_key || 'Inspection item'}`,
+        ...getInspectionItemSummaryLines(item).map((line) => `   ${line}`)
+      ])
+    : ['No inspection issues recorded.'];
+  const headerLines = [
+    'Inspection Summary',
+    `Vehicle: ${getInspectionVehicleLabel(inspection)}`,
+    `Inspection date: ${inspection.inspection_date ? formatDate(inspection.inspection_date) : 'Not recorded'}`,
+    `Submitted by: ${getInspectionDriverLabel(inspection)}`,
+    `Odometer: ${inspection.odometer ? formatMileage(inspection.odometer) : 'Not recorded'}`,
+    `Status: ${getInspectionReviewStatusLabel(inspection)}`,
+    inspection.issue_note ? `Driver note: ${inspection.issue_note}` : null
+  ].filter(Boolean);
+
+  return [
+    ...headerLines,
+    '',
+    'Issues:',
+    ...issueLines
+  ].join('\n');
+}
+
 function getInspectionMaintenanceForm(vehicle, inspection) {
-  const failedItems = (inspection?.items || [])
-    .filter((item) => item.status === 'fail')
-    .map((item) => `${item.label}${item.value ? `: ${item.value}` : ''}${item.note ? ` (${item.note})` : ''}`);
+  const issueItems = getInspectionIssueItems(inspection)
+    .map((item) => `${item.label || item.checklist_item_key}: ${getInspectionItemSummary(item)}`);
   const notes = [
     inspection?.issue_note ? `Driver issue note: ${inspection.issue_note}` : null,
-    failedItems.length ? `Failed checklist items: ${failedItems.join('; ')}` : null,
+    issueItems.length ? `Inspection issues: ${issueItems.join('; ')}` : null,
     inspection?.id ? `Source inspection: ${inspection.id}` : null
   ].filter(Boolean);
 
   return {
     ...getMaintenanceForm(vehicle),
-    condition_notes: failedItems.join('\n'),
+    condition_notes: issueItems.join('\n'),
     description: notes.join('\n'),
     mileage_at_service: inspection?.odometer ? String(inspection.odometer) : String(vehicle?.current_mileage || ''),
-    service_type: failedItems.length || inspection?.issue_note ? 'General Repair' : 'Inspection'
+    service_type: issueItems.length || inspection?.issue_note ? 'General Repair' : 'Inspection'
   };
 }
 
@@ -484,7 +632,7 @@ function OptionPicker({ label, onChange, options, value }) {
   );
 }
 
-function VehicleCard({ onEditActions, onOpenProfile, vehicle }) {
+function VehicleCard({ onAssignInspection, onEditActions, onOpenProfile, vehicle }) {
   const assignedDriver = getAssignedDriverLabel(vehicle);
   const routeNumber = vehicle.today_assignment?.work_area_name;
   const statusMeta = getStatusMeta(vehicle);
@@ -520,6 +668,13 @@ function VehicleCard({ onEditActions, onOpenProfile, vehicle }) {
       <View style={styles.vehicleActions}>
         <Pressable
           accessibilityRole="button"
+          onPress={() => onAssignInspection(vehicle)}
+          style={({ pressed }) => [styles.compactEditButton, pressed ? styles.pressed : null]}
+        >
+          <Text style={styles.compactEditButtonText}>Assign</Text>
+        </Pressable>
+        <Pressable
+          accessibilityRole="button"
           onPress={() => onEditActions(vehicle)}
           style={({ pressed }) => [styles.compactEditButton, pressed ? styles.pressed : null]}
         >
@@ -539,6 +694,7 @@ function VehicleCard({ onEditActions, onOpenProfile, vehicle }) {
 
 function VehicleProfileModal({
   onClose,
+  onAssignInspection,
   onEditInfo,
   onEditOdometer,
   onLogMaintenance,
@@ -594,6 +750,7 @@ function VehicleProfileModal({
             <Text style={styles.profileSectionLabel}>Manager Actions</Text>
             <View style={styles.profileActionGrid}>
               <TruckActionRow label="Update Odometer" onPress={onEditOdometer} primary />
+              <TruckActionRow label="Assign Inspection" onPress={onAssignInspection} />
               <TruckActionRow label="Run Inspection" onPress={onRunInspection} />
               <TruckActionRow label="Log Maintenance" onPress={onLogMaintenance} />
               <TruckActionRow label="Edit Vehicle Info" onPress={onEditInfo} />
@@ -777,7 +934,7 @@ function InspectionRecordsPanel({ inspections, isLoading, onOpenInspection }) {
       {recentInspections.length ? (
         <View style={styles.recordsList}>
           {recentInspections.map((inspection) => {
-            const failedCount = Array.isArray(inspection.failed_items) ? inspection.failed_items.length : 0;
+            const issueCount = inspection.issue_count ?? inspection.failed_items_count ?? getInspectionIssueItems(inspection).length;
             const vehicleName = inspection.vehicle_name || inspection.vehicle?.name || 'Not recorded';
             return (
               <Pressable
@@ -796,7 +953,7 @@ function InspectionRecordsPanel({ inspections, isLoading, onOpenInspection }) {
                     .filter(Boolean)
                     .join(' • ') || 'Submitted inspection'}
                 </Text>
-                {failedCount ? <Text style={styles.recordNotes}>{failedCount} item{failedCount === 1 ? '' : 's'} need review</Text> : null}
+                {issueCount ? <Text style={styles.recordNotes}>{issueCount} issue{issueCount === 1 ? '' : 's'} need review</Text> : null}
                 {inspection.issue_note ? <Text style={styles.recordNotes}>{inspection.issue_note}</Text> : null}
                 <Text style={styles.historyLink}>Review inspection</Text>
               </Pressable>
@@ -1345,13 +1502,180 @@ function TruckActionRow({ disabled = false, label, onPress, primary = false }) {
   );
 }
 
-function EditTruckActionsModal({ onAddService, onClose, onEditInfo, onEditOdometer, onRunInspection, onUpdateRegistration, vehicle }) {
+function AssignInspectionModal({
+  drivers,
+  errorMessage,
+  form,
+  isLoadingDrivers,
+  isSaving,
+  onChange,
+  onClose,
+  onSubmit,
+  vehicles,
+  visible
+}) {
+  const selectableDrivers = (drivers || []).filter((driver) => driver?.is_active !== false);
+  const selectedVehicle = (vehicles || []).find((vehicle) => vehicle.id === form.vehicle_id);
+  const selectedDriver = selectableDrivers.find((driver) => driver.id === form.driver_id);
+  const canSubmit = Boolean(form.vehicle_id && form.driver_id && form.due_date && !isSaving);
+
+  return (
+    <KeyboardAwareModal onClose={onClose} visible={visible}>
+      <View style={styles.modalHeader}>
+        <View>
+          <Text style={styles.modalTitle}>Assign Inspection</Text>
+          <Text style={styles.modalSubtitle}>
+            {[selectedVehicle?.name, selectedDriver?.name].filter(Boolean).join(' to ') || 'Choose a truck and driver'}
+          </Text>
+        </View>
+        <Pressable accessibilityLabel="Close assign inspection" onPress={onClose} style={styles.closeButton}>
+          <Text style={styles.closeButtonText}>×</Text>
+        </Pressable>
+      </View>
+
+      <ScrollView
+        automaticallyAdjustKeyboardInsets
+        contentContainerStyle={styles.modalScrollContent}
+        keyboardDismissMode="interactive"
+        keyboardShouldPersistTaps="handled"
+        showsVerticalScrollIndicator={false}
+        style={styles.modalScroll}
+      >
+        <View style={styles.fieldGroup}>
+          <Text style={styles.fieldLabel}>Vehicle</Text>
+          <View style={styles.assignmentOptionList}>
+            {(vehicles || []).map((vehicle) => {
+              const selected = vehicle.id === form.vehicle_id;
+              return (
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityState={{ selected }}
+                  key={vehicle.id || vehicle.name}
+                  onPress={() => onChange('vehicle_id', vehicle.id)}
+                  style={({ pressed }) => [
+                    styles.assignmentOption,
+                    selected ? styles.assignmentOptionSelected : null,
+                    pressed ? styles.pressed : null
+                  ]}
+                >
+                  <Text numberOfLines={1} style={[styles.assignmentOptionTitle, selected ? styles.assignmentOptionTitleSelected : null]}>
+                    {vehicle.name || 'Truck not recorded'}
+                  </Text>
+                  <Text numberOfLines={1} style={styles.assignmentOptionMeta}>
+                    {[getVehicleDescription(vehicle), formatMileage(vehicle.current_mileage)].filter(Boolean).join(' • ')}
+                  </Text>
+                </Pressable>
+              );
+            })}
+          </View>
+        </View>
+
+        <View style={styles.fieldGroup}>
+          <Text style={styles.fieldLabel}>Driver</Text>
+          {isLoadingDrivers ? (
+            <View style={styles.assignmentLoadingRow}>
+              <ActivityIndicator color={appTheme.colors.orange} size="small" />
+              <Text style={styles.assignmentLoadingText}>Loading drivers</Text>
+            </View>
+          ) : (
+            <View style={styles.assignmentOptionList}>
+              {selectableDrivers.map((driver) => {
+                const selected = driver.id === form.driver_id;
+                return (
+                  <Pressable
+                    accessibilityRole="button"
+                    accessibilityState={{ selected }}
+                    key={driver.id}
+                    onPress={() => onChange('driver_id', driver.id)}
+                    style={({ pressed }) => [
+                      styles.assignmentOption,
+                      selected ? styles.assignmentOptionSelected : null,
+                      pressed ? styles.pressed : null
+                    ]}
+                  >
+                    <Text numberOfLines={1} style={[styles.assignmentOptionTitle, selected ? styles.assignmentOptionTitleSelected : null]}>
+                      {getDriverDisplayName(driver)}
+                    </Text>
+                    <Text numberOfLines={1} style={styles.assignmentOptionMeta}>{driver.email || 'Driver app user'}</Text>
+                  </Pressable>
+                );
+              })}
+            </View>
+          )}
+          {!isLoadingDrivers && !selectableDrivers.length ? (
+            <Text style={styles.panelCaption}>No active drivers are available to assign.</Text>
+          ) : null}
+        </View>
+
+        <Field label="Due date" onChangeText={(value) => onChange('due_date', value)} placeholder="YYYY-MM-DD" value={form.due_date} />
+
+        <View style={styles.fieldGroup}>
+          <Text style={styles.fieldLabel}>Priority</Text>
+          <View style={styles.optionPicker}>
+            {[
+              { label: 'Normal', value: 'normal' },
+              { label: 'Urgent', value: 'urgent' }
+            ].map((option) => {
+              const selected = form.priority === option.value;
+              return (
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityState={{ selected }}
+                  key={option.value}
+                  onPress={() => onChange('priority', option.value)}
+                  style={({ pressed }) => [
+                    styles.optionChip,
+                    selected ? styles.optionChipSelected : null,
+                    pressed ? styles.pressed : null
+                  ]}
+                >
+                  <Text style={[styles.optionChipText, selected ? styles.optionChipTextSelected : null]}>{option.label}</Text>
+                </Pressable>
+              );
+            })}
+          </View>
+        </View>
+
+        <CheckToggle
+          checked={form.require_before_route_start}
+          label="Require completion before route start"
+          onPress={() => onChange('require_before_route_start', !form.require_before_route_start)}
+        />
+        <Field label="Note" multiline onChangeText={(value) => onChange('note', value)} placeholder="Optional driver note" value={form.note} />
+      </ScrollView>
+
+      {errorMessage ? <Text style={styles.modalError}>{errorMessage}</Text> : null}
+
+      <View style={styles.modalActions}>
+        <AppButton label="Cancel" onPress={onClose} style={styles.modalActionButton} variant="outline" />
+        <Pressable
+          disabled={!canSubmit}
+          onPress={onSubmit}
+          style={({ pressed }) => [
+            styles.saveButton,
+            !canSubmit ? styles.saveButtonDisabled : null,
+            pressed && canSubmit ? styles.pressed : null
+          ]}
+        >
+          {isSaving ? (
+            <ActivityIndicator color={appTheme.colors.textInverse} size="small" />
+          ) : (
+            <Text style={styles.saveButtonText}>Send Assignment</Text>
+          )}
+        </Pressable>
+      </View>
+    </KeyboardAwareModal>
+  );
+}
+
+function EditTruckActionsModal({ onAddService, onAssignInspection, onClose, onEditInfo, onEditOdometer, onRunInspection, onUpdateRegistration, vehicle }) {
   return (
     <KeyboardAwareModal cardStyle={styles.smallModalCard} onClose={onClose} visible={Boolean(vehicle)}>
       <Text style={styles.modalTitle}>Edit Truck {vehicle?.name || ''}</Text>
       <Text style={styles.modalSubtitle}>Change information or add records.</Text>
       <View style={styles.truckActionList}>
         <TruckActionRow label="Update Odometer" onPress={onEditOdometer} primary />
+        <TruckActionRow label="Assign Inspection" onPress={onAssignInspection} />
         <TruckActionRow label="Run Inspection" onPress={onRunInspection} />
         <TruckActionRow label="Edit Truck Info" onPress={onEditInfo} />
         <TruckActionRow label="Log Maintenance" onPress={onAddService} />
@@ -1656,7 +1980,7 @@ function InspectionHistoryModal({ history, isLoading, onClose, onOpenInspection,
                   <Text style={styles.historyTitle}>{formatDate(row.inspection_date)} • {row.inspection_type_label || 'Inspection'}</Text>
                   <Text style={styles.historyMeta}>{row.status_label || row.status || 'Submitted'} • {row.odometer ? formatMileage(row.odometer) : 'Mileage not recorded'}</Text>
                   <Text style={styles.historyMeta}>
-                    {Number(row.failed_items_count || 0)} issue{Number(row.failed_items_count || 0) === 1 ? '' : 's'} marked
+                    {Number(row.issue_count || row.failed_items_count || 0)} issue{Number(row.issue_count || row.failed_items_count || 0) === 1 ? '' : 's'} marked
                   </Text>
                   {row.issue_note ? <Text style={styles.historyMeta}>{row.issue_note}</Text> : null}
                   <Text style={styles.historyLink}>Open inspection</Text>
@@ -1753,18 +2077,25 @@ function AssignmentHistoryModal({ history, isLoading, onClose, vehicle }) {
 }
 
 function InspectionDetailModal({
+  copySummaryMessage,
   inspection,
+  isUpdatingVehicleStatus,
   isLoading,
   isReviewing,
   onChangeReviewNote,
   onClose,
+  onCopyInspectionSummary,
   onLogMaintenance,
+  onVehicleStatusDecision,
   onReview,
   reviewNote
 }) {
   if (!inspection && !isLoading) {
     return null;
   }
+
+  const issueItems = getInspectionIssueItems(inspection);
+  const currentVehicleStatus = inspection?.vehicle?.vehicle_status || 'active';
 
   return (
     <KeyboardAwareModal onClose={onClose} visible={Boolean(inspection) || isLoading}>
@@ -1796,7 +2127,7 @@ function InspectionDetailModal({
               <View style={styles.profileGrid}>
                 <View style={styles.profileTile}>
                   <Text style={styles.summaryLabel}>Status</Text>
-                  <Text style={styles.summaryValue}>{inspection.status_label || inspection.status || 'Submitted'}</Text>
+                  <Text style={styles.summaryValue}>{getInspectionReviewStatusLabel(inspection)}</Text>
                 </View>
                 <View style={styles.profileTile}>
                   <Text style={styles.summaryLabel}>Odometer</Text>
@@ -1804,9 +2135,18 @@ function InspectionDetailModal({
                 </View>
                 <View style={styles.profileTile}>
                   <Text style={styles.summaryLabel}>Issues</Text>
-                  <Text style={styles.summaryValue}>{(inspection.items || []).filter((item) => item.status === 'fail').length}</Text>
+                  <Text style={styles.summaryValue}>{issueItems.length}</Text>
                 </View>
               </View>
+
+              {inspection.urgent_review ? (
+                <View style={styles.inspectionUrgentBox}>
+                  <Text style={styles.settingName}>Urgent manager review</Text>
+                  <Text style={styles.historyMeta}>
+                    The driver marked at least one issue unsafe. Review the details and choose the vehicle status before dispatch decisions continue.
+                  </Text>
+                </View>
+              ) : null}
 
               {inspection.issue_note ? (
                 <View style={styles.issueNoteBox}>
@@ -1815,18 +2155,61 @@ function InspectionDetailModal({
                 </View>
               ) : null}
 
+              <View style={styles.inspectionDecisionPanel}>
+                <Text style={styles.profileSectionLabel}>Vehicle Status Decision</Text>
+                <Text style={styles.historyMeta}>Current status: {formatInspectionStatus(currentVehicleStatus)}</Text>
+                <View style={styles.inspectionDecisionGrid}>
+                  {VEHICLE_STATUS_REVIEW_OPTIONS.map((option) => (
+                    <Pressable
+                      accessibilityRole="button"
+                      disabled={isUpdatingVehicleStatus}
+                      key={option.value}
+                      onPress={() => onVehicleStatusDecision(option.value)}
+                      style={({ pressed }) => [
+                        styles.inspectionDecisionButton,
+                        currentVehicleStatus === option.value ? styles.inspectionDecisionButtonActive : null,
+                        isUpdatingVehicleStatus ? styles.truckActionRowDisabled : null,
+                        pressed && !isUpdatingVehicleStatus ? styles.pressed : null
+                      ]}
+                    >
+                      <Text style={[
+                        styles.inspectionDecisionButtonText,
+                        currentVehicleStatus === option.value ? styles.inspectionDecisionButtonTextActive : null
+                      ]}
+                      >
+                        {option.label}
+                      </Text>
+                    </Pressable>
+                  ))}
+                </View>
+              </View>
+
               <View style={styles.recordsList}>
-                {(inspection.items || []).length ? inspection.items.map((item) => (
-                  <View key={item.id || item.checklist_item_key || item.label} style={[styles.inspectionDetailItem, item.status === 'fail' ? styles.inspectionDetailItemFail : null]}>
-                    <View style={styles.inspectionChecklistText}>
-                      <Text style={styles.historyTitle}>{item.label || item.checklist_item_key}</Text>
-                      <Text style={styles.historyMeta}>{item.value || item.note || 'No answer recorded'}</Text>
+                {(inspection.items || []).length ? inspection.items.map((item) => {
+                  const isIssue = isInspectionIssueItem(item);
+                  const photos = Array.isArray(item.photos) ? item.photos : [];
+
+                  return (
+                    <View key={item.id || item.checklist_item_key || item.label} style={[styles.inspectionDetailItem, isIssue ? styles.inspectionDetailItemIssue : null]}>
+                      <View style={styles.inspectionChecklistText}>
+                        <Text style={styles.historyTitle}>{item.label || item.checklist_item_key}</Text>
+                        <Text style={styles.historyMeta}>{getInspectionItemSummary(item)}</Text>
+                        {photos.length ? (
+                          <View style={styles.inspectionPhotoLinks}>
+                            {photos.map((photo, index) => (
+                              <Text key={photo.storage_path || photo.url || `${item.checklist_item_key}-${index}`} style={styles.historyMeta}>
+                                Photo {index + 1}: {photo.url || photo.storage_path || 'attached'}
+                              </Text>
+                            ))}
+                          </View>
+                        ) : null}
+                      </View>
+                      <Text style={[styles.inspectionDetailStatus, isIssue ? styles.inspectionDetailStatusIssue : null]}>
+                        {formatInspectionStatus(item.status || 'pass')}
+                      </Text>
                     </View>
-                    <Text style={[styles.inspectionDetailStatus, item.status === 'fail' ? styles.inspectionDetailStatusFail : null]}>
-                      {String(item.status || 'pass').replace('_', ' ')}
-                    </Text>
-                  </View>
-                )) : (
+                  );
+                }) : (
                   <Text style={styles.emptyBody}>No checklist item answers were saved.</Text>
                 )}
               </View>
@@ -1847,18 +2230,20 @@ function InspectionDetailModal({
               ) : null}
 
               <View style={styles.profileActionGrid}>
+                <TruckActionRow label="Copy Inspection Summary" onPress={onCopyInspectionSummary} />
                 <TruckActionRow label="Log Maintenance from Issue" onPress={onLogMaintenance} />
                 {inspection.status !== 'reviewed' ? (
                   <TruckActionRow label={isReviewing ? 'Saving Review' : 'Mark Reviewed'} onPress={onReview} primary />
                 ) : null}
               </View>
+              {copySummaryMessage ? <Text style={styles.historyMeta}>{copySummaryMessage}</Text> : null}
             </ScrollView>
           )}
     </KeyboardAwareModal>
   );
 }
 
-export default function ManagerVehiclesScreen({ csaWorkspaceVersion = 0, identity }) {
+export default function ManagerVehiclesScreen({ csaWorkspaceVersion = 0, identity, navigation, route }) {
   const [vehicles, setVehicles] = useState([]);
   const [activeTab, setActiveTab] = useState('Fleet');
   const [isLoading, setIsLoading] = useState(true);
@@ -1890,6 +2275,12 @@ export default function ManagerVehiclesScreen({ csaWorkspaceVersion = 0, identit
   const [isSavingVehicle, setIsSavingVehicle] = useState(false);
   const [isImportingVehicles, setIsImportingVehicles] = useState(false);
   const [vehicleImportMessage, setVehicleImportMessage] = useState('');
+  const [assignmentModalVisible, setAssignmentModalVisible] = useState(false);
+  const [assignmentDrivers, setAssignmentDrivers] = useState([]);
+  const [assignmentForm, setAssignmentForm] = useState(getInspectionAssignmentForm(null, null));
+  const [assignmentError, setAssignmentError] = useState('');
+  const [isLoadingAssignmentDrivers, setIsLoadingAssignmentDrivers] = useState(false);
+  const [isSavingAssignment, setIsSavingAssignment] = useState(false);
   const [serviceMenuVehicle, setServiceMenuVehicle] = useState(null);
   const [profileVehicle, setProfileVehicle] = useState(null);
   const [serviceVehicle, setServiceVehicle] = useState(null);
@@ -1919,7 +2310,10 @@ export default function ManagerVehiclesScreen({ csaWorkspaceVersion = 0, identit
   const [inspectionDetail, setInspectionDetail] = useState(null);
   const [isLoadingInspectionDetail, setIsLoadingInspectionDetail] = useState(false);
   const [inspectionReviewNote, setInspectionReviewNote] = useState('');
+  const [inspectionSummaryCopyMessage, setInspectionSummaryCopyMessage] = useState('');
   const [isReviewingInspection, setIsReviewingInspection] = useState(false);
+  const [isUpdatingInspectionVehicleStatus, setIsUpdatingInspectionVehicleStatus] = useState(false);
+  const linkedInspectionKeyRef = useRef(null);
 
   async function loadVehicles() {
     setIsLoading(true);
@@ -2004,6 +2398,26 @@ export default function ManagerVehiclesScreen({ csaWorkspaceVersion = 0, identit
       loadMaintenanceOverview();
     }
   }, [activeTab, hasLoadedMaintenanceOverview, isLoadingMaintenance]);
+
+  useEffect(() => {
+    const inspectionId = route?.params?.inspectionId;
+
+    if (!inspectionId) {
+      return;
+    }
+
+    const linkedKey = `${inspectionId}:${route?.params?.notificationId || ''}`;
+    if (linkedInspectionKeyRef.current === linkedKey) {
+      return;
+    }
+
+    linkedInspectionKeyRef.current = linkedKey;
+    setActiveTab('Inspections');
+    openInspectionDetail({
+      id: inspectionId,
+      vehicle_id: route?.params?.vehicleId || null
+    });
+  }, [route?.params?.inspectionId, route?.params?.notificationId, route?.params?.vehicleId]);
 
   const filteredVehicles = useMemo(() => filterVehicles(vehicles, searchTerm, statusFilter), [searchTerm, statusFilter, vehicles]);
 
@@ -2108,6 +2522,76 @@ export default function ManagerVehiclesScreen({ csaWorkspaceVersion = 0, identit
       setVehicleImportMessage('Could not import vehicles. Check the file and try again.');
     } finally {
       setIsImportingVehicles(false);
+    }
+  }
+
+  async function loadAssignmentDrivers() {
+    setIsLoadingAssignmentDrivers(true);
+    try {
+      const response = await api.get('/manager/drivers', { authMode: 'manager' });
+      const nextDrivers = response.data?.drivers || [];
+      setAssignmentDrivers(nextDrivers);
+      setAssignmentError('');
+      return nextDrivers;
+    } catch (error) {
+      setAssignmentError(getApiErrorMessage(error, 'Unable to load drivers for assignment.'));
+      return [];
+    } finally {
+      setIsLoadingAssignmentDrivers(false);
+    }
+  }
+
+  function openAssignInspection(vehicle = null) {
+    setServiceMenuVehicle(null);
+    setProfileVehicle(null);
+    setAssignmentModalVisible(true);
+    setAssignmentForm(getInspectionAssignmentForm(vehicle, null));
+    setAssignmentError('');
+    if (!assignmentDrivers.length) {
+      loadAssignmentDrivers();
+    }
+  }
+
+  function closeAssignInspection() {
+    setAssignmentModalVisible(false);
+    setAssignmentForm(getInspectionAssignmentForm(null, null));
+    setAssignmentError('');
+    setIsSavingAssignment(false);
+  }
+
+  function updateAssignmentField(field, value) {
+    setAssignmentForm((current) => ({
+      ...current,
+      [field]: value
+    }));
+    setAssignmentError('');
+  }
+
+  async function submitInspectionAssignment() {
+    setAssignmentError('');
+
+    if (!assignmentForm.vehicle_id || !assignmentForm.driver_id || !assignmentForm.due_date) {
+      setAssignmentError('Choose a vehicle, driver, and due date.');
+      return;
+    }
+
+    setIsSavingAssignment(true);
+    try {
+      await api.post('/vehicles/inspection-assignments', {
+        vehicle_id: assignmentForm.vehicle_id,
+        driver_id: assignmentForm.driver_id,
+        due_date: assignmentForm.due_date,
+        priority: assignmentForm.priority,
+        note: assignmentForm.note?.trim() || undefined,
+        require_before_route_start: assignmentForm.require_before_route_start
+      }, {
+        authMode: 'manager'
+      });
+      closeAssignInspection();
+    } catch (error) {
+      setAssignmentError(getApiErrorMessage(error, 'Unable to assign inspection.'));
+    } finally {
+      setIsSavingAssignment(false);
     }
   }
 
@@ -2528,8 +3012,10 @@ export default function ManagerVehiclesScreen({ csaWorkspaceVersion = 0, identit
       return;
     }
 
+    setInspectionHistoryVehicle(null);
     setInspectionDetail(inspection);
     setInspectionReviewNote(inspection.manager_review_note || '');
+    setInspectionSummaryCopyMessage('');
     setIsLoadingInspectionDetail(true);
     try {
       const response = await api.get(`/vehicles/inspections/${inspection.id}`, { authMode: 'manager' });
@@ -2543,10 +3029,33 @@ export default function ManagerVehiclesScreen({ csaWorkspaceVersion = 0, identit
     }
   }
 
+  async function copyInspectionSummaryFromInspection() {
+    if (!inspectionDetail?.id) {
+      return;
+    }
+
+    try {
+      await Clipboard.setStringAsync(buildInspectionSummary(inspectionDetail));
+      setInspectionSummaryCopyMessage('Inspection summary copied');
+    } catch (_error) {
+      setInspectionSummaryCopyMessage('Unable to copy inspection summary');
+    }
+  }
+
   function closeInspectionDetail() {
     setInspectionDetail(null);
     setInspectionReviewNote('');
+    setInspectionSummaryCopyMessage('');
     setIsLoadingInspectionDetail(false);
+    if (route?.params?.inspectionId) {
+      linkedInspectionKeyRef.current = null;
+      navigation?.setParams?.({
+        inspectionId: undefined,
+        notificationId: undefined,
+        source: undefined,
+        vehicleId: undefined
+      });
+    }
   }
 
   async function reviewInspectionDetail() {
@@ -2579,6 +3088,38 @@ export default function ManagerVehiclesScreen({ csaWorkspaceVersion = 0, identit
     }
   }
 
+  async function updateInspectionVehicleStatus(vehicleStatus) {
+    const vehicleId = inspectionDetail?.vehicle?.id || inspectionDetail?.vehicle_id;
+
+    if (!vehicleId || isUpdatingInspectionVehicleStatus) {
+      return;
+    }
+
+    setIsUpdatingInspectionVehicleStatus(true);
+    try {
+      await api.put(`/vehicles/${vehicleId}`, {
+        vehicle_status: vehicleStatus
+      }, { authMode: 'manager' });
+      setInspectionDetail((current) => (current ? {
+        ...current,
+        vehicle: {
+          ...(current.vehicle || {}),
+          id: vehicleId,
+          vehicle_status: vehicleStatus
+        }
+      } : current));
+      setVehicles((current) => current.map((vehicle) => (
+        vehicle.id === vehicleId
+          ? { ...vehicle, vehicle_status: vehicleStatus, is_active: vehicleStatus === 'active' }
+          : vehicle
+      )));
+    } catch (_error) {
+      // Keep the modal open so the manager can try again.
+    } finally {
+      setIsUpdatingInspectionVehicleStatus(false);
+    }
+  }
+
   function logMaintenanceFromInspection() {
     if (!inspectionDetail) {
       return;
@@ -2605,6 +3146,12 @@ export default function ManagerVehiclesScreen({ csaWorkspaceVersion = 0, identit
           variant="outline"
         />
       </View>
+      <AppButton
+        label="Assign Inspection"
+        onPress={() => openAssignInspection(null)}
+        style={styles.actionButtonFull}
+        variant="outline"
+      />
       {vehicleImportMessage ? <Text style={styles.importMessage}>{vehicleImportMessage}</Text> : null}
       <View style={styles.searchCard}>
         <RouteMetricIcon color={appTheme.colors.charcoalSoft} name="vehicles" size={appTheme.icons.sm} />
@@ -2801,6 +3348,7 @@ export default function ManagerVehiclesScreen({ csaWorkspaceVersion = 0, identit
             keyExtractor={(item, index) => String(item.id || item.name || index)}
             renderItem={({ item }) => (
               <VehicleCard
+                onAssignInspection={openAssignInspection}
                 onEditActions={setServiceMenuVehicle}
                 onOpenProfile={setProfileVehicle}
                 vehicle={item}
@@ -2824,6 +3372,7 @@ export default function ManagerVehiclesScreen({ csaWorkspaceVersion = 0, identit
       />
       <EditTruckActionsModal
         onAddService={() => openServiceRecord(serviceMenuVehicle)}
+        onAssignInspection={() => openAssignInspection(serviceMenuVehicle)}
         onClose={() => setServiceMenuVehicle(null)}
         onEditInfo={() => openEditVehicle(serviceMenuVehicle)}
         onEditOdometer={() => openOdometerEditor(serviceMenuVehicle)}
@@ -2833,6 +3382,7 @@ export default function ManagerVehiclesScreen({ csaWorkspaceVersion = 0, identit
       />
       <VehicleProfileModal
         onClose={() => setProfileVehicle(null)}
+        onAssignInspection={() => openAssignInspection(profileVehicle)}
         onEditInfo={() => openEditVehicle(profileVehicle)}
         onEditOdometer={() => openOdometerEditor(profileVehicle)}
         onLogMaintenance={() => openServiceRecord(profileVehicle)}
@@ -2842,6 +3392,18 @@ export default function ManagerVehiclesScreen({ csaWorkspaceVersion = 0, identit
         onViewOdometerHistory={() => openOdometerHistory(profileVehicle)}
         onViewServiceHistory={() => openServiceHistory(profileVehicle)}
         vehicle={profileVehicle}
+      />
+      <AssignInspectionModal
+        drivers={assignmentDrivers}
+        errorMessage={assignmentError}
+        form={assignmentForm}
+        isLoadingDrivers={isLoadingAssignmentDrivers}
+        isSaving={isSavingAssignment}
+        onChange={updateAssignmentField}
+        onClose={closeAssignInspection}
+        onSubmit={submitInspectionAssignment}
+        vehicles={vehicles}
+        visible={assignmentModalVisible}
       />
       <OdometerModal
         errorMessage={odometerError}
@@ -2898,13 +3460,17 @@ export default function ManagerVehiclesScreen({ csaWorkspaceVersion = 0, identit
         vehicle={assignmentHistoryVehicle}
       />
       <InspectionDetailModal
+        copySummaryMessage={inspectionSummaryCopyMessage}
         inspection={inspectionDetail}
         isLoading={isLoadingInspectionDetail}
         isReviewing={isReviewingInspection}
+        isUpdatingVehicleStatus={isUpdatingInspectionVehicleStatus}
         onChangeReviewNote={setInspectionReviewNote}
         onClose={closeInspectionDetail}
+        onCopyInspectionSummary={copyInspectionSummaryFromInspection}
         onLogMaintenance={logMaintenanceFromInspection}
         onReview={reviewInspectionDetail}
+        onVehicleStatusDecision={updateInspectionVehicleStatus}
         reviewNote={inspectionReviewNote}
       />
     </>
@@ -2913,10 +3479,13 @@ export default function ManagerVehiclesScreen({ csaWorkspaceVersion = 0, identit
 
 export {
   buildVehiclePayload,
+  buildInspectionSummary,
   filterVehicles,
   formatDate,
   formatMileage,
   getAssignedDriverLabel,
+  getDriverDisplayName,
+  getInspectionAssignmentForm,
   getLastServiceSummary,
   getRegistrationStatus,
   getStatusMeta,
@@ -2970,6 +3539,9 @@ const styles = StyleSheet.create({
   },
   actionButton: {
     flex: 1
+  },
+  actionButtonFull: {
+    alignSelf: 'stretch'
   },
   importMessage: {
     color: appTheme.colors.textSecondary,
@@ -3685,6 +4257,52 @@ const styles = StyleSheet.create({
   optionChipTextSelected: {
     color: appTheme.colors.orangeDeep
   },
+  assignmentOptionList: {
+    gap: appTheme.spacing.xs
+  },
+  assignmentOption: {
+    backgroundColor: appTheme.colors.surfaceTint,
+    borderColor: appTheme.colors.border,
+    borderRadius: appTheme.radius.md,
+    borderWidth: 1,
+    gap: 2,
+    minHeight: 54,
+    paddingHorizontal: appTheme.spacing.md,
+    paddingVertical: appTheme.spacing.sm
+  },
+  assignmentOptionSelected: {
+    backgroundColor: appTheme.colors.orangeSoft,
+    borderColor: appTheme.colors.orange
+  },
+  assignmentOptionTitle: {
+    color: appTheme.colors.textPrimary,
+    fontSize: appTheme.typography.bodySmall,
+    fontWeight: appTheme.typography.weights.heavy
+  },
+  assignmentOptionTitleSelected: {
+    color: appTheme.colors.orangeDeep
+  },
+  assignmentOptionMeta: {
+    color: appTheme.colors.textSecondary,
+    fontSize: appTheme.typography.caption,
+    fontWeight: appTheme.typography.weights.semibold
+  },
+  assignmentLoadingRow: {
+    alignItems: 'center',
+    backgroundColor: appTheme.colors.surfaceTint,
+    borderColor: appTheme.colors.border,
+    borderRadius: appTheme.radius.md,
+    borderWidth: 1,
+    flexDirection: 'row',
+    gap: appTheme.spacing.xs,
+    minHeight: 48,
+    paddingHorizontal: appTheme.spacing.md
+  },
+  assignmentLoadingText: {
+    color: appTheme.colors.textSecondary,
+    fontSize: appTheme.typography.bodySmall,
+    fontWeight: appTheme.typography.weights.semibold
+  },
   textInput: {
     backgroundColor: appTheme.colors.surfaceTint,
     borderColor: appTheme.colors.border,
@@ -3856,6 +4474,51 @@ const styles = StyleSheet.create({
     marginBottom: appTheme.spacing.xs,
     padding: appTheme.spacing.md
   },
+  inspectionUrgentBox: {
+    backgroundColor: appTheme.colors.dangerSoft,
+    borderColor: '#f5b7b1',
+    borderRadius: appTheme.radius.md,
+    borderWidth: 1,
+    gap: 3,
+    marginBottom: appTheme.spacing.xs,
+    padding: appTheme.spacing.md
+  },
+  inspectionDecisionPanel: {
+    backgroundColor: appTheme.colors.surfaceTint,
+    borderColor: appTheme.colors.border,
+    borderRadius: appTheme.radius.md,
+    borderWidth: 1,
+    gap: appTheme.spacing.xs,
+    marginBottom: appTheme.spacing.xs,
+    padding: appTheme.spacing.md
+  },
+  inspectionDecisionGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: appTheme.spacing.xs
+  },
+  inspectionDecisionButton: {
+    alignItems: 'center',
+    backgroundColor: appTheme.colors.surface,
+    borderColor: appTheme.colors.borderStrong,
+    borderRadius: appTheme.radius.pill,
+    borderWidth: 1,
+    justifyContent: 'center',
+    minHeight: 34,
+    paddingHorizontal: appTheme.spacing.sm
+  },
+  inspectionDecisionButtonActive: {
+    backgroundColor: appTheme.colors.orangeSoft,
+    borderColor: appTheme.colors.orange
+  },
+  inspectionDecisionButtonText: {
+    color: appTheme.colors.textSecondary,
+    fontSize: appTheme.typography.caption,
+    fontWeight: appTheme.typography.weights.heavy
+  },
+  inspectionDecisionButtonTextActive: {
+    color: appTheme.colors.orangeDeep
+  },
   inspectionDetailItem: {
     alignItems: 'center',
     backgroundColor: appTheme.colors.surfaceTint,
@@ -3870,6 +4533,10 @@ const styles = StyleSheet.create({
     backgroundColor: appTheme.colors.dangerSoft,
     borderColor: '#f5b7b1'
   },
+  inspectionDetailItemIssue: {
+    backgroundColor: appTheme.colors.dangerSoft,
+    borderColor: '#f5b7b1'
+  },
   inspectionDetailStatus: {
     color: appTheme.colors.greenText,
     fontSize: appTheme.typography.caption,
@@ -3878,6 +4545,13 @@ const styles = StyleSheet.create({
   },
   inspectionDetailStatusFail: {
     color: appTheme.colors.dangerText
+  },
+  inspectionDetailStatusIssue: {
+    color: appTheme.colors.dangerText
+  },
+  inspectionPhotoLinks: {
+    gap: 2,
+    marginTop: 2
   },
   pressed: {
     opacity: 0.86

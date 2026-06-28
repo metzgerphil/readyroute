@@ -55,6 +55,7 @@ export default function MobileNavigationDrawer({
   isLoadingManagerCsas,
   isOpen,
   isSwitchingManagerCsa,
+  hasNotificationAttention = false,
   managerCsas = [],
   onClose,
   onManagerCsaSelect,
@@ -141,6 +142,8 @@ export default function MobileNavigationDrawer({
             <View style={styles.menuSection}>
               {menuItems.map((item) => {
                 const isActive = currentRouteName === item.screen;
+                const isNotificationItem = item.screen === 'ManagerNotifications' || item.screen === 'Notifications';
+                const itemHasAttention = hasNotificationAttention && isNotificationItem;
 
                 return (
                   <Pressable
@@ -149,19 +152,33 @@ export default function MobileNavigationDrawer({
                     style={({ pressed }) => [
                       styles.menuItem,
                       isActive ? styles.menuItemActive : null,
+                      itemHasAttention ? styles.menuItemAttention : null,
                       pressed ? styles.pressed : null
                     ]}
                   >
                     {isActive ? <View style={styles.activeRail} /> : null}
-                    <Text style={[styles.menuLabel, isActive ? styles.menuLabelActive : null]}>
+                    <Text style={[
+                      styles.menuLabel,
+                      isActive ? styles.menuLabelActive : null,
+                      itemHasAttention ? styles.menuLabelAttention : null
+                    ]}
+                    >
                       {item.label}
                     </Text>
+                    {itemHasAttention ? <View style={styles.notificationAttentionDot} testID={`${item.key}-attention-dot`} /> : null}
                     {isActive ? (
                       <View style={styles.currentBadge}>
                         <Text style={styles.currentBadgeText}>Open</Text>
                       </View>
                     ) : null}
-                    <Text style={[styles.chevron, isActive ? styles.chevronActive : null]}>&gt;</Text>
+                    <Text style={[
+                      styles.chevron,
+                      isActive ? styles.chevronActive : null,
+                      itemHasAttention ? styles.chevronAttention : null
+                    ]}
+                    >
+                      &gt;
+                    </Text>
                   </Pressable>
                 );
               })}
@@ -366,6 +383,10 @@ const styles = StyleSheet.create({
     backgroundColor: '#fff7f0',
     borderColor: '#ffd5b7'
   },
+  menuItemAttention: {
+    backgroundColor: '#fff3e8',
+    borderColor: '#ff7a1a'
+  },
   activeRail: {
     backgroundColor: '#ff7a1a',
     bottom: 8,
@@ -384,6 +405,16 @@ const styles = StyleSheet.create({
   menuLabelActive: {
     color: '#142635',
     fontWeight: '800'
+  },
+  menuLabelAttention: {
+    color: '#f05a00',
+    fontWeight: '900'
+  },
+  notificationAttentionDot: {
+    backgroundColor: '#ff7a1a',
+    borderRadius: 999,
+    height: 8,
+    width: 8
   },
   currentBadge: {
     backgroundColor: '#fff0e5',
@@ -406,6 +437,9 @@ const styles = StyleSheet.create({
     lineHeight: 20
   },
   chevronActive: {
+    color: '#f05a00'
+  },
+  chevronAttention: {
     color: '#f05a00'
   },
   footer: {

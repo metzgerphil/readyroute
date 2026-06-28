@@ -13,6 +13,7 @@ import {
   saveSessionTokens
 } from '../services/auth';
 import { applyUnauthorizedMode, resolvePortalState } from '../services/portalSession';
+import { registerPushNotificationsForSession } from '../services/pushNotifications';
 
 const PortalSessionContext = createContext(null);
 
@@ -94,6 +95,19 @@ export function PortalSessionProvider({ children }) {
       setUnauthorizedHandler(null);
     };
   }, [activeMode, sessionTokens]);
+
+  useEffect(() => {
+    const nextState = resolvePortalState(sessionTokens, activeMode);
+
+    if (isBootstrapping || !nextState.hasAnyAccess || nextState.needsModeSelection || !activeMode) {
+      return;
+    }
+
+    registerPushNotificationsForSession({
+      activeMode,
+      sessionTokens
+    });
+  }, [activeMode, isBootstrapping, sessionTokens]);
 
   const state = useMemo(() => resolvePortalState(sessionTokens, activeMode), [activeMode, sessionTokens]);
   const identity = useMemo(

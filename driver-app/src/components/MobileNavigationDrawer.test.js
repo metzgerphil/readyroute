@@ -1,5 +1,6 @@
 import React from 'react';
 import { fireEvent, render } from '@testing-library/react-native';
+import { StyleSheet } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 import MobileNavigationDrawer, { getMobileMenuLayout } from './MobileNavigationDrawer';
@@ -175,6 +176,7 @@ describe('MobileNavigationDrawer', () => {
     expect(screen.getByText('L')).toBeTruthy();
     expect(screen.getByText('Switch to Manager Mode')).toBeTruthy();
     expect(screen.getByText('Driver Home')).toBeTruthy();
+    expect(screen.getByText('Notifications')).toBeTruthy();
     expect(screen.getByText('My Drive')).toBeTruthy();
     expect(screen.getByText('Manifest')).toBeTruthy();
     expect(screen.queryByText('DH')).toBeNull();
@@ -203,8 +205,8 @@ describe('MobileNavigationDrawer', () => {
     expect(screen.getByText('Routes')).toBeTruthy();
     expect(screen.getByText('Drivers')).toBeTruthy();
     expect(screen.getByText('Access Codes')).toBeTruthy();
+    expect(screen.getByText('Notifications')).toBeTruthy();
     expect(screen.getByText('VEDR')).toBeTruthy();
-    expect(screen.queryByText('Notifications')).toBeNull();
     expect(screen.getByText('Settings')).toBeTruthy();
     expect(screen.queryByText('MV')).toBeNull();
     expect(screen.queryByText('RO')).toBeNull();
@@ -238,6 +240,7 @@ describe('MobileNavigationDrawer', () => {
     fireEvent.press(screen.getByText('Drivers'));
     fireEvent.press(screen.getByText('Access Codes'));
     fireEvent.press(screen.getByText('Vehicles'));
+    fireEvent.press(screen.getByText('Notifications'));
     fireEvent.press(screen.getByText('VEDR'));
 
     expect(onNavigate).toHaveBeenCalledWith('ManagerRoutes');
@@ -245,7 +248,30 @@ describe('MobileNavigationDrawer', () => {
     expect(onNavigate).toHaveBeenCalledWith('ManagerDrivers');
     expect(onNavigate).toHaveBeenCalledWith('ManagerAccessCodes');
     expect(onNavigate).toHaveBeenCalledWith('ManagerVehicles');
+    expect(onNavigate).toHaveBeenCalledWith('ManagerNotifications');
     expect(onNavigate).toHaveBeenCalledWith('ManagerVedr');
+  });
+
+  it('highlights the notifications tile when manager attention is needed', () => {
+    const screen = renderDrawer({
+      activeMode: 'manager',
+      currentRouteName: 'ManagerVehicles',
+      hasNotificationAttention: true,
+      identity: {
+        fullName: 'Vlad Fedoryshyn',
+        companyName: 'ReadyRoute CSA West',
+        primaryRole: 'Manager'
+      },
+      isOpen: true,
+      onClose: jest.fn(),
+      onLogout: jest.fn(),
+      onNavigate: jest.fn(),
+      onSwitchMode: jest.fn(),
+      showModeSwitch: true
+    });
+
+    expect(screen.getByTestId('manager-notifications-attention-dot')).toBeTruthy();
+    expect(StyleSheet.flatten(screen.getByText('Notifications').props.style).color).toBe('#f05a00');
   });
 
   it('shows linked CSA workspaces and switches from the drawer', () => {

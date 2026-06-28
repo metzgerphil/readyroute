@@ -1,11 +1,15 @@
 import React from 'react';
 import { fireEvent, render, waitFor } from '@testing-library/react-native';
+import * as Clipboard from 'expo-clipboard';
 
 import ManagerVehiclesScreen, {
+  buildInspectionSummary,
   filterVehicles,
   formatDate,
   formatMileage,
   getAssignedDriverLabel,
+  getDriverDisplayName,
+  getInspectionAssignmentForm,
   getLastServiceSummary,
   getRegistrationStatus,
   getStatusMeta,
@@ -82,6 +86,13 @@ describe('ManagerVehiclesScreen', () => {
       insurance_expiration: '2027-01-31',
       current_mileage: '12345'
     });
+    expect(getDriverDisplayName({ name: 'Alex Driver', fedex_driver_id: 'FX123' })).toBe('Alex Driver • #FX123');
+    expect(getInspectionAssignmentForm({ id: 'vehicle-1' }, { id: 'driver-1' })).toMatchObject({
+      vehicle_id: 'vehicle-1',
+      driver_id: 'driver-1',
+      priority: 'normal',
+      require_before_route_start: false
+    });
     expect(buildVehiclePayload({
       ...getVehicleForm(vehicle),
       truck_type: 'P700',
@@ -142,6 +153,85 @@ describe('ManagerVehiclesScreen', () => {
     expect(screen.queryByText('More')).toBeNull();
     expect(screen.queryByText('Route 816')).toBeNull();
     expect(screen.getByPlaceholderText('Search vehicles by ID or description')).toBeTruthy();
+  });
+
+  it('lets managers assign a vehicle inspection to a driver from the app', async () => {
+    api.get.mockImplementation((url) => {
+      if (url === '/vehicles') {
+        return Promise.resolve({
+          data: {
+            vehicles: [
+              {
+                id: 'vehicle-1',
+                name: 'V-42',
+                make: 'Ford',
+                model: 'Transit',
+                year: 2022,
+                plate: 'ABC123',
+                registration_expiration: '2026-12-31',
+                truck_type: 'P1100',
+                current_mileage: 12345
+              }
+            ]
+          }
+        });
+      }
+
+      if (url === '/manager/drivers') {
+        return Promise.resolve({
+          data: {
+            drivers: [
+              {
+                id: 'driver-1',
+                name: 'Alex Driver',
+                email: 'alex@example.com',
+                fedex_driver_id: 'FX123',
+                is_active: true
+              }
+            ]
+          }
+        });
+      }
+
+      return Promise.reject(new Error(`Unexpected GET ${url}`));
+    });
+    api.post.mockResolvedValue({
+      data: {
+        assignment: {
+          id: 'assignment-1'
+        }
+      }
+    });
+
+    const screen = render(<ManagerVehiclesScreen />);
+
+    await waitFor(() => {
+      expect(screen.getByText('V-42')).toBeTruthy();
+    });
+
+    fireEvent.press(screen.getByText('Assign'));
+
+    await waitFor(() => {
+      expect(screen.getByText('Alex Driver • #FX123')).toBeTruthy();
+    });
+
+    fireEvent.press(screen.getByText('Alex Driver • #FX123'));
+    fireEvent.press(screen.getByText('Urgent'));
+    fireEvent.changeText(screen.getByPlaceholderText('Optional driver note'), 'Inspect before using as a spare.');
+    fireEvent.press(screen.getByText('Send Assignment'));
+
+    await waitFor(() => {
+      expect(api.post).toHaveBeenCalledWith('/vehicles/inspection-assignments', {
+        vehicle_id: 'vehicle-1',
+        driver_id: 'driver-1',
+        due_date: getTodayDateParam(),
+        priority: 'urgent',
+        note: 'Inspect before using as a spare.',
+        require_before_route_start: false
+      }, {
+        authMode: 'manager'
+      });
+    });
   });
 
   it('shows manager maintenance program, records, inspections, and settings in app tabs', async () => {
@@ -885,7 +975,54 @@ describe('ManagerVehiclesScreen', () => {
             }
           ]
         }
+      })
+      .mockResolvedValueOnce({
+        data: {
+          inspection: {
+            id: 'inspection-1',
+            vehicle_id: 'vehicle-1',
+            vehicle: {
+              id: 'vehicle-1',
+              name: 'V-42',
+              vehicle_status: 'active'
+            },
+            inspection_date: '2026-06-02',
+            inspection_type_label: 'Driver Inspection',
+            status: 'urgent_manager_review',
+            status_label: 'Urgent Manager Review',
+            urgent_review: true,
+            odometer: 12345,
+            issue_note: 'Light out',
+            driver: {
+              name: 'Luis Perez'
+            },
+            items: [
+              {
+                id: 'item-1',
+                checklist_item_key: 'tires',
+                label: 'Tires',
+                status: 'issue',
+                severity: 'unsafe',
+                issue_details: {
+                  positions: ['Back Right'],
+                  issue_types: ['Exposed cord']
+                },
+                photos: [
+                  { url: 'https://cdn.readyroute.test/tire.jpg' }
+                ]
+              }
+            ]
+          }
+        }
       });
+    api.put.mockResolvedValue({
+      data: {
+        vehicle: {
+          id: 'vehicle-1',
+          vehicle_status: 'needs_repair'
+        }
+      }
+    });
 
     const screen = render(<ManagerVehiclesScreen />);
 
@@ -900,5 +1037,211 @@ describe('ManagerVehiclesScreen', () => {
       expect(api.get).toHaveBeenCalledWith('/vehicles/vehicle-1/inspection-history', { authMode: 'manager' });
       expect(screen.getByText('Light out')).toBeTruthy();
     });
+
+    fireEvent.press(screen.getByText('Open inspection'));
+
+    await waitFor(() => {
+      expect(api.get).toHaveBeenCalledWith('/vehicles/inspections/inspection-1', { authMode: 'manager' });
+      expect(screen.queryByText('Inspection History')).toBeNull();
+      expect(screen.getByText('Urgent manager review')).toBeTruthy();
+      expect(screen.getByText(/Back Right/)).toBeTruthy();
+      expect(screen.getByText(/Exposed cord/)).toBeTruthy();
+      expect(screen.getByText(/Photo 1/)).toBeTruthy();
+    });
+
+    fireEvent.press(screen.getByText('Needs Repair'));
+
+    await waitFor(() => {
+      expect(api.put).toHaveBeenCalledWith('/vehicles/vehicle-1', {
+        vehicle_status: 'needs_repair'
+      }, {
+        authMode: 'manager'
+      });
+    });
+  });
+
+  it('opens an inspection detail directly from notification navigation params', async () => {
+    api.get.mockImplementation((url) => {
+      if (url === '/vehicles') {
+        return Promise.resolve({
+          data: {
+            vehicles: [
+              {
+                id: 'vehicle-1',
+                name: 'V-42',
+                make: 'Ford',
+                model: 'Transit',
+                year: 2022,
+                plate: 'ABC123',
+                registration_expiration: '2026-12-31',
+                current_mileage: 12345
+              }
+            ]
+          }
+        });
+      }
+
+      if (url === '/vehicles/inspections/inspection-1') {
+        return Promise.resolve({
+          data: {
+            inspection: {
+              id: 'inspection-1',
+              vehicle_id: 'vehicle-1',
+              vehicle_name: 'V-42',
+              inspection_type_label: 'Driver Inspection',
+              inspection_date: '2026-06-27',
+              submitted_at: '2026-06-27T16:11:00.000Z',
+              submitted_by_driver: { name: 'Luis Perez' },
+              odometer: 12345,
+              status: 'manager_review_required',
+              status_label: 'Manager Review Required',
+              urgent_review: true,
+              manager_review_required: true,
+              items: [
+                {
+                  checklist_item_key: 'wipers',
+                  label: 'Wipers',
+                  status: 'issue',
+                  severity: 'unsafe',
+                  issue_details: {
+                    position: 'Both',
+                    issue_type: 'Not working'
+                  }
+                }
+              ]
+            }
+          }
+        });
+      }
+
+      return Promise.resolve({ data: {} });
+    });
+
+    const screen = render(
+      <ManagerVehiclesScreen
+        route={{
+          params: {
+            inspectionId: 'inspection-1',
+            notificationId: 'notification-1',
+            vehicleId: 'vehicle-1'
+          }
+        }}
+      />
+    );
+
+    await waitFor(() => {
+      expect(api.get).toHaveBeenCalledWith('/vehicles/inspections/inspection-1', { authMode: 'manager' });
+      expect(screen.getByText('Urgent manager review')).toBeTruthy();
+      expect(screen.getByText(/Both/)).toBeTruthy();
+      expect(screen.getByText(/Not working/)).toBeTruthy();
+    });
+  });
+
+  it('builds and copies an inspection summary', async () => {
+    const clipboardSpy = jest.spyOn(Clipboard, 'setStringAsync').mockResolvedValue(true);
+    api.get
+      .mockResolvedValueOnce({
+        data: {
+          vehicles: [
+            {
+              id: 'vehicle-1',
+              name: 'V-42',
+              make: 'Ford',
+              model: 'Transit',
+              year: 2022,
+              current_mileage: 12345
+            }
+          ]
+        }
+      })
+      .mockResolvedValueOnce({
+        data: {
+          inspections: [
+            {
+              id: 'inspection-1',
+              inspection_date: '2026-06-02',
+              inspection_type_label: 'Driver Inspection',
+              odometer: 12345,
+              failed_items_count: 1
+            }
+          ]
+        }
+      })
+      .mockResolvedValueOnce({
+        data: {
+          inspection: {
+            id: 'inspection-1',
+            vehicle_name: 'V-42',
+            inspection_date: '2026-06-02',
+            inspection_type_label: 'Driver Inspection',
+            status: 'manager_review_required',
+            manager_review_required: true,
+            odometer: 12345,
+            issue_note: 'Please check before dispatch',
+            submitted_by_driver: {
+              name: 'Luis Perez'
+            },
+            items: [
+              {
+                id: 'item-1',
+                checklist_item_key: 'coolant',
+                label: 'Coolant',
+                status: 'issue',
+                severity: 'needs_maintenance_soon',
+                issue_details: {
+                  issue_type: 'Low'
+                }
+              }
+            ]
+          }
+        }
+      });
+
+    const screen = render(<ManagerVehiclesScreen />);
+
+    await waitFor(() => {
+      expect(screen.getByText('V-42')).toBeTruthy();
+    });
+
+    fireEvent.press(screen.getByText('Open'));
+    fireEvent.press(screen.getByText('Inspection History'));
+
+    await waitFor(() => {
+      expect(screen.getByText('Open inspection')).toBeTruthy();
+    });
+
+    fireEvent.press(screen.getByText('Open inspection'));
+
+    await waitFor(() => {
+      expect(screen.getByText('Copy Inspection Summary')).toBeTruthy();
+    });
+
+    fireEvent.press(screen.getByText('Copy Inspection Summary'));
+
+    await waitFor(() => {
+      expect(clipboardSpy).toHaveBeenCalledWith(expect.stringContaining('Inspection Summary'));
+      expect(clipboardSpy.mock.calls[0][0]).toContain('Vehicle: V-42');
+      expect(clipboardSpy.mock.calls[0][0]).toContain('1. Coolant');
+      expect(clipboardSpy.mock.calls[0][0]).toContain('   Issue Type: Low');
+      expect(screen.getByText('Inspection summary copied')).toBeTruthy();
+    });
+
+    expect(buildInspectionSummary({
+      vehicle_name: 'V-42',
+      inspection_date: '2026-06-02',
+      submitted_by_driver: { name: 'Luis Perez' },
+      odometer: 12345,
+      status: 'manager_review_required',
+      items: [
+        {
+          checklist_item_key: 'coolant',
+          label: 'Coolant',
+          status: 'issue',
+          issue_details: { issue_type: 'Low' }
+        }
+      ]
+    })).toContain('Submitted by: Luis Perez');
+
+    clipboardSpy.mockRestore();
   });
 });

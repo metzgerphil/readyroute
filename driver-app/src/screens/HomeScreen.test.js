@@ -18,6 +18,14 @@ jest.mock('expo-location', () => ({
   requestForegroundPermissionsAsync: jest.fn()
 }));
 
+jest.mock('expo-image-picker', () => ({
+  MediaTypeOptions: {
+    Images: 'Images'
+  },
+  requestMediaLibraryPermissionsAsync: jest.fn(),
+  launchImageLibraryAsync: jest.fn()
+}));
+
 import {
   DAILY_SAFETY_REMINDERS,
   getDailySafetyReminder,
@@ -27,11 +35,16 @@ import {
   getPostDispatchChangeNotice,
   getDriverWaitingCopy,
   getInspectionForm,
+  getInspectionFormValidationError,
+  getInspectionProgress,
   getInspectionRequirement,
+  getInspectionSectionsForItems,
+  getInspectionSubmissionRouteId,
   getOdometerRequirement,
   normalizeSafetyFocusResponse,
   hasGrantedLocationPermission,
   isDeniedLocationPermission,
+  serializeInspectionItems,
   shouldPromptForLocationPermission,
   formatBreakLabel,
   getGreetingByTime,
@@ -161,8 +174,26 @@ describe('HomeScreen helpers', () => {
       odometer: '',
       issue_note: '',
       items: [
-        { checklist_item_key: 'tires', label: 'Tires', status: 'pass', note: '' },
-        { checklist_item_key: 'lights', label: 'Lights', status: 'pass', note: '' }
+        {
+          checklist_item_key: 'tires',
+          label: 'Tires',
+          category: 'critical_safety',
+          status: 'unanswered',
+          severity: null,
+          issue_details: {},
+          note: '',
+          photos: []
+        },
+        {
+          checklist_item_key: 'lights',
+          label: 'Lights',
+          category: 'critical_safety',
+          status: 'unanswered',
+          severity: null,
+          issue_details: {},
+          note: '',
+          photos: []
+        }
       ]
     });
     expect(
@@ -171,6 +202,106 @@ describe('HomeScreen helpers', () => {
         { id: 'route-1' }
       )
     ).toBeNull();
+    expect(
+      getInspectionRequirement(
+        {
+          inspection_requirement: {
+            required: true,
+            submitted: false,
+            reason: 'manual_assignment',
+            assignment_id: 'assignment-1',
+            vehicle_id: 'vehicle-9',
+            vehicle_name: '411987',
+            inspection_date: '2026-06-27',
+            last_recorded_odometer: 74000,
+            blocks_route_start: false,
+            checklist_items: [{ checklist_item_key: 'tires', label: 'Tires' }]
+          }
+        },
+        null
+      )
+    ).toMatchObject({
+      assignment_id: 'assignment-1',
+      vehicle_id: 'vehicle-9',
+      vehicle_name: '411987',
+      blocks_route_start: false,
+      minimum_odometer: 74000,
+      maximum_odometer: 74300
+    });
+    expect(
+      getInspectionSubmissionRouteId(
+        {
+          reason: 'manual_assignment',
+          assignment_id: 'assignment-1',
+          route_id: null
+        },
+        { id: 'route-1' }
+      )
+    ).toBeNull();
+    expect(
+      getInspectionSubmissionRouteId(
+        {
+          route_id: 'route-1'
+        },
+        { id: 'route-2' }
+      )
+    ).toBe('route-2');
+  });
+
+  it('tracks inspection progress and validates issue details before submission', () => {
+    const form = {
+      items: [
+        { checklist_item_key: 'tires', label: 'Tires', category: 'critical_safety', status: 'pass' },
+        {
+          checklist_item_key: 'coolant',
+          label: 'Coolant',
+          category: 'maintenance',
+          status: 'issue',
+          severity: 'maintenance_soon',
+          issue_details: { issue_type: 'Leak suspected' },
+          note: 'Small puddle under front passenger side.',
+          photos: [{ url: 'https://cdn/photo.jpg' }]
+        },
+        { checklist_item_key: 'truck_cleanliness', label: 'Truck Cleanliness', category: 'vehicle_condition', status: 'unanswered' }
+      ]
+    };
+
+    expect(getInspectionProgress(form)).toEqual({
+      completedCount: 2,
+      issueCount: 1,
+      remainingCount: 1,
+      total: 3
+    });
+    expect(getInspectionFormValidationError(form)).toBe('Answer Truck Cleanliness before submitting.');
+
+    const completeForm = {
+      ...form,
+      items: form.items.map((item) => (
+        item.checklist_item_key === 'truck_cleanliness'
+          ? {
+              ...item,
+              status: 'issue',
+              severity: 'minor',
+              issue_details: { condition: 'Dirty' },
+              photos: []
+            }
+          : item
+      ))
+    };
+
+    expect(getInspectionFormValidationError(completeForm)).toBeNull();
+    expect(getInspectionSectionsForItems(completeForm.items).map((section) => section.title)).toEqual([
+      'Critical Safety',
+      'Maintenance',
+      'Vehicle Condition'
+    ]);
+    expect(serializeInspectionItems(completeForm.items)[1]).toMatchObject({
+      checklist_item_key: 'coolant',
+      status: 'issue',
+      severity: 'maintenance_soon',
+      issue_details: { issue_type: 'Leak suspected' },
+      photos: [{ url: 'https://cdn/photo.jpg' }]
+    });
   });
 
   it('derives the staged waiting state for drivers before dispatch', () => {

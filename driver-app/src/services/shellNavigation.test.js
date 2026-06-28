@@ -4,6 +4,7 @@ describe('shellNavigation helpers', () => {
   it('returns driver navigation items for driver mode', () => {
     expect(getDrawerMenuItems('driver').map((item) => item.label)).toEqual([
       'Driver Home',
+      'Notifications',
       'My Drive',
       'Manifest'
     ]);
@@ -18,6 +19,7 @@ describe('shellNavigation helpers', () => {
       'Drivers',
       'Access Codes',
       'Vehicles',
+      'Notifications',
       'VEDR',
       'Settings'
     ]);

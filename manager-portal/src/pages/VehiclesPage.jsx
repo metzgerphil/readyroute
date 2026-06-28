@@ -160,15 +160,20 @@ const DEFAULT_CHECKLIST_TEMPLATE_FIELDS = [
   { id: 'company_name', label: 'Company name', detail: 'CSA or company name', enabled: true },
   { id: 'truck_number', label: 'Vehicle ID', detail: 'Vehicle identifier for the inspection', enabled: true },
   { id: 'driver_name', label: 'Driver first and last name', detail: 'Driver completing the inspection', enabled: true },
-  { id: 'tires', label: 'Tires, front, rear inner, rear outer', detail: 'Tire condition across front and rear positions', enabled: true },
-  { id: 'check_engine_light', label: 'Check engine light', detail: 'On or Off', enabled: true },
-  { id: 'coolant', label: 'Coolant', detail: 'Good or Needs Added', enabled: true },
-  { id: 'engine_oil', label: 'Engine oil', detail: 'Good, Needs Added, or Needs Full Change', enabled: true },
-  { id: 'brake_fluid', label: 'Brake fluid', detail: 'Good or Needs Added', enabled: true },
-  { id: 'windshield_fluid', label: 'Windshield fluid', detail: 'Good or Needs Added', enabled: true },
-  { id: 'wipers', label: 'Wipers', detail: 'Good, Left Bad, Right Bad, or Both Bad', enabled: true },
-  { id: 'lights', label: 'Lights', detail: 'Headlights, stop lights, and turning signals', enabled: true },
-  { id: 'truck_cleanliness', label: 'Truck cleanliness', detail: 'Good or Bad', enabled: true },
+  { id: 'tires', label: 'Tires', detail: 'Front left, front right, back left, and back right tire condition', enabled: true },
+  { id: 'check_engine_light', label: 'Check engine light', detail: 'Dashboard warning state and driving symptoms', enabled: true },
+  { id: 'lights', label: 'Lights', detail: 'Marker, turn signal, headlight, cargo, and license plate lights', enabled: true },
+  { id: 'brake_fluid', label: 'Brake fluid', detail: 'Brake fluid level, warning light, leaks, or pedal concerns', enabled: true },
+  { id: 'vedr', label: 'VEDR', detail: 'Video event data recorder condition', enabled: true },
+  { id: 'back_up_camera', label: 'Back up camera', detail: 'Rear camera image and operation', enabled: true },
+  { id: 'turn_cameras', label: 'Turn cameras', detail: 'Side turn camera image and operation', enabled: true },
+  { id: 'parking_sensors', label: 'Parking sensors', detail: 'Parking sensor operation', enabled: true },
+  { id: 'horn', label: 'Horn', detail: 'Horn operation', enabled: true },
+  { id: 'coolant', label: 'Coolant', detail: 'Coolant level, leak, warning light, or overheating', enabled: true },
+  { id: 'engine_oil', label: 'Engine oil', detail: 'Engine oil level, leak, oil light, or service due', enabled: true },
+  { id: 'windshield_fluid', label: 'Windshield fluid', detail: 'Washer fluid level or leak', enabled: true },
+  { id: 'wipers', label: 'Wipers', detail: 'Left, right, or both wiper condition', enabled: true },
+  { id: 'truck_cleanliness', label: 'Truck cleanliness', detail: 'Clean, dirty, or needs attention', enabled: true },
   { id: 'driver_notes', label: 'Driver notes', detail: 'Free-text notes from the driver', enabled: true }
 ];
 
@@ -185,6 +190,15 @@ const emptyOdometerForm = {
   confirmedLower: false
 };
 
+const emptyInspectionAssignmentForm = {
+  vehicle_id: '',
+  driver_id: '',
+  due_date: getTodayString(),
+  priority: 'normal',
+  note: '',
+  require_before_route_start: true
+};
+
 const emptyMaintenanceRecordFilters = {
   truck: '',
   serviceType: 'all',
@@ -196,7 +210,7 @@ const INSPECTION_REVIEW_FILTERS = [
   ['all', 'All'],
   ['needs_review', 'Needs Review'],
   ['reported_issues', 'Reported Issues'],
-  ['failed_items', 'Failed Checklist Items'],
+  ['failed_items', 'Issue Checklist Items'],
   ['submitted', 'Submitted'],
   ['reviewed', 'Reviewed']
 ];
@@ -337,11 +351,19 @@ function filterMaintenanceRecords(records = [], filters = emptyMaintenanceRecord
 
 function filterInspectionRows(inspections = [], filter = 'all') {
   if (filter === 'reported_issues') {
-    return inspections.filter((inspection) => inspection.issue_reported || inspection.issue_note);
+    return inspections.filter((inspection) => (
+      inspection.issue_reported
+      || inspection.issue_note
+      || Number(inspection.issue_count || inspection.failed_items_count || 0) > 0
+      || getInspectionIssueItems(inspection).length > 0
+    ));
   }
 
   if (filter === 'failed_items') {
-    return inspections.filter((inspection) => Number(inspection.failed_items_count || 0) > 0 || (inspection.items || []).some((item) => item.status === 'fail'));
+    return inspections.filter((inspection) => (
+      Number(inspection.issue_count || inspection.failed_items_count || 0) > 0
+      || getInspectionIssueItems(inspection).length > 0
+    ));
   }
 
   if (filter === 'all') {
@@ -401,11 +423,9 @@ function buildMaintenanceRecordsCsvRows(records = []) {
 
 function buildInspectionCsvRows(inspections = []) {
   return [
-    ['Inspection Date', 'Submitted Time', 'Vehicle ID', 'Driver', 'Inspection Type', 'Odometer', 'Status', 'Issue Note', 'Failed Checklist Count', 'Failed Checklist Items', 'Manager Review Note'],
+    ['Inspection Date', 'Submitted Time', 'Vehicle ID', 'Driver', 'Inspection Type', 'Odometer', 'Status', 'Issue Note', 'Issue Checklist Count', 'Issue Checklist Items', 'Manager Review Note'],
     ...inspections.map((inspection) => {
-      const failedItems = inspection.failed_items?.length
-        ? inspection.failed_items
-        : (inspection.items || []).filter((item) => item.status === 'fail');
+      const issueItems = getInspectionIssueItems(inspection);
 
       return [
         inspection.inspection_date || '',
@@ -414,10 +434,10 @@ function buildInspectionCsvRows(inspections = []) {
         getInspectionDriverLabel(inspection),
         inspection.inspection_type_label || '',
         inspection.odometer ?? '',
-        inspection.status_label || '',
+        getInspectionReviewStatusLabel(inspection),
         inspection.issue_note || '',
-        inspection.failed_items_count ?? failedItems.length,
-        failedItems.map((item) => `${item.label || item.checklist_item_key}${item.value ? `: ${item.value}` : ''}${item.note ? ` (${item.note})` : ''}`).join('; '),
+        inspection.issue_count ?? inspection.failed_items_count ?? issueItems.length,
+        issueItems.map((item) => `${item.label || item.checklist_item_key}: ${getInspectionItemSummary(item)}`).join('; '),
         inspection.manager_review_note || ''
       ];
     })
@@ -481,21 +501,63 @@ function buildMaintenanceForm({ vehicle, settings, serviceType = 'Oil Change', s
 }
 
 function buildInspectionMaintenancePrefill(inspection) {
-  const failedItems = (inspection?.items || [])
-    .filter((item) => item.status === 'fail')
-    .map((item) => `${item.label}${item.value ? `: ${item.value}` : ''}${item.note ? ` (${item.note})` : ''}`);
+  const issueItems = getInspectionIssueItems(inspection)
+    .map((item) => `${item.label || item.checklist_item_key}: ${getInspectionItemSummary(item)}`);
   const notes = [
     inspection?.issue_note ? `Driver issue note: ${inspection.issue_note}` : null,
-    failedItems.length ? `Failed checklist items: ${failedItems.join('; ')}` : null,
+    issueItems.length ? `Inspection issues: ${issueItems.join('; ')}` : null,
     inspection?.id ? `Source inspection: ${inspection.id}` : null
   ].filter(Boolean);
 
   return {
-    serviceType: failedItems.length || inspection?.issue_note ? 'General Repair' : 'Inspection',
+    serviceType: issueItems.length || inspection?.issue_note ? 'General Repair' : 'Inspection',
     description: notes.join('\n'),
-    conditionNotes: failedItems.join('\n'),
+    conditionNotes: issueItems.join('\n'),
     mileageAtService: inspection?.odometer ? String(inspection.odometer) : ''
   };
+}
+
+function buildInspectionSummary(inspection = {}) {
+  const issueItems = getInspectionIssueItems(inspection);
+  const issueLines = issueItems.length
+    ? issueItems.flatMap((item, index) => [
+        `${index + 1}. ${item.label || item.checklist_item_key || 'Inspection item'}`,
+        ...getInspectionItemSummaryLines(item).map((line) => `   ${line}`)
+      ])
+    : ['No inspection issues recorded.'];
+  const headerLines = [
+    'Inspection Summary',
+    `Vehicle: ${getInspectionVehicleLabel(inspection)}`,
+    `Inspection date: ${inspection.inspection_date ? formatDate(inspection.inspection_date) : 'Not recorded'}`,
+    `Submitted by: ${getInspectionDriverLabel(inspection)}`,
+    `Odometer: ${inspection.odometer ? `${formatMileage(inspection.odometer)} mi` : 'Not recorded'}`,
+    `Status: ${getInspectionReviewStatusLabel(inspection)}`,
+    inspection.issue_note ? `Driver note: ${inspection.issue_note}` : null
+  ].filter(Boolean);
+
+  return [
+    ...headerLines,
+    '',
+    'Issues:',
+    ...issueLines
+  ].join('\n');
+}
+
+async function copyTextToClipboard(text) {
+  if (navigator.clipboard?.writeText) {
+    await navigator.clipboard.writeText(text);
+    return;
+  }
+
+  const textArea = document.createElement('textarea');
+  textArea.value = text;
+  textArea.setAttribute('readonly', '');
+  textArea.style.position = 'fixed';
+  textArea.style.opacity = '0';
+  document.body.appendChild(textArea);
+  textArea.select();
+  document.execCommand('copy');
+  document.body.removeChild(textArea);
 }
 
 function formatProgramSummary(setting) {
@@ -841,19 +903,170 @@ function getVehicleTypeLabel(vehicle) {
 }
 
 function getInspectionVehicleLabel(inspection) {
-  return inspection?.vehicle?.name || 'Truck not recorded';
+  return inspection?.vehicle?.name || inspection?.vehicle_name || 'Truck not recorded';
 }
 
 function getInspectionDriverLabel(inspection) {
-  return inspection?.driver?.name || 'Driver not recorded';
+  return inspection?.driver?.name
+    || inspection?.submitted_by_driver?.name
+    || inspection?.submitted_by_name
+    || inspection?.driver_name
+    || 'Driver not recorded';
+}
+
+function formatInspectionStatusValue(value) {
+  if (!value) {
+    return 'Not recorded';
+  }
+
+  return String(value)
+    .split('_')
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(' ');
+}
+
+function getInspectionItemStatus(item = {}) {
+  const status = String(item.status || '').trim().toLowerCase().replace(/\s+/g, '_');
+
+  if (['issue', 'fail', 'failed'].includes(status)) {
+    return 'issue';
+  }
+
+  if (['pass', 'passed'].includes(status)) {
+    return 'pass';
+  }
+
+  if (['not_applicable', 'n/a', 'na'].includes(status)) {
+    return 'not_applicable';
+  }
+
+  return 'unanswered';
+}
+
+function getInspectionItemStatusLabel(item = {}) {
+  const status = getInspectionItemStatus(item);
+
+  if (status === 'pass') {
+    return 'Pass';
+  }
+
+  if (status === 'issue') {
+    return 'Issue';
+  }
+
+  if (status === 'not_applicable') {
+    return 'N/A';
+  }
+
+  return 'Not answered';
+}
+
+function isInspectionIssueItem(item) {
+  return getInspectionItemStatus(item) === 'issue';
+}
+
+function getInspectionIssueItems(inspection) {
+  if (Array.isArray(inspection?.issue_items) && inspection.issue_items.length) {
+    return inspection.issue_items;
+  }
+
+  if (Array.isArray(inspection?.failed_items) && inspection.failed_items.length) {
+    return inspection.failed_items;
+  }
+
+  return (inspection?.items || []).filter(isInspectionIssueItem);
+}
+
+function formatIssueDetailKey(key) {
+  return formatInspectionStatusValue(key);
+}
+
+function formatIssueDetailValue(value) {
+  if (Array.isArray(value)) {
+    return value
+      .map(formatIssueDetailValue)
+      .filter(Boolean)
+      .join(', ');
+  }
+
+  if (value && typeof value === 'object') {
+    return Object.entries(value)
+      .map(([key, nestedValue]) => {
+        const formattedValue = formatIssueDetailValue(nestedValue);
+        return formattedValue ? `${formatIssueDetailKey(key)}: ${formattedValue}` : null;
+      })
+      .filter(Boolean)
+      .join('; ');
+  }
+
+  return String(value ?? '').trim();
+}
+
+function getInspectionIssueDetailLines(item = {}) {
+  return Object.entries(item.issue_details || {})
+    .map(([key, value]) => {
+      const formattedValue = formatIssueDetailValue(value);
+      return formattedValue ? `${formatIssueDetailKey(key)}: ${formattedValue}` : null;
+    })
+    .filter(Boolean);
+}
+
+function getInspectionItemSummary(item = {}) {
+  return getInspectionItemSummaryLines(item).join(' • ');
+}
+
+function getInspectionItemSummaryLines(item = {}) {
+  const parts = [
+    item.severity ? `Severity: ${formatInspectionStatusValue(item.severity)}` : null,
+    ...getInspectionIssueDetailLines(item),
+    item.value ? `Answer: ${item.value}` : null,
+    item.note ? `Note: ${item.note}` : null
+  ].filter(Boolean);
+
+  if (parts.length) {
+    return parts;
+  }
+
+  const status = getInspectionItemStatus(item);
+
+  if (status === 'pass') {
+    return ['Passed'];
+  }
+
+  if (status === 'not_applicable') {
+    return ['Not applicable'];
+  }
+
+  return ['No answer recorded'];
+}
+
+function getInspectionReviewStatusLabel(inspection = {}) {
+  if (inspection.urgent_review) {
+    return 'Urgent Manager Review';
+  }
+
+  if (inspection.manager_review_required) {
+    return 'Manager Review Required';
+  }
+
+  return inspection.status_label || formatInspectionStatusValue(inspection.status || 'submitted');
+}
+
+function getVehicleStatusLabelFromValue(value) {
+  return getVehicleStatusOption(value).label || formatInspectionStatusValue(value);
 }
 
 function getInspectionStatusClass(status) {
-  if (status === 'needs_review') {
+  if (status === 'urgent_manager_review') {
+    return 'danger';
+  }
+
+  if (['needs_review', 'manager_review_required', 'safe_with_maintenance_reported'].includes(status)) {
     return 'warning';
   }
 
-  if (status === 'reviewed') {
+  if (['reviewed', 'safe_to_operate'].includes(status)) {
     return 'ready';
   }
 
@@ -1259,6 +1472,7 @@ function VehicleDetailsDrawer({
   errorMessage,
   isSubmitting,
   onAddService,
+  onAssignInspection,
   onChange,
   onClose,
   onRunInspection,
@@ -1289,6 +1503,7 @@ function VehicleDetailsDrawer({
 
           <div className="vehicle-detail-actions">
             <button className="secondary-inline-button" onClick={onRunInspection} type="button">Run Inspection</button>
+            <button className="secondary-inline-button" onClick={onAssignInspection} type="button">Assign Inspection</button>
             <button className="secondary-inline-button" onClick={onAddService} type="button">Log Maintenance</button>
             <button className="secondary-inline-button" onClick={onViewHistory} type="button">View Maintenance History</button>
             <button className="secondary-inline-button" onClick={onViewInspectionHistory} type="button">View Inspection History</button>
@@ -1418,6 +1633,126 @@ function InspectionRunnerModal({
             <button className="secondary-inline-button" onClick={onClose} type="button">Cancel</button>
             <button className="primary-inline-button" disabled={isSubmitting} type="submit">
               {isSubmitting ? 'Saving...' : 'Save Inspection'}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+function getDriverOptionLabel(driver = {}) {
+  return driver.name || [driver.first_name, driver.last_name].filter(Boolean).join(' ') || driver.email || 'Unnamed driver';
+}
+
+function InspectionAssignmentModal({
+  drivers,
+  errorMessage,
+  form,
+  isOpen,
+  isSubmitting,
+  onChange,
+  onClose,
+  onSubmit,
+  vehicles
+}) {
+  if (!isOpen) {
+    return null;
+  }
+
+  const selectedVehicle = (vehicles || []).find((vehicle) => vehicle.id === form.vehicle_id) || null;
+
+  return (
+    <div className="modal-backdrop">
+      <div className="modal-card">
+        <div className="modal-header">
+          <div>
+            <div className="card-title">Assign Vehicle Inspection</div>
+            <div className="driver-meta">{selectedVehicle?.name || 'Choose a truck and driver'}</div>
+          </div>
+          <button className="icon-button" onClick={onClose} type="button">×</button>
+        </div>
+
+        <form className="form-card modal-form" onSubmit={onSubmit}>
+          <label>
+            <span className="field-label">Truck</span>
+            <select
+              className="text-field"
+              onChange={(event) => onChange('vehicle_id', event.target.value)}
+              value={form.vehicle_id}
+            >
+              <option value="">Select truck</option>
+              {(vehicles || []).map((vehicle) => (
+                <option key={vehicle.id} value={vehicle.id}>
+                  {vehicle.name} · {getVehicleDescription(vehicle)}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          <label>
+            <span className="field-label">Driver</span>
+            <select
+              className="text-field"
+              onChange={(event) => onChange('driver_id', event.target.value)}
+              value={form.driver_id}
+            >
+              <option value="">Select driver</option>
+              {(drivers || []).map((driver) => (
+                <option key={driver.id} value={driver.id}>
+                  {getDriverOptionLabel(driver)}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          <label>
+            <span className="field-label">Due date</span>
+            <input
+              className="text-field"
+              onChange={(event) => onChange('due_date', event.target.value)}
+              type="date"
+              value={form.due_date}
+            />
+          </label>
+
+          <label>
+            <span className="field-label">Priority</span>
+            <select
+              className="text-field"
+              onChange={(event) => onChange('priority', event.target.value)}
+              value={form.priority}
+            >
+              <option value="normal">Normal</option>
+              <option value="urgent">Urgent</option>
+            </select>
+          </label>
+
+          <label className="checkbox-row">
+            <input
+              checked={form.require_before_route_start}
+              onChange={(event) => onChange('require_before_route_start', event.target.checked)}
+              type="checkbox"
+            />
+            <span>Require before route start</span>
+          </label>
+
+          <label>
+            <span className="field-label">Note</span>
+            <textarea
+              className="text-field maintenance-item-notes"
+              onChange={(event) => onChange('note', event.target.value)}
+              placeholder="Optional driver note"
+              value={form.note}
+            />
+          </label>
+
+          {errorMessage ? <div className="error-banner">{errorMessage}</div> : null}
+
+          <div className="modal-actions">
+            <button className="secondary-inline-button" onClick={onClose} type="button">Cancel</button>
+            <button className="primary-inline-button" disabled={isSubmitting} type="submit">
+              {isSubmitting ? 'Assigning...' : 'Assign Inspection'}
             </button>
           </div>
         </form>
@@ -1630,7 +1965,7 @@ function InspectionHistoryModal({ vehicle, open, onClose, onOpenInspection, sele
         ) : historyQuery.data?.length ? (
           <div className="inspection-history-list">
             {historyQuery.data.map((inspection) => {
-              const failedItems = (inspection.items || []).filter((item) => item.status === 'fail');
+              const issueCount = inspection.issue_count ?? inspection.failed_items_count ?? getInspectionIssueItems(inspection).length;
 
               return (
                 <button
@@ -1648,7 +1983,7 @@ function InspectionHistoryModal({ vehicle, open, onClose, onOpenInspection, sele
                     {inspection.issue_note ? <span>Issue note: {inspection.issue_note}</span> : null}
                   </span>
                   <span className="inspection-review-meta">
-                    <strong>{failedItems.length ? `${failedItems.length} failed` : 'No failed items'}</strong>
+                    <strong>{issueCount ? `${issueCount} issue${issueCount === 1 ? '' : 's'}` : 'No issues'}</strong>
                     <span>{inspection.manager_review_note || 'No manager note'}</span>
                   </span>
                 </button>
@@ -2325,14 +2660,34 @@ function VehiclePlaceholderPanel({ title, description }) {
 function InspectionDetailModal({
   inspection,
   isReviewing,
+  isUpdatingVehicleStatus,
   onChangeReviewNote,
   onClose,
   onLogMaintenanceFromIssue,
   onReview,
+  onVehicleStatusDecision,
   reviewNote
 }) {
+  const [copySummaryResult, setCopySummaryResult] = useState({ inspectionId: null, message: '' });
+
   if (!inspection) {
     return null;
+  }
+
+  const issueItems = getInspectionIssueItems(inspection);
+  const currentVehicleStatus = inspection?.vehicle?.vehicle_status || 'active';
+  const copySummaryStatus = copySummaryResult.inspectionId === inspection.id ? copySummaryResult.message : '';
+  const statusDecisionOptions = VEHICLE_STATUS_OPTIONS.filter((option) => (
+    ['active', 'out_of_service', 'at_the_shop', 'needs_repair'].includes(option.value)
+  ));
+
+  async function handleCopyInspectionSummary() {
+    try {
+      await copyTextToClipboard(buildInspectionSummary(inspection));
+      setCopySummaryResult({ inspectionId: inspection.id, message: 'Inspection summary copied' });
+    } catch {
+      setCopySummaryResult({ inspectionId: inspection.id, message: 'Copy failed' });
+    }
   }
 
   return (
@@ -2351,17 +2706,28 @@ function InspectionDetailModal({
         <div className="inspection-detail-summary">
           <div>
             <span>Status</span>
-            <strong>{inspection.status_label}</strong>
+            <strong>{getInspectionReviewStatusLabel(inspection)}</strong>
           </div>
           <div>
             <span>Odometer</span>
             <strong>{inspection.odometer ? `${formatMileage(inspection.odometer)} mi` : 'Not recorded'}</strong>
           </div>
           <div>
+            <span>Issues</span>
+            <strong>{issueItems.length}</strong>
+          </div>
+          <div>
             <span>Submitted</span>
             <strong>{inspection.submitted_at ? format(new Date(inspection.submitted_at), 'MMM d, h:mm a') : 'Not recorded'}</strong>
           </div>
         </div>
+
+        {inspection.urgent_review ? (
+          <div className="inspection-urgent-note">
+            <strong>Urgent manager review</strong>
+            <span>The driver marked at least one issue unsafe. Review the details and choose the vehicle status before dispatch decisions continue.</span>
+          </div>
+        ) : null}
 
         {inspection.issue_note ? (
           <div className="inspection-issue-note">
@@ -2370,16 +2736,57 @@ function InspectionDetailModal({
           </div>
         ) : null}
 
+        <div className="inspection-decision-panel">
+          <div>
+            <strong>Vehicle Status Decision</strong>
+            <span>Current status: {getVehicleStatusLabelFromValue(currentVehicleStatus)}</span>
+          </div>
+          <div className="inspection-decision-grid">
+            {statusDecisionOptions.map((option) => (
+              <button
+                className={`inspection-decision-button ${currentVehicleStatus === option.value ? 'selected' : ''}`}
+                disabled={isUpdatingVehicleStatus}
+                key={option.value}
+                onClick={() => onVehicleStatusDecision(option.value)}
+                type="button"
+              >
+                {option.label}
+              </button>
+            ))}
+          </div>
+        </div>
+
         <div className="inspection-items-list">
-          {(inspection.items || []).length ? inspection.items.map((item) => (
-            <div className={`inspection-item-row ${item.status}`} key={item.id || item.checklist_item_key}>
-              <div>
-                <strong>{item.label}</strong>
-                <span>{item.value || item.note || 'No answer recorded'}</span>
+          {(inspection.items || []).length ? inspection.items.map((item) => {
+            const isIssue = isInspectionIssueItem(item);
+            const itemStatus = getInspectionItemStatus(item);
+            const photos = Array.isArray(item.photos) ? item.photos : [];
+
+            return (
+              <div className={`inspection-item-row ${isIssue ? 'issue' : itemStatus}`} key={item.id || item.checklist_item_key}>
+                <div>
+                  <strong>{item.label || item.checklist_item_key}</strong>
+                  <span>{getInspectionItemSummary(item)}</span>
+                  {photos.length ? (
+                    <div className="inspection-photo-links">
+                      {photos.map((photo, index) => {
+                        const photoTarget = photo.url || photo.storage_path;
+
+                        return photoTarget ? (
+                          <a href={photoTarget} key={photo.storage_path || photo.url || `${item.checklist_item_key}-${index}`} rel="noreferrer" target="_blank">
+                            Photo {index + 1}
+                          </a>
+                        ) : (
+                          <span key={`${item.checklist_item_key}-${index}`}>Photo {index + 1}: attached</span>
+                        );
+                      })}
+                    </div>
+                  ) : null}
+                </div>
+                <span className="inspection-item-status">{getInspectionItemStatusLabel(item)}</span>
               </div>
-              <span className="inspection-item-status">{item.status.replace('_', ' ')}</span>
-            </div>
-          )) : (
+            );
+          }) : (
             <div className="labor-empty-state">No checklist item answers were submitted.</div>
           )}
         </div>
@@ -2403,6 +2810,9 @@ function InspectionDetailModal({
 
         <div className="modal-actions">
           <button className="secondary-inline-button" onClick={onClose} type="button">Close</button>
+          <button className="secondary-inline-button" onClick={handleCopyInspectionSummary} type="button">
+            Copy Inspection Summary
+          </button>
           <button className="secondary-inline-button" onClick={onLogMaintenanceFromIssue} type="button">
             Log Maintenance from Issue
           </button>
@@ -2411,6 +2821,7 @@ function InspectionDetailModal({
               {isReviewing ? 'Saving...' : 'Mark Reviewed'}
             </button>
           ) : null}
+          {copySummaryStatus ? <span className="inspection-copy-status">{copySummaryStatus}</span> : null}
         </div>
       </div>
     </div>
@@ -2427,7 +2838,11 @@ function InspectionsPanel({
   onStatusFilterChange,
   statusFilter
 }) {
-  const needsReviewCount = inspections.filter((inspection) => inspection.status === 'needs_review').length;
+  const needsReviewCount = inspections.filter((inspection) => (
+    ['needs_review', 'manager_review_required', 'urgent_manager_review'].includes(inspection.status) ||
+    inspection.manager_review_required ||
+    inspection.urgent_review
+  )).length;
   const reviewedCount = inspections.filter((inspection) => inspection.status === 'reviewed').length;
 
   return (
@@ -2518,7 +2933,9 @@ function InspectionsPanel({
 }
 
 export default function VehiclesPage() {
-  const [searchParams] = useSearchParams();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const linkedInspectionId = searchParams.get('inspection_id') || searchParams.get('inspectionId');
+  const linkedVehicleId = searchParams.get('vehicle_id') || searchParams.get('vehicleId');
   const queryClient = useQueryClient();
   const { selectedCsaId } = useSelectedCsa();
   const [isVehicleModalOpen, setIsVehicleModalOpen] = useState(false);
@@ -2533,6 +2950,9 @@ export default function VehiclesPage() {
   const [historyVehicle, setHistoryVehicle] = useState(null);
   const [inspectionHistoryVehicle, setInspectionHistoryVehicle] = useState(null);
   const [inspectionRunnerVehicle, setInspectionRunnerVehicle] = useState(null);
+  const [isInspectionAssignmentModalOpen, setIsInspectionAssignmentModalOpen] = useState(false);
+  const [inspectionAssignmentForm, setInspectionAssignmentForm] = useState(emptyInspectionAssignmentForm);
+  const [inspectionAssignmentError, setInspectionAssignmentError] = useState('');
   const [odometerHistoryVehicle, setOdometerHistoryVehicle] = useState(null);
   const [assignmentHistoryVehicle, setAssignmentHistoryVehicle] = useState(null);
   const [maintenanceSettingsDraft, setMaintenanceSettingsDraft] = useState(null);
@@ -2545,9 +2965,16 @@ export default function VehiclesPage() {
   const [vehicleSearch, setVehicleSearch] = useState('');
   const [vehicleStatusFilter, setVehicleStatusFilter] = useState('all');
   const [maintenanceRecordFilters, setMaintenanceRecordFilters] = useState(emptyMaintenanceRecordFilters);
-  const [activeVehiclesTab, setActiveVehiclesTab] = useState('Fleet');
+  const [activeVehiclesTab, setActiveVehiclesTab] = useState(linkedInspectionId ? 'Inspections' : 'Fleet');
   const [inspectionStatusFilter, setInspectionStatusFilter] = useState('all');
-  const [selectedInspection, setSelectedInspection] = useState(null);
+  const [selectedInspection, setSelectedInspection] = useState(() => (
+    linkedInspectionId
+      ? {
+          id: linkedInspectionId,
+          vehicle_id: linkedVehicleId || null
+        }
+      : null
+  ));
   const [inspectionReviewNote, setInspectionReviewNote] = useState('');
   const [vehicleSettingsView, setVehicleSettingsView] = useState('overview');
   const [maintenanceRequirementsDraft, setMaintenanceRequirementsDraft] = useState(null);
@@ -2618,6 +3045,16 @@ export default function VehiclesPage() {
     refetchInterval: 60000
   });
 
+  const driversQuery = useQuery({
+    queryKey: ['manager-drivers', selectedCsaId],
+    enabled: Boolean(selectedCsaId),
+    queryFn: async () => {
+      const response = await api.get('/manager/drivers');
+      return response.data?.drivers || [];
+    },
+    staleTime: 60000
+  });
+
   const maintenanceRecordsQuery = useQuery({
     queryKey: ['vehicle-maintenance-records', selectedCsaId],
     enabled: Boolean(selectedCsaId) && activeVehiclesTab === 'Maintenance',
@@ -2680,6 +3117,7 @@ export default function VehiclesPage() {
     onSuccess: async () => {
       setInspectionReviewNote('');
       setSelectedInspection(null);
+      clearInspectionLinkParams();
       setToastMessage('Vehicle inspection marked reviewed');
       await queryClient.invalidateQueries({ queryKey: ['vehicle-inspections', selectedCsaId] });
       await queryClient.invalidateQueries({ queryKey: ['vehicle-inspection-detail', selectedCsaId] });
@@ -2739,6 +3177,11 @@ export default function VehiclesPage() {
       const option = getVehicleStatusOption(variables.vehicleStatus);
       setToastMessage(`Vehicle status updated to ${option.label}`);
       await queryClient.invalidateQueries({ queryKey: ['fleet-vehicles', selectedCsaId] });
+      await queryClient.invalidateQueries({ queryKey: ['vehicle-inspections', selectedCsaId] });
+      await queryClient.invalidateQueries({ queryKey: ['vehicle-inspection-detail', selectedCsaId] });
+      if (inspectionHistoryVehicle) {
+        await queryClient.invalidateQueries({ queryKey: ['vehicle-inspection-history', selectedCsaId, inspectionHistoryVehicle.id] });
+      }
     },
     onError: () => {
       setToastMessage('Unable to update vehicle status.');
@@ -2820,6 +3263,31 @@ export default function VehiclesPage() {
     },
     onError: (error) => {
       setInspectionRunnerError(error.response?.data?.error || 'Unable to save inspection.');
+    }
+  });
+
+  const assignInspectionMutation = useMutation({
+    mutationFn: async () => {
+      const response = await api.post('/vehicles/inspection-assignments', {
+        vehicle_id: inspectionAssignmentForm.vehicle_id,
+        driver_id: inspectionAssignmentForm.driver_id,
+        due_date: inspectionAssignmentForm.due_date,
+        priority: inspectionAssignmentForm.priority,
+        note: inspectionAssignmentForm.note || undefined,
+        require_before_route_start: inspectionAssignmentForm.require_before_route_start
+      });
+      return response.data?.assignment;
+    },
+    onSuccess: async (assignment) => {
+      const driverName = assignment?.driver?.name || 'driver';
+      setIsInspectionAssignmentModalOpen(false);
+      setInspectionAssignmentForm(emptyInspectionAssignmentForm);
+      setInspectionAssignmentError('');
+      setToastMessage(`Inspection assigned to ${driverName}`);
+      await queryClient.invalidateQueries({ queryKey: ['fleet-vehicles', selectedCsaId] });
+    },
+    onError: (error) => {
+      setInspectionAssignmentError(error.response?.data?.error || 'Unable to assign vehicle inspection.');
     }
   });
 
@@ -2917,6 +3385,7 @@ export default function VehiclesPage() {
   });
 
   const vehicles = useMemo(() => vehiclesQuery.data || [], [vehiclesQuery.data]);
+  const drivers = useMemo(() => driversQuery.data || [], [driversQuery.data]);
   const normalizedMaintenanceSettings = useMemo(
     () =>
       (maintenanceSettingsQuery.data || []).map((setting) => ({
@@ -3034,6 +3503,15 @@ export default function VehiclesPage() {
     const timeout = window.setTimeout(() => setToastMessage(''), 2500);
     return () => window.clearTimeout(timeout);
   }, [toastMessage]);
+
+  function clearInspectionLinkParams() {
+    const nextParams = new URLSearchParams(searchParams);
+    nextParams.delete('inspection_id');
+    nextParams.delete('inspectionId');
+    nextParams.delete('vehicle_id');
+    nextParams.delete('vehicleId');
+    setSearchParams(nextParams, { replace: true });
+  }
 
   function updateVehicleField(field, value) {
     setVehicleForm((current) => {
@@ -3353,6 +3831,35 @@ export default function VehiclesPage() {
     setInspectionRunnerError('');
   }
 
+  function openInspectionAssignment(vehicle = null) {
+    setInspectionAssignmentForm({
+      ...emptyInspectionAssignmentForm,
+      vehicle_id: vehicle?.id || ''
+    });
+    setInspectionAssignmentError('');
+    setIsInspectionAssignmentModalOpen(true);
+  }
+
+  function updateInspectionAssignmentField(field, value) {
+    setInspectionAssignmentForm((current) => ({
+      ...current,
+      [field]: value
+    }));
+    setInspectionAssignmentError('');
+  }
+
+  function handleAssignInspection(event) {
+    event.preventDefault();
+    setInspectionAssignmentError('');
+
+    if (!inspectionAssignmentForm.vehicle_id || !inspectionAssignmentForm.driver_id || !inspectionAssignmentForm.due_date) {
+      setInspectionAssignmentError('Choose a truck, driver, and due date before assigning this inspection.');
+      return;
+    }
+
+    assignInspectionMutation.mutate();
+  }
+
   function updateInspectionRunnerField(field, value) {
     setInspectionRunnerForm((current) => ({
       ...current,
@@ -3658,6 +4165,13 @@ export default function VehiclesPage() {
               <div className="driver-meta">Vehicle records, availability, mileage, and registration status.</div>
             </div>
             <div className="vehicles-table-toolbar-actions">
+              <button
+                className="primary-inline-button"
+                onClick={() => openInspectionAssignment()}
+                type="button"
+              >
+                Assign Inspection
+              </button>
               <input
                 className="text-field"
                 onChange={(event) => setVehicleSearch(event.target.value)}
@@ -3793,18 +4307,6 @@ export default function VehiclesPage() {
                         >
                           Edit
                         </button>
-                        {statusMeta.filter === 'maintenance_soon' ? (
-                          <button
-                            className="primary-inline-button"
-                            onClick={(event) => {
-                              event.stopPropagation();
-                              setHistoryVehicle(vehicle);
-                            }}
-                            type="button"
-                          >
-                            Review
-                          </button>
-                        ) : null}
                         {statusMeta.filter === 'blocked' ? (
                           <button
                             className="primary-inline-button"
@@ -3841,8 +4343,14 @@ export default function VehiclesPage() {
                             >
                               Log Maintenance
                             </button>
+                            <button onClick={() => openInspectionAssignment(vehicle)} type="button">
+                              Assign Inspection
+                            </button>
                             <button onClick={() => setHistoryVehicle(vehicle)} type="button">
-                              View Maintenance History
+                              View Service History
+                            </button>
+                            <button onClick={() => setInspectionHistoryVehicle(vehicle)} type="button">
+                              View Inspection History
                             </button>
                           </div>
                         </details>
@@ -4005,6 +4513,10 @@ export default function VehiclesPage() {
             setMaintenanceError('');
             setEditingVehicle(null);
           }}
+          onAssignInspection={() => {
+            openInspectionAssignment(editingVehicle);
+            setEditingVehicle(null);
+          }}
           onChange={updateEditVehicleField}
           onClose={() => setEditingVehicle(null)}
           onRunInspection={() => {
@@ -4045,6 +4557,22 @@ export default function VehiclesPage() {
         }}
         onSubmit={handleCreateInspection}
         vehicle={inspectionRunnerVehicle}
+      />
+
+      <InspectionAssignmentModal
+        drivers={drivers}
+        errorMessage={inspectionAssignmentError}
+        form={inspectionAssignmentForm}
+        isOpen={isInspectionAssignmentModalOpen}
+        isSubmitting={assignInspectionMutation.isPending}
+        onChange={updateInspectionAssignmentField}
+        onClose={() => {
+          setIsInspectionAssignmentModalOpen(false);
+          setInspectionAssignmentForm(emptyInspectionAssignmentForm);
+          setInspectionAssignmentError('');
+        }}
+        onSubmit={handleAssignInspection}
+        vehicles={vehicles}
       />
 
       {maintenanceVehicle ? (
@@ -4098,6 +4626,7 @@ export default function VehiclesPage() {
       <InspectionHistoryModal
         onClose={() => setInspectionHistoryVehicle(null)}
         onOpenInspection={(inspection) => {
+          setInspectionHistoryVehicle(null);
           setSelectedInspection(inspection);
           setInspectionReviewNote(inspection.manager_review_note || '');
         }}
@@ -4123,13 +4652,26 @@ export default function VehiclesPage() {
       <InspectionDetailModal
         inspection={inspectionDetailQuery.data || selectedInspection}
         isReviewing={reviewInspectionMutation.isPending}
+        isUpdatingVehicleStatus={updateVehicleStatusMutation.isPending}
         onChangeReviewNote={setInspectionReviewNote}
         onClose={() => {
           setSelectedInspection(null);
           setInspectionReviewNote('');
+          clearInspectionLinkParams();
         }}
         onLogMaintenanceFromIssue={() => openMaintenanceFromInspection(inspectionDetailQuery.data || selectedInspection)}
         onReview={() => reviewInspectionMutation.mutate()}
+        onVehicleStatusDecision={(vehicleStatus) => {
+          const inspection = inspectionDetailQuery.data || selectedInspection;
+          const vehicleId = inspection?.vehicle?.id || inspection?.vehicle_id;
+
+          if (!vehicleId) {
+            setToastMessage('Inspection is missing a vehicle record.');
+            return;
+          }
+
+          updateVehicleStatusMutation.mutate({ vehicleId, vehicleStatus });
+        }}
         reviewNote={inspectionReviewNote}
       />
     </section>

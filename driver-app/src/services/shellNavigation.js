@@ -27,6 +27,11 @@ export function getDrawerMenuItems(activeMode) {
         screen: 'ManagerVehicles'
       },
       {
+        key: 'manager-notifications',
+        label: 'Notifications',
+        screen: 'ManagerNotifications'
+      },
+      {
         key: 'manager-vedr',
         label: 'VEDR',
         screen: 'ManagerVedr'
@@ -44,6 +49,11 @@ export function getDrawerMenuItems(activeMode) {
       key: 'driver-home',
       label: 'Driver Home',
       screen: 'Home'
+    },
+    {
+      key: 'driver-notifications',
+      label: 'Notifications',
+      screen: 'Notifications'
     },
     {
       key: 'driver-my-drive',

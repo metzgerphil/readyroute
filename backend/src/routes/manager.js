@@ -29,6 +29,12 @@ const { attachStopNotesToStops, saveStopNote } = require('../services/stopNotes'
 const { parseDriverImportRows } = require('../services/resourceImport');
 const { filterProductionRows, isProductionTestArtifact } = require('../services/testDataFilter');
 const { getRouteBillingSummary, parseBillingMonth, updateRouteBillingSettings } = require('../services/routeBilling');
+const {
+  listManagerNotifications,
+  markNotificationRead,
+  notifyDriverRouteInspectionAssigned,
+  registerNotificationDeviceToken
+} = require('../services/appNotifications');
 
 function getCurrentDateString(now = new Date(), timeZone = process.env.APP_TIME_ZONE || 'America/Los_Angeles') {
   return new Intl.DateTimeFormat('en-CA', {
@@ -3110,6 +3116,87 @@ function createManagerRouter(options = {}) {
     }
   });
 
+  router.get('/notifications', requireManager, async (req, res) => {
+    try {
+      const { notifications, error } = await listManagerNotifications(supabase, {
+        accountId: req.account.account_id,
+        managerUserId: req.account.manager_user_id,
+        limit: req.query?.limit
+      });
+
+      if (error) {
+        console.error('Manager notifications lookup failed:', error);
+        return res.status(500).json({ error: 'Failed to load notifications' });
+      }
+
+      return res.status(200).json({ notifications });
+    } catch (error) {
+      console.error('Manager notifications endpoint failed:', error);
+      return res.status(500).json({ error: 'Failed to load notifications' });
+    }
+  });
+
+  router.post('/notifications/device-token', requireManager, async (req, res) => {
+    try {
+      const now = nowProvider().toISOString();
+      const { deviceToken, error } = await registerNotificationDeviceToken(supabase, {
+        account_id: req.account.account_id,
+        recipient_type: 'manager',
+        manager_user_id: req.account.manager_user_id,
+        expo_push_token: req.body?.expo_push_token,
+        platform: req.body?.platform,
+        device_id: req.body?.device_id,
+        app_version: req.body?.app_version,
+        device_name: req.body?.device_name,
+        registered_at: now,
+        updated_at: now
+      });
+
+      if (error) {
+        if (!error.code) {
+          return res.status(400).json({ error: error.message || 'Invalid device token' });
+        }
+
+        console.error('Manager notification device token registration failed:', error);
+        return res.status(500).json({ error: 'Failed to register device token' });
+      }
+
+      return res.status(deviceToken ? 200 : 202).json({
+        registered: Boolean(deviceToken),
+        device_token: deviceToken
+      });
+    } catch (error) {
+      console.error('Manager notification device token endpoint failed:', error);
+      return res.status(500).json({ error: 'Failed to register device token' });
+    }
+  });
+
+  router.patch('/notifications/:notification_id/read', requireManager, async (req, res) => {
+    try {
+      const { notification, error } = await markNotificationRead(supabase, {
+        accountId: req.account.account_id,
+        notificationId: req.params.notification_id,
+        recipientType: 'manager',
+        managerUserId: req.account.manager_user_id,
+        readAt: nowProvider().toISOString()
+      });
+
+      if (error) {
+        console.error('Manager notification read update failed:', error);
+        return res.status(500).json({ error: 'Failed to update notification' });
+      }
+
+      if (!notification) {
+        return res.status(404).json({ error: 'Notification not found' });
+      }
+
+      return res.status(200).json({ notification });
+    } catch (error) {
+      console.error('Manager notification read endpoint failed:', error);
+      return res.status(500).json({ error: 'Failed to update notification' });
+    }
+  });
+
   router.patch('/driver-access', requireManager, async (req, res) => {
     const starterPin = String(req.body?.starter_pin || '').trim();
 
@@ -5677,6 +5764,7 @@ function createManagerRouter(options = {}) {
       }
 
       let assignedDriver = null;
+      let assignedVehicle = null;
 
       if (driverId) {
         const { data: driver, error: driverError } = await supabase
@@ -5702,7 +5790,7 @@ function createManagerRouter(options = {}) {
       if (vehicleId) {
         const { data: vehicle, error: vehicleError } = await supabase
           .from('vehicles')
-          .select('id')
+          .select('id, name')
           .eq('id', vehicleId)
           .eq('account_id', req.account.account_id)
           .maybeSingle();
@@ -5715,6 +5803,8 @@ function createManagerRouter(options = {}) {
         if (!vehicle) {
           return res.status(400).json({ error: 'Vehicle is not available for this account' });
         }
+
+        assignedVehicle = vehicle;
       }
 
       const updatePayload = {};
@@ -5766,6 +5856,23 @@ function createManagerRouter(options = {}) {
         driver_name: updatedDriver?.name || null
       };
 
+      let updatedVehicle = assignedVehicle?.id === updatedRoute.vehicle_id ? assignedVehicle : null;
+
+      if (!updatedVehicle && updatedRoute.vehicle_id) {
+        const { data: vehicle, error: vehicleError } = await supabase
+          .from('vehicles')
+          .select('id, name')
+          .eq('id', updatedRoute.vehicle_id)
+          .eq('account_id', req.account.account_id)
+          .maybeSingle();
+
+        if (vehicleError) {
+          console.error('Manager route assignment vehicle name lookup failed:', vehicleError);
+        } else {
+          updatedVehicle = vehicle || null;
+        }
+      }
+
       await recordRouteSyncEvents(supabase, [
         {
           account_id: req.account.account_id,
@@ -5784,6 +5891,15 @@ function createManagerRouter(options = {}) {
           manager_user_id: req.account.manager_user_id
         }
       ]);
+
+      if (updatedRoute.driver_id && updatedRoute.vehicle_id) {
+        await notifyDriverRouteInspectionAssigned(supabase, {
+          accountId: req.account.account_id,
+          driverId: updatedRoute.driver_id,
+          route: updatedRoute,
+          vehicle: updatedVehicle
+        });
+      }
 
       return res.status(200).json({ ok: true, route: responseRoute });
     } catch (error) {

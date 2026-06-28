@@ -28,6 +28,7 @@ const navGroups = [
       { to: '/time-commits', label: 'P&D Time Commits', icon: 'commits' },
       { to: '/drivers', label: 'Drivers', icon: 'drivers' },
       { to: '/vehicles', label: 'Vehicles', icon: 'vehicles' },
+      { to: '/notifications', label: 'Notifications', icon: 'notifications' },
       { to: '/access-codes', label: 'Access Codes', icon: 'access' },
       { to: '/records', label: 'Records', icon: 'records' },
       { to: '/billing', label: 'Billing', icon: 'billing' }
@@ -106,6 +107,13 @@ function SidebarIcon({ type }) {
           <path d="M5 16l1.3-5.2A2 2 0 0 1 8.24 9h7.52a2 2 0 0 1 1.94 1.8L19 16M4 16h16v3H4zm3 3a1.5 1.5 0 1 1 0 3 1.5 1.5 0 0 1 0-3zm10 0a1.5 1.5 0 1 1 0 3 1.5 1.5 0 0 1 0-3z" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
         </svg>
       );
+    case 'notifications':
+      return (
+        <svg aria-hidden="true" className="sidebar-link-icon-svg" viewBox="0 0 24 24">
+          <path d="M18 9a6 6 0 1 0-12 0c0 7-2 7-2 9h16c0-2-2-2-2-9z" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+          <path d="M9.8 21a2.4 2.4 0 0 0 4.4 0" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+        </svg>
+      );
     case 'access':
       return (
         <svg aria-hidden="true" className="sidebar-link-icon-svg" viewBox="0 0 24 24">
@@ -151,10 +159,23 @@ export default function Layout({ children }) {
       return response.data || { provider: null, connection_status: VEDR_CONNECTION_STATUSES.NOT_STARTED, setup_completed_at: null };
     }
   });
+  const notificationsQuery = useQuery({
+    queryKey: ['manager-notifications'],
+    enabled: Boolean(selectedCsaId || tokenCsaId),
+    queryFn: async () => {
+      const response = await api.get('/manager/notifications');
+      return response.data?.notifications || [];
+    },
+    refetchInterval: 60000
+  });
 
   const showVedrSetupBadge = !vedrSettingsQuery.isLoading
     && !vedrSettingsQuery.isError
     && vedrSettingsQuery.data?.connection_status !== VEDR_CONNECTION_STATUSES.CONNECTED;
+  const sidebarNotifications = Array.isArray(notificationsQuery.data) ? notificationsQuery.data : [];
+  const hasNotificationAttention = sidebarNotifications.some((notification) => (
+    notification.status !== 'read'
+  ));
   const currentOperationsDate = getResolvedOperationsDate(location.search);
 
   async function handleCsaSwitch(event) {
@@ -220,10 +241,11 @@ export default function Layout({ children }) {
                   const linkTo = isOperationsDatePath(link.to)
                     ? buildOperationsDatePath(link.to, currentOperationsDate)
                     : link.to;
+                  const linkHasNotificationAttention = link.icon === 'notifications' && hasNotificationAttention;
 
                   return (
                     <NavLink
-                      className={({ isActive }) => `sidebar-link${isActive ? ' active' : ''}`}
+                      className={({ isActive }) => `sidebar-link${isActive ? ' active' : ''}${linkHasNotificationAttention ? ' notification-attention' : ''}`}
                       end={link.end}
                       key={link.to}
                       to={linkTo}
@@ -231,7 +253,7 @@ export default function Layout({ children }) {
                       <span className="sidebar-link-content">
                         <span className="sidebar-link-icon" aria-hidden="true">
                           <SidebarIcon type={link.icon} />
-                          {link.showsSetupBadge && showVedrSetupBadge ? <span className="sidebar-link-badge-dot" /> : null}
+                          {(link.showsSetupBadge && showVedrSetupBadge) || linkHasNotificationAttention ? <span className="sidebar-link-badge-dot" /> : null}
                         </span>
                         <span>{link.label}</span>
                       </span>

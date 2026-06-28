@@ -21,7 +21,15 @@ create table if not exists public.vehicle_inspections (
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
   constraint vehicle_inspections_type_check check (inspection_type in ('daily_check', 'weekly_inspection', 'full_inspection', 'driver', 'manager')),
-  constraint vehicle_inspections_status_check check (status in ('submitted', 'needs_review', 'reviewed')),
+  constraint vehicle_inspections_status_check check (status in (
+    'submitted',
+    'needs_review',
+    'safe_to_operate',
+    'safe_with_maintenance_reported',
+    'manager_review_required',
+    'urgent_manager_review',
+    'reviewed'
+  )),
   constraint vehicle_inspections_submitter_check check (submitted_by_type in ('driver', 'manager'))
 );
 

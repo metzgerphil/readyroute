@@ -3453,6 +3453,19 @@ test('PATCH /manager/routes/:route_id/assign updates route driver and vehicle', 
       };
     }
 
+    if (query.table === 'app_notifications' && query.operation === 'insert') {
+      assert.equal(query.payload.account_id, 'acct-1');
+      assert.equal(query.payload.recipient_type, 'driver');
+      assert.equal(query.payload.driver_id, 'driver-1');
+      assert.equal(query.payload.notification_type, 'driver_route_inspection_assigned');
+      assert.equal(query.payload.link_ref.route_id, 'route-1');
+      assert.equal(query.payload.link_ref.vehicle_id, 'vehicle-1');
+      return {
+        data: { id: 'notification-1', ...query.payload },
+        error: null
+      };
+    }
+
     throw new Error(`Unexpected query ${query.table}:${query.operation}`);
   });
 
@@ -3477,6 +3490,159 @@ test('PATCH /manager/routes/:route_id/assign updates route driver and vehicle', 
     assert.equal(body.route.work_area_name, '810');
     assert.equal(body.route.driver_id, 'driver-1');
     assert.equal(body.route.driver_name, 'Phil Driver');
+  } finally {
+    await server.close();
+  }
+});
+
+test('manager notification endpoints list broadcasts and mark notifications read', async () => {
+  const supabase = new MockSupabase((query) => {
+    if (query.table === 'app_notifications' && query.operation === 'select') {
+      if (query.filters.find((filter) => filter.column === 'id')?.value === 'notification-1') {
+        return {
+          data: {
+            id: 'notification-1',
+            manager_user_id: null
+          },
+          error: null
+        };
+      }
+
+      assert.equal(query.filters.find((filter) => filter.column === 'account_id')?.value, 'acct-1');
+      assert.equal(query.filters.find((filter) => filter.column === 'recipient_type')?.value, 'manager');
+      return {
+        data: [
+          {
+            id: 'notification-1',
+            account_id: 'acct-1',
+            recipient_type: 'manager',
+            manager_user_id: null,
+            notification_type: 'manager_inspection_urgent_review',
+            title: 'Urgent vehicle inspection review',
+            body: 'Driver marked a vehicle unsafe.',
+            severity: 'urgent',
+            status: 'unread',
+            created_at: '2026-06-27T12:00:00.000Z'
+          },
+          {
+            id: 'notification-other',
+            account_id: 'acct-1',
+            recipient_type: 'manager',
+            manager_user_id: 'manager-other',
+            notification_type: 'manager_inspection_urgent_review',
+            title: 'Other manager only',
+            severity: 'urgent',
+            status: 'unread'
+          }
+        ],
+        error: null
+      };
+    }
+
+    if (query.table === 'app_notifications' && query.operation === 'update') {
+      assert.equal(query.payload.status, 'read');
+      assert.equal(query.filters.find((filter) => filter.column === 'id')?.value, 'notification-1');
+      assert.equal(query.filters.find((filter) => filter.column === 'account_id')?.value, 'acct-1');
+      assert.equal(query.filters.find((filter) => filter.column === 'recipient_type')?.value, 'manager');
+      return {
+        data: {
+          id: 'notification-1',
+          account_id: 'acct-1',
+          recipient_type: 'manager',
+          manager_user_id: null,
+          notification_type: 'manager_inspection_urgent_review',
+          title: 'Urgent vehicle inspection review',
+          severity: 'urgent',
+          status: 'read',
+          read_at: query.payload.read_at
+        },
+        error: null
+      };
+    }
+
+    throw new Error(`Unexpected query ${query.table}:${query.operation}`);
+  });
+
+  const server = await startTestServer({ supabase });
+
+  try {
+    const token = signManagerToken({ manager_user_id: 'manager-1' });
+    const listResponse = await fetch(`${server.baseUrl}/manager/notifications`, {
+      headers: {
+        Authorization: `Bearer ${token}`
+      }
+    });
+
+    assert.equal(listResponse.status, 200);
+    const listBody = await listResponse.json();
+    assert.deepEqual(listBody.notifications.map((notification) => notification.id), ['notification-1']);
+
+    const readResponse = await fetch(`${server.baseUrl}/manager/notifications/notification-1/read`, {
+      method: 'PATCH',
+      headers: {
+        Authorization: `Bearer ${token}`
+      }
+    });
+
+    assert.equal(readResponse.status, 200);
+    const readBody = await readResponse.json();
+    assert.equal(readBody.notification.status, 'read');
+  } finally {
+    await server.close();
+  }
+});
+
+test('manager notification device token endpoint registers Expo tokens', async () => {
+  const supabase = new MockSupabase((query) => {
+    if (query.table === 'app_notification_device_tokens' && query.operation === 'select') {
+      assert.deepEqual(query.filters, [
+        { op: 'eq', column: 'account_id', value: 'acct-1' },
+        { op: 'eq', column: 'recipient_type', value: 'manager' },
+        { op: 'eq', column: 'expo_push_token', value: 'ExpoPushToken[manager-token]' },
+        { op: 'eq', column: 'manager_user_id', value: 'manager-1' }
+      ]);
+      return { data: null, error: null };
+    }
+
+    if (query.table === 'app_notification_device_tokens' && query.operation === 'insert') {
+      assert.equal(query.payload.account_id, 'acct-1');
+      assert.equal(query.payload.recipient_type, 'manager');
+      assert.equal(query.payload.driver_id, null);
+      assert.equal(query.payload.manager_user_id, 'manager-1');
+      assert.equal(query.payload.expo_push_token, 'ExpoPushToken[manager-token]');
+      assert.equal(query.payload.platform, 'android');
+      return {
+        data: {
+          id: 'device-token-1',
+          ...query.payload
+        },
+        error: null
+      };
+    }
+
+    throw new Error(`Unexpected query ${query.table}:${query.operation}`);
+  });
+
+  const server = await startTestServer({ supabase });
+
+  try {
+    const response = await fetch(`${server.baseUrl}/manager/notifications/device-token`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${signManagerToken({ manager_user_id: 'manager-1' })}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        expo_push_token: 'ExpoPushToken[manager-token]',
+        platform: 'android',
+        app_version: '1.0.2'
+      })
+    });
+
+    assert.equal(response.status, 200);
+    const body = await response.json();
+    assert.equal(body.registered, true);
+    assert.equal(body.device_token.id, 'device-token-1');
   } finally {
     await server.close();
   }
