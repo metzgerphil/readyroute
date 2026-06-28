@@ -3,13 +3,10 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 PORTAL_DIR="$ROOT_DIR/manager-portal"
-ROOT_VERCEL_DIR="$ROOT_DIR/.vercel"
-TEMP_ROOT_LINK=0
+DEPLOY_ROOT="$(mktemp -d /tmp/readyroute-portal-deploy.XXXXXX)"
 
 cleanup() {
-  if [[ "$TEMP_ROOT_LINK" == "1" ]]; then
-    rm -rf "$ROOT_VERCEL_DIR"
-  fi
+  rm -rf "$DEPLOY_ROOT"
 }
 
 trap cleanup EXIT
@@ -22,10 +19,12 @@ export NPM_CONFIG_CACHE="${NPM_CONFIG_CACHE:-/tmp/readyroute-npm-cache}"
 export XDG_CONFIG_HOME="${XDG_CONFIG_HOME:-/tmp/readyroute-xdg}"
 export XDG_CACHE_HOME="${XDG_CACHE_HOME:-/tmp/readyroute-xdg}"
 
-if [[ ! -f "$ROOT_VERCEL_DIR/project.json" ]]; then
-  mkdir -p "$ROOT_VERCEL_DIR"
-  cp "$PORTAL_DIR/.vercel/project.json" "$ROOT_VERCEL_DIR/project.json"
-  TEMP_ROOT_LINK=1
-fi
+mkdir -p "$DEPLOY_ROOT/.vercel" "$DEPLOY_ROOT/manager-portal"
+cp "$PORTAL_DIR/.vercel/project.json" "$DEPLOY_ROOT/.vercel/project.json"
+rsync -a \
+  --exclude node_modules \
+  --exclude dist \
+  --exclude .vercel \
+  "$PORTAL_DIR/" "$DEPLOY_ROOT/manager-portal/"
 
-npx vercel --prod --yes --cwd "$ROOT_DIR" --archive=tgz
+npx vercel --prod --yes --cwd "$DEPLOY_ROOT" --archive=tgz
