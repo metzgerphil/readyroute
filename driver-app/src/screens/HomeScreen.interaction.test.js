@@ -401,6 +401,452 @@ describe('HomeScreen interactions', () => {
     alertSpy.mockRestore();
   });
 
+  it('submits a VEDR issue using the custom issue choices', async () => {
+    const alertSpy = jest.spyOn(Alert, 'alert').mockImplementation(() => {});
+
+    api.get.mockImplementation((url) => {
+      if (url === '/routes/today') {
+        return Promise.resolve({
+          data: {
+            route: {
+              id: 'route-1',
+              date: '2026-06-27',
+              status: 'pending',
+              vehicle_id: 'vehicle-1',
+              vehicle_name: 'Truck 204526',
+              stops: [{ id: 'stop-1' }]
+            },
+            driver_day: {
+              status: 'dispatched',
+              inspection_requirement: {
+                required: true,
+                submitted: false,
+                route_id: 'route-1',
+                vehicle_id: 'vehicle-1',
+                vehicle_name: 'Truck 204526',
+                inspection_date: '2026-06-27',
+                last_recorded_odometer: 12000,
+                minimum_odometer: 12000,
+                maximum_odometer: 12300,
+                checklist_items: [
+                  { checklist_item_key: 'vedr', label: 'VEDR' }
+                ]
+              }
+            }
+          }
+        });
+      }
+
+      if (url === '/timecards/status') {
+        return Promise.resolve({
+          data: {
+            active_timecard: null,
+            active_break: null
+          }
+        });
+      }
+
+      return Promise.reject(new Error(`Unexpected GET ${url}`));
+    });
+    api.post.mockImplementation((url) => {
+      if (url === '/routes/inspection') {
+        return Promise.resolve({
+          data: {
+            inspection: {
+              id: 'inspection-1',
+              odometer: 12025,
+              status: 'safe_with_maintenance_reported',
+              manager_review_required: false,
+              urgent_review: false
+            }
+          }
+        });
+      }
+
+      return Promise.reject(new Error(`Unexpected POST ${url}`));
+    });
+    api.patch.mockResolvedValue({ data: {} });
+
+    const screen = await renderAndFlush();
+
+    await waitFor(() => {
+      expect(screen.getByText('Weekly vehicle inspection')).toBeTruthy();
+      expect(screen.getByText('0 of 1 completed')).toBeTruthy();
+    });
+
+    fireEvent.changeText(screen.getByPlaceholderText('Current odometer reading'), '12025');
+    fireEvent.press(screen.getByLabelText('Mark VEDR has an issue'));
+
+    expect(screen.getByText('Not Connected')).toBeTruthy();
+    expect(screen.getByText('red light')).toBeTruthy();
+    expect(screen.getByText('Fell off')).toBeTruthy();
+    expect(screen.queryByText('Minor')).toBeNull();
+    expect(screen.queryByText('Maintenance Soon')).toBeNull();
+    expect(screen.queryByText('Unsafe')).toBeNull();
+
+    fireEvent.press(screen.getByText('red light'));
+    fireEvent.press(screen.getByText('Complete Inspection'));
+
+    await waitFor(() => {
+      expect(api.post).toHaveBeenCalledWith('/routes/inspection', expect.objectContaining({
+        vehicle_id: 'vehicle-1',
+        route_id: 'route-1',
+        inspection_date: '2026-06-27',
+        odometer: 12025,
+        items: expect.arrayContaining([
+          expect.objectContaining({
+            checklist_item_key: 'vedr',
+            status: 'issue',
+            severity: 'maintenance_soon',
+            issue_details: expect.objectContaining({
+              issue_type: 'red light'
+            })
+          })
+        ])
+      }));
+      expect(api.patch).toHaveBeenCalledWith('/routes/route-1/status', {
+        status: 'in_progress'
+      });
+      expect(navigation.navigate).toHaveBeenCalledWith('MyDrive');
+    });
+
+    alertSpy.mockRestore();
+  });
+
+  it('submits a Back Up Camera issue using the custom issue choices', async () => {
+    const alertSpy = jest.spyOn(Alert, 'alert').mockImplementation(() => {});
+
+    api.get.mockImplementation((url) => {
+      if (url === '/routes/today') {
+        return Promise.resolve({
+          data: {
+            route: {
+              id: 'route-1',
+              date: '2026-06-27',
+              status: 'pending',
+              vehicle_id: 'vehicle-1',
+              vehicle_name: 'Truck 204526',
+              stops: [{ id: 'stop-1' }]
+            },
+            driver_day: {
+              status: 'dispatched',
+              inspection_requirement: {
+                required: true,
+                submitted: false,
+                route_id: 'route-1',
+                vehicle_id: 'vehicle-1',
+                vehicle_name: 'Truck 204526',
+                inspection_date: '2026-06-27',
+                last_recorded_odometer: 12000,
+                minimum_odometer: 12000,
+                maximum_odometer: 12300,
+                checklist_items: [
+                  { checklist_item_key: 'back_up_camera', label: 'Back Up Camera' }
+                ]
+              }
+            }
+          }
+        });
+      }
+
+      if (url === '/timecards/status') {
+        return Promise.resolve({
+          data: {
+            active_timecard: null,
+            active_break: null
+          }
+        });
+      }
+
+      return Promise.reject(new Error(`Unexpected GET ${url}`));
+    });
+    api.post.mockImplementation((url) => {
+      if (url === '/routes/inspection') {
+        return Promise.resolve({
+          data: {
+            inspection: {
+              id: 'inspection-1',
+              odometer: 12025,
+              status: 'safe_with_maintenance_reported',
+              manager_review_required: false,
+              urgent_review: false
+            }
+          }
+        });
+      }
+
+      return Promise.reject(new Error(`Unexpected POST ${url}`));
+    });
+    api.patch.mockResolvedValue({ data: {} });
+
+    const screen = await renderAndFlush();
+
+    await waitFor(() => {
+      expect(screen.getByText('Weekly vehicle inspection')).toBeTruthy();
+      expect(screen.getByText('0 of 1 completed')).toBeTruthy();
+    });
+
+    fireEvent.changeText(screen.getByPlaceholderText('Current odometer reading'), '12025');
+    fireEvent.press(screen.getByLabelText('Mark Back Up Camera has an issue'));
+
+    expect(screen.getByText('Not showing')).toBeTruthy();
+    expect(screen.getByText('Monitor glitching')).toBeTruthy();
+    expect(screen.queryByText('Minor')).toBeNull();
+    expect(screen.queryByText('Maintenance Soon')).toBeNull();
+    expect(screen.queryByText('Unsafe')).toBeNull();
+
+    fireEvent.press(screen.getByText('Monitor glitching'));
+    fireEvent.press(screen.getByText('Complete Inspection'));
+
+    await waitFor(() => {
+      expect(api.post).toHaveBeenCalledWith('/routes/inspection', expect.objectContaining({
+        vehicle_id: 'vehicle-1',
+        route_id: 'route-1',
+        inspection_date: '2026-06-27',
+        odometer: 12025,
+        items: expect.arrayContaining([
+          expect.objectContaining({
+            checklist_item_key: 'back_up_camera',
+            status: 'issue',
+            severity: 'maintenance_soon',
+            issue_details: expect.objectContaining({
+              issue_type: 'Monitor glitching'
+            })
+          })
+        ])
+      }));
+      expect(api.patch).toHaveBeenCalledWith('/routes/route-1/status', {
+        status: 'in_progress'
+      });
+      expect(navigation.navigate).toHaveBeenCalledWith('MyDrive');
+    });
+
+    alertSpy.mockRestore();
+  });
+
+  it('submits a Turn Cameras issue using the custom issue choices', async () => {
+    const alertSpy = jest.spyOn(Alert, 'alert').mockImplementation(() => {});
+
+    api.get.mockImplementation((url) => {
+      if (url === '/routes/today') {
+        return Promise.resolve({
+          data: {
+            route: {
+              id: 'route-1',
+              date: '2026-06-27',
+              status: 'pending',
+              vehicle_id: 'vehicle-1',
+              vehicle_name: 'Truck 204526',
+              stops: [{ id: 'stop-1' }]
+            },
+            driver_day: {
+              status: 'dispatched',
+              inspection_requirement: {
+                required: true,
+                submitted: false,
+                route_id: 'route-1',
+                vehicle_id: 'vehicle-1',
+                vehicle_name: 'Truck 204526',
+                inspection_date: '2026-06-27',
+                last_recorded_odometer: 12000,
+                minimum_odometer: 12000,
+                maximum_odometer: 12300,
+                checklist_items: [
+                  { checklist_item_key: 'turn_cameras', label: 'Turn Cameras' }
+                ]
+              }
+            }
+          }
+        });
+      }
+
+      if (url === '/timecards/status') {
+        return Promise.resolve({
+          data: {
+            active_timecard: null,
+            active_break: null
+          }
+        });
+      }
+
+      return Promise.reject(new Error(`Unexpected GET ${url}`));
+    });
+    api.post.mockImplementation((url) => {
+      if (url === '/routes/inspection') {
+        return Promise.resolve({
+          data: {
+            inspection: {
+              id: 'inspection-1',
+              odometer: 12025,
+              status: 'safe_with_maintenance_reported',
+              manager_review_required: false,
+              urgent_review: false
+            }
+          }
+        });
+      }
+
+      return Promise.reject(new Error(`Unexpected POST ${url}`));
+    });
+    api.patch.mockResolvedValue({ data: {} });
+
+    const screen = await renderAndFlush();
+
+    await waitFor(() => {
+      expect(screen.getByText('Weekly vehicle inspection')).toBeTruthy();
+      expect(screen.getByText('0 of 1 completed')).toBeTruthy();
+    });
+
+    fireEvent.changeText(screen.getByPlaceholderText('Current odometer reading'), '12025');
+    fireEvent.press(screen.getByLabelText('Mark Turn Cameras has an issue'));
+
+    expect(screen.getByText('Not connected')).toBeTruthy();
+    expect(screen.getByText('monitor glitching')).toBeTruthy();
+    expect(screen.getByText('camera loose')).toBeTruthy();
+    expect(screen.queryByText('Minor')).toBeNull();
+    expect(screen.queryByText('Maintenance Soon')).toBeNull();
+    expect(screen.queryByText('Unsafe')).toBeNull();
+
+    fireEvent.press(screen.getByText('camera loose'));
+    fireEvent.press(screen.getByText('Complete Inspection'));
+
+    await waitFor(() => {
+      expect(api.post).toHaveBeenCalledWith('/routes/inspection', expect.objectContaining({
+        vehicle_id: 'vehicle-1',
+        route_id: 'route-1',
+        inspection_date: '2026-06-27',
+        odometer: 12025,
+        items: expect.arrayContaining([
+          expect.objectContaining({
+            checklist_item_key: 'turn_cameras',
+            status: 'issue',
+            severity: 'maintenance_soon',
+            issue_details: expect.objectContaining({
+              issue_type: 'camera loose'
+            })
+          })
+        ])
+      }));
+      expect(api.patch).toHaveBeenCalledWith('/routes/route-1/status', {
+        status: 'in_progress'
+      });
+      expect(navigation.navigate).toHaveBeenCalledWith('MyDrive');
+    });
+
+    alertSpy.mockRestore();
+  });
+
+  it('submits a Parking Sensors issue using the custom issue choices', async () => {
+    const alertSpy = jest.spyOn(Alert, 'alert').mockImplementation(() => {});
+
+    api.get.mockImplementation((url) => {
+      if (url === '/routes/today') {
+        return Promise.resolve({
+          data: {
+            route: {
+              id: 'route-1',
+              date: '2026-06-27',
+              status: 'pending',
+              vehicle_id: 'vehicle-1',
+              vehicle_name: 'Truck 204526',
+              stops: [{ id: 'stop-1' }]
+            },
+            driver_day: {
+              status: 'dispatched',
+              inspection_requirement: {
+                required: true,
+                submitted: false,
+                route_id: 'route-1',
+                vehicle_id: 'vehicle-1',
+                vehicle_name: 'Truck 204526',
+                inspection_date: '2026-06-27',
+                last_recorded_odometer: 12000,
+                minimum_odometer: 12000,
+                maximum_odometer: 12300,
+                checklist_items: [
+                  { checklist_item_key: 'parking_sensors', label: 'Parking Sensors' }
+                ]
+              }
+            }
+          }
+        });
+      }
+
+      if (url === '/timecards/status') {
+        return Promise.resolve({
+          data: {
+            active_timecard: null,
+            active_break: null
+          }
+        });
+      }
+
+      return Promise.reject(new Error(`Unexpected GET ${url}`));
+    });
+    api.post.mockImplementation((url) => {
+      if (url === '/routes/inspection') {
+        return Promise.resolve({
+          data: {
+            inspection: {
+              id: 'inspection-1',
+              odometer: 12025,
+              status: 'safe_with_maintenance_reported',
+              manager_review_required: false,
+              urgent_review: false
+            }
+          }
+        });
+      }
+
+      return Promise.reject(new Error(`Unexpected POST ${url}`));
+    });
+    api.patch.mockResolvedValue({ data: {} });
+
+    const screen = await renderAndFlush();
+
+    await waitFor(() => {
+      expect(screen.getByText('Weekly vehicle inspection')).toBeTruthy();
+      expect(screen.getByText('0 of 1 completed')).toBeTruthy();
+    });
+
+    fireEvent.changeText(screen.getByPlaceholderText('Current odometer reading'), '12025');
+    fireEvent.press(screen.getByLabelText('Mark Parking Sensors has an issue'));
+
+    expect(screen.getByText('No sound')).toBeTruthy();
+    expect(screen.getByText('sensor missing')).toBeTruthy();
+    expect(screen.queryByText('Minor')).toBeNull();
+    expect(screen.queryByText('Maintenance Soon')).toBeNull();
+    expect(screen.queryByText('Unsafe')).toBeNull();
+
+    fireEvent.press(screen.getByText('sensor missing'));
+    fireEvent.press(screen.getByText('Complete Inspection'));
+
+    await waitFor(() => {
+      expect(api.post).toHaveBeenCalledWith('/routes/inspection', expect.objectContaining({
+        vehicle_id: 'vehicle-1',
+        route_id: 'route-1',
+        inspection_date: '2026-06-27',
+        odometer: 12025,
+        items: expect.arrayContaining([
+          expect.objectContaining({
+            checklist_item_key: 'parking_sensors',
+            status: 'issue',
+            severity: 'maintenance_soon',
+            issue_details: expect.objectContaining({
+              issue_type: 'sensor missing'
+            })
+          })
+        ])
+      }));
+      expect(api.patch).toHaveBeenCalledWith('/routes/route-1/status', {
+        status: 'in_progress'
+      });
+      expect(navigation.navigate).toHaveBeenCalledWith('MyDrive');
+    });
+
+    alertSpy.mockRestore();
+  });
+
   it('submits a manual inspection assignment without borrowing the current route vehicle', async () => {
     const alertSpy = jest.spyOn(Alert, 'alert').mockImplementation(() => {});
 

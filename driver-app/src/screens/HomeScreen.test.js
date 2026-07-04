@@ -36,6 +36,7 @@ import {
   getDriverWaitingCopy,
   getInspectionForm,
   getInspectionFormValidationError,
+  getInspectionItemDefinition,
   getInspectionProgress,
   getInspectionRequirement,
   getInspectionSectionsForItems,
@@ -301,6 +302,118 @@ describe('HomeScreen helpers', () => {
       severity: 'maintenance_soon',
       issue_details: { issue_type: 'Leak suspected' },
       photos: [{ url: 'https://cdn/photo.jpg' }]
+    });
+  });
+
+  it('uses VEDR issue choices with a default maintenance severity', () => {
+    const vedrDefinition = getInspectionItemDefinition({ checklist_item_key: 'vedr' });
+    const form = {
+      items: [
+        {
+          checklist_item_key: 'vedr',
+          label: 'VEDR',
+          category: 'safety_equipment',
+          status: 'issue',
+          severity: vedrDefinition.defaultIssueSeverity,
+          issue_details: { issue_type: 'Fell off' },
+          photos: []
+        }
+      ]
+    };
+
+    expect(vedrDefinition.hideSeveritySelector).toBe(true);
+    expect(vedrDefinition.defaultIssueSeverity).toBe('maintenance_soon');
+    expect(vedrDefinition.issueFields[0].options).toEqual(['Not Connected', 'red light', 'Fell off']);
+    expect(getInspectionFormValidationError(form)).toBeNull();
+    expect(serializeInspectionItems(form.items)[0]).toMatchObject({
+      checklist_item_key: 'vedr',
+      status: 'issue',
+      severity: 'maintenance_soon',
+      issue_details: { issue_type: 'Fell off' }
+    });
+  });
+
+  it('uses Back Up Camera issue choices with a default maintenance severity', () => {
+    const cameraDefinition = getInspectionItemDefinition({ checklist_item_key: 'back_up_camera' });
+    const form = {
+      items: [
+        {
+          checklist_item_key: 'back_up_camera',
+          label: 'Back Up Camera',
+          category: 'safety_equipment',
+          status: 'issue',
+          severity: cameraDefinition.defaultIssueSeverity,
+          issue_details: { issue_type: 'Monitor glitching' },
+          photos: []
+        }
+      ]
+    };
+
+    expect(cameraDefinition.hideSeveritySelector).toBe(true);
+    expect(cameraDefinition.defaultIssueSeverity).toBe('maintenance_soon');
+    expect(cameraDefinition.issueFields[0].options).toEqual(['Not showing', 'Monitor glitching']);
+    expect(getInspectionFormValidationError(form)).toBeNull();
+    expect(serializeInspectionItems(form.items)[0]).toMatchObject({
+      checklist_item_key: 'back_up_camera',
+      status: 'issue',
+      severity: 'maintenance_soon',
+      issue_details: { issue_type: 'Monitor glitching' }
+    });
+  });
+
+  it('uses Turn Cameras issue choices with a default maintenance severity', () => {
+    const turnCameraDefinition = getInspectionItemDefinition({ checklist_item_key: 'turn_cameras' });
+    const form = {
+      items: [
+        {
+          checklist_item_key: 'turn_cameras',
+          label: 'Turn Cameras',
+          category: 'safety_equipment',
+          status: 'issue',
+          severity: turnCameraDefinition.defaultIssueSeverity,
+          issue_details: { issue_type: 'camera loose' },
+          photos: []
+        }
+      ]
+    };
+
+    expect(turnCameraDefinition.hideSeveritySelector).toBe(true);
+    expect(turnCameraDefinition.defaultIssueSeverity).toBe('maintenance_soon');
+    expect(turnCameraDefinition.issueFields[0].options).toEqual(['Not connected', 'monitor glitching', 'camera loose']);
+    expect(getInspectionFormValidationError(form)).toBeNull();
+    expect(serializeInspectionItems(form.items)[0]).toMatchObject({
+      checklist_item_key: 'turn_cameras',
+      status: 'issue',
+      severity: 'maintenance_soon',
+      issue_details: { issue_type: 'camera loose' }
+    });
+  });
+
+  it('uses Parking Sensors issue choices with a default maintenance severity', () => {
+    const parkingSensorsDefinition = getInspectionItemDefinition({ checklist_item_key: 'parking_sensors' });
+    const form = {
+      items: [
+        {
+          checklist_item_key: 'parking_sensors',
+          label: 'Parking Sensors',
+          category: 'safety_equipment',
+          status: 'issue',
+          severity: parkingSensorsDefinition.defaultIssueSeverity,
+          issue_details: { issue_type: 'sensor missing' },
+          photos: []
+        }
+      ]
+    };
+
+    expect(parkingSensorsDefinition.hideSeveritySelector).toBe(true);
+    expect(parkingSensorsDefinition.defaultIssueSeverity).toBe('maintenance_soon');
+    expect(parkingSensorsDefinition.issueFields[0].options).toEqual(['No sound', 'sensor missing']);
+    expect(getInspectionFormValidationError(form)).toBeNull();
+    expect(serializeInspectionItems(form.items)[0]).toMatchObject({
+      checklist_item_key: 'parking_sensors',
+      status: 'issue',
+      severity: 'maintenance_soon',
+      issue_details: { issue_type: 'sensor missing' }
     });
   });
 

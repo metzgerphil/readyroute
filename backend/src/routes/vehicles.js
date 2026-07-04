@@ -1,3 +1,4 @@
+const crypto = require('crypto');
 const express = require('express');
 
 const defaultSupabase = require('../lib/supabase');
@@ -90,6 +91,7 @@ const INSPECTION_ASSIGNMENT_PRIORITIES = new Set(['normal', 'urgent']);
 const INSPECTION_ASSIGNMENT_STATUS_PENDING = 'pending';
 
 const FUEL_TYPE_OPTIONS = new Set(['Gas', 'Diesel', 'EV']);
+const VEHICLE_INSPECTION_PHOTO_BUCKET = process.env.VEHICLE_INSPECTION_PHOTO_BUCKET || 'vehicle-inspection-photos';
 
 const DEFAULT_CHECKLIST_TEMPLATE_FIELDS = [
   { id: 'date', label: 'Date', detail: 'Inspection date', enabled: true },
@@ -490,6 +492,34 @@ function toInteger(value) {
 
   const parsed = Number(value);
   return Number.isInteger(parsed) ? parsed : null;
+}
+
+function sanitizeStorageSegment(value) {
+  return String(value || 'file')
+    .trim()
+    .replace(/[^a-zA-Z0-9._-]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 80) || 'file';
+}
+
+function getImageFileExtension(mimeType = '') {
+  const normalized = String(mimeType || '').toLowerCase();
+
+  if (normalized.includes('png')) {
+    return 'png';
+  }
+
+  if (normalized.includes('webp')) {
+    return 'webp';
+  }
+
+  return 'jpg';
+}
+
+function decodeBase64Image(imageBase64) {
+  const normalized = String(imageBase64 || '').trim();
+  const cleaned = normalized.includes(',') ? normalized.split(',').pop() : normalized;
+  return Buffer.from(cleaned, 'base64');
 }
 
 function toNumeric(value) {
@@ -1842,6 +1872,90 @@ function createVehiclesRouter(options = {}) {
     } catch (error) {
       console.error('Vehicle inspection history endpoint failed:', error);
       return res.status(500).json({ error: 'Failed to load inspection history' });
+    }
+  });
+
+  router.post('/:id/inspection-photo', requireManager, async (req, res) => {
+    const vehicleId = req.params.id;
+    const {
+      checklist_item_key: checklistItemKeyInput,
+      image_base64: imageBase64,
+      mime_type: mimeTypeInput,
+      file_name: fileNameInput
+    } = req.body || {};
+    const checklistItemKey = sanitizeStorageSegment(checklistItemKeyInput || 'inspection-item');
+    const mimeType = String(mimeTypeInput || 'image/jpeg').trim().toLowerCase();
+
+    if (!imageBase64) {
+      return res.status(400).json({ error: 'image_base64 is required' });
+    }
+
+    if (!mimeType.startsWith('image/')) {
+      return res.status(400).json({ error: 'Only image uploads are supported for inspection photos' });
+    }
+
+    try {
+      const { data: vehicle, error: vehicleError } = await loadOwnedVehicle(supabase, {
+        vehicleId,
+        accountId: req.account.account_id
+      });
+
+      if (vehicleError) {
+        console.error('Manager inspection photo vehicle lookup failed:', vehicleError);
+        return res.status(500).json({ error: 'Failed to validate vehicle' });
+      }
+
+      if (!vehicle) {
+        return res.status(403).json({ error: 'Vehicle does not belong to this account' });
+      }
+
+      const imageBuffer = decodeBase64Image(imageBase64);
+
+      if (!imageBuffer.length) {
+        return res.status(400).json({ error: 'image_base64 is invalid' });
+      }
+
+      if (imageBuffer.length > 8 * 1024 * 1024) {
+        return res.status(400).json({ error: 'Inspection photo must be 8 MB or smaller' });
+      }
+
+      const extension = getImageFileExtension(mimeType);
+      const originalName = sanitizeStorageSegment(fileNameInput || `${checklistItemKey}.${extension}`);
+      const storagePath = [
+        req.account.account_id,
+        vehicleId,
+        'manager-inspection',
+        checklistItemKey,
+        `${Date.now()}-${crypto.randomBytes(4).toString('hex')}-${originalName}`
+      ].join('/');
+
+      const { error: uploadError } = await supabase.storage
+        .from(VEHICLE_INSPECTION_PHOTO_BUCKET)
+        .upload(storagePath, imageBuffer, {
+          contentType: mimeType,
+          upsert: false
+        });
+
+      if (uploadError) {
+        console.error('Manager inspection photo upload failed:', uploadError);
+        return res.status(500).json({ error: 'Failed to upload inspection photo. Confirm the vehicle-inspection-photos storage bucket exists.' });
+      }
+
+      const { data: publicUrlData } = supabase.storage
+        .from(VEHICLE_INSPECTION_PHOTO_BUCKET)
+        .getPublicUrl(storagePath);
+
+      return res.status(201).json({
+        photo: {
+          url: publicUrlData?.publicUrl || null,
+          storage_bucket: VEHICLE_INSPECTION_PHOTO_BUCKET,
+          storage_path: storagePath,
+          caption: null
+        }
+      });
+    } catch (error) {
+      console.error('Manager inspection photo endpoint failed:', error);
+      return res.status(500).json({ error: 'Failed to upload inspection photo' });
     }
   });
 

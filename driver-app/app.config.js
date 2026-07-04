@@ -29,7 +29,7 @@ module.exports = {
           'maps'
         ],
         NSPhotoLibraryUsageDescription:
-          'ReadyRoute lets managers choose photos from their camera roll when uploading driver documents.',
+          'ReadyRoute lets drivers and managers choose photos from their camera roll for inspections and driver documents.',
         NSLocationWhenInUseUsageDescription:
           'ReadyRoute uses your location while you are on route so your manager can see route progress, support dispatch decisions, and locate drivers during the workday.'
       },

@@ -2,6 +2,8 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   FlatList,
+  Image,
+  Linking,
   Modal,
   Pressable,
   ScrollView,
@@ -12,6 +14,7 @@ import {
 } from 'react-native';
 import * as Clipboard from 'expo-clipboard';
 import * as DocumentPicker from 'expo-document-picker';
+import * as ImagePicker from 'expo-image-picker';
 
 import ManagerSectionLayout from '../components/ManagerSectionLayout';
 import AppButton from '../components/ui/AppButton';
@@ -21,6 +24,13 @@ import KeyboardAwareModal from '../components/ui/KeyboardAwareModal';
 import RouteMetricIcon from '../components/RouteMetricIcon';
 import api from '../services/api';
 import appTheme from '../theme/appTheme';
+import {
+  INSPECTION_SEVERITY_OPTIONS,
+  getInspectionFormValidationError,
+  getInspectionItemDefinition,
+  normalizeInspectionItemKey,
+  serializeInspectionItems
+} from '../utils/vehicleInspection';
 
 const STATUS_FILTERS = [
   { key: 'all', label: 'All' },
@@ -577,12 +587,24 @@ function getInspectionForm(vehicle, template) {
       ? ''
       : String(vehicle.current_mileage),
     issue_note: '',
-    items: getInspectionChecklistFields(template).map((field) => ({
-      checklist_item_key: field.id,
-      label: field.label,
-      status: 'pass',
-      note: ''
-    }))
+    items: getInspectionChecklistFields(template).map((field) => {
+      const checklistItemKey = normalizeInspectionItemKey(field.id || field.label);
+      const definition = getInspectionItemDefinition({
+        ...field,
+        checklist_item_key: checklistItemKey
+      });
+
+      return {
+        checklist_item_key: checklistItemKey,
+        label: definition.label || field.label,
+        category: definition.category || field.category || 'other',
+        status: 'pass',
+        severity: null,
+        issue_details: {},
+        note: '',
+        photos: []
+      };
+    })
   };
 }
 
@@ -1853,41 +1875,267 @@ function ServiceHistoryModal({ history, isLoading, onClose, vehicle }) {
   );
 }
 
-function InspectionStatusRow({ item, onChangeStatus }) {
-  const isFail = item.status === 'fail';
+function InspectionChoiceChip({
+  accessibilityLabel,
+  label,
+  onPress,
+  selected,
+  variant = 'neutral'
+}) {
+  return (
+    <Pressable
+      accessibilityLabel={accessibilityLabel || label}
+      accessibilityRole="button"
+      onPress={onPress}
+      style={[
+        styles.inspectionStatusButton,
+        selected && variant === 'pass' ? styles.inspectionStatusButtonPass : null,
+        selected && variant === 'issue' ? styles.inspectionStatusButtonFail : null,
+        selected && variant === 'unsafe' ? styles.inspectionStatusButtonUnsafe : null
+      ]}
+    >
+      <Text
+        style={[
+          styles.inspectionStatusButtonText,
+          selected && variant === 'pass' ? styles.inspectionStatusButtonTextActive : null,
+          selected && variant === 'issue' ? styles.inspectionStatusButtonTextFail : null,
+          selected && variant === 'unsafe' ? styles.inspectionStatusButtonTextUnsafe : null
+        ]}
+      >
+        {label}
+      </Text>
+    </Pressable>
+  );
+}
+
+function InspectionIssueField({ field, item, onChangeIssueDetail }) {
+  const currentValue = item.issue_details?.[field.key];
 
   return (
-    <View style={styles.inspectionChecklistRow}>
-      <View style={styles.inspectionChecklistText}>
-        <Text style={styles.historyTitle}>{item.label}</Text>
-        <Text style={styles.historyMeta}>{isFail ? 'Needs attention' : 'Passed'}</Text>
-      </View>
-      <View style={styles.inspectionStatusActions}>
-        <Pressable
-          accessibilityRole="button"
-          onPress={() => onChangeStatus(item.checklist_item_key, 'pass')}
-          style={[styles.inspectionStatusButton, item.status === 'pass' ? styles.inspectionStatusButtonPass : null]}
-        >
-          <Text style={[styles.inspectionStatusButtonText, item.status === 'pass' ? styles.inspectionStatusButtonTextActive : null]}>
-            Pass
-          </Text>
-        </Pressable>
-        <Pressable
-          accessibilityRole="button"
-          onPress={() => onChangeStatus(item.checklist_item_key, 'fail')}
-          style={[styles.inspectionStatusButton, isFail ? styles.inspectionStatusButtonFail : null]}
-        >
-          <Text style={[styles.inspectionStatusButtonText, isFail ? styles.inspectionStatusButtonTextFail : null]}>
-            Issue
-          </Text>
-        </Pressable>
+    <View style={styles.inspectionIssueGroup}>
+      <Text style={styles.inspectionIssueLabel}>{field.label}</Text>
+      <View style={styles.inspectionChipWrap}>
+        {field.options.map((option) => {
+          const selected = field.type === 'multi'
+            ? Array.isArray(currentValue) && currentValue.includes(option)
+            : currentValue === option;
+
+          return (
+            <InspectionChoiceChip
+              key={option}
+              label={option}
+              onPress={() => onChangeIssueDetail(item.checklist_item_key, field, option)}
+              selected={selected}
+              variant="issue"
+            />
+          );
+        })}
       </View>
     </View>
   );
 }
 
-function InspectionModal({ errorMessage, form, isSaving, onChangeField, onChangeStatus, onClose, onSubmit, vehicle }) {
-  const failedCount = (form.items || []).filter((item) => item.status === 'fail').length;
+function InspectionSeveritySelector({ item, onChangeSeverity }) {
+  return (
+    <View style={styles.inspectionIssueGroup}>
+      <Text style={styles.inspectionIssueLabel}>Severity</Text>
+      <View style={styles.inspectionChipWrap}>
+        {INSPECTION_SEVERITY_OPTIONS.map((option) => (
+          <InspectionChoiceChip
+            key={option.value}
+            label={option.label}
+            onPress={() => onChangeSeverity(item.checklist_item_key, option.value)}
+            selected={item.severity === option.value}
+            variant={option.value === 'unsafe' ? 'unsafe' : 'issue'}
+          />
+        ))}
+      </View>
+    </View>
+  );
+}
+
+function InspectionPhotoSection({
+  isUploading,
+  item,
+  onAttachPhoto,
+  onRemovePhoto
+}) {
+  const photos = item.photos || [];
+
+  return (
+    <View style={styles.inspectionIssueGroup}>
+      <Text style={styles.inspectionIssueLabel}>Photo</Text>
+      {photos.length ? (
+        <View style={styles.inspectionPhotoList}>
+          {photos.map((photo, index) => (
+            <View key={photo.storage_path || photo.url || `${item.checklist_item_key}-${index}`} style={styles.inspectionPhotoPill}>
+              <Text style={styles.inspectionPhotoText}>Photo {index + 1} attached</Text>
+              <Pressable
+                accessibilityLabel={`Remove photo ${index + 1} from ${item.label}`}
+                onPress={() => onRemovePhoto(item.checklist_item_key, index)}
+              >
+                <Text style={styles.inspectionPhotoRemove}>Remove</Text>
+              </Pressable>
+            </View>
+          ))}
+        </View>
+      ) : null}
+      <Pressable
+        accessibilityLabel={`Attach photo for ${item.label}`}
+        disabled={isUploading}
+        onPress={() => onAttachPhoto(item.checklist_item_key)}
+        style={({ pressed }) => [
+          styles.inspectionPhotoButton,
+          isUploading ? styles.saveButtonDisabled : null,
+          pressed && !isUploading ? styles.pressed : null
+        ]}
+      >
+        {isUploading ? (
+          <ActivityIndicator color={appTheme.colors.orangeDeep} size="small" />
+        ) : (
+          <Text style={styles.inspectionPhotoButtonText}>{photos.length ? 'Add Another Photo' : 'Attach Photo'}</Text>
+        )}
+      </Pressable>
+    </View>
+  );
+}
+
+function InspectionPhotoPreview({ photo, index }) {
+  const photoUrl = photo?.url || null;
+  const fallbackLabel = photo?.storage_path || 'attached';
+
+  return (
+    <View style={styles.inspectionPhotoPreview}>
+      {photoUrl ? (
+        <Image
+          accessibilityLabel={`Inspection photo ${index + 1}`}
+          resizeMode="cover"
+          source={{ uri: photoUrl }}
+          style={styles.inspectionPhotoThumbnail}
+        />
+      ) : null}
+      <View style={styles.inspectionPhotoPreviewText}>
+        <Text style={styles.historyMeta}>Photo {index + 1}</Text>
+        {photoUrl ? (
+          <Pressable onPress={() => Linking.openURL(photoUrl).catch(() => {})}>
+            <Text style={styles.historyLink}>Open photo</Text>
+          </Pressable>
+        ) : (
+          <Text style={styles.historyMeta}>{fallbackLabel}</Text>
+        )}
+      </View>
+    </View>
+  );
+}
+
+function InspectionStatusRow({
+  isUploadingPhoto,
+  item,
+  onAttachPhoto,
+  onChangeIssueDetail,
+  onChangeNote,
+  onChangeSeverity,
+  onChangeStatus,
+  onChangeTruckCleanliness,
+  onRemovePhoto
+}) {
+  const definition = getInspectionItemDefinition(item);
+  const isFail = isInspectionIssueItem(item);
+  const selectedCleanlinessCondition = item.status === 'pass'
+    ? 'clean'
+    : normalizeInspectionItemKey(item.issue_details?.condition);
+
+  return (
+    <View style={styles.inspectionChecklistRow}>
+      <View style={styles.inspectionChecklistHeader}>
+        <View style={styles.inspectionChecklistText}>
+          <Text style={styles.historyTitle}>{item.label}</Text>
+          <Text style={styles.historyMeta}>{isFail ? 'Issue marked' : 'Passed'}</Text>
+        </View>
+        {item.checklist_item_key === 'truck_cleanliness' ? (
+          <View style={[styles.inspectionStatusActions, styles.inspectionChipWrapFull]}>
+            {definition.conditionOptions.map((option) => (
+              <InspectionChoiceChip
+                key={option.value}
+                accessibilityLabel={`Mark truck cleanliness ${option.label}`}
+                label={option.label}
+                onPress={() => onChangeTruckCleanliness(item.checklist_item_key, option.value)}
+                selected={selectedCleanlinessCondition === option.value}
+                variant={option.status === 'pass' ? 'pass' : 'issue'}
+              />
+            ))}
+          </View>
+        ) : (
+          <View style={styles.inspectionStatusActions}>
+            <InspectionChoiceChip
+              accessibilityLabel={`Mark ${item.label} passed`}
+              label="Pass"
+              onPress={() => onChangeStatus(item.checklist_item_key, 'pass')}
+              selected={item.status === 'pass'}
+              variant="pass"
+            />
+            <InspectionChoiceChip
+              accessibilityLabel={`Mark ${item.label} has an issue`}
+              label="Issue"
+              onPress={() => onChangeStatus(item.checklist_item_key, 'issue')}
+              selected={isFail}
+              variant="issue"
+            />
+          </View>
+        )}
+      </View>
+      {isFail ? (
+        <View style={styles.inspectionIssuePanel}>
+          {(definition.issueFields || []).map((field) => (
+            <InspectionIssueField
+              field={field}
+              item={item}
+              key={field.key}
+              onChangeIssueDetail={onChangeIssueDetail}
+            />
+          ))}
+          {definition.hideSeveritySelector ? null : (
+            <InspectionSeveritySelector item={item} onChangeSeverity={onChangeSeverity} />
+          )}
+          <InspectionPhotoSection
+            isUploading={isUploadingPhoto}
+            item={item}
+            onAttachPhoto={onAttachPhoto}
+            onRemovePhoto={onRemovePhoto}
+          />
+          <TextInput
+            multiline
+            onChangeText={(value) => onChangeNote(item.checklist_item_key, value)}
+            placeholder="Optional notes"
+            placeholderTextColor={appTheme.colors.textTertiary}
+            style={styles.inspectionItemNoteInput}
+            textAlignVertical="top"
+            value={item.note || ''}
+          />
+        </View>
+      ) : null}
+    </View>
+  );
+}
+
+function InspectionModal({
+  errorMessage,
+  form,
+  isSaving,
+  isUploadingPhotoKey,
+  onAttachPhoto,
+  onChangeField,
+  onChangeIssueDetail,
+  onChangeNote,
+  onChangeSeverity,
+  onChangeStatus,
+  onChangeTruckCleanliness,
+  onClose,
+  onRemovePhoto,
+  onSubmit,
+  vehicle
+}) {
+  const failedCount = (form.items || []).filter(isInspectionIssueItem).length;
 
   return (
     <KeyboardAwareModal onClose={onClose} visible={Boolean(vehicle)}>
@@ -1928,9 +2176,16 @@ function InspectionModal({ errorMessage, form, isSaving, onChangeField, onChange
             <Field keyboardType="number-pad" label="Odometer" onChangeText={(value) => onChangeField('odometer', value.replace(/\D/g, ''))} placeholder="Current odometer" value={form.odometer} />
             {(form.items || []).map((item) => (
               <InspectionStatusRow
+                isUploadingPhoto={isUploadingPhotoKey === item.checklist_item_key}
                 item={item}
                 key={item.checklist_item_key}
+                onAttachPhoto={onAttachPhoto}
+                onChangeIssueDetail={onChangeIssueDetail}
+                onChangeNote={onChangeNote}
+                onChangeSeverity={onChangeSeverity}
                 onChangeStatus={onChangeStatus}
+                onChangeTruckCleanliness={onChangeTruckCleanliness}
+                onRemovePhoto={onRemovePhoto}
               />
             ))}
             <Field label="Inspection notes" multiline onChangeText={(value) => onChangeField('issue_note', value)} placeholder="Optional notes or issue details" value={form.issue_note} />
@@ -2197,9 +2452,11 @@ function InspectionDetailModal({
                         {photos.length ? (
                           <View style={styles.inspectionPhotoLinks}>
                             {photos.map((photo, index) => (
-                              <Text key={photo.storage_path || photo.url || `${item.checklist_item_key}-${index}`} style={styles.historyMeta}>
-                                Photo {index + 1}: {photo.url || photo.storage_path || 'attached'}
-                              </Text>
+                              <InspectionPhotoPreview
+                                index={index}
+                                key={photo.storage_path || photo.url || `${item.checklist_item_key}-${index}`}
+                                photo={photo}
+                              />
                             ))}
                           </View>
                         ) : null}
@@ -2298,6 +2555,7 @@ export default function ManagerVehiclesScreen({ csaWorkspaceVersion = 0, identit
   const [inspectionForm, setInspectionForm] = useState(getInspectionForm(null, null));
   const [inspectionError, setInspectionError] = useState('');
   const [isSavingInspection, setIsSavingInspection] = useState(false);
+  const [isUploadingInspectionPhotoKey, setIsUploadingInspectionPhotoKey] = useState(null);
   const [inspectionHistoryVehicle, setInspectionHistoryVehicle] = useState(null);
   const [inspectionHistory, setInspectionHistory] = useState([]);
   const [isLoadingInspectionHistory, setIsLoadingInspectionHistory] = useState(false);
@@ -2907,6 +3165,7 @@ export default function ManagerVehiclesScreen({ csaWorkspaceVersion = 0, identit
     setInspectionVehicle(null);
     setInspectionForm(getInspectionForm(null, checklistTemplate));
     setInspectionError('');
+    setIsUploadingInspectionPhotoKey(null);
   }
 
   function updateInspectionField(field, value) {
@@ -2916,13 +3175,161 @@ export default function ManagerVehiclesScreen({ csaWorkspaceVersion = 0, identit
     }));
   }
 
-  function updateInspectionItemStatus(itemKey, status) {
+  function patchInspectionItem(itemKey, updater) {
     setInspectionForm((current) => ({
       ...current,
       items: (current.items || []).map((item) => (
-        item.checklist_item_key === itemKey ? { ...item, status } : item
+        item.checklist_item_key === itemKey ? updater(item) : item
       ))
     }));
+    setInspectionError('');
+  }
+
+  function updateInspectionItemStatus(itemKey, status) {
+    patchInspectionItem(itemKey, (item) => {
+      const definition = getInspectionItemDefinition(item);
+
+      if (status === 'pass') {
+        return {
+          ...item,
+          status: 'pass',
+          severity: null,
+          issue_details: {},
+          note: '',
+          photos: []
+        };
+      }
+
+      return {
+        ...item,
+        status: 'issue',
+        severity: item.severity || definition.defaultIssueSeverity || null,
+        issue_details: item.issue_details || {},
+        photos: item.photos || []
+      };
+    });
+  }
+
+  function updateInspectionIssueDetail(itemKey, field, option) {
+    patchInspectionItem(itemKey, (item) => {
+      const currentDetails = item.issue_details || {};
+      const currentValue = currentDetails[field.key];
+      let nextValue = option;
+
+      if (field.type === 'multi') {
+        const currentArray = Array.isArray(currentValue) ? currentValue : [];
+        nextValue = currentArray.includes(option)
+          ? currentArray.filter((value) => value !== option)
+          : [...currentArray, option];
+      }
+
+      return {
+        ...item,
+        issue_details: {
+          ...currentDetails,
+          [field.key]: nextValue
+        }
+      };
+    });
+  }
+
+  function updateInspectionItemSeverity(itemKey, severity) {
+    patchInspectionItem(itemKey, (item) => ({
+      ...item,
+      severity
+    }));
+  }
+
+  function updateInspectionItemNote(itemKey, note) {
+    patchInspectionItem(itemKey, (item) => ({
+      ...item,
+      note
+    }));
+  }
+
+  function updateTruckCleanliness(itemKey, condition) {
+    const definition = getInspectionItemDefinition({ checklist_item_key: itemKey });
+    const option = (definition.conditionOptions || []).find((candidate) => candidate.value === condition);
+
+    if (!option) {
+      return;
+    }
+
+    patchInspectionItem(itemKey, (item) => ({
+      ...item,
+      status: option.status,
+      severity: option.status === 'issue' ? item.severity : null,
+      issue_details: option.status === 'issue' ? { condition: option.label } : {},
+      note: option.status === 'issue' ? item.note : '',
+      photos: option.status === 'issue' ? (item.photos || []) : []
+    }));
+  }
+
+  function removeInspectionPhoto(itemKey, photoIndex) {
+    patchInspectionItem(itemKey, (item) => ({
+      ...item,
+      photos: (item.photos || []).filter((_photo, index) => index !== photoIndex)
+    }));
+  }
+
+  async function handleAttachInspectionPhoto(itemKey) {
+    if (!inspectionVehicle?.id) {
+      return;
+    }
+
+    setIsUploadingInspectionPhotoKey(itemKey);
+    setInspectionError('');
+
+    try {
+      const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+
+      if (!permission?.granted) {
+        setInspectionError('Allow photo access to attach an inspection photo.');
+        return;
+      }
+
+      const result = await ImagePicker.launchImageLibraryAsync({
+        allowsEditing: false,
+        base64: true,
+        mediaTypes: ImagePicker.MediaTypeOptions?.Images || 'images',
+        quality: 0.7
+      });
+
+      if (result.canceled) {
+        return;
+      }
+
+      const asset = result.assets?.[0];
+
+      if (!asset?.base64) {
+        setInspectionError('Could not read that photo. Try a different image.');
+        return;
+      }
+
+      const response = await api.post(`/vehicles/${inspectionVehicle.id}/inspection-photo`, {
+        checklist_item_key: itemKey,
+        image_base64: asset.base64,
+        mime_type: asset.mimeType || 'image/jpeg',
+        file_name: asset.fileName || `${itemKey}.jpg`
+      }, {
+        authMode: 'manager'
+      });
+      const photo = response.data?.photo || null;
+
+      if (!photo) {
+        setInspectionError('Photo uploaded, but ReadyRoute did not return the photo details.');
+        return;
+      }
+
+      patchInspectionItem(itemKey, (item) => ({
+        ...item,
+        photos: [...(item.photos || []), photo]
+      }));
+    } catch (error) {
+      setInspectionError(getApiErrorMessage(error, 'Unable to attach this photo right now.'));
+    } finally {
+      setIsUploadingInspectionPhotoKey(null);
+    }
   }
 
   async function submitInspection() {
@@ -2942,13 +3349,20 @@ export default function ManagerVehiclesScreen({ csaWorkspaceVersion = 0, identit
       return;
     }
 
+    const validationError = getInspectionFormValidationError(inspectionForm);
+
+    if (validationError) {
+      setInspectionError(validationError);
+      return;
+    }
+
     setIsSavingInspection(true);
     try {
       await api.post(`/vehicles/${inspectionVehicle.id}/inspections`, {
         inspection_date: inspectionForm.inspection_date,
         odometer: Number(inspectionForm.odometer),
         issue_note: inspectionForm.issue_note || undefined,
-        items: inspectionForm.items
+        items: serializeInspectionItems(inspectionForm.items)
       }, {
         authMode: 'manager'
       });
@@ -3434,9 +3848,16 @@ export default function ManagerVehiclesScreen({ csaWorkspaceVersion = 0, identit
         errorMessage={inspectionError}
         form={inspectionForm}
         isSaving={isSavingInspection}
+        isUploadingPhotoKey={isUploadingInspectionPhotoKey}
+        onAttachPhoto={handleAttachInspectionPhoto}
         onChangeField={updateInspectionField}
+        onChangeIssueDetail={updateInspectionIssueDetail}
+        onChangeNote={updateInspectionItemNote}
+        onChangeSeverity={updateInspectionItemSeverity}
         onChangeStatus={updateInspectionItemStatus}
+        onChangeTruckCleanliness={updateTruckCleanliness}
         onClose={closeInspectionRunner}
+        onRemovePhoto={removeInspectionPhoto}
         onSubmit={submitInspection}
         vehicle={inspectionVehicle}
       />
@@ -4392,15 +4813,20 @@ const styles = StyleSheet.create({
     marginTop: appTheme.spacing.sm
   },
   inspectionChecklistRow: {
-    alignItems: 'center',
+    alignItems: 'stretch',
     backgroundColor: appTheme.colors.surfaceTint,
     borderColor: appTheme.colors.border,
     borderRadius: appTheme.radius.md,
     borderWidth: 1,
-    flexDirection: 'row',
     gap: appTheme.spacing.sm,
     marginBottom: appTheme.spacing.xs,
     padding: appTheme.spacing.md
+  },
+  inspectionChecklistHeader: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: appTheme.spacing.sm,
+    justifyContent: 'space-between'
   },
   inspectionChecklistText: {
     flex: 1,
@@ -4408,7 +4834,19 @@ const styles = StyleSheet.create({
   },
   inspectionStatusActions: {
     flexDirection: 'row',
+    flexShrink: 1,
+    flexWrap: 'wrap',
+    gap: appTheme.spacing.xxs,
+    justifyContent: 'flex-end'
+  },
+  inspectionChipWrap: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
     gap: appTheme.spacing.xxs
+  },
+  inspectionChipWrapFull: {
+    justifyContent: 'flex-start',
+    maxWidth: '100%'
   },
   inspectionStatusButton: {
     alignItems: 'center',
@@ -4428,6 +4866,10 @@ const styles = StyleSheet.create({
     backgroundColor: appTheme.colors.dangerSoft,
     borderColor: '#f5b7b1'
   },
+  inspectionStatusButtonUnsafe: {
+    backgroundColor: appTheme.colors.dangerSoft,
+    borderColor: '#f5b7b1'
+  },
   inspectionStatusButtonText: {
     color: appTheme.colors.textSecondary,
     fontSize: appTheme.typography.caption,
@@ -4438,6 +4880,78 @@ const styles = StyleSheet.create({
   },
   inspectionStatusButtonTextFail: {
     color: appTheme.colors.dangerText
+  },
+  inspectionStatusButtonTextUnsafe: {
+    color: appTheme.colors.dangerText
+  },
+  inspectionIssuePanel: {
+    backgroundColor: appTheme.colors.surface,
+    borderColor: appTheme.colors.orangeBorder,
+    borderRadius: appTheme.radius.md,
+    borderWidth: 1,
+    gap: appTheme.spacing.sm,
+    padding: appTheme.spacing.sm
+  },
+  inspectionIssueGroup: {
+    gap: appTheme.spacing.xxs
+  },
+  inspectionIssueLabel: {
+    color: appTheme.colors.textPrimary,
+    fontSize: appTheme.typography.caption,
+    fontWeight: appTheme.typography.weights.heavy
+  },
+  inspectionItemNoteInput: {
+    backgroundColor: appTheme.colors.surfaceTint,
+    borderColor: appTheme.colors.border,
+    borderRadius: appTheme.radius.md,
+    borderWidth: 1,
+    color: appTheme.colors.textPrimary,
+    fontSize: appTheme.typography.bodySmall,
+    minHeight: 76,
+    paddingHorizontal: appTheme.spacing.md,
+    paddingVertical: appTheme.spacing.sm
+  },
+  inspectionPhotoList: {
+    gap: appTheme.spacing.xxs
+  },
+  inspectionPhotoPill: {
+    alignItems: 'center',
+    backgroundColor: appTheme.colors.infoSoft,
+    borderColor: appTheme.colors.border,
+    borderRadius: appTheme.radius.md,
+    borderWidth: 1,
+    flexDirection: 'row',
+    gap: appTheme.spacing.xs,
+    justifyContent: 'space-between',
+    paddingHorizontal: appTheme.spacing.sm,
+    paddingVertical: appTheme.spacing.xs
+  },
+  inspectionPhotoText: {
+    color: appTheme.colors.textPrimary,
+    flex: 1,
+    fontSize: appTheme.typography.caption,
+    fontWeight: appTheme.typography.weights.bold
+  },
+  inspectionPhotoRemove: {
+    color: appTheme.colors.dangerText,
+    fontSize: appTheme.typography.caption,
+    fontWeight: appTheme.typography.weights.heavy
+  },
+  inspectionPhotoButton: {
+    alignItems: 'center',
+    alignSelf: 'flex-start',
+    backgroundColor: appTheme.colors.orangeSoft,
+    borderColor: appTheme.colors.orangeBorder,
+    borderRadius: appTheme.radius.md,
+    borderWidth: 1,
+    justifyContent: 'center',
+    minHeight: 34,
+    paddingHorizontal: appTheme.spacing.md
+  },
+  inspectionPhotoButtonText: {
+    color: appTheme.colors.orangeDeep,
+    fontSize: appTheme.typography.caption,
+    fontWeight: appTheme.typography.weights.heavy
   },
   historyList: {
     gap: appTheme.spacing.xs
@@ -4550,8 +5064,28 @@ const styles = StyleSheet.create({
     color: appTheme.colors.dangerText
   },
   inspectionPhotoLinks: {
-    gap: 2,
-    marginTop: 2
+    gap: appTheme.spacing.xs,
+    marginTop: appTheme.spacing.xs
+  },
+  inspectionPhotoPreview: {
+    alignItems: 'center',
+    backgroundColor: appTheme.colors.surface,
+    borderColor: appTheme.colors.border,
+    borderRadius: appTheme.radius.md,
+    borderWidth: 1,
+    flexDirection: 'row',
+    gap: appTheme.spacing.sm,
+    padding: appTheme.spacing.xs
+  },
+  inspectionPhotoThumbnail: {
+    backgroundColor: appTheme.colors.surfaceTint,
+    borderRadius: appTheme.radius.sm,
+    height: 72,
+    width: 72
+  },
+  inspectionPhotoPreviewText: {
+    flex: 1,
+    minWidth: 0
   },
   pressed: {
     opacity: 0.86

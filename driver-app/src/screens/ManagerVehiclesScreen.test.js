@@ -1,6 +1,7 @@
 import React from 'react';
 import { fireEvent, render, waitFor } from '@testing-library/react-native';
 import * as Clipboard from 'expo-clipboard';
+import * as ImagePicker from 'expo-image-picker';
 
 import ManagerVehiclesScreen, {
   buildInspectionSummary,
@@ -45,9 +46,19 @@ jest.mock('react-native-safe-area-context', () => {
   };
 });
 
+jest.mock('expo-image-picker', () => ({
+  MediaTypeOptions: {
+    Images: 'Images'
+  },
+  requestMediaLibraryPermissionsAsync: jest.fn(),
+  launchImageLibraryAsync: jest.fn()
+}));
+
 describe('ManagerVehiclesScreen', () => {
   beforeEach(() => {
     jest.resetAllMocks();
+    ImagePicker.requestMediaLibraryPermissionsAsync.mockResolvedValue({ granted: true });
+    ImagePicker.launchImageLibraryAsync.mockResolvedValue({ canceled: true });
   });
 
   it('formats vehicle fields from backend data', () => {
@@ -858,7 +869,36 @@ describe('ManagerVehiclesScreen', () => {
       .mockResolvedValueOnce({ data: { setting: { maintenance_requirement_mode: 'option_1', weekly_inspection_day: 'Monday' } } })
       .mockResolvedValueOnce({ data: { schedule: { weekly_inspection_day: 'Monday', maintenance_warning_miles: 1000, maintenance_warning_days: 14, document_warning_days: 30 } } })
       .mockResolvedValueOnce({ data: { template: { fields: [] } } });
-    api.post.mockResolvedValue({ data: { inspection: { id: 'inspection-1' } } });
+    ImagePicker.launchImageLibraryAsync.mockResolvedValue({
+      canceled: false,
+      assets: [
+        {
+          base64: 'aW1hZ2U=',
+          fileName: 'tire.jpg',
+          mimeType: 'image/jpeg'
+        }
+      ]
+    });
+    api.post.mockImplementation((url) => {
+      if (url === '/vehicles/vehicle-1/inspection-photo') {
+        return Promise.resolve({
+          data: {
+            photo: {
+              url: 'https://cdn.readyroute.test/tire.jpg',
+              storage_bucket: 'vehicle-inspection-photos',
+              storage_path: 'acct-1/vehicle-1/manager-inspection/tires/tire.jpg',
+              caption: null
+            }
+          }
+        });
+      }
+
+      if (url === '/vehicles/vehicle-1/inspections') {
+        return Promise.resolve({ data: { inspection: { id: 'inspection-1' } } });
+      }
+
+      return Promise.reject(new Error(`Unexpected POST ${url}`));
+    });
 
     const screen = render(<ManagerVehiclesScreen />);
 
@@ -875,7 +915,24 @@ describe('ManagerVehiclesScreen', () => {
       expect(screen.getByText('Lights')).toBeTruthy();
     });
 
-    fireEvent.press(screen.getAllByText('Issue')[0]);
+    fireEvent.press(screen.getByLabelText('Mark Tires has an issue'));
+    fireEvent.press(screen.getByText('Back Left'));
+    fireEvent.press(screen.getByText('Low pressure'));
+    fireEvent.press(screen.getByText('Maintenance Soon'));
+    fireEvent.press(screen.getByText('Attach Photo'));
+
+    await waitFor(() => {
+      expect(api.post).toHaveBeenCalledWith('/vehicles/vehicle-1/inspection-photo', expect.objectContaining({
+        checklist_item_key: 'tires',
+        image_base64: 'aW1hZ2U=',
+        mime_type: 'image/jpeg',
+        file_name: 'tire.jpg'
+      }), {
+        authMode: 'manager'
+      });
+      expect(screen.getByText('Photo 1 attached')).toBeTruthy();
+    });
+
     fireEvent.changeText(screen.getByPlaceholderText('Optional notes or issue details'), 'Left rear tire needs review');
     fireEvent.press(screen.getByText('Save Inspection'));
 
@@ -885,7 +942,21 @@ describe('ManagerVehiclesScreen', () => {
         issue_note: 'Left rear tire needs review',
         odometer: 12345,
         items: expect.arrayContaining([
-          expect.objectContaining({ checklist_item_key: 'tires', status: 'fail' })
+          expect.objectContaining({
+            checklist_item_key: 'tires',
+            status: 'issue',
+            severity: 'maintenance_soon',
+            issue_details: expect.objectContaining({
+              positions: ['Back Left'],
+              issue_types: ['Low pressure']
+            }),
+            photos: [
+              expect.objectContaining({
+                storage_bucket: 'vehicle-inspection-photos',
+                storage_path: 'acct-1/vehicle-1/manager-inspection/tires/tire.jpg'
+              })
+            ]
+          })
         ])
       }), {
         authMode: 'manager'
@@ -1047,6 +1118,7 @@ describe('ManagerVehiclesScreen', () => {
       expect(screen.getByText(/Back Right/)).toBeTruthy();
       expect(screen.getByText(/Exposed cord/)).toBeTruthy();
       expect(screen.getByText(/Photo 1/)).toBeTruthy();
+      expect(screen.getByText('Open photo')).toBeTruthy();
     });
 
     fireEvent.press(screen.getByText('Needs Repair'));

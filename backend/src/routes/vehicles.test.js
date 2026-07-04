@@ -863,6 +863,77 @@ test('POST /vehicles/:id/inspections saves a manager inspection and updates mile
   }
 });
 
+test('POST /vehicles/:id/inspection-photo uploads a manager inspection photo', async () => {
+  let uploadedBucket = null;
+  let uploadedPath = null;
+  let uploadedContentType = null;
+
+  const supabase = new MockSupabase((query) => {
+    if (query.table === 'vehicles' && query.operation === 'select') {
+      return {
+        data: {
+          id: 'vehicle-1',
+          account_id: 'acct-1',
+          name: '204526'
+        },
+        error: null
+      };
+    }
+
+    throw new Error(`Unexpected query ${query.table}:${query.operation}:${query.mode}`);
+  });
+  supabase.storage = {
+    from(bucket) {
+      uploadedBucket = bucket;
+      return {
+        async upload(path, buffer, options) {
+          uploadedPath = path;
+          uploadedContentType = options.contentType;
+          assert.ok(Buffer.isBuffer(buffer));
+          assert.equal(buffer.toString(), 'image');
+          return { error: null };
+        },
+        getPublicUrl(path) {
+          return {
+            data: {
+              publicUrl: `https://cdn.readyroute.test/${path}`
+            }
+          };
+        }
+      };
+    }
+  };
+
+  const server = await startTestServer(supabase);
+
+  try {
+    const response = await fetch(`${server.baseUrl}/vehicles/vehicle-1/inspection-photo`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${signManagerToken()}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        checklist_item_key: 'tires',
+        image_base64: Buffer.from('image').toString('base64'),
+        mime_type: 'image/jpeg',
+        file_name: 'tire.jpg'
+      })
+    });
+
+    const body = await response.json();
+    assert.equal(response.status, 201);
+    assert.equal(uploadedBucket, 'vehicle-inspection-photos');
+    assert.match(uploadedPath, /^acct-1\/vehicle-1\/manager-inspection\/tires\/\d+-[a-f0-9]+-tire\.jpg$/);
+    assert.equal(uploadedContentType, 'image/jpeg');
+    assert.equal(body.photo.storage_bucket, 'vehicle-inspection-photos');
+    assert.equal(body.photo.storage_path, uploadedPath);
+    assert.equal(body.photo.url, `https://cdn.readyroute.test/${uploadedPath}`);
+  } finally {
+    await server.close();
+  }
+});
+
 test('GET /vehicles/inspections derives display status from legacy submitted checklist issues', async () => {
   const supabase = new MockSupabase((query) => {
     if (query.table === 'vehicle_inspections' && query.operation === 'select') {
