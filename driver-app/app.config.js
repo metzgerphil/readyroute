@@ -9,7 +9,7 @@ module.exports = {
   expo: {
     name: 'ReadyRoute',
     slug: 'driver-app',
-    version: '1.0.2',
+    version: '1.0.3',
     orientation: 'portrait',
     icon: './assets/readyroute-app-icon.png',
     userInterfaceStyle: 'light',
