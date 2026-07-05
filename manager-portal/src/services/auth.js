@@ -1,4 +1,5 @@
 const MANAGER_TOKEN_KEY = 'readyroute_manager_token';
+const READYROUTE_STAFF_TOKEN_KEY = 'readyroute_staff_token';
 const SELECTED_CSA_ID_KEY = 'readyroute_selected_csa_id';
 const SELECTED_CSA_CONTEXT_KEY = 'readyroute_selected_csa_context';
 
@@ -26,6 +27,10 @@ export function getManagerToken() {
   return getStorageItem(MANAGER_TOKEN_KEY);
 }
 
+export function getReadyRouteStaffToken() {
+  return getStorageItem(READYROUTE_STAFF_TOKEN_KEY);
+}
+
 export function decodeManagerTokenPayload(token) {
   if (!token) {
     return null;
@@ -46,6 +51,15 @@ export function decodeManagerTokenPayload(token) {
 
 export function getManagerTokenPayload() {
   return decodeManagerTokenPayload(getManagerToken());
+}
+
+export function getReadyRouteStaffTokenPayload() {
+  return decodeManagerTokenPayload(getReadyRouteStaffToken());
+}
+
+export function isReadyRouteStaff() {
+  const payload = getReadyRouteStaffTokenPayload();
+  return payload?.role === 'readyroute_staff' && Boolean(payload?.staff_user_id);
 }
 
 export function getManagerAccountId() {
@@ -108,8 +122,16 @@ export function saveManagerToken(token) {
   saveSelectedCsaId(decodeManagerTokenPayload(token)?.account_id || null);
 }
 
+export function saveReadyRouteStaffToken(token) {
+  setStorageItem(READYROUTE_STAFF_TOKEN_KEY, token);
+}
+
 export function clearManagerToken() {
   removeStorageItem(MANAGER_TOKEN_KEY);
   clearSelectedCsaId();
   clearCachedSelectedCsaContext();
+}
+
+export function clearReadyRouteStaffToken() {
+  removeStorageItem(READYROUTE_STAFF_TOKEN_KEY);
 }

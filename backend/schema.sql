@@ -63,6 +63,34 @@ create table if not exists public.manager_users (
   updated_at timestamptz not null default now()
 );
 
+create table if not exists public.readyroute_staff_users (
+  id uuid primary key default gen_random_uuid(),
+  email text not null,
+  full_name text not null,
+  password_hash text,
+  role text not null default 'support',
+  is_active boolean not null default true,
+  invited_by_staff_user_id uuid references public.readyroute_staff_users(id) on delete set null,
+  invited_at timestamptz,
+  accepted_at timestamptz,
+  last_login_at timestamptz,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  constraint readyroute_staff_users_role_check check (role in ('owner', 'admin', 'support', 'read_only'))
+);
+
+create table if not exists public.account_internal_profiles (
+  account_id uuid primary key references public.accounts(id) on delete cascade,
+  lifecycle_status text not null default 'lead',
+  onboarding_stage text,
+  internal_owner_staff_user_id uuid references public.readyroute_staff_users(id) on delete set null,
+  internal_notes text,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  constraint account_internal_profiles_lifecycle_status_check
+    check (lifecycle_status in ('lead', 'trial', 'onboarding', 'active', 'at_risk', 'canceled'))
+);
+
 create table if not exists public.account_link_codes (
   id uuid primary key default gen_random_uuid(),
   account_id uuid not null references public.accounts(id) on delete cascade,
@@ -643,6 +671,73 @@ create table if not exists public.driver_positions (
   is_online boolean not null default true
 );
 
+create table if not exists public.support_tickets (
+  id uuid primary key default gen_random_uuid(),
+  ticket_reference text not null unique,
+  account_id uuid references public.accounts(id) on delete set null,
+  manager_user_id uuid references public.manager_users(id) on delete set null,
+  driver_id uuid references public.drivers(id) on delete set null,
+  requester_type text not null default 'public',
+  requester_name text not null,
+  requester_email text not null,
+  requester_phone text,
+  requester_role text,
+  company_name text,
+  category text not null default 'other',
+  urgency text not null default 'question',
+  priority text not null default 'low',
+  status text not null default 'new',
+  subject text,
+  description text not null,
+  request_call boolean not null default false,
+  source text,
+  app_surface text,
+  app_version text,
+  page_url text,
+  user_agent text,
+  context jsonb,
+  internal_notes text,
+  assigned_staff_user_id uuid references public.readyroute_staff_users(id) on delete set null,
+  resolved_at timestamptz,
+  closed_at timestamptz,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  constraint support_tickets_requester_type_check check (requester_type in ('public', 'manager', 'driver')),
+  constraint support_tickets_category_check check (category in (
+    'login',
+    'routes',
+    'manifest',
+    'driver_app',
+    'manager_portal',
+    'vehicle_inspection',
+    'vehicles',
+    'billing',
+    'maps_location',
+    'onboarding',
+    'bug',
+    'feature_request',
+    'other'
+  )),
+  constraint support_tickets_urgency_check check (urgency in ('blocking_today', 'needs_help_soon', 'question', 'low')),
+  constraint support_tickets_priority_check check (priority in ('low', 'normal', 'high', 'urgent')),
+  constraint support_tickets_status_check check (status in ('new', 'open', 'waiting_on_customer', 'resolved', 'closed'))
+);
+
+create index if not exists support_tickets_account_created_idx
+  on public.support_tickets (account_id, created_at desc);
+
+create index if not exists support_tickets_status_created_idx
+  on public.support_tickets (status, created_at desc);
+
+create index if not exists support_tickets_requester_email_idx
+  on public.support_tickets (requester_email);
+
+alter table public.support_tickets
+  add column if not exists assigned_staff_user_id uuid references public.readyroute_staff_users(id) on delete set null;
+
+create index if not exists support_tickets_assigned_staff_idx
+  on public.support_tickets (assigned_staff_user_id, status, created_at desc);
+
 -- compatibility migrations for existing projects
 alter table public.accounts add column if not exists manager_email text;
 alter table public.accounts add column if not exists manager_password_hash text;
@@ -820,6 +915,9 @@ alter table public.manager_users drop constraint if exists manager_users_email_k
 drop index if exists public.manager_users_email_uidx;
 drop index if exists public.manager_users_lower_email_uidx;
 create unique index if not exists manager_users_account_email_uidx on public.manager_users(account_id, lower(email));
+create unique index if not exists readyroute_staff_users_lower_email_uidx on public.readyroute_staff_users(lower(email));
+create index if not exists readyroute_staff_users_role_idx on public.readyroute_staff_users(role, is_active);
+create index if not exists account_internal_profiles_lifecycle_idx on public.account_internal_profiles(lifecycle_status, updated_at desc);
 create index if not exists account_link_codes_account_id_idx on public.account_link_codes(account_id);
 create index if not exists account_link_codes_expires_at_idx on public.account_link_codes(expires_at desc);
 create index if not exists fedex_accounts_account_id_idx on public.fedex_accounts(account_id);

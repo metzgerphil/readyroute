@@ -19,6 +19,10 @@ const { createSafetyFocusesRouter } = require('./routes/safetyFocuses');
 const { createVedrRouter } = require('./routes/vedr');
 const { createRoutesRouter } = require('./routes/routes');
 const { createInternalSyncRouter } = require('./routes/internalSync');
+const staffRoutes = require('./routes/staff');
+const { createReadyRouteStaffRouter } = require('./routes/staff');
+const supportRoutes = require('./routes/support');
+const { createSupportRouter } = require('./routes/support');
 const waitlistRoutes = require('./routes/waitlist');
 const { createWaitlistRouter } = require('./routes/waitlist');
 
@@ -127,6 +131,21 @@ function createApp(options = {}) {
   const waitlistRouter = options.supabase
     ? createWaitlistRouter({ supabase: options.supabase, sendFeedbackEmail: options.sendFeedbackEmail })
     : waitlistRoutes;
+  const supportRouter = options.supabase || options.jwtSecret
+    ? createSupportRouter({
+        supabase: options.supabase,
+        jwtSecret: options.jwtSecret,
+        now: options.now,
+        sendSupportTicketNotification: options.sendSupportTicketNotification
+      })
+    : supportRoutes;
+  const staffRouter = options.supabase || options.jwtSecret
+    ? createReadyRouteStaffRouter({
+        supabase: options.supabase,
+        jwtSecret: options.jwtSecret,
+        now: options.now
+      })
+    : staffRoutes;
   app.use(
     cors({
       origin(origin, callback) {
@@ -166,6 +185,8 @@ function createApp(options = {}) {
 
   app.use('/auth', authRouter);
   app.use('/waitlist', waitlistRouter);
+  app.use('/support', supportRouter);
+  app.use('/staff', staffRouter);
   app.use('/internal', internalSyncRouter);
   app.use('/manager/property-intel', requireManager, requireActiveSubscription, propertyIntelManagerRouter);
   app.use('/manager', requireManager, requireActiveSubscription, managerRouter);

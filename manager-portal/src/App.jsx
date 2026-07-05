@@ -4,11 +4,13 @@ import { Navigate, Route, Routes, useLocation } from 'react-router-dom';
 import ErrorBoundary from './components/ErrorBoundary';
 import Layout from './components/Layout';
 import { LoadingState } from './components/PortalDesignSystem';
+import StaffLayout from './components/StaffLayout';
 import { SelectedCsaProvider } from './context/SelectedCsaContext';
-import { getManagerToken } from './services/auth';
+import { getManagerToken, getReadyRouteStaffToken } from './services/auth';
 
 const DashboardPage = lazy(() => import('./pages/DashboardPage'));
 const AccessCodesPage = lazy(() => import('./pages/AccessCodesPage'));
+const AdminSupportPage = lazy(() => import('./pages/AdminSupportPage'));
 const BillingPage = lazy(() => import('./pages/BillingPage'));
 const CsaPage = lazy(() => import('./pages/CsaPage'));
 const DebugGoogleMapPage = lazy(() => import('./pages/DebugGoogleMapPage'));
@@ -22,6 +24,9 @@ const ResetPasswordPage = lazy(() => import('./pages/ResetPasswordPage'));
 const RoutePage = lazy(() => import('./pages/RoutePage'));
 const RoutesPage = lazy(() => import('./pages/RoutesPage'));
 const SetupPage = lazy(() => import('./pages/SetupPage'));
+const StaffCompaniesPage = lazy(() => import('./pages/StaffCompaniesPage'));
+const StaffLoginPage = lazy(() => import('./pages/StaffLoginPage'));
+const StaffUsersPage = lazy(() => import('./pages/StaffUsersPage'));
 const TimeCommitsPage = lazy(() => import('./pages/TimeCommitsPage'));
 const StartTrialPage = lazy(() => import('./pages/StartTrialPage'));
 const TrialActivatePage = lazy(() => import('./pages/TrialActivatePage'));
@@ -44,6 +49,17 @@ function RequireAuth({ children }) {
 
   if (!token) {
     return <Navigate replace state={{ from: location.pathname }} to="/login" />;
+  }
+
+  return children;
+}
+
+function RequireStaffAuth({ children }) {
+  const location = useLocation();
+  const token = getReadyRouteStaffToken();
+
+  if (!token) {
+    return <Navigate replace state={{ from: location.pathname }} to="/readyroute/login" />;
   }
 
   return children;
@@ -81,15 +97,42 @@ function ProtectedApp() {
   );
 }
 
+function ReadyRouteStaffApp() {
+  return (
+    <ErrorBoundary>
+      <StaffLayout>
+        <Suspense fallback={<RouteLoadingFallback />}>
+          <Routes>
+            <Route element={<Navigate replace to="/readyroute/support" />} index />
+            <Route element={<AdminSupportPage />} path="support" />
+            <Route element={<StaffCompaniesPage />} path="companies" />
+            <Route element={<StaffUsersPage />} path="staff" />
+          </Routes>
+        </Suspense>
+      </StaffLayout>
+    </ErrorBoundary>
+  );
+}
+
 export default function App() {
   return (
     <ErrorBoundary>
       <Suspense fallback={<RouteLoadingFallback />}>
         <Routes>
           <Route element={<LoginPage />} path="/login" />
+          <Route element={<StaffLoginPage />} path="/readyroute/login" />
+          <Route element={<Navigate replace to="/readyroute/support" />} path="/admin/support" />
           <Route element={<StartTrialPage />} path="/start-trial" />
           <Route element={<TrialActivatePage />} path="/trial/activate" />
           <Route element={<ResetPasswordPage />} path="/reset-password" />
+          <Route
+            element={
+              <RequireStaffAuth>
+                <ReadyRouteStaffApp />
+              </RequireStaffAuth>
+            }
+            path="/readyroute/*"
+          />
           <Route
             element={
               <RequireAuth>

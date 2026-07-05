@@ -61,6 +61,7 @@ export default function MobileNavigationDrawer({
   onManagerCsaSelect,
   onLogout,
   onNavigate,
+  onSupportPress,
   onSwitchMode,
   showModeSwitch
 }) {
@@ -186,6 +187,9 @@ export default function MobileNavigationDrawer({
           </ScrollView>
 
           <View style={[styles.footer, { paddingBottom: Math.max(insets.bottom, 12) }]}>
+            <Pressable onPress={onSupportPress} style={({ pressed }) => [styles.supportButton, pressed ? styles.pressed : null]}>
+              <Text style={styles.supportText}>Support</Text>
+            </Pressable>
             <Pressable onPress={onLogout} style={({ pressed }) => [styles.logoutButton, pressed ? styles.pressed : null]}>
               <Text style={styles.logoutText}>Logout</Text>
             </Pressable>
@@ -443,9 +447,24 @@ const styles = StyleSheet.create({
     color: '#f05a00'
   },
   footer: {
+    gap: 8,
     borderTopColor: '#edf1f5',
     borderTopWidth: 1,
     paddingTop: 12
+  },
+  supportButton: {
+    alignItems: 'center',
+    backgroundColor: '#f7fbff',
+    borderColor: '#cfe0eb',
+    borderRadius: 12,
+    borderWidth: 1,
+    justifyContent: 'center',
+    minHeight: 50
+  },
+  supportText: {
+    color: '#173042',
+    fontSize: 15,
+    fontWeight: '800'
   },
   logoutButton: {
     alignItems: 'center',

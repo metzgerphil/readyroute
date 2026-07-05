@@ -307,8 +307,9 @@ describe('MobileNavigationDrawer', () => {
     expect(onManagerCsaSelect).toHaveBeenCalledWith('csa-pv');
   });
 
-  it('keeps mode switching and logout wired to the existing callbacks', () => {
+  it('keeps mode switching, support, and logout wired to the existing callbacks', () => {
     const onLogout = jest.fn();
+    const onSupportPress = jest.fn();
     const onSwitchMode = jest.fn();
     const screen = renderDrawer({
       activeMode: 'manager',
@@ -322,14 +323,17 @@ describe('MobileNavigationDrawer', () => {
       onClose: jest.fn(),
       onLogout,
       onNavigate: jest.fn(),
+      onSupportPress,
       onSwitchMode,
       showModeSwitch: true
     });
 
     fireEvent.press(screen.getByText('Switch to Driver Mode'));
+    fireEvent.press(screen.getByText('Support'));
     fireEvent.press(screen.getByText('Logout'));
 
     expect(onSwitchMode).toHaveBeenCalledTimes(1);
+    expect(onSupportPress).toHaveBeenCalledTimes(1);
     expect(onLogout).toHaveBeenCalledTimes(1);
   });
 

@@ -5,6 +5,7 @@ import { createStackNavigator } from '@react-navigation/stack';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import MobileNavigationDrawer from '../components/MobileNavigationDrawer';
+import SupportRequestModal from '../components/SupportRequestModal';
 import { usePortalSession } from '../context/PortalSessionContext';
 import api from '../services/api';
 import { saveLastPortalMode, saveSessionTokens } from '../services/auth';
@@ -97,6 +98,7 @@ export default function AppNavigator() {
     sessionTokens
   } = usePortalSession();
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
+  const [isSupportOpen, setIsSupportOpen] = useState(false);
   const [currentRouteName, setCurrentRouteName] = useState(null);
   const [isLoadingManagerCsas, setIsLoadingManagerCsas] = useState(false);
   const [isSwitchingManagerCsa, setIsSwitchingManagerCsa] = useState(false);
@@ -187,6 +189,11 @@ export default function AppNavigator() {
 
   function closeDrawer() {
     setIsDrawerOpen(false);
+  }
+
+  function openSupport() {
+    setIsDrawerOpen(false);
+    setIsSupportOpen(true);
   }
 
   function handleNavigate(screen) {
@@ -548,8 +555,16 @@ export default function AppNavigator() {
             onManagerWorkspaceSwitch={handleManagerWorkspaceSwitch}
             onLogout={logout}
             onNavigate={handleNavigate}
+            onSupportPress={openSupport}
             onSwitchMode={() => handleSelectMode(activeMode === 'manager' ? 'driver' : 'manager')}
             showModeSwitch={availableModes.length > 1 || (activeMode === 'manager' && Boolean(sessionTokens?.managerToken))}
+          />
+          <SupportRequestModal
+            activeMode={activeMode}
+            currentRouteName={currentRouteName}
+            identity={identity}
+            onClose={() => setIsSupportOpen(false)}
+            visible={isSupportOpen}
           />
         </>
       ) : null}

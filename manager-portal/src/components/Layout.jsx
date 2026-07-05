@@ -4,13 +4,14 @@ import { NavLink, useLocation, useNavigate } from 'react-router-dom';
 
 import { VEDR_CONNECTION_STATUSES } from '../config/constants';
 import { useSelectedCsa } from '../context/SelectedCsaContext';
-import { clearManagerToken } from '../services/auth';
+import { clearManagerToken, getManagerTokenPayload } from '../services/auth';
 import api from '../services/api';
 import {
   buildOperationsDatePath,
   getResolvedOperationsDate,
   isOperationsDatePath,
 } from '../utils/operationsDate';
+import SupportRequestModal from './SupportRequestModal';
 
 const navGroups = [
   {
@@ -143,6 +144,7 @@ export default function Layout({ children }) {
   const location = useLocation();
   const navigate = useNavigate();
   const [isSidebarHidden, setIsSidebarHidden] = useState(false);
+  const [isSupportOpen, setIsSupportOpen] = useState(false);
   const {
     csaQuery,
     isSwitchingCsa,
@@ -177,6 +179,12 @@ export default function Layout({ children }) {
     notification.status !== 'read'
   ));
   const currentOperationsDate = getResolvedOperationsDate(location.search);
+  const managerTokenPayload = getManagerTokenPayload() || {};
+  const managerIdentity = {
+    email: managerTokenPayload.manager_email || managerTokenPayload.email || '',
+    name: managerTokenPayload.manager_name || managerTokenPayload.full_name || managerTokenPayload.name || '',
+    role: managerTokenPayload.primary_role || managerTokenPayload.manager_role || 'manager'
+  };
 
   async function handleCsaSwitch(event) {
     const nextAccountId = event.target.value;
@@ -275,6 +283,10 @@ export default function Layout({ children }) {
             <span aria-hidden="true">◂</span>
           </button>
 
+          <button className="sidebar-support-button" onClick={() => setIsSupportOpen(true)} type="button">
+            Support
+          </button>
+
           <button className="logout-button" onClick={handleLogout} type="button">
             Logout
           </button>
@@ -294,6 +306,21 @@ export default function Layout({ children }) {
         ) : null}
         {children}
       </main>
+
+      <SupportRequestModal
+        context={{
+          companyName: selectedCsaName || managerTokenPayload.company_name || '',
+          hash: location.hash,
+          pathname: location.pathname,
+          search: location.search,
+          selectedCsaId,
+          selectedCsaName,
+          tokenCsaId
+        }}
+        isOpen={isSupportOpen}
+        managerIdentity={managerIdentity}
+        onClose={() => setIsSupportOpen(false)}
+      />
     </div>
   );
 }
