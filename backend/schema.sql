@@ -91,6 +91,36 @@ create table if not exists public.account_internal_profiles (
     check (lifecycle_status in ('lead', 'trial', 'onboarding', 'active', 'at_risk', 'canceled'))
 );
 
+create table if not exists public.readyroute_staff_invites (
+  id uuid primary key default gen_random_uuid(),
+  email text not null,
+  full_name text not null,
+  role text not null default 'support',
+  status text not null default 'pending',
+  token_hash text not null unique,
+  invited_by_staff_user_id uuid references public.readyroute_staff_users(id) on delete set null,
+  accepted_by_staff_user_id uuid references public.readyroute_staff_users(id) on delete set null,
+  email_provider_id text,
+  expires_at timestamptz not null,
+  accepted_at timestamptz,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  constraint readyroute_staff_invites_role_check check (role in ('owner', 'admin', 'support', 'read_only')),
+  constraint readyroute_staff_invites_status_check check (status in ('pending', 'accepted', 'expired', 'revoked'))
+);
+
+create table if not exists public.readyroute_staff_audit_log (
+  id uuid primary key default gen_random_uuid(),
+  staff_user_id uuid references public.readyroute_staff_users(id) on delete set null,
+  staff_email text,
+  action text not null,
+  target_type text,
+  target_id text,
+  account_id uuid references public.accounts(id) on delete set null,
+  metadata jsonb not null default '{}'::jsonb,
+  created_at timestamptz not null default now()
+);
+
 create table if not exists public.account_link_codes (
   id uuid primary key default gen_random_uuid(),
   account_id uuid not null references public.accounts(id) on delete cascade,
@@ -383,6 +413,36 @@ create table if not exists public.billing_usage_reports (
   ),
   constraint billing_usage_reports_currency_check check (currency ~ '^[a-z]{3}$'),
   constraint billing_usage_reports_status_check check (status in ('draft', 'reported', 'invoiced', 'void'))
+);
+
+create table if not exists public.account_cost_snapshots (
+  id uuid primary key default gen_random_uuid(),
+  account_id uuid not null references public.accounts(id) on delete cascade,
+  period_month date not null,
+  estimated_revenue_cents integer not null default 0,
+  cloud_run_cents integer not null default 0,
+  database_cents integer not null default 0,
+  storage_cents integer not null default 0,
+  email_cents integer not null default 0,
+  maps_cents integer not null default 0,
+  support_cents integer not null default 0,
+  other_cents integer not null default 0,
+  total_cost_cents integer not null default 0,
+  notes text,
+  created_by_staff_user_id uuid references public.readyroute_staff_users(id) on delete set null,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  constraint account_cost_snapshots_cents_nonnegative check (
+    estimated_revenue_cents >= 0
+    and cloud_run_cents >= 0
+    and database_cents >= 0
+    and storage_cents >= 0
+    and email_cents >= 0
+    and maps_cents >= 0
+    and support_cents >= 0
+    and other_cents >= 0
+    and total_cost_cents >= 0
+  )
 );
 
 create table if not exists public.stripe_webhook_events (
@@ -918,6 +978,13 @@ create unique index if not exists manager_users_account_email_uidx on public.man
 create unique index if not exists readyroute_staff_users_lower_email_uidx on public.readyroute_staff_users(lower(email));
 create index if not exists readyroute_staff_users_role_idx on public.readyroute_staff_users(role, is_active);
 create index if not exists account_internal_profiles_lifecycle_idx on public.account_internal_profiles(lifecycle_status, updated_at desc);
+create unique index if not exists readyroute_staff_invites_pending_email_uidx
+  on public.readyroute_staff_invites(lower(email))
+  where status = 'pending';
+create index if not exists readyroute_staff_invites_status_idx on public.readyroute_staff_invites(status, created_at desc);
+create index if not exists readyroute_staff_audit_log_created_idx on public.readyroute_staff_audit_log(created_at desc);
+create index if not exists readyroute_staff_audit_log_account_idx on public.readyroute_staff_audit_log(account_id, created_at desc);
+create index if not exists readyroute_staff_audit_log_staff_idx on public.readyroute_staff_audit_log(staff_user_id, created_at desc);
 create index if not exists account_link_codes_account_id_idx on public.account_link_codes(account_id);
 create index if not exists account_link_codes_expires_at_idx on public.account_link_codes(expires_at desc);
 create index if not exists fedex_accounts_account_id_idx on public.fedex_accounts(account_id);
@@ -972,6 +1039,8 @@ create unique index if not exists billable_route_months_account_period_route_uid
   on public.billable_route_months(account_id, billing_period_start, route_key);
 create index if not exists billable_route_months_account_period_idx on public.billable_route_months(account_id, billing_period_start);
 create index if not exists billing_usage_reports_account_period_idx on public.billing_usage_reports(account_id, billing_period_start desc);
+create unique index if not exists account_cost_snapshots_account_period_uidx on public.account_cost_snapshots(account_id, period_month);
+create index if not exists account_cost_snapshots_period_idx on public.account_cost_snapshots(period_month desc, account_id);
 create index if not exists stripe_webhook_events_account_idx on public.stripe_webhook_events(account_id, processed_at desc);
 create index if not exists fedex_sync_runs_account_work_date_idx on public.fedex_sync_runs(account_id, work_date desc, created_at desc);
 create index if not exists fedex_sync_runs_status_idx on public.fedex_sync_runs(run_status, created_at desc);
@@ -986,6 +1055,11 @@ create index if not exists driver_positions_account_id_idx on public.driver_posi
 create index if not exists driver_positions_timestamp_idx on public.driver_positions(timestamp);
 
 alter table public.accounts enable row level security;
+alter table public.manager_users enable row level security;
+alter table public.readyroute_staff_users enable row level security;
+alter table public.account_internal_profiles enable row level security;
+alter table public.readyroute_staff_invites enable row level security;
+alter table public.readyroute_staff_audit_log enable row level security;
 alter table public.drivers enable row level security;
 alter table public.vehicles enable row level security;
 alter table public.vehicle_maintenance enable row level security;
@@ -1006,6 +1080,7 @@ alter table public.account_billing_settings enable row level security;
 alter table public.billing_manifest_imports enable row level security;
 alter table public.billable_route_months enable row level security;
 alter table public.billing_usage_reports enable row level security;
+alter table public.account_cost_snapshots enable row level security;
 alter table public.stripe_webhook_events enable row level security;
 alter table public.fedex_sync_runs enable row level security;
 alter table public.timecards enable row level security;

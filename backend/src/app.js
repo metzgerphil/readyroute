@@ -140,10 +140,12 @@ function createApp(options = {}) {
       })
     : supportRoutes;
   const staffRouter = options.supabase || options.jwtSecret
-    ? createReadyRouteStaffRouter({
+      ? createReadyRouteStaffRouter({
         supabase: options.supabase,
         jwtSecret: options.jwtSecret,
-        now: options.now
+        now: options.now,
+        sendReadyRouteStaffInviteEmail: options.sendReadyRouteStaffInviteEmail,
+        sendReadyRouteStaffPasswordResetEmail: options.sendReadyRouteStaffPasswordResetEmail
       })
     : staffRoutes;
   app.use(

@@ -24,8 +24,11 @@ const ResetPasswordPage = lazy(() => import('./pages/ResetPasswordPage'));
 const RoutePage = lazy(() => import('./pages/RoutePage'));
 const RoutesPage = lazy(() => import('./pages/RoutesPage'));
 const SetupPage = lazy(() => import('./pages/SetupPage'));
+const StaffAcceptInvitePage = lazy(() => import('./pages/StaffAcceptInvitePage'));
 const StaffCompaniesPage = lazy(() => import('./pages/StaffCompaniesPage'));
 const StaffLoginPage = lazy(() => import('./pages/StaffLoginPage'));
+const StaffResetPasswordPage = lazy(() => import('./pages/StaffResetPasswordPage'));
+const StaffSettingsPage = lazy(() => import('./pages/StaffSettingsPage'));
 const StaffUsersPage = lazy(() => import('./pages/StaffUsersPage'));
 const TimeCommitsPage = lazy(() => import('./pages/TimeCommitsPage'));
 const StartTrialPage = lazy(() => import('./pages/StartTrialPage'));
@@ -107,6 +110,7 @@ function ReadyRouteStaffApp() {
             <Route element={<AdminSupportPage />} path="support" />
             <Route element={<StaffCompaniesPage />} path="companies" />
             <Route element={<StaffUsersPage />} path="staff" />
+            <Route element={<StaffSettingsPage />} path="settings" />
           </Routes>
         </Suspense>
       </StaffLayout>
@@ -121,6 +125,8 @@ export default function App() {
         <Routes>
           <Route element={<LoginPage />} path="/login" />
           <Route element={<StaffLoginPage />} path="/readyroute/login" />
+          <Route element={<StaffAcceptInvitePage />} path="/readyroute/accept-invite" />
+          <Route element={<StaffResetPasswordPage />} path="/readyroute/reset-password" />
           <Route element={<Navigate replace to="/readyroute/support" />} path="/admin/support" />
           <Route element={<StartTrialPage />} path="/start-trial" />
           <Route element={<TrialActivatePage />} path="/trial/activate" />

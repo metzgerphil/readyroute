@@ -13,6 +13,16 @@ const LIFECYCLE_OPTIONS = [
   { value: 'canceled', label: 'Canceled' }
 ];
 
+const COST_FIELDS = [
+  { key: 'cloud_run', label: 'Cloud Run' },
+  { key: 'database', label: 'Database' },
+  { key: 'storage', label: 'Storage' },
+  { key: 'email', label: 'Email' },
+  { key: 'maps', label: 'Maps' },
+  { key: 'support', label: 'Support' },
+  { key: 'other', label: 'Other' }
+];
+
 function formatDateTime(value) {
   if (!value) {
     return 'Not recorded';
@@ -53,11 +63,70 @@ function getLifecycleTone(status) {
   return 'neutral';
 }
 
+function formatCurrencyFromCents(cents = 0) {
+  return new Intl.NumberFormat(undefined, {
+    style: 'currency',
+    currency: 'USD',
+    maximumFractionDigits: 0
+  }).format(Number(cents || 0) / 100);
+}
+
+function centsToInput(cents = 0) {
+  const dollars = Number(cents || 0) / 100;
+  return dollars ? dollars.toFixed(2) : '';
+}
+
+function inputToCents(value) {
+  const numeric = Number(value);
+  return Number.isFinite(numeric) && numeric > 0 ? Math.round(numeric * 100) : 0;
+}
+
+function getCurrentPeriodMonth() {
+  const now = new Date();
+  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+}
+
+function createEmptyCostForm(periodMonth = getCurrentPeriodMonth(), estimatedRevenueCents = 0) {
+  return {
+    period_month: periodMonth,
+    estimated_revenue: centsToInput(estimatedRevenueCents),
+    cloud_run: '',
+    database: '',
+    storage: '',
+    email: '',
+    maps: '',
+    support: '',
+    other: '',
+    notes: ''
+  };
+}
+
+function snapshotToCostForm(snapshot, fallbackRevenueCents = 0) {
+  if (!snapshot) {
+    return createEmptyCostForm(getCurrentPeriodMonth(), fallbackRevenueCents);
+  }
+
+  return {
+    period_month: String(snapshot.period_month || getCurrentPeriodMonth()).slice(0, 7),
+    estimated_revenue: centsToInput(snapshot.estimated_revenue_cents),
+    cloud_run: centsToInput(snapshot.cloud_run_cents),
+    database: centsToInput(snapshot.database_cents),
+    storage: centsToInput(snapshot.storage_cents),
+    email: centsToInput(snapshot.email_cents),
+    maps: centsToInput(snapshot.maps_cents),
+    support: centsToInput(snapshot.support_cents),
+    other: centsToInput(snapshot.other_cents),
+    notes: snapshot.notes || ''
+  };
+}
+
 export default function StaffCompaniesPage() {
   const queryClient = useQueryClient();
   const [selectedAccountId, setSelectedAccountId] = useState('');
   const [profileDraft, setProfileDraft] = useState(null);
+  const [costDraft, setCostDraft] = useState({ key: '', form: createEmptyCostForm() });
   const [saveMessage, setSaveMessage] = useState('');
+  const [costSaveMessage, setCostSaveMessage] = useState('');
 
   const accountsQuery = useQuery({
     queryKey: ['staff-accounts'],
@@ -75,10 +144,37 @@ export default function StaffCompaniesPage() {
     () => accounts.find((account) => account.id === selectedAccountId) || accounts[0] || null,
     [accounts, selectedAccountId]
   );
-  const selectedProfileDraft = profileDraft?.accountId === selectedAccount?.id ? profileDraft : null;
-  const lifecycleDraft = selectedProfileDraft?.lifecycle_status || selectedAccount?.internal_profile?.lifecycle_status || 'lead';
-  const onboardingDraft = selectedProfileDraft?.onboarding_stage ?? selectedAccount?.internal_profile?.onboarding_stage ?? '';
-  const notesDraft = selectedProfileDraft?.internal_notes ?? selectedAccount?.internal_profile?.internal_notes ?? '';
+
+  const accountDetailQuery = useQuery({
+    queryKey: ['staff-account-detail', selectedAccount?.id],
+    enabled: Boolean(selectedAccount?.id),
+    queryFn: async () => {
+      const response = await api.get(`/staff/accounts/${selectedAccount.id}`);
+      return response.data || null;
+    }
+  });
+
+  const detail = accountDetailQuery.data || {};
+  const detailedAccount = detail.account || selectedAccount;
+  const selectedProfileDraft = profileDraft?.accountId === detailedAccount?.id ? profileDraft : null;
+  const lifecycleDraft = selectedProfileDraft?.lifecycle_status || detailedAccount?.internal_profile?.lifecycle_status || 'lead';
+  const onboardingDraft = selectedProfileDraft?.onboarding_stage ?? detailedAccount?.internal_profile?.onboarding_stage ?? '';
+  const notesDraft = selectedProfileDraft?.internal_notes ?? detailedAccount?.internal_profile?.internal_notes ?? '';
+  const billingSettings = detail.billing_settings || null;
+  const fallbackRevenueCents = billingSettings
+    ? Number(billingSettings.committed_route_count || 0) * Number(billingSettings.billing_rate_cents || 0)
+    : 0;
+  const costSnapshots = useMemo(
+    () => (Array.isArray(detail.cost_snapshots) ? detail.cost_snapshots : []),
+    [detail.cost_snapshots]
+  );
+  const timeline = Array.isArray(detail.timeline) ? detail.timeline : [];
+  const costFormKey = detailedAccount?.id || selectedAccount?.id || '';
+  const defaultCostForm = useMemo(
+    () => snapshotToCostForm(costSnapshots[0], fallbackRevenueCents),
+    [costSnapshots, fallbackRevenueCents]
+  );
+  const costForm = costDraft.key === costFormKey ? costDraft.form : defaultCostForm;
 
   const activeCount = accounts.filter((account) => account.internal_profile?.lifecycle_status === 'active').length;
   const onboardingCount = accounts.filter((account) => ['trial', 'onboarding'].includes(account.internal_profile?.lifecycle_status)).length;
@@ -87,11 +183,11 @@ export default function StaffCompaniesPage() {
 
   const saveProfileMutation = useMutation({
     mutationFn: async () => {
-      if (!selectedAccount?.id) {
+      if (!detailedAccount?.id) {
         throw new Error('Select a company first.');
       }
 
-      const response = await api.patch(`/staff/accounts/${selectedAccount.id}/internal-profile`, {
+      const response = await api.patch(`/staff/accounts/${detailedAccount.id}/internal-profile`, {
         lifecycle_status: lifecycleDraft,
         onboarding_stage: onboardingDraft,
         internal_notes: notesDraft
@@ -110,6 +206,7 @@ export default function StaffCompaniesPage() {
               ))
             : current
         ));
+        queryClient.invalidateQueries({ queryKey: ['staff-account-detail', profile.account_id] });
       }
 
       setProfileDraft(null);
@@ -117,29 +214,88 @@ export default function StaffCompaniesPage() {
     }
   });
 
+  const saveCostMutation = useMutation({
+    mutationFn: async () => {
+      if (!detailedAccount?.id) {
+        throw new Error('Select a company first.');
+      }
+
+      const payload = {
+        period_month: costForm.period_month,
+        estimated_revenue_cents: inputToCents(costForm.estimated_revenue),
+        notes: costForm.notes
+      };
+
+      for (const field of COST_FIELDS) {
+        payload[`${field.key}_cents`] = inputToCents(costForm[field.key]);
+      }
+
+      const response = await api.post(`/staff/accounts/${detailedAccount.id}/cost-snapshots`, payload);
+      return response.data?.cost_snapshot || null;
+    },
+    onSuccess: (snapshot) => {
+      if (snapshot) {
+        queryClient.setQueryData(['staff-account-detail', detailedAccount.id], (current) => {
+          if (!current) {
+            return current;
+          }
+
+          const snapshots = Array.isArray(current.cost_snapshots) ? current.cost_snapshots : [];
+          const nextSnapshots = [
+            snapshot,
+            ...snapshots.filter((item) => item.id !== snapshot.id && item.period_month !== snapshot.period_month)
+          ].sort((left, right) => String(right.period_month).localeCompare(String(left.period_month)));
+
+          return {
+            ...current,
+            cost_snapshots: nextSnapshots
+          };
+        });
+      }
+
+      setCostSaveMessage('Cost snapshot saved.');
+    }
+  });
+
   function updateProfileDraft(patch) {
-    if (!selectedAccount?.id) {
+    if (!detailedAccount?.id) {
       return;
     }
 
     setProfileDraft((current) => {
-      const currentMatchesAccount = current?.accountId === selectedAccount.id;
+      const currentMatchesAccount = current?.accountId === detailedAccount.id;
 
       return {
-        accountId: selectedAccount.id,
-        lifecycle_status: currentMatchesAccount ? current.lifecycle_status : selectedAccount.internal_profile?.lifecycle_status || 'lead',
-        onboarding_stage: currentMatchesAccount ? current.onboarding_stage : selectedAccount.internal_profile?.onboarding_stage || '',
-        internal_notes: currentMatchesAccount ? current.internal_notes : selectedAccount.internal_profile?.internal_notes || '',
+        accountId: detailedAccount.id,
+        lifecycle_status: currentMatchesAccount ? current.lifecycle_status : detailedAccount.internal_profile?.lifecycle_status || 'lead',
+        onboarding_stage: currentMatchesAccount ? current.onboarding_stage : detailedAccount.internal_profile?.onboarding_stage || '',
+        internal_notes: currentMatchesAccount ? current.internal_notes : detailedAccount.internal_profile?.internal_notes || '',
         ...patch
       };
     });
     setSaveMessage('');
   }
 
+  function updateCostField(field, value) {
+    setCostDraft((current) => {
+      const baseForm = current.key === costFormKey ? current.form : costForm;
+
+      return {
+        key: costFormKey,
+        form: {
+          ...baseForm,
+          [field]: value
+        }
+      };
+    });
+    setCostSaveMessage('');
+  }
+
   function handleSelectAccount(accountId) {
     setSelectedAccountId(accountId);
     setProfileDraft(null);
     setSaveMessage('');
+    setCostSaveMessage('');
   }
 
   async function handleSaveProfile(event) {
@@ -153,12 +309,26 @@ export default function StaffCompaniesPage() {
     }
   }
 
+  async function handleSaveCost(event) {
+    event.preventDefault();
+    setCostSaveMessage('');
+
+    try {
+      await saveCostMutation.mutateAsync();
+    } catch {
+      // The mutation state renders the user-facing error.
+    }
+  }
+
+  const totalCostCents = COST_FIELDS.reduce((sum, field) => sum + inputToCents(costForm[field.key]), 0);
+  const estimatedProfitCents = inputToCents(costForm.estimated_revenue) - totalCostCents;
+
   return (
     <section className="staff-page staff-companies-page">
       <PageHeader
         eyebrow="ReadyRoute CRM"
         title="Companies"
-        description="Monitor customer accounts, onboarding state, support pressure, and internal notes."
+        description="Monitor customer accounts, onboarding, support pressure, usage, and internal cost estimates."
         actions={(
           <button className="secondary-inline-button" onClick={() => accountsQuery.refetch()} type="button">
             Refresh
@@ -218,51 +388,52 @@ export default function StaffCompaniesPage() {
             })}
           </aside>
 
-          {selectedAccount ? (
+          {detailedAccount ? (
             <article className="staff-account-detail">
               <header className="staff-account-detail-header">
-                <StatusBadge tone={getLifecycleTone(selectedAccount.internal_profile?.lifecycle_status)}>
-                  {formatLabel(selectedAccount.internal_profile?.lifecycle_status || 'lead')}
+                <StatusBadge tone={getLifecycleTone(detailedAccount.internal_profile?.lifecycle_status)}>
+                  {formatLabel(detailedAccount.internal_profile?.lifecycle_status || 'lead')}
                 </StatusBadge>
-                <h2>{selectedAccount.company_name}</h2>
-                <p>{selectedAccount.manager_email || 'No manager email'} · Created {formatDateTime(selectedAccount.created_at)}</p>
+                <h2>{detailedAccount.company_name}</h2>
+                <p>{detailedAccount.manager_email || 'No manager email'} · Created {formatDateTime(detailedAccount.created_at)}</p>
               </header>
+
+              {accountDetailQuery.isLoading ? (
+                <LoadingState title="Loading company detail" />
+              ) : accountDetailQuery.isError ? (
+                <ErrorState
+                  title="Unable to load company detail"
+                  description="The company summary is visible, but the detail panel could not refresh."
+                  onRetry={() => accountDetailQuery.refetch()}
+                />
+              ) : null}
 
               <div className="staff-account-metrics">
                 <div>
                   <span>Subscription</span>
-                  <strong>{formatLabel(selectedAccount.subscription_status || selectedAccount.plan || 'not set')}</strong>
+                  <strong>{formatLabel(detailedAccount.subscription_status || detailedAccount.plan || 'not set')}</strong>
                 </div>
                 <div>
                   <span>Managers</span>
-                  <strong>{selectedAccount.counts?.active_managers || 0}</strong>
+                  <strong>{detailedAccount.counts?.active_managers || 0}</strong>
                 </div>
                 <div>
                   <span>Drivers</span>
-                  <strong>{selectedAccount.counts?.active_drivers || 0}</strong>
+                  <strong>{detailedAccount.counts?.active_drivers || 0}</strong>
                 </div>
                 <div>
                   <span>Vehicles</span>
-                  <strong>{selectedAccount.vehicle_count || 0}</strong>
+                  <strong>{detailedAccount.vehicle_count || 0}</strong>
                 </div>
                 <div>
                   <span>Open Tickets</span>
-                  <strong>{selectedAccount.counts?.open_support_tickets || 0}</strong>
+                  <strong>{detailedAccount.counts?.open_support_tickets || 0}</strong>
                 </div>
                 <div>
-                  <span>Urgent Tickets</span>
-                  <strong>{selectedAccount.counts?.urgent_support_tickets || 0}</strong>
+                  <span>Committed Routes</span>
+                  <strong>{billingSettings?.committed_route_count ?? 'Not set'}</strong>
                 </div>
               </div>
-
-              {selectedAccount.latest_support_ticket ? (
-                <section className="staff-latest-ticket">
-                  <h3>Latest support signal</h3>
-                  <p>
-                    {selectedAccount.latest_support_ticket.ticket_reference} · {selectedAccount.latest_support_ticket.subject || 'Support request'}
-                  </p>
-                </section>
-              ) : null}
 
               <form className="staff-account-profile-form" onSubmit={handleSaveProfile}>
                 <div className="staff-account-profile-grid">
@@ -307,6 +478,116 @@ export default function StaffCompaniesPage() {
                   </button>
                 </div>
               </form>
+
+              <div className="staff-detail-grid">
+                <section className="staff-detail-panel">
+                  <h3>Cost / Profit Snapshot</h3>
+                  <form className="staff-cost-form" onSubmit={handleSaveCost}>
+                    <label>
+                      Month
+                      <input
+                        onChange={(event) => updateCostField('period_month', event.target.value)}
+                        type="month"
+                        value={costForm.period_month}
+                      />
+                    </label>
+                    <label>
+                      Estimated revenue
+                      <input
+                        inputMode="decimal"
+                        onChange={(event) => updateCostField('estimated_revenue', event.target.value)}
+                        type="number"
+                        value={costForm.estimated_revenue}
+                      />
+                    </label>
+                    {COST_FIELDS.map((field) => (
+                      <label key={field.key}>
+                        {field.label}
+                        <input
+                          inputMode="decimal"
+                          onChange={(event) => updateCostField(field.key, event.target.value)}
+                          type="number"
+                          value={costForm[field.key]}
+                        />
+                      </label>
+                    ))}
+                    <label className="staff-cost-form-notes">
+                      Notes
+                      <textarea
+                        onChange={(event) => updateCostField('notes', event.target.value)}
+                        value={costForm.notes}
+                      />
+                    </label>
+                    <div className="staff-cost-summary">
+                      <span>Cost {formatCurrencyFromCents(totalCostCents)}</span>
+                      <span>Profit {formatCurrencyFromCents(estimatedProfitCents)}</span>
+                    </div>
+                    {saveCostMutation.isError ? (
+                      <div className="error-banner">{saveCostMutation.error?.response?.data?.error || 'Cost snapshot could not be saved.'}</div>
+                    ) : costSaveMessage ? (
+                      <div className="info-banner">{costSaveMessage}</div>
+                    ) : null}
+                    <button className="primary-cta" disabled={saveCostMutation.isPending} type="submit">
+                      {saveCostMutation.isPending ? 'Saving snapshot...' : 'Save Cost Snapshot'}
+                    </button>
+                  </form>
+                </section>
+
+                <section className="staff-detail-panel">
+                  <h3>Timeline</h3>
+                  {timeline.length ? (
+                    <div className="staff-timeline-list">
+                      {timeline.slice(0, 12).map((event) => (
+                        <article className="staff-timeline-row" key={event.id}>
+                          <span>{formatDateTime(event.created_at)}</span>
+                          <strong>{event.title}</strong>
+                          <p>{event.description}</p>
+                        </article>
+                      ))}
+                    </div>
+                  ) : (
+                    <EmptyState
+                      title="No timeline yet"
+                      description="Support, account, cost, and audit activity will appear here."
+                      variant="inline"
+                    />
+                  )}
+                </section>
+
+                <section className="staff-detail-panel">
+                  <h3>Support History</h3>
+                  {detail.support_tickets?.length ? (
+                    <div className="staff-compact-list">
+                      {detail.support_tickets.slice(0, 8).map((ticket) => (
+                        <article key={ticket.id}>
+                          <strong>{ticket.ticket_reference || 'Ticket'} · {formatLabel(ticket.status)}</strong>
+                          <span>{ticket.subject || ticket.description || 'Support request'}</span>
+                        </article>
+                      ))}
+                    </div>
+                  ) : (
+                    <EmptyState title="No support tickets" description="Support history will appear here." variant="inline" />
+                  )}
+                </section>
+
+                <section className="staff-detail-panel">
+                  <h3>Usage Signals</h3>
+                  <div className="staff-compact-list">
+                    <article>
+                      <strong>{detail.billing_routes?.length || 0} billable route records</strong>
+                      <span>Recent route billing ledger entries</span>
+                    </article>
+                    <article>
+                      <strong>{detail.routes?.length || 0} recent routes</strong>
+                      <span>Imported or active route records</span>
+                    </article>
+                    <article>
+                      <strong>{detail.drivers?.length || 0} drivers · {detail.managers?.length || 0} managers</strong>
+                      <span>Current account user footprint</span>
+                    </article>
+                  </div>
+                </section>
+              </div>
             </article>
           ) : null}
         </div>

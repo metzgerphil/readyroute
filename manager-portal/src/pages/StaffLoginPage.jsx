@@ -10,7 +10,17 @@ export default function StaffLoginPage() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [errorMessage, setErrorMessage] = useState('');
+  const [infoMessage, setInfoMessage] = useState(
+    new URLSearchParams(location.search).get('reset') === 'success'
+      ? 'Password reset. Sign in with your new staff password.'
+      : ''
+  );
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [showResetForm, setShowResetForm] = useState(false);
+  const [resetEmail, setResetEmail] = useState('');
+  const [resetMessage, setResetMessage] = useState('');
+  const [resetErrorMessage, setResetErrorMessage] = useState('');
+  const [isRequestingReset, setIsRequestingReset] = useState(false);
   const destination = location.state?.from || '/readyroute/support';
 
   async function handleSubmit(event) {
@@ -32,6 +42,29 @@ export default function StaffLoginPage() {
       }
     } finally {
       setIsSubmitting(false);
+    }
+  }
+
+  async function handleResetRequest(event) {
+    event.preventDefault();
+    setResetMessage('');
+    setResetErrorMessage('');
+    setInfoMessage('');
+    setIsRequestingReset(true);
+
+    try {
+      const response = await api.post('/staff/request-password-reset', {
+        email: resetEmail
+      });
+      setResetMessage(response.data?.message || 'Check your email for reset instructions.');
+    } catch (error) {
+      if (!error.response) {
+        setResetErrorMessage('ReadyRoute is temporarily unavailable. Please try again.');
+      } else {
+        setResetErrorMessage(error.response?.data?.error || 'Could not send reset instructions.');
+      }
+    } finally {
+      setIsRequestingReset(false);
     }
   }
 
@@ -74,12 +107,52 @@ export default function StaffLoginPage() {
               value={password}
             />
 
+            {infoMessage ? <div className="info-banner">{infoMessage}</div> : null}
             {errorMessage ? <div className="error-banner">{errorMessage}</div> : null}
 
-            <button className="primary-cta" disabled={isSubmitting} type="submit">
-              {isSubmitting ? 'Signing in...' : 'Sign In'}
-            </button>
+            <div className="login-action-row">
+              <button className="primary-cta" disabled={isSubmitting} type="submit">
+                {isSubmitting ? 'Signing in...' : 'Sign In'}
+              </button>
+
+              <button
+                className="secondary-button"
+                onClick={() => {
+                  setShowResetForm(true);
+                  setResetMessage('');
+                  setResetErrorMessage('');
+                  setResetEmail(email);
+                }}
+                type="button"
+              >
+                Forgot password?
+              </button>
+            </div>
           </form>
+
+          {showResetForm ? (
+            <div className="login-helper-card">
+              <div>
+                <div className="login-helper-title">Reset staff password</div>
+                <p className="login-helper-copy">Enter your ReadyRoute staff email and we&apos;ll send reset instructions.</p>
+              </div>
+              <form className="login-helper-form" onSubmit={handleResetRequest}>
+                <label className="field-label" htmlFor="staff-reset-email">Staff email</label>
+                <input
+                  className="text-field"
+                  id="staff-reset-email"
+                  onChange={(event) => setResetEmail(event.target.value)}
+                  type="email"
+                  value={resetEmail}
+                />
+                {resetMessage ? <div className="info-banner">Check your email for reset instructions.</div> : null}
+                {resetErrorMessage ? <div className="error-banner">{resetErrorMessage}</div> : null}
+                <button className="secondary-button" disabled={isRequestingReset} type="submit">
+                  {isRequestingReset ? 'Sending reset link...' : 'Send reset link'}
+                </button>
+              </form>
+            </div>
+          ) : null}
 
           <div className="login-secondary-links">
             <a href="/login">Manager portal</a>

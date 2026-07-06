@@ -1155,7 +1155,8 @@ button {
 .staff-account-profile-form select,
 .staff-account-profile-form textarea,
 .staff-user-form input,
-.staff-user-form select {
+.staff-user-form select,
+.staff-user-form textarea {
   width: 100%;
   border: 1px solid var(--rr-color-border);
   border-radius: 12px;
@@ -1170,9 +1171,126 @@ button {
   resize: vertical;
 }
 
+.staff-user-form textarea {
+  min-height: 76px;
+  resize: vertical;
+}
+
 .staff-account-profile-actions {
   justify-content: flex-end;
   flex-wrap: wrap;
+}
+
+.staff-detail-grid {
+  display: grid;
+  gap: 14px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  margin-top: 18px;
+}
+
+.staff-detail-panel {
+  background: var(--rr-color-surface);
+  border: 1px solid var(--rr-color-border);
+  border-radius: var(--rr-radius-lg);
+  display: grid;
+  gap: 12px;
+  padding: 16px;
+}
+
+.staff-detail-panel h3 {
+  color: var(--rr-color-text-strong);
+  font-size: 1rem;
+  font-weight: 950;
+  margin: 0;
+}
+
+.staff-cost-form {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.staff-cost-form label {
+  color: var(--rr-color-text-strong);
+  display: grid;
+  font-size: 0.88rem;
+  font-weight: 850;
+  gap: 7px;
+}
+
+.staff-cost-form input,
+.staff-cost-form textarea {
+  background: var(--rr-color-surface-muted);
+  border: 1px solid var(--rr-color-border);
+  border-radius: var(--rr-radius-sm);
+  color: var(--rr-color-text-strong);
+  font: inherit;
+  min-width: 0;
+  padding: 10px 11px;
+}
+
+.staff-cost-form-notes,
+.staff-cost-summary,
+.staff-cost-form .error-banner,
+.staff-cost-form .info-banner,
+.staff-cost-form .primary-cta {
+  grid-column: 1 / -1;
+}
+
+.staff-cost-form-notes textarea {
+  min-height: 72px;
+  resize: vertical;
+}
+
+.staff-cost-summary {
+  align-items: center;
+  background: var(--rr-color-surface-muted);
+  border: 1px solid var(--rr-color-border);
+  border-radius: var(--rr-radius-md);
+  color: var(--rr-color-text-strong);
+  display: flex;
+  flex-wrap: wrap;
+  font-weight: 950;
+  gap: 10px;
+  justify-content: space-between;
+  padding: 11px 12px;
+}
+
+.staff-timeline-list,
+.staff-compact-list {
+  display: grid;
+  gap: 10px;
+}
+
+.staff-timeline-row,
+.staff-compact-list article {
+  background: var(--rr-color-surface-muted);
+  border: 1px solid var(--rr-color-border);
+  border-radius: var(--rr-radius-md);
+  display: grid;
+  gap: 4px;
+  padding: 12px;
+}
+
+.staff-timeline-row span,
+.staff-compact-list span {
+  color: var(--rr-color-text-muted);
+  font-size: 0.84rem;
+  font-weight: 720;
+}
+
+.staff-timeline-row strong,
+.staff-compact-list strong {
+  color: var(--rr-color-text-strong);
+  font-weight: 950;
+}
+
+.staff-timeline-row p {
+  color: var(--rr-color-text-muted);
+  font-size: 0.9rem;
+  font-weight: 680;
+  line-height: 1.45;
+  margin: 0;
 }
 
 .staff-user-row {
@@ -1201,6 +1319,14 @@ button {
   font-size: 0.86rem;
   font-weight: 720;
   overflow-wrap: anywhere;
+}
+
+.staff-settings-summary {
+  color: var(--rr-color-text-muted);
+  font-size: 0.94rem;
+  font-weight: 720;
+  line-height: 1.5;
+  margin: -4px 0 18px;
 }
 
 .staff-user-row-badges {
@@ -10612,6 +10738,7 @@ button.manifest-attention-chip {
   }
 
   .staff-crm-layout,
+  .staff-detail-grid,
   .staff-users-layout {
     grid-template-columns: 1fr;
   }
@@ -10849,6 +10976,8 @@ button.manifest-attention-chip {
   .admin-support-stat-grid,
   .staff-account-metrics,
   .staff-account-profile-grid,
+  .staff-cost-form,
+  .staff-detail-grid,
   .staff-stat-grid,
   .support-ticket-editor-grid,
   .support-ticket-meta-grid,

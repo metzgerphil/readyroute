@@ -5,7 +5,8 @@ import { clearReadyRouteStaffToken, getReadyRouteStaffTokenPayload } from '../se
 const staffNavLinks = [
   { to: '/readyroute/support', label: 'Support Desk' },
   { to: '/readyroute/companies', label: 'Companies' },
-  { to: '/readyroute/staff', label: 'Staff Users' }
+  { to: '/readyroute/staff', label: 'Staff Users' },
+  { to: '/readyroute/settings', label: 'Settings' }
 ];
 
 export default function StaffLayout({ children }) {
