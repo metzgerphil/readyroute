@@ -173,7 +173,7 @@ describe('ManagerOverviewScreen', () => {
                 address: '100 Main St',
                 contact_name: 'Acme Receiving',
                 status: 'delivered',
-                packages: [{ id: 'pkg-1', requires_signature: true }]
+                packages: [{ id: 'pkg-1' }]
               },
               {
                 id: 'stop-2',
@@ -182,7 +182,7 @@ describe('ManagerOverviewScreen', () => {
                 contact_name: 'Warehouse',
                 status: 'pending',
                 has_time_commit: true,
-                packages: [{ id: 'pkg-2', requires_signature: false }]
+                packages: [{ id: 'pkg-2' }]
               }
             ]
           }

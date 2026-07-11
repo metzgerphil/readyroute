@@ -10585,13 +10585,18 @@ button.manifest-attention-chip {
 
 .inspection-runner-item {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
   gap: 12px;
-  align-items: center;
   padding: 12px;
   border: 1px solid var(--rr-color-border);
   border-radius: var(--rr-radius-sm);
   background: #ffffff;
+}
+
+.inspection-runner-item-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
 }
 
 .inspection-runner-item.fail {
@@ -10641,6 +10646,104 @@ button.manifest-attention-chip {
   border-color: #fecaca;
   background: #fff1f2;
   color: #991b1b;
+}
+
+.inspection-runner-issue-panel {
+  display: grid;
+  gap: 14px;
+  padding-top: 14px;
+  border-top: 1px solid #fecaca;
+}
+
+.inspection-runner-issue-group {
+  display: grid;
+  gap: 8px;
+}
+
+.inspection-runner-chip-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.inspection-runner-chip {
+  min-height: 36px;
+  padding: 7px 12px;
+  border: 1px solid var(--rr-color-border-strong);
+  border-radius: 999px;
+  background: #ffffff;
+  color: var(--rr-color-text-muted);
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.82rem;
+  font-weight: 900;
+}
+
+.inspection-runner-chip.selected {
+  border-color: #ffb77d;
+  background: #fff1e6;
+  color: #b95000;
+}
+
+.inspection-runner-chip.selected.unsafe {
+  border-color: #fca5a5;
+  background: #fff1f2;
+  color: #991b1b;
+}
+
+.inspection-runner-photo-list {
+  display: grid;
+  gap: 6px;
+}
+
+.inspection-runner-photo {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 10px;
+  border: 1px solid var(--rr-color-border);
+  border-radius: var(--rr-radius-sm);
+  background: #ffffff;
+}
+
+.inspection-runner-photo button {
+  border: 0;
+  background: transparent;
+  color: #991b1b;
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.8rem;
+  font-weight: 900;
+}
+
+.inspection-runner-photo-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  justify-self: start;
+  min-height: 38px;
+  padding: 0 14px;
+  border: 1px solid #ffb77d;
+  border-radius: var(--rr-radius-sm);
+  background: #fff7ed;
+  color: #b95000;
+  cursor: pointer;
+  font-size: 0.84rem;
+  font-weight: 950;
+}
+
+.inspection-runner-photo-button.disabled {
+  cursor: wait;
+  opacity: 0.62;
+}
+
+.inspection-runner-photo-button input {
+  display: none;
+}
+
+.inspection-runner-item-notes {
+  min-height: 84px;
 }
 
 .inspection-detail-summary {

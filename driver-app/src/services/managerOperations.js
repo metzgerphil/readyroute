@@ -416,10 +416,6 @@ export function getDriverInitials(name) {
   return compact.slice(0, 2).toUpperCase() || '--';
 }
 
-function stopRequiresSignature(stop) {
-  return (stop?.packages || []).some((pkg) => pkg?.requires_signature || pkg?.requires_adult_signature);
-}
-
 export function buildStopMarkers(route, { routeColor = null } = {}) {
   return (route?.stops || [])
     .map((stop) => {
@@ -437,7 +433,6 @@ export function buildStopMarkers(route, { routeColor = null } = {}) {
         status: stop.status || 'pending',
         routeColor: routeColor || getRouteColor(route),
         hasException: Boolean(stop.exception_code) || ['attempted', 'incomplete', 'pickup_attempted'].includes(stop.status),
-        requiresSignature: stopRequiresSignature(stop),
         address: stop.address || 'Stop'
       };
     })

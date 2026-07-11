@@ -41,7 +41,6 @@ function canRetryPackageInsertWithoutDetailColumns(error) {
   const message = String(error?.message || error?.details || error?.hint || '');
   return (
     /service_code/i.test(message) ||
-    /requires_adult_signature/i.test(message) ||
     /schema cache/i.test(message) ||
     /column .* does not exist/i.test(message) ||
     /could not find the .*column/i.test(message)
@@ -49,7 +48,7 @@ function canRetryPackageInsertWithoutDetailColumns(error) {
 }
 
 function stripOptionalPackageDetailColumns(packageRows = []) {
-  return (packageRows || []).map(({ service_code, requires_adult_signature, ...row }) => row);
+  return (packageRows || []).map(({ service_code, ...row }) => row);
 }
 
 function getManifestUploadError(error, { workAreaName, date }) {
@@ -442,8 +441,6 @@ function mergePackageDetails(primaryPackages = [], fallbackPackages = []) {
     merged.push({
       tracking_number: trackingNumber,
       service_code: pkg.service_code || null,
-      requires_signature: Boolean(pkg.requires_signature),
-      requires_adult_signature: Boolean(pkg.requires_adult_signature),
       hazmat: Boolean(pkg.hazmat)
     });
   }
@@ -873,11 +870,7 @@ function buildStopInsertPayload({ routeId, routeStops, existingRoute, preservedS
         status: preservedState?.status || 'pending',
         exception_code: preservedState?.exception_code || null,
         delivery_type_code: preservedState?.delivery_type_code || null,
-        signer_name: preservedState?.signer_name || null,
-        signature_url: preservedState?.signature_url || null,
-        age_confirmed: preservedState?.age_confirmed || false,
         pod_photo_url: preservedState?.pod_photo_url || null,
-        pod_signature_url: preservedState?.pod_signature_url || null,
         scanned_at: preservedState?.scanned_at || null,
         completed_at: preservedState?.completed_at || null,
         has_note: Boolean(stop.warning || preservedState?.has_note),
@@ -899,8 +892,6 @@ function buildPackageRowsForStops({ routeId, routeStops, stopIdBySequence = null
         ...(stopId ? { stop_id: stopId } : { route_stop_sequence: stop.sequence }),
         tracking_number: String(pkg.tracking_number || '').trim(),
         service_code: pkg.service_code || null,
-        requires_signature: Boolean(pkg.requires_signature),
-        requires_adult_signature: Boolean(pkg.requires_adult_signature),
         hazmat: Boolean(pkg.hazmat)
       }));
     }
@@ -914,8 +905,6 @@ function buildPackageRowsForStops({ routeId, routeStops, stopIdBySequence = null
       ...(stopId ? { stop_id: stopId } : { route_stop_sequence: stop.sequence }),
       tracking_number: `${packageKeyBase}-${index + 1}`,
       service_code: null,
-      requires_signature: false,
-      requires_adult_signature: false,
       hazmat: false
     }));
   }));
@@ -1100,11 +1089,7 @@ function buildExistingStopStateMap(existingStops = []) {
         status: stop.status || 'pending',
         exception_code: stop.exception_code || null,
         delivery_type_code: stop.delivery_type_code || null,
-        signer_name: stop.signer_name || null,
-        signature_url: stop.signature_url || null,
-        age_confirmed: stop.age_confirmed || false,
         pod_photo_url: stop.pod_photo_url || null,
-        pod_signature_url: stop.pod_signature_url || null,
         scanned_at: stop.scanned_at || null,
         completed_at: stop.completed_at || null,
         has_note: Boolean(stop.has_note),
@@ -1407,7 +1392,7 @@ function createManifestIngestService(options = {}) {
       const { data: existingStops, error: existingStopsError } = await supabase
         .from('stops')
         .select(
-          'id, sequence_order, address, address_line2, contact_name, business_name, company_name, primary_phone, alternate_phone, email, customer_instructions, delivery_instructions, consignee, shipper, contact_source, contact_last_imported_at, raw_contact_metadata, lat, lng, status, exception_code, delivery_type_code, signer_name, signature_url, age_confirmed, is_pickup, is_business, has_note, notes, sid, ready_time, close_time, has_time_commit, stop_type, has_pickup, has_delivery, geocode_source, geocode_accuracy, pod_photo_url, pod_signature_url, scanned_at, completed_at'
+          'id, sequence_order, address, address_line2, contact_name, business_name, company_name, primary_phone, alternate_phone, email, customer_instructions, delivery_instructions, consignee, shipper, contact_source, contact_last_imported_at, raw_contact_metadata, lat, lng, status, exception_code, delivery_type_code, is_pickup, is_business, has_note, notes, sid, ready_time, close_time, has_time_commit, stop_type, has_pickup, has_delivery, geocode_source, geocode_accuracy, pod_photo_url, scanned_at, completed_at'
         )
         .eq('route_id', existingRoute.id)
         .order('sequence_order');

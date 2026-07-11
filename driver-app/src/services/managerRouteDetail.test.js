@@ -14,14 +14,14 @@ describe('managerRouteDetail helpers', () => {
         status: 'pending',
         has_time_commit: true,
         has_note: true,
-        packages: [{ id: 'pkg-1', requires_signature: true }]
+        packages: [{ id: 'pkg-1' }]
       },
       {
         id: 'stop-2',
         status: 'delivered',
         completed_at: '2026-04-23T16:00:00.000Z',
         exception_code: '07',
-        packages: [{ id: 'pkg-2', requires_signature: false }, { id: 'pkg-3', requires_signature: false }]
+        packages: [{ id: 'pkg-2' }, { id: 'pkg-3' }]
       }
     ];
 
@@ -34,7 +34,7 @@ describe('managerRouteDetail helpers', () => {
       notedStops: 1,
       pendingTimeCommits: 1
     });
-    expect(getStopIndicatorLabels(stops[0])).toEqual(expect.arrayContaining(['Time commit', 'Note', 'Signature']));
+    expect(getStopIndicatorLabels(stops[0])).toEqual(expect.arrayContaining(['Time commit', 'Note']));
     expect(getStopIndicatorLabels(stops[1])).toEqual(expect.arrayContaining(['Code 07']));
   });
 
@@ -65,7 +65,7 @@ describe('managerRouteDetail helpers', () => {
           lat: 33.11,
           lng: -117.09,
           status: 'pending',
-          packages: [{ id: 'pkg-1', requires_signature: true }]
+          packages: [{ id: 'pkg-1' }]
         }
       ]
     });
@@ -74,7 +74,6 @@ describe('managerRouteDetail helpers', () => {
     expect(model.driverMarker.driverName).toBe('Luis');
     expect(model.stopMarkers).toHaveLength(1);
     expect(model.stopMarkers[0].stopId).toBe('route-stop-1');
-    expect(model.stopMarkers[0].requiresSignature).toBe(true);
     expect(model.region.latitude).toBeCloseTo(33.115, 2);
   });
 });

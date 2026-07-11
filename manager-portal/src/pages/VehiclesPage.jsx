@@ -6,6 +6,14 @@ import { Link, useSearchParams } from 'react-router-dom';
 import api from '../services/api';
 import { EmptyState, ErrorState, LoadingState, PageHeader, StatCard, StatusBadge } from '../components/PortalDesignSystem';
 import { useSelectedCsa } from '../context/SelectedCsaContext';
+import {
+  INSPECTION_SEVERITY_OPTIONS,
+  createInspectionChecklistItem,
+  getInspectionFormValidationError,
+  getInspectionItemDefinition,
+  normalizeInspectionItemKey,
+  serializeInspectionItems
+} from '../utils/vehicleInspection';
 
 const emptyVehicleForm = {
   name: '',
@@ -323,12 +331,7 @@ function getInspectionForm(vehicle, template) {
       ? ''
       : String(vehicle.current_mileage),
     issue_note: '',
-    items: getInspectionChecklistFields(template).map((field) => ({
-      checklist_item_key: field.id,
-      label: field.label,
-      status: 'pass',
-      note: ''
-    }))
+    items: getInspectionChecklistFields(template).map((field) => createInspectionChecklistItem(field))
   };
 }
 
@@ -1734,16 +1737,23 @@ function InspectionRunnerModal({
   form,
   errorMessage,
   isSubmitting,
+  uploadingPhotoKey,
+  onAttachPhoto,
   onChange,
+  onChangeIssueDetail,
+  onChangeNote,
+  onChangeSeverity,
   onChangeStatus,
+  onChangeTruckCleanliness,
   onClose,
+  onRemovePhoto,
   onSubmit
 }) {
   if (!vehicle) {
     return null;
   }
 
-  const failedCount = (form.items || []).filter((item) => item.status === 'fail').length;
+  const failedCount = (form.items || []).filter((item) => item.status === 'issue').length;
 
   return (
     <div className="modal-backdrop">
@@ -1797,30 +1807,146 @@ function InspectionRunnerModal({
 
           {(form.items || []).length ? (
             <div className="inspection-runner-checklist">
-              {form.items.map((item) => (
-                <div className={`inspection-runner-item ${item.status === 'fail' ? 'fail' : ''}`} key={item.checklist_item_key}>
-                  <div>
-                    <strong>{item.label}</strong>
-                    <span>{item.status === 'fail' ? 'Issue marked' : 'Passed'}</span>
+              {form.items.map((item) => {
+                const definition = getInspectionItemDefinition(item);
+                const isIssue = item.status === 'issue';
+                const cleanlinessCondition = item.status === 'pass'
+                  ? 'clean'
+                  : normalizeInspectionItemKey(item.issue_details?.condition);
+
+                return (
+                  <div className={`inspection-runner-item ${isIssue ? 'fail' : ''}`} key={item.checklist_item_key}>
+                    <div className="inspection-runner-item-header">
+                      <div>
+                        <strong>{item.label}</strong>
+                        <span>{isIssue ? 'Issue marked' : 'Passed'}</span>
+                      </div>
+                      <div className="inspection-runner-status-actions">
+                        {item.checklist_item_key === 'truck_cleanliness'
+                          ? definition.conditionOptions.map((option) => (
+                              <button
+                                className={cleanlinessCondition === option.value ? `selected ${option.status === 'pass' ? 'pass' : 'fail'}` : ''}
+                                key={option.value}
+                                onClick={() => onChangeTruckCleanliness(item.checklist_item_key, option.value)}
+                                type="button"
+                              >
+                                {option.label}
+                              </button>
+                            ))
+                          : (
+                              <>
+                                <button
+                                  className={item.status === 'pass' ? 'selected pass' : ''}
+                                  onClick={() => onChangeStatus(item.checklist_item_key, 'pass')}
+                                  type="button"
+                                >
+                                  Pass
+                                </button>
+                                <button
+                                  className={isIssue ? 'selected fail' : ''}
+                                  onClick={() => onChangeStatus(item.checklist_item_key, 'issue')}
+                                  type="button"
+                                >
+                                  Issue
+                                </button>
+                              </>
+                            )}
+                      </div>
+                    </div>
+
+                    {isIssue ? (
+                      <div className="inspection-runner-issue-panel">
+                        {(definition.issueFields || []).map((field) => {
+                          const currentValue = item.issue_details?.[field.key];
+                          return (
+                            <div className="inspection-runner-issue-group" key={field.key}>
+                              <span className="field-label">{field.label}</span>
+                              <div className="inspection-runner-chip-list">
+                                {field.options.map((option) => {
+                                  const selected = field.type === 'multi'
+                                    ? Array.isArray(currentValue) && currentValue.includes(option)
+                                    : currentValue === option;
+                                  return (
+                                    <button
+                                      className={`inspection-runner-chip ${selected ? 'selected' : ''}`}
+                                      key={option}
+                                      onClick={() => onChangeIssueDetail(item.checklist_item_key, field, option)}
+                                      type="button"
+                                    >
+                                      {option}
+                                    </button>
+                                  );
+                                })}
+                              </div>
+                            </div>
+                          );
+                        })}
+
+                        {definition.hideSeveritySelector ? null : (
+                          <div className="inspection-runner-issue-group">
+                            <span className="field-label">Severity</span>
+                            <div className="inspection-runner-chip-list">
+                              {INSPECTION_SEVERITY_OPTIONS.map((option) => (
+                                <button
+                                  className={`inspection-runner-chip ${item.severity === option.value ? 'selected' : ''} ${option.value === 'unsafe' ? 'unsafe' : ''}`}
+                                  key={option.value}
+                                  onClick={() => onChangeSeverity(item.checklist_item_key, option.value)}
+                                  type="button"
+                                >
+                                  {option.label}
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+
+                        <div className="inspection-runner-issue-group">
+                          <span className="field-label">Photo</span>
+                          {(item.photos || []).length ? (
+                            <div className="inspection-runner-photo-list">
+                              {item.photos.map((photo, index) => (
+                                <div className="inspection-runner-photo" key={photo.storage_path || `${item.checklist_item_key}-${index}`}>
+                                  <span>Photo {index + 1} attached</span>
+                                  <button onClick={() => onRemovePhoto(item.checklist_item_key, index)} type="button">Remove</button>
+                                </div>
+                              ))}
+                            </div>
+                          ) : null}
+                          <label className={`inspection-runner-photo-button ${uploadingPhotoKey === item.checklist_item_key ? 'disabled' : ''}`}>
+                            {uploadingPhotoKey === item.checklist_item_key
+                              ? 'Uploading...'
+                              : (item.photos || []).length
+                                ? 'Add Another Photo'
+                                : 'Attach Photo'}
+                            <input
+                              accept="image/*"
+                              disabled={uploadingPhotoKey === item.checklist_item_key}
+                              onChange={(event) => {
+                                const file = event.target.files?.[0] || null;
+                                event.target.value = '';
+                                if (file) {
+                                  onAttachPhoto(item.checklist_item_key, file);
+                                }
+                              }}
+                              type="file"
+                            />
+                          </label>
+                        </div>
+
+                        <label>
+                          <span className="field-label">Optional notes</span>
+                          <textarea
+                            className="text-field inspection-runner-item-notes"
+                            onChange={(event) => onChangeNote(item.checklist_item_key, event.target.value)}
+                            placeholder="Add details for this issue"
+                            value={item.note || ''}
+                          />
+                        </label>
+                      </div>
+                    ) : null}
                   </div>
-                  <div className="inspection-runner-status-actions">
-                    <button
-                      className={item.status === 'pass' ? 'selected pass' : ''}
-                      onClick={() => onChangeStatus(item.checklist_item_key, 'pass')}
-                      type="button"
-                    >
-                      Pass
-                    </button>
-                    <button
-                      className={item.status === 'fail' ? 'selected fail' : ''}
-                      onClick={() => onChangeStatus(item.checklist_item_key, 'fail')}
-                      type="button"
-                    >
-                      Issue
-                    </button>
-                  </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           ) : (
             <div className="driver-meta">No inspection checklist items are enabled.</div>
@@ -3256,6 +3382,7 @@ export default function VehiclesPage() {
   const [maintenanceError, setMaintenanceError] = useState('');
   const [inspectionRunnerForm, setInspectionRunnerForm] = useState(getInspectionForm(null, null));
   const [inspectionRunnerError, setInspectionRunnerError] = useState('');
+  const [inspectionRunnerUploadingPhotoKey, setInspectionRunnerUploadingPhotoKey] = useState(null);
 
   const maintenanceSettingsQuery = useQuery({
     queryKey: ['vehicle-maintenance-settings', selectedCsaId],
@@ -3486,7 +3613,7 @@ export default function VehiclesPage() {
         inspection_date: inspectionRunnerForm.inspection_date,
         odometer: Number(inspectionRunnerForm.odometer),
         issue_note: inspectionRunnerForm.issue_note || undefined,
-        items: inspectionRunnerForm.items
+        items: serializeInspectionItems(inspectionRunnerForm.items)
       });
       return response.data?.inspection;
     },
@@ -3495,6 +3622,7 @@ export default function VehiclesPage() {
       setInspectionRunnerVehicle(null);
       setInspectionRunnerForm(getInspectionForm(null, activeChecklistTemplateFields));
       setInspectionRunnerError('');
+      setInspectionRunnerUploadingPhotoKey(null);
       setToastMessage('Inspection saved');
       await queryClient.invalidateQueries({ queryKey: ['fleet-vehicles', selectedCsaId] });
       await queryClient.invalidateQueries({ queryKey: ['vehicle-inspections', selectedCsaId] });
@@ -4147,11 +4275,123 @@ export default function VehiclesPage() {
       ...current,
       items: (current.items || []).map((item) => (
         item.checklist_item_key === checklistItemKey
-          ? { ...item, status }
+          ? status === 'pass'
+            ? { ...item, status: 'pass', severity: null, issue_details: {}, note: '', photos: [] }
+            : {
+                ...item,
+                status: 'issue',
+                severity: item.severity || getInspectionItemDefinition(item).defaultIssueSeverity || null,
+                issue_details: item.issue_details || {},
+                photos: item.photos || []
+              }
           : item
       ))
     }));
     setInspectionRunnerError('');
+  }
+
+  function patchInspectionRunnerItem(checklistItemKey, updater) {
+    setInspectionRunnerForm((current) => ({
+      ...current,
+      items: (current.items || []).map((item) => (
+        item.checklist_item_key === checklistItemKey ? updater(item) : item
+      ))
+    }));
+    setInspectionRunnerError('');
+  }
+
+  function updateInspectionRunnerIssueDetail(checklistItemKey, field, option) {
+    patchInspectionRunnerItem(checklistItemKey, (item) => {
+      const currentDetails = item.issue_details || {};
+      const currentValue = currentDetails[field.key];
+      const nextValue = field.type === 'multi'
+        ? (Array.isArray(currentValue) ? currentValue : []).includes(option)
+          ? currentValue.filter((value) => value !== option)
+          : [...(Array.isArray(currentValue) ? currentValue : []), option]
+        : option;
+
+      return {
+        ...item,
+        issue_details: {
+          ...currentDetails,
+          [field.key]: nextValue
+        }
+      };
+    });
+  }
+
+  function updateInspectionRunnerSeverity(checklistItemKey, severity) {
+    patchInspectionRunnerItem(checklistItemKey, (item) => ({ ...item, severity }));
+  }
+
+  function updateInspectionRunnerNote(checklistItemKey, note) {
+    patchInspectionRunnerItem(checklistItemKey, (item) => ({ ...item, note }));
+  }
+
+  function updateInspectionRunnerCleanliness(checklistItemKey, condition) {
+    const definition = getInspectionItemDefinition({ checklist_item_key: checklistItemKey });
+    const option = (definition.conditionOptions || []).find((candidate) => candidate.value === condition);
+    if (!option) {
+      return;
+    }
+
+    patchInspectionRunnerItem(checklistItemKey, (item) => ({
+      ...item,
+      status: option.status,
+      severity: option.status === 'issue' ? item.severity : null,
+      issue_details: option.status === 'issue' ? { condition: option.label } : {},
+      note: option.status === 'issue' ? item.note : '',
+      photos: option.status === 'issue' ? (item.photos || []) : []
+    }));
+  }
+
+  function removeInspectionRunnerPhoto(checklistItemKey, photoIndex) {
+    patchInspectionRunnerItem(checklistItemKey, (item) => ({
+      ...item,
+      photos: (item.photos || []).filter((_photo, index) => index !== photoIndex)
+    }));
+  }
+
+  async function attachInspectionRunnerPhoto(checklistItemKey, file) {
+    if (!inspectionRunnerVehicle?.id || !file) {
+      return;
+    }
+
+    if (file.size > 8 * 1024 * 1024) {
+      setInspectionRunnerError('Inspection photos must be 8 MB or smaller.');
+      return;
+    }
+
+    setInspectionRunnerUploadingPhotoKey(checklistItemKey);
+    setInspectionRunnerError('');
+
+    try {
+      const imageBase64 = await new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(String(reader.result || '').split(',').pop() || '');
+        reader.onerror = () => reject(new Error('Unable to read photo'));
+        reader.readAsDataURL(file);
+      });
+      const response = await api.post(`/vehicles/${inspectionRunnerVehicle.id}/inspection-photo`, {
+        checklist_item_key: checklistItemKey,
+        image_base64: imageBase64,
+        mime_type: file.type || 'image/jpeg',
+        file_name: file.name || `${checklistItemKey}.jpg`
+      });
+      const photo = response.data?.photo;
+      if (!photo) {
+        throw new Error('Photo details were not returned.');
+      }
+
+      patchInspectionRunnerItem(checklistItemKey, (item) => ({
+        ...item,
+        photos: [...(item.photos || []), photo]
+      }));
+    } catch (error) {
+      setInspectionRunnerError(error.response?.data?.error || error.message || 'Unable to attach this photo.');
+    } finally {
+      setInspectionRunnerUploadingPhotoKey(null);
+    }
   }
 
   function handleCreateInspection(event) {
@@ -4170,6 +4410,12 @@ export default function VehiclesPage() {
 
     if (!inspectionRunnerForm.items?.length) {
       setInspectionRunnerError('No inspection checklist items are enabled.');
+      return;
+    }
+
+    const validationError = getInspectionFormValidationError(inspectionRunnerForm);
+    if (validationError) {
+      setInspectionRunnerError(validationError);
       return;
     }
 
@@ -4781,13 +5027,21 @@ export default function VehiclesPage() {
         errorMessage={inspectionRunnerError}
         form={inspectionRunnerForm}
         isSubmitting={createInspectionMutation.isPending}
+        uploadingPhotoKey={inspectionRunnerUploadingPhotoKey}
+        onAttachPhoto={attachInspectionRunnerPhoto}
         onChange={updateInspectionRunnerField}
+        onChangeIssueDetail={updateInspectionRunnerIssueDetail}
+        onChangeNote={updateInspectionRunnerNote}
+        onChangeSeverity={updateInspectionRunnerSeverity}
         onChangeStatus={updateInspectionRunnerStatus}
+        onChangeTruckCleanliness={updateInspectionRunnerCleanliness}
         onClose={() => {
           setInspectionRunnerVehicle(null);
           setInspectionRunnerForm(getInspectionForm(null, activeChecklistTemplateFields));
           setInspectionRunnerError('');
+          setInspectionRunnerUploadingPhotoKey(null);
         }}
+        onRemovePhoto={removeInspectionRunnerPhoto}
         onSubmit={handleCreateInspection}
         vehicle={inspectionRunnerVehicle}
       />

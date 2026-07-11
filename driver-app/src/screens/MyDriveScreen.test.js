@@ -69,7 +69,6 @@ import {
   hasGrantedLocationPermission,
   isDeniedLocationPermission,
   shouldPromptForLocationPermission,
-  stopRequiresSignature,
   getStopType,
   getVisibleBannerBadges,
   shouldPostDriverLocationUpdate,
@@ -225,19 +224,12 @@ describe('MyDriveScreen helpers', () => {
     ).toBe('stop:81:selected:3');
   });
 
-  it('sizes 100+ stop pins larger and detects signature-required packages', () => {
+  it('sizes 100+ stop pins larger', () => {
     expect(getMapPinSize({ sequence_order: 99 }, false)).toBe(28);
     expect(getMapPinSize({ sequence_order: 100 }, false)).toBe(34);
     expect(getMapPinSize({ sequence_order: 100 }, true)).toBe(38);
     expect(getMapPinSize({ sequence_order: 5 }, false, '+')).toBe(28);
 
-    expect(stopRequiresSignature({
-      packages: [{ id: 'pkg-1', requires_signature: true }]
-    })).toBe(true);
-    expect(stopRequiresSignature({
-      packages: [{ id: 'pkg-1', requires_adult_signature: true }]
-    })).toBe(true);
-    expect(stopRequiresSignature({ packages: [{ id: 'pkg-1' }] })).toBe(false);
   });
 
   it('uses SID bucket colors for pending pins and lets black mode stay monochrome', () => {

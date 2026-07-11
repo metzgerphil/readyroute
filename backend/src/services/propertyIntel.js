@@ -86,10 +86,7 @@ function buildPropertyIntel(stop, relatedStops) {
       has_note: Boolean(candidate.has_note),
       notes: candidate.notes || candidate.note_text || null,
       note_text: candidate.note_text || null,
-      pod_photo_url: candidate.pod_photo_url || null,
-      pod_signature_url: candidate.pod_signature_url || candidate.signature_url || null,
-      signer_name: candidate.signer_name || null,
-      age_confirmed: Boolean(candidate.age_confirmed)
+      pod_photo_url: candidate.pod_photo_url || null
     }))
     .sort((a, b) => Number(a.sequence_order || 0) - Number(b.sequence_order || 0));
 

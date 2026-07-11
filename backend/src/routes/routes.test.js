@@ -372,11 +372,7 @@ test('GET /routes/today returns the driver route with stops and nested packages'
             status: 'pending',
             exception_code: null,
             delivery_type_code: null,
-            signer_name: null,
-            signature_url: null,
-            age_confirmed: false,
             pod_photo_url: null,
-            pod_signature_url: null,
             scanned_at: null,
             completed_at: null
           },
@@ -401,11 +397,7 @@ test('GET /routes/today returns the driver route with stops and nested packages'
             status: 'delivered',
             exception_code: '07',
             delivery_type_code: null,
-            signer_name: null,
-            signature_url: null,
-            age_confirmed: false,
             pod_photo_url: null,
-            pod_signature_url: null,
             scanned_at: null,
             completed_at: '2026-04-08T16:00:00.000Z'
           }
@@ -421,14 +413,12 @@ test('GET /routes/today returns the driver route with stops and nested packages'
             id: 'pkg-1',
             stop_id: 'stop-1',
             tracking_number: 'TN1',
-            requires_signature: false,
             hazmat: false
           },
           {
             id: 'pkg-2',
             stop_id: 'stop-2',
             tracking_number: 'TN2',
-            requires_signature: true,
             hazmat: false
           }
         ],
@@ -498,7 +488,6 @@ test('GET /routes/today returns the driver route with stops and nested packages'
       {
         id: 'pkg-1',
         tracking_number: 'TN1',
-        requires_signature: false,
         hazmat: false
       }
     ]);
@@ -506,7 +495,6 @@ test('GET /routes/today returns the driver route with stops and nested packages'
       {
         id: 'pkg-2',
         tracking_number: 'TN2',
-        requires_signature: true,
         hazmat: false
       }
     ]);
@@ -736,12 +724,12 @@ test('GET /routes/today?view=drive returns mappable stops without full enrichmen
     }
 
     if (query.table === 'packages' && query.operation === 'select') {
-      assert.equal(query.columns, 'id, stop_id, requires_signature, requires_adult_signature, hazmat');
+      assert.equal(query.columns, 'id, stop_id, hazmat');
 
       return {
         data: [
-          { id: 'pkg-1', stop_id: 'stop-1', requires_signature: true, requires_adult_signature: false, hazmat: false },
-          { id: 'pkg-2', stop_id: 'stop-2', requires_signature: false, requires_adult_signature: false, hazmat: false }
+          { id: 'pkg-1', stop_id: 'stop-1', hazmat: false },
+          { id: 'pkg-2', stop_id: 'stop-2', hazmat: false }
         ],
         error: null
       };
@@ -769,8 +757,6 @@ test('GET /routes/today?view=drive returns mappable stops without full enrichmen
     assert.deepEqual(body.route.stops[0].packages, [
       {
         id: 'pkg-1',
-        requires_signature: true,
-        requires_adult_signature: false,
         hazmat: false
       }
     ]);
@@ -892,12 +878,8 @@ test('GET /routes/today preserves same-address stops as distinct operational sto
       notes: 'Unit has a gate code',
       exception_code: null,
       delivery_type_code: null,
-      signer_name: null,
-      signature_url: null,
-      age_confirmed: false,
       is_pickup: false,
       pod_photo_url: null,
-      pod_signature_url: null,
       scanned_at: null,
       completed_at: null
     },
@@ -931,12 +913,8 @@ test('GET /routes/today preserves same-address stops as distinct operational sto
       status: 'delivered',
       exception_code: null,
       delivery_type_code: '013',
-      signer_name: 'Second Receiver',
-      signature_url: null,
-      age_confirmed: false,
       is_pickup: false,
       pod_photo_url: 'https://cdn/pod-2.jpg',
-      pod_signature_url: null,
       scanned_at: '2026-04-08T15:00:00.000Z',
       completed_at: '2026-04-08T15:00:00.000Z'
     }
@@ -965,9 +943,9 @@ test('GET /routes/today preserves same-address stops as distinct operational sto
     if (query.table === 'packages' && query.operation === 'select') {
       return {
         data: [
-          { id: 'pkg-1', stop_id: 'same-stop-1', tracking_number: 'TN1', requires_signature: false, hazmat: false },
-          { id: 'pkg-2', stop_id: 'same-stop-2', tracking_number: 'TN2', requires_signature: false, hazmat: false },
-          { id: 'pkg-3', stop_id: 'same-stop-2', tracking_number: 'TN3', requires_signature: false, hazmat: false }
+          { id: 'pkg-1', stop_id: 'same-stop-1', tracking_number: 'TN1', hazmat: false },
+          { id: 'pkg-2', stop_id: 'same-stop-2', tracking_number: 'TN2', hazmat: false },
+          { id: 'pkg-3', stop_id: 'same-stop-2', tracking_number: 'TN3', hazmat: false }
         ],
         error: null
       };
@@ -2614,11 +2592,7 @@ test('GET /routes/stops/:stop_id returns stop detail with packages and note text
           notes: null,
           exception_code: null,
           delivery_type_code: null,
-          signer_name: null,
-          signature_url: null,
-          age_confirmed: false,
           pod_photo_url: null,
-          pod_signature_url: null,
           scanned_at: null,
           completed_at: null
         },
@@ -2661,7 +2635,6 @@ test('GET /routes/stops/:stop_id returns stop detail with packages and note text
             id: 'pkg-1',
             stop_id: 'stop-1',
             tracking_number: 'TN1',
-            requires_signature: true,
             hazmat: false
           }
         ],
@@ -2731,7 +2704,6 @@ test('GET /routes/stops/:stop_id returns stop detail with packages and note text
       {
         id: 'pkg-1',
         tracking_number: 'TN1',
-        requires_signature: true,
         hazmat: false
       }
     ]);
@@ -4030,9 +4002,6 @@ test('POST /routes/upload-manifest holds post-dispatch changes without mutating 
             status: 'delivered',
             exception_code: null,
             delivery_type_code: null,
-            signer_name: null,
-            signature_url: null,
-            age_confirmed: false,
             is_pickup: false,
             is_business: false,
             has_note: false,
@@ -4047,7 +4016,6 @@ test('POST /routes/upload-manifest holds post-dispatch changes without mutating 
             geocode_source: 'manifest',
             geocode_accuracy: 'manifest',
             pod_photo_url: null,
-            pod_signature_url: null,
             scanned_at: '2026-04-13T16:00:00.000Z',
             completed_at: '2026-04-13T16:00:00.000Z'
           }

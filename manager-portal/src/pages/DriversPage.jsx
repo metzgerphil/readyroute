@@ -40,7 +40,7 @@ const CODE_LABELS = {
   '010': 'Inspection Required',
   '011': 'Closed on Saturday',
   '012': 'Sorted to Wrong Route',
-  '013': 'Residential Signature',
+  '013': 'Residential Delivery',
   '014': 'Residence Driver Release',
   '015': 'Holding Package',
   '016': 'Not on Van',

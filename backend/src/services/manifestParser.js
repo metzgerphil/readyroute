@@ -669,16 +669,6 @@ function buildStopPackageKey({ stopNumber, sid, addressLine1 }) {
   ].join('|');
 }
 
-function isAdultSignatureService(value) {
-  const normalized = String(value || '').toUpperCase();
-  return /\bA(?:DULT)?SIGN\b/.test(normalized) || normalized.includes('ADULT');
-}
-
-function isSignatureService(value) {
-  const normalized = String(value || '').toUpperCase();
-  return isAdultSignatureService(normalized) || normalized.includes('SIGN');
-}
-
 function buildPackageDetailsByStop(packageDetailsSheet) {
   if (!packageDetailsSheet) {
     return new Map();
@@ -714,8 +704,6 @@ function buildPackageDetailsByStop(packageDetailsSheet) {
     existing.push({
       tracking_number: trackingNumber,
       service_code: serviceCode,
-      requires_signature: isSignatureService(serviceCode),
-      requires_adult_signature: isAdultSignatureService(serviceCode),
       hazmat: false
     });
     packagesByStop.set(key, existing);

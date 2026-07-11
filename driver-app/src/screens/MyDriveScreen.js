@@ -431,10 +431,6 @@ export function getStopStatusColors(status, isCurrentStop, stopType, stop, pinCo
   }
 }
 
-export function stopRequiresSignature(stop) {
-  return (stop?.packages || []).some((pkg) => pkg?.requires_signature || pkg?.requires_adult_signature);
-}
-
 export function getMapPinSize(stop, isCurrentStop = false, labelOverride = null) {
   const label = String(labelOverride || stop?.sequence_order || '');
   const hasLongStopNumber = label.length >= 3;
@@ -593,28 +589,6 @@ function OpenBoxIcon({ color = '#6f7d87', size = 16 }) {
         strokeWidth={1.8}
       />
       <Path d="M12 9.5V21.5" fill="none" stroke={color} strokeWidth={1.8} />
-    </Svg>
-  );
-}
-
-function SignaturePenIcon({ color = '#ffffff', size = 8 }) {
-  return (
-    <Svg height={size} viewBox="0 0 24 24" width={size}>
-      <Path
-        d="M4 20h4.5L19.2 9.3a2.1 2.1 0 0 0 0-3L17.7 4.8a2.1 2.1 0 0 0-3 0L4 15.5V20Z"
-        fill="none"
-        stroke={color}
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        strokeWidth={3}
-      />
-      <Path
-        d="M13.8 5.8l4.4 4.4"
-        fill="none"
-        stroke={color}
-        strokeLinecap="round"
-        strokeWidth={3}
-      />
     </Svg>
   );
 }
@@ -1004,7 +978,6 @@ function MapPin({ isCurrentStop, now, stop, labelOverride = null, groupCount = 0
   const hasLongStopNumber = String(mainLabel || '').length >= 3;
   const pinSize = getMapPinSize(stop, isCurrentStop, labelOverride);
   const ringSize = Math.max(pinSize + (isCurrentStop ? 10 : 8), isCurrentStop ? 44 : 36);
-  const needsSignature = stopRequiresSignature(stop);
   const urgency = hasTimeCommit ? getTimeCommitUrgency(stop, now) : null;
   const urgencyStyles = getUrgencyStyles(urgency?.level);
 
@@ -1063,12 +1036,6 @@ function MapPin({ isCurrentStop, now, stop, labelOverride = null, groupCount = 0
           {serviceBadgeLabel && !hasTimeCommit ? (
             <View style={styles.pickupBadge}>
               <Text style={styles.pickupBadgeText}>{serviceBadgeLabel}</Text>
-            </View>
-          ) : null}
-
-          {needsSignature ? (
-            <View style={styles.signatureBadge} testID={`signature-badge-${stop.id}`}>
-              <SignaturePenIcon />
             </View>
           ) : null}
 
@@ -2389,8 +2356,6 @@ export default function MyDriveScreen({ navigation, route: screenRoute }) {
                   const groupedStopExceptionCode = formatFedExExceptionCode(groupedStop.exception_code);
                   const groupedStopStatus = getStopStatusLabel(groupedStop);
                   const groupedStopComplete = isStopComplete(groupedStop);
-                  const groupedStopNeedsSignature = stopRequiresSignature(groupedStop);
-
                   return (
 	                    <View key={groupedStop.id} style={styles.groupedStopActionCard} testID={`grouped-stop-card-${groupedStop.id}`}>
 	                      <View style={styles.groupedStopActionHeader}>
@@ -2417,9 +2382,6 @@ export default function MyDriveScreen({ navigation, route: screenRoute }) {
                           <OpenBoxIcon color={appTheme.colors.orangeDeep} size={14} />
                           <Text style={styles.groupedStopMetaText}>{groupedStopPackages}</Text>
                         </View>
-                        {groupedStopNeedsSignature ? (
-                          <Text style={styles.signatureRequiredText}>Signature required</Text>
-                        ) : null}
                         <View style={styles.groupedStopMetaPill}>
                           <Text style={styles.groupedStopMetaText}>{getStopTypeLabel(groupedStop)}</Text>
                         </View>
@@ -2517,9 +2479,6 @@ export default function MyDriveScreen({ navigation, route: screenRoute }) {
                       <OpenBoxIcon color={appTheme.colors.orangeDeep} size={18} />
                       <Text style={styles.calloutPackageCount}>{selectedPackageCount}</Text>
                     </View>
-                    {stopRequiresSignature(selectedStop) ? (
-                      <Text style={styles.signatureRequiredText}>Signature required</Text>
-                    ) : null}
                   </View>
                   <Pressable
                     onPress={() => handleOpenNavigationForStop(selectedStop)}
@@ -3256,19 +3215,6 @@ const styles = StyleSheet.create({
     fontSize: 8,
     fontWeight: '900'
   },
-  signatureBadge: {
-    alignItems: 'center',
-    backgroundColor: '#173042',
-    borderColor: '#ffffff',
-    borderRadius: 7,
-    borderWidth: 1,
-    height: 14,
-    justifyContent: 'center',
-    position: 'absolute',
-    bottom: -4,
-    left: -4,
-    width: 14
-  },
   groupCountBadge: {
     alignItems: 'center',
     backgroundColor: '#173042',
@@ -3467,11 +3413,6 @@ const styles = StyleSheet.create({
   calloutPackageCount: {
     color: appTheme.colors.orangeDeep,
     fontSize: appTheme.typography.body,
-    fontWeight: appTheme.typography.weights.heavy
-  },
-  signatureRequiredText: {
-    color: appTheme.colors.textPrimary,
-    fontSize: appTheme.typography.bodySmall,
     fontWeight: appTheme.typography.weights.heavy
   },
   calloutScanRow: {
