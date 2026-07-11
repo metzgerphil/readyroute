@@ -579,11 +579,7 @@ create table if not exists public.stops (
   geocode_accuracy text,
   exception_code text,
   delivery_type_code text,
-  signer_name text,
-  signature_url text,
-  age_confirmed boolean not null default false,
   pod_photo_url text,
-  pod_signature_url text,
   scanned_at timestamptz,
   completed_at timestamptz,
   notes text,
@@ -597,8 +593,6 @@ create table if not exists public.packages (
   tracking_number text not null,
   service_code text,
   weight numeric(10, 2),
-  requires_signature boolean not null default false,
-  requires_adult_signature boolean not null default false,
   hazmat boolean not null default false,
   constraint packages_weight_nonnegative check (weight is null or weight >= 0)
 );
@@ -913,11 +907,7 @@ alter table public.stops add column if not exists has_delivery boolean not null 
 alter table public.stops add column if not exists geocode_source text;
 alter table public.stops add column if not exists geocode_accuracy text;
 alter table public.stops add column if not exists delivery_type_code text;
-alter table public.stops add column if not exists signer_name text;
-alter table public.stops add column if not exists signature_url text;
-alter table public.stops add column if not exists age_confirmed boolean not null default false;
 alter table public.stops add column if not exists pod_photo_url text;
-alter table public.stops add column if not exists pod_signature_url text;
 alter table public.stops add column if not exists scanned_at timestamptz;
 alter table public.stops add column if not exists completed_at timestamptz;
 alter table public.stops add column if not exists completed_by_driver_id uuid references public.drivers(id) on delete set null;

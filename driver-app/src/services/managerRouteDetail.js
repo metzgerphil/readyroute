@@ -22,10 +22,6 @@ function isExceptionStop(stop) {
   return Boolean(stop?.exception_code) || stop?.status === 'incomplete';
 }
 
-function stopRequiresSignature(stop) {
-  return (stop?.packages || []).some((pkg) => pkg?.requires_signature || pkg?.requires_adult_signature);
-}
-
 function formatExceptionCode(code) {
   const value = String(code || '').trim();
 
@@ -91,10 +87,6 @@ export function getStopIndicatorLabels(stop) {
     labels.push('Note');
   }
 
-  if (stopRequiresSignature(stop)) {
-    labels.push('Signature');
-  }
-
   return labels;
 }
 
@@ -115,8 +107,7 @@ export function buildRouteDetailMapModel({ route = null, stops = [], driverPosit
         sequenceOrder: Number(stop.sequence_order || 0),
         status: stop.status || 'pending',
         routeColor,
-        hasException: Boolean(stop.exception_code) || stop.status === 'incomplete' || stop.status === 'pickup_attempted',
-        requiresSignature: stopRequiresSignature(stop)
+        hasException: Boolean(stop.exception_code) || stop.status === 'incomplete' || stop.status === 'pickup_attempted'
       };
     })
     .filter(Boolean);

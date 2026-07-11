@@ -252,8 +252,6 @@ test('mergePendingManifestStops layers delivery and pickup manifests without dro
           {
             tracking_number: '794612345678',
             service_code: 'ISIGNRES',
-            requires_signature: true,
-            requires_adult_signature: false,
             hazmat: false
           }
         ]

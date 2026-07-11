@@ -327,15 +327,11 @@ test('parseXLSManifest parses FedEx Delivery Manifest stop and package detail ta
     {
       tracking_number: '794612345678',
       service_code: 'ISIGNRES',
-      requires_signature: true,
-      requires_adult_signature: false,
       hazmat: false
     },
     {
       tracking_number: '794612345679',
       service_code: 'RES',
-      requires_signature: false,
-      requires_adult_signature: false,
       hazmat: false
     }
   ]);

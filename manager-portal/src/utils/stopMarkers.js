@@ -106,8 +106,7 @@ export function createStopMarkerSVG(stop, isCurrentStop = false) {
   const size = isCurrentStop ? (hasLongLabel ? 46 : 40) : (hasLongLabel ? 38 : 32);
   const baseRadius = size / 2;
   const ringPadding = 6;
-  const hasSignatureRequired = (stop?.packages || []).some((pkg) => pkg?.requires_signature || pkg?.requires_adult_signature);
-  const badgeOverflow = hasSignatureRequired ? 10 : 4;
+  const badgeOverflow = 4;
   const outerSize = size + ringPadding * 2 + badgeOverflow;
   const center = outerSize / 2;
   const viewBox = `0 0 ${outerSize} ${outerSize}`;
@@ -148,13 +147,6 @@ export function createStopMarkerSVG(stop, isCurrentStop = false) {
       <text x="${center - baseRadius + 3}" y="${center + baseRadius - 0.6}" text-anchor="middle" font-size="8" font-weight="900" fill="#ffffff">✏</text>
     `
     : '';
-  const signatureBadge = hasSignatureRequired
-    ? `
-      <circle cx="${center + baseRadius - 2}" cy="${center - baseRadius + 4}" r="8" fill="#173042" stroke="#ffffff" stroke-width="2" />
-      <path d="M${center + baseRadius - 6.5} ${center - baseRadius + 6.5}l2.3 2.3 7.2-7.2-2.3-2.3-7.2 7.2zm-1.1 3.7l3.4-1.1-2.3-2.3-1.1 3.4z" fill="#ffffff" />
-    `
-    : '';
-
   const svg = `
     <svg xmlns="http://www.w3.org/2000/svg" width="${outerSize}" height="${outerSize}" viewBox="${viewBox}">
       ${exceptionRing}
@@ -172,7 +164,6 @@ export function createStopMarkerSVG(stop, isCurrentStop = false) {
       ${businessBadge}
       ${pickupBadge}
       ${noteBadge}
-      ${signatureBadge}
     </svg>
   `;
 

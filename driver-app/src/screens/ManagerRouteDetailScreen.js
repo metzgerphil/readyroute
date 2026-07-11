@@ -221,11 +221,6 @@ export default function ManagerRouteDetailScreen({ navigation, route }) {
                       >
                         {stopMarker.sequenceOrder || '•'}
                       </Text>
-                      {stopMarker.requiresSignature ? (
-                        <View style={styles.stopMarkerSignatureBadge}>
-                          <Text style={styles.stopMarkerSignatureIcon}>✎</Text>
-                        </View>
-                      ) : null}
                     </View>
                   </Marker>
                 ))}
@@ -527,25 +522,6 @@ const styles = StyleSheet.create({
   },
   stopMarkerTextLarge: {
     fontSize: 12
-  },
-  stopMarkerSignatureBadge: {
-    alignItems: 'center',
-    backgroundColor: '#173042',
-    borderColor: '#ffffff',
-    borderRadius: 999,
-    borderWidth: 1.5,
-    height: 15,
-    justifyContent: 'center',
-    position: 'absolute',
-    right: -6,
-    top: -6,
-    width: 15
-  },
-  stopMarkerSignatureIcon: {
-    color: '#ffffff',
-    fontSize: 9,
-    fontWeight: '900',
-    lineHeight: 10
   },
   stopsCard: {
     backgroundColor: '#ffffff',

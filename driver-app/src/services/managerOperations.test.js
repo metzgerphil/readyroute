@@ -115,7 +115,7 @@ describe('managerOperations helpers', () => {
           sequence_order: 36,
           lat: 33.11,
           lng: -117.09,
-          packages: [{ id: 'pkg-1', requires_adult_signature: true }]
+          packages: [{ id: 'pkg-1' }]
         }
       ]
     });
@@ -123,8 +123,7 @@ describe('managerOperations helpers', () => {
     expect(markers[0]).toMatchObject({
       key: 'stop:manifest-36',
       stopId: 'manifest-36',
-      sequenceOrder: 36,
-      requiresSignature: true
+      sequenceOrder: 36
     });
   });
 

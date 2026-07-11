@@ -859,11 +859,6 @@ export default function ManagerOverviewScreen({
                 ]}>
                   {marker.sequenceOrder || '•'}
                 </Text>
-                {marker.requiresSignature ? (
-                  <View style={styles.stopMarkerSignatureBadge}>
-                    <Text style={styles.stopMarkerSignatureIcon}>✎</Text>
-                  </View>
-                ) : null}
               </View>
                 );
               })()}
@@ -1355,25 +1350,6 @@ const styles = StyleSheet.create({
   },
   stopMarkerReadableText: {
     color: appTheme.colors.textPrimary
-  },
-  stopMarkerSignatureBadge: {
-    alignItems: 'center',
-    backgroundColor: appTheme.colors.charcoal,
-    borderColor: appTheme.colors.surface,
-    borderRadius: appTheme.radius.pill,
-    borderWidth: 1.5,
-    height: 15,
-    justifyContent: 'center',
-    position: 'absolute',
-    right: -6,
-    top: -6,
-    width: 15
-  },
-  stopMarkerSignatureIcon: {
-    color: appTheme.colors.textInverse,
-    fontSize: 9,
-    fontWeight: appTheme.typography.weights.heavy,
-    lineHeight: 10
   },
   sheet: {
     ...appTheme.shadows.sheet,

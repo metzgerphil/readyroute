@@ -164,11 +164,7 @@ begin
       geocode_accuracy,
       exception_code,
       delivery_type_code,
-      signer_name,
-      signature_url,
-      age_confirmed,
       pod_photo_url,
-      pod_signature_url,
       scanned_at,
       completed_at,
       notes
@@ -208,11 +204,7 @@ begin
       s.geocode_accuracy,
       s.exception_code,
       s.delivery_type_code,
-      s.signer_name,
-      s.signature_url,
-      coalesce(s.age_confirmed, false),
       s.pod_photo_url,
-      s.pod_signature_url,
       s.scanned_at,
       s.completed_at,
       s.notes
@@ -250,11 +242,7 @@ begin
       geocode_accuracy text,
       exception_code text,
       delivery_type_code text,
-      signer_name text,
-      signature_url text,
-      age_confirmed boolean,
       pod_photo_url text,
-      pod_signature_url text,
       scanned_at timestamptz,
       completed_at timestamptz,
       notes text
@@ -280,23 +268,17 @@ begin
     stop_id,
     tracking_number,
     service_code,
-    requires_signature,
-    requires_adult_signature,
     hazmat
   )
   select
     s.id,
     p.tracking_number,
     p.service_code,
-    coalesce(p.requires_signature, false),
-    coalesce(p.requires_adult_signature, false),
     coalesce(p.hazmat, false)
   from jsonb_to_recordset(coalesce(p_packages, '[]'::jsonb)) as p(
     route_stop_sequence integer,
     tracking_number text,
     service_code text,
-    requires_signature boolean,
-    requires_adult_signature boolean,
     hazmat boolean
   )
   join pg_temp.manifest_atomic_stop_ids s

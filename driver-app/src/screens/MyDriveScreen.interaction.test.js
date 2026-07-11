@@ -129,7 +129,7 @@ describe('MyDriveScreen interactions', () => {
             status: 'pending',
             stop_type: 'delivery',
             contact_name: 'Alex Driver',
-            packages: [{ id: 'pkg-1', requires_signature: true }]
+            packages: [{ id: 'pkg-1' }]
           }
         ]
       }
@@ -178,8 +178,6 @@ describe('MyDriveScreen interactions', () => {
     fireEvent.press(screen.getByTestId('stop-marker-stop:stop-2'));
 
     await screen.findByText(/Alex Driver/);
-    expect(screen.getByTestId('signature-badge-stop-2')).toBeTruthy();
-    expect(screen.getByText('Signature required')).toBeTruthy();
 
     expect(mockMapMethods.animateCamera).not.toHaveBeenCalled();
     expect(mockMapMethods.animateToRegion).not.toHaveBeenCalled();
@@ -459,7 +457,7 @@ describe('MyDriveScreen interactions', () => {
         property_intel: {
           normalized_address: '500 same st'
         },
-        packages: [{ id: 'pkg-a', requires_signature: true }]
+        packages: [{ id: 'pkg-a' }]
       },
       {
         id: 'group-stop-2',
@@ -521,7 +519,6 @@ describe('MyDriveScreen interactions', () => {
     await screen.findByTestId('grouped-stop-card-group-stop-1');
     expect(screen.getByTestId('grouped-stop-card-group-stop-2')).toBeTruthy();
     expect(screen.getByText('Same address, separate stops')).toBeTruthy();
-    expect(screen.getByText('Signature required')).toBeTruthy();
     expect(screen.getByText('2 stops at this address')).toBeTruthy();
     expect(screen.getByText('0 of 2 complete')).toBeTruthy();
     expect(screen.getByText('Total packages: 3')).toBeTruthy();

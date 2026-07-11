@@ -711,35 +711,27 @@ function normalizePackageRows(packages) {
     id: pkg.id,
     tracking_number: pkg.tracking_number,
     service_code: pkg.service_code,
-    requires_signature: pkg.requires_signature,
-    requires_adult_signature: pkg.requires_adult_signature,
     hazmat: pkg.hazmat
   }));
 }
 
 function isOptionalPackageDetailColumnError(error) {
   const message = String(error?.message || error?.details || error?.hint || '');
-  return /service_code/i.test(message) || /requires_adult_signature/i.test(message) || /schema cache/i.test(message);
+  return /service_code/i.test(message) || /schema cache/i.test(message);
 }
 
 async function selectPackagesForStops(queryBuilder) {
-  const withDetails = await queryBuilder('id, stop_id, tracking_number, service_code, requires_signature, requires_adult_signature, hazmat');
+  const withDetails = await queryBuilder('id, stop_id, tracking_number, service_code, hazmat');
 
   if (!withDetails.error || !isOptionalPackageDetailColumnError(withDetails.error)) {
     return withDetails;
   }
 
-  return queryBuilder('id, stop_id, tracking_number, requires_signature, hazmat');
+  return queryBuilder('id, stop_id, tracking_number, hazmat');
 }
 
 async function selectDrivePackagesForStops(queryBuilder) {
-  const withDetails = await queryBuilder('id, stop_id, requires_signature, requires_adult_signature, hazmat');
-
-  if (!withDetails.error || !isOptionalPackageDetailColumnError(withDetails.error)) {
-    return withDetails;
-  }
-
-  return queryBuilder('id, stop_id, requires_signature, hazmat');
+  return queryBuilder('id, stop_id, hazmat');
 }
 
 const TODAY_ROUTE_FULL_STOP_SELECT = [
@@ -774,12 +766,8 @@ const TODAY_ROUTE_FULL_STOP_SELECT = [
   'status',
   'exception_code',
   'delivery_type_code',
-  'signer_name',
-  'signature_url',
-  'age_confirmed',
   'is_pickup',
   'pod_photo_url',
-  'pod_signature_url',
   'scanned_at',
   'completed_at'
 ].join(', ');
@@ -932,8 +920,6 @@ function presentManifestStop(stop, packageCount = 0) {
 function presentDriveStop(stop, packages = []) {
   const packageRows = normalizePackageRows(packages).map((pkg) => ({
     id: pkg.id,
-    requires_signature: Boolean(pkg.requires_signature),
-    requires_adult_signature: Boolean(pkg.requires_adult_signature),
     hazmat: Boolean(pkg.hazmat)
   }));
   const presentedStop = presentManifestStop(
@@ -2962,7 +2948,7 @@ function createRoutesRouter(options = {}) {
       const { data: stopRecord, error: recordError } = await supabase
         .from('stops')
         .select(
-          'id, route_id, sequence_order, address, contact_name, address_line2, business_name, company_name, primary_phone, alternate_phone, email, customer_instructions, delivery_instructions, consignee, shipper, sid, ready_time, close_time, has_time_commit, stop_type, has_pickup, has_delivery, lat, lng, status, notes, exception_code, delivery_type_code, signer_name, signature_url, age_confirmed, is_pickup, pod_photo_url, pod_signature_url, scanned_at, completed_at'
+          'id, route_id, sequence_order, address, contact_name, address_line2, business_name, company_name, primary_phone, alternate_phone, email, customer_instructions, delivery_instructions, consignee, shipper, sid, ready_time, close_time, has_time_commit, stop_type, has_pickup, has_delivery, lat, lng, status, notes, exception_code, delivery_type_code, is_pickup, pod_photo_url, scanned_at, completed_at'
         )
         .eq('id', stopId)
         .maybeSingle();

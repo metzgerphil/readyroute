@@ -256,13 +256,7 @@ function getPackageDetailLine(pkg) {
     details.push(`Service ${pkg.service_code}`);
   }
 
-  if (pkg?.requires_adult_signature) {
-    details.push('Adult signature required');
-  } else if (pkg?.requires_signature) {
-    details.push('Signature required');
-  } else {
-    details.push('Standard delivery');
-  }
+  details.push('Standard delivery');
 
   if (pkg?.hazmat) {
     details.push('Hazmat');
@@ -592,7 +586,6 @@ export default function StopDetailScreen({ navigation, route }) {
   const hasPickupWork = typeBadges.some((badge) => badge.key === 'pickup');
   const primaryAddressLine = getPrimaryAddressLine(stop);
   const addressLine2 = String(stop.address_line2 || '').trim();
-  const hasSignatureRequired = (stop.packages || []).some((pkg) => pkg.requires_signature);
   const hasHazmat = (stop.packages || []).some((pkg) => pkg.hazmat);
   const packageCount = getStopPackageCount(stop);
   const hasVisibleNote = Boolean(stop.has_note && stop.note_text);
@@ -1030,11 +1023,6 @@ export default function StopDetailScreen({ navigation, route }) {
             {packageCount} {packageCount === 1 ? 'package' : 'packages'}
           </Text>
           <View style={styles.packageAlertRow}>
-            {hasSignatureRequired ? (
-              <View style={styles.packageAlertBadge}>
-                <Text style={styles.packageAlertText}>SIGNATURE REQUIRED</Text>
-              </View>
-            ) : null}
             {hasHazmat ? (
               <View style={styles.packageAlertBadge}>
                 <Text style={styles.packageAlertText}>HAZMAT</Text>

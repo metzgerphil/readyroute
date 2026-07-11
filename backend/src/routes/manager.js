@@ -1963,8 +1963,6 @@ function createPackagesByStopId(packages = []) {
       stop_id: pkg.stop_id,
       tracking_number: pkg.tracking_number,
       service_code: pkg.service_code,
-      requires_signature: pkg.requires_signature,
-      requires_adult_signature: pkg.requires_adult_signature,
       hazmat: pkg.hazmat
     });
     map.set(pkg.stop_id, current);
@@ -1974,7 +1972,7 @@ function createPackagesByStopId(packages = []) {
 
 function isOptionalPackageDetailColumnError(error) {
   const message = String(error?.message || error?.details || error?.hint || '');
-  return /service_code/i.test(message) || /requires_adult_signature/i.test(message) || /schema cache/i.test(message);
+  return /service_code/i.test(message) || /schema cache/i.test(message);
 }
 
 async function fetchPackagesByStopIds(supabase, stopIds = [], selectClause = 'id, stop_id') {
@@ -1997,7 +1995,7 @@ async function fetchPackagesByStopIds(supabase, stopIds = [], selectClause = 'id
     if (error && isOptionalPackageDetailColumnError(error)) {
       const fallback = await supabase
         .from('packages')
-        .select('id, stop_id, tracking_number, requires_signature, hazmat')
+        .select('id, stop_id, tracking_number, hazmat')
         .in('stop_id', chunk);
       data = fallback.data;
       error = fallback.error;
@@ -6126,7 +6124,7 @@ function createManagerRouter(options = {}) {
       const { data: stopRecord, error: recordError } = await supabase
         .from('stops')
         .select(
-          'id, route_id, sequence_order, address, contact_name, address_line2, business_name, company_name, primary_phone, alternate_phone, email, customer_instructions, delivery_instructions, consignee, shipper, lat, lng, status, is_business, has_note, stop_type, has_pickup, has_delivery, has_time_commit, ready_time, close_time, sid, geocode_source, geocode_accuracy, exception_code, delivery_type_code, pod_photo_url, pod_signature_url, signature_url, signer_name, age_confirmed, notes, scanned_at, completed_at, routes!inner(account_id)'
+          'id, route_id, sequence_order, address, contact_name, address_line2, business_name, company_name, primary_phone, alternate_phone, email, customer_instructions, delivery_instructions, consignee, shipper, lat, lng, status, is_business, has_note, stop_type, has_pickup, has_delivery, has_time_commit, ready_time, close_time, sid, geocode_source, geocode_accuracy, exception_code, delivery_type_code, pod_photo_url, notes, scanned_at, completed_at, routes!inner(account_id)'
         )
         .eq('id', stopId)
         .eq('routes.account_id', req.account.account_id)
@@ -6144,7 +6142,7 @@ function createManagerRouter(options = {}) {
       const { data: packages, error: packagesError } = await fetchPackagesByStopIds(
         supabase,
         [stopId],
-        'id, stop_id, tracking_number, service_code, requires_signature, requires_adult_signature, hazmat'
+        'id, stop_id, tracking_number, service_code, hazmat'
       );
 
       if (packagesError) {
@@ -6243,7 +6241,7 @@ function createManagerRouter(options = {}) {
         const { data: packages, error: packagesError } = await fetchPackagesByStopIds(
           supabase,
           stopIds,
-          'id, stop_id, tracking_number, service_code, requires_signature, requires_adult_signature, hazmat'
+          'id, stop_id, tracking_number, service_code, hazmat'
         );
 
         if (packagesError) {
@@ -6725,7 +6723,7 @@ function createManagerRouter(options = {}) {
         const { data: stops, error: stopsError } = await supabase
           .from('stops')
           .select(
-            'id, route_id, sequence_order, address, contact_name, address_line2, business_name, company_name, primary_phone, alternate_phone, email, customer_instructions, delivery_instructions, consignee, shipper, lat, lng, status, notes, exception_code, delivery_type_code, signer_name, signature_url, age_confirmed, pod_photo_url, pod_signature_url, scanned_at, completed_at, has_time_commit, stop_type, has_pickup, has_delivery, is_pickup'
+            'id, route_id, sequence_order, address, contact_name, address_line2, business_name, company_name, primary_phone, alternate_phone, email, customer_instructions, delivery_instructions, consignee, shipper, lat, lng, status, notes, exception_code, delivery_type_code, pod_photo_url, scanned_at, completed_at, has_time_commit, stop_type, has_pickup, has_delivery, is_pickup'
           )
           .in('route_id', routeIds)
           .order('sequence_order');

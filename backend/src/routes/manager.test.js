@@ -3768,11 +3768,7 @@ test('GET /manager/routes returns sync status and fedex connection metadata', as
             notes: null,
             exception_code: null,
             delivery_type_code: '009',
-            signer_name: 'Taylor',
-            signature_url: 'https://cdn/signature.jpg',
-            age_confirmed: false,
             pod_photo_url: null,
-            pod_signature_url: null,
             scanned_at: null,
             completed_at: null,
             has_time_commit: true,
@@ -3792,11 +3788,7 @@ test('GET /manager/routes returns sync status and fedex connection metadata', as
             notes: null,
             exception_code: null,
             delivery_type_code: '014',
-            signer_name: null,
-            signature_url: null,
-            age_confirmed: false,
             pod_photo_url: null,
-            pod_signature_url: null,
             scanned_at: '2026-04-09T13:15:00.000Z',
             completed_at: '2026-04-09T13:15:00.000Z',
             has_time_commit: false,
@@ -4633,14 +4625,12 @@ test('GET /manager/routes/:route_id/stops returns full stop detail for the selec
             id: 'pkg-1',
             stop_id: 'stop-1',
             tracking_number: '123',
-            requires_signature: true,
             hazmat: false
           },
           {
             id: 'pkg-2',
             stop_id: 'stop-2',
             tracking_number: '456',
-            requires_signature: false,
             hazmat: false
           }
         ],

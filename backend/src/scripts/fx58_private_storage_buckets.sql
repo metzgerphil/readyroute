@@ -1,7 +1,6 @@
 insert into storage.buckets (id, name, public)
 values
   ('pod-photos', 'pod-photos', false),
-  ('signatures', 'signatures', false),
   ('driver-documents', 'driver-documents', false),
   ('vehicle-inspection-photos', 'vehicle-inspection-photos', false)
 on conflict (id) do update

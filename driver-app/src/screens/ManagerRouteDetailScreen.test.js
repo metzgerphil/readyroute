@@ -69,7 +69,7 @@ describe('ManagerRouteDetailScreen', () => {
               has_time_commit: true,
               ready_time: '09:00',
               close_time: '10:00',
-              packages: [{ id: 'pkg-1', requires_signature: true }],
+              packages: [{ id: 'pkg-1' }],
               lat: 33.11,
               lng: -117.09
             },
@@ -81,7 +81,7 @@ describe('ManagerRouteDetailScreen', () => {
               status: 'delivered',
               exception_code: '07',
               completed_at: '2026-04-23T15:00:00.000Z',
-              packages: [{ id: 'pkg-2', requires_signature: false }],
+              packages: [{ id: 'pkg-2' }],
               lat: 33.12,
               lng: -117.08
             }
@@ -129,7 +129,6 @@ describe('ManagerRouteDetailScreen', () => {
     expect(screen.getByText('Stop list')).toBeTruthy();
     expect(screen.getByText('100 Main St')).toBeTruthy();
     expect(screen.getByText('Time commit')).toBeTruthy();
-    expect(screen.getByText('Signature')).toBeTruthy();
 
     fireEvent.press(screen.getByText('Back'));
     expect(navigation.goBack).toHaveBeenCalled();
