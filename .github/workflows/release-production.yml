@@ -109,11 +109,26 @@ jobs:
               exit 1
             fi
 
-            delete_status="$(curl --silent --show-error --output /tmp/signature-bucket-delete.json --write-out '%{http_code}' \
-              --request DELETE "${auth_headers[@]}" "$bucket_url")"
-            if [[ "$delete_status" != "200" ]]; then
+            bucket_deleted=false
+            for attempt in {1..12}; do
+              delete_status="$(curl --silent --show-error --output /tmp/signature-bucket-delete.json --write-out '%{http_code}' \
+                --request DELETE "${auth_headers[@]}" "$bucket_url")"
+              if [[ "$delete_status" == "200" ]]; then
+                bucket_deleted=true
+                break
+              fi
+              if [[ "$delete_status" == "400" ]] && grep --quiet 'ResourceNotEmpty' /tmp/signature-bucket-delete.json; then
+                echo "Waiting for signature object deletion to finish (attempt $attempt of 12)"
+                sleep 5
+                continue
+              fi
               cat /tmp/signature-bucket-delete.json
               echo "Unable to delete legacy signature bucket (HTTP $delete_status)" >&2
+              exit 1
+            done
+            if [[ "$bucket_deleted" != "true" ]]; then
+              cat /tmp/signature-bucket-delete.json
+              echo "Legacy signature bucket remained non-empty after waiting" >&2
               exit 1
             fi
             echo "Legacy delivery signature bucket removed"
