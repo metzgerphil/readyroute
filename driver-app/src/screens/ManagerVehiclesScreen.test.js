@@ -1160,15 +1160,18 @@ describe('ManagerVehiclesScreen', () => {
       expect(screen.getByText(/Exposed cord/)).toBeTruthy();
       expect(screen.getByText(/Photo 1/)).toBeTruthy();
       expect(screen.getByText('Open photo')).toBeTruthy();
+      expect(screen.getAllByText('Blocked').length).toBeGreaterThan(0);
+      expect(screen.getByText('Active')).toBeTruthy();
+      expect(screen.getByText('Decision required')).toBeTruthy();
     });
 
     fireEvent.press(screen.getByText('Needs Repair'));
+    fireEvent.press(screen.getByText('Save Decision & Complete Review'));
 
     await waitFor(() => {
-      expect(api.put).toHaveBeenCalledWith('/vehicles/vehicle-1', {
-        vehicle_status: 'needs_repair',
-        readiness_source_type: 'inspection',
-        readiness_source_id: 'inspection-1'
+      expect(api.put).toHaveBeenCalledWith('/vehicles/inspections/inspection-1/review', {
+        manager_review_note: undefined,
+        vehicle_status_decision: 'needs_repair'
       }, {
         authMode: 'manager'
       });

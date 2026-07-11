@@ -10652,7 +10652,8 @@ button.manifest-attention-chip {
 .inspection-detail-summary > div,
 .inspection-issue-note,
 .inspection-urgent-note,
-.inspection-decision-panel {
+.inspection-decision-panel,
+.inspection-vehicle-state {
   display: grid;
   gap: 5px;
   padding: 12px;
@@ -10664,7 +10665,9 @@ button.manifest-attention-chip {
 .inspection-detail-summary span,
 .inspection-issue-note span,
 .inspection-urgent-note span,
-.inspection-decision-panel span {
+.inspection-decision-panel span,
+.inspection-vehicle-state span,
+.inspection-vehicle-state small {
   color: var(--rr-color-text-muted);
   font-size: 0.84rem;
   font-weight: 800;
@@ -10674,7 +10677,8 @@ button.manifest-attention-chip {
 .inspection-detail-summary strong,
 .inspection-issue-note strong,
 .inspection-urgent-note strong,
-.inspection-decision-panel strong {
+.inspection-decision-panel strong,
+.inspection-vehicle-state strong {
   color: var(--rr-color-text-strong);
   font-weight: 950;
 }
@@ -10682,6 +10686,21 @@ button.manifest-attention-chip {
 .inspection-urgent-note {
   border-color: #fecaca;
   background: #fff7f7;
+}
+
+.inspection-vehicle-state-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.inspection-vehicle-state.blocked {
+  border-color: #fecaca;
+  background: #fff7f7;
+}
+
+.inspection-vehicle-state.blocked strong {
+  color: #991b1b;
 }
 
 .inspection-decision-panel {
@@ -10717,6 +10736,10 @@ button.manifest-attention-chip {
 .inspection-decision-button:disabled {
   cursor: wait;
   opacity: 0.62;
+}
+
+.inspection-decision-required {
+  color: #991b1b !important;
 }
 
 .inspection-items-list {
@@ -11335,7 +11358,8 @@ button.manifest-attention-chip {
 
   .inspection-runner-fields,
   .inspection-runner-item,
-  .inspection-detail-summary {
+  .inspection-detail-summary,
+  .inspection-vehicle-state-grid {
     grid-template-columns: 1fr;
   }
 
