@@ -315,12 +315,6 @@ alter table public.packages
   drop column if exists requires_signature,
   drop column if exists requires_adult_signature;
 
-delete from storage.objects
-where bucket_id = 'signatures';
-
-delete from storage.buckets
-where id = 'signatures';
-
 insert into public.readyroute_schema_state (id, version, applied_at)
 values (true, '20260711234500', now())
 on conflict (id) do update
