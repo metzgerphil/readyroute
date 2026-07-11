@@ -47,6 +47,7 @@ const {
   validateInspectionItemsForSubmission
 } = require('../services/vehicleInspectionRecords');
 const { createSignedStorageUrl } = require('../services/privateStorage');
+const { createDriverPositionLimiter } = require('../middleware/apiSecurity');
 const {
   listDriverNotifications,
   markNotificationRead,
@@ -1511,6 +1512,10 @@ function createRoutesRouter(options = {}) {
   const supabase = options.supabase || defaultSupabase;
   const nowProvider = options.now || (() => new Date());
   const requireActiveSubscription = options.requireActiveSubscription || ((_req, _res, next) => next());
+  const driverPositionLimiter = createDriverPositionLimiter({
+    enabled: options.rateLimitEnabled !== false,
+    limit: options.driverPositionRateLimit
+  });
   const inboundIngestSecret = options.inboundIngestSecret || process.env.FEDEX_INGEST_SHARED_SECRET || '';
   const manifestIngestService =
     options.manifestIngestService ||
@@ -2332,7 +2337,7 @@ function createRoutesRouter(options = {}) {
     }
   });
 
-  router.post('/position', requireDriver, async (req, res) => {
+  router.post('/position', requireDriver, driverPositionLimiter, async (req, res) => {
     const { lat, lng, route_id: routeId } = req.body || {};
     const parsedLat = toNumber(lat);
     const parsedLng = toNumber(lng);
