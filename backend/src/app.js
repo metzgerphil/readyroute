@@ -27,6 +27,8 @@ const { createSupportRouter } = require('./routes/support');
 const waitlistRoutes = require('./routes/waitlist');
 const { createWaitlistRouter } = require('./routes/waitlist');
 const { createApiRateLimiters } = require('./middleware/apiSecurity');
+const defaultSupabase = require('./lib/supabase');
+const { createHealthService } = require('./services/health');
 
 const PHOTO_JSON_PATHS = [
   '/routes/inspection-photo',
@@ -36,6 +38,7 @@ const PHOTO_JSON_PATHS = [
 
 function createApp(options = {}) {
   const app = express();
+  const healthService = createHealthService({ supabase: options.supabase || defaultSupabase });
   const port = Number(process.env.PORT) || 3001;
   const isProduction = process.env.NODE_ENV === 'production';
   const rateLimiters = createApiRateLimiters({
@@ -216,18 +219,13 @@ function createApp(options = {}) {
     '/routes/upload-manifest'
   ], rateLimiters.upload);
 
-  app.get('/health', (_req, res) => {
-    res.status(200).json({
-      status: 'ok',
-      timestamp: new Date(),
-      release: {
-        commit:
-          process.env.RAILWAY_GIT_COMMIT_SHA ||
-          process.env.SOURCE_COMMIT ||
-          process.env.GIT_COMMIT_SHA ||
-          null
-      }
-    });
+  app.get('/health', async (_req, res) => {
+    res.status(200).json(await healthService.snapshot());
+  });
+
+  app.get('/health/ready', async (_req, res) => {
+    const health = await healthService.snapshot();
+    res.status(health.schema.compatible ? 200 : 503).json(health);
   });
 
   app.use('/auth', authRouter);

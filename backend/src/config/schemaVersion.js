@@ -1,0 +1,5 @@
+const REQUIRED_SCHEMA_VERSION = '20260711223000';
+
+module.exports = {
+  REQUIRED_SCHEMA_VERSION
+};

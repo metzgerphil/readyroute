@@ -46,7 +46,7 @@ jobs:
           SUPABASE_URL: https://example.supabase.co
           SUPABASE_SERVICE_KEY: test-service-role-key
           JWT_SECRET: test-secret
-        run: npm run test:unit
+        run: npm run verify:schema && npm run test:unit
 
   migrate:
     name: Apply Supabase Migrations
@@ -118,13 +118,13 @@ jobs:
         run: |
           for attempt in {1..30}; do
             body="$(curl --fail --silent --show-error "$HEALTH_URL" || true)"
-            if [[ "$body" == *"$EXPECTED_COMMIT"* ]]; then
-              echo "Production is serving $EXPECTED_COMMIT"
+            if [[ "$body" == *"$EXPECTED_COMMIT"* && "$body" == *'"compatible":true'* ]]; then
+              echo "Production is serving $EXPECTED_COMMIT with a compatible database schema"
               exit 0
             fi
             sleep 10
           done
-          echo "Production health did not report $EXPECTED_COMMIT" >&2
+          echo "Production health did not report $EXPECTED_COMMIT with a compatible schema" >&2
           exit 1
 
       - name: Run public production smoke
