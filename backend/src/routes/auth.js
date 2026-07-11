@@ -6,6 +6,7 @@ const jwt = require('jsonwebtoken');
 const defaultSupabase = require('../lib/supabase');
 const { requireManager } = require('../middleware/auth');
 const { createBillingService } = require('../services/billing');
+const { getEffectiveAccountStatus } = require('../services/accountLifecycle');
 const { updateRouteBillingSettings } = require('../services/routeBilling');
 const { sendManagerPasswordResetEmail: defaultSendManagerPasswordResetEmail } = require('../services/managerInviteEmail');
 
@@ -245,7 +246,7 @@ function createAuthRouter(options = {}) {
 
     const { data, error } = await supabase
       .from('accounts')
-      .select('id, company_name')
+      .select('id, company_name, account_status, service_ends_at, retention_ends_at')
       .eq('id', accountId)
       .maybeSingle();
 
@@ -254,6 +255,10 @@ function createAuthRouter(options = {}) {
     }
 
     return data || null;
+  }
+
+  function isAccountLoginAvailable(account) {
+    return getEffectiveAccountStatus(account || {}) !== 'retained';
   }
 
   function buildDriverAuthPayload(driver, accountSummary = null) {
@@ -583,6 +588,10 @@ function createAuthRouter(options = {}) {
         return res.status(401).json({ error: 'Invalid credentials' });
       }
 
+      if (!isAccountLoginAvailable(accountSummary)) {
+        return res.status(403).json({ error: 'This ReadyRoute workspace is in its data-retention period.' });
+      }
+
       const token = signToken(
         buildDriverAuthPayload(driver, accountSummary),
         '12h'
@@ -619,6 +628,10 @@ function createAuthRouter(options = {}) {
 
       if (!managerIdentity) {
         return res.status(401).json({ error: 'Invalid credentials' });
+      }
+
+      if (!isAccountLoginAvailable(accountSummary)) {
+        return res.status(403).json({ error: 'This ReadyRoute workspace is in its data-retention period.' });
       }
 
       const token = signToken(
@@ -685,6 +698,13 @@ function createAuthRouter(options = {}) {
 
       if (!hasDriverAccess && !hasManagerAccess) {
         return res.status(401).json({ error: 'Invalid credentials' });
+      }
+
+      const driverAccountAvailable = !driver || isAccountLoginAvailable(driverAccountSummary);
+      const managerAccountAvailable = !managerIdentity || isAccountLoginAvailable(managerAccountSummary);
+
+      if ((hasDriverAccess && !driverAccountAvailable) || (hasManagerAccess && !managerAccountAvailable)) {
+        return res.status(403).json({ error: 'This ReadyRoute workspace is in its data-retention period.' });
       }
 
       const linkedDriverAccess = Boolean(

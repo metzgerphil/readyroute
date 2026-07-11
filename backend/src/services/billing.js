@@ -260,7 +260,7 @@ function createBillingService(options = {}) {
     };
   }
 
-  async function closeAccount(accountId, { deleteCustomer = false } = {}) {
+  async function scheduleAccountCancellation(accountId, { now = new Date() } = {}) {
     const { data: account, error: accountError } = await loadAccount(supabase, accountId);
 
     if (accountError) {
@@ -271,9 +271,13 @@ function createBillingService(options = {}) {
       throw new Error('Account not found');
     }
 
+    let subscription = null;
+
     if (account.stripe_subscription_id) {
       try {
-        await getStripe().subscriptions.cancel(account.stripe_subscription_id);
+        subscription = await getStripe().subscriptions.update(account.stripe_subscription_id, {
+          cancel_at_period_end: true
+        });
       } catch (error) {
         if (error?.code !== 'resource_missing') {
           throw error;
@@ -281,21 +285,60 @@ function createBillingService(options = {}) {
       }
     }
 
-    if (deleteCustomer && account.stripe_customer_id) {
-      try {
-        await getStripe().customers.del(account.stripe_customer_id);
-      } catch (error) {
-        if (error?.code !== 'resource_missing') {
-          throw error;
-        }
-      }
-    }
+    const currentPeriodEndSeconds = Number(subscription?.current_period_end || 0);
+    const requestedAt = now instanceof Date ? now : new Date(now);
+    const serviceEndsAt = currentPeriodEndSeconds > 0
+      ? new Date(currentPeriodEndSeconds * 1000)
+      : requestedAt;
 
     return {
       account_id: account.id,
-      canceled_subscription_id: account.stripe_subscription_id || null,
-      deleted_customer_id: deleteCustomer ? account.stripe_customer_id || null : null
+      subscription_id: account.stripe_subscription_id || null,
+      cancel_at_period_end: Boolean(subscription?.cancel_at_period_end || account.stripe_subscription_id),
+      service_ends_at: serviceEndsAt.toISOString()
     };
+  }
+
+  async function resumeAccountSubscription(accountId) {
+    const { data: account, error: accountError } = await loadAccount(supabase, accountId);
+
+    if (accountError) {
+      throw accountError;
+    }
+
+    if (!account) {
+      throw new Error('Account not found');
+    }
+
+    if (!account.stripe_subscription_id) {
+      return {
+        account_id: account.id,
+        subscription_id: null,
+        resumed: true
+      };
+    }
+
+    try {
+      const subscription = await getStripe().subscriptions.update(account.stripe_subscription_id, {
+        cancel_at_period_end: false
+      });
+
+      return {
+        account_id: account.id,
+        subscription_id: subscription.id || account.stripe_subscription_id,
+        resumed: true
+      };
+    } catch (error) {
+      if (error?.code === 'resource_missing') {
+        return {
+          account_id: account.id,
+          subscription_id: account.stripe_subscription_id,
+          resumed: false
+        };
+      }
+
+      throw error;
+    }
   }
 
   return {
@@ -304,7 +347,8 @@ function createBillingService(options = {}) {
     createTrialCheckoutSession,
     updateSubscriptionQuantity,
     getSubscriptionStatus,
-    closeAccount
+    scheduleAccountCancellation,
+    resumeAccountSubscription
   };
 }
 

@@ -140,6 +140,9 @@ export default function BillingPage() {
   const [hasTouchedCommitment, setHasTouchedCommitment] = useState(false);
   const [isEditingCommitment, setIsEditingCommitment] = useState(false);
   const [saveMessage, setSaveMessage] = useState('');
+  const [cancellationConfirm, setCancellationConfirm] = useState('');
+  const [cancellationReason, setCancellationReason] = useState('');
+  const [cancellationMessage, setCancellationMessage] = useState('');
   const billingQueryKey = ['billing-summary', selectedCsaId, billingMonth];
 
   const billingQuery = useQuery({
@@ -154,6 +157,15 @@ export default function BillingPage() {
   });
 
   const billing = billingQuery.data;
+  const lifecycleQuery = useQuery({
+    queryKey: ['account-lifecycle', selectedCsaId],
+    enabled: Boolean(selectedCsaId),
+    queryFn: async () => {
+      const response = await api.get('/manager/account/lifecycle');
+      return response.data?.account || null;
+    }
+  });
+  const lifecycle = lifecycleQuery.data;
   const committedRouteValue = hasTouchedCommitment
     ? committedRouteDraft
     : String(billing?.committed_route_count ?? '');
@@ -179,6 +191,21 @@ export default function BillingPage() {
     },
     onError: () => {
       setSaveMessage('');
+    }
+  });
+  const cancelAccountMutation = useMutation({
+    mutationFn: async () => {
+      const response = await api.post('/manager/account/cancel', {
+        confirm_company_name: cancellationConfirm,
+        reason: cancellationReason
+      });
+      return response.data || {};
+    },
+    onSuccess: (data) => {
+      setCancellationMessage(`Cancellation scheduled. Service ends ${formatDateTime(data.service_ends_at)}; data remains recoverable until ${formatDateTime(data.retention_ends_at)}.`);
+      setCancellationConfirm('');
+      setCancellationReason('');
+      queryClient.invalidateQueries({ queryKey: ['account-lifecycle', selectedCsaId] });
     }
   });
 
@@ -234,6 +261,24 @@ export default function BillingPage() {
     setHasTouchedCommitment(false);
     setIsEditingCommitment(false);
     setSaveMessage('');
+  }
+
+  async function handleAccountExport() {
+    const response = await api.get('/manager/account/export', { responseType: 'blob' });
+    const downloadUrl = window.URL.createObjectURL(response.data);
+    const link = document.createElement('a');
+    link.href = downloadUrl;
+    link.download = `readyroute-${selectedCsaId}-${new Date().toISOString().slice(0, 10)}.json`;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    window.URL.revokeObjectURL(downloadUrl);
+  }
+
+  function handleScheduleCancellation(event) {
+    event.preventDefault();
+    setCancellationMessage('');
+    cancelAccountMutation.mutate();
   }
 
   return (
@@ -418,6 +463,67 @@ export default function BillingPage() {
                 variant="inline"
               />
             )}
+          </div>
+
+          <div className="card billing-account-lifecycle-card">
+            <div>
+              <div className="card-title">Account and data</div>
+              <p>Export this CSA's records at any time. Cancellation ends service at the billing-period boundary and retains the workspace for 60 days for staff-assisted recovery.</p>
+            </div>
+
+            <div className="billing-account-lifecycle-status">
+              <span className="field-label">Workspace status</span>
+              <StatusBadge tone={lifecycle?.account_status === 'active' ? 'active' : 'warning'}>
+                {lifecycle?.account_status || 'active'}
+              </StatusBadge>
+              {lifecycle?.service_ends_at ? <span>Service ends {formatDateTime(lifecycle.service_ends_at)}</span> : null}
+              {lifecycle?.retention_ends_at ? <span>Recovery available until {formatDateTime(lifecycle.retention_ends_at)}</span> : null}
+            </div>
+
+            <div className="billing-account-lifecycle-actions">
+              <button className="secondary-button" onClick={handleAccountExport} type="button">
+                Export Account Data
+              </button>
+            </div>
+
+            {lifecycle?.can_cancel && lifecycle?.account_status === 'active' ? (
+              <form className="billing-cancellation-form" onSubmit={handleScheduleCancellation}>
+                <div>
+                  <strong>Schedule cancellation</strong>
+                  <span>Only the workspace owner can schedule this change. Your Stripe customer record and ReadyRoute data will not be deleted.</span>
+                </div>
+                <label>
+                  Reason (optional)
+                  <input
+                    className="text-field"
+                    onChange={(event) => setCancellationReason(event.target.value)}
+                    type="text"
+                    value={cancellationReason}
+                  />
+                </label>
+                <label>
+                  Type {lifecycle.company_name} to confirm
+                  <input
+                    className="text-field"
+                    onChange={(event) => setCancellationConfirm(event.target.value)}
+                    required
+                    type="text"
+                    value={cancellationConfirm}
+                  />
+                </label>
+                {cancelAccountMutation.isError ? (
+                  <div className="error-banner">{cancelAccountMutation.error?.response?.data?.error || 'Cancellation could not be scheduled.'}</div>
+                ) : null}
+                {cancellationMessage ? <div className="success-banner">{cancellationMessage}</div> : null}
+                <button
+                  className="secondary-button billing-cancel-account-button"
+                  disabled={cancelAccountMutation.isPending || cancellationConfirm !== lifecycle.company_name}
+                  type="submit"
+                >
+                  {cancelAccountMutation.isPending ? 'Scheduling...' : 'Schedule Cancellation'}
+                </button>
+              </form>
+            ) : null}
           </div>
         </>
       ) : null}

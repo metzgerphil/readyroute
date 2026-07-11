@@ -94,6 +94,7 @@ function getAccountSearchText(account) {
     account.internal_profile?.onboarding_stage,
     getAccountState(account),
     account.subscription_status,
+    account.account_status,
     account.plan
   ].filter(Boolean).join(' '));
 }
@@ -106,6 +107,7 @@ export default function StaffCompaniesPage() {
   const [stateFilter, setStateFilter] = useState('');
   const [profileDraft, setProfileDraft] = useState(null);
   const [saveMessage, setSaveMessage] = useState('');
+  const [accountActionMessage, setAccountActionMessage] = useState('');
 
   const accountsQuery = useQuery({
     queryKey: ['staff-accounts'],
@@ -209,6 +211,20 @@ export default function StaffCompaniesPage() {
     }
   });
 
+  const recoverAccountMutation = useMutation({
+    mutationFn: async () => {
+      const response = await api.post(`/staff/accounts/${detailedAccount.id}/recover`);
+      return response.data || {};
+    },
+    onSuccess: (data) => {
+      setAccountActionMessage(data.billing_reactivation_required
+        ? 'Workspace recovered. Its Stripe subscription must be reactivated before billing goes live.'
+        : 'Workspace recovered and cancellation removed.');
+      queryClient.invalidateQueries({ queryKey: ['staff-accounts'] });
+      queryClient.invalidateQueries({ queryKey: ['staff-account-detail', detailedAccount.id] });
+    }
+  });
+
   function updateProfileDraft(patch) {
     if (!detailedAccount?.id) {
       return;
@@ -236,6 +252,7 @@ export default function StaffCompaniesPage() {
     setSelectedAccountId(accountId);
     setProfileDraft(null);
     setSaveMessage('');
+    setAccountActionMessage('');
   }
 
   async function handleSaveProfile(event) {
@@ -420,6 +437,37 @@ export default function StaffCompaniesPage() {
                   <strong>{billingSettings?.committed_route_count ?? 'Not set'}</strong>
                 </div>
               </div>
+
+              {['canceling', 'retained'].includes(detailedAccount.account_status) ? (
+                <section className="staff-account-retention-panel">
+                  <div>
+                    <span className="field-label">Account status</span>
+                    <h3>{formatLabel(detailedAccount.account_status)}</h3>
+                    <p>
+                      {detailedAccount.service_ends_at ? `Service ends ${formatDateTime(detailedAccount.service_ends_at)}. ` : ''}
+                      {detailedAccount.retention_ends_at ? `Recovery window ends ${formatDateTime(detailedAccount.retention_ends_at)}.` : ''}
+                    </p>
+                    {detailedAccount.cancellation_reason ? <p>Reason: {detailedAccount.cancellation_reason}</p> : null}
+                  </div>
+                  <div className="staff-account-retention-actions">
+                    <button
+                      className="secondary-inline-button"
+                      disabled={recoverAccountMutation.isPending}
+                      onClick={() => recoverAccountMutation.mutate()}
+                      type="button"
+                    >
+                      {recoverAccountMutation.isPending ? 'Recovering...' : 'Recover Account'}
+                    </button>
+                  </div>
+                  {recoverAccountMutation.isError ? (
+                    <div className="support-ticket-save-error">
+                      {recoverAccountMutation.error?.response?.data?.error || 'Account could not be recovered.'}
+                    </div>
+                  ) : accountActionMessage ? (
+                    <div className="support-ticket-save-message">{accountActionMessage}</div>
+                  ) : null}
+                </section>
+              ) : null}
 
               <form className="staff-account-profile-form" onSubmit={handleSaveProfile}>
                 <div className="staff-account-profile-grid">

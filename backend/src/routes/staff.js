@@ -4,6 +4,7 @@ const crypto = require('crypto');
 const jwt = require('jsonwebtoken');
 
 const defaultSupabase = require('../lib/supabase');
+const { createBillingService } = require('../services/billing');
 const {
   sendReadyRouteStaffInviteEmail: defaultSendReadyRouteStaffInviteEmail,
   sendReadyRouteStaffPasswordResetEmail: defaultSendReadyRouteStaffPasswordResetEmail
@@ -224,6 +225,12 @@ function presentAccountSummary(account, profile, counts = {}, latestTicket = nul
     vehicle_count: account.vehicle_count || 0,
     stripe_customer_id: account.stripe_customer_id || null,
     stripe_subscription_id: account.stripe_subscription_id || null,
+    account_status: account.account_status || 'active',
+    cancellation_requested_at: account.cancellation_requested_at || null,
+    service_ends_at: account.service_ends_at || null,
+    retention_ends_at: account.retention_ends_at || null,
+    canceled_at: account.canceled_at || null,
+    cancellation_reason: account.cancellation_reason || null,
     created_at: account.created_at || null,
     internal_profile: {
       lifecycle_status: profile?.lifecycle_status || 'lead',
@@ -400,6 +407,10 @@ function createReadyRouteStaffRouter(options = {}) {
     options.sendReadyRouteStaffInviteEmail || defaultSendReadyRouteStaffInviteEmail;
   const sendReadyRouteStaffPasswordResetEmail =
     options.sendReadyRouteStaffPasswordResetEmail || defaultSendReadyRouteStaffPasswordResetEmail;
+  const billingService = options.billingService || createBillingService({
+    supabase,
+    stripeClient: options.stripeClient
+  });
 
   function getManagerPortalBaseUrl() {
     return (
@@ -1520,7 +1531,7 @@ function createReadyRouteStaffRouter(options = {}) {
       const [accountsResult, profilesResult, managersResult, driversResult, ticketsResult] = await Promise.all([
         supabase
           .from('accounts')
-          .select('id, company_name, manager_email, subscription_status, plan, vehicle_count, stripe_customer_id, stripe_subscription_id, created_at')
+          .select('id, company_name, manager_email, subscription_status, plan, vehicle_count, stripe_customer_id, stripe_subscription_id, account_status, cancellation_requested_at, service_ends_at, retention_ends_at, canceled_at, cancellation_reason, created_at')
           .order('created_at', { ascending: false }),
         supabase
           .from('account_internal_profiles')
@@ -1583,7 +1594,7 @@ function createReadyRouteStaffRouter(options = {}) {
 
       const accountResult = await supabase
         .from('accounts')
-        .select('id, company_name, manager_email, subscription_status, plan, vehicle_count, stripe_customer_id, stripe_subscription_id, created_at')
+        .select('id, company_name, manager_email, subscription_status, plan, vehicle_count, stripe_customer_id, stripe_subscription_id, account_status, cancellation_requested_at, service_ends_at, retention_ends_at, canceled_at, cancellation_reason, created_at')
         .eq('id', accountId)
         .maybeSingle();
 
@@ -1778,6 +1789,94 @@ function createReadyRouteStaffRouter(options = {}) {
 
       console.error('ReadyRoute staff account profile update failed:', error);
       return res.status(500).json({ error: 'Unable to update account profile.' });
+    }
+  });
+
+  router.post('/accounts/:accountId/recover', async (req, res) => {
+    try {
+      const staff = getRequestStaff(req, jwtSecret, READYROUTE_STAFF_ADMIN_ROLES);
+      const accountId = normalizeText(req.params.accountId, 120);
+      const { data: account, error: accountError } = await supabase
+        .from('accounts')
+        .select('id, company_name, account_status, stripe_subscription_id, retention_ends_at')
+        .eq('id', accountId)
+        .maybeSingle();
+
+      if (accountError) {
+        throw accountError;
+      }
+
+      if (!account) {
+        return res.status(404).json({ error: 'Account not found.' });
+      }
+
+      if (!['canceling', 'retained'].includes(account.account_status)) {
+        return res.status(409).json({ error: 'This account is not scheduled for cancellation.' });
+      }
+
+      const billingResume = await billingService.resumeAccountSubscription(accountId);
+      const recoveredAt = now().toISOString();
+      const { data: recoveredAccount, error: updateError } = await supabase
+        .from('accounts')
+        .update({
+          account_status: 'active',
+          cancellation_requested_at: null,
+          service_ends_at: null,
+          retention_ends_at: null,
+          canceled_at: null,
+          cancellation_reason: null
+        })
+        .eq('id', accountId)
+        .select('id, company_name, manager_email, subscription_status, plan, vehicle_count, stripe_customer_id, stripe_subscription_id, account_status, cancellation_requested_at, service_ends_at, retention_ends_at, canceled_at, cancellation_reason, created_at')
+        .maybeSingle();
+
+      if (updateError) {
+        throw updateError;
+      }
+
+      const { error: eventError } = await supabase
+        .from('account_cancellation_events')
+        .insert({
+          account_id: accountId,
+          event_type: 'recovered',
+          requested_by_staff_user_id: staff.staff_user_id,
+          actor_email: staff.staff_email,
+          metadata: {
+            recovered_at: recoveredAt,
+            subscription_resumed: billingResume.resumed,
+            subscription_id: billingResume.subscription_id || null
+          }
+        });
+
+      if (eventError) {
+        throw eventError;
+      }
+
+      await writeAuditLog({
+        staff,
+        action: 'account.recovered',
+        targetType: 'account',
+        targetId: accountId,
+        accountId,
+        metadata: {
+          previous_status: account.account_status,
+          subscription_resumed: billingResume.resumed
+        }
+      });
+
+      return res.status(200).json({
+        account: recoveredAccount,
+        subscription_resumed: billingResume.resumed,
+        billing_reactivation_required: !billingResume.resumed && Boolean(account.stripe_subscription_id)
+      });
+    } catch (error) {
+      const authResponse = sendAuthError(res, error);
+      if (authResponse) {
+        return authResponse;
+      }
+
+      console.error('ReadyRoute staff account recovery failed:', error);
+      return res.status(500).json({ error: 'Unable to recover ReadyRoute account.' });
     }
   });
 

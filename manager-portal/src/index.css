@@ -11792,3 +11792,93 @@ button.manifest-attention-chip {
     grid-template-columns: 1fr;
   }
 }
+.billing-account-lifecycle-card {
+  display: grid;
+  gap: 18px;
+}
+
+.billing-account-lifecycle-card p,
+.billing-cancellation-form span,
+.billing-account-lifecycle-status > span:last-child {
+  color: var(--rr-color-text-muted);
+}
+
+.billing-account-lifecycle-status,
+.billing-account-lifecycle-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.billing-cancellation-form {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+  padding-top: 18px;
+  border-top: 1px solid var(--rr-color-border);
+}
+
+.billing-cancellation-form > div,
+.billing-cancellation-form .error-banner,
+.billing-cancellation-form .success-banner,
+.billing-cancellation-form .billing-cancel-account-button {
+  grid-column: 1 / -1;
+}
+
+.billing-cancellation-form > div {
+  display: grid;
+  gap: 5px;
+}
+
+.billing-cancellation-form label {
+  display: grid;
+  gap: 7px;
+  font-weight: 700;
+}
+
+.billing-cancel-account-button {
+  justify-self: start;
+  color: #a62b24;
+}
+
+@media (max-width: 720px) {
+  .billing-cancellation-form {
+    grid-template-columns: 1fr;
+  }
+}
+.staff-account-retention-panel {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 18px;
+  align-items: center;
+  padding: 18px;
+  border: 1px solid var(--rr-color-warning-border);
+  border-radius: var(--rr-radius-xs);
+  background: var(--rr-color-warning-soft);
+}
+
+.staff-account-retention-panel h3,
+.staff-account-retention-panel p {
+  margin: 0;
+}
+
+.staff-account-retention-panel > div:first-child {
+  display: grid;
+  gap: 5px;
+}
+
+.staff-account-retention-panel p {
+  color: var(--rr-color-text-muted);
+}
+
+.staff-account-retention-panel .support-ticket-save-error,
+.staff-account-retention-panel .support-ticket-save-message {
+  grid-column: 1 / -1;
+}
+
+@media (max-width: 720px) {
+  .staff-account-retention-panel {
+    grid-template-columns: 1fr;
+  }
+}

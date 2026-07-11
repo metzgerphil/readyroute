@@ -40,9 +40,16 @@ create table if not exists public.accounts (
   manifest_sync_interval_minutes integer not null default 15,
   manager_email text unique,
   manager_password_hash text,
+  account_status text not null default 'active',
+  cancellation_requested_at timestamptz,
+  service_ends_at timestamptz,
+  retention_ends_at timestamptz,
+  canceled_at timestamptz,
+  cancellation_reason text,
   created_at timestamptz not null default now(),
   constraint accounts_vehicle_count_nonnegative check (vehicle_count >= 0),
   constraint accounts_plan_check check (plan in ('starter', 'pro', 'active', 'suspended')),
+  constraint accounts_account_status_check check (account_status in ('active', 'canceling', 'retained')),
   constraint accounts_driver_starter_pin_check check (driver_starter_pin is null or driver_starter_pin ~ '^[0-9]{4}$'),
   constraint accounts_dispatch_window_start_hour_check check (dispatch_window_start_hour >= 0 and dispatch_window_start_hour <= 23),
   constraint accounts_dispatch_window_end_hour_check check (dispatch_window_end_hour >= 1 and dispatch_window_end_hour <= 23),
@@ -77,6 +84,20 @@ create table if not exists public.readyroute_staff_users (
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
   constraint readyroute_staff_users_role_check check (role in ('owner', 'admin', 'support', 'read_only'))
+);
+
+create table if not exists public.account_cancellation_events (
+  id uuid primary key default gen_random_uuid(),
+  account_id uuid references public.accounts(id) on delete cascade,
+  event_type text not null,
+  requested_by_manager_user_id uuid references public.manager_users(id) on delete set null,
+  requested_by_staff_user_id uuid references public.readyroute_staff_users(id) on delete set null,
+  actor_email text,
+  reason text,
+  metadata jsonb not null default '{}'::jsonb,
+  created_at timestamptz not null default now(),
+  constraint account_cancellation_events_type_check
+    check (event_type in ('requested', 'retained', 'recovered', 'purged'))
 );
 
 create table if not exists public.account_internal_profiles (

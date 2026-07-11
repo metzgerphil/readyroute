@@ -1597,14 +1597,17 @@ test('DELETE /manager/csas/:accountId/access requires switching away from the cu
   }
 });
 
-test('POST /manager/account/cancel closes the owner workspace after billing cancellation', async () => {
-  const closedAccounts = [];
-  let deletedAccountId = null;
+test('POST /manager/account/cancel schedules service end and retains the workspace', async () => {
+  const scheduledAccounts = [];
+  let accountUpdate = null;
+  let cancellationEvent = null;
   const billingService = {
-    closeAccount: async (accountId, options) => {
-      closedAccounts.push({ accountId, options });
+    scheduleAccountCancellation: async (accountId, options) => {
+      scheduledAccounts.push({ accountId, options });
       return {
-        account_id: accountId
+        account_id: accountId,
+        subscription_id: 'sub-1',
+        service_ends_at: '2026-07-31T23:59:59.000Z'
       };
     }
   };
@@ -1615,14 +1618,23 @@ test('POST /manager/account/cancel closes the owner workspace after billing canc
           id: 'acct-1',
           company_name: 'Bridge Transportation Inc',
           manager_email: 'owner@example.com',
-          driver_starter_pin: '1234'
+          driver_starter_pin: '1234',
+          account_status: 'active'
         },
         error: null
       };
     }
 
-    if (query.table === 'accounts' && query.operation === 'delete') {
-      deletedAccountId = query.filters.find((filter) => filter.column === 'id')?.value || null;
+    if (query.table === 'accounts' && query.operation === 'update') {
+      accountUpdate = query.payload;
+      return {
+        data: null,
+        error: null
+      };
+    }
+
+    if (query.table === 'account_cancellation_events' && query.operation === 'insert') {
+      cancellationEvent = query.payload;
       return {
         data: null,
         error: null
@@ -1632,7 +1644,11 @@ test('POST /manager/account/cancel closes the owner workspace after billing canc
     throw new Error(`Unexpected query ${query.table}:${query.operation}`);
   });
 
-  const server = await startTestServer({ supabase, billingService });
+  const server = await startTestServer({
+    supabase,
+    billingService,
+    now: () => new Date('2026-07-11T20:00:00.000Z')
+  });
 
   try {
     const response = await fetch(`${server.baseUrl}/manager/account/cancel`, {
@@ -1650,13 +1666,17 @@ test('POST /manager/account/cancel closes the owner workspace after billing canc
     const body = await response.json();
     assert.equal(body.success, true);
     assert.equal(body.company_name, 'Bridge Transportation Inc');
-    assert.deepEqual(closedAccounts, [
-      {
-        accountId: 'acct-1',
-        options: { deleteCustomer: true }
-      }
-    ]);
-    assert.equal(deletedAccountId, 'acct-1');
+    assert.equal(body.account_status, 'canceling');
+    assert.equal(body.service_ends_at, '2026-07-31T23:59:59.000Z');
+    assert.equal(body.retention_ends_at, '2026-09-29T23:59:59.000Z');
+    assert.deepEqual(scheduledAccounts, [{
+      accountId: 'acct-1',
+      options: { now: new Date('2026-07-11T20:00:00.000Z') }
+    }]);
+    assert.equal(accountUpdate.account_status, 'canceling');
+    assert.equal(accountUpdate.retention_ends_at, '2026-09-29T23:59:59.000Z');
+    assert.equal(cancellationEvent.event_type, 'requested');
+    assert.equal(cancellationEvent.account_id, 'acct-1');
   } finally {
     await server.close();
   }
@@ -1664,7 +1684,7 @@ test('POST /manager/account/cancel closes the owner workspace after billing canc
 
 test('POST /manager/account/cancel rejects non-owner managers', async () => {
   const billingService = {
-    closeAccount: async () => {
+    scheduleAccountCancellation: async () => {
       throw new Error('Should not be called');
     }
   };

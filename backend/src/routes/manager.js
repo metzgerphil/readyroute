@@ -9,6 +9,7 @@ const { PRIVILEGED_MANAGER_ROLES } = require('../config/constants');
 const { requireManager } = require('../middleware/auth');
 const { parseMultipartForm } = require('../middleware/multipart');
 const { createBillingService } = require('../services/billing');
+const { buildCancellationSchedule } = require('../services/accountLifecycle');
 const { attachApartmentIntelligenceToStops } = require('../services/apartmentIntelligence');
 const { isUsableCoordinate, summarizeCoordinateHealth } = require('../services/coordinates');
 const { attachPropertyIntelToStops, buildPropertyIntelKey, savePropertyIntel } = require('../services/propertyIntel');
@@ -1260,7 +1261,7 @@ function toManagerAccessRecord(managerUser, primaryManagerEmail) {
 async function getAccountManagerContext(supabase, accountId) {
   const accountQuery = await supabase
     .from('accounts')
-    .select('id, company_name, manager_email, driver_starter_pin')
+    .select('id, company_name, manager_email, driver_starter_pin, account_status, cancellation_requested_at, service_ends_at, retention_ends_at, canceled_at, cancellation_reason')
     .eq('id', accountId)
     .maybeSingle();
 
@@ -1271,7 +1272,7 @@ async function getAccountManagerContext(supabase, accountId) {
 
     const fallbackQuery = await supabase
       .from('accounts')
-      .select('id, company_name, manager_email')
+      .select('id, company_name, manager_email, account_status, cancellation_requested_at, service_ends_at, retention_ends_at, canceled_at, cancellation_reason')
       .eq('id', accountId)
       .maybeSingle();
 
@@ -2560,6 +2561,7 @@ function createManagerRouter(options = {}) {
 
   router.post('/account/cancel', requireManager, async (req, res) => {
     const confirmCompanyName = String(req.body?.confirm_company_name || '').trim();
+    const cancellationReason = String(req.body?.reason || '').trim().slice(0, 1000) || null;
 
     if (!confirmCompanyName) {
       return res.status(400).json({ error: 'confirm_company_name is required' });
@@ -2580,24 +2582,178 @@ function createManagerRouter(options = {}) {
         return res.status(400).json({ error: 'Type the exact company name to close this workspace.' });
       }
 
-      await billingService.closeAccount(account.id, { deleteCustomer: true });
+      if (account.account_status === 'canceling' || account.account_status === 'retained') {
+        return res.status(409).json({
+          error: account.account_status === 'retained'
+            ? 'This workspace is already in its data-retention period.'
+            : 'Cancellation is already scheduled for this workspace.'
+        });
+      }
 
-      const { error: deleteError } = await supabase
+      const billingCancellation = await billingService.scheduleAccountCancellation(account.id, {
+        now: nowProvider()
+      });
+      const schedule = buildCancellationSchedule({
+        now: nowProvider(),
+        serviceEndsAt: billingCancellation.service_ends_at
+      });
+
+      const { error: updateError } = await supabase
         .from('accounts')
-        .delete()
+        .update({
+          ...schedule,
+          cancellation_reason: cancellationReason,
+          canceled_at: null
+        })
         .eq('id', account.id);
 
-      if (deleteError) {
-        throw deleteError;
+      if (updateError) {
+        try {
+          await billingService.resumeAccountSubscription(account.id);
+        } catch (rollbackError) {
+          console.error('Stripe cancellation rollback failed after account update error:', rollbackError);
+        }
+        throw updateError;
+      }
+
+      const { error: eventError } = await supabase
+        .from('account_cancellation_events')
+        .insert({
+          account_id: account.id,
+          event_type: 'requested',
+          requested_by_manager_user_id: req.account.manager_user_id || null,
+          actor_email: req.account.manager_email || null,
+          reason: cancellationReason,
+          metadata: {
+            service_ends_at: schedule.service_ends_at,
+            retention_ends_at: schedule.retention_ends_at,
+            stripe_subscription_id: billingCancellation.subscription_id || null
+          }
+        });
+
+      if (eventError) {
+        console.error('Account cancellation event write failed:', eventError);
       }
 
       return res.status(200).json({
         success: true,
-        company_name: account.company_name
+        company_name: account.company_name,
+        account_status: schedule.account_status,
+        service_ends_at: schedule.service_ends_at,
+        retention_ends_at: schedule.retention_ends_at
       });
     } catch (error) {
       console.error('Manager account cancel failed:', error);
       return res.status(500).json({ error: 'Could not cancel ReadyRoute right now.' });
+    }
+  });
+
+  router.get('/account/lifecycle', requireManager, async (req, res) => {
+    try {
+      const account = await getAccountManagerContext(supabase, req.account.account_id);
+
+      if (!account) {
+        return res.status(404).json({ error: 'Account not found' });
+      }
+
+      return res.status(200).json({
+        account: {
+          id: account.id,
+          company_name: account.company_name,
+          account_status: account.account_status || 'active',
+          cancellation_requested_at: account.cancellation_requested_at || null,
+          service_ends_at: account.service_ends_at || null,
+          retention_ends_at: account.retention_ends_at || null,
+          cancellation_reason: account.cancellation_reason || null,
+          can_cancel: normalizeEmail(req.account.manager_email) === normalizeEmail(account.manager_email)
+        }
+      });
+    } catch (error) {
+      console.error('Manager account lifecycle lookup failed:', error);
+      return res.status(500).json({ error: 'Could not load ReadyRoute account status.' });
+    }
+  });
+
+  router.get('/account/export', requireManager, async (req, res) => {
+    try {
+      const account = await getAccountManagerContext(supabase, req.account.account_id);
+
+      if (!account) {
+        return res.status(404).json({ error: 'Account not found' });
+      }
+
+      if (normalizeEmail(req.account.manager_email) !== normalizeEmail(account.manager_email)) {
+        return res.status(403).json({ error: 'Only the workspace owner can export all account data.' });
+      }
+
+      const accountId = account.id;
+      const exportQueries = {
+        managers: supabase.from('manager_users').select('id, account_id, email, full_name, is_active, invited_at, accepted_at, created_at, updated_at').eq('account_id', accountId),
+        drivers: supabase.from('drivers').select('id, account_id, name, email, fedex_driver_id, phone, hourly_rate, is_active, created_at').eq('account_id', accountId),
+        vehicles: supabase.from('vehicles').select('*').eq('account_id', accountId),
+        vehicle_maintenance: supabase.from('vehicle_maintenance').select('*').eq('account_id', accountId),
+        routes: supabase.from('routes').select('*').eq('account_id', accountId),
+        driver_documents: supabase.from('driver_documents').select('id, account_id, driver_id, document_type, original_filename, mime_type, storage_bucket, storage_path, expires_on, notes, uploaded_at, created_at').eq('account_id', accountId),
+        vehicle_inspections: supabase.from('vehicle_inspections').select('*').eq('account_id', accountId),
+        support_tickets: supabase.from('support_tickets').select('*').eq('account_id', accountId)
+      };
+      const exportEntries = await Promise.all(Object.entries(exportQueries).map(async ([key, query]) => {
+        const result = await query;
+
+        if (result.error) {
+          const message = String(result.error.message || result.error.details || '');
+          if (/does not exist|schema cache|relation/i.test(message)) {
+            return [key, []];
+          }
+          throw result.error;
+        }
+
+        return [key, result.data || []];
+      }));
+      const exportData = Object.fromEntries(exportEntries);
+      const routeIds = exportData.routes.map((route) => route.id).filter(Boolean);
+      let stops = [];
+      let packages = [];
+
+      if (routeIds.length > 0) {
+        const stopsResult = await supabase.from('stops').select('*').in('route_id', routeIds);
+        if (stopsResult.error) {
+          throw stopsResult.error;
+        }
+        stops = stopsResult.data || [];
+
+        const stopIds = stops.map((stop) => stop.id).filter(Boolean);
+        if (stopIds.length > 0) {
+          const packagesResult = await supabase.from('packages').select('*').in('stop_id', stopIds);
+          if (packagesResult.error) {
+            throw packagesResult.error;
+          }
+          packages = packagesResult.data || [];
+        }
+      }
+
+      const exportedAt = nowProvider().toISOString();
+      res.setHeader('Content-Disposition', `attachment; filename="readyroute-${account.id}-${exportedAt.slice(0, 10)}.json"`);
+      return res.status(200).json({
+        export_version: 1,
+        exported_at: exportedAt,
+        account: {
+          id: account.id,
+          company_name: account.company_name,
+          manager_email: account.manager_email,
+          account_status: account.account_status || 'active',
+          cancellation_requested_at: account.cancellation_requested_at || null,
+          service_ends_at: account.service_ends_at || null,
+          retention_ends_at: account.retention_ends_at || null
+        },
+        ...exportData,
+        stops,
+        packages,
+        excluded_for_security: ['password hashes', 'PIN hashes', 'active signed storage URLs']
+      });
+    } catch (error) {
+      console.error('Manager account export failed:', error);
+      return res.status(500).json({ error: 'Could not export ReadyRoute account data right now.' });
     }
   });
 

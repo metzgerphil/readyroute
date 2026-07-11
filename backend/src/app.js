@@ -140,7 +140,8 @@ function createApp(options = {}) {
     manifestIngestService: options.manifestIngestService,
     fccProgressSyncService: options.fccProgressSyncService,
     fedexFccAdapter: options.fedexFccAdapter,
-    workerSecret: options.fedexSyncWorkerSecret
+    workerSecret: options.fedexSyncWorkerSecret,
+    accountLifecycleWorkerSecret: options.accountLifecycleWorkerSecret
   });
   const waitlistRouter = options.supabase
     ? createWaitlistRouter({ supabase: options.supabase, sendFeedbackEmail: options.sendFeedbackEmail })
@@ -158,6 +159,8 @@ function createApp(options = {}) {
         supabase: options.supabase,
         jwtSecret: options.jwtSecret,
         now: options.now,
+        stripeClient: options.stripeClient,
+        billingService: options.staffBillingService,
         sendReadyRouteStaffInviteEmail: options.sendReadyRouteStaffInviteEmail,
         sendReadyRouteStaffPasswordResetEmail: options.sendReadyRouteStaffPasswordResetEmail
       })

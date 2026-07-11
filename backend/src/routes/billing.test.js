@@ -410,3 +410,50 @@ test('missing accounts fail closed on subscription-protected routes', async () =
     await server.close();
   }
 });
+
+test('retained accounts are read-only on subscription-protected routes', async () => {
+  const supabase = new MockSupabase((query) => {
+    if (query.table === 'accounts' && query.operation === 'select') {
+      return {
+        data: {
+          id: 'acct-1',
+          plan: 'pro',
+          account_status: 'retained',
+          service_ends_at: '2026-07-01T00:00:00.000Z',
+          retention_ends_at: '2026-09-01T00:00:00.000Z'
+        },
+        error: null
+      };
+    }
+
+    throw new Error(`Unexpected query ${query.table}:${query.operation}`);
+  });
+  const stripeClient = {
+    customers: { create: async () => ({}) },
+    subscriptions: { create: async () => ({}) },
+    webhooks: { constructEvent: () => ({}) }
+  };
+  const server = await startTestServer({
+    supabase,
+    stripeClient,
+    webhookSecret: 'whsec_test',
+    stripePriceId: 'price_123',
+    enforceBilling: true
+  });
+
+  try {
+    const response = await fetch(`${server.baseUrl}/routes/pull-fedex`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${signManagerToken()}` }
+    });
+
+    assert.equal(response.status, 403);
+    assert.deepEqual(await response.json(), {
+      error: 'This ReadyRoute workspace is in its data-retention period and is read-only.',
+      account_status: 'retained',
+      retention_ends_at: '2026-09-01T00:00:00.000Z'
+    });
+  } finally {
+    await server.close();
+  }
+});

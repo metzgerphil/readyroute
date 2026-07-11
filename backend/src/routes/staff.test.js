@@ -137,13 +137,15 @@ function signStaffToken(overrides = {}) {
 async function startTestServer({
   supabase,
   sendReadyRouteStaffInviteEmail,
-  sendReadyRouteStaffPasswordResetEmail
+  sendReadyRouteStaffPasswordResetEmail,
+  staffBillingService
 }) {
   const app = createApp({
     supabase,
     jwtSecret: process.env.JWT_SECRET,
     now: () => new Date('2026-07-05T16:00:00.000Z'),
     enforceBilling: false,
+    staffBillingService,
     sendReadyRouteStaffInviteEmail,
     sendReadyRouteStaffPasswordResetEmail
   });
@@ -784,6 +786,78 @@ test('GET /staff/accounts/:accountId returns detail, usage, and timeline', async
     assert.equal(payload.billing_settings.committed_route_count, 10);
     assert.equal(payload.routes[0].id, 'route-1');
     assert.equal(payload.timeline.length > 0, true);
+  } finally {
+    await server.close();
+  }
+});
+
+test('POST /staff/accounts/:accountId/recover restores a retained workspace for owner staff', async () => {
+  const updates = [];
+  const events = [];
+  const audits = [];
+  const supabase = new MockSupabase((query) => {
+    if (query.table === 'accounts' && query.operation === 'select') {
+      return {
+        data: {
+          id: 'acct-1',
+          company_name: 'Bridge Transportation',
+          manager_email: 'owner@example.com',
+          account_status: 'retained',
+          stripe_subscription_id: 'sub-123',
+          retention_ends_at: '2026-09-01T00:00:00.000Z'
+        },
+        error: null
+      };
+    }
+
+    if (query.table === 'accounts' && query.operation === 'update') {
+      updates.push(query.payload);
+      return {
+        data: {
+          id: 'acct-1',
+          company_name: 'Bridge Transportation',
+          account_status: 'active'
+        },
+        error: null
+      };
+    }
+
+    if (query.table === 'account_cancellation_events' && query.operation === 'insert') {
+      events.push(query.payload);
+      return { data: null, error: null };
+    }
+
+    if (query.table === 'readyroute_staff_audit_log' && query.operation === 'insert') {
+      audits.push(query.payload);
+      return { data: null, error: null };
+    }
+
+    throw new Error(`Unexpected query ${query.table}:${query.operation}`);
+  });
+  const server = await startTestServer({
+    supabase,
+    staffBillingService: {
+      async resumeAccountSubscription(accountId) {
+        assert.equal(accountId, 'acct-1');
+        return { subscription_id: 'sub-123', resumed: true };
+      }
+    }
+  });
+
+  try {
+    const response = await fetch(`${server.baseUrl}/staff/accounts/acct-1/recover`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${signStaffToken({ staff_role: 'owner' })}` }
+    });
+    const payload = await response.json();
+
+    assert.equal(response.status, 200);
+    assert.equal(payload.account.account_status, 'active');
+    assert.equal(payload.subscription_resumed, true);
+    assert.equal(updates[0].account_status, 'active');
+    assert.equal(updates[0].retention_ends_at, null);
+    assert.equal(events[0].event_type, 'recovered');
+    assert.equal(audits[0].action, 'account.recovered');
   } finally {
     await server.close();
   }
