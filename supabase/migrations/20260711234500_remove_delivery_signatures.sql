@@ -304,3 +304,25 @@ $$;
 
 revoke all on function public.replace_manifest_route_atomic(uuid, uuid, uuid, boolean, jsonb, jsonb, jsonb) from anon, authenticated;
 grant execute on function public.replace_manifest_route_atomic(uuid, uuid, uuid, boolean, jsonb, jsonb, jsonb) to service_role;
+
+alter table public.stops
+  drop column if exists signer_name,
+  drop column if exists signature_url,
+  drop column if exists age_confirmed,
+  drop column if exists pod_signature_url;
+
+alter table public.packages
+  drop column if exists requires_signature,
+  drop column if exists requires_adult_signature;
+
+delete from storage.objects
+where bucket_id = 'signatures';
+
+delete from storage.buckets
+where id = 'signatures';
+
+insert into public.readyroute_schema_state (id, version, applied_at)
+values (true, '20260711234500', now())
+on conflict (id) do update
+set version = excluded.version,
+    applied_at = excluded.applied_at;
