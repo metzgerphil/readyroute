@@ -184,6 +184,17 @@ function normalizeInspectionPhotos(value) {
     .filter(Boolean);
 }
 
+function removeTransientInspectionPhotoUrls(items = []) {
+  return (Array.isArray(items) ? items : []).map((item) => ({
+    ...item,
+    photos: (Array.isArray(item?.photos) ? item.photos : []).map((photo) => (
+      photo?.storage_path
+        ? { ...photo, url: null }
+        : photo
+    ))
+  }));
+}
+
 function hasIssueDetailValue(value) {
   if (Array.isArray(value)) {
     return value.some(hasIssueDetailValue);
@@ -408,7 +419,11 @@ function createLegacyInspectionPayload(payload = {}) {
 }
 
 async function insertVehicleInspectionWithSchemaFallback(supabase, payload) {
-  let currentPayload = { ...payload };
+  const persistencePayload = {
+    ...payload,
+    items: removeTransientInspectionPhotoUrls(payload.items)
+  };
+  let currentPayload = { ...persistencePayload };
   const fallbackReasons = [];
 
   for (let attempt = 0; attempt < 8; attempt += 1) {
@@ -423,7 +438,7 @@ async function insertVehicleInspectionWithSchemaFallback(supabase, payload) {
     }
 
     if (isInspectionTypeConstraintError(error) && currentPayload.inspection_type !== 'daily_check') {
-      currentPayload = createLegacyInspectionPayload(payload);
+      currentPayload = createLegacyInspectionPayload(persistencePayload);
       fallbackReasons.push('legacy_inspection_type');
       continue;
     }
@@ -449,7 +464,7 @@ async function insertVehicleInspectionWithSchemaFallback(supabase, payload) {
       continue;
     }
 
-    const legacyPayload = createLegacyInspectionPayload(payload);
+    const legacyPayload = createLegacyInspectionPayload(persistencePayload);
     const changedToLegacyPayload = Object.keys(currentPayload).some((key) => legacyPayload[key] !== currentPayload[key]);
     if (!changedToLegacyPayload) {
       return { data: null, error };

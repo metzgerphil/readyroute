@@ -337,7 +337,7 @@ function DriverDocumentSlot({
           {documents.map((document) => (
             <div className="driver-document-file" key={document.id}>
               <div>
-                <a href={document.public_url || '#'} rel="noreferrer" target="_blank">{document.file_name}</a>
+                <a href={document.access_url || document.public_url || '#'} rel="noreferrer" target="_blank">{document.file_name}</a>
                 <span>
                   {document.expires_on ? `Expires ${document.expires_on}` : 'No expiration'}
                   {document.notes ? ` · ${document.notes}` : ''}

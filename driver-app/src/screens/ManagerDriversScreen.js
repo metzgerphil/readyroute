@@ -976,8 +976,9 @@ export default function ManagerDriversScreen({ csaWorkspaceVersion = 0, identity
   }
 
   function openDriverDocument(document) {
-    if (document?.public_url) {
-      Linking.openURL(document.public_url);
+    const accessUrl = document?.access_url || document?.public_url;
+    if (accessUrl) {
+      Linking.openURL(accessUrl);
     }
   }
 

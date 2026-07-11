@@ -124,7 +124,8 @@ class MockSupabase {
     this.storage = {
       from: () => ({
         upload: async () => ({ data: null, error: null }),
-        getPublicUrl: () => ({ data: { publicUrl: 'https://cdn/default.jpg' } })
+        createSignedUrl: async () => ({ data: { signedUrl: 'https://signed/default.jpg' }, error: null }),
+        remove: async () => ({ data: null, error: null })
       })
     };
   }
@@ -2343,11 +2344,11 @@ test('POST /routes/inspection-photo uploads a driver inspection photo for the as
           assert.equal(buffer.toString(), 'image');
           return { data: { path }, error: null };
         },
-        getPublicUrl: (path) => ({
-          data: {
-            publicUrl: `https://cdn.readyroute.test/${path}`
-          }
-        })
+        createSignedUrl: async (path) => ({
+          data: { signedUrl: `https://signed.readyroute.test/${path}` },
+          error: null
+        }),
+        remove: async () => ({ data: null, error: null })
       };
     }
   };
@@ -2378,7 +2379,7 @@ test('POST /routes/inspection-photo uploads a driver inspection photo for the as
     assert.match(uploadedPath, /^acct-1\/vehicle-1\/route-1\/tires\/\d+-[a-f0-9]+-tire\.jpg$/);
     assert.equal(body.photo.storage_bucket, 'vehicle-inspection-photos');
     assert.equal(body.photo.storage_path, uploadedPath);
-    assert.equal(body.photo.url, `https://cdn.readyroute.test/${uploadedPath}`);
+    assert.equal(body.photo.url, `https://signed.readyroute.test/${uploadedPath}`);
   } finally {
     await server.close();
   }

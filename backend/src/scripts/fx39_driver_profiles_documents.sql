@@ -60,5 +60,6 @@ for each row
 execute function public.touch_driver_documents_updated_at();
 
 insert into storage.buckets (id, name, public)
-values ('driver-documents', 'driver-documents', true)
-on conflict (id) do nothing;
+values ('driver-documents', 'driver-documents', false)
+on conflict (id) do update
+set public = false;

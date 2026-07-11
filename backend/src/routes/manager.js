@@ -4,6 +4,7 @@ const crypto = require('crypto');
 const jwt = require('jsonwebtoken');
 
 const defaultSupabase = require('../lib/supabase');
+const { addDriverDocumentAccessUrl } = require('../services/privateStorage');
 const { PRIVILEGED_MANAGER_ROLES } = require('../config/constants');
 const { requireManager } = require('../middleware/auth');
 const { parseMultipartForm } = require('../middleware/multipart');
@@ -209,8 +210,11 @@ async function loadDriverDocumentsForAccount(supabase, accountId, driverIds = []
     throw error;
   }
 
+  const documentsWithAccess = await Promise.all(
+    (data || []).map((document) => addDriverDocumentAccessUrl(supabase, document))
+  );
   const documentsByDriverId = new Map();
-  (data || []).forEach((document) => {
+  documentsWithAccess.forEach((document) => {
     const documents = documentsByDriverId.get(document.driver_id) || [];
     documents.push(document);
     documentsByDriverId.set(document.driver_id, documents);
@@ -4446,10 +4450,6 @@ function createManagerRouter(options = {}) {
         return res.status(500).json({ error: 'Failed to upload driver document. Confirm the driver-documents storage bucket exists.' });
       }
 
-      const { data: publicUrlData } = supabase.storage
-        .from(DRIVER_DOCUMENT_BUCKET)
-        .getPublicUrl(storagePath);
-
       const expiresOn = String(req.body?.expires_on || '').trim() || null;
       const { data: documentRow, error: insertDocumentError } = await supabase
         .from('driver_documents')
@@ -4462,7 +4462,7 @@ function createManagerRouter(options = {}) {
           file_size: req.file.buffer.length,
           storage_bucket: DRIVER_DOCUMENT_BUCKET,
           storage_path: storagePath,
-          public_url: publicUrlData?.publicUrl || null,
+          public_url: null,
           expires_on: expiresOn,
           notes: String(req.body?.notes || '').trim() || null,
           uploaded_by_manager_id: req.account.manager_user_id || null
@@ -4476,7 +4476,9 @@ function createManagerRouter(options = {}) {
         return res.status(500).json({ error: 'Failed to save driver document metadata' });
       }
 
-      return res.status(201).json({ document: documentRow });
+      return res.status(201).json({
+        document: await addDriverDocumentAccessUrl(supabase, documentRow)
+      });
     } catch (error) {
       console.error('Driver document upload endpoint failed:', error);
       return res.status(500).json({ error: 'Failed to upload driver document' });

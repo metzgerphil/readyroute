@@ -8,6 +8,10 @@ const { parseVehicleImportRows } = require('../services/resourceImport');
 const { filterProductionRows, isProductionTestArtifact } = require('../services/testDataFilter');
 const { notifyDriverManualInspectionAssigned } = require('../services/appNotifications');
 const {
+  addInspectionPhotoAccessUrls,
+  createSignedStorageUrl
+} = require('../services/privateStorage');
+const {
   getInspectionStatusLabel,
   insertVehicleInspectionWithSchemaFallback,
   isInspectionTypeConstraintError,
@@ -316,6 +320,10 @@ function presentInspection(inspection = {}, vehiclesById = new Map()) {
         }
       : null
   };
+}
+
+async function presentInspectionWithPrivatePhotos(supabase, inspection = {}, vehiclesById = new Map()) {
+  return addInspectionPhotoAccessUrls(supabase, presentInspection(inspection, vehiclesById));
 }
 
 function presentManualInspectionAssignment(assignment = {}, { vehicle = null, driver = null } = {}) {
@@ -1961,9 +1969,11 @@ function createVehiclesRouter(options = {}) {
         vehiclesById = new Map((vehicles || []).map((vehicle) => [vehicle.id, vehicle]));
       }
 
-      return res.status(200).json({
-        inspections: (inspections || []).map((inspection) => presentInspection(inspection, vehiclesById))
-      });
+      const presentedInspections = await Promise.all(
+        (inspections || []).map((inspection) => presentInspectionWithPrivatePhotos(supabase, inspection, vehiclesById))
+      );
+
+      return res.status(200).json({ inspections: presentedInspections });
     } catch (error) {
       console.error('Vehicle inspections endpoint failed:', error);
       return res.status(500).json({ error: 'Failed to load vehicle inspections' });
@@ -2009,7 +2019,9 @@ function createVehiclesRouter(options = {}) {
         }
       }
 
-      return res.status(200).json({ inspection: presentInspection(inspection, vehiclesById) });
+      return res.status(200).json({
+        inspection: await presentInspectionWithPrivatePhotos(supabase, inspection, vehiclesById)
+      });
     } catch (error) {
       console.error('Vehicle inspection detail endpoint failed:', error);
       return res.status(500).json({ error: 'Failed to load vehicle inspection' });
@@ -2042,7 +2054,9 @@ function createVehiclesRouter(options = {}) {
         return res.status(500).json({ error: 'Failed to review vehicle inspection' });
       }
 
-      return res.status(200).json({ inspection: presentInspection(inspection) });
+      return res.status(200).json({
+        inspection: await presentInspectionWithPrivatePhotos(supabase, inspection)
+      });
     } catch (error) {
       console.error('Vehicle inspection review endpoint failed:', error);
       return res.status(500).json({ error: 'Failed to review vehicle inspection' });
@@ -2086,9 +2100,11 @@ function createVehiclesRouter(options = {}) {
 
       const vehiclesById = new Map([[vehicle.id, vehicle]]);
 
-      return res.status(200).json({
-        inspections: (inspections || []).map((inspection) => presentInspection(inspection, vehiclesById))
-      });
+      const presentedInspections = await Promise.all(
+        (inspections || []).map((inspection) => presentInspectionWithPrivatePhotos(supabase, inspection, vehiclesById))
+      );
+
+      return res.status(200).json({ inspections: presentedInspections });
     } catch (error) {
       console.error('Vehicle inspection history endpoint failed:', error);
       return res.status(500).json({ error: 'Failed to load inspection history' });
@@ -2161,13 +2177,19 @@ function createVehiclesRouter(options = {}) {
         return res.status(500).json({ error: 'Failed to upload inspection photo. Confirm the vehicle-inspection-photos storage bucket exists.' });
       }
 
-      const { data: publicUrlData } = supabase.storage
-        .from(VEHICLE_INSPECTION_PHOTO_BUCKET)
-        .getPublicUrl(storagePath);
+      const signedUrl = await createSignedStorageUrl(supabase, {
+        bucket: VEHICLE_INSPECTION_PHOTO_BUCKET,
+        path: storagePath
+      });
+
+      if (!signedUrl) {
+        await supabase.storage.from(VEHICLE_INSPECTION_PHOTO_BUCKET).remove([storagePath]).catch(() => null);
+        return res.status(500).json({ error: 'Failed to prepare secure inspection photo access' });
+      }
 
       return res.status(201).json({
         photo: {
-          url: publicUrlData?.publicUrl || null,
+          url: signedUrl,
           storage_bucket: VEHICLE_INSPECTION_PHOTO_BUCKET,
           storage_path: storagePath,
           caption: null
@@ -2269,7 +2291,13 @@ function createVehiclesRouter(options = {}) {
         }
       }
 
-      return res.status(201).json({ inspection: presentInspection(inspection, new Map([[vehicle.id, vehicle]])) });
+      return res.status(201).json({
+        inspection: await presentInspectionWithPrivatePhotos(
+          supabase,
+          inspection,
+          new Map([[vehicle.id, vehicle]])
+        )
+      });
     } catch (error) {
       console.error('Vehicle inspection submit endpoint failed:', error);
       return res.status(500).json({ error: 'Failed to save vehicle inspection' });

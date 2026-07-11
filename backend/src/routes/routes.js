@@ -46,6 +46,7 @@ const {
   summarizeInspectionItems,
   validateInspectionItemsForSubmission
 } = require('../services/vehicleInspectionRecords');
+const { createSignedStorageUrl } = require('../services/privateStorage');
 const {
   listDriverNotifications,
   markNotificationRead,
@@ -2489,13 +2490,19 @@ function createRoutesRouter(options = {}) {
         return res.status(500).json({ error: 'Failed to upload inspection photo. Confirm the vehicle-inspection-photos storage bucket exists.' });
       }
 
-      const { data: publicUrlData } = supabase.storage
-        .from(VEHICLE_INSPECTION_PHOTO_BUCKET)
-        .getPublicUrl(storagePath);
+      const signedUrl = await createSignedStorageUrl(supabase, {
+        bucket: VEHICLE_INSPECTION_PHOTO_BUCKET,
+        path: storagePath
+      });
+
+      if (!signedUrl) {
+        await supabase.storage.from(VEHICLE_INSPECTION_PHOTO_BUCKET).remove([storagePath]).catch(() => null);
+        return res.status(500).json({ error: 'Failed to prepare secure inspection photo access' });
+      }
 
       return res.status(201).json({
         photo: {
-          url: publicUrlData?.publicUrl || null,
+          url: signedUrl,
           storage_bucket: VEHICLE_INSPECTION_PHOTO_BUCKET,
           storage_path: storagePath,
           caption: null
@@ -3314,13 +3321,21 @@ function createRoutesRouter(options = {}) {
         return res.status(500).json({ error: 'Failed to upload proof of delivery photo' });
       }
 
-      const { data: publicUrlData } = supabase.storage
-        .from('pod-photos')
-        .getPublicUrl(filePath);
+      const signedUrl = await createSignedStorageUrl(supabase, {
+        bucket: 'pod-photos',
+        path: filePath
+      });
+
+      if (!signedUrl) {
+        await supabase.storage.from('pod-photos').remove([filePath]).catch(() => null);
+        return res.status(500).json({ error: 'Failed to prepare secure proof of delivery photo access' });
+      }
 
       return res.status(201).json({
         ok: true,
-        pod_photo_url: publicUrlData.publicUrl
+        pod_photo_url: signedUrl,
+        pod_photo_storage_bucket: 'pod-photos',
+        pod_photo_storage_path: filePath
       });
     } catch (error) {
       console.error('POD photo endpoint failed:', error);

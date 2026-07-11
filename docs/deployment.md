@@ -47,6 +47,12 @@ ReadyRoute staff accounts are provisioned by an authenticated staff owner or adm
 The original `/staff/bootstrap` endpoint is retired and no bootstrap secret should be
 configured in Cloud Run.
 
+Supabase Storage buckets containing operational files must remain private. The backend
+uploads with the service role after ReadyRoute authorization and returns short-lived
+signed URLs to authorized users. Do not store new public object URLs or mark these
+buckets public: `driver-documents`, `vehicle-inspection-photos`, `pod-photos`, and
+the retired legacy `signatures` bucket.
+
 ## Release Flow
 
 1. Open a pull request.

@@ -157,3 +157,45 @@ test('insertVehicleInspectionWithSchemaFallback retries legacy status when datab
   assert.deepEqual(result.fallbackReasons, ['legacy_inspection_status']);
   assert.equal(insertAttempts, 2);
 });
+
+test('insertVehicleInspectionWithSchemaFallback never persists temporary signed photo URLs', async () => {
+  let insertedPayload = null;
+  const supabase = {
+    from() {
+      return {
+        insert(payload) {
+          insertedPayload = payload;
+          return {
+            select() {
+              return {
+                single: async () => ({ data: { id: 'inspection-1', ...payload }, error: null })
+              };
+            }
+          };
+        }
+      };
+    }
+  };
+
+  const result = await insertVehicleInspectionWithSchemaFallback(supabase, {
+    account_id: 'acct-1',
+    vehicle_id: 'vehicle-1',
+    inspection_date: '2026-07-11',
+    inspection_type: 'driver',
+    odometer: 65000,
+    status: 'needs_review',
+    items: [{
+      checklist_item_key: 'tires',
+      status: 'issue',
+      photos: [{
+        storage_bucket: 'vehicle-inspection-photos',
+        storage_path: 'acct-1/vehicle-1/tires/photo.jpg',
+        url: 'https://project.supabase.co/storage/v1/object/sign/vehicle-inspection-photos/photo.jpg?token=temporary'
+      }]
+    }]
+  });
+
+  assert.equal(result.error, null);
+  assert.equal(insertedPayload.items[0].photos[0].url, null);
+  assert.equal(insertedPayload.items[0].photos[0].storage_path, 'acct-1/vehicle-1/tires/photo.jpg');
+});

@@ -966,12 +966,14 @@ test('POST /vehicles/:id/inspection-photo uploads a manager inspection photo', a
           assert.equal(buffer.toString(), 'image');
           return { error: null };
         },
-        getPublicUrl(path) {
+        async createSignedUrl(path) {
           return {
-            data: {
-              publicUrl: `https://cdn.readyroute.test/${path}`
-            }
+            data: { signedUrl: `https://signed.readyroute.test/${path}` },
+            error: null
           };
+        },
+        async remove() {
+          return { data: null, error: null };
         }
       };
     }
@@ -1001,7 +1003,7 @@ test('POST /vehicles/:id/inspection-photo uploads a manager inspection photo', a
     assert.equal(uploadedContentType, 'image/jpeg');
     assert.equal(body.photo.storage_bucket, 'vehicle-inspection-photos');
     assert.equal(body.photo.storage_path, uploadedPath);
-    assert.equal(body.photo.url, `https://cdn.readyroute.test/${uploadedPath}`);
+    assert.equal(body.photo.url, `https://signed.readyroute.test/${uploadedPath}`);
   } finally {
     await server.close();
   }
