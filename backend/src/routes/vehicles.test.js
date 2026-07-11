@@ -5,6 +5,10 @@ const jwt = require('jsonwebtoken');
 process.env.JWT_SECRET = 'test-secret';
 
 const { createApp } = require('../app');
+const {
+  buildVehicleReadiness,
+  mapInspectionReadinessContext
+} = require('./vehicles');
 
 class MockQueryBuilder {
   constructor(supabase, table) {
@@ -154,6 +158,38 @@ async function startTestServer(supabase, now = () => new Date('2026-04-12T16:00:
   };
 }
 
+test('vehicle readiness exposes an unsafe inspection as a linked blocker', () => {
+  const inspection = {
+    id: 'inspection-unsafe-1',
+    vehicle_id: 'vehicle-1',
+    inspection_date: '2026-04-12',
+    status: 'urgent_manager_review',
+    items: [
+      {
+        checklist_item_key: 'tires',
+        label: 'Tires',
+        status: 'issue',
+        severity: 'unsafe',
+        issue_details: { issue: ['Damage'] }
+      }
+    ]
+  };
+  const context = mapInspectionReadinessContext([inspection]);
+  const readiness = buildVehicleReadiness(
+    { id: 'vehicle-1', is_active: true },
+    { status: 'ok' },
+    null,
+    '2026-04-12',
+    undefined,
+    { pendingUnsafeInspection: context.pendingUnsafeByVehicleId.get('vehicle-1') }
+  );
+
+  assert.equal(readiness.status, 'blocked');
+  assert.equal(readiness.primary_reason.label, 'Unsafe inspection: Tires');
+  assert.equal(readiness.primary_reason.source_type, 'inspection');
+  assert.equal(readiness.primary_reason.source_id, 'inspection-unsafe-1');
+});
+
 test('GET /vehicles returns vehicles with latest maintenance, today assignment, and service_due', async () => {
   const supabase = new MockSupabase((query) => {
     if (query.table === 'vehicles' && query.operation === 'select') {
@@ -292,6 +328,13 @@ test('GET /vehicles returns vehicles with latest maintenance, today assignment, 
       };
     }
 
+    if (query.table === 'vehicle_inspections' && query.operation === 'select') {
+      return {
+        data: [],
+        error: null
+      };
+    }
+
     throw new Error(`Unexpected query ${query.table}:${query.operation}:${query.mode}`);
   });
 
@@ -331,7 +374,7 @@ test('POST /vehicles creates a vehicle for the authenticated account', async () 
   const supabase = new MockSupabase((query) => {
     if (query.table === 'vehicles' && query.operation === 'insert') {
       assert.equal(query.payload.account_id, 'acct-1');
-      assert.equal(query.payload.name, 'NEW123');
+      assert.equal(query.payload.name, 'Truck 24');
       assert.equal(query.payload.plate, 'NEW123');
       assert.equal(query.payload.truck_type, 'Other');
       assert.equal(query.payload.custom_truck_type, 'P900 Reefer');
@@ -523,13 +566,43 @@ test('POST /vehicles accepts P1100 as a supported truck type', async () => {
   }
 });
 
+test('POST /vehicles requires a separate license plate', async () => {
+  const supabase = new MockSupabase(() => {
+    throw new Error('Should not hit supabase');
+  });
+  const server = await startTestServer(supabase);
+
+  try {
+    const response = await fetch(`${server.baseUrl}/vehicles`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${signManagerToken()}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        name: '329310',
+        make: 'Freightliner',
+        model: 'MT45',
+        year: 2012
+      })
+    });
+
+    assert.equal(response.status, 400);
+    assert.deepEqual(await response.json(), {
+      error: 'Vehicle ID, license plate, make, model, and year are required'
+    });
+  } finally {
+    await server.close();
+  }
+});
+
 test('POST /vehicles accepts P900 as a supported truck type', async () => {
   const supabase = new MockSupabase((query) => {
     if (query.table === 'vehicles' && query.operation === 'insert') {
       assert.equal(query.payload.truck_type, 'P900');
       assert.equal(query.payload.custom_truck_type, null);
       assert.equal(query.payload.name, '538785');
-      assert.equal(query.payload.plate, '538785');
+      assert.equal(query.payload.plate, 'WA-538785');
       return {
         data: { id: 'vehicle-p900' },
         error: null
@@ -554,7 +627,7 @@ test('POST /vehicles accepts P900 as a supported truck type', async () => {
         make: 'Ford',
         model: 'F59',
         year: 2019,
-        plate: '538785',
+        plate: 'WA-538785',
         registration_expiration: '2026-07-31',
         current_mileage: 65855
       })

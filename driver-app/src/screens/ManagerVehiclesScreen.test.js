@@ -12,6 +12,7 @@ import ManagerVehiclesScreen, {
   getDriverDisplayName,
   getInspectionAssignmentForm,
   getLastServiceSummary,
+  getRecordedLicensePlate,
   getRegistrationStatus,
   getStatusMeta,
   getTodayDateParam,
@@ -86,6 +87,13 @@ describe('ManagerVehiclesScreen', () => {
     expect(getRegistrationStatus(vehicle)).toContain('2026');
     expect(getAssignedDriverLabel(vehicle)).toBe('Luis Perez');
     expect(getStatusMeta(vehicle).label).toBe('Assigned');
+    expect(getStatusMeta({ readiness_status: 'blocked' })).toMatchObject({
+      filterKey: 'blocked',
+      label: 'Blocked',
+      tone: 'danger'
+    });
+    expect(getRecordedLicensePlate({ name: '329310', plate: '329310' })).toBe('');
+    expect(getRecordedLicensePlate({ name: '329310', plate: 'WA-12345' })).toBe('WA-12345');
     expect(getLastServiceSummary({ latest_maintenance: { service_date: '2026-04-01', service_type: 'Oil Change' } })).toEqual({
       dateLabel: 'Apr 1, 2026',
       detailLabel: 'Oil Change'
@@ -108,10 +116,11 @@ describe('ManagerVehiclesScreen', () => {
       ...getVehicleForm(vehicle),
       truck_type: 'P700',
       fuel_type: 'Diesel',
-      plate: '329310'
+      name: '329310',
+      plate: 'WA-12345'
     })).toMatchObject({
       name: '329310',
-      plate: '329310',
+      plate: 'WA-12345',
       truck_type: 'P700',
       fuel_type: 'Diesel'
     });
@@ -158,12 +167,44 @@ describe('ManagerVehiclesScreen', () => {
     expect(screen.getByText('12,345 miles')).toBeTruthy();
     expect(screen.getByText('Oil Change')).toBeTruthy();
     expect(screen.getByText('816')).toBeTruthy();
-    expect(screen.getByText('Edit')).toBeTruthy();
-    expect(screen.getByText('Open')).toBeTruthy();
+    expect(screen.getByLabelText('Actions for vehicle V-42')).toBeTruthy();
     expect(screen.queryByText('Odometer')).toBeNull();
     expect(screen.queryByText('More')).toBeNull();
     expect(screen.queryByText('Route 816')).toBeNull();
     expect(screen.getByPlaceholderText('Search vehicles by ID or description')).toBeTruthy();
+  });
+
+  it('adds a vehicle with a separate Vehicle ID and License Plate', async () => {
+    api.get
+      .mockResolvedValueOnce({ data: { vehicles: [] } })
+      .mockResolvedValueOnce({ data: { vehicles: [] } });
+    api.post.mockResolvedValue({ data: { vehicle_id: 'vehicle-new' } });
+
+    const screen = render(<ManagerVehiclesScreen />);
+
+    await waitFor(() => {
+      expect(screen.getByText('Add Vehicle')).toBeTruthy();
+    });
+
+    fireEvent.press(screen.getByText('Add Vehicle'));
+    fireEvent.changeText(screen.getByPlaceholderText('Vehicle ID'), '329310');
+    fireEvent.changeText(screen.getByPlaceholderText('License Plate'), 'wa-12345');
+    fireEvent.changeText(screen.getByPlaceholderText('Make'), 'Freightliner');
+    fireEvent.changeText(screen.getByPlaceholderText('Model'), 'MT45');
+    fireEvent.changeText(screen.getByPlaceholderText('Year'), '2012');
+    fireEvent.press(screen.getByLabelText('Confirm add vehicle'));
+
+    await waitFor(() => {
+      expect(api.post).toHaveBeenCalledWith('/vehicles', expect.objectContaining({
+        name: '329310',
+        plate: 'WA-12345',
+        make: 'Freightliner',
+        model: 'MT45',
+        year: 2012
+      }), {
+        authMode: 'manager'
+      });
+    });
   });
 
   it('lets managers assign a vehicle inspection to a driver from the app', async () => {
@@ -220,7 +261,8 @@ describe('ManagerVehiclesScreen', () => {
       expect(screen.getByText('V-42')).toBeTruthy();
     });
 
-    fireEvent.press(screen.getByText('Assign'));
+    fireEvent.press(screen.getByLabelText('Actions for vehicle V-42'));
+    fireEvent.press(screen.getAllByText('Assign Inspection')[1]);
 
     await waitFor(() => {
       expect(screen.getByText('Alex Driver • #FX123')).toBeTruthy();
@@ -696,16 +738,15 @@ describe('ManagerVehiclesScreen', () => {
       expect(screen.getByText('V-42')).toBeTruthy();
     });
 
-    fireEvent.press(screen.getByText('Edit'));
-    expect(screen.getByText('Edit Truck V-42')).toBeTruthy();
-    expect(screen.getByText('Change information or add records.')).toBeTruthy();
+    fireEvent.press(screen.getByLabelText('Actions for vehicle V-42'));
+    expect(screen.getByText('Vehicle Actions')).toBeTruthy();
     expect(screen.getByText('Update Odometer')).toBeTruthy();
-    expect(screen.getByText('Edit Truck Info')).toBeTruthy();
+    expect(screen.getByText('Open Vehicle Details')).toBeTruthy();
     expect(screen.getByText('Log Maintenance')).toBeTruthy();
-    expect(screen.getByText('Update Registration')).toBeTruthy();
+    expect(screen.getByText('View History')).toBeTruthy();
 
-    fireEvent.press(screen.getByText('Edit Truck Info'));
-    expect(screen.getByText('Edit Vehicle')).toBeTruthy();
+    fireEvent.press(screen.getByText('Open Vehicle Details'));
+    expect(screen.getByText('Edit V-42')).toBeTruthy();
     expect(screen.getByText('Vehicle Type')).toBeTruthy();
     fireEvent.press(screen.getAllByText('P1200')[0]);
     fireEvent.press(screen.getAllByText('Diesel')[0]);
@@ -715,7 +756,7 @@ describe('ManagerVehiclesScreen', () => {
     await waitFor(() => {
       expect(api.put).toHaveBeenCalledWith('/vehicles/vehicle-1', expect.objectContaining({
         current_mileage: 13000,
-        name: 'ABC123',
+        name: 'V-42',
         plate: 'ABC123',
         fuel_type: 'Diesel',
         truck_type: 'P1200',
@@ -757,8 +798,8 @@ describe('ManagerVehiclesScreen', () => {
       expect(screen.getByText('V-42')).toBeTruthy();
     });
 
-    fireEvent.press(screen.getByText('Edit'));
-    expect(screen.getByText('Edit Truck V-42')).toBeTruthy();
+    fireEvent.press(screen.getByLabelText('Actions for vehicle V-42'));
+    expect(screen.getByText('Vehicle Actions')).toBeTruthy();
     expect(screen.getByText('Log Maintenance')).toBeTruthy();
     expect(screen.queryByText('Service History')).toBeNull();
 
@@ -810,7 +851,7 @@ describe('ManagerVehiclesScreen', () => {
       expect(screen.getByText('V-42')).toBeTruthy();
     });
 
-    fireEvent.press(screen.getByText('Edit'));
+    fireEvent.press(screen.getByLabelText('Actions for vehicle V-42'));
     fireEvent.press(screen.getByText('Update Odometer'));
     expect(screen.getByText('Edit Odometer')).toBeTruthy();
 
@@ -906,7 +947,7 @@ describe('ManagerVehiclesScreen', () => {
       expect(screen.getByText('V-42')).toBeTruthy();
     });
 
-    fireEvent.press(screen.getByText('Edit'));
+    fireEvent.press(screen.getByLabelText('Actions for vehicle V-42'));
     fireEvent.press(screen.getByText('Run Inspection'));
 
     await waitFor(() => {
@@ -1001,7 +1042,7 @@ describe('ManagerVehiclesScreen', () => {
       expect(screen.getByText('V-42')).toBeTruthy();
     });
 
-    fireEvent.press(screen.getByText('Open'));
+    fireEvent.press(screen.getByText('V-42'));
     expect(screen.getByText('Vehicle V-42')).toBeTruthy();
     expect(screen.getByText('Manager Actions')).toBeTruthy();
     expect(screen.getByText('Inspection History')).toBeTruthy();
@@ -1101,7 +1142,7 @@ describe('ManagerVehiclesScreen', () => {
       expect(screen.getByText('V-42')).toBeTruthy();
     });
 
-    fireEvent.press(screen.getByText('Open'));
+    fireEvent.press(screen.getByText('V-42'));
     fireEvent.press(screen.getByText('Inspection History'));
 
     await waitFor(() => {
@@ -1125,7 +1166,9 @@ describe('ManagerVehiclesScreen', () => {
 
     await waitFor(() => {
       expect(api.put).toHaveBeenCalledWith('/vehicles/vehicle-1', {
-        vehicle_status: 'needs_repair'
+        vehicle_status: 'needs_repair',
+        readiness_source_type: 'inspection',
+        readiness_source_id: 'inspection-1'
       }, {
         authMode: 'manager'
       });
@@ -1275,7 +1318,7 @@ describe('ManagerVehiclesScreen', () => {
       expect(screen.getByText('V-42')).toBeTruthy();
     });
 
-    fireEvent.press(screen.getByText('Open'));
+    fireEvent.press(screen.getByText('V-42'));
     fireEvent.press(screen.getByText('Inspection History'));
 
     await waitFor(() => {

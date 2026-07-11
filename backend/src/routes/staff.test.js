@@ -701,7 +701,7 @@ test('GET /staff/accounts returns CRM account summaries for staff', async () => 
   }
 });
 
-test('GET /staff/accounts/:accountId returns detail, cost snapshots, and timeline', async () => {
+test('GET /staff/accounts/:accountId returns detail, usage, and timeline', async () => {
   const supabase = new MockSupabase((query) => {
     if (query.table === 'accounts') {
       return {
@@ -760,27 +760,6 @@ test('GET /staff/accounts/:accountId returns detail, cost snapshots, and timelin
       return { data: [{ id: 'route-1', work_area_name: '817', date: '2026-07-04', status: 'completed', total_stops: 120, completed_stops: 120 }], error: null };
     }
 
-    if (query.table === 'account_cost_snapshots') {
-      return {
-        data: [{
-          id: 'cost-1',
-          account_id: 'acct-1',
-          period_month: '2026-07-01',
-          estimated_revenue_cents: 15000,
-          cloud_run_cents: 1000,
-          database_cents: 500,
-          storage_cents: 200,
-          email_cents: 100,
-          maps_cents: 300,
-          support_cents: 2000,
-          other_cents: 0,
-          total_cost_cents: 4100,
-          updated_at: '2026-07-05T13:00:00.000Z'
-        }],
-        error: null
-      };
-    }
-
     if (query.table === 'readyroute_staff_audit_log') {
       return {
         data: [{ id: 'audit-1', action: 'account.profile_updated', account_id: 'acct-1', staff_email: 'admin@readyroute.org', metadata: {}, created_at: '2026-07-05T14:00:00.000Z' }],
@@ -802,28 +781,82 @@ test('GET /staff/accounts/:accountId returns detail, cost snapshots, and timelin
 
     assert.equal(response.status, 200);
     assert.equal(payload.account.id, 'acct-1');
-    assert.equal(payload.cost_snapshots[0].estimated_profit_cents, 10900);
     assert.equal(payload.billing_settings.committed_route_count, 10);
+    assert.equal(payload.routes[0].id, 'route-1');
     assert.equal(payload.timeline.length > 0, true);
   } finally {
     await server.close();
   }
 });
 
-test('POST /staff/accounts/:accountId/cost-snapshots saves a monthly cost snapshot', async () => {
+test('GET /staff/operating-costs returns a monthly ReadyRoute cost ledger', async () => {
   const supabase = new MockSupabase((query) => {
-    if (query.table === 'accounts') {
-      return { data: { id: 'acct-1' }, error: null };
+    if (query.table === 'readyroute_operating_costs') {
+      assert.deepEqual(query.filters.find((filter) => filter.column === 'period_month'), {
+        op: 'eq',
+        column: 'period_month',
+        value: '2026-07-01'
+      });
+      return {
+        data: [
+          {
+            id: 'op-cost-1',
+            period_month: '2026-07-01',
+            category: 'ai_tools',
+            vendor: 'Codex',
+            amount_cents: 8500,
+            billing_date: '2026-07-05',
+            is_recurring: true,
+            created_at: '2026-07-05T16:00:00.000Z'
+          },
+          {
+            id: 'op-cost-2',
+            period_month: '2026-07-01',
+            category: 'domains',
+            vendor: 'Domain registrar',
+            amount_cents: 3500,
+            billing_date: '2026-07-02',
+            is_recurring: false,
+            created_at: '2026-07-02T16:00:00.000Z'
+          }
+        ],
+        error: null
+      };
     }
 
-    if (query.table === 'account_cost_snapshots' && query.operation === 'upsert') {
-      assert.equal(query.payload.account_id, 'acct-1');
+    return { data: null, error: null };
+  });
+  const server = await startTestServer({ supabase });
+
+  try {
+    const response = await fetch(`${server.baseUrl}/staff/operating-costs?period_month=2026-07`, {
+      headers: {
+        Authorization: `Bearer ${signStaffToken({ staff_role: 'support' })}`
+      }
+    });
+    const payload = await response.json();
+
+    assert.equal(response.status, 200);
+    assert.equal(payload.operating_costs.length, 2);
+    assert.equal(payload.summary.total_cost_cents, 12000);
+    assert.equal(payload.summary.recurring_cost_cents, 8500);
+    assert.equal(payload.summary.one_time_cost_cents, 3500);
+  } finally {
+    await server.close();
+  }
+});
+
+test('POST /staff/operating-costs saves a ReadyRoute-wide operating cost', async () => {
+  const supabase = new MockSupabase((query) => {
+    if (query.table === 'readyroute_operating_costs' && query.operation === 'insert') {
       assert.equal(query.payload.period_month, '2026-07-01');
-      assert.equal(query.payload.estimated_revenue_cents, 20000);
-      assert.equal(query.payload.total_cost_cents, 4550);
+      assert.equal(query.payload.category, 'google_cloud_run');
+      assert.equal(query.payload.vendor, 'Google Cloud Run');
+      assert.equal(query.payload.amount_cents, 4200);
+      assert.equal(query.payload.is_recurring, true);
       return {
         data: {
-          id: 'cost-1',
+          id: 'op-cost-1',
           ...query.payload,
           created_at: '2026-07-05T16:00:00.000Z'
         },
@@ -832,8 +865,8 @@ test('POST /staff/accounts/:accountId/cost-snapshots saves a monthly cost snapsh
     }
 
     if (query.table === 'readyroute_staff_audit_log' && query.operation === 'insert') {
-      assert.equal(query.payload.action, 'account.cost_snapshot_saved');
-      assert.equal(query.payload.account_id, 'acct-1');
+      assert.equal(query.payload.action, 'operating_cost.created');
+      assert.equal(query.payload.target_type, 'readyroute_operating_cost');
       return { data: null, error: null };
     }
 
@@ -842,7 +875,7 @@ test('POST /staff/accounts/:accountId/cost-snapshots saves a monthly cost snapsh
   const server = await startTestServer({ supabase });
 
   try {
-    const response = await fetch(`${server.baseUrl}/staff/accounts/acct-1/cost-snapshots`, {
+    const response = await fetch(`${server.baseUrl}/staff/operating-costs`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -850,22 +883,19 @@ test('POST /staff/accounts/:accountId/cost-snapshots saves a monthly cost snapsh
       },
       body: JSON.stringify({
         period_month: '2026-07',
-        estimated_revenue_cents: 20000,
-        cloud_run_cents: 1000,
-        database_cents: 1500,
-        storage_cents: 300,
-        email_cents: 150,
-        maps_cents: 600,
-        support_cents: 1000,
-        other_cents: 0,
-        notes: 'First pass estimate.'
+        category: 'google_cloud_run',
+        vendor: 'Google Cloud Run',
+        amount_cents: 4200,
+        billing_date: '2026-07-05',
+        is_recurring: true,
+        notes: 'Monthly backend estimate.'
       })
     });
     const payload = await response.json();
 
-    assert.equal(response.status, 200);
-    assert.equal(payload.cost_snapshot.total_cost_cents, 4550);
-    assert.equal(payload.cost_snapshot.estimated_profit_cents, 15450);
+    assert.equal(response.status, 201);
+    assert.equal(payload.operating_cost.vendor, 'Google Cloud Run');
+    assert.equal(payload.operating_cost.amount_cents, 4200);
   } finally {
     await server.close();
   }

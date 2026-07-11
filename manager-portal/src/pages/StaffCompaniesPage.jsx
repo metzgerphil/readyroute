@@ -13,22 +13,15 @@ const LIFECYCLE_OPTIONS = [
   { value: 'canceled', label: 'Canceled' }
 ];
 
-const COST_FIELDS = [
-  { key: 'cloud_run', label: 'Cloud Run' },
-  { key: 'database', label: 'Database' },
-  { key: 'storage', label: 'Storage' },
-  { key: 'email', label: 'Email' },
-  { key: 'maps', label: 'Maps' },
-  { key: 'support', label: 'Support' },
-  { key: 'other', label: 'Other' }
-];
-
 function formatDateTime(value) {
   if (!value) {
     return 'Not recorded';
   }
 
-  const date = new Date(value);
+  const dateOnlyMatch = String(value).match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  const date = dateOnlyMatch
+    ? new Date(Number(dateOnlyMatch[1]), Number(dateOnlyMatch[2]) - 1, Number(dateOnlyMatch[3]))
+    : new Date(value);
 
   if (Number.isNaN(date.getTime())) {
     return 'Not recorded';
@@ -47,6 +40,13 @@ function formatLabel(value) {
     .replace(/\b\w/g, (letter) => letter.toUpperCase());
 }
 
+function formatCurrencyFromCents(cents = 0) {
+  return new Intl.NumberFormat(undefined, {
+    style: 'currency',
+    currency: 'USD'
+  }).format(Number(cents || 0) / 100);
+}
+
 function getLifecycleTone(status) {
   if (status === 'active') {
     return 'active';
@@ -63,70 +63,49 @@ function getLifecycleTone(status) {
   return 'neutral';
 }
 
-function formatCurrencyFromCents(cents = 0) {
-  return new Intl.NumberFormat(undefined, {
-    style: 'currency',
-    currency: 'USD',
-    maximumFractionDigits: 0
-  }).format(Number(cents || 0) / 100);
+function normalizeSearchValue(value) {
+  return String(value || '').trim().toLowerCase();
 }
 
-function centsToInput(cents = 0) {
-  const dollars = Number(cents || 0) / 100;
-  return dollars ? dollars.toFixed(2) : '';
+function getAccountState(account) {
+  const candidates = [
+    account.state,
+    account.company_state,
+    account.business_state,
+    account.billing_state,
+    account.service_state,
+    account.operations_state,
+    account.address_state,
+    account.primary_state,
+    account.internal_profile?.state,
+    account.internal_profile?.company_state,
+    account.internal_profile?.operations_state
+  ];
+  const state = candidates.find((candidate) => String(candidate || '').trim());
+
+  return state ? String(state).trim().toUpperCase() : '';
 }
 
-function inputToCents(value) {
-  const numeric = Number(value);
-  return Number.isFinite(numeric) && numeric > 0 ? Math.round(numeric * 100) : 0;
-}
-
-function getCurrentPeriodMonth() {
-  const now = new Date();
-  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
-}
-
-function createEmptyCostForm(periodMonth = getCurrentPeriodMonth(), estimatedRevenueCents = 0) {
-  return {
-    period_month: periodMonth,
-    estimated_revenue: centsToInput(estimatedRevenueCents),
-    cloud_run: '',
-    database: '',
-    storage: '',
-    email: '',
-    maps: '',
-    support: '',
-    other: '',
-    notes: ''
-  };
-}
-
-function snapshotToCostForm(snapshot, fallbackRevenueCents = 0) {
-  if (!snapshot) {
-    return createEmptyCostForm(getCurrentPeriodMonth(), fallbackRevenueCents);
-  }
-
-  return {
-    period_month: String(snapshot.period_month || getCurrentPeriodMonth()).slice(0, 7),
-    estimated_revenue: centsToInput(snapshot.estimated_revenue_cents),
-    cloud_run: centsToInput(snapshot.cloud_run_cents),
-    database: centsToInput(snapshot.database_cents),
-    storage: centsToInput(snapshot.storage_cents),
-    email: centsToInput(snapshot.email_cents),
-    maps: centsToInput(snapshot.maps_cents),
-    support: centsToInput(snapshot.support_cents),
-    other: centsToInput(snapshot.other_cents),
-    notes: snapshot.notes || ''
-  };
+function getAccountSearchText(account) {
+  return normalizeSearchValue([
+    account.company_name,
+    account.manager_email,
+    account.internal_profile?.lifecycle_status,
+    account.internal_profile?.onboarding_stage,
+    getAccountState(account),
+    account.subscription_status,
+    account.plan
+  ].filter(Boolean).join(' '));
 }
 
 export default function StaffCompaniesPage() {
   const queryClient = useQueryClient();
   const [selectedAccountId, setSelectedAccountId] = useState('');
+  const [companySearch, setCompanySearch] = useState('');
+  const [lifecycleFilter, setLifecycleFilter] = useState('');
+  const [stateFilter, setStateFilter] = useState('');
   const [profileDraft, setProfileDraft] = useState(null);
-  const [costDraft, setCostDraft] = useState({ key: '', form: createEmptyCostForm() });
   const [saveMessage, setSaveMessage] = useState('');
-  const [costSaveMessage, setCostSaveMessage] = useState('');
 
   const accountsQuery = useQuery({
     queryKey: ['staff-accounts'],
@@ -140,9 +119,38 @@ export default function StaffCompaniesPage() {
     () => (Array.isArray(accountsQuery.data) ? accountsQuery.data : []),
     [accountsQuery.data]
   );
+
+  const stateOptions = useMemo(
+    () => Array.from(new Set(accounts.map(getAccountState).filter(Boolean))).sort(),
+    [accounts]
+  );
+
+  const filteredAccounts = useMemo(() => {
+    const searchNeedle = normalizeSearchValue(companySearch);
+
+    return accounts.filter((account) => {
+      const lifecycle = account.internal_profile?.lifecycle_status || 'lead';
+      const accountState = getAccountState(account);
+
+      if (lifecycleFilter && lifecycle !== lifecycleFilter) {
+        return false;
+      }
+
+      if (stateFilter && accountState !== stateFilter) {
+        return false;
+      }
+
+      if (searchNeedle && !getAccountSearchText(account).includes(searchNeedle)) {
+        return false;
+      }
+
+      return true;
+    });
+  }, [accounts, companySearch, lifecycleFilter, stateFilter]);
+
   const selectedAccount = useMemo(
-    () => accounts.find((account) => account.id === selectedAccountId) || accounts[0] || null,
-    [accounts, selectedAccountId]
+    () => filteredAccounts.find((account) => account.id === selectedAccountId) || filteredAccounts[0] || null,
+    [filteredAccounts, selectedAccountId]
   );
 
   const accountDetailQuery = useQuery({
@@ -161,20 +169,7 @@ export default function StaffCompaniesPage() {
   const onboardingDraft = selectedProfileDraft?.onboarding_stage ?? detailedAccount?.internal_profile?.onboarding_stage ?? '';
   const notesDraft = selectedProfileDraft?.internal_notes ?? detailedAccount?.internal_profile?.internal_notes ?? '';
   const billingSettings = detail.billing_settings || null;
-  const fallbackRevenueCents = billingSettings
-    ? Number(billingSettings.committed_route_count || 0) * Number(billingSettings.billing_rate_cents || 0)
-    : 0;
-  const costSnapshots = useMemo(
-    () => (Array.isArray(detail.cost_snapshots) ? detail.cost_snapshots : []),
-    [detail.cost_snapshots]
-  );
   const timeline = Array.isArray(detail.timeline) ? detail.timeline : [];
-  const costFormKey = detailedAccount?.id || selectedAccount?.id || '';
-  const defaultCostForm = useMemo(
-    () => snapshotToCostForm(costSnapshots[0], fallbackRevenueCents),
-    [costSnapshots, fallbackRevenueCents]
-  );
-  const costForm = costDraft.key === costFormKey ? costDraft.form : defaultCostForm;
 
   const activeCount = accounts.filter((account) => account.internal_profile?.lifecycle_status === 'active').length;
   const onboardingCount = accounts.filter((account) => ['trial', 'onboarding'].includes(account.internal_profile?.lifecycle_status)).length;
@@ -214,49 +209,6 @@ export default function StaffCompaniesPage() {
     }
   });
 
-  const saveCostMutation = useMutation({
-    mutationFn: async () => {
-      if (!detailedAccount?.id) {
-        throw new Error('Select a company first.');
-      }
-
-      const payload = {
-        period_month: costForm.period_month,
-        estimated_revenue_cents: inputToCents(costForm.estimated_revenue),
-        notes: costForm.notes
-      };
-
-      for (const field of COST_FIELDS) {
-        payload[`${field.key}_cents`] = inputToCents(costForm[field.key]);
-      }
-
-      const response = await api.post(`/staff/accounts/${detailedAccount.id}/cost-snapshots`, payload);
-      return response.data?.cost_snapshot || null;
-    },
-    onSuccess: (snapshot) => {
-      if (snapshot) {
-        queryClient.setQueryData(['staff-account-detail', detailedAccount.id], (current) => {
-          if (!current) {
-            return current;
-          }
-
-          const snapshots = Array.isArray(current.cost_snapshots) ? current.cost_snapshots : [];
-          const nextSnapshots = [
-            snapshot,
-            ...snapshots.filter((item) => item.id !== snapshot.id && item.period_month !== snapshot.period_month)
-          ].sort((left, right) => String(right.period_month).localeCompare(String(left.period_month)));
-
-          return {
-            ...current,
-            cost_snapshots: nextSnapshots
-          };
-        });
-      }
-
-      setCostSaveMessage('Cost snapshot saved.');
-    }
-  });
-
   function updateProfileDraft(patch) {
     if (!detailedAccount?.id) {
       return;
@@ -276,26 +228,14 @@ export default function StaffCompaniesPage() {
     setSaveMessage('');
   }
 
-  function updateCostField(field, value) {
-    setCostDraft((current) => {
-      const baseForm = current.key === costFormKey ? current.form : costForm;
-
-      return {
-        key: costFormKey,
-        form: {
-          ...baseForm,
-          [field]: value
-        }
-      };
-    });
-    setCostSaveMessage('');
-  }
-
   function handleSelectAccount(accountId) {
+    if (!accountId) {
+      return;
+    }
+
     setSelectedAccountId(accountId);
     setProfileDraft(null);
     setSaveMessage('');
-    setCostSaveMessage('');
   }
 
   async function handleSaveProfile(event) {
@@ -309,26 +249,12 @@ export default function StaffCompaniesPage() {
     }
   }
 
-  async function handleSaveCost(event) {
-    event.preventDefault();
-    setCostSaveMessage('');
-
-    try {
-      await saveCostMutation.mutateAsync();
-    } catch {
-      // The mutation state renders the user-facing error.
-    }
-  }
-
-  const totalCostCents = COST_FIELDS.reduce((sum, field) => sum + inputToCents(costForm[field.key]), 0);
-  const estimatedProfitCents = inputToCents(costForm.estimated_revenue) - totalCostCents;
-
   return (
     <section className="staff-page staff-companies-page">
       <PageHeader
-        eyebrow="ReadyRoute CRM"
+        eyebrow="ReadyRoute Internal"
         title="Companies"
-        description="Monitor customer accounts, onboarding, support pressure, usage, and internal cost estimates."
+        description="Monitor accounts, onboarding, support activity, usage, and billing health."
         actions={(
           <button className="secondary-inline-button" onClick={() => accountsQuery.refetch()} type="button">
             Refresh
@@ -354,39 +280,99 @@ export default function StaffCompaniesPage() {
         />
       ) : accounts.length ? (
         <div className="staff-crm-layout">
-          <aside className="staff-account-list" aria-label="ReadyRoute customer accounts">
-            {accounts.map((account) => {
-              const lifecycle = account.internal_profile?.lifecycle_status || 'lead';
-              const isSelected = account.id === selectedAccount?.id;
+          <section className="staff-company-finder" aria-label="ReadyRoute company finder">
+            <div className="staff-company-finder-header">
+              <div>
+                <h2>Company Finder</h2>
+                <p>{filteredAccounts.length} of {accounts.length} companies</p>
+              </div>
+              {selectedAccount ? (
+                <StatusBadge tone={getLifecycleTone(selectedAccount.internal_profile?.lifecycle_status || 'lead')}>
+                  {formatLabel(selectedAccount.internal_profile?.lifecycle_status || 'lead')}
+                </StatusBadge>
+              ) : null}
+            </div>
 
-              return (
-                <button
-                  className={`staff-account-row${isSelected ? ' selected' : ''}`}
-                  key={account.id}
-                  onClick={() => handleSelectAccount(account.id)}
-                  type="button"
+            <div className="staff-company-finder-grid">
+              <label>
+                Search
+                <input
+                  onChange={(event) => setCompanySearch(event.target.value)}
+                  placeholder="Company, owner, stage, or plan"
+                  type="search"
+                  value={companySearch}
+                />
+              </label>
+
+              <label>
+                Company
+                <select
+                  disabled={!filteredAccounts.length}
+                  onChange={(event) => handleSelectAccount(event.target.value)}
+                  value={selectedAccount?.id || ''}
                 >
-                  <span className="staff-account-row-header">
-                    <strong>{account.company_name}</strong>
-                    <StatusBadge tone={getLifecycleTone(lifecycle)}>
-                      {formatLabel(lifecycle)}
-                    </StatusBadge>
-                  </span>
-                  <span className="staff-account-row-meta">
-                    {account.manager_email || 'No owner email'} · {formatDateTime(account.created_at)}
-                  </span>
-                  <span className="staff-account-row-meta">
-                    {account.counts?.active_managers || 0} managers · {account.counts?.active_drivers || 0} drivers · {account.vehicle_count || 0} vehicles
-                  </span>
-                  {account.counts?.open_support_tickets ? (
-                    <span className="staff-account-ticket-warning">
-                      {account.counts.open_support_tickets} open support ticket{account.counts.open_support_tickets === 1 ? '' : 's'}
-                    </span>
-                  ) : null}
-                </button>
-              );
-            })}
-          </aside>
+                  {filteredAccounts.length ? (
+                    filteredAccounts.map((account) => (
+                      <option key={account.id} value={account.id}>
+                        {account.company_name}
+                      </option>
+                    ))
+                  ) : (
+                    <option value="">No matching companies</option>
+                  )}
+                </select>
+              </label>
+
+              <label>
+                Lifecycle
+                <select value={lifecycleFilter} onChange={(event) => setLifecycleFilter(event.target.value)}>
+                  <option value="">All lifecycles</option>
+                  {LIFECYCLE_OPTIONS.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+
+              <label>
+                State
+                <select
+                  disabled={!stateOptions.length}
+                  onChange={(event) => setStateFilter(event.target.value)}
+                  value={stateFilter}
+                >
+                  <option value="">{stateOptions.length ? 'All states' : 'Not tracked'}</option>
+                  {stateOptions.map((state) => (
+                    <option key={state} value={state}>
+                      {state}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            </div>
+
+            {selectedAccount ? (
+              <div className="staff-company-selected-strip">
+                <div className="staff-company-selected-main">
+                  <strong>{selectedAccount.company_name}</strong>
+                  <span>{selectedAccount.manager_email || 'No owner email'} · Created {formatDateTime(selectedAccount.created_at)}</span>
+                </div>
+                <div className="staff-company-selected-metrics">
+                  <span><strong>{selectedAccount.counts?.active_managers || 0}</strong> managers</span>
+                  <span><strong>{selectedAccount.counts?.active_drivers || 0}</strong> drivers</span>
+                  <span><strong>{selectedAccount.vehicle_count || 0}</strong> vehicles</span>
+                  <span><strong>{selectedAccount.counts?.open_support_tickets || 0}</strong> open tickets</span>
+                </div>
+              </div>
+            ) : (
+              <EmptyState
+                title="No matching companies"
+                description="Clear the search or filters to select a company."
+                variant="inline"
+              />
+            )}
+          </section>
 
           {detailedAccount ? (
             <article className="staff-account-detail">
@@ -481,56 +467,25 @@ export default function StaffCompaniesPage() {
 
               <div className="staff-detail-grid">
                 <section className="staff-detail-panel">
-                  <h3>Cost / Profit Snapshot</h3>
-                  <form className="staff-cost-form" onSubmit={handleSaveCost}>
-                    <label>
-                      Month
-                      <input
-                        onChange={(event) => updateCostField('period_month', event.target.value)}
-                        type="month"
-                        value={costForm.period_month}
-                      />
-                    </label>
-                    <label>
-                      Estimated revenue
-                      <input
-                        inputMode="decimal"
-                        onChange={(event) => updateCostField('estimated_revenue', event.target.value)}
-                        type="number"
-                        value={costForm.estimated_revenue}
-                      />
-                    </label>
-                    {COST_FIELDS.map((field) => (
-                      <label key={field.key}>
-                        {field.label}
-                        <input
-                          inputMode="decimal"
-                          onChange={(event) => updateCostField(field.key, event.target.value)}
-                          type="number"
-                          value={costForm[field.key]}
-                        />
-                      </label>
-                    ))}
-                    <label className="staff-cost-form-notes">
-                      Notes
-                      <textarea
-                        onChange={(event) => updateCostField('notes', event.target.value)}
-                        value={costForm.notes}
-                      />
-                    </label>
-                    <div className="staff-cost-summary">
-                      <span>Cost {formatCurrencyFromCents(totalCostCents)}</span>
-                      <span>Profit {formatCurrencyFromCents(estimatedProfitCents)}</span>
-                    </div>
-                    {saveCostMutation.isError ? (
-                      <div className="error-banner">{saveCostMutation.error?.response?.data?.error || 'Cost snapshot could not be saved.'}</div>
-                    ) : costSaveMessage ? (
-                      <div className="info-banner">{costSaveMessage}</div>
-                    ) : null}
-                    <button className="primary-cta" disabled={saveCostMutation.isPending} type="submit">
-                      {saveCostMutation.isPending ? 'Saving snapshot...' : 'Save Cost Snapshot'}
-                    </button>
-                  </form>
+                  <h3>Usage Snapshot</h3>
+                  <div className="staff-compact-list">
+                    <article>
+                      <strong>{detail.billing_routes?.length || 0} billable route records</strong>
+                      <span>Recent billing ledger entries</span>
+                    </article>
+                    <article>
+                      <strong>{detail.routes?.length || 0} recent routes</strong>
+                      <span>Imported or active route records</span>
+                    </article>
+                    <article>
+                      <strong>{detail.drivers?.length || 0} drivers · {detail.managers?.length || 0} managers</strong>
+                      <span>Current account user footprint</span>
+                    </article>
+                    <article>
+                      <strong>{billingSettings?.committed_route_count ?? 'Not set'} committed routes</strong>
+                      <span>{billingSettings?.billing_rate_cents ? `${formatCurrencyFromCents(billingSettings.billing_rate_cents)} per route` : 'Billing rate not set'}</span>
+                    </article>
+                  </div>
                 </section>
 
                 <section className="staff-detail-panel">
@@ -548,13 +503,13 @@ export default function StaffCompaniesPage() {
                   ) : (
                     <EmptyState
                       title="No timeline yet"
-                      description="Support, account, cost, and audit activity will appear here."
+                      description="Support, account, billing, and audit activity will appear here."
                       variant="inline"
                     />
                   )}
                 </section>
 
-                <section className="staff-detail-panel">
+                <section className="staff-detail-panel staff-detail-panel-wide">
                   <h3>Support History</h3>
                   {detail.support_tickets?.length ? (
                     <div className="staff-compact-list">
@@ -570,21 +525,21 @@ export default function StaffCompaniesPage() {
                   )}
                 </section>
 
-                <section className="staff-detail-panel">
+                <section className="staff-detail-panel staff-detail-panel-wide">
                   <h3>Usage Signals</h3>
                   <div className="staff-compact-list">
-                    <article>
-                      <strong>{detail.billing_routes?.length || 0} billable route records</strong>
-                      <span>Recent route billing ledger entries</span>
-                    </article>
-                    <article>
-                      <strong>{detail.routes?.length || 0} recent routes</strong>
-                      <span>Imported or active route records</span>
-                    </article>
-                    <article>
-                      <strong>{detail.drivers?.length || 0} drivers · {detail.managers?.length || 0} managers</strong>
-                      <span>Current account user footprint</span>
-                    </article>
+                    {(detail.routes || []).slice(0, 8).map((route) => (
+                      <article key={route.id}>
+                        <strong>{route.work_area_name || route.id} · {formatLabel(route.status || route.dispatch_state || 'route')}</strong>
+                        <span>{formatDateTime(route.date || route.created_at)} · {route.completed_stops || 0}/{route.total_stops || 0} stops</span>
+                      </article>
+                    ))}
+                    {detail.routes?.length ? null : (
+                      <article>
+                        <strong>No recent route activity</strong>
+                        <span>Recent imported routes will appear here.</span>
+                      </article>
+                    )}
                   </div>
                 </section>
               </div>

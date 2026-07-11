@@ -55,7 +55,7 @@ export default function StaffSettingsPage() {
       <PageHeader
         eyebrow="ReadyRoute Internal"
         title="Settings"
-        description="Manage your ReadyRoute staff sign-in."
+        description="Manage your staff password and sign-in."
       />
 
       <div className="staff-users-layout">

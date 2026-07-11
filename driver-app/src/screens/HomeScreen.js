@@ -575,12 +575,33 @@ export default function HomeScreen({ navigation, onLogout }) {
       const nextDriverDay = routeResponse.data?.driver_day || {
         status: nextRoute ? 'dispatched' : 'unassigned'
       };
+      let nextRouteWithReadiness = nextRoute;
+
+      if (nextRoute?.vehicle_id) {
+        const readinessResponse = await api
+          .get(`/vehicles/${nextRoute.vehicle_id}/readiness`)
+          .catch(() => null);
+        const readinessVehicle = readinessResponse?.data?.vehicle || null;
+
+        if (readinessVehicle?.readiness) {
+          nextRouteWithReadiness = {
+            ...nextRoute,
+            vehicle: {
+              ...(nextRoute.vehicle || {}),
+              id: nextRoute.vehicle_id,
+              name: nextRoute.vehicle_name || nextRoute.vehicle?.name || readinessVehicle.name,
+              readiness: readinessVehicle.readiness,
+              readiness_status: readinessVehicle.readiness_status
+            }
+          };
+        }
+      }
 
       Promise.resolve(saveDriverRouteSummary(routeResponse.data || {})).catch(() => {});
 
       setClockedInAt(resolvedClockIn);
       setActiveBreak(activeBreakState);
-      setRoute(nextRoute);
+      setRoute(nextRouteWithReadiness);
       setDriverDay(nextDriverDay);
       setDatabaseSafetyFocus(normalizeSafetyFocusResponse(safetyFocusResponse?.data?.safety_focus));
       setLoadError(null);
@@ -1045,7 +1066,9 @@ export default function HomeScreen({ navigation, onLogout }) {
         'Vehicle Inspection Complete',
         `Vehicle: ${requirement.vehicle_name || requirement.vehicle_id || 'Selected vehicle'}\nStatus: ${statusLabel}`
       );
-      if (route && requirement.blocks_route_start !== false) {
+      if (inspection.urgent_review) {
+        await loadHomeData({ showAlert: false });
+      } else if (route && requirement.blocks_route_start !== false) {
         await continueIntoRouteWorkflow();
       } else {
         await loadHomeData({ showAlert: false });
@@ -1223,6 +1246,12 @@ export default function HomeScreen({ navigation, onLogout }) {
   const inspectionRequirement = getInspectionRequirement(driverDay, route);
   const isManualInspectionAssignment = inspectionRequirement?.reason === 'manual_assignment';
   const isInspectionBlockingRoute = Boolean(inspectionRequirement && inspectionRequirement.blocks_route_start !== false);
+  const vehicleReadiness = route?.vehicle?.readiness || null;
+  const vehicleBlockers = Array.isArray(vehicleReadiness?.reasons)
+    ? vehicleReadiness.reasons.filter((reason) => reason.severity === 'blocked')
+    : [];
+  const isVehicleBlocked = vehicleReadiness?.status === 'blocked' && vehicleBlockers.length > 0;
+  const isVehicleStartBlocked = isVehicleBlocked && !['in_progress', 'complete'].includes(route?.status);
   const canShowInspectionRequirement = Boolean(inspectionRequirement && (hasLocationAccess || !route || !isInspectionBlockingRoute));
   const parsedOdometerValue = odometerInput.length > 0 ? Number(odometerInput) : null;
   const isOdometerInRange = parsedOdometerValue !== null && odometerRequirement
@@ -1607,6 +1636,27 @@ export default function HomeScreen({ navigation, onLogout }) {
               </View>
             ) : null}
 
+            {isVehicleBlocked ? (
+              <View style={styles.vehicleBlockedCard}>
+                <Text style={styles.vehicleBlockedEyebrow}>Vehicle blocked</Text>
+                <Text style={styles.vehicleBlockedTitle}>
+                  {route?.vehicle_name || route?.vehicle?.name || 'Assigned vehicle'} {route?.status === 'in_progress' ? 'requires manager attention' : 'cannot be dispatched'}
+                </Text>
+                <View style={styles.vehicleBlockedReasonList}>
+                  {vehicleBlockers.map((reason) => (
+                    <View key={`${reason.type}-${reason.source_id || reason.label}`} style={styles.vehicleBlockedReasonRow}>
+                      <View style={styles.vehicleBlockedDot} />
+                      <View style={styles.vehicleBlockedReasonCopy}>
+                        <Text style={styles.vehicleBlockedReasonTitle}>{reason.label}</Text>
+                        {reason.detail ? <Text style={styles.vehicleBlockedReasonDetail}>{reason.detail}</Text> : null}
+                      </View>
+                    </View>
+                  ))}
+                </View>
+                <Text style={styles.vehicleBlockedHelp}>Contact your manager before using this vehicle.</Text>
+              </View>
+            ) : null}
+
             {canShowInspectionRequirement ? (
               <View style={styles.inspectionCard}>
                 <Text style={styles.inspectionEyebrow}>
@@ -1762,7 +1812,7 @@ export default function HomeScreen({ navigation, onLogout }) {
               </View>
             ) : null}
 
-            {routePresentation?.actionLabel && !odometerRequirement && !isInspectionBlockingRoute ? (
+            {routePresentation?.actionLabel && !odometerRequirement && !isInspectionBlockingRoute && !isVehicleStartBlocked ? (
               <Pressable
                 disabled={isStartingRoute || !hasLocationAccess}
                 onPress={handleRouteAction}
@@ -2040,6 +2090,61 @@ const styles = StyleSheet.create({
     fontSize: appTheme.typography.bodySmall,
     fontWeight: appTheme.typography.weights.bold,
     lineHeight: appTheme.typography.lineHeights.bodySmall
+  },
+  vehicleBlockedCard: {
+    ...appTheme.shadows.card,
+    backgroundColor: appTheme.colors.dangerSoft,
+    borderColor: '#efb2aa',
+    borderRadius: appTheme.radius.xl,
+    borderWidth: 1,
+    gap: appTheme.spacing.sm,
+    padding: appTheme.spacing.lg
+  },
+  vehicleBlockedEyebrow: {
+    color: appTheme.colors.dangerText,
+    fontSize: appTheme.typography.eyebrow,
+    fontWeight: appTheme.typography.weights.heavy,
+    textTransform: 'uppercase'
+  },
+  vehicleBlockedTitle: {
+    color: appTheme.colors.textPrimary,
+    fontSize: appTheme.typography.titleSmall,
+    fontWeight: appTheme.typography.weights.heavy,
+    lineHeight: appTheme.typography.lineHeights.titleSmall
+  },
+  vehicleBlockedReasonList: {
+    gap: appTheme.spacing.xs
+  },
+  vehicleBlockedReasonRow: {
+    alignItems: 'flex-start',
+    flexDirection: 'row',
+    gap: appTheme.spacing.sm
+  },
+  vehicleBlockedDot: {
+    backgroundColor: appTheme.colors.danger,
+    borderRadius: 4,
+    height: 8,
+    marginTop: 6,
+    width: 8
+  },
+  vehicleBlockedReasonCopy: {
+    flex: 1,
+    gap: 2
+  },
+  vehicleBlockedReasonTitle: {
+    color: appTheme.colors.dangerText,
+    fontSize: appTheme.typography.body,
+    fontWeight: appTheme.typography.weights.heavy
+  },
+  vehicleBlockedReasonDetail: {
+    color: appTheme.colors.textSecondary,
+    fontSize: appTheme.typography.bodySmall,
+    lineHeight: appTheme.typography.lineHeights.bodySmall
+  },
+  vehicleBlockedHelp: {
+    color: appTheme.colors.textSecondary,
+    fontSize: appTheme.typography.bodySmall,
+    fontWeight: appTheme.typography.weights.semibold
   },
   inspectionCard: {
     ...appTheme.shadows.card,

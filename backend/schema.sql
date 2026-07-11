@@ -121,6 +121,37 @@ create table if not exists public.readyroute_staff_audit_log (
   created_at timestamptz not null default now()
 );
 
+create table if not exists public.readyroute_operating_costs (
+  id uuid primary key default gen_random_uuid(),
+  period_month date not null,
+  category text not null default 'other',
+  vendor text not null,
+  amount_cents integer not null default 0,
+  billing_date date,
+  is_recurring boolean not null default true,
+  notes text,
+  receipt_url text,
+  created_by_staff_user_id uuid references public.readyroute_staff_users(id) on delete set null,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  constraint readyroute_operating_costs_amount_nonnegative check (amount_cents >= 0),
+  constraint readyroute_operating_costs_category_check check (
+    category in (
+      'ai_tools',
+      'vercel',
+      'google_cloud_run',
+      'supabase',
+      'email',
+      'maps',
+      'apple_developer',
+      'stripe_fees',
+      'domains',
+      'software',
+      'other'
+    )
+  )
+);
+
 create table if not exists public.account_link_codes (
   id uuid primary key default gen_random_uuid(),
   account_id uuid not null references public.accounts(id) on delete cascade,
@@ -194,8 +225,17 @@ create table if not exists public.vehicles (
   next_service_mileage integer,
   notes text,
   is_active boolean not null default true,
+  readiness_source_type text,
+  readiness_source_id uuid,
+  constraint vehicles_readiness_source_type_check check (
+    readiness_source_type is null or readiness_source_type in ('inspection')
+  ),
   constraint vehicles_current_mileage_nonnegative check (current_mileage >= 0)
 );
+
+create index if not exists vehicles_readiness_source_idx
+  on public.vehicles (account_id, readiness_source_type, readiness_source_id)
+  where readiness_source_id is not null;
 
 create table if not exists public.vehicle_maintenance (
   id uuid primary key default gen_random_uuid(),
@@ -985,6 +1025,8 @@ create index if not exists readyroute_staff_invites_status_idx on public.readyro
 create index if not exists readyroute_staff_audit_log_created_idx on public.readyroute_staff_audit_log(created_at desc);
 create index if not exists readyroute_staff_audit_log_account_idx on public.readyroute_staff_audit_log(account_id, created_at desc);
 create index if not exists readyroute_staff_audit_log_staff_idx on public.readyroute_staff_audit_log(staff_user_id, created_at desc);
+create index if not exists readyroute_operating_costs_period_idx on public.readyroute_operating_costs(period_month desc, billing_date desc);
+create index if not exists readyroute_operating_costs_category_idx on public.readyroute_operating_costs(category, period_month desc);
 create index if not exists account_link_codes_account_id_idx on public.account_link_codes(account_id);
 create index if not exists account_link_codes_expires_at_idx on public.account_link_codes(expires_at desc);
 create index if not exists fedex_accounts_account_id_idx on public.fedex_accounts(account_id);
@@ -1060,6 +1102,7 @@ alter table public.readyroute_staff_users enable row level security;
 alter table public.account_internal_profiles enable row level security;
 alter table public.readyroute_staff_invites enable row level security;
 alter table public.readyroute_staff_audit_log enable row level security;
+alter table public.readyroute_operating_costs enable row level security;
 alter table public.drivers enable row level security;
 alter table public.vehicles enable row level security;
 alter table public.vehicle_maintenance enable row level security;

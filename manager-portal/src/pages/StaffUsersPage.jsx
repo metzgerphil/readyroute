@@ -165,13 +165,13 @@ export default function StaffUsersPage() {
     <section className="staff-page staff-users-page">
       <PageHeader
         eyebrow="ReadyRoute Internal"
-        title="Staff Users"
-        description="Invite ReadyRoute employees and manage internal access separately from customer manager accounts."
+        title="Staff"
+        description="Invite ReadyRoute employees and manage internal access."
       />
 
       <div className="staff-users-layout">
         <section className="staff-user-create-card">
-          <h2>Invite Staff User</h2>
+          <h2>Invite Staff</h2>
           <form className="staff-user-form" onSubmit={handleSubmit}>
             <label>
               Full name
@@ -216,7 +216,7 @@ export default function StaffUsersPage() {
             ) : null}
 
             <button className="primary-cta" disabled={createStaffInviteMutation.isPending} type="submit">
-              {createStaffInviteMutation.isPending ? 'Sending invite...' : 'Send Staff Invite'}
+              {createStaffInviteMutation.isPending ? 'Sending invite...' : 'Send Invite'}
             </button>
           </form>
         </section>
@@ -271,7 +271,7 @@ export default function StaffUsersPage() {
         </section>
 
         <section className="staff-user-list-card">
-          <h2>Current Staff</h2>
+          <h2>Active Staff</h2>
           {staffUsersQuery.isLoading ? (
             <LoadingState title="Loading staff users" />
           ) : staffUsersQuery.isError ? (

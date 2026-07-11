@@ -30,15 +30,19 @@ const ACCOUNT_LIFECYCLE_STATUSES = new Set([
 ]);
 
 const STAFF_INVITE_STATUSES = new Set(['pending', 'accepted', 'expired', 'revoked']);
-const COST_CATEGORIES = [
-  'cloud_run_cents',
-  'database_cents',
-  'storage_cents',
-  'email_cents',
-  'maps_cents',
-  'support_cents',
-  'other_cents'
-];
+const OPERATING_COST_CATEGORIES = new Set([
+  'ai_tools',
+  'vercel',
+  'google_cloud_run',
+  'supabase',
+  'email',
+  'maps',
+  'apple_developer',
+  'stripe_fees',
+  'domains',
+  'software',
+  'other'
+]);
 
 function normalizeText(value, maxLength = 500) {
   const text = String(value || '').trim();
@@ -73,6 +77,43 @@ function normalizeCents(value, fallback = 0) {
   return Math.round(numeric);
 }
 
+function normalizeBoolean(value, fallback = false) {
+  if (value === undefined || value === null || value === '') {
+    return fallback;
+  }
+
+  if (typeof value === 'boolean') {
+    return value;
+  }
+
+  const normalized = String(value).trim().toLowerCase();
+  if (['true', '1', 'yes', 'y'].includes(normalized)) {
+    return true;
+  }
+
+  if (['false', '0', 'no', 'n'].includes(normalized)) {
+    return false;
+  }
+
+  return fallback;
+}
+
+function normalizeDateOnly(value, fallback = null) {
+  const raw = String(value || '').trim();
+  const match = raw.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+
+  if (!match) {
+    return fallback;
+  }
+
+  const date = new Date(`${raw}T00:00:00.000Z`);
+  if (Number.isNaN(date.getTime())) {
+    return fallback;
+  }
+
+  return raw;
+}
+
 function normalizePeriodMonth(value, fallbackDate = new Date()) {
   const raw = String(value || '').trim();
   const match = raw.match(/^(\d{4})-(\d{2})/);
@@ -89,6 +130,24 @@ function normalizePeriodMonth(value, fallbackDate = new Date()) {
   const year = date.getUTCFullYear();
   const month = String(date.getUTCMonth() + 1).padStart(2, '0');
   return `${year}-${month}-01`;
+}
+
+function normalizeOperatingCostCategory(value) {
+  const category = String(value || '').trim().toLowerCase();
+  return OPERATING_COST_CATEGORIES.has(category) ? category : 'other';
+}
+
+function isMissingOperatingCostsTableError(error) {
+  const message = String(error?.message || error?.details || '').toLowerCase();
+  return (
+    error?.code === '42P01' ||
+    error?.code === 'PGRST205' ||
+    (message.includes('readyroute_operating_costs') && (
+      message.includes('does not exist') ||
+      message.includes('schema cache') ||
+      message.includes('not found')
+    ))
+  );
 }
 
 function createOpaqueToken(byteLength = 32) {
@@ -221,32 +280,58 @@ function presentAuditLog(row = {}) {
   };
 }
 
-function presentCostSnapshot(row = {}) {
-  const categoryTotalCents = COST_CATEGORIES.reduce((sum, key) => sum + Number(row[key] || 0), 0);
-  const totalCostCents = Number(row.total_cost_cents ?? categoryTotalCents);
-  const estimatedRevenueCents = Number(row.estimated_revenue_cents || 0);
+function presentOperatingCost(row = {}) {
   return {
     id: row.id,
-    account_id: row.account_id,
     period_month: row.period_month || null,
-    estimated_revenue_cents: estimatedRevenueCents,
-    cloud_run_cents: Number(row.cloud_run_cents || 0),
-    database_cents: Number(row.database_cents || 0),
-    storage_cents: Number(row.storage_cents || 0),
-    email_cents: Number(row.email_cents || 0),
-    maps_cents: Number(row.maps_cents || 0),
-    support_cents: Number(row.support_cents || 0),
-    other_cents: Number(row.other_cents || 0),
-    total_cost_cents: totalCostCents,
-    estimated_profit_cents: estimatedRevenueCents - totalCostCents,
+    category: normalizeOperatingCostCategory(row.category),
+    vendor: row.vendor || '',
+    amount_cents: Number(row.amount_cents || 0),
+    billing_date: row.billing_date || null,
+    is_recurring: row.is_recurring !== false,
     notes: row.notes || null,
+    receipt_url: row.receipt_url || null,
     created_by_staff_user_id: row.created_by_staff_user_id || null,
     created_at: row.created_at || null,
     updated_at: row.updated_at || null
   };
 }
 
-function buildAccountTimeline({ account, profile, supportTickets = [], auditLogs = [], costSnapshots = [], billingRoutes = [] } = {}) {
+function buildOperatingCostSummary(rows = []) {
+  const costs = rows.map(presentOperatingCost);
+  const categoryTotals = {};
+  const vendors = new Set();
+  let totalCostCents = 0;
+  let recurringCostCents = 0;
+  let oneTimeCostCents = 0;
+
+  for (const cost of costs) {
+    const amountCents = Number(cost.amount_cents || 0);
+    totalCostCents += amountCents;
+    categoryTotals[cost.category] = (categoryTotals[cost.category] || 0) + amountCents;
+
+    if (cost.vendor) {
+      vendors.add(cost.vendor.trim().toLowerCase());
+    }
+
+    if (cost.is_recurring) {
+      recurringCostCents += amountCents;
+    } else {
+      oneTimeCostCents += amountCents;
+    }
+  }
+
+  return {
+    total_cost_cents: totalCostCents,
+    recurring_cost_cents: recurringCostCents,
+    one_time_cost_cents: oneTimeCostCents,
+    category_totals: categoryTotals,
+    vendor_count: vendors.size,
+    entry_count: costs.length
+  };
+}
+
+function buildAccountTimeline({ account, profile, supportTickets = [], auditLogs = [], billingRoutes = [] } = {}) {
   const events = [];
 
   if (account?.created_at) {
@@ -276,17 +361,6 @@ function buildAccountTimeline({ account, profile, supportTickets = [], auditLogs
       title: `${ticket.ticket_reference || 'Ticket'} · ${ticket.status || 'new'}`,
       description: ticket.subject || ticket.description || 'Support ticket',
       created_at: ticket.updated_at || ticket.created_at
-    });
-  }
-
-  for (const snapshot of costSnapshots.slice(0, 8)) {
-    const presented = presentCostSnapshot(snapshot);
-    events.push({
-      id: `cost-${snapshot.id || snapshot.period_month}`,
-      type: 'cost_snapshot',
-      title: `Cost snapshot · ${snapshot.period_month || 'month'}`,
-      description: `Revenue ${presented.estimated_revenue_cents}c · Cost ${presented.total_cost_cents}c · Profit ${presented.estimated_profit_cents}c`,
-      created_at: snapshot.updated_at || snapshot.created_at || snapshot.period_month
     });
   }
 
@@ -1300,6 +1374,218 @@ function createReadyRouteStaffRouter(options = {}) {
     }
   });
 
+  router.get('/operating-costs', async (req, res) => {
+    try {
+      getRequestStaff(req, jwtSecret);
+      const periodMonth = normalizePeriodMonth(req.query?.period_month, now());
+
+      const { data, error } = await supabase
+        .from('readyroute_operating_costs')
+        .select('id, period_month, category, vendor, amount_cents, billing_date, is_recurring, notes, receipt_url, created_by_staff_user_id, created_at, updated_at')
+        .eq('period_month', periodMonth)
+        .order('billing_date', { ascending: false })
+        .order('created_at', { ascending: false });
+
+      if (error) {
+        if (isMissingOperatingCostsTableError(error)) {
+          return res.status(200).json({
+            period_month: periodMonth,
+            operating_costs: [],
+            summary: buildOperatingCostSummary([]),
+            setup_required: true
+          });
+        }
+
+        throw error;
+      }
+
+      const operatingCosts = (data || []).map(presentOperatingCost);
+
+      return res.status(200).json({
+        period_month: periodMonth,
+        operating_costs: operatingCosts,
+        summary: buildOperatingCostSummary(operatingCosts),
+        setup_required: false
+      });
+    } catch (error) {
+      const authResponse = sendAuthError(res, error);
+      if (authResponse) {
+        return authResponse;
+      }
+
+      console.error('ReadyRoute operating costs list failed:', error);
+      return res.status(500).json({ error: 'Unable to load ReadyRoute operating costs.' });
+    }
+  });
+
+  router.post('/operating-costs', async (req, res) => {
+    try {
+      const staff = getRequestStaff(req, jwtSecret, READYROUTE_STAFF_ADMIN_ROLES);
+      const timestamp = now().toISOString();
+      const periodMonth = normalizePeriodMonth(req.body?.period_month, now());
+      const vendor = normalizeText(req.body?.vendor, 180);
+      const amountCents = normalizeCents(req.body?.amount_cents, -1);
+
+      if (!vendor) {
+        return res.status(400).json({ error: 'Vendor or tool name is required.' });
+      }
+
+      if (amountCents < 0) {
+        return res.status(400).json({ error: 'Amount must be zero or greater.' });
+      }
+
+      const payload = {
+        period_month: periodMonth,
+        category: normalizeOperatingCostCategory(req.body?.category),
+        vendor,
+        amount_cents: amountCents,
+        billing_date: normalizeDateOnly(req.body?.billing_date, periodMonth),
+        is_recurring: normalizeBoolean(req.body?.is_recurring, true),
+        notes: normalizeText(req.body?.notes, 2000),
+        receipt_url: normalizeText(req.body?.receipt_url, 1000),
+        created_by_staff_user_id: staff.staff_user_id,
+        updated_at: timestamp
+      };
+
+      const { data, error } = await supabase
+        .from('readyroute_operating_costs')
+        .insert(payload)
+        .select('id, period_month, category, vendor, amount_cents, billing_date, is_recurring, notes, receipt_url, created_by_staff_user_id, created_at, updated_at')
+        .single();
+
+      if (error) {
+        if (isMissingOperatingCostsTableError(error)) {
+          return res.status(409).json({ error: 'Operating costs table is not installed yet.' });
+        }
+
+        throw error;
+      }
+
+      const operatingCost = presentOperatingCost(data);
+
+      await writeAuditLog({
+        staff,
+        action: 'operating_cost.created',
+        targetType: 'readyroute_operating_cost',
+        targetId: data.id,
+        metadata: {
+          period_month: periodMonth,
+          category: operatingCost.category,
+          vendor: operatingCost.vendor,
+          amount_cents: operatingCost.amount_cents
+        }
+      });
+
+      return res.status(201).json({ operating_cost: operatingCost });
+    } catch (error) {
+      const authResponse = sendAuthError(res, error);
+      if (authResponse) {
+        return authResponse;
+      }
+
+      console.error('ReadyRoute operating cost create failed:', error);
+      return res.status(500).json({ error: 'Unable to save ReadyRoute operating cost.' });
+    }
+  });
+
+  router.patch('/operating-costs/:costId', async (req, res) => {
+    try {
+      const staff = getRequestStaff(req, jwtSecret, READYROUTE_STAFF_ADMIN_ROLES);
+      const costId = normalizeText(req.params.costId, 120);
+      const updates = {
+        updated_at: now().toISOString()
+      };
+
+      if (!costId) {
+        return res.status(404).json({ error: 'Operating cost not found.' });
+      }
+
+      if (Object.prototype.hasOwnProperty.call(req.body || {}, 'period_month')) {
+        updates.period_month = normalizePeriodMonth(req.body.period_month, now());
+      }
+
+      if (Object.prototype.hasOwnProperty.call(req.body || {}, 'category')) {
+        updates.category = normalizeOperatingCostCategory(req.body.category);
+      }
+
+      if (Object.prototype.hasOwnProperty.call(req.body || {}, 'vendor')) {
+        const vendor = normalizeText(req.body.vendor, 180);
+        if (!vendor) {
+          return res.status(400).json({ error: 'Vendor or tool name is required.' });
+        }
+        updates.vendor = vendor;
+      }
+
+      if (Object.prototype.hasOwnProperty.call(req.body || {}, 'amount_cents')) {
+        const amountCents = normalizeCents(req.body.amount_cents, -1);
+        if (amountCents < 0) {
+          return res.status(400).json({ error: 'Amount must be zero or greater.' });
+        }
+        updates.amount_cents = amountCents;
+      }
+
+      if (Object.prototype.hasOwnProperty.call(req.body || {}, 'billing_date')) {
+        updates.billing_date = normalizeDateOnly(req.body.billing_date, null);
+      }
+
+      if (Object.prototype.hasOwnProperty.call(req.body || {}, 'is_recurring')) {
+        updates.is_recurring = normalizeBoolean(req.body.is_recurring, true);
+      }
+
+      if (Object.prototype.hasOwnProperty.call(req.body || {}, 'notes')) {
+        updates.notes = normalizeText(req.body.notes, 2000);
+      }
+
+      if (Object.prototype.hasOwnProperty.call(req.body || {}, 'receipt_url')) {
+        updates.receipt_url = normalizeText(req.body.receipt_url, 1000);
+      }
+
+      const { data, error } = await supabase
+        .from('readyroute_operating_costs')
+        .update(updates)
+        .eq('id', costId)
+        .select('id, period_month, category, vendor, amount_cents, billing_date, is_recurring, notes, receipt_url, created_by_staff_user_id, created_at, updated_at')
+        .maybeSingle();
+
+      if (error) {
+        if (isMissingOperatingCostsTableError(error)) {
+          return res.status(409).json({ error: 'Operating costs table is not installed yet.' });
+        }
+
+        throw error;
+      }
+
+      if (!data) {
+        return res.status(404).json({ error: 'Operating cost not found.' });
+      }
+
+      const operatingCost = presentOperatingCost(data);
+
+      await writeAuditLog({
+        staff,
+        action: 'operating_cost.updated',
+        targetType: 'readyroute_operating_cost',
+        targetId: data.id,
+        metadata: {
+          period_month: operatingCost.period_month,
+          category: operatingCost.category,
+          vendor: operatingCost.vendor,
+          amount_cents: operatingCost.amount_cents
+        }
+      });
+
+      return res.status(200).json({ operating_cost: operatingCost });
+    } catch (error) {
+      const authResponse = sendAuthError(res, error);
+      if (authResponse) {
+        return authResponse;
+      }
+
+      console.error('ReadyRoute operating cost update failed:', error);
+      return res.status(500).json({ error: 'Unable to update ReadyRoute operating cost.' });
+    }
+  });
+
   router.get('/accounts', async (req, res) => {
     try {
       getRequestStaff(req, jwtSecret);
@@ -1390,7 +1676,6 @@ function createReadyRouteStaffRouter(options = {}) {
         billingSettingsResult,
         billingRoutesResult,
         routesResult,
-        costSnapshotsResult,
         auditLogsResult
       ] = await Promise.all([
         loadAccountInternalProfile(accountId),
@@ -1428,12 +1713,6 @@ function createReadyRouteStaffRouter(options = {}) {
           .order('date', { ascending: false })
           .limit(50),
         supabase
-          .from('account_cost_snapshots')
-          .select('id, account_id, period_month, estimated_revenue_cents, cloud_run_cents, database_cents, storage_cents, email_cents, maps_cents, support_cents, other_cents, total_cost_cents, notes, created_by_staff_user_id, created_at, updated_at')
-          .eq('account_id', accountId)
-          .order('period_month', { ascending: false })
-          .limit(12),
-        supabase
           .from('readyroute_staff_audit_log')
           .select('id, staff_user_id, staff_email, action, target_type, target_id, account_id, metadata, created_at')
           .eq('account_id', accountId)
@@ -1448,7 +1727,6 @@ function createReadyRouteStaffRouter(options = {}) {
         billingSettingsResult,
         billingRoutesResult,
         routesResult,
-        costSnapshotsResult,
         auditLogsResult
       ].find((result) => result.error)?.error;
 
@@ -1457,7 +1735,6 @@ function createReadyRouteStaffRouter(options = {}) {
       }
 
       const supportTickets = ticketsResult.data || [];
-      const costSnapshots = (costSnapshotsResult.data || []).map(presentCostSnapshot);
       const auditLogs = (auditLogsResult.data || []).map(presentAuditLog);
       const account = presentAccountSummary(
         accountResult.data,
@@ -1479,14 +1756,12 @@ function createReadyRouteStaffRouter(options = {}) {
         billing_settings: billingSettingsResult.data || null,
         billing_routes: billingRoutesResult.data || [],
         routes: routesResult.data || [],
-        cost_snapshots: costSnapshots,
         audit_logs: auditLogs,
         timeline: buildAccountTimeline({
           account: accountResult.data,
           profile,
           supportTickets,
           auditLogs,
-          costSnapshots: costSnapshotsResult.data || [],
           billingRoutes: billingRoutesResult.data || []
         })
       });
@@ -1576,85 +1851,6 @@ function createReadyRouteStaffRouter(options = {}) {
 
       console.error('ReadyRoute staff account profile update failed:', error);
       return res.status(500).json({ error: 'Unable to update account profile.' });
-    }
-  });
-
-  router.post('/accounts/:accountId/cost-snapshots', async (req, res) => {
-    try {
-      const staff = getRequestStaff(req, jwtSecret, READYROUTE_STAFF_ADMIN_ROLES);
-      const accountId = normalizeText(req.params.accountId, 120);
-      const timestamp = now().toISOString();
-      const periodMonth = normalizePeriodMonth(req.body?.period_month, now());
-
-      if (!accountId) {
-        return res.status(404).json({ error: 'Account not found.' });
-      }
-
-      const { data: account, error: accountError } = await supabase
-        .from('accounts')
-        .select('id')
-        .eq('id', accountId)
-        .maybeSingle();
-
-      if (accountError) {
-        throw accountError;
-      }
-
-      if (!account) {
-        return res.status(404).json({ error: 'Account not found.' });
-      }
-
-      const costPayload = COST_CATEGORIES.reduce((payload, key) => {
-        payload[key] = normalizeCents(req.body?.[key], 0);
-        return payload;
-      }, {});
-      const totalCostCents = COST_CATEGORIES.reduce((sum, key) => sum + costPayload[key], 0);
-      const snapshotPayload = {
-        account_id: accountId,
-        period_month: periodMonth,
-        estimated_revenue_cents: normalizeCents(req.body?.estimated_revenue_cents, 0),
-        ...costPayload,
-        total_cost_cents: totalCostCents,
-        notes: normalizeText(req.body?.notes, 2000),
-        created_by_staff_user_id: staff.staff_user_id,
-        updated_at: timestamp
-      };
-
-      const { data, error } = await supabase
-        .from('account_cost_snapshots')
-        .upsert(snapshotPayload, { onConflict: 'account_id,period_month' })
-        .select('id, account_id, period_month, estimated_revenue_cents, cloud_run_cents, database_cents, storage_cents, email_cents, maps_cents, support_cents, other_cents, total_cost_cents, notes, created_by_staff_user_id, created_at, updated_at')
-        .single();
-
-      if (error) {
-        throw error;
-      }
-
-      const snapshot = presentCostSnapshot(data);
-
-      await writeAuditLog({
-        staff,
-        action: 'account.cost_snapshot_saved',
-        targetType: 'account_cost_snapshot',
-        targetId: data.id,
-        accountId,
-        metadata: {
-          period_month: periodMonth,
-          estimated_revenue_cents: snapshot.estimated_revenue_cents,
-          total_cost_cents: snapshot.total_cost_cents,
-          estimated_profit_cents: snapshot.estimated_profit_cents
-        }
-      });
-
-      return res.status(200).json({ cost_snapshot: snapshot });
-    } catch (error) {
-      const authResponse = sendAuthError(res, error);
-      if (authResponse) {
-        return authResponse;
-      }
-
-      console.error('ReadyRoute staff account cost snapshot save failed:', error);
-      return res.status(500).json({ error: 'Unable to save account cost snapshot.' });
     }
   });
 

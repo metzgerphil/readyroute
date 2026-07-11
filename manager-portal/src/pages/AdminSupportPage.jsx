@@ -207,7 +207,7 @@ export default function AdminSupportPage() {
       <PageHeader
         eyebrow="ReadyRoute Internal"
         title="Support Desk"
-        description="Review customer support requests, keep internal notes, and move tickets through follow-up."
+        description="Review support requests, manage ticket status, and keep internal notes."
         actions={(
           <button className="secondary-inline-button" onClick={() => ticketsQuery.refetch()} type="button">
             Refresh

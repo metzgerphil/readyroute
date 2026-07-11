@@ -27,6 +27,7 @@ const SetupPage = lazy(() => import('./pages/SetupPage'));
 const StaffAcceptInvitePage = lazy(() => import('./pages/StaffAcceptInvitePage'));
 const StaffCompaniesPage = lazy(() => import('./pages/StaffCompaniesPage'));
 const StaffLoginPage = lazy(() => import('./pages/StaffLoginPage'));
+const StaffOperatingCostsPage = lazy(() => import('./pages/StaffOperatingCostsPage'));
 const StaffResetPasswordPage = lazy(() => import('./pages/StaffResetPasswordPage'));
 const StaffSettingsPage = lazy(() => import('./pages/StaffSettingsPage'));
 const StaffUsersPage = lazy(() => import('./pages/StaffUsersPage'));
@@ -109,6 +110,7 @@ function ReadyRouteStaffApp() {
             <Route element={<Navigate replace to="/readyroute/support" />} index />
             <Route element={<AdminSupportPage />} path="support" />
             <Route element={<StaffCompaniesPage />} path="companies" />
+            <Route element={<StaffOperatingCostsPage />} path="costs" />
             <Route element={<StaffUsersPage />} path="staff" />
             <Route element={<StaffSettingsPage />} path="settings" />
           </Routes>

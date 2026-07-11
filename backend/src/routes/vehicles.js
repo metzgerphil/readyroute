@@ -2,7 +2,7 @@ const crypto = require('crypto');
 const express = require('express');
 
 const defaultSupabase = require('../lib/supabase');
-const { requireManager } = require('../middleware/auth');
+const { requireDriver, requireManager } = require('../middleware/auth');
 const { parseMultipartForm } = require('../middleware/multipart');
 const { parseVehicleImportRows } = require('../services/resourceImport');
 const { filterProductionRows, isProductionTestArtifact } = require('../services/testDataFilter');
@@ -722,6 +722,7 @@ function buildVehicleMaintenanceAlert(
       return {
         service_type: serviceType,
         status,
+        source_maintenance_id: latestService?.id || null,
         last_completed_mileage: lastCompletedMileage,
         interval_miles: intervalMiles,
         interval_days: intervalDays,
@@ -766,16 +767,51 @@ function buildVehicleReadiness(
   maintenanceAlert = {},
   todayAssignment = null,
   todayString = getCurrentDateString(),
-  reminderSchedule = DEFAULT_REMINDER_SCHEDULE
+  reminderSchedule = DEFAULT_REMINDER_SCHEDULE,
+  inspectionContext = {}
 ) {
   const registrationDays = differenceInDays(vehicle.registration_expiration, todayString);
   const insuranceDays = differenceInDays(vehicle.insurance_expiration, todayString);
   const documentWarningDays = toInteger(reminderSchedule.document_warning_days) ?? DEFAULT_REMINDER_SCHEDULE.document_warning_days;
   const maintenanceItem = maintenanceAlert.most_urgent || null;
   const reasons = [];
+  const sourceInspection = inspectionContext.sourceInspection || null;
+  const pendingUnsafeInspection = inspectionContext.pendingUnsafeInspection || null;
+
+  const getUnsafeInspectionLabel = (inspection) => {
+    const summary = summarizeInspectionItems(normalizeInspectionItems(inspection?.items || []), {
+      issueNote: inspection?.issue_note
+    });
+    const unsafeLabels = summary.issue_items
+      .filter((item) => item.severity === 'unsafe')
+      .map((item) => item.label || item.checklist_item_key)
+      .filter(Boolean);
+
+    return unsafeLabels.length ? unsafeLabels.slice(0, 2).join(', ') : 'Unsafe item reported';
+  };
 
   if (vehicle.is_active === false) {
-    reasons.push({ type: 'inactive', severity: 'blocked', label: getVehicleStatusLabel(vehicle) });
+    reasons.push({
+      type: 'inactive',
+      severity: 'blocked',
+      label: getVehicleStatusLabel(vehicle),
+      detail: sourceInspection ? `Unsafe inspection: ${getUnsafeInspectionLabel(sourceInspection)}` : 'Vehicle status prevents dispatch',
+      source_type: sourceInspection ? 'inspection' : 'vehicle',
+      source_id: sourceInspection?.id || vehicle.id,
+      action_label: sourceInspection ? 'View inspection' : 'View vehicle'
+    });
+  }
+
+  if (pendingUnsafeInspection && pendingUnsafeInspection.id !== sourceInspection?.id) {
+    reasons.push({
+      type: 'inspection_unsafe',
+      severity: 'blocked',
+      label: `Unsafe inspection: ${getUnsafeInspectionLabel(pendingUnsafeInspection)}`,
+      detail: pendingUnsafeInspection.inspection_date || 'Manager review required',
+      source_type: 'inspection',
+      source_id: pendingUnsafeInspection.id,
+      action_label: 'View inspection'
+    });
   }
 
   if (maintenanceAlert.status === 'overdue') {
@@ -790,7 +826,10 @@ function buildVehicleReadiness(
         ? `${Math.abs(maintenanceItem.remaining_miles)} mi overdue`
         : maintenanceItem?.remaining_days !== null && maintenanceItem?.remaining_days < 0
           ? `${Math.abs(maintenanceItem.remaining_days)} days overdue`
-          : null
+          : null,
+      source_type: 'maintenance',
+      source_id: maintenanceItem?.source_maintenance_id || null,
+      action_label: 'View maintenance'
     });
   }
 
@@ -799,7 +838,11 @@ function buildVehicleReadiness(
       type: 'registration_expired',
       severity: 'blocked',
       label: 'Registration expired',
-      detail: vehicle.registration_expiration
+      detail: vehicle.registration_expiration,
+      source_type: 'vehicle',
+      source_id: vehicle.id,
+      source_section: 'registration',
+      action_label: 'View registration'
     });
   }
 
@@ -808,7 +851,11 @@ function buildVehicleReadiness(
       type: 'insurance_expired',
       severity: 'blocked',
       label: 'Insurance expired',
-      detail: vehicle.insurance_expiration
+      detail: vehicle.insurance_expiration,
+      source_type: 'vehicle',
+      source_id: vehicle.id,
+      source_section: 'insurance',
+      action_label: 'View insurance'
     });
   }
 
@@ -817,7 +864,11 @@ function buildVehicleReadiness(
       type: 'registration_soon',
       severity: 'maintenance_soon',
       label: 'Registration expiring soon',
-      detail: `${registrationDays} days left`
+      detail: `${registrationDays} days left`,
+      source_type: 'vehicle',
+      source_id: vehicle.id,
+      source_section: 'registration',
+      action_label: 'View registration'
     });
   }
 
@@ -826,7 +877,11 @@ function buildVehicleReadiness(
       type: 'insurance_soon',
       severity: 'maintenance_soon',
       label: 'Insurance expiring soon',
-      detail: `${insuranceDays} days left`
+      detail: `${insuranceDays} days left`,
+      source_type: 'vehicle',
+      source_id: vehicle.id,
+      source_section: 'insurance',
+      action_label: 'View insurance'
     });
   }
 
@@ -841,7 +896,10 @@ function buildVehicleReadiness(
         ? `${maintenanceItem.remaining_miles} mi left`
         : maintenanceItem?.remaining_days !== null
           ? `${maintenanceItem.remaining_days} days left`
-          : null
+          : null,
+      source_type: 'maintenance',
+      source_id: maintenanceItem?.source_maintenance_id || null,
+      action_label: 'View maintenance'
     });
   }
 
@@ -866,6 +924,29 @@ function buildVehicleReadiness(
     reasons,
     primary_reason: reasons[0] || null
   };
+}
+
+function mapInspectionReadinessContext(inspections = []) {
+  const inspectionsById = new Map();
+  const pendingUnsafeByVehicleId = new Map();
+
+  for (const inspection of inspections || []) {
+    inspectionsById.set(inspection.id, inspection);
+
+    if (inspection.status === 'reviewed' || pendingUnsafeByVehicleId.has(inspection.vehicle_id)) {
+      continue;
+    }
+
+    const summary = summarizeInspectionItems(normalizeInspectionItems(inspection.items || []), {
+      issueNote: inspection.issue_note
+    });
+
+    if (summary.urgent_review) {
+      pendingUnsafeByVehicleId.set(inspection.vehicle_id, inspection);
+    }
+  }
+
+  return { inspectionsById, pendingUnsafeByVehicleId };
 }
 
 function buildAssignmentMap(routes, driversById) {
@@ -922,6 +1003,8 @@ function createVehiclesRouter(options = {}) {
       let maintenanceByVehicleId = new Map();
       let maintenanceByVehicleAndType = new Map();
       let assignmentsByVehicleId = new Map();
+      let inspectionsById = new Map();
+      let pendingUnsafeByVehicleId = new Map();
       let activeMaintenanceSettings = [];
       let reminderSchedule = { ...DEFAULT_REMINDER_SCHEDULE };
 
@@ -980,6 +1063,21 @@ function createVehiclesRouter(options = {}) {
         maintenanceByVehicleId = mapLatestMaintenance(productionMaintenanceRows);
         maintenanceByVehicleAndType = getLatestMaintenanceByVehicleAndType(productionMaintenanceRows);
 
+        const { data: inspectionRows, error: inspectionsError } = await supabase
+          .from('vehicle_inspections')
+          .select('id, vehicle_id, inspection_date, status, issue_note, items, submitted_at')
+          .eq('account_id', req.account.account_id)
+          .in('vehicle_id', vehicleIds)
+          .order('submitted_at', { ascending: false })
+          .limit(500);
+
+        if (inspectionsError && !isMissingRelationError(inspectionsError)) {
+          console.error('Vehicle readiness inspection lookup failed:', inspectionsError);
+          return res.status(500).json({ error: 'Failed to load vehicle inspection readiness' });
+        }
+
+        ({ inspectionsById, pendingUnsafeByVehicleId } = mapInspectionReadinessContext(inspectionRows || []));
+
         const { data: routeAssignments, error: assignmentsError } = await supabase
           .from('routes')
           .select('id, vehicle_id, driver_id, work_area_name, status')
@@ -1029,7 +1127,19 @@ function createVehiclesRouter(options = {}) {
           );
           const maintenanceServiceDue = ['due_soon', 'overdue'].includes(maintenanceAlert.status);
           const todayAssignment = assignmentsByVehicleId.get(vehicle.id) || null;
-          const readiness = buildVehicleReadiness(vehicle, maintenanceAlert, todayAssignment, today, reminderSchedule);
+          const readiness = buildVehicleReadiness(
+            vehicle,
+            maintenanceAlert,
+            todayAssignment,
+            today,
+            reminderSchedule,
+            {
+              sourceInspection: vehicle.readiness_source_type === 'inspection'
+                ? inspectionsById.get(vehicle.readiness_source_id) || null
+                : null,
+              pendingUnsafeInspection: pendingUnsafeByVehicleId.get(vehicle.id) || null
+            }
+          );
 
           return {
             ...vehicle,
@@ -1047,6 +1157,114 @@ function createVehiclesRouter(options = {}) {
     } catch (error) {
       console.error('Vehicles endpoint failed:', error);
       return res.status(500).json({ error: 'Failed to load vehicles' });
+    }
+  });
+
+  router.get('/:id/readiness', requireDriver, async (req, res) => {
+    const today = getCurrentDateString(nowProvider());
+
+    try {
+      const { data: vehicle, error: vehicleError } = await supabase
+        .from('vehicles')
+        .select('*')
+        .eq('id', req.params.id)
+        .eq('account_id', req.driver.account_id)
+        .maybeSingle();
+
+      if (vehicleError) {
+        console.error('Driver vehicle readiness lookup failed:', vehicleError);
+        return res.status(500).json({ error: 'Failed to load vehicle readiness' });
+      }
+
+      if (!vehicle) {
+        return res.status(404).json({ error: 'Vehicle not found' });
+      }
+
+      const [maintenanceSettingsResult, reminderResult, maintenanceResult, inspectionsResult] = await Promise.all([
+        supabase
+          .from('vehicle_maintenance_settings')
+          .select('*')
+          .eq('account_id', req.driver.account_id)
+          .order('service_type'),
+        supabase
+          .from('vehicle_check_requirement_settings')
+          .select('weekly_inspection_day, maintenance_warning_miles, maintenance_warning_days, document_warning_days')
+          .eq('account_id', req.driver.account_id)
+          .maybeSingle(),
+        supabase
+          .from('vehicle_maintenance')
+          .select('*')
+          .eq('account_id', req.driver.account_id)
+          .eq('vehicle_id', vehicle.id)
+          .order('service_date', { ascending: false }),
+        supabase
+          .from('vehicle_inspections')
+          .select('id, vehicle_id, inspection_date, status, issue_note, items, submitted_at')
+          .eq('account_id', req.driver.account_id)
+          .eq('vehicle_id', vehicle.id)
+          .order('submitted_at', { ascending: false })
+          .limit(100)
+      ]);
+
+      const fatalError = [maintenanceSettingsResult.error, maintenanceResult.error]
+        .find(Boolean);
+      if (fatalError) {
+        console.error('Driver vehicle readiness context lookup failed:', fatalError);
+        return res.status(500).json({ error: 'Failed to load vehicle readiness' });
+      }
+
+      if (inspectionsResult.error && !isMissingRelationError(inspectionsResult.error)) {
+        console.error('Driver vehicle inspection readiness lookup failed:', inspectionsResult.error);
+        return res.status(500).json({ error: 'Failed to load vehicle readiness' });
+      }
+
+      const reminderSchedule = reminderResult.error
+        ? { ...DEFAULT_REMINDER_SCHEDULE }
+        : presentReminderSchedule(reminderResult.data);
+      const activeMaintenanceSettings = maintenanceSettingsResult.data?.length
+        ? maintenanceSettingsResult.data
+        : createDefaultMaintenanceSettings();
+      const productionMaintenanceRows = filterProductionRows(maintenanceResult.data || [], [
+        'service_type',
+        'description',
+        'condition_notes',
+        'vendor_name',
+        'notes'
+      ]);
+      const maintenanceAlert = buildVehicleMaintenanceAlert(
+        vehicle,
+        activeMaintenanceSettings,
+        getLatestMaintenanceByVehicleAndType(productionMaintenanceRows),
+        today,
+        reminderSchedule
+      );
+      const inspectionRows = inspectionsResult.data || [];
+      const { inspectionsById, pendingUnsafeByVehicleId } = mapInspectionReadinessContext(inspectionRows);
+      const readiness = buildVehicleReadiness(
+        vehicle,
+        maintenanceAlert,
+        null,
+        today,
+        reminderSchedule,
+        {
+          sourceInspection: vehicle.readiness_source_type === 'inspection'
+            ? inspectionsById.get(vehicle.readiness_source_id) || null
+            : null,
+          pendingUnsafeInspection: pendingUnsafeByVehicleId.get(vehicle.id) || null
+        }
+      );
+
+      return res.status(200).json({
+        vehicle: {
+          id: vehicle.id,
+          name: vehicle.name,
+          readiness,
+          readiness_status: readiness.status
+        }
+      });
+    } catch (error) {
+      console.error('Driver vehicle readiness endpoint failed:', error);
+      return res.status(500).json({ error: 'Failed to load vehicle readiness' });
     }
   });
 
@@ -1460,14 +1678,15 @@ function createVehiclesRouter(options = {}) {
       notes
     } = req.body || {};
 
-    const vehicleIdentifier = String(plate || name || '').trim();
+    const vehicleIdentifier = String(name || '').trim();
+    const licensePlate = String(plate || '').trim();
     const parsedYear = toInteger(year);
     const parsedCurrentMileage = currentMileage === undefined ? 0 : toInteger(currentMileage);
     const normalizedTruckType = normalizeTruckType({ truckType, customTruckType });
     const normalizedFuelType = normalizeFuelType(fuelType);
 
-    if (!vehicleIdentifier || !make || !model || parsedYear === null || parsedCurrentMileage === null) {
-      return res.status(400).json({ error: 'Vehicle ID, make, model, and year are required' });
+    if (!vehicleIdentifier || !licensePlate || !make || !model || parsedYear === null || parsedCurrentMileage === null) {
+      return res.status(400).json({ error: 'Vehicle ID, license plate, make, model, and year are required' });
     }
 
     if (normalizedTruckType.error) {
@@ -1488,7 +1707,7 @@ function createVehiclesRouter(options = {}) {
           make: String(make).trim(),
           model: String(model).trim(),
           year: parsedYear,
-          plate: vehicleIdentifier,
+          plate: licensePlate,
           name: vehicleIdentifier,
           registration_expiration: registrationExpiration || null,
           insurance_expiration: insuranceExpiration || null,
@@ -1545,11 +1764,12 @@ function createVehiclesRouter(options = {}) {
           customTruckType: row.custom_truck_type
         });
         const normalizedFuelType = normalizeFuelType(row.fuel_type);
-        const vehicleIdentifier = String(row.plate || row.name || '').trim();
+        const vehicleIdentifier = String(row.name || '').trim();
+        const licensePlate = String(row.plate || '').trim();
         const nameKey = vehicleIdentifier.toLowerCase();
 
-        if (!vehicleIdentifier || !row.make || !row.model || parsedYear === null || parsedCurrentMileage === null) {
-          result.errors.push({ row: row.row_number, error: 'Vehicle ID, make, model, and year are required.' });
+        if (!vehicleIdentifier || !licensePlate || !row.make || !row.model || parsedYear === null || parsedCurrentMileage === null) {
+          result.errors.push({ row: row.row_number, error: 'Vehicle ID, license plate, make, model, and year are required.' });
           continue;
         }
 
@@ -1578,7 +1798,7 @@ function createVehiclesRouter(options = {}) {
             make: String(row.make).trim(),
             model: String(row.model).trim(),
             year: parsedYear,
-            plate: vehicleIdentifier,
+            plate: licensePlate,
             registration_expiration: row.registration_expiration || null,
             insurance_expiration: row.insurance_expiration || null,
             fuel_type: normalizedFuelType,
@@ -2276,15 +2496,37 @@ function createVehiclesRouter(options = {}) {
 
     if ('vehicle_status' in payload) {
       payload.is_active = payload.vehicle_status === 'active';
+
+      if (payload.vehicle_status === 'active') {
+        payload.readiness_source_type = null;
+        payload.readiness_source_id = null;
+      } else if (
+        req.body?.readiness_source_type === 'inspection'
+        && req.body?.readiness_source_id
+      ) {
+        payload.readiness_source_type = 'inspection';
+        payload.readiness_source_id = String(req.body.readiness_source_id).trim();
+      }
     }
 
-    if ('plate' in payload || 'name' in payload) {
-      const vehicleIdentifier = String(payload.plate || payload.name || '').trim();
+    if ('name' in payload && !String(payload.name || '').trim()) {
+      return res.status(400).json({ error: 'Vehicle ID is required' });
+    }
+
+    if ('plate' in payload && !String(payload.plate || '').trim()) {
+      return res.status(400).json({ error: 'License plate is required' });
+    }
+
+    if ('name' in payload) {
+      const vehicleIdentifier = String(payload.name).trim();
       if (!vehicleIdentifier) {
         return res.status(400).json({ error: 'Vehicle ID is required' });
       }
       payload.name = vehicleIdentifier;
-      payload.plate = vehicleIdentifier;
+    }
+
+    if ('plate' in payload) {
+      payload.plate = String(payload.plate).trim();
     }
 
     if (!Object.keys(payload).length) {
@@ -2612,3 +2854,5 @@ function createVehiclesRouter(options = {}) {
 
 module.exports = createVehiclesRouter();
 module.exports.createVehiclesRouter = createVehiclesRouter;
+module.exports.buildVehicleReadiness = buildVehicleReadiness;
+module.exports.mapInspectionReadinessContext = mapInspectionReadinessContext;
