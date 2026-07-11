@@ -29,6 +29,7 @@ const { createWaitlistRouter } = require('./routes/waitlist');
 const { createApiRateLimiters } = require('./middleware/apiSecurity');
 const defaultSupabase = require('./lib/supabase');
 const { createHealthService } = require('./services/health');
+const { createRequestObservability, logUnhandledRequestError } = require('./middleware/observability');
 
 const PHOTO_JSON_PATHS = [
   '/routes/inspection-photo',
@@ -38,15 +39,22 @@ const PHOTO_JSON_PATHS = [
 
 function createApp(options = {}) {
   const app = express();
-  const healthService = createHealthService({ supabase: options.supabase || defaultSupabase });
-  const port = Number(process.env.PORT) || 3001;
   const isProduction = process.env.NODE_ENV === 'production';
+  const healthService = createHealthService({ supabase: options.supabase || defaultSupabase });
+  const requestLoggingEnabled = options.requestLoggingEnabled ?? (
+    isProduction || process.env.REQUEST_LOGGING === 'true'
+  );
+  const port = Number(process.env.PORT) || 3001;
   const rateLimiters = createApiRateLimiters({
     enabled: options.rateLimitEnabled !== false,
     limits: options.rateLimits
   });
   app.set('trust proxy', isProduction ? 1 : false);
   app.disable('x-powered-by');
+  app.use(createRequestObservability({
+    enabled: requestLoggingEnabled,
+    log: options.structuredLog
+  }));
   const allowedOrigins = [
     'http://localhost:5173',
     'http://127.0.0.1:5173',
@@ -241,7 +249,7 @@ function createApp(options = {}) {
   app.use('/vehicles', requireManager, requireActiveSubscription, vehiclesRouter);
   app.use('/safety-focuses', requireDriver, safetyFocusesRouter);
 
-  app.use((error, _req, res, _next) => {
+  app.use((error, req, res, _next) => {
     if (res.headersSent) {
       return;
     }
@@ -258,7 +266,11 @@ function createApp(options = {}) {
       return res.status(403).json({ error: 'Origin is not allowed.' });
     }
 
-    console.error('Unhandled server error:', error);
+    if (requestLoggingEnabled) {
+      logUnhandledRequestError(error, req, { log: options.structuredLog });
+    } else {
+      console.error('Unhandled server error:', error);
+    }
 
     return res.status(500).json({ error: 'Internal server error' });
   });

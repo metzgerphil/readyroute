@@ -91,6 +91,18 @@ npm run deploy:landing
 
 After any emergency deploy, commit and push the same source to GitHub so production can be reproduced from source.
 
+## Production Monitoring
+
+ReadyRoute emits structured JSON request logs in production. Every response includes an `X-Request-ID`; use that value in Cloud Logging to trace a failed request. Logs contain operational IDs and status metadata, not request bodies, tokens, coordinates, passwords, or query strings. Successful health checks and five-second driver position posts are excluded to control logging volume; failures are retained.
+
+Configure the idempotent Google Monitoring baseline while authenticated as a project administrator:
+
+```bash
+ALERT_EMAIL="operations@example.com" node scripts/configure-google-monitoring.js
+```
+
+This creates one email notification channel, public uptime checks for the API readiness endpoint, manager portal, and website, plus an alert for Cloud Run 5xx responses. Google may require the email recipient to verify the notification channel before alerts can be delivered.
+
 ## Smoke Tests
 
 Production smoke:

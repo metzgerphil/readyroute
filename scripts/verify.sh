@@ -15,6 +15,7 @@ VITE_API_URL="${VITE_API_URL:-https://api.readyroute.org}" \
   npm --prefix "$ROOT_DIR/manager-portal" run build
 
 echo "==> Running backend unit tests"
+node "$ROOT_DIR/scripts/check-schema-version.js"
 SUPABASE_URL="${SUPABASE_URL:-https://example.supabase.co}" \
 SUPABASE_SERVICE_KEY="${SUPABASE_SERVICE_KEY:-test-service-role-key}" \
 JWT_SECRET="${JWT_SECRET:-test-secret}" \
