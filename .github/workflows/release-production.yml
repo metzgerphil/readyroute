@@ -62,10 +62,15 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Verify migration configuration
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
         shell: bash
         run: |
           test -n "$SUPABASE_ACCESS_TOKEN" || { echo "SUPABASE_ACCESS_TOKEN is not configured"; exit 1; }
           test -n "$SUPABASE_PROJECT_REF" || { echo "SUPABASE_PROJECT_REF is not configured"; exit 1; }
+          test -n "$SUPABASE_URL" || { echo "SUPABASE_URL is not configured"; exit 1; }
+          test -n "$SUPABASE_SERVICE_KEY" || { echo "SUPABASE_SERVICE_KEY is not configured"; exit 1; }
 
       - name: Set up Supabase CLI
         uses: supabase/setup-cli@v1
@@ -77,6 +82,42 @@ jobs:
 
       - name: Preview pending migrations
         run: supabase db push --linked --dry-run
+
+      - name: Remove legacy delivery signature storage
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+        shell: bash
+        run: |
+          bucket_url="${SUPABASE_URL%/}/storage/v1/bucket/signatures"
+          auth_headers=(-H "Authorization: Bearer $SUPABASE_SERVICE_KEY" -H "apikey: $SUPABASE_SERVICE_KEY")
+
+          lookup_status="$(curl --silent --show-error --output /tmp/signature-bucket-lookup.json --write-out '%{http_code}' \
+            "${auth_headers[@]}" "$bucket_url")"
+          if [[ "$lookup_status" == "404" ]]; then
+            echo "Legacy signature bucket is already absent"
+          elif [[ "$lookup_status" != "200" ]]; then
+            cat /tmp/signature-bucket-lookup.json
+            echo "Unable to inspect legacy signature bucket (HTTP $lookup_status)" >&2
+            exit 1
+          else
+            empty_status="$(curl --silent --show-error --output /tmp/signature-bucket-empty.json --write-out '%{http_code}' \
+              --request POST "${auth_headers[@]}" "$bucket_url/empty")"
+            if [[ "$empty_status" != "200" ]]; then
+              cat /tmp/signature-bucket-empty.json
+              echo "Unable to empty legacy signature bucket (HTTP $empty_status)" >&2
+              exit 1
+            fi
+
+            delete_status="$(curl --silent --show-error --output /tmp/signature-bucket-delete.json --write-out '%{http_code}' \
+              --request DELETE "${auth_headers[@]}" "$bucket_url")"
+            if [[ "$delete_status" != "200" ]]; then
+              cat /tmp/signature-bucket-delete.json
+              echo "Unable to delete legacy signature bucket (HTTP $delete_status)" >&2
+              exit 1
+            fi
+            echo "Legacy delivery signature bucket removed"
+          fi
 
       - name: Apply pending migrations
         run: supabase db push --linked --yes
