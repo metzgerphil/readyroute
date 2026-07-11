@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 
 import { loadGoogleMaps } from '../../lib/googleMapsLoader';
 import { createDriverPinSvg, getPrimaryBoundsPoints, getValidCoordinatePoints } from '../../utils/dashboardHelpers';
+import { escapeHtml } from '../../utils/routePageHelpers';
 
 export default function DashboardFleetMap({ center, markers = [], boundsPoints = [] }) {
   const mapRef = useRef(null);
@@ -74,16 +75,18 @@ export default function DashboardFleetMap({ center, markers = [], boundsPoints =
             });
 
             marker.addListener('click', () => {
-              const tcLine = markerData.nextStopTimeCommit ? `<div style="margin-top:6px; color:#b45309; font-weight:800;">TC: ${markerData.nextStopTimeCommit}</div>` : '';
+              const tcLine = markerData.nextStopTimeCommit
+                ? `<div style="margin-top:6px; color:#b45309; font-weight:800;">TC: ${escapeHtml(markerData.nextStopTimeCommit)}</div>`
+                : '';
               infoWindow.setContent(`
                 <div style="min-width:220px; padding:4px 2px;">
-                  <div style="font-weight:900; color:#173042;">${markerData.driverName} — ${markerData.workAreaName}</div>
-                  <div style="margin-top:4px; color:#4b5563;">${markerData.completedStops}/${markerData.totalStops} stops complete</div>
-                  <div style="margin-top:4px; color:#4b5563;">${markerData.stopsPerHourLabel}</div>
+                  <div style="font-weight:900; color:#173042;">${escapeHtml(markerData.driverName)} — ${escapeHtml(markerData.workAreaName)}</div>
+                  <div style="margin-top:4px; color:#4b5563;">${escapeHtml(markerData.completedStops)}/${escapeHtml(markerData.totalStops)} stops complete</div>
+                  <div style="margin-top:4px; color:#4b5563;">${escapeHtml(markerData.stopsPerHourLabel)}</div>
                   <div style="margin-top:6px; color:#173042; font-weight:700;">Next stop</div>
-                  <div style="margin-top:2px; color:#66737c;">${markerData.nextStopAddress || 'No pending stop'}</div>
+                  <div style="margin-top:2px; color:#66737c;">${escapeHtml(markerData.nextStopAddress || 'No pending stop')}</div>
                   ${tcLine}
-                  <div style="margin-top:6px; color:#ff6200; font-weight:800;">${markerData.pendingTimeCommitCount} pending time commit${markerData.pendingTimeCommitCount === 1 ? '' : 's'}</div>
+                  <div style="margin-top:6px; color:#ff6200; font-weight:800;">${escapeHtml(markerData.pendingTimeCommitCount)} pending time commit${markerData.pendingTimeCommitCount === 1 ? '' : 's'}</div>
                 </div>
               `);
               infoWindow.open({ anchor: marker, map });

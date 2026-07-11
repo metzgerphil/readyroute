@@ -1,5 +1,17 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "cleanUrls": true,
-  "trailingSlash": false
+  "trailingSlash": false,
+  "redirects": [
+    {
+      "source": "/staff",
+      "destination": "https://portal.readyroute.org/readyroute/support",
+      "permanent": false
+    },
+    {
+      "source": "/staff/:path*",
+      "destination": "https://portal.readyroute.org/readyroute/:path*",
+      "permanent": false
+    }
+  ]
 }

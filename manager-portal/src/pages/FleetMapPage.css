@@ -242,6 +242,26 @@
   font-weight: 750;
 }
 
+.fleet-map-coordinate-warning,
+.fleet-map-summary-warning {
+  border: 1px solid var(--rr-color-warning-border);
+  background: var(--rr-color-warning-soft);
+  color: var(--rr-color-warning);
+  font-weight: 850;
+}
+
+.fleet-map-coordinate-warning {
+  padding: 10px 14px;
+  border-radius: 12px;
+}
+
+.fleet-map-summary-warning {
+  width: fit-content;
+  padding: 4px 8px;
+  border-radius: var(--rr-radius-pill);
+  font-size: 0.76rem;
+}
+
 .fleet-map-status-pill {
   display: inline-flex;
   align-items: center;

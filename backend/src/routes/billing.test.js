@@ -20,7 +20,7 @@ class MockQueryBuilder {
   }
 
   select(columns) {
-    if (this.operation === 'insert' || this.operation === 'update') {
+    if (this.operation === 'insert' || this.operation === 'update' || this.operation === 'upsert') {
       this.state.returning = columns;
       return this;
     }
@@ -39,6 +39,13 @@ class MockQueryBuilder {
   update(payload) {
     this.operation = 'update';
     this.state.payload = payload;
+    return this;
+  }
+
+  upsert(payload, options = {}) {
+    this.operation = 'upsert';
+    this.state.payload = payload;
+    this.state.options = options;
     return this;
   }
 
@@ -154,6 +161,23 @@ test('POST /billing/setup creates a Stripe customer and subscription', async () 
 
     if (query.table === 'accounts' && query.operation === 'update') {
       return { data: null, error: null };
+    }
+
+    if (query.table === 'account_billing_settings' && query.operation === 'upsert') {
+      assert.equal(query.payload.account_id, 'acct-1');
+      assert.equal(query.payload.committed_route_count, 3);
+      assert.equal(query.options.onConflict, 'account_id');
+      return {
+        data: {
+          committed_route_count: 3,
+          billing_rate_cents: 1500,
+          currency: 'usd',
+          free_month_started_on: null,
+          free_month_ends_on: null,
+          is_billing_exempt: false
+        },
+        error: null
+      };
     }
 
     throw new Error(`Unexpected query ${query.table}:${query.operation}`);
@@ -294,7 +318,7 @@ test('POST /billing/webhook processes Stripe test events', async () => {
   }
 });
 
-test('suspended accounts get 402 on manager routes', async () => {
+test('suspended accounts get 402 on manager-owned routes', async () => {
   const supabase = new MockSupabase((query) => {
     if (query.table === 'accounts' && query.operation === 'select') {
       return {
@@ -321,15 +345,113 @@ test('suspended accounts get 402 on manager routes', async () => {
   });
 
   try {
-    const response = await fetch(`${server.baseUrl}/manager/drivers`, {
+    const requests = [
+      { path: '/manager/drivers', options: { method: 'GET' } },
+      { path: '/routes/pull-fedex', options: { method: 'POST' } },
+      { path: '/vehicles', options: { method: 'GET' } }
+    ];
+
+    for (const request of requests) {
+      const response = await fetch(`${server.baseUrl}${request.path}`, {
+        ...request.options,
+        headers: {
+          Authorization: `Bearer ${signManagerToken()}`
+        }
+      });
+
+      assert.equal(response.status, 402, request.path);
+      assert.deepEqual(await response.json(), {
+        error: 'Subscription payment failed. Update payment method.'
+      });
+    }
+  } finally {
+    await server.close();
+  }
+});
+
+test('missing accounts fail closed on subscription-protected routes', async () => {
+  const supabase = new MockSupabase((query) => {
+    if (query.table === 'accounts' && query.operation === 'select') {
+      return {
+        data: null,
+        error: null
+      };
+    }
+
+    throw new Error(`Unexpected query ${query.table}:${query.operation}`);
+  });
+
+  const stripeClient = {
+    customers: { create: async () => ({}) },
+    subscriptions: { create: async () => ({}) },
+    webhooks: { constructEvent: () => ({}) }
+  };
+
+  const server = await startTestServer({
+    supabase,
+    stripeClient,
+    webhookSecret: 'whsec_test',
+    stripePriceId: 'price_123',
+    enforceBilling: true
+  });
+
+  try {
+    const response = await fetch(`${server.baseUrl}/vehicles`, {
       headers: {
         Authorization: `Bearer ${signManagerToken()}`
       }
     });
 
-    assert.equal(response.status, 402);
+    assert.equal(response.status, 403);
     assert.deepEqual(await response.json(), {
-      error: 'Subscription payment failed. Update payment method.'
+      error: 'Account is not available'
+    });
+  } finally {
+    await server.close();
+  }
+});
+
+test('retained accounts are read-only on subscription-protected routes', async () => {
+  const supabase = new MockSupabase((query) => {
+    if (query.table === 'accounts' && query.operation === 'select') {
+      return {
+        data: {
+          id: 'acct-1',
+          plan: 'pro',
+          account_status: 'retained',
+          service_ends_at: '2026-07-01T00:00:00.000Z',
+          retention_ends_at: '2026-09-01T00:00:00.000Z'
+        },
+        error: null
+      };
+    }
+
+    throw new Error(`Unexpected query ${query.table}:${query.operation}`);
+  });
+  const stripeClient = {
+    customers: { create: async () => ({}) },
+    subscriptions: { create: async () => ({}) },
+    webhooks: { constructEvent: () => ({}) }
+  };
+  const server = await startTestServer({
+    supabase,
+    stripeClient,
+    webhookSecret: 'whsec_test',
+    stripePriceId: 'price_123',
+    enforceBilling: true
+  });
+
+  try {
+    const response = await fetch(`${server.baseUrl}/routes/pull-fedex`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${signManagerToken()}` }
+    });
+
+    assert.equal(response.status, 403);
+    assert.deepEqual(await response.json(), {
+      error: 'This ReadyRoute workspace is in its data-retention period and is read-only.',
+      account_status: 'retained',
+      retention_ends_at: '2026-09-01T00:00:00.000Z'
     });
   } finally {
     await server.close();

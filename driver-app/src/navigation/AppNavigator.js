@@ -5,20 +5,24 @@ import { createStackNavigator } from '@react-navigation/stack';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import MobileNavigationDrawer from '../components/MobileNavigationDrawer';
+import SupportRequestModal from '../components/SupportRequestModal';
 import { usePortalSession } from '../context/PortalSessionContext';
 import api from '../services/api';
 import { saveLastPortalMode, saveSessionTokens } from '../services/auth';
 import HomeScreen from '../screens/HomeScreen';
 import LoginScreen from '../screens/LoginScreen';
+import ManagerAccessCodesScreen from '../screens/ManagerAccessCodesScreen';
 import ManagerDashboardScreen from '../screens/ManagerDashboardScreen';
 import ManagerDriversScreen from '../screens/ManagerDriversScreen';
 import ManagerManifestScreen from '../screens/ManagerManifestScreen';
 import ManagerMapScreen from '../screens/ManagerMapScreen';
 import ManagerRoutesScreen from '../screens/ManagerRoutesScreen';
 import ManagerSettingsScreen from '../screens/ManagerSettingsScreen';
+import ManagerVedrScreen from '../screens/ManagerVedrScreen';
 import ManagerVehiclesScreen from '../screens/ManagerVehiclesScreen';
 import ManifestScreen from '../screens/ManifestScreen';
 import MyDriveScreen from '../screens/MyDriveScreen';
+import NotificationsScreen from '../screens/NotificationsScreen';
 import PortalEntryScreen from '../screens/PortalEntryScreen';
 import StopDetailScreen from '../screens/StopDetailScreen';
 import appTheme from '../theme/appTheme';
@@ -28,12 +32,16 @@ const SHELL_NAVIGATION_SCREENS = new Set([
   'Home',
   'Manifest',
   'ManagerDashboard',
+  'ManagerAccessCodes',
   'ManagerDrivers',
   'ManagerManifest',
   'ManagerMap',
+  'ManagerNotifications',
   'ManagerRoutes',
   'ManagerSettings',
+  'ManagerVedr',
   'ManagerVehicles',
+  'Notifications',
   'MyDrive'
 ]);
 
@@ -90,12 +98,14 @@ export default function AppNavigator() {
     sessionTokens
   } = usePortalSession();
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
+  const [isSupportOpen, setIsSupportOpen] = useState(false);
   const [currentRouteName, setCurrentRouteName] = useState(null);
   const [isLoadingManagerCsas, setIsLoadingManagerCsas] = useState(false);
   const [isSwitchingManagerCsa, setIsSwitchingManagerCsa] = useState(false);
   const [managerCsaPayload, setManagerCsaPayload] = useState({ current_csa: null, csas: [] });
   const [managerDataVersion, setManagerDataVersion] = useState(0);
   const [managerWorkspaceVersion, setManagerWorkspaceVersion] = useState(0);
+  const [hasManagerNotificationAttention, setHasManagerNotificationAttention] = useState(false);
   const navigationRef = useRef(null);
   const managerCsas = managerCsaPayload?.csas || [];
   const currentManagerCsaId = managerCsaPayload?.current_csa?.id || managerCsas.find((csa) => csa?.is_current)?.id || null;
@@ -114,6 +124,25 @@ export default function AppNavigator() {
       setIsLoadingManagerCsas(false);
     }
   }, []);
+
+  const loadManagerNotificationAttention = useCallback(async () => {
+    if (activeMode !== 'manager' || !sessionTokens?.managerToken) {
+      setHasManagerNotificationAttention(false);
+      return;
+    }
+
+    try {
+      const response = await api.get('/manager/notifications', {
+        authMode: 'manager'
+      });
+      const notifications = Array.isArray(response.data?.notifications) ? response.data.notifications : [];
+      setHasManagerNotificationAttention(notifications.some((notification) => (
+        notification.status !== 'read'
+      )));
+    } catch (_error) {
+      setHasManagerNotificationAttention(false);
+    }
+  }, [activeMode, sessionTokens?.managerToken]);
 
   useEffect(() => {
     if (!hasAnyAccess) {
@@ -142,6 +171,10 @@ export default function AppNavigator() {
     loadManagerCsas();
   }, [activeMode, loadManagerCsas, managerWorkspaceVersion, sessionTokens?.managerToken]);
 
+  useEffect(() => {
+    loadManagerNotificationAttention();
+  }, [loadManagerNotificationAttention, managerDataVersion, managerWorkspaceVersion]);
+
   if (isBootstrapping) {
     return <LoadingScreen />;
   }
@@ -150,11 +183,17 @@ export default function AppNavigator() {
     setIsDrawerOpen(true);
     if (activeMode === 'manager' && sessionTokens?.managerToken) {
       loadManagerCsas();
+      loadManagerNotificationAttention();
     }
   }
 
   function closeDrawer() {
     setIsDrawerOpen(false);
+  }
+
+  function openSupport() {
+    setIsDrawerOpen(false);
+    setIsSupportOpen(true);
   }
 
   function handleNavigate(screen) {
@@ -340,10 +379,39 @@ export default function AppNavigator() {
                 </TrackedScreen>
               )}
             </Stack.Screen>
+            <Stack.Screen name="ManagerAccessCodes" options={{ headerShown: false }}>
+              {(props) => (
+                <TrackedScreen navigation={props.navigation} onFocus={attachNavigation} screenName="ManagerAccessCodes">
+                  <ManagerAccessCodesScreen
+                    {...props}
+                    csaWorkspaceVersion={managerWorkspaceVersion + managerDataVersion}
+                    identity={identity}
+                  />
+                </TrackedScreen>
+              )}
+            </Stack.Screen>
             <Stack.Screen name="ManagerVehicles" options={{ headerShown: false }}>
               {(props) => (
                 <TrackedScreen navigation={props.navigation} onFocus={attachNavigation} screenName="ManagerVehicles">
                   <ManagerVehiclesScreen
+                    {...props}
+                    csaWorkspaceVersion={managerWorkspaceVersion + managerDataVersion}
+                    identity={identity}
+                  />
+                </TrackedScreen>
+              )}
+            </Stack.Screen>
+            <Stack.Screen name="ManagerNotifications" options={{ headerShown: false }}>
+              {(props) => (
+                <TrackedScreen navigation={props.navigation} onFocus={attachNavigation} screenName="ManagerNotifications">
+                  <NotificationsScreen {...props} mode="manager" />
+                </TrackedScreen>
+              )}
+            </Stack.Screen>
+            <Stack.Screen name="ManagerVedr" options={{ headerShown: false }}>
+              {(props) => (
+                <TrackedScreen navigation={props.navigation} onFocus={attachNavigation} screenName="ManagerVedr">
+                  <ManagerVedrScreen
                     {...props}
                     csaWorkspaceVersion={managerWorkspaceVersion + managerDataVersion}
                     identity={identity}
@@ -394,6 +462,20 @@ export default function AppNavigator() {
                 return (
                   <TrackedScreen navigation={props.navigation} onFocus={attachNavigation} screenName="Home">
                     <HomeScreen {...props} onLogout={logout} />
+                  </TrackedScreen>
+                );
+              }}
+            </Stack.Screen>
+            <Stack.Screen
+              name="Notifications"
+              options={{
+                title: 'Notifications'
+              }}
+            >
+              {(props) => {
+                return (
+                  <TrackedScreen navigation={props.navigation} onFocus={attachNavigation} screenName="Notifications">
+                    <NotificationsScreen {...props} mode="driver" />
                   </TrackedScreen>
                 );
               }}
@@ -463,6 +545,7 @@ export default function AppNavigator() {
             currentRouteName={currentRouteName}
             currentManagerCsaId={currentManagerCsaId}
             identity={identity}
+            hasNotificationAttention={activeMode === 'manager' ? hasManagerNotificationAttention : false}
             isLoadingManagerCsas={isLoadingManagerCsas}
             isOpen={isDrawerOpen}
             isSwitchingManagerCsa={isSwitchingManagerCsa}
@@ -472,8 +555,16 @@ export default function AppNavigator() {
             onManagerWorkspaceSwitch={handleManagerWorkspaceSwitch}
             onLogout={logout}
             onNavigate={handleNavigate}
+            onSupportPress={openSupport}
             onSwitchMode={() => handleSelectMode(activeMode === 'manager' ? 'driver' : 'manager')}
             showModeSwitch={availableModes.length > 1 || (activeMode === 'manager' && Boolean(sessionTokens?.managerToken))}
+          />
+          <SupportRequestModal
+            activeMode={activeMode}
+            currentRouteName={currentRouteName}
+            identity={identity}
+            onClose={() => setIsSupportOpen(false)}
+            visible={isSupportOpen}
           />
         </>
       ) : null}

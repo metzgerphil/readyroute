@@ -36,7 +36,7 @@ jobs:
 
       - name: Run production smoke
         env:
-          SMOKE_BACKEND_URL: ${{ vars.SMOKE_BACKEND_URL || 'https://readyroute-backend-production.up.railway.app' }}
+          SMOKE_BACKEND_URL: ${{ vars.SMOKE_BACKEND_URL || 'https://api.readyroute.org' }}
           SMOKE_PORTAL_URL: ${{ vars.SMOKE_PORTAL_URL || 'https://portal.readyroute.org' }}
           SMOKE_MANAGER_EMAIL: ${{ secrets.SMOKE_MANAGER_EMAIL }}
           SMOKE_MANAGER_PASSWORD: ${{ secrets.SMOKE_MANAGER_PASSWORD }}

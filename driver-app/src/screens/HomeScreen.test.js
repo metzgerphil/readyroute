@@ -18,6 +18,14 @@ jest.mock('expo-location', () => ({
   requestForegroundPermissionsAsync: jest.fn()
 }));
 
+jest.mock('expo-image-picker', () => ({
+  MediaTypeOptions: {
+    Images: 'Images'
+  },
+  requestMediaLibraryPermissionsAsync: jest.fn(),
+  launchImageLibraryAsync: jest.fn()
+}));
+
 import {
   DAILY_SAFETY_REMINDERS,
   getDailySafetyReminder,
@@ -26,9 +34,18 @@ import {
   getLocationRequirementCopy,
   getPostDispatchChangeNotice,
   getDriverWaitingCopy,
+  getInspectionForm,
+  getInspectionFormValidationError,
+  getInspectionItemDefinition,
+  getInspectionProgress,
+  getInspectionRequirement,
+  getInspectionSectionsForItems,
+  getInspectionSubmissionRouteId,
   getOdometerRequirement,
+  normalizeSafetyFocusResponse,
   hasGrantedLocationPermission,
   isDeniedLocationPermission,
+  serializeInspectionItems,
   shouldPromptForLocationPermission,
   formatBreakLabel,
   getGreetingByTime,
@@ -76,6 +93,26 @@ describe('HomeScreen helpers', () => {
     expect(getDailySafetyReminder(reminderDate).bullets.length).toBeGreaterThan(2);
   });
 
+  it('normalizes a database-backed safety focus for the driver card', () => {
+    expect(
+      normalizeSafetyFocusResponse({
+        id: 'focus-1',
+        title: 'Set the parking brake every time',
+        source: null,
+        bullets: ['Use it at every stop.', '', null],
+        takeaway: 'Small habits prevent incidents.'
+      })
+    ).toEqual({
+      id: 'focus-1',
+      title: 'Set the parking brake every time',
+      source: 'ReadyRoute safety focus',
+      bullets: ['Use it at every stop.'],
+      takeaway: 'Small habits prevent incidents.'
+    });
+
+    expect(normalizeSafetyFocusResponse({ title: 'Missing bullets', bullets: [] })).toBeNull();
+  });
+
   it('builds a compact route summary for the home card', () => {
     expect(
       getRouteSummary({
@@ -106,6 +143,277 @@ describe('HomeScreen helpers', () => {
       vehicle_id: 'vehicle-1',
       minimum_odometer: 54250,
       maximum_odometer: 54550
+    });
+  });
+
+  it('derives the route-specific inspection gate and default checklist form', () => {
+    const requirement = getInspectionRequirement(
+      {
+        inspection_requirement: {
+          required: true,
+          submitted: false,
+          route_id: 'route-1',
+          vehicle_id: 'vehicle-1',
+          inspection_date: '2026-06-24',
+          last_recorded_odometer: 12000,
+          checklist_items: [
+            { checklist_item_key: 'tires', label: 'Tires' },
+            { checklist_item_key: 'lights', label: 'Lights' }
+          ]
+        }
+      },
+      { id: 'route-1', vehicle_id: 'vehicle-1' }
+    );
+
+    expect(requirement).toMatchObject({
+      route_id: 'route-1',
+      vehicle_id: 'vehicle-1',
+      minimum_odometer: 12000,
+      maximum_odometer: 12300
+    });
+    expect(getInspectionForm(requirement)).toEqual({
+      odometer: '',
+      issue_note: '',
+      items: [
+        {
+          checklist_item_key: 'tires',
+          label: 'Tires',
+          category: 'critical_safety',
+          status: 'unanswered',
+          severity: null,
+          issue_details: {},
+          note: '',
+          photos: []
+        },
+        {
+          checklist_item_key: 'lights',
+          label: 'Lights',
+          category: 'critical_safety',
+          status: 'unanswered',
+          severity: null,
+          issue_details: {},
+          note: '',
+          photos: []
+        }
+      ]
+    });
+    expect(
+      getInspectionRequirement(
+        { inspection_requirement: { required: true, submitted: true } },
+        { id: 'route-1' }
+      )
+    ).toBeNull();
+    expect(
+      getInspectionRequirement(
+        {
+          inspection_requirement: {
+            required: true,
+            submitted: false,
+            reason: 'manual_assignment',
+            assignment_id: 'assignment-1',
+            vehicle_id: 'vehicle-9',
+            vehicle_name: '411987',
+            inspection_date: '2026-06-27',
+            last_recorded_odometer: 74000,
+            blocks_route_start: false,
+            checklist_items: [{ checklist_item_key: 'tires', label: 'Tires' }]
+          }
+        },
+        null
+      )
+    ).toMatchObject({
+      assignment_id: 'assignment-1',
+      vehicle_id: 'vehicle-9',
+      vehicle_name: '411987',
+      blocks_route_start: false,
+      minimum_odometer: 74000,
+      maximum_odometer: 74300
+    });
+    expect(
+      getInspectionSubmissionRouteId(
+        {
+          reason: 'manual_assignment',
+          assignment_id: 'assignment-1',
+          route_id: null
+        },
+        { id: 'route-1' }
+      )
+    ).toBeNull();
+    expect(
+      getInspectionSubmissionRouteId(
+        {
+          route_id: 'route-1'
+        },
+        { id: 'route-2' }
+      )
+    ).toBe('route-2');
+  });
+
+  it('tracks inspection progress and validates issue details before submission', () => {
+    const form = {
+      items: [
+        { checklist_item_key: 'tires', label: 'Tires', category: 'critical_safety', status: 'pass' },
+        {
+          checklist_item_key: 'coolant',
+          label: 'Coolant',
+          category: 'maintenance',
+          status: 'issue',
+          severity: 'maintenance_soon',
+          issue_details: { issue_type: 'Leak suspected' },
+          note: 'Small puddle under front passenger side.',
+          photos: [{ url: 'https://cdn/photo.jpg' }]
+        },
+        { checklist_item_key: 'truck_cleanliness', label: 'Truck Cleanliness', category: 'vehicle_condition', status: 'unanswered' }
+      ]
+    };
+
+    expect(getInspectionProgress(form)).toEqual({
+      completedCount: 2,
+      issueCount: 1,
+      remainingCount: 1,
+      total: 3
+    });
+    expect(getInspectionFormValidationError(form)).toBe('Answer Truck Cleanliness before submitting.');
+
+    const completeForm = {
+      ...form,
+      items: form.items.map((item) => (
+        item.checklist_item_key === 'truck_cleanliness'
+          ? {
+              ...item,
+              status: 'issue',
+              severity: 'minor',
+              issue_details: { condition: 'Dirty' },
+              photos: []
+            }
+          : item
+      ))
+    };
+
+    expect(getInspectionFormValidationError(completeForm)).toBeNull();
+    expect(getInspectionSectionsForItems(completeForm.items).map((section) => section.title)).toEqual([
+      'Critical Safety',
+      'Maintenance',
+      'Vehicle Condition'
+    ]);
+    expect(serializeInspectionItems(completeForm.items)[1]).toMatchObject({
+      checklist_item_key: 'coolant',
+      status: 'issue',
+      severity: 'maintenance_soon',
+      issue_details: { issue_type: 'Leak suspected' },
+      photos: [{ url: 'https://cdn/photo.jpg' }]
+    });
+  });
+
+  it('uses VEDR issue choices with a default maintenance severity', () => {
+    const vedrDefinition = getInspectionItemDefinition({ checklist_item_key: 'vedr' });
+    const form = {
+      items: [
+        {
+          checklist_item_key: 'vedr',
+          label: 'VEDR',
+          category: 'safety_equipment',
+          status: 'issue',
+          severity: vedrDefinition.defaultIssueSeverity,
+          issue_details: { issue_type: 'Fell off' },
+          photos: []
+        }
+      ]
+    };
+
+    expect(vedrDefinition.hideSeveritySelector).toBe(true);
+    expect(vedrDefinition.defaultIssueSeverity).toBe('maintenance_soon');
+    expect(vedrDefinition.issueFields[0].options).toEqual(['Not Connected', 'red light', 'Fell off']);
+    expect(getInspectionFormValidationError(form)).toBeNull();
+    expect(serializeInspectionItems(form.items)[0]).toMatchObject({
+      checklist_item_key: 'vedr',
+      status: 'issue',
+      severity: 'maintenance_soon',
+      issue_details: { issue_type: 'Fell off' }
+    });
+  });
+
+  it('uses Back Up Camera issue choices with a default maintenance severity', () => {
+    const cameraDefinition = getInspectionItemDefinition({ checklist_item_key: 'back_up_camera' });
+    const form = {
+      items: [
+        {
+          checklist_item_key: 'back_up_camera',
+          label: 'Back Up Camera',
+          category: 'safety_equipment',
+          status: 'issue',
+          severity: cameraDefinition.defaultIssueSeverity,
+          issue_details: { issue_type: 'Monitor glitching' },
+          photos: []
+        }
+      ]
+    };
+
+    expect(cameraDefinition.hideSeveritySelector).toBe(true);
+    expect(cameraDefinition.defaultIssueSeverity).toBe('maintenance_soon');
+    expect(cameraDefinition.issueFields[0].options).toEqual(['Not showing', 'Monitor glitching']);
+    expect(getInspectionFormValidationError(form)).toBeNull();
+    expect(serializeInspectionItems(form.items)[0]).toMatchObject({
+      checklist_item_key: 'back_up_camera',
+      status: 'issue',
+      severity: 'maintenance_soon',
+      issue_details: { issue_type: 'Monitor glitching' }
+    });
+  });
+
+  it('uses Turn Cameras issue choices with a default maintenance severity', () => {
+    const turnCameraDefinition = getInspectionItemDefinition({ checklist_item_key: 'turn_cameras' });
+    const form = {
+      items: [
+        {
+          checklist_item_key: 'turn_cameras',
+          label: 'Turn Cameras',
+          category: 'safety_equipment',
+          status: 'issue',
+          severity: turnCameraDefinition.defaultIssueSeverity,
+          issue_details: { issue_type: 'camera loose' },
+          photos: []
+        }
+      ]
+    };
+
+    expect(turnCameraDefinition.hideSeveritySelector).toBe(true);
+    expect(turnCameraDefinition.defaultIssueSeverity).toBe('maintenance_soon');
+    expect(turnCameraDefinition.issueFields[0].options).toEqual(['Not connected', 'monitor glitching', 'camera loose']);
+    expect(getInspectionFormValidationError(form)).toBeNull();
+    expect(serializeInspectionItems(form.items)[0]).toMatchObject({
+      checklist_item_key: 'turn_cameras',
+      status: 'issue',
+      severity: 'maintenance_soon',
+      issue_details: { issue_type: 'camera loose' }
+    });
+  });
+
+  it('uses Parking Sensors issue choices with a default maintenance severity', () => {
+    const parkingSensorsDefinition = getInspectionItemDefinition({ checklist_item_key: 'parking_sensors' });
+    const form = {
+      items: [
+        {
+          checklist_item_key: 'parking_sensors',
+          label: 'Parking Sensors',
+          category: 'safety_equipment',
+          status: 'issue',
+          severity: parkingSensorsDefinition.defaultIssueSeverity,
+          issue_details: { issue_type: 'sensor missing' },
+          photos: []
+        }
+      ]
+    };
+
+    expect(parkingSensorsDefinition.hideSeveritySelector).toBe(true);
+    expect(parkingSensorsDefinition.defaultIssueSeverity).toBe('maintenance_soon');
+    expect(parkingSensorsDefinition.issueFields[0].options).toEqual(['No sound', 'sensor missing']);
+    expect(getInspectionFormValidationError(form)).toBeNull();
+    expect(serializeInspectionItems(form.items)[0]).toMatchObject({
+      checklist_item_key: 'parking_sensors',
+      status: 'issue',
+      severity: 'maintenance_soon',
+      issue_details: { issue_type: 'sensor missing' }
     });
   });
 

@@ -124,6 +124,10 @@ function getStopStats(stops = []) {
         }
       }
 
+      if (type === 'combined') {
+        stats.combinedStops += 1;
+      }
+
       return stats;
     },
     {
@@ -134,7 +138,8 @@ function getStopStats(stops = []) {
       deliveries: 0,
       completedDeliveries: 0,
       pickups: 0,
-      completedPickups: 0
+      completedPickups: 0,
+      combinedStops: 0
     }
   );
 }
@@ -284,7 +289,7 @@ export default function StopListDrawer({
         <div className="stop-list-summary-card">
           <span className="stop-list-summary-icon">↓</span>
           <strong>{`${routeStats.completedDeliveries}/${routeStats.deliveries}`}</strong>
-          <span>Deliveries</span>
+          <span>Delivery Stops</span>
           <span
             className="stop-list-summary-bar"
             style={{
@@ -297,7 +302,7 @@ export default function StopListDrawer({
         <div className="stop-list-summary-card">
           <span className="stop-list-summary-icon">↑</span>
           <strong>{`${routeStats.completedPickups}/${routeStats.pickups}`}</strong>
-          <span>Pickups</span>
+          <span>{routeStats.combinedStops ? `Pickup Stops · ${routeStats.combinedStops} also delivery` : 'Pickup Stops'}</span>
           <span
             className="stop-list-summary-bar"
             style={{

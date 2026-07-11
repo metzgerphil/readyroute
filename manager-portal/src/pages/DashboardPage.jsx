@@ -5,6 +5,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import DashboardFleetMap from '../components/dashboard/DashboardFleetMap';
 import DriverRow from '../components/DriverRow';
 import OverviewRoutesSection from '../components/OverviewRoutesSection';
+import { ErrorState } from '../components/PortalDesignSystem';
 import api from '../services/api';
 import {
   buildFallbackDashboard,
@@ -27,7 +28,12 @@ import {
   getRouteColorMap,
   getValidCoordinatePoints
 } from '../utils/dashboardHelpers';
-import { getTodayString, saveStoredOperationsDate } from '../utils/operationsDate';
+import {
+  buildOperationsDatePath,
+  getResolvedOperationsDate,
+  getTodayString,
+  saveStoredOperationsDate
+} from '../utils/operationsDate';
 
 const EMPTY_ARRAY = [];
 
@@ -40,6 +46,18 @@ function SkeletonCard() {
   );
 }
 
+function getCombinedStopCount(dashboard) {
+  return Number(dashboard?.combined_stops || dashboard?.total_combined_stops || dashboard?.combined_stop_count || 0);
+}
+
+function getCombinedStopMessage(count) {
+  if (!count) {
+    return '';
+  }
+
+  return `${count} physical stop${count === 1 ? '' : 's'} include both a delivery and pickup, so delivery and pickup stop counts can add up higher than total stops.`;
+}
+
 export default function DashboardPage() {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -47,7 +65,7 @@ export default function DashboardPage() {
   const [viewMode, setViewMode] = useState('map');
   const [compactBannerKey, setCompactBannerKey] = useState(null);
   const [vehiclePickerRouteId, setVehiclePickerRouteId] = useState(null);
-  const dashboardDate = searchParams.get('date') || getTodayString();
+  const dashboardDate = getResolvedOperationsDate(searchParams);
   const isSelectedDateToday = dashboardDate === getTodayString();
 
   useEffect(() => {
@@ -160,6 +178,7 @@ export default function DashboardPage() {
     [overviewRoutes]
   );
   const activeDashboard = isSelectedDateToday ? (dashboard || fallbackDashboard) : fallbackDashboard;
+  const combinedStopCount = getCombinedStopCount(activeDashboard);
   const routeRows = useMemo(() => activeDashboard?.drivers || EMPTY_ARRAY, [activeDashboard?.drivers]);
   const syncStatus = activeDashboard?.sync_status;
   const bannerState =
@@ -307,11 +326,11 @@ export default function DashboardPage() {
   );
 
   function handleSyncRoutes() {
-    navigate(`/manifest?date=${dashboardDate}&action=sync`);
+    navigate(buildOperationsDatePath('/manifest?action=sync', dashboardDate));
   }
 
   function handleAssignDrivers() {
-    navigate(`/manifest?date=${dashboardDate}`);
+    navigate(buildOperationsDatePath('/manifest', dashboardDate));
   }
 
   return (
@@ -364,11 +383,12 @@ export default function DashboardPage() {
         </div>
       </div>
 
-      {dashboardQuery.isLoading && bannerState !== 'missing' ? <div className="card">Loading dashboard...</div> : null}
       {dashboardQuery.isError ? (
-        <div className="card">
-          {dashboardQuery.error?.response?.data?.error || 'Dashboard failed to load. Refresh and try again.'}
-        </div>
+        <ErrorState
+          title="Unable to load dashboard"
+          description={dashboardQuery.error?.response?.data?.error || 'Dashboard failed to load for this date.'}
+          onRetry={() => dashboardQuery.refetch()}
+        />
       ) : null}
 
       {dashboardQuery.isLoading ? (
@@ -407,7 +427,7 @@ export default function DashboardPage() {
             <button className="primary-cta" onClick={handleSyncRoutes} type="button">
               Open Route Sync
             </button>
-            <button className="secondary-button" onClick={() => navigate(`/fleet-map?date=${dashboardDate}`)} type="button">
+            <button className="secondary-button" onClick={() => navigate(buildOperationsDatePath('/fleet-map', dashboardDate))} type="button">
               View Fleet Map
             </button>
           </div>
@@ -418,7 +438,7 @@ export default function DashboardPage() {
         <>
           <div className="stats-grid dashboard-compact-stats">
             <div className="stat-card dashboard-metric-card delivery">
-              <div className="stat-label">Total Deliveries</div>
+              <div className="stat-label">Delivery Stops</div>
               <div className="stat-value">{activeDashboard.delivery_stops ?? activeDashboard.total_delivery_stops ?? activeDashboard.total_stops ?? 0}</div>
             </div>
             <div className="stat-card dashboard-metric-card delivery">
@@ -430,7 +450,7 @@ export default function DashboardPage() {
               <div className="stat-value">{(activeDashboard.delivery_stops ?? activeDashboard.total_delivery_stops) != null ? getRemainingDeliveries(activeDashboard) : getRemainingStops(activeDashboard)}</div>
             </div>
             <div className="stat-card dashboard-metric-card pickup">
-              <div className="stat-label">Total Pickups</div>
+              <div className="stat-label">Pickup Stops</div>
               <div className="stat-value">{activeDashboard.pickup_stops ?? activeDashboard.total_pickup_stops ?? 0}</div>
             </div>
             <div className="stat-card dashboard-metric-card pickup">
@@ -446,6 +466,9 @@ export default function DashboardPage() {
               <div className="stat-value">{getFleetStopsPerHour(routeRows)}</div>
             </div>
           </div>
+          {combinedStopCount ? (
+            <div className="info-banner">{getCombinedStopMessage(combinedStopCount)}</div>
+          ) : null}
 
           <div className="card dispatch-health-card">
             <div className="dispatch-health-header">
@@ -485,7 +508,7 @@ export default function DashboardPage() {
                   <button
                     className="dispatch-health-chip assignment"
                     key={`assignment-${route.id}`}
-                    onClick={() => navigate(`/manifest?date=${dashboardDate}`)}
+                    onClick={() => navigate(buildOperationsDatePath('/manifest', dashboardDate))}
                     type="button"
                   >
                     {route.work_area_name}: assign driver
@@ -495,7 +518,7 @@ export default function DashboardPage() {
                   <button
                     className="dispatch-health-chip vehicle"
                     key={`vehicle-${route.id}`}
-                    onClick={() => navigate(`/manifest?date=${dashboardDate}`)}
+                    onClick={() => navigate(buildOperationsDatePath('/manifest', dashboardDate))}
                     type="button"
                   >
                     {route.work_area_name}: assign vehicle
@@ -505,7 +528,7 @@ export default function DashboardPage() {
                   <button
                     className={`dispatch-health-chip ${route.map_status === 'needs_pins' ? 'pins' : 'partial'}`}
                     key={`pins-${route.id}`}
-                    onClick={() => navigate(`/routes/${route.id}?date=${dashboardDate}`)}
+                    onClick={() => navigate(buildOperationsDatePath(`/routes/${route.id}`, dashboardDate))}
                     type="button"
                   >
                     {route.work_area_name}: {route.map_status === 'needs_pins' ? 'needs pins' : `${route.missing_stops || 0} pins missing`}
@@ -515,7 +538,7 @@ export default function DashboardPage() {
                   <button
                     className="dispatch-health-chip warning"
                     key={`warning-${route.id}`}
-                    onClick={() => navigate(`/routes/${route.id}?date=${dashboardDate}`)}
+                    onClick={() => navigate(buildOperationsDatePath(`/routes/${route.id}`, dashboardDate))}
                     type="button"
                   >
                     {route.work_area_name}: review route warnings
@@ -579,7 +602,7 @@ export default function DashboardPage() {
 
                         assignVehicleMutation.mutate({ routeId: driver.route_id, vehicleId });
                       }}
-                      onClick={() => driver.name && driver.route_id && navigate(`/routes/${driver.route_id}?date=${dashboardDate}`)}
+                      onClick={() => driver.name && driver.route_id && navigate(buildOperationsDatePath(`/routes/${driver.route_id}`, dashboardDate))}
                       showVehiclePicker={vehiclePickerRouteId === driver.route_id}
                       vehicles={(vehiclesQuery.data || []).filter((vehicle) => vehicle.is_active !== false)}
                     />
@@ -635,6 +658,8 @@ export default function DashboardPage() {
 
           <OverviewRoutesSection
             date={dashboardDate}
+            isError={routesOverviewQuery.isError}
+            onRetry={() => routesOverviewQuery.refetch()}
             routes={routesOverviewQuery.isLoading ? null : overviewRoutes}
           />
         </>

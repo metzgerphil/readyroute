@@ -4,8 +4,14 @@ import { NavLink, useLocation, useNavigate } from 'react-router-dom';
 
 import { VEDR_CONNECTION_STATUSES } from '../config/constants';
 import { useSelectedCsa } from '../context/SelectedCsaContext';
-import { clearManagerToken } from '../services/auth';
+import { clearManagerToken, getManagerTokenPayload } from '../services/auth';
 import api from '../services/api';
+import {
+  buildOperationsDatePath,
+  getResolvedOperationsDate,
+  isOperationsDatePath,
+} from '../utils/operationsDate';
+import SupportRequestModal from './SupportRequestModal';
 
 const navGroups = [
   {
@@ -20,11 +26,13 @@ const navGroups = [
     label: 'Operations',
     links: [
       { to: '/routes', label: 'Routes', icon: 'routes', end: true },
-      { to: '/time-commits', label: 'P&D Time Commit', icon: 'commits' },
+      { to: '/time-commits', label: 'P&D Time Commits', icon: 'commits' },
       { to: '/drivers', label: 'Drivers', icon: 'drivers' },
       { to: '/vehicles', label: 'Vehicles', icon: 'vehicles' },
+      { to: '/notifications', label: 'Notifications', icon: 'notifications' },
       { to: '/access-codes', label: 'Access Codes', icon: 'access' },
-      { to: '/records', label: 'Records', icon: 'records' }
+      { to: '/records', label: 'Records', icon: 'records' },
+      { to: '/billing', label: 'Billing', icon: 'billing' }
     ]
   },
   {
@@ -87,10 +95,24 @@ function SidebarIcon({ type }) {
           <path d="M8 11h8M8 15h8M8 19h5" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
         </svg>
       );
+    case 'billing':
+      return (
+        <svg aria-hidden="true" className="sidebar-link-icon-svg" viewBox="0 0 24 24">
+          <path d="M7 4h10a2 2 0 0 1 2 2v14l-2-1.2-2 1.2-2-1.2-2 1.2-2-1.2L7 20V4z" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+          <path d="M10 8h4M10 12h5M10 16h3" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+        </svg>
+      );
     case 'vehicles':
       return (
         <svg aria-hidden="true" className="sidebar-link-icon-svg" viewBox="0 0 24 24">
           <path d="M5 16l1.3-5.2A2 2 0 0 1 8.24 9h7.52a2 2 0 0 1 1.94 1.8L19 16M4 16h16v3H4zm3 3a1.5 1.5 0 1 1 0 3 1.5 1.5 0 0 1 0-3zm10 0a1.5 1.5 0 1 1 0 3 1.5 1.5 0 0 1 0-3z" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+      );
+    case 'notifications':
+      return (
+        <svg aria-hidden="true" className="sidebar-link-icon-svg" viewBox="0 0 24 24">
+          <path d="M18 9a6 6 0 1 0-12 0c0 7-2 7-2 9h16c0-2-2-2-2-9z" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+          <path d="M9.8 21a2.4 2.4 0 0 0 4.4 0" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
         </svg>
       );
     case 'access':
@@ -122,6 +144,7 @@ export default function Layout({ children }) {
   const location = useLocation();
   const navigate = useNavigate();
   const [isSidebarHidden, setIsSidebarHidden] = useState(false);
+  const [isSupportOpen, setIsSupportOpen] = useState(false);
   const {
     csaQuery,
     isSwitchingCsa,
@@ -138,10 +161,30 @@ export default function Layout({ children }) {
       return response.data || { provider: null, connection_status: VEDR_CONNECTION_STATUSES.NOT_STARTED, setup_completed_at: null };
     }
   });
+  const notificationsQuery = useQuery({
+    queryKey: ['manager-notifications'],
+    enabled: Boolean(selectedCsaId || tokenCsaId),
+    queryFn: async () => {
+      const response = await api.get('/manager/notifications');
+      return response.data?.notifications || [];
+    },
+    refetchInterval: 60000
+  });
 
   const showVedrSetupBadge = !vedrSettingsQuery.isLoading
     && !vedrSettingsQuery.isError
     && vedrSettingsQuery.data?.connection_status !== VEDR_CONNECTION_STATUSES.CONNECTED;
+  const sidebarNotifications = Array.isArray(notificationsQuery.data) ? notificationsQuery.data : [];
+  const hasNotificationAttention = sidebarNotifications.some((notification) => (
+    notification.status !== 'read'
+  ));
+  const currentOperationsDate = getResolvedOperationsDate(location.search);
+  const managerTokenPayload = getManagerTokenPayload() || {};
+  const managerIdentity = {
+    email: managerTokenPayload.manager_email || managerTokenPayload.email || '',
+    name: managerTokenPayload.manager_name || managerTokenPayload.full_name || managerTokenPayload.name || '',
+    role: managerTokenPayload.primary_role || managerTokenPayload.manager_role || 'manager'
+  };
 
   async function handleCsaSwitch(event) {
     const nextAccountId = event.target.value;
@@ -173,10 +216,8 @@ export default function Layout({ children }) {
             <span className="brand-route">Route</span>
           </a>
           <div className="sidebar-csa-card">
-            <div className="sidebar-csa-name">
-              {csaQuery.isLoading
-                ? 'Loading...'
-                : selectedCsaName || 'No CSA selected'}
+            <div className="sidebar-csa-name" aria-busy={csaQuery.isLoading && !selectedCsaName ? 'true' : undefined}>
+              {selectedCsaName || (csaQuery.isLoading ? 'Loading workspace...' : 'No CSA selected')}
             </div>
             {linkedCsas.length > 1 ? (
               <select
@@ -191,7 +232,7 @@ export default function Layout({ children }) {
                   </option>
                 ))}
               </select>
-            ) : (
+            ) : csaQuery.isLoading && selectedCsaName ? null : (
               <div className="sidebar-csa-hint">
                 Link another CSA here, or open ReadyRoute to start a separate workspace.
               </div>
@@ -204,23 +245,29 @@ export default function Layout({ children }) {
             <div className="sidebar-nav-group" key={group.label}>
               <div className="sidebar-nav-group-label">{group.label}</div>
               <div className="sidebar-nav-group-links">
-                {group.links.map((link) => (
-                  <NavLink
-                    className={({ isActive }) => `sidebar-link${isActive ? ' active' : ''}`}
-                    end={link.end}
-                    key={link.to}
-                    reloadDocument
-                    to={link.to}
-                  >
-                    <span className="sidebar-link-content">
-                      <span className="sidebar-link-icon" aria-hidden="true">
-                        <SidebarIcon type={link.icon} />
-                        {link.showsSetupBadge && showVedrSetupBadge ? <span className="sidebar-link-badge-dot" /> : null}
+                {group.links.map((link) => {
+                  const linkTo = isOperationsDatePath(link.to)
+                    ? buildOperationsDatePath(link.to, currentOperationsDate)
+                    : link.to;
+                  const linkHasNotificationAttention = link.icon === 'notifications' && hasNotificationAttention;
+
+                  return (
+                    <NavLink
+                      className={({ isActive }) => `sidebar-link${isActive ? ' active' : ''}${linkHasNotificationAttention ? ' notification-attention' : ''}`}
+                      end={link.end}
+                      key={link.to}
+                      to={linkTo}
+                    >
+                      <span className="sidebar-link-content">
+                        <span className="sidebar-link-icon" aria-hidden="true">
+                          <SidebarIcon type={link.icon} />
+                          {(link.showsSetupBadge && showVedrSetupBadge) || linkHasNotificationAttention ? <span className="sidebar-link-badge-dot" /> : null}
+                        </span>
+                        <span>{link.label}</span>
                       </span>
-                      <span>{link.label}</span>
-                    </span>
-                  </NavLink>
-                ))}
+                    </NavLink>
+                  );
+                })}
               </div>
             </div>
           ))}
@@ -234,6 +281,10 @@ export default function Layout({ children }) {
             title="Hide sidebar"
           >
             <span aria-hidden="true">◂</span>
+          </button>
+
+          <button className="sidebar-support-button" onClick={() => setIsSupportOpen(true)} type="button">
+            Support
           </button>
 
           <button className="logout-button" onClick={handleLogout} type="button">
@@ -255,6 +306,21 @@ export default function Layout({ children }) {
         ) : null}
         {children}
       </main>
+
+      <SupportRequestModal
+        context={{
+          companyName: selectedCsaName || managerTokenPayload.company_name || '',
+          hash: location.hash,
+          pathname: location.pathname,
+          search: location.search,
+          selectedCsaId,
+          selectedCsaName,
+          tokenCsaId
+        }}
+        isOpen={isSupportOpen}
+        managerIdentity={managerIdentity}
+        onClose={() => setIsSupportOpen(false)}
+      />
     </div>
   );
 }

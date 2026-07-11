@@ -393,11 +393,27 @@ export function buildDriverPositionMarkers(routes = []) {
         coordinate,
         workAreaName: route.work_area_name || '--',
         driverName: route.driver_name || 'Unassigned',
+        driverInitials: getDriverInitials(route.driver_name || route.work_area_name || 'Driver'),
         isOnline: Boolean(route.is_online),
         gpsFreshness: getGpsFreshness(route)
       };
     })
     .filter(Boolean);
+}
+
+export function getDriverInitials(name) {
+  const parts = String(name || '')
+    .replace(/[^a-z0-9\s-]/gi, ' ')
+    .split(/[\s-]+/)
+    .map((part) => part.trim())
+    .filter(Boolean);
+
+  if (parts.length >= 2) {
+    return `${parts[0][0]}${parts[1][0]}`.toUpperCase();
+  }
+
+  const compact = parts[0] || '';
+  return compact.slice(0, 2).toUpperCase() || '--';
 }
 
 function stopRequiresSignature(stop) {

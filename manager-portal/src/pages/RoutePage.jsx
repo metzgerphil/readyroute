@@ -3,12 +3,14 @@ import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 
 import MapLegend from '../components/MapLegend';
+import { EmptyState, ErrorState, LoadingState } from '../components/PortalDesignSystem';
 import StopListDrawer from '../components/StopListDrawer';
 import api from '../services/api';
 import { loadGoogleMaps } from '../lib/googleMapsLoader';
 import { getPropertyWorkflowHint } from '../utils/pinWorkflow';
+import { buildOperationsDatePath, saveStoredOperationsDate } from '../utils/operationsDate';
+import { getRouteStatusMeta } from '../utils/routeStatus';
 import {
-  ROUTE_STATUS_META,
   buildBoundary,
   buildDriverInfoWindow,
   formatDateShort,
@@ -22,6 +24,7 @@ import {
   getRouteCentroid,
   getRouteDispatchWarnings,
   getStopMarkerLabel,
+  toUsableMapPoint,
   warningFlagsToDraft
 } from '../utils/routePageHelpers';
 import { createDriverPositionMarker, createStopMarkerSVG, getMarkerZIndex } from '../utils/stopMarkers';
@@ -157,16 +160,31 @@ export default function RoutePage() {
     }
 
     if (routeOptions.length && !routeOptions.some((route) => route.id === id)) {
-      navigate(`/routes/${routeOptions[0].id}?date=${date}`, { replace: true });
+      navigate(buildOperationsDatePath(`/routes/${routeOptions[0].id}`, date), { replace: true });
     }
   }, [date, id, navigate, routeOptions, routesQuery.isLoading]);
 
   useEffect(() => {
     const requestedDate = searchParams.get('date');
+
+    if (requestedDate) {
+      saveStoredOperationsDate(requestedDate);
+    }
+
     if (requestedDate && requestedDate !== date) {
       setDate(requestedDate);
+      return;
     }
-  }, [date, searchParams]);
+
+    if (requestedDate === date) {
+      return;
+    }
+
+    saveStoredOperationsDate(date);
+    const nextParams = new URLSearchParams(searchParams);
+    nextParams.set('date', date);
+    setSearchParams(nextParams, { replace: true });
+  }, [date, searchParams, setSearchParams]);
 
   const routeDetailQuery = useQuery({
     queryKey: ['route-page-detail', id, date],
@@ -200,22 +218,15 @@ export default function RoutePage() {
   const route = routeDetail?.route || routeOptions.find((item) => item.id === id) || null;
   const allStops = useMemo(() => routeDetail?.stops || EMPTY_ARRAY, [routeDetail?.stops]);
   const mappableStops = useMemo(
-    () =>
-      allStops.filter(
-        (stop) =>
-          stop?.lat != null &&
-          stop?.lng != null &&
-          Number.isFinite(Number(stop.lat)) &&
-          Number.isFinite(Number(stop.lng))
-      ),
+    () => allStops.filter((stop) => toUsableMapPoint(stop)),
     [allStops]
   );
   const orderedStops = useMemo(
     () => [...mappableStops].sort((a, b) => Number(a.sequence_order || 0) - Number(b.sequence_order || 0)),
     [mappableStops]
   );
-  const routeBounds = useMemo(() => buildBoundary(allStops), [allStops]);
-  const routeCentroid = useMemo(() => getRouteCentroid(allStops), [allStops]);
+  const routeBounds = useMemo(() => buildBoundary(mappableStops), [mappableStops]);
+  const routeCentroid = useMemo(() => getRouteCentroid(mappableStops), [mappableStops]);
   const exceptionStops = useMemo(
     () => allStops.filter((stop) => stop.exception_code),
     [allStops]
@@ -243,8 +254,8 @@ export default function RoutePage() {
     [allStops]
   );
   const livePosition = driverPositionQuery.data || null;
-  const routeDriverName = livePosition?.driver_name || route?.driver_name || 'Unassigned';
-  const routeStatusMeta = ROUTE_STATUS_META[route?.status] || ROUTE_STATUS_META.pending;
+  const routeDriverName = route?.driver_name || livePosition?.driver_name || 'Unassigned';
+  const routeStatusMeta = getRouteStatusMeta(route);
   const selectedStop = allStops.find((stop) => stop.id === selectedStopId) || null;
   const noteEditorStop = allStops.find((stop) => stop.id === noteEditorStopId) || null;
   const propertyEditorStop = allStops.find((stop) => stop.id === propertyEditorStopId) || null;
@@ -326,19 +337,19 @@ export default function RoutePage() {
     const fitPoints = [];
 
     orderedStops.forEach((stop) => {
-      fitPoints.push({ lat: Number(stop.lat), lng: Number(stop.lng) });
+      const stopPoint = toUsableMapPoint(stop);
+      if (stopPoint) {
+        fitPoints.push(stopPoint);
+      }
     });
 
+    const livePoint = toUsableMapPoint(livePosition);
     if (
-      livePosition?.lat != null &&
-      livePosition?.lng != null &&
+      livePoint &&
       routeCentroid &&
-      getDistanceMiles(
-        { lat: Number(livePosition.lat), lng: Number(livePosition.lng) },
-        routeCentroid
-      ) <= 50
+      getDistanceMiles(livePoint, routeCentroid) <= 50
     ) {
-      fitPoints.push({ lat: Number(livePosition.lat), lng: Number(livePosition.lng) });
+      fitPoints.push(livePoint);
     }
 
     fitPoints.forEach((point) => bounds.extend(point));
@@ -349,7 +360,7 @@ export default function RoutePage() {
     } else if (!bounds.isEmpty()) {
       map.fitBounds(bounds, 72);
     }
-  }, [livePosition?.lat, livePosition?.lng, orderedStops, routeCentroid]);
+  }, [livePosition, orderedStops, routeCentroid]);
 
   const forceMapRepaint = useCallback((reason = 'manual') => {
     const google = window.google;
@@ -732,9 +743,14 @@ export default function RoutePage() {
       clearMapArtifacts();
 
       orderedStops.forEach((stop) => {
+        const stopPoint = toUsableMapPoint(stop);
+        if (!stopPoint) {
+          return;
+        }
+
         const marker = new google.maps.Marker({
           map,
-          position: { lat: Number(stop.lat), lng: Number(stop.lng) },
+          position: stopPoint,
           title: getStopMarkerLabel(stop),
           icon: createStopMarkerSVG(stop, stop.id === selectedStopId),
           zIndex: getMarkerZIndex(stop, stop.id === selectedStopId)
@@ -765,7 +781,7 @@ export default function RoutePage() {
       if (orderedStops.length > 1) {
         routePolylineRef.current = new google.maps.Polyline({
           map,
-          path: orderedStops.map((stop) => ({ lat: Number(stop.lat), lng: Number(stop.lng) })),
+          path: orderedStops.map((stop) => toUsableMapPoint(stop)).filter(Boolean),
           strokeColor: '#4285F4',
           strokeOpacity: 1,
           strokeWeight: 3,
@@ -811,18 +827,11 @@ export default function RoutePage() {
         });
       }
 
-      if (
-        livePosition?.lat != null &&
-        livePosition?.lng != null &&
-        routeCentroid &&
-        getDistanceMiles(
-          { lat: Number(livePosition.lat), lng: Number(livePosition.lng) },
-          routeCentroid
-        ) <= 50
-      ) {
+      const livePoint = toUsableMapPoint(livePosition);
+      if (livePoint && routeCentroid && getDistanceMiles(livePoint, routeCentroid) <= 50) {
         const marker = new google.maps.Marker({
           map,
-          position: { lat: Number(livePosition.lat), lng: Number(livePosition.lng) },
+          position: livePoint,
           title: routeDriverName,
           icon: createDriverPositionMarker(routeDriverName, route?.status),
           zIndex: 30
@@ -865,8 +874,7 @@ export default function RoutePage() {
     orderedStops,
     routeBounds,
     routeCentroid,
-    livePosition?.lat,
-    livePosition?.lng,
+    livePosition,
     routeDriverName,
     route?.status,
     nextStop,
@@ -905,12 +913,15 @@ export default function RoutePage() {
     if (!nextRouteId) {
       return;
     }
-    navigate(`/routes/${nextRouteId}?date=${date}`);
+    navigate(buildOperationsDatePath(`/routes/${nextRouteId}`, date));
   }
 
   function handleDateChange(nextDate) {
     setDate(nextDate);
-    setSearchParams({ date: nextDate });
+    saveStoredOperationsDate(nextDate);
+    const nextParams = new URLSearchParams(searchParams);
+    nextParams.set('date', nextDate);
+    setSearchParams(nextParams);
     setSelectedStopId(null);
   }
 
@@ -1068,7 +1079,7 @@ export default function RoutePage() {
   if (routesQuery.isLoading || routeDetailQuery.isLoading) {
     return (
       <section className="page-section route-page-shell">
-        <div className="card">Loading route detail...</div>
+        <LoadingState title="Loading route detail" variant="card" />
       </section>
     );
   }
@@ -1076,11 +1087,18 @@ export default function RoutePage() {
   if (routesQuery.isError || routeDetailQuery.isError) {
     return (
       <section className="page-section route-page-shell">
-        <div className="card">
-          {routeDetailQuery.error?.response?.data?.error ||
+        <ErrorState
+          title="Unable to load route detail"
+          description={
+            routeDetailQuery.error?.response?.data?.error ||
             routesQuery.error?.response?.data?.error ||
-            'Route detail failed to load.'}
-        </div>
+            'Route detail failed to load for this date.'
+          }
+          onRetry={() => {
+            routesQuery.refetch();
+            routeDetailQuery.refetch();
+          }}
+        />
       </section>
     );
   }
@@ -1088,7 +1106,10 @@ export default function RoutePage() {
   if (!route) {
     return (
       <section className="page-section route-page-shell">
-        <div className="card">Route not found for this date.</div>
+        <EmptyState
+          title="Route not found for this date"
+          description="Choose another route or date to continue."
+        />
       </section>
     );
   }

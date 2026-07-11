@@ -233,12 +233,12 @@ function EmptyRoutesState({ hasActiveFilters }) {
   return (
     <AppCard style={styles.emptyStateCard}>
       <Text style={styles.emptyStateTitle}>
-        {hasActiveFilters ? ‘No routes match your filters.’ : ‘No routes available.’}
+        {hasActiveFilters ? 'No routes match your filters.' : 'No routes available.'}
       </Text>
       <Text style={styles.emptyStateBody}>
         {hasActiveFilters
-          ? ‘Try clearing your search or filter to see all routes.’
-          : ‘Upload routes manually to start reviewing today\’s work areas.’}
+          ? 'Try clearing your search or filter to see all routes.'
+          : 'Upload routes manually to start reviewing today\'s work areas.'}
       </Text>
     </AppCard>
   );
@@ -253,7 +253,7 @@ export default function ManagerRoutesScreen({ csaWorkspaceVersion = 0, identity,
   const [isStopSearchVisible, setIsStopSearchVisible] = useState(false);
   const [selectedTerminal, setSelectedTerminal] = useState('');
   const [editingRoute, setEditingRoute] = useState(null);
-  const [isAddRoutesVisible, setIsAddRoutesVisible] = useState(false);
+  const [isUploadManifestVisible, setIsUploadManifestVisible] = useState(false);
   const date = getTodayDateParam();
 
   async function loadRoutes() {
@@ -297,12 +297,12 @@ export default function ManagerRoutesScreen({ csaWorkspaceVersion = 0, identity,
     });
   }
 
-  function openAddRoutesFlow() {
-    setIsAddRoutesVisible(true);
+  function openUploadManifestFlow() {
+    setIsUploadManifestVisible(true);
   }
 
-  function closeAddRoutesFlow() {
-    setIsAddRoutesVisible(false);
+  function closeUploadManifestFlow() {
+    setIsUploadManifestVisible(false);
   }
 
   async function handleRoutesUploaded() {
@@ -325,7 +325,7 @@ export default function ManagerRoutesScreen({ csaWorkspaceVersion = 0, identity,
           style={styles.actionButton}
           variant="outline"
         />
-        <AppButton label="Add Routes" onPress={openAddRoutesFlow} style={styles.actionButton} />
+        <AppButton label="Upload Manifest" onPress={openUploadManifestFlow} style={styles.actionButton} />
       </View>
 
       {isStopSearchVisible ? (
@@ -435,17 +435,17 @@ export default function ManagerRoutesScreen({ csaWorkspaceVersion = 0, identity,
         </Pressable>
       </Modal>
 
-      <Modal animationType="fade" onRequestClose={closeAddRoutesFlow} transparent visible={isAddRoutesVisible}>
-        <Pressable onPress={closeAddRoutesFlow} style={styles.modalBackdrop}>
+      <Modal animationType="fade" onRequestClose={closeUploadManifestFlow} transparent visible={isUploadManifestVisible}>
+        <Pressable onPress={closeUploadManifestFlow} style={styles.modalBackdrop}>
           <Pressable style={styles.modalCard}>
-            <Text style={styles.modalTitle}>Add Routes</Text>
+            <Text style={styles.modalTitle}>Upload Manifest</Text>
             <ManagerManifestUploadPanel
-              failureMessage="Could not upload routes. Check the file and try again."
+              failureMessage="Could not upload manifest. Check the file and try again."
               onUploaded={handleRoutesUploaded}
-              submitLabel="Upload Routes"
-              successMessage="Routes uploaded successfully."
+              submitLabel="Upload Manifest"
+              successMessage="Manifest uploaded successfully."
             />
-            <AppButton label="View Routes" onPress={closeAddRoutesFlow} style={styles.modalButton} variant="outline" />
+            <AppButton label="View Routes" onPress={closeUploadManifestFlow} style={styles.modalButton} variant="outline" />
           </Pressable>
         </Pressable>
       </Modal>

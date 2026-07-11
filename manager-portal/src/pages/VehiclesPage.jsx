@@ -4,13 +4,14 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link, useSearchParams } from 'react-router-dom';
 
 import api from '../services/api';
-import { PageHeader, StatCard, StatusBadge } from '../components/PortalDesignSystem';
+import { EmptyState, ErrorState, LoadingState, PageHeader, StatCard, StatusBadge } from '../components/PortalDesignSystem';
 import { useSelectedCsa } from '../context/SelectedCsaContext';
 
 const emptyVehicleForm = {
   name: '',
   truck_type: '',
   custom_truck_type: '',
+  fuel_type: '',
   make: '',
   model: '',
   year: '',
@@ -26,8 +27,19 @@ const emptyEditVehicleForm = {
   notes: ''
 };
 
+function buildVehiclePayload(form) {
+  return {
+    ...form,
+    name: String(form.name || '').trim().toUpperCase(),
+    plate: String(form.plate || '').trim().toUpperCase(),
+    year: Number(form.year),
+    current_mileage: Number(form.current_mileage || 0)
+  };
+}
+
 const TRUCK_TYPE_OPTIONS = [
   'P700',
+  'P900',
   'P1000',
   'P1100',
   'P1200',
@@ -39,6 +51,8 @@ const TRUCK_TYPE_OPTIONS = [
   'Other'
 ];
 
+const FUEL_TYPE_OPTIONS = ['Gas', 'Diesel', 'EV'];
+
 const VEHICLE_STATUS_OPTIONS = [
   { value: 'active', label: 'Active' },
   { value: 'out_of_service', label: 'Out of Service' },
@@ -46,14 +60,6 @@ const VEHICLE_STATUS_OPTIONS = [
   { value: 'not_on_schedule_b', label: 'Not on Schedule B' },
   { value: 'needs_repair', label: 'Needs Repair' }
 ];
-
-const VEHICLE_STATUS_TONES = {
-  active: 'ready',
-  out_of_service: 'blocked',
-  at_the_shop: 'maintenance-soon',
-  not_on_schedule_b: 'assigned',
-  needs_repair: 'blocked'
-};
 
 const SERVICE_TYPE_OPTIONS = [
   'Inspection',
@@ -66,10 +72,44 @@ const SERVICE_TYPE_OPTIONS = [
 
 const VEHICLE_TABS = ['Fleet', 'Maintenance', 'Inspections', 'Settings'];
 
+const FLEET_COLUMN_STORAGE_KEY = 'readyroute:fleet-visible-columns:v1';
+const FLEET_OPTIONAL_COLUMNS = [
+  { id: 'assignment', label: 'Driver / Route', track: 'minmax(138px, 0.9fr)' },
+  { id: 'odometer', label: 'Odometer', track: 'minmax(92px, 0.56fr)' },
+  { id: 'service', label: 'Next Service', track: 'minmax(132px, 0.9fr)' },
+  { id: 'documents', label: 'Documents', track: 'minmax(150px, 0.96fr)' }
+];
+const DEFAULT_FLEET_COLUMNS = FLEET_OPTIONAL_COLUMNS.map((column) => column.id);
+
+function loadFleetColumns() {
+  try {
+    const savedColumns = JSON.parse(window.localStorage.getItem(FLEET_COLUMN_STORAGE_KEY));
+    if (Array.isArray(savedColumns)) {
+      return DEFAULT_FLEET_COLUMNS.filter((columnId) => savedColumns.includes(columnId));
+    }
+  } catch {
+    // Browser storage is optional; defaults keep the full fleet view available.
+  }
+
+  return DEFAULT_FLEET_COLUMNS;
+}
+
+function getFleetGridTemplate(visibleColumns) {
+  const visibleSet = new Set(visibleColumns);
+  return [
+    'minmax(190px, 1.25fr)',
+    'minmax(150px, 0.82fr)',
+    ...FLEET_OPTIONAL_COLUMNS
+      .filter((column) => visibleSet.has(column.id))
+      .map((column) => column.track),
+    '44px'
+  ].join(' ');
+}
+
 const VEHICLE_SETTINGS_CARDS = [
   {
     title: 'Maintenance Requirements',
-    description: 'Choose Option 1, Option 2, or Custom driver requirements.',
+    description: 'Choose weekly full inspection, daily full inspection, or custom driver requirements.',
     actionLabel: 'Open'
   },
   {
@@ -111,7 +151,7 @@ const DEFAULT_REMINDER_SCHEDULE = {
 const MAINTENANCE_REQUIREMENT_OPTIONS = [
   {
     id: 'option_1',
-    optionLabel: 'Option 1',
+    optionLabel: 'Weekly Full Inspection',
     title: 'Daily Odometer + Issue Note',
     badge: 'Recommended',
     badgeClassName: 'recommended',
@@ -121,7 +161,7 @@ const MAINTENANCE_REQUIREMENT_OPTIONS = [
   },
   {
     id: 'option_2',
-    optionLabel: 'Option 2',
+    optionLabel: 'Daily Full Inspection',
     title: 'Daily Odometer + Full Inspection',
     badge: 'Stricter',
     badgeClassName: 'stricter',
@@ -131,7 +171,7 @@ const MAINTENANCE_REQUIREMENT_OPTIONS = [
   },
   {
     id: 'custom',
-    optionLabel: 'Option 3',
+    optionLabel: 'Custom Requirements',
     title: 'Custom',
     description: 'Managers choose the exact daily and weekly vehicle check requirements.',
     dailyRequirements: ['Choose daily truck checks below'],
@@ -142,17 +182,22 @@ const MAINTENANCE_REQUIREMENT_OPTIONS = [
 const DEFAULT_CHECKLIST_TEMPLATE_FIELDS = [
   { id: 'date', label: 'Date', detail: 'Inspection date', enabled: true },
   { id: 'company_name', label: 'Company name', detail: 'CSA or company name', enabled: true },
-  { id: 'truck_number', label: 'Truck Number', detail: 'Truck identifier for the inspection', enabled: true },
+  { id: 'truck_number', label: 'Vehicle ID', detail: 'Vehicle identifier for the inspection', enabled: true },
   { id: 'driver_name', label: 'Driver first and last name', detail: 'Driver completing the inspection', enabled: true },
-  { id: 'tires', label: 'Tires, front, rear inner, rear outer', detail: 'Tire condition across front and rear positions', enabled: true },
-  { id: 'check_engine_light', label: 'Check engine light', detail: 'On or Off', enabled: true },
-  { id: 'coolant', label: 'Coolant', detail: 'Good or Needs Added', enabled: true },
-  { id: 'engine_oil', label: 'Engine oil', detail: 'Good, Needs Added, or Needs Full Change', enabled: true },
-  { id: 'brake_fluid', label: 'Brake fluid', detail: 'Good or Needs Added', enabled: true },
-  { id: 'windshield_fluid', label: 'Windshield fluid', detail: 'Good or Needs Added', enabled: true },
-  { id: 'wipers', label: 'Wipers', detail: 'Good, Left Bad, Right Bad, or Both Bad', enabled: true },
-  { id: 'lights', label: 'Lights', detail: 'Headlights, stop lights, and turning signals', enabled: true },
-  { id: 'truck_cleanliness', label: 'Truck cleanliness', detail: 'Good or Bad', enabled: true },
+  { id: 'tires', label: 'Tires', detail: 'Front left, front right, back left, and back right tire condition', enabled: true },
+  { id: 'check_engine_light', label: 'Check engine light', detail: 'Dashboard warning state and driving symptoms', enabled: true },
+  { id: 'lights', label: 'Lights', detail: 'Marker, turn signal, headlight, cargo, and license plate lights', enabled: true },
+  { id: 'brake_fluid', label: 'Brake fluid', detail: 'Brake fluid level, warning light, leaks, or pedal concerns', enabled: true },
+  { id: 'vedr', label: 'VEDR', detail: 'Video event data recorder condition', enabled: true },
+  { id: 'back_up_camera', label: 'Back up camera', detail: 'Rear camera image and operation', enabled: true },
+  { id: 'turn_cameras', label: 'Turn cameras', detail: 'Side turn camera image and operation', enabled: true },
+  { id: 'parking_sensors', label: 'Parking sensors', detail: 'Parking sensor operation', enabled: true },
+  { id: 'horn', label: 'Horn', detail: 'Horn operation', enabled: true },
+  { id: 'coolant', label: 'Coolant', detail: 'Coolant level, leak, warning light, or overheating', enabled: true },
+  { id: 'engine_oil', label: 'Engine oil', detail: 'Engine oil level, leak, oil light, or service due', enabled: true },
+  { id: 'windshield_fluid', label: 'Windshield fluid', detail: 'Washer fluid level or leak', enabled: true },
+  { id: 'wipers', label: 'Wipers', detail: 'Left, right, or both wiper condition', enabled: true },
+  { id: 'truck_cleanliness', label: 'Truck cleanliness', detail: 'Clean, dirty, or needs attention', enabled: true },
   { id: 'driver_notes', label: 'Driver notes', detail: 'Free-text notes from the driver', enabled: true }
 ];
 
@@ -169,6 +214,15 @@ const emptyOdometerForm = {
   confirmedLower: false
 };
 
+const emptyInspectionAssignmentForm = {
+  vehicle_id: '',
+  driver_id: '',
+  due_date: getTodayString(),
+  priority: 'normal',
+  note: '',
+  require_before_route_start: true
+};
+
 const emptyMaintenanceRecordFilters = {
   truck: '',
   serviceType: 'all',
@@ -180,7 +234,7 @@ const INSPECTION_REVIEW_FILTERS = [
   ['all', 'All'],
   ['needs_review', 'Needs Review'],
   ['reported_issues', 'Reported Issues'],
-  ['failed_items', 'Failed Checklist Items'],
+  ['failed_items', 'Issue Checklist Items'],
   ['submitted', 'Submitted'],
   ['reviewed', 'Reviewed']
 ];
@@ -249,6 +303,28 @@ function normalizeChecklistTemplateFields(fields = []) {
   });
 }
 
+function getInspectionChecklistFields(template) {
+  return normalizeChecklistTemplateFields(template)
+    .filter((field) => field.enabled !== false)
+    .filter((field) => !['date', 'company_name', 'truck_number', 'driver_name', 'driver_notes'].includes(field.id));
+}
+
+function getInspectionForm(vehicle, template) {
+  return {
+    inspection_date: getTodayString(),
+    odometer: vehicle?.current_mileage === null || vehicle?.current_mileage === undefined
+      ? ''
+      : String(vehicle.current_mileage),
+    issue_note: '',
+    items: getInspectionChecklistFields(template).map((field) => ({
+      checklist_item_key: field.id,
+      label: field.label,
+      status: 'pass',
+      note: ''
+    }))
+  };
+}
+
 function getServiceTypeOptions(settings = []) {
   const options = new Set(SERVICE_TYPE_OPTIONS);
 
@@ -299,11 +375,19 @@ function filterMaintenanceRecords(records = [], filters = emptyMaintenanceRecord
 
 function filterInspectionRows(inspections = [], filter = 'all') {
   if (filter === 'reported_issues') {
-    return inspections.filter((inspection) => inspection.issue_reported || inspection.issue_note);
+    return inspections.filter((inspection) => (
+      inspection.issue_reported
+      || inspection.issue_note
+      || Number(inspection.issue_count || inspection.failed_items_count || 0) > 0
+      || getInspectionIssueItems(inspection).length > 0
+    ));
   }
 
   if (filter === 'failed_items') {
-    return inspections.filter((inspection) => Number(inspection.failed_items_count || 0) > 0 || (inspection.items || []).some((item) => item.status === 'fail'));
+    return inspections.filter((inspection) => (
+      Number(inspection.issue_count || inspection.failed_items_count || 0) > 0
+      || getInspectionIssueItems(inspection).length > 0
+    ));
   }
 
   if (filter === 'all') {
@@ -344,7 +428,7 @@ function downloadCsv(filename, rows = []) {
 
 function buildMaintenanceRecordsCsvRows(records = []) {
   return [
-    ['Date', 'Truck Number', 'Vehicle Description', 'Vehicle Type', 'Service Type', 'Notes', 'Vendor', 'Mileage', 'Cost', 'Next Due Mileage', 'Next Due Date'],
+    ['Date', 'Vehicle ID', 'Vehicle Description', 'Vehicle Type', 'Service Type', 'Notes', 'Vendor', 'Mileage', 'Cost', 'Next Due Mileage', 'Next Due Date'],
     ...records.map((record) => [
       record.service_date || '',
       record.vehicle?.name || record.vehicle_name || '',
@@ -363,11 +447,9 @@ function buildMaintenanceRecordsCsvRows(records = []) {
 
 function buildInspectionCsvRows(inspections = []) {
   return [
-    ['Inspection Date', 'Submitted Time', 'Truck Number', 'Driver', 'Inspection Type', 'Odometer', 'Status', 'Issue Note', 'Failed Checklist Count', 'Failed Checklist Items', 'Manager Review Note'],
+    ['Inspection Date', 'Submitted Time', 'Vehicle ID', 'Driver', 'Inspection Type', 'Odometer', 'Status', 'Issue Note', 'Issue Checklist Count', 'Issue Checklist Items', 'Manager Review Note'],
     ...inspections.map((inspection) => {
-      const failedItems = inspection.failed_items?.length
-        ? inspection.failed_items
-        : (inspection.items || []).filter((item) => item.status === 'fail');
+      const issueItems = getInspectionIssueItems(inspection);
 
       return [
         inspection.inspection_date || '',
@@ -376,10 +458,10 @@ function buildInspectionCsvRows(inspections = []) {
         getInspectionDriverLabel(inspection),
         inspection.inspection_type_label || '',
         inspection.odometer ?? '',
-        inspection.status_label || '',
+        getInspectionReviewStatusLabel(inspection),
         inspection.issue_note || '',
-        inspection.failed_items_count ?? failedItems.length,
-        failedItems.map((item) => `${item.label || item.checklist_item_key}${item.value ? `: ${item.value}` : ''}${item.note ? ` (${item.note})` : ''}`).join('; '),
+        inspection.issue_count ?? inspection.failed_items_count ?? issueItems.length,
+        issueItems.map((item) => `${item.label || item.checklist_item_key}: ${getInspectionItemSummary(item)}`).join('; '),
         inspection.manager_review_note || ''
       ];
     })
@@ -443,21 +525,63 @@ function buildMaintenanceForm({ vehicle, settings, serviceType = 'Oil Change', s
 }
 
 function buildInspectionMaintenancePrefill(inspection) {
-  const failedItems = (inspection?.items || [])
-    .filter((item) => item.status === 'fail')
-    .map((item) => `${item.label}${item.value ? `: ${item.value}` : ''}${item.note ? ` (${item.note})` : ''}`);
+  const issueItems = getInspectionIssueItems(inspection)
+    .map((item) => `${item.label || item.checklist_item_key}: ${getInspectionItemSummary(item)}`);
   const notes = [
     inspection?.issue_note ? `Driver issue note: ${inspection.issue_note}` : null,
-    failedItems.length ? `Failed checklist items: ${failedItems.join('; ')}` : null,
+    issueItems.length ? `Inspection issues: ${issueItems.join('; ')}` : null,
     inspection?.id ? `Source inspection: ${inspection.id}` : null
   ].filter(Boolean);
 
   return {
-    serviceType: failedItems.length || inspection?.issue_note ? 'General Repair' : 'Inspection',
+    serviceType: issueItems.length || inspection?.issue_note ? 'General Repair' : 'Inspection',
     description: notes.join('\n'),
-    conditionNotes: failedItems.join('\n'),
+    conditionNotes: issueItems.join('\n'),
     mileageAtService: inspection?.odometer ? String(inspection.odometer) : ''
   };
+}
+
+function buildInspectionSummary(inspection = {}) {
+  const issueItems = getInspectionIssueItems(inspection);
+  const issueLines = issueItems.length
+    ? issueItems.flatMap((item, index) => [
+        `${index + 1}. ${item.label || item.checklist_item_key || 'Inspection item'}`,
+        ...getInspectionItemSummaryLines(item).map((line) => `   ${line}`)
+      ])
+    : ['No inspection issues recorded.'];
+  const headerLines = [
+    'Inspection Summary',
+    `Vehicle: ${getInspectionVehicleLabel(inspection)}`,
+    `Inspection date: ${inspection.inspection_date ? formatDate(inspection.inspection_date) : 'Not recorded'}`,
+    `Submitted by: ${getInspectionDriverLabel(inspection)}`,
+    `Odometer: ${inspection.odometer ? `${formatMileage(inspection.odometer)} mi` : 'Not recorded'}`,
+    `Status: ${getInspectionReviewStatusLabel(inspection)}`,
+    inspection.issue_note ? `Driver note: ${inspection.issue_note}` : null
+  ].filter(Boolean);
+
+  return [
+    ...headerLines,
+    '',
+    'Issues:',
+    ...issueLines
+  ].join('\n');
+}
+
+async function copyTextToClipboard(text) {
+  if (navigator.clipboard?.writeText) {
+    await navigator.clipboard.writeText(text);
+    return;
+  }
+
+  const textArea = document.createElement('textarea');
+  textArea.value = text;
+  textArea.setAttribute('readonly', '');
+  textArea.style.position = 'fixed';
+  textArea.style.opacity = '0';
+  document.body.appendChild(textArea);
+  textArea.select();
+  document.execCommand('copy');
+  document.body.removeChild(textArea);
 }
 
 function formatProgramSummary(setting) {
@@ -540,7 +664,7 @@ function MaintenanceSettingsCard({
       </div>
 
       {isLoading ? (
-        <div className="driver-meta">Loading maintenance settings...</div>
+        <LoadingState title="Loading maintenance settings" />
       ) : (
         <div className="maintenance-settings-list">
           <div className="maintenance-settings-header">
@@ -702,7 +826,7 @@ function OdometerModal({ errorMessage, form, isSaving, onChange, onClose, onConf
         <form className="form-card modal-form" onSubmit={onSubmit}>
           <div className="odometer-summary-card">
             <div>
-              <span>Truck Number</span>
+              <span>Vehicle ID</span>
               <strong>{vehicle.name || 'Not recorded'}</strong>
             </div>
             <div>
@@ -803,58 +927,174 @@ function getVehicleTypeLabel(vehicle) {
 }
 
 function getInspectionVehicleLabel(inspection) {
-  return inspection?.vehicle?.name || 'Truck not recorded';
+  return inspection?.vehicle?.name || inspection?.vehicle_name || 'Truck not recorded';
 }
 
 function getInspectionDriverLabel(inspection) {
-  return inspection?.driver?.name || 'Driver not recorded';
+  return inspection?.driver?.name
+    || inspection?.submitted_by_driver?.name
+    || inspection?.submitted_by_name
+    || inspection?.driver_name
+    || 'Driver not recorded';
+}
+
+function formatInspectionStatusValue(value) {
+  if (!value) {
+    return 'Not recorded';
+  }
+
+  return String(value)
+    .split('_')
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(' ');
+}
+
+function getInspectionItemStatus(item = {}) {
+  const status = String(item.status || '').trim().toLowerCase().replace(/\s+/g, '_');
+
+  if (['issue', 'fail', 'failed'].includes(status)) {
+    return 'issue';
+  }
+
+  if (['pass', 'passed'].includes(status)) {
+    return 'pass';
+  }
+
+  if (['not_applicable', 'n/a', 'na'].includes(status)) {
+    return 'not_applicable';
+  }
+
+  return 'unanswered';
+}
+
+function getInspectionItemStatusLabel(item = {}) {
+  const status = getInspectionItemStatus(item);
+
+  if (status === 'pass') {
+    return 'Pass';
+  }
+
+  if (status === 'issue') {
+    return 'Issue';
+  }
+
+  if (status === 'not_applicable') {
+    return 'N/A';
+  }
+
+  return 'Not answered';
+}
+
+function isInspectionIssueItem(item) {
+  return getInspectionItemStatus(item) === 'issue';
+}
+
+function getInspectionIssueItems(inspection) {
+  if (Array.isArray(inspection?.issue_items) && inspection.issue_items.length) {
+    return inspection.issue_items;
+  }
+
+  if (Array.isArray(inspection?.failed_items) && inspection.failed_items.length) {
+    return inspection.failed_items;
+  }
+
+  return (inspection?.items || []).filter(isInspectionIssueItem);
+}
+
+function formatIssueDetailKey(key) {
+  return formatInspectionStatusValue(key);
+}
+
+function formatIssueDetailValue(value) {
+  if (Array.isArray(value)) {
+    return value
+      .map(formatIssueDetailValue)
+      .filter(Boolean)
+      .join(', ');
+  }
+
+  if (value && typeof value === 'object') {
+    return Object.entries(value)
+      .map(([key, nestedValue]) => {
+        const formattedValue = formatIssueDetailValue(nestedValue);
+        return formattedValue ? `${formatIssueDetailKey(key)}: ${formattedValue}` : null;
+      })
+      .filter(Boolean)
+      .join('; ');
+  }
+
+  return String(value ?? '').trim();
+}
+
+function getInspectionIssueDetailLines(item = {}) {
+  return Object.entries(item.issue_details || {})
+    .map(([key, value]) => {
+      const formattedValue = formatIssueDetailValue(value);
+      return formattedValue ? `${formatIssueDetailKey(key)}: ${formattedValue}` : null;
+    })
+    .filter(Boolean);
+}
+
+function getInspectionItemSummary(item = {}) {
+  return getInspectionItemSummaryLines(item).join(' • ');
+}
+
+function getInspectionItemSummaryLines(item = {}) {
+  const parts = [
+    item.severity ? `Severity: ${formatInspectionStatusValue(item.severity)}` : null,
+    ...getInspectionIssueDetailLines(item),
+    item.value ? `Answer: ${item.value}` : null,
+    item.note ? `Note: ${item.note}` : null
+  ].filter(Boolean);
+
+  if (parts.length) {
+    return parts;
+  }
+
+  const status = getInspectionItemStatus(item);
+
+  if (status === 'pass') {
+    return ['Passed'];
+  }
+
+  if (status === 'not_applicable') {
+    return ['Not applicable'];
+  }
+
+  return ['No answer recorded'];
+}
+
+function getInspectionReviewStatusLabel(inspection = {}) {
+  if (inspection.urgent_review) {
+    return 'Urgent Manager Review';
+  }
+
+  if (inspection.manager_review_required) {
+    return 'Manager Review Required';
+  }
+
+  return inspection.status_label || formatInspectionStatusValue(inspection.status || 'submitted');
+}
+
+function getVehicleStatusLabelFromValue(value) {
+  return getVehicleStatusOption(value).label || formatInspectionStatusValue(value);
 }
 
 function getInspectionStatusClass(status) {
-  if (status === 'needs_review') {
+  if (status === 'urgent_manager_review') {
+    return 'danger';
+  }
+
+  if (['needs_review', 'manager_review_required', 'safe_with_maintenance_reported'].includes(status)) {
     return 'warning';
   }
 
-  if (status === 'reviewed') {
+  if (['reviewed', 'safe_to_operate'].includes(status)) {
     return 'ready';
   }
 
   return 'neutral';
-}
-
-function getRegistrationStatus(vehicle, warningDays = DEFAULT_REMINDER_SCHEDULE.document_warning_days) {
-  if (!vehicle.registration_expiration) {
-    return {
-      label: 'Registration not recorded',
-      className: 'vehicle-registration-row missing',
-      metaLabel: 'Registration'
-    };
-  }
-
-  const expirationDate = parseISO(vehicle.registration_expiration);
-  const daysRemaining = differenceInCalendarDays(expirationDate, new Date());
-
-  if (daysRemaining < 0) {
-    return {
-      label: `Expired ${formatDate(vehicle.registration_expiration)}`,
-      className: 'vehicle-registration-row expired',
-      metaLabel: 'Registration'
-    };
-  }
-
-  if (daysRemaining <= warningDays) {
-    return {
-      label: `Expires ${formatDate(vehicle.registration_expiration)}`,
-      className: 'vehicle-registration-row warning',
-      metaLabel: 'Registration'
-    };
-  }
-
-  return {
-    label: formatDate(vehicle.registration_expiration),
-    className: 'vehicle-registration-row',
-    metaLabel: 'Registration'
-  };
 }
 
 function getExpirationStatus(value, label, warningDays = DEFAULT_REMINDER_SCHEDULE.document_warning_days) {
@@ -892,6 +1132,44 @@ function getExpirationStatus(value, label, warningDays = DEFAULT_REMINDER_SCHEDU
   };
 }
 
+function getRegistrationStatus(vehicle, warningDays = DEFAULT_REMINDER_SCHEDULE.document_warning_days) {
+  return getExpirationStatus(vehicle.registration_expiration, 'Registration', warningDays);
+}
+
+function getFleetDocumentStatus(status) {
+  const className = status?.className || '';
+
+  if (className.includes('missing')) {
+    return { label: `${status.metaLabel} missing`, tone: 'attention' };
+  }
+
+  if (className.includes('expired')) {
+    return { label: `${status.metaLabel} expired`, tone: 'danger' };
+  }
+
+  if (className.includes('warning')) {
+    return { label: status.label, tone: 'attention' };
+  }
+
+  return { label: `${status.metaLabel} current`, tone: 'ready' };
+}
+
+function needsRegistrationAttention(vehicle, warningDays = DEFAULT_REMINDER_SCHEDULE.document_warning_days) {
+  const registration = getRegistrationStatus(vehicle, warningDays);
+  return ['missing', 'warning', 'expired'].some((statusClass) => registration.className.includes(statusClass));
+}
+
+function getRecordedLicensePlate(vehicle) {
+  const plate = String(vehicle?.plate || '').trim();
+  const vehicleId = String(vehicle?.name || '').trim();
+
+  if (!plate || plate.toLowerCase() === vehicleId.toLowerCase()) {
+    return '';
+  }
+
+  return plate;
+}
+
 function getReadinessMeta(vehicle) {
   const status = vehicle.readiness_status || vehicle.readiness?.status;
 
@@ -926,10 +1204,6 @@ function getReadinessMeta(vehicle) {
   return { label: 'Ready', className: 'vehicle-status-badge ready', tone: 'active', filter: 'ready', rowClassName: 'readiness-ready' };
 }
 
-function getVehicleStatusValue(vehicle) {
-  return vehicle.vehicle_status || (vehicle.is_active === false ? 'out_of_service' : 'active');
-}
-
 function getVehicleStatusOption(value) {
   return VEHICLE_STATUS_OPTIONS.find((option) => option.value === value) || VEHICLE_STATUS_OPTIONS[0];
 }
@@ -940,7 +1214,7 @@ function getStatusMeta(vehicle) {
     return readiness;
   }
 
-  const hasMissingInfo = !vehicle.registration_expiration || !vehicle.make || !vehicle.model || !vehicle.year || !vehicle.plate;
+  const hasMissingInfo = !vehicle.registration_expiration || !vehicle.make || !vehicle.model || !vehicle.year || !getRecordedLicensePlate(vehicle);
 
   if (vehicle.service_due) {
     return { label: 'Maintenance', className: 'vehicle-status-badge service-due', tone: 'warning' };
@@ -1027,7 +1301,7 @@ function getLatestIssueLabel(vehicle, warningDays = DEFAULT_REMINDER_SCHEDULE.do
     };
   }
 
-  const registration = getExpirationStatus(vehicle.registration_expiration, 'Registration', warningDays);
+  const registration = getRegistrationStatus(vehicle, warningDays);
   if (registration.className.includes('expired') || registration.className.includes('warning')) {
     return { label: registration.metaLabel, detail: registration.label };
   }
@@ -1040,6 +1314,22 @@ function getLatestIssueLabel(vehicle, warningDays = DEFAULT_REMINDER_SCHEDULE.do
   return { label: 'No open issue', detail: 'Ready to use' };
 }
 
+function getVehicleReadinessReasons(vehicle, severity = null) {
+  const reasons = Array.isArray(vehicle?.readiness?.reasons) ? vehicle.readiness.reasons : [];
+  return severity ? reasons.filter((reason) => reason.severity === severity) : reasons;
+}
+
+function getVehicleReadinessSummary(vehicle) {
+  const blockers = getVehicleReadinessReasons(vehicle, 'blocked');
+  if (!blockers.length) {
+    return vehicle?.readiness?.primary_reason?.label || 'Needs review';
+  }
+
+  return blockers.length === 1
+    ? blockers[0].label
+    : `${blockers[0].label} + ${blockers.length - 1} more`;
+}
+
 function getAssignedToLabel(vehicle) {
   if (!vehicle.today_assignment) {
     return 'Not assigned';
@@ -1048,53 +1338,83 @@ function getAssignedToLabel(vehicle) {
   return vehicle.today_assignment.driver_name || 'Assigned';
 }
 
+function VehicleFieldLabel({ attention, children }) {
+  return (
+    <span className="vehicle-form-label-row">
+      <span className="field-label">{children}</span>
+      {attention ? <small>{attention}</small> : null}
+    </span>
+  );
+}
+
 function VehicleFormSections({ form, mode = 'create', onChange, vehicle }) {
   const statusMeta = vehicle ? getStatusMeta(vehicle) : null;
   const assignedTo = vehicle ? getAssignedToLabel(vehicle) : 'Not assigned';
   const showFormHints = mode === 'edit';
-  const quietWarnings = [
-    !form.truck_type ? 'Missing truck type' : null,
-    !form.plate || !form.registration_expiration ? 'Registration not recorded' : null,
-    !form.insurance_expiration ? 'Insurance not recorded' : null,
-    !Number(form.current_mileage) ? 'Mileage not recorded' : null
+  const missingDetails = [
+    !form.plate ? 'License plate' : null,
+    !form.truck_type ? 'Truck type' : null,
+    !form.registration_expiration ? 'Registration expiration' : null,
+    !form.insurance_expiration ? 'Insurance expiration' : null,
+    !Number(form.current_mileage) ? 'Current mileage' : null
   ].filter(Boolean);
 
   return (
     <>
+      {showFormHints && missingDetails.length ? (
+        <div className="vehicle-missing-summary">
+          <strong>{missingDetails.length} vehicle detail{missingDetails.length === 1 ? '' : 's'} need attention</strong>
+          <span>{missingDetails.join(', ')}</span>
+        </div>
+      ) : null}
+
       <section className="vehicle-form-section">
         <div className="vehicle-form-section-heading">
-          <span>Truck Identity</span>
+          <span>Vehicle Details</span>
         </div>
         <div className="vehicle-form-grid vehicle-identity-grid">
           <label className="driver-modal-field">
-            <span className="field-label">Truck Number</span>
-            <input className="text-field" onChange={(event) => onChange('name', event.target.value)} placeholder="Truck Number / FedEx ID" value={form.name} />
+            <VehicleFieldLabel>Vehicle ID</VehicleFieldLabel>
+            <input
+              className="text-field"
+              onChange={(event) => onChange('name', event.target.value.toUpperCase())}
+              placeholder="Vehicle ID"
+              value={form.name}
+            />
           </label>
           <label className="driver-modal-field">
-            <span className="field-label">Make</span>
+            <VehicleFieldLabel attention={showFormHints && !form.plate ? 'Required' : ''}>License Plate</VehicleFieldLabel>
+            <input
+              className={`text-field ${showFormHints && !form.plate ? 'vehicle-field-missing' : ''}`}
+              onChange={(event) => onChange('plate', event.target.value.toUpperCase())}
+              placeholder="License Plate"
+              value={form.plate}
+            />
+          </label>
+          <label className="driver-modal-field">
+            <VehicleFieldLabel>Make</VehicleFieldLabel>
             <input className="text-field" onChange={(event) => onChange('make', event.target.value)} placeholder="Make" value={form.make} />
           </label>
           <label className="driver-modal-field">
-            <span className="field-label">Model</span>
+            <VehicleFieldLabel>Model</VehicleFieldLabel>
             <input className="text-field" onChange={(event) => onChange('model', event.target.value)} placeholder="Model" value={form.model} />
           </label>
           <label className="driver-modal-field">
-            <span className="field-label">Year</span>
+            <VehicleFieldLabel>Year</VehicleFieldLabel>
             <input className="text-field" min="1900" onChange={(event) => onChange('year', event.target.value)} placeholder="Year" type="number" value={form.year} />
           </label>
           <label className="driver-modal-field vehicle-truck-type-field">
-            <span className="field-label">Truck type</span>
-            <select className="text-field" onChange={(event) => onChange('truck_type', event.target.value)} value={form.truck_type}>
+            <VehicleFieldLabel attention={showFormHints && !form.truck_type ? 'Required' : ''}>Truck Type</VehicleFieldLabel>
+            <select className={`text-field ${showFormHints && !form.truck_type ? 'vehicle-field-missing' : ''}`} onChange={(event) => onChange('truck_type', event.target.value)} value={form.truck_type}>
               <option value="">Select truck type</option>
               {TRUCK_TYPE_OPTIONS.map((option) => (
                 <option key={option} value={option}>{option}</option>
               ))}
             </select>
-            {showFormHints && !form.truck_type ? <small className="vehicle-form-helper">Missing truck type</small> : null}
           </label>
           {form.truck_type === 'Other' ? (
             <label className="driver-modal-field vehicle-form-wide">
-              <span className="field-label">Custom truck type</span>
+              <VehicleFieldLabel>Custom Truck Type</VehicleFieldLabel>
               <input
                 className="text-field"
                 onChange={(event) => onChange('custom_truck_type', event.target.value)}
@@ -1103,86 +1423,93 @@ function VehicleFormSections({ form, mode = 'create', onChange, vehicle }) {
               />
             </label>
           ) : null}
-        </div>
-      </section>
-
-      <section className="vehicle-form-section">
-        <div className="vehicle-form-section-heading">
-          <span>Registration</span>
-        </div>
-        <div className="vehicle-form-grid vehicle-registration-grid">
           <label className="driver-modal-field">
-            <span className="field-label">Vehicle ID</span>
-            <input
-              className="text-field"
-              onChange={(event) => onChange('plate', event.target.value.toUpperCase())}
-              placeholder="Vehicle ID"
-              value={form.plate}
-            />
-            {showFormHints && !form.plate ? <small className="vehicle-form-helper">Vehicle ID not recorded</small> : null}
-          </label>
-          <label className="driver-modal-field">
-            <span className="field-label">Registration expiration date</span>
-            <input
-              className="text-field"
-              onChange={(event) => onChange('registration_expiration', event.target.value)}
-              type="date"
-              value={form.registration_expiration}
-            />
-            {showFormHints && !form.registration_expiration ? <small className="vehicle-form-helper">Expiration not recorded</small> : null}
-          </label>
-          <label className="driver-modal-field">
-            <span className="field-label">Insurance expiration date</span>
-            <input
-              className="text-field"
-              onChange={(event) => onChange('insurance_expiration', event.target.value)}
-              type="date"
-              value={form.insurance_expiration}
-            />
-            {showFormHints && !form.insurance_expiration ? <small className="vehicle-form-helper">Insurance not recorded</small> : null}
-          </label>
-        </div>
-      </section>
-
-      <section className="vehicle-form-section">
-        <div className="vehicle-form-section-heading">
-          <span>Usage and Assignment</span>
-        </div>
-        <div className="vehicle-form-grid vehicle-usage-grid">
-          <label className="driver-modal-field">
-            <span className="field-label">Mileage</span>
-            <input
-              className="text-field"
-              min="0"
-              onChange={(event) => onChange('current_mileage', event.target.value)}
-              placeholder="Current mileage"
-              type="number"
-              value={form.current_mileage}
-            />
-            {showFormHints && !Number(form.current_mileage) ? <small className="vehicle-form-helper">Mileage not recorded</small> : null}
+            <VehicleFieldLabel>Fuel Type</VehicleFieldLabel>
+            <select className="text-field" onChange={(event) => onChange('fuel_type', event.target.value)} value={form.fuel_type}>
+              <option value="">Select fuel type</option>
+              {FUEL_TYPE_OPTIONS.map((option) => (
+                <option key={option} value={option}>{option}</option>
+              ))}
+            </select>
           </label>
           {mode === 'edit' && statusMeta ? (
             <label className="driver-modal-field">
-              <span className="field-label">Vehicle status</span>
+              <VehicleFieldLabel>Vehicle Status</VehicleFieldLabel>
               <select className="text-field" onChange={(event) => onChange('vehicle_status', event.target.value)} value={form.vehicle_status || 'active'}>
                 {VEHICLE_STATUS_OPTIONS.map((option) => (
                   <option key={option.value} value={option.value}>{option.label}</option>
                 ))}
               </select>
-              <small className="vehicle-form-helper neutral">
-                {form.vehicle_status === 'active' ? 'Available for scheduling when readiness is clear.' : 'Held out of scheduling until set back to Active.'}
-              </small>
             </label>
-          ) : null}
-          {mode === 'edit' ? (
-            <div className="vehicle-form-readonly vehicle-form-wide">
-              <span>Assigned driver</span>
-              <strong>{assignedTo}</strong>
-              {vehicle?.today_assignment?.work_area_name ? <small>Route {vehicle.today_assignment.work_area_name}</small> : null}
-            </div>
-          ) : null}
+          ) : (
+            <label className="driver-modal-field">
+              <VehicleFieldLabel>Current Mileage</VehicleFieldLabel>
+              <input
+                className="text-field"
+                min="0"
+                onChange={(event) => onChange('current_mileage', event.target.value)}
+                placeholder="Current mileage"
+                type="number"
+                value={form.current_mileage}
+              />
+            </label>
+          )}
         </div>
       </section>
+
+      <section className="vehicle-form-section">
+        <div className="vehicle-form-section-heading">
+          <span>Documents</span>
+        </div>
+        <div className="vehicle-form-grid vehicle-registration-grid">
+          <label className="driver-modal-field">
+            <VehicleFieldLabel attention={showFormHints && !form.registration_expiration ? 'Not recorded' : ''}>Registration Expiration</VehicleFieldLabel>
+            <input
+              className={`text-field ${showFormHints && !form.registration_expiration ? 'vehicle-field-missing' : ''}`}
+              onChange={(event) => onChange('registration_expiration', event.target.value)}
+              type="date"
+              value={form.registration_expiration}
+            />
+          </label>
+          <label className="driver-modal-field">
+            <VehicleFieldLabel attention={showFormHints && !form.insurance_expiration ? 'Not recorded' : ''}>Insurance Expiration</VehicleFieldLabel>
+            <input
+              className={`text-field ${showFormHints && !form.insurance_expiration ? 'vehicle-field-missing' : ''}`}
+              onChange={(event) => onChange('insurance_expiration', event.target.value)}
+              type="date"
+              value={form.insurance_expiration}
+            />
+          </label>
+        </div>
+      </section>
+
+      {mode === 'edit' ? (
+        <section className="vehicle-form-section">
+          <div className="vehicle-form-section-heading">
+            <span>Usage and Assignment</span>
+          </div>
+          <div className="vehicle-form-grid vehicle-usage-grid">
+            <label className="driver-modal-field">
+              <VehicleFieldLabel attention={showFormHints && !Number(form.current_mileage) ? 'Not recorded' : ''}>Current Mileage</VehicleFieldLabel>
+              <input
+                className={`text-field ${showFormHints && !Number(form.current_mileage) ? 'vehicle-field-missing' : ''}`}
+                min="0"
+                onChange={(event) => onChange('current_mileage', event.target.value)}
+                placeholder="Current mileage"
+                type="number"
+                value={form.current_mileage}
+              />
+            </label>
+            <div className="driver-modal-field">
+              <VehicleFieldLabel>Assigned Driver</VehicleFieldLabel>
+              <div className="vehicle-form-readonly">
+                <strong>{assignedTo}</strong>
+                {vehicle?.today_assignment?.work_area_name ? <small>Route {vehicle.today_assignment.work_area_name}</small> : null}
+              </div>
+            </div>
+          </div>
+        </section>
+      ) : null}
 
       {mode === 'edit' ? (
         <section className="vehicle-form-section">
@@ -1190,7 +1517,7 @@ function VehicleFormSections({ form, mode = 'create', onChange, vehicle }) {
             <span>Notes</span>
           </div>
           <label className="driver-modal-field">
-            <span className="field-label">Vehicle notes</span>
+            <VehicleFieldLabel>Vehicle Notes</VehicleFieldLabel>
             <textarea
               className="text-field vehicle-form-textarea"
               onChange={(event) => onChange('notes', event.target.value)}
@@ -1201,12 +1528,105 @@ function VehicleFormSections({ form, mode = 'create', onChange, vehicle }) {
         </section>
       ) : null}
 
-      {showFormHints && quietWarnings.length ? (
-        <div className="vehicle-form-warning-list">
-          {quietWarnings.map((warning) => <span key={warning}>{warning}</span>)}
-        </div>
-      ) : null}
     </>
+  );
+}
+
+function VehicleHistoryMenu({
+  defaultOpen = false,
+  onViewAssignmentHistory,
+  onViewInspectionHistory,
+  onViewMaintenanceHistory,
+  onViewOdometerHistory
+}) {
+  const menuRef = useRef(null);
+
+  function selectHistory(onSelect) {
+    menuRef.current?.removeAttribute('open');
+    onSelect();
+  }
+
+  return (
+    <details className="vehicle-history-menu" open={defaultOpen || undefined} ref={menuRef}>
+      <summary className="secondary-inline-button">View History</summary>
+      <div className="vehicle-history-menu-panel">
+        <button onClick={() => selectHistory(onViewMaintenanceHistory)} type="button">Maintenance History</button>
+        <button onClick={() => selectHistory(onViewInspectionHistory)} type="button">Inspection History</button>
+        <button onClick={() => selectHistory(onViewOdometerHistory)} type="button">Odometer History</button>
+        <button onClick={() => selectHistory(onViewAssignmentHistory)} type="button">Assignment History</button>
+      </div>
+    </details>
+  );
+}
+
+function FleetColumnsMenu({ onToggle, visibleColumns }) {
+  const visibleSet = new Set(visibleColumns);
+
+  return (
+    <details className="fleet-columns-menu">
+      <summary className="secondary-inline-button">
+        <span>Columns</span>
+        <span aria-hidden="true" className="fleet-columns-icon">☷</span>
+      </summary>
+      <div className="fleet-columns-menu-panel">
+        <strong>Visible columns</strong>
+        <label>
+          <input checked disabled type="checkbox" />
+          <span>Vehicle</span>
+          <small>Always</small>
+        </label>
+        <label>
+          <input checked disabled type="checkbox" />
+          <span>Readiness</span>
+          <small>Always</small>
+        </label>
+        {FLEET_OPTIONAL_COLUMNS.map((column) => (
+          <label key={column.id}>
+            <input
+              checked={visibleSet.has(column.id)}
+              onChange={() => onToggle(column.id)}
+              type="checkbox"
+            />
+            <span>{column.label}</span>
+          </label>
+        ))}
+      </div>
+    </details>
+  );
+}
+
+function VehicleRowActions({
+  onAssignInspection,
+  onLogMaintenance,
+  onOpenDetails,
+  onRunInspection,
+  onUpdateOdometer,
+  onViewHistory,
+  vehicle
+}) {
+  const menuRef = useRef(null);
+
+  function runAction(action) {
+    menuRef.current?.removeAttribute('open');
+    action();
+  }
+
+  return (
+    <details className="vehicles-row-menu fleet-row-actions-menu" onClick={(event) => event.stopPropagation()} ref={menuRef}>
+      <summary aria-label={`Actions for vehicle ${vehicle.name}`} title={`Actions for vehicle ${vehicle.name}`}>
+        <span aria-hidden="true">•••</span>
+      </summary>
+      <div className="vehicles-row-menu-panel">
+        <button onClick={() => runAction(onOpenDetails)} type="button">Open Vehicle Details</button>
+        <button onClick={() => runAction(onUpdateOdometer)} type="button">Update Odometer</button>
+        <div className="vehicles-row-menu-separator" />
+        <button onClick={() => runAction(onRunInspection)} type="button">Run Inspection</button>
+        <button onClick={() => runAction(onAssignInspection)} type="button">Assign Inspection</button>
+        <button onClick={() => runAction(onLogMaintenance)} type="button">Log Maintenance</button>
+        <div className="vehicles-row-menu-separator" />
+        <button onClick={() => runAction(onViewHistory)} type="button">View History</button>
+      </div>
+    </details>
   );
 }
 
@@ -1238,12 +1658,15 @@ function VehicleModal({ form, errorMessage, isSubmitting, onChange, onClose, onS
 
 function VehicleDetailsDrawer({
   form,
+  historyMenuOpen = false,
   vehicle,
   errorMessage,
   isSubmitting,
   onAddService,
+  onAssignInspection,
   onChange,
   onClose,
+  onRunInspection,
   onViewAssignmentHistory,
   onSubmit,
   onViewInspectionHistory,
@@ -1258,7 +1681,7 @@ function VehicleDetailsDrawer({
         <div className="vehicle-detail-header">
           <div>
             <div className="vehicle-detail-eyebrow">Vehicle Details</div>
-            <div className="vehicle-detail-title">Edit Vehicle</div>
+            <div className="vehicle-detail-title">Edit {vehicle.name}</div>
           </div>
           <StatusBadge tone={statusMeta.tone}>{statusMeta.label}</StatusBadge>
           <button className="icon-button" onClick={onClose} type="button">×</button>
@@ -1269,12 +1692,25 @@ function VehicleDetailsDrawer({
 
           {errorMessage ? <div className="error-banner">{errorMessage}</div> : null}
 
+          <section className="vehicle-form-section vehicle-actions-section">
+            <div className="vehicle-form-section-heading">
+              <span>Vehicle Actions</span>
+            </div>
+            <div className="vehicle-quick-actions">
+              <button className="secondary-inline-button" onClick={onRunInspection} type="button">Run Inspection</button>
+              <button className="secondary-inline-button" onClick={onAssignInspection} type="button">Assign Inspection</button>
+              <button className="secondary-inline-button" onClick={onAddService} type="button">Log Maintenance</button>
+              <VehicleHistoryMenu
+                defaultOpen={historyMenuOpen}
+                onViewAssignmentHistory={onViewAssignmentHistory}
+                onViewInspectionHistory={onViewInspectionHistory}
+                onViewMaintenanceHistory={onViewHistory}
+                onViewOdometerHistory={onViewOdometerHistory}
+              />
+            </div>
+          </section>
+
           <div className="vehicle-detail-actions">
-            <button className="secondary-inline-button" onClick={onAddService} type="button">Log Maintenance</button>
-            <button className="secondary-inline-button" onClick={onViewHistory} type="button">View Maintenance History</button>
-            <button className="secondary-inline-button" onClick={onViewInspectionHistory} type="button">View Inspection History</button>
-            <button className="secondary-inline-button" onClick={onViewOdometerHistory} type="button">View Odometer History</button>
-            <button className="secondary-inline-button" onClick={onViewAssignmentHistory} type="button">View Assignment History</button>
             <button className="secondary-inline-button" onClick={onClose} type="button">Cancel</button>
             <button className="primary-inline-button" disabled={isSubmitting} type="submit">
               {isSubmitting ? 'Saving...' : 'Save Changes'}
@@ -1282,6 +1718,247 @@ function VehicleDetailsDrawer({
           </div>
         </form>
       </aside>
+    </div>
+  );
+}
+
+function InspectionRunnerModal({
+  vehicle,
+  form,
+  errorMessage,
+  isSubmitting,
+  onChange,
+  onChangeStatus,
+  onClose,
+  onSubmit
+}) {
+  if (!vehicle) {
+    return null;
+  }
+
+  const failedCount = (form.items || []).filter((item) => item.status === 'fail').length;
+
+  return (
+    <div className="modal-backdrop">
+      <div className="modal-card inspection-runner-modal">
+        <div className="modal-header">
+          <div>
+            <div className="card-title">Run Inspection</div>
+            <div className="driver-meta">{vehicle.name || 'Vehicle'}</div>
+          </div>
+          <button className="icon-button" onClick={onClose} type="button">×</button>
+        </div>
+
+        <form className="form-card modal-form inspection-runner-form" onSubmit={onSubmit}>
+          <div className="odometer-summary-card">
+            <div>
+              <span>Vehicle ID</span>
+              <strong>{vehicle.name || 'Not recorded'}</strong>
+            </div>
+            <div>
+              <span>Current odometer</span>
+              <strong>{formatMileage(vehicle.current_mileage)} miles</strong>
+            </div>
+            <div>
+              <span>Issues marked</span>
+              <strong>{failedCount}</strong>
+            </div>
+          </div>
+
+          <div className="inspection-runner-fields">
+            <label>
+              <span className="field-label">Inspection date</span>
+              <input
+                className="text-field"
+                onChange={(event) => onChange('inspection_date', event.target.value)}
+                type="date"
+                value={form.inspection_date}
+              />
+            </label>
+            <label>
+              <span className="field-label">Odometer</span>
+              <input
+                className="text-field"
+                min="0"
+                onChange={(event) => onChange('odometer', event.target.value)}
+                placeholder="Current odometer"
+                type="number"
+                value={form.odometer}
+              />
+            </label>
+          </div>
+
+          {(form.items || []).length ? (
+            <div className="inspection-runner-checklist">
+              {form.items.map((item) => (
+                <div className={`inspection-runner-item ${item.status === 'fail' ? 'fail' : ''}`} key={item.checklist_item_key}>
+                  <div>
+                    <strong>{item.label}</strong>
+                    <span>{item.status === 'fail' ? 'Issue marked' : 'Passed'}</span>
+                  </div>
+                  <div className="inspection-runner-status-actions">
+                    <button
+                      className={item.status === 'pass' ? 'selected pass' : ''}
+                      onClick={() => onChangeStatus(item.checklist_item_key, 'pass')}
+                      type="button"
+                    >
+                      Pass
+                    </button>
+                    <button
+                      className={item.status === 'fail' ? 'selected fail' : ''}
+                      onClick={() => onChangeStatus(item.checklist_item_key, 'fail')}
+                      type="button"
+                    >
+                      Issue
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="driver-meta">No inspection checklist items are enabled.</div>
+          )}
+
+          <label>
+            <span className="field-label">Inspection notes</span>
+            <textarea
+              className="text-field maintenance-item-notes"
+              onChange={(event) => onChange('issue_note', event.target.value)}
+              placeholder="Optional notes or issue details"
+              value={form.issue_note}
+            />
+          </label>
+
+          {errorMessage ? <div className="error-banner">{errorMessage}</div> : null}
+
+          <div className="modal-actions">
+            <button className="secondary-inline-button" onClick={onClose} type="button">Cancel</button>
+            <button className="primary-inline-button" disabled={isSubmitting} type="submit">
+              {isSubmitting ? 'Saving...' : 'Save Inspection'}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+function getDriverOptionLabel(driver = {}) {
+  return driver.name || [driver.first_name, driver.last_name].filter(Boolean).join(' ') || driver.email || 'Unnamed driver';
+}
+
+function InspectionAssignmentModal({
+  drivers,
+  errorMessage,
+  form,
+  isOpen,
+  isSubmitting,
+  onChange,
+  onClose,
+  onSubmit,
+  vehicles
+}) {
+  if (!isOpen) {
+    return null;
+  }
+
+  const selectedVehicle = (vehicles || []).find((vehicle) => vehicle.id === form.vehicle_id) || null;
+
+  return (
+    <div className="modal-backdrop">
+      <div className="modal-card">
+        <div className="modal-header">
+          <div>
+            <div className="card-title">Assign Vehicle Inspection</div>
+            <div className="driver-meta">{selectedVehicle?.name || 'Choose a truck and driver'}</div>
+          </div>
+          <button className="icon-button" onClick={onClose} type="button">×</button>
+        </div>
+
+        <form className="form-card modal-form" onSubmit={onSubmit}>
+          <label>
+            <span className="field-label">Truck</span>
+            <select
+              className="text-field"
+              onChange={(event) => onChange('vehicle_id', event.target.value)}
+              value={form.vehicle_id}
+            >
+              <option value="">Select truck</option>
+              {(vehicles || []).map((vehicle) => (
+                <option key={vehicle.id} value={vehicle.id}>
+                  {vehicle.name} · {getVehicleDescription(vehicle)}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          <label>
+            <span className="field-label">Driver</span>
+            <select
+              className="text-field"
+              onChange={(event) => onChange('driver_id', event.target.value)}
+              value={form.driver_id}
+            >
+              <option value="">Select driver</option>
+              {(drivers || []).map((driver) => (
+                <option key={driver.id} value={driver.id}>
+                  {getDriverOptionLabel(driver)}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          <label>
+            <span className="field-label">Due date</span>
+            <input
+              className="text-field"
+              onChange={(event) => onChange('due_date', event.target.value)}
+              type="date"
+              value={form.due_date}
+            />
+          </label>
+
+          <label>
+            <span className="field-label">Priority</span>
+            <select
+              className="text-field"
+              onChange={(event) => onChange('priority', event.target.value)}
+              value={form.priority}
+            >
+              <option value="normal">Normal</option>
+              <option value="urgent">Urgent</option>
+            </select>
+          </label>
+
+          <label className="checkbox-row">
+            <input
+              checked={form.require_before_route_start}
+              onChange={(event) => onChange('require_before_route_start', event.target.checked)}
+              type="checkbox"
+            />
+            <span>Require before route start</span>
+          </label>
+
+          <label>
+            <span className="field-label">Note</span>
+            <textarea
+              className="text-field maintenance-item-notes"
+              onChange={(event) => onChange('note', event.target.value)}
+              placeholder="Optional driver note"
+              value={form.note}
+            />
+          </label>
+
+          {errorMessage ? <div className="error-banner">{errorMessage}</div> : null}
+
+          <div className="modal-actions">
+            <button className="secondary-inline-button" onClick={onClose} type="button">Cancel</button>
+            <button className="primary-inline-button" disabled={isSubmitting} type="submit">
+              {isSubmitting ? 'Assigning...' : 'Assign Inspection'}
+            </button>
+          </div>
+        </form>
+      </div>
     </div>
   );
 }
@@ -1305,7 +1982,7 @@ function MaintenanceModal({ vehicle, form, errorMessage, isSubmitting, onChange,
         <form className="form-card modal-form" onSubmit={onSubmit}>
           <div className="odometer-summary-card">
             <div>
-              <span>Truck Number</span>
+              <span>Vehicle ID</span>
               <strong>{vehicle.name || 'Not recorded'}</strong>
             </div>
             <div>
@@ -1408,7 +2085,13 @@ function MaintenanceHistoryModal({ vehicle, open, onClose, selectedCsaId }) {
         </div>
 
         {historyQuery.isLoading ? (
-          <div className="driver-meta">Loading service history...</div>
+          <LoadingState title="Loading service history" />
+        ) : historyQuery.isError ? (
+          <ErrorState
+            title="Unable to load service history"
+            description="Service records for this truck could not be loaded."
+            onRetry={() => historyQuery.refetch()}
+          />
         ) : historyQuery.data?.length ? (
           <div className="history-table">
             <div className="history-table-header">
@@ -1433,7 +2116,11 @@ function MaintenanceHistoryModal({ vehicle, open, onClose, selectedCsaId }) {
             ))}
           </div>
         ) : (
-          <div className="driver-meta">No service records yet.</div>
+          <EmptyState
+            variant="inline"
+            title="No service records yet"
+            description="Service records logged for this truck will appear here."
+          />
         )}
 
         <div className="modal-actions">
@@ -1470,11 +2157,17 @@ function InspectionHistoryModal({ vehicle, open, onClose, onOpenInspection, sele
         </div>
 
         {historyQuery.isLoading ? (
-          <div className="driver-meta">Loading inspection history...</div>
+          <LoadingState title="Loading inspection history" />
+        ) : historyQuery.isError ? (
+          <ErrorState
+            title="Unable to load inspection history"
+            description="Inspection submissions for this truck could not be loaded."
+            onRetry={() => historyQuery.refetch()}
+          />
         ) : historyQuery.data?.length ? (
           <div className="inspection-history-list">
             {historyQuery.data.map((inspection) => {
-              const failedItems = (inspection.items || []).filter((item) => item.status === 'fail');
+              const issueCount = inspection.issue_count ?? inspection.failed_items_count ?? getInspectionIssueItems(inspection).length;
 
               return (
                 <button
@@ -1492,7 +2185,7 @@ function InspectionHistoryModal({ vehicle, open, onClose, onOpenInspection, sele
                     {inspection.issue_note ? <span>Issue note: {inspection.issue_note}</span> : null}
                   </span>
                   <span className="inspection-review-meta">
-                    <strong>{failedItems.length ? `${failedItems.length} failed` : 'No failed items'}</strong>
+                    <strong>{issueCount ? `${issueCount} issue${issueCount === 1 ? '' : 's'}` : 'No issues'}</strong>
                     <span>{inspection.manager_review_note || 'No manager note'}</span>
                   </span>
                 </button>
@@ -1500,7 +2193,11 @@ function InspectionHistoryModal({ vehicle, open, onClose, onOpenInspection, sele
             })}
           </div>
         ) : (
-          <div className="driver-meta">No inspection submissions for this Truck yet.</div>
+          <EmptyState
+            variant="inline"
+            title="No inspection submissions for this truck yet"
+            description="Driver inspection submissions will appear here after this truck is checked."
+          />
         )}
 
         <div className="modal-actions">
@@ -1537,7 +2234,13 @@ function OdometerHistoryModal({ vehicle, open, onClose, selectedCsaId }) {
         </div>
 
         {historyQuery.isLoading ? (
-          <div className="driver-meta">Loading odometer history...</div>
+          <LoadingState title="Loading odometer history" />
+        ) : historyQuery.isError ? (
+          <ErrorState
+            title="Unable to load odometer history"
+            description="Odometer entries for this truck could not be loaded."
+            onRetry={() => historyQuery.refetch()}
+          />
         ) : historyQuery.data?.length ? (
           <div className="history-table compact-history-table">
             <div className="history-table-header odometer-history-header">
@@ -1560,7 +2263,11 @@ function OdometerHistoryModal({ vehicle, open, onClose, selectedCsaId }) {
             ))}
           </div>
         ) : (
-          <div className="driver-meta">No odometer history for this Truck yet.</div>
+          <EmptyState
+            variant="inline"
+            title="No odometer history for this truck yet"
+            description="Driver and manager odometer readings will appear here."
+          />
         )}
 
         <div className="modal-actions">
@@ -1597,7 +2304,13 @@ function AssignmentHistoryModal({ vehicle, open, onClose, selectedCsaId }) {
         </div>
 
         {historyQuery.isLoading ? (
-          <div className="driver-meta">Loading assignment history...</div>
+          <LoadingState title="Loading assignment history" />
+        ) : historyQuery.isError ? (
+          <ErrorState
+            title="Unable to load assignment history"
+            description="Route assignment history for this truck could not be loaded."
+            onRetry={() => historyQuery.refetch()}
+          />
         ) : historyQuery.data?.length ? (
           <div className="history-table compact-history-table">
             <div className="history-table-header assignment-history-header">
@@ -1622,7 +2335,11 @@ function AssignmentHistoryModal({ vehicle, open, onClose, selectedCsaId }) {
             ))}
           </div>
         ) : (
-          <div className="driver-meta">No assignment history for this Truck yet.</div>
+          <EmptyState
+            variant="inline"
+            title="No assignment history for this truck yet"
+            description="Route and driver assignments will appear here after this truck is scheduled."
+          />
         )}
 
         <div className="modal-actions">
@@ -1634,11 +2351,13 @@ function AssignmentHistoryModal({ vehicle, open, onClose, selectedCsaId }) {
 }
 
 function MaintenanceRecordsPanel({
+  errorMessage,
   filters,
   isLoading,
   onChangeFilters,
   onClearFilters,
   onExportCsv,
+  onRetry,
   onViewHistory,
   records,
   serviceTypeOptions,
@@ -1665,7 +2384,7 @@ function MaintenanceRecordsPanel({
           <input
             className="text-field"
             onChange={(event) => onChangeFilters('truck', event.target.value)}
-            placeholder="Truck Number"
+            placeholder="Vehicle ID"
             value={filters.truck}
           />
         </label>
@@ -1706,7 +2425,13 @@ function MaintenanceRecordsPanel({
       </div>
 
       {isLoading ? (
-        <div className="labor-empty-state">Loading maintenance records...</div>
+        <LoadingState title="Loading maintenance records" />
+      ) : errorMessage ? (
+        <ErrorState
+          title="Unable to load maintenance records"
+          description={errorMessage}
+          onRetry={onRetry}
+        />
       ) : records.length ? (
         <div className="maintenance-records-table">
           <div className="maintenance-records-table-header">
@@ -1742,9 +2467,11 @@ function MaintenanceRecordsPanel({
           ))}
         </div>
       ) : (
-        <div className="labor-empty-state">
-          {totalRecords ? 'No maintenance records match these filters.' : 'No maintenance records yet. Log maintenance from a truck row or vehicle details to see it here.'}
-        </div>
+        <EmptyState
+          variant="inline"
+          title={totalRecords ? 'No maintenance records match these filters' : 'No maintenance records yet'}
+          description={totalRecords ? 'Clear or adjust the filters to see more records.' : 'Log maintenance from a truck row or vehicle details to see it here.'}
+        />
       )}
     </section>
   );
@@ -1851,7 +2578,7 @@ function ReminderScheduleScreen({
         </button>
       </div>
 
-      {isLoading ? <div className="driver-meta">Loading reminder schedule...</div> : null}
+      {isLoading ? <LoadingState skeletonRows={1} title="Loading reminder schedule" /> : null}
 
       <div className="reminder-schedule-grid">
         <label className="driver-modal-field">
@@ -1865,7 +2592,7 @@ function ReminderScheduleScreen({
               <option key={day} value={day}>{day}</option>
             ))}
           </select>
-          <small className="vehicle-form-helper">Used for weekly full inspections in Option 1 and Custom.</small>
+          <small className="vehicle-form-helper">Used for weekly full inspections in Weekly Full Inspection and Custom Requirements.</small>
         </label>
 
         <label className="driver-modal-field">
@@ -1939,10 +2666,10 @@ function ChecklistTemplateScreen({
       </div>
 
       <p className="vehicle-settings-helper checklist-template-note">
-        Enable or disable checklist fields for weekly full inspections in Option 1 and daily full inspections in Option 2.
+        Enable or disable checklist fields for weekly full inspections in Weekly Full Inspection and daily full inspections in Daily Full Inspection.
       </p>
 
-      {isLoading ? <div className="driver-meta">Loading saved checklist template...</div> : null}
+      {isLoading ? <LoadingState skeletonRows={1} title="Loading saved checklist template" /> : null}
 
       <div className="checklist-template-list" aria-label="Default checklist fields">
         {fields.map((field, index) => (
@@ -2004,7 +2731,7 @@ function MaintenanceRequirementsScreen({
         </button>
       </div>
 
-      {isLoading ? <div className="driver-meta">Loading saved maintenance requirements...</div> : null}
+      {isLoading ? <LoadingState skeletonRows={1} title="Loading saved maintenance requirements" /> : null}
 
       <div className="maintenance-requirement-options">
         {MAINTENANCE_REQUIREMENT_OPTIONS.map((option) => {
@@ -2135,14 +2862,34 @@ function VehiclePlaceholderPanel({ title, description }) {
 function InspectionDetailModal({
   inspection,
   isReviewing,
+  isUpdatingVehicleStatus,
   onChangeReviewNote,
   onClose,
   onLogMaintenanceFromIssue,
   onReview,
+  onVehicleStatusDecision,
   reviewNote
 }) {
+  const [copySummaryResult, setCopySummaryResult] = useState({ inspectionId: null, message: '' });
+
   if (!inspection) {
     return null;
+  }
+
+  const issueItems = getInspectionIssueItems(inspection);
+  const currentVehicleStatus = inspection?.vehicle?.vehicle_status || 'active';
+  const copySummaryStatus = copySummaryResult.inspectionId === inspection.id ? copySummaryResult.message : '';
+  const statusDecisionOptions = VEHICLE_STATUS_OPTIONS.filter((option) => (
+    ['active', 'out_of_service', 'at_the_shop', 'needs_repair'].includes(option.value)
+  ));
+
+  async function handleCopyInspectionSummary() {
+    try {
+      await copyTextToClipboard(buildInspectionSummary(inspection));
+      setCopySummaryResult({ inspectionId: inspection.id, message: 'Inspection summary copied' });
+    } catch {
+      setCopySummaryResult({ inspectionId: inspection.id, message: 'Copy failed' });
+    }
   }
 
   return (
@@ -2161,17 +2908,28 @@ function InspectionDetailModal({
         <div className="inspection-detail-summary">
           <div>
             <span>Status</span>
-            <strong>{inspection.status_label}</strong>
+            <strong>{getInspectionReviewStatusLabel(inspection)}</strong>
           </div>
           <div>
             <span>Odometer</span>
             <strong>{inspection.odometer ? `${formatMileage(inspection.odometer)} mi` : 'Not recorded'}</strong>
           </div>
           <div>
+            <span>Issues</span>
+            <strong>{issueItems.length}</strong>
+          </div>
+          <div>
             <span>Submitted</span>
             <strong>{inspection.submitted_at ? format(new Date(inspection.submitted_at), 'MMM d, h:mm a') : 'Not recorded'}</strong>
           </div>
         </div>
+
+        {inspection.urgent_review ? (
+          <div className="inspection-urgent-note">
+            <strong>Urgent manager review</strong>
+            <span>The driver marked at least one issue unsafe. Review the details and choose the vehicle status before dispatch decisions continue.</span>
+          </div>
+        ) : null}
 
         {inspection.issue_note ? (
           <div className="inspection-issue-note">
@@ -2180,16 +2938,57 @@ function InspectionDetailModal({
           </div>
         ) : null}
 
+        <div className="inspection-decision-panel">
+          <div>
+            <strong>Vehicle Status Decision</strong>
+            <span>Current status: {getVehicleStatusLabelFromValue(currentVehicleStatus)}</span>
+          </div>
+          <div className="inspection-decision-grid">
+            {statusDecisionOptions.map((option) => (
+              <button
+                className={`inspection-decision-button ${currentVehicleStatus === option.value ? 'selected' : ''}`}
+                disabled={isUpdatingVehicleStatus}
+                key={option.value}
+                onClick={() => onVehicleStatusDecision(option.value)}
+                type="button"
+              >
+                {option.label}
+              </button>
+            ))}
+          </div>
+        </div>
+
         <div className="inspection-items-list">
-          {(inspection.items || []).length ? inspection.items.map((item) => (
-            <div className={`inspection-item-row ${item.status}`} key={item.id || item.checklist_item_key}>
-              <div>
-                <strong>{item.label}</strong>
-                <span>{item.value || item.note || 'No answer recorded'}</span>
+          {(inspection.items || []).length ? inspection.items.map((item) => {
+            const isIssue = isInspectionIssueItem(item);
+            const itemStatus = getInspectionItemStatus(item);
+            const photos = Array.isArray(item.photos) ? item.photos : [];
+
+            return (
+              <div className={`inspection-item-row ${isIssue ? 'issue' : itemStatus}`} key={item.id || item.checklist_item_key}>
+                <div>
+                  <strong>{item.label || item.checklist_item_key}</strong>
+                  <span>{getInspectionItemSummary(item)}</span>
+                  {photos.length ? (
+                    <div className="inspection-photo-links">
+                      {photos.map((photo, index) => {
+                        const photoTarget = photo.url || photo.storage_path;
+
+                        return photoTarget ? (
+                          <a href={photoTarget} key={photo.storage_path || photo.url || `${item.checklist_item_key}-${index}`} rel="noreferrer" target="_blank">
+                            Photo {index + 1}
+                          </a>
+                        ) : (
+                          <span key={`${item.checklist_item_key}-${index}`}>Photo {index + 1}: attached</span>
+                        );
+                      })}
+                    </div>
+                  ) : null}
+                </div>
+                <span className="inspection-item-status">{getInspectionItemStatusLabel(item)}</span>
               </div>
-              <span className="inspection-item-status">{item.status.replace('_', ' ')}</span>
-            </div>
-          )) : (
+            );
+          }) : (
             <div className="labor-empty-state">No checklist item answers were submitted.</div>
           )}
         </div>
@@ -2213,6 +3012,9 @@ function InspectionDetailModal({
 
         <div className="modal-actions">
           <button className="secondary-inline-button" onClick={onClose} type="button">Close</button>
+          <button className="secondary-inline-button" onClick={handleCopyInspectionSummary} type="button">
+            Copy Inspection Summary
+          </button>
           <button className="secondary-inline-button" onClick={onLogMaintenanceFromIssue} type="button">
             Log Maintenance from Issue
           </button>
@@ -2221,6 +3023,7 @@ function InspectionDetailModal({
               {isReviewing ? 'Saving...' : 'Mark Reviewed'}
             </button>
           ) : null}
+          {copySummaryStatus ? <span className="inspection-copy-status">{copySummaryStatus}</span> : null}
         </div>
       </div>
     </div>
@@ -2228,14 +3031,20 @@ function InspectionDetailModal({
 }
 
 function InspectionsPanel({
+  errorMessage,
   inspections,
   isLoading,
   onExportCsv,
   onOpenInspection,
+  onRetry,
   onStatusFilterChange,
   statusFilter
 }) {
-  const needsReviewCount = inspections.filter((inspection) => inspection.status === 'needs_review').length;
+  const needsReviewCount = inspections.filter((inspection) => (
+    ['needs_review', 'manager_review_required', 'urgent_manager_review'].includes(inspection.status) ||
+    inspection.manager_review_required ||
+    inspection.urgent_review
+  )).length;
   const reviewedCount = inspections.filter((inspection) => inspection.status === 'reviewed').length;
 
   return (
@@ -2284,7 +3093,13 @@ function InspectionsPanel({
       </div>
 
       {isLoading ? (
-        <div className="labor-empty-state">Loading vehicle inspections...</div>
+        <LoadingState title="Loading vehicle inspections" />
+      ) : errorMessage ? (
+        <ErrorState
+          title="Unable to load vehicle inspections"
+          description={errorMessage}
+          onRetry={onRetry}
+        />
       ) : inspections.length ? (
         <div className="inspection-review-list">
           {inspections.map((inspection) => (
@@ -2309,19 +3124,26 @@ function InspectionsPanel({
           ))}
         </div>
       ) : (
-        <div className="labor-empty-state">No vehicle inspection submissions found for this filter.</div>
+        <EmptyState
+          variant="inline"
+          title="No vehicle inspection submissions found for this filter"
+          description="Choose another inspection status to review additional submissions."
+        />
       )}
     </section>
   );
 }
 
 export default function VehiclesPage() {
-  const [searchParams] = useSearchParams();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const linkedInspectionId = searchParams.get('inspection_id') || searchParams.get('inspectionId');
+  const linkedVehicleId = searchParams.get('vehicle_id') || searchParams.get('vehicleId');
   const queryClient = useQueryClient();
   const { selectedCsaId } = useSelectedCsa();
   const [isVehicleModalOpen, setIsVehicleModalOpen] = useState(false);
   const [isMaintenanceProgramExpanded, setIsMaintenanceProgramExpanded] = useState(false);
   const [editingVehicle, setEditingVehicle] = useState(null);
+  const [editVehicleFocus, setEditVehicleFocus] = useState('details');
   const [vehicleForm, setVehicleForm] = useState(emptyVehicleForm);
   const [vehicleError, setVehicleError] = useState('');
   const [editVehicleForm, setEditVehicleForm] = useState(emptyEditVehicleForm);
@@ -2330,6 +3152,10 @@ export default function VehiclesPage() {
   const [maintenanceVehicle, setMaintenanceVehicle] = useState(null);
   const [historyVehicle, setHistoryVehicle] = useState(null);
   const [inspectionHistoryVehicle, setInspectionHistoryVehicle] = useState(null);
+  const [inspectionRunnerVehicle, setInspectionRunnerVehicle] = useState(null);
+  const [isInspectionAssignmentModalOpen, setIsInspectionAssignmentModalOpen] = useState(false);
+  const [inspectionAssignmentForm, setInspectionAssignmentForm] = useState(emptyInspectionAssignmentForm);
+  const [inspectionAssignmentError, setInspectionAssignmentError] = useState('');
   const [odometerHistoryVehicle, setOdometerHistoryVehicle] = useState(null);
   const [assignmentHistoryVehicle, setAssignmentHistoryVehicle] = useState(null);
   const [maintenanceSettingsDraft, setMaintenanceSettingsDraft] = useState(null);
@@ -2341,10 +3167,18 @@ export default function VehiclesPage() {
   const [odometerError, setOdometerError] = useState('');
   const [vehicleSearch, setVehicleSearch] = useState('');
   const [vehicleStatusFilter, setVehicleStatusFilter] = useState('all');
+  const [visibleFleetColumns, setVisibleFleetColumns] = useState(loadFleetColumns);
   const [maintenanceRecordFilters, setMaintenanceRecordFilters] = useState(emptyMaintenanceRecordFilters);
-  const [activeVehiclesTab, setActiveVehiclesTab] = useState('Fleet');
+  const [activeVehiclesTab, setActiveVehiclesTab] = useState(linkedInspectionId ? 'Inspections' : 'Fleet');
   const [inspectionStatusFilter, setInspectionStatusFilter] = useState('all');
-  const [selectedInspection, setSelectedInspection] = useState(null);
+  const [selectedInspection, setSelectedInspection] = useState(() => (
+    linkedInspectionId
+      ? {
+          id: linkedInspectionId,
+          vehicle_id: linkedVehicleId || null
+        }
+      : null
+  ));
   const [inspectionReviewNote, setInspectionReviewNote] = useState('');
   const [vehicleSettingsView, setVehicleSettingsView] = useState('overview');
   const [maintenanceRequirementsDraft, setMaintenanceRequirementsDraft] = useState(null);
@@ -2366,6 +3200,8 @@ export default function VehiclesPage() {
     next_service_date: ''
   });
   const [maintenanceError, setMaintenanceError] = useState('');
+  const [inspectionRunnerForm, setInspectionRunnerForm] = useState(getInspectionForm(null, null));
+  const [inspectionRunnerError, setInspectionRunnerError] = useState('');
 
   const maintenanceSettingsQuery = useQuery({
     queryKey: ['vehicle-maintenance-settings', selectedCsaId],
@@ -2413,6 +3249,16 @@ export default function VehiclesPage() {
     refetchInterval: 60000
   });
 
+  const driversQuery = useQuery({
+    queryKey: ['manager-drivers', selectedCsaId],
+    enabled: Boolean(selectedCsaId),
+    queryFn: async () => {
+      const response = await api.get('/manager/drivers');
+      return response.data?.drivers || [];
+    },
+    staleTime: 60000
+  });
+
   const maintenanceRecordsQuery = useQuery({
     queryKey: ['vehicle-maintenance-records', selectedCsaId],
     enabled: Boolean(selectedCsaId) && activeVehiclesTab === 'Maintenance',
@@ -2449,11 +3295,7 @@ export default function VehiclesPage() {
 
   const createVehicleMutation = useMutation({
     mutationFn: async () => {
-      const response = await api.post('/vehicles', {
-        ...vehicleForm,
-        year: Number(vehicleForm.year),
-        current_mileage: Number(vehicleForm.current_mileage || 0)
-      });
+      const response = await api.post('/vehicles', buildVehiclePayload(vehicleForm));
       return response.data;
     },
     onSuccess: async () => {
@@ -2479,7 +3321,9 @@ export default function VehiclesPage() {
     onSuccess: async () => {
       setInspectionReviewNote('');
       setSelectedInspection(null);
+      clearInspectionLinkParams();
       setToastMessage('Vehicle inspection marked reviewed');
+      await queryClient.invalidateQueries({ queryKey: ['fleet-vehicles', selectedCsaId] });
       await queryClient.invalidateQueries({ queryKey: ['vehicle-inspections', selectedCsaId] });
       await queryClient.invalidateQueries({ queryKey: ['vehicle-inspection-detail', selectedCsaId] });
       if (inspectionHistoryVehicle) {
@@ -2512,11 +3356,7 @@ export default function VehiclesPage() {
 
   const updateVehicleMutation = useMutation({
     mutationFn: async () => {
-      const response = await api.put(`/vehicles/${editingVehicle.id}`, {
-        ...editVehicleForm,
-        year: Number(editVehicleForm.year),
-        current_mileage: Number(editVehicleForm.current_mileage || 0)
-      });
+      const response = await api.put(`/vehicles/${editingVehicle.id}`, buildVehiclePayload(editVehicleForm));
       return response.data;
     },
     onSuccess: async () => {
@@ -2532,9 +3372,15 @@ export default function VehiclesPage() {
   });
 
   const updateVehicleStatusMutation = useMutation({
-    mutationFn: async ({ vehicleId, vehicleStatus }) => {
+    mutationFn: async ({ vehicleId, vehicleStatus, sourceInspectionId = null }) => {
       const response = await api.put(`/vehicles/${vehicleId}`, {
-        vehicle_status: vehicleStatus
+        vehicle_status: vehicleStatus,
+        ...(sourceInspectionId
+          ? {
+              readiness_source_type: 'inspection',
+              readiness_source_id: sourceInspectionId
+            }
+          : {})
       });
       return response.data;
     },
@@ -2542,6 +3388,11 @@ export default function VehiclesPage() {
       const option = getVehicleStatusOption(variables.vehicleStatus);
       setToastMessage(`Vehicle status updated to ${option.label}`);
       await queryClient.invalidateQueries({ queryKey: ['fleet-vehicles', selectedCsaId] });
+      await queryClient.invalidateQueries({ queryKey: ['vehicle-inspections', selectedCsaId] });
+      await queryClient.invalidateQueries({ queryKey: ['vehicle-inspection-detail', selectedCsaId] });
+      if (inspectionHistoryVehicle) {
+        await queryClient.invalidateQueries({ queryKey: ['vehicle-inspection-history', selectedCsaId, inspectionHistoryVehicle.id] });
+      }
     },
     onError: () => {
       setToastMessage('Unable to update vehicle status.');
@@ -2596,6 +3447,58 @@ export default function VehiclesPage() {
     },
     onError: (error) => {
       setMaintenanceError(error.response?.data?.error || 'Unable to save service record.');
+    }
+  });
+
+  const createInspectionMutation = useMutation({
+    mutationFn: async () => {
+      const response = await api.post(`/vehicles/${inspectionRunnerVehicle.id}/inspections`, {
+        inspection_date: inspectionRunnerForm.inspection_date,
+        odometer: Number(inspectionRunnerForm.odometer),
+        issue_note: inspectionRunnerForm.issue_note || undefined,
+        items: inspectionRunnerForm.items
+      });
+      return response.data?.inspection;
+    },
+    onSuccess: async () => {
+      const inspectedVehicleId = inspectionRunnerVehicle?.id;
+      setInspectionRunnerVehicle(null);
+      setInspectionRunnerForm(getInspectionForm(null, activeChecklistTemplateFields));
+      setInspectionRunnerError('');
+      setToastMessage('Inspection saved');
+      await queryClient.invalidateQueries({ queryKey: ['fleet-vehicles', selectedCsaId] });
+      await queryClient.invalidateQueries({ queryKey: ['vehicle-inspections', selectedCsaId] });
+      if (inspectedVehicleId) {
+        await queryClient.invalidateQueries({ queryKey: ['vehicle-inspection-history', selectedCsaId, inspectedVehicleId] });
+      }
+    },
+    onError: (error) => {
+      setInspectionRunnerError(error.response?.data?.error || 'Unable to save inspection.');
+    }
+  });
+
+  const assignInspectionMutation = useMutation({
+    mutationFn: async () => {
+      const response = await api.post('/vehicles/inspection-assignments', {
+        vehicle_id: inspectionAssignmentForm.vehicle_id,
+        driver_id: inspectionAssignmentForm.driver_id,
+        due_date: inspectionAssignmentForm.due_date,
+        priority: inspectionAssignmentForm.priority,
+        note: inspectionAssignmentForm.note || undefined,
+        require_before_route_start: inspectionAssignmentForm.require_before_route_start
+      });
+      return response.data?.assignment;
+    },
+    onSuccess: async (assignment) => {
+      const driverName = assignment?.driver?.name || 'driver';
+      setIsInspectionAssignmentModalOpen(false);
+      setInspectionAssignmentForm(emptyInspectionAssignmentForm);
+      setInspectionAssignmentError('');
+      setToastMessage(`Inspection assigned to ${driverName}`);
+      await queryClient.invalidateQueries({ queryKey: ['fleet-vehicles', selectedCsaId] });
+    },
+    onError: (error) => {
+      setInspectionAssignmentError(error.response?.data?.error || 'Unable to assign vehicle inspection.');
     }
   });
 
@@ -2693,6 +3596,7 @@ export default function VehiclesPage() {
   });
 
   const vehicles = useMemo(() => vehiclesQuery.data || [], [vehiclesQuery.data]);
+  const drivers = useMemo(() => driversQuery.data || [], [driversQuery.data]);
   const normalizedMaintenanceSettings = useMemo(
     () =>
       (maintenanceSettingsQuery.data || []).map((setting) => ({
@@ -2707,10 +3611,7 @@ export default function VehiclesPage() {
     || normalizeChecklistTemplateFields(checklistTemplateQuery.data);
   const activeReminderScheduleDraft = reminderScheduleDraft
     || normalizeReminderSchedule(reminderScheduleQuery.data || activeMaintenanceRequirementsDraft);
-  const serviceTypeOptions = useMemo(
-    () => getServiceTypeOptions(activeMaintenanceSettings),
-    [activeMaintenanceSettings]
-  );
+  const serviceTypeOptions = getServiceTypeOptions(activeMaintenanceSettings);
   const latestVehicleMaintenanceRecords = useMemo(
     () => vehicles
       .filter((vehicle) => vehicle.latest_maintenance)
@@ -2748,18 +3649,15 @@ export default function VehiclesPage() {
     () => vehicles.filter((vehicle) => getReadinessMeta(vehicle).filter === 'blocked'),
     [vehicles]
   );
-  const registrationAttentionVehicles = useMemo(
-    () => vehicles.filter((vehicle) => {
-      const registration = getRegistrationStatus(vehicle, Number(activeReminderScheduleDraft.document_warning_days));
-      return registration.className.includes('warning') || registration.className.includes('expired');
-    }),
-    [activeReminderScheduleDraft.document_warning_days, vehicles]
-  );
+  const registrationAttentionVehicles = vehicles.filter((vehicle) => needsRegistrationAttention(
+    vehicle,
+    Number(activeReminderScheduleDraft.document_warning_days)
+  ));
   const onRoadCount = useMemo(
     () => vehicles.filter((vehicle) => vehicle.today_assignment?.route_status === 'in_progress').length,
     [vehicles]
   );
-  const filteredVehicles = useMemo(() => {
+  const filteredVehicles = (() => {
     const query = vehicleSearch.trim().toLowerCase();
 
     return vehicles.filter((vehicle) => {
@@ -2777,7 +3675,11 @@ export default function VehiclesPage() {
 
       return statusMatches && (!query || searchableText.includes(query));
     });
-  }, [activeReminderScheduleDraft.document_warning_days, vehicleSearch, vehicleStatusFilter, vehicles]);
+  })();
+  const visibleFleetColumnSet = useMemo(() => new Set(visibleFleetColumns), [visibleFleetColumns]);
+  const fleetGridStyle = useMemo(() => ({
+    '--vehicles-grid-template': getFleetGridTemplate(visibleFleetColumns)
+  }), [visibleFleetColumns]);
   const isSetupFlow = searchParams.get('source') === 'setup';
   const setupFocus = searchParams.get('focus') || '';
   const setupBanner = useMemo(() => {
@@ -2811,6 +3713,23 @@ export default function VehiclesPage() {
     return () => window.clearTimeout(timeout);
   }, [toastMessage]);
 
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(FLEET_COLUMN_STORAGE_KEY, JSON.stringify(visibleFleetColumns));
+    } catch {
+      // Column preferences remain available for the current session.
+    }
+  }, [visibleFleetColumns]);
+
+  function clearInspectionLinkParams() {
+    const nextParams = new URLSearchParams(searchParams);
+    nextParams.delete('inspection_id');
+    nextParams.delete('inspectionId');
+    nextParams.delete('vehicle_id');
+    nextParams.delete('vehicleId');
+    setSearchParams(nextParams, { replace: true });
+  }
+
   function updateVehicleField(field, value) {
     setVehicleForm((current) => {
       if (field === 'truck_type' && value !== 'Other') {
@@ -2819,6 +3738,14 @@ export default function VehiclesPage() {
 
       return { ...current, [field]: value };
     });
+  }
+
+  function toggleFleetColumn(columnId) {
+    setVisibleFleetColumns((current) => (
+      current.includes(columnId)
+        ? current.filter((currentId) => currentId !== columnId)
+        : DEFAULT_FLEET_COLUMNS.filter((defaultId) => current.includes(defaultId) || defaultId === columnId)
+    ));
   }
 
   function handleVehicleImportChange(event) {
@@ -3123,12 +4050,108 @@ export default function VehiclesPage() {
     setMaintenanceSettingsEditingIndex(null);
   }
 
+  function openInspectionRunner(vehicle) {
+    setInspectionRunnerVehicle(vehicle);
+    setInspectionRunnerForm(getInspectionForm(vehicle, activeChecklistTemplateFields));
+    setInspectionRunnerError('');
+  }
+
+  function openReadinessReason(vehicle, reason) {
+    if (reason?.source_type === 'inspection' && reason.source_id) {
+      setSelectedInspection({
+        id: reason.source_id,
+        vehicle_id: vehicle.id,
+        vehicle_name: vehicle.name
+      });
+      setInspectionReviewNote('');
+      return;
+    }
+
+    if (reason?.source_type === 'maintenance') {
+      setHistoryVehicle(vehicle);
+      return;
+    }
+
+    openEditVehicle(vehicle);
+  }
+
+  function openInspectionAssignment(vehicle = null) {
+    setInspectionAssignmentForm({
+      ...emptyInspectionAssignmentForm,
+      vehicle_id: vehicle?.id || ''
+    });
+    setInspectionAssignmentError('');
+    setIsInspectionAssignmentModalOpen(true);
+  }
+
+  function updateInspectionAssignmentField(field, value) {
+    setInspectionAssignmentForm((current) => ({
+      ...current,
+      [field]: value
+    }));
+    setInspectionAssignmentError('');
+  }
+
+  function handleAssignInspection(event) {
+    event.preventDefault();
+    setInspectionAssignmentError('');
+
+    if (!inspectionAssignmentForm.vehicle_id || !inspectionAssignmentForm.driver_id || !inspectionAssignmentForm.due_date) {
+      setInspectionAssignmentError('Choose a truck, driver, and due date before assigning this inspection.');
+      return;
+    }
+
+    assignInspectionMutation.mutate();
+  }
+
+  function updateInspectionRunnerField(field, value) {
+    setInspectionRunnerForm((current) => ({
+      ...current,
+      [field]: value
+    }));
+    setInspectionRunnerError('');
+  }
+
+  function updateInspectionRunnerStatus(checklistItemKey, status) {
+    setInspectionRunnerForm((current) => ({
+      ...current,
+      items: (current.items || []).map((item) => (
+        item.checklist_item_key === checklistItemKey
+          ? { ...item, status }
+          : item
+      ))
+    }));
+    setInspectionRunnerError('');
+  }
+
+  function handleCreateInspection(event) {
+    event.preventDefault();
+    setInspectionRunnerError('');
+
+    if (!inspectionRunnerVehicle) {
+      setInspectionRunnerError('Choose a vehicle before saving an inspection.');
+      return;
+    }
+
+    if (!inspectionRunnerForm.inspection_date || !inspectionRunnerForm.odometer) {
+      setInspectionRunnerError('Inspection date and odometer are required.');
+      return;
+    }
+
+    if (!inspectionRunnerForm.items?.length) {
+      setInspectionRunnerError('No inspection checklist items are enabled.');
+      return;
+    }
+
+    createInspectionMutation.mutate();
+  }
+
   function handleCreateVehicle(event) {
     event.preventDefault();
     setVehicleError('');
 
-    if (!vehicleForm.name || !vehicleForm.make || !vehicleForm.model || !vehicleForm.year || !vehicleForm.plate) {
-      setVehicleError('Truck Number, make, model, year, and plate are required.');
+    if (!vehicleForm.name || !vehicleForm.plate || !vehicleForm.make || !vehicleForm.model || !vehicleForm.year) {
+      setVehicleError('Vehicle ID, license plate, make, model, and year are required.');
       return;
     }
 
@@ -3140,17 +4163,19 @@ export default function VehiclesPage() {
     createVehicleMutation.mutate();
   }
 
-  function openEditVehicle(vehicle) {
+  function openEditVehicle(vehicle, focus = 'details') {
     setEditingVehicle(vehicle);
+    setEditVehicleFocus(focus);
     setEditVehicleError('');
     setEditVehicleForm({
       name: vehicle.name || '',
       truck_type: vehicle.truck_type || '',
       custom_truck_type: vehicle.custom_truck_type || '',
+      fuel_type: vehicle.fuel_type || '',
       make: vehicle.make || '',
       model: vehicle.model || '',
       year: vehicle.year ? String(vehicle.year) : '',
-      plate: vehicle.plate || '',
+      plate: getRecordedLicensePlate(vehicle),
       registration_expiration: vehicle.registration_expiration || '',
       insurance_expiration: vehicle.insurance_expiration || '',
       vehicle_status: vehicle.vehicle_status || (vehicle.is_active === false ? 'out_of_service' : 'active'),
@@ -3163,8 +4188,8 @@ export default function VehiclesPage() {
     event.preventDefault();
     setEditVehicleError('');
 
-    if (!editVehicleForm.name || !editVehicleForm.make || !editVehicleForm.model || !editVehicleForm.year || !editVehicleForm.plate) {
-      setEditVehicleError('Truck Number, make, model, year, and plate are required.');
+    if (!editVehicleForm.name || !editVehicleForm.plate || !editVehicleForm.make || !editVehicleForm.model || !editVehicleForm.year) {
+      setEditVehicleError('Vehicle ID, license plate, make, model, and year are required.');
       return;
     }
 
@@ -3305,7 +4330,26 @@ export default function VehiclesPage() {
         <div className="service-due-banner vehicle-blocked-banner">
           <div>
             <strong>{blockedVehicles.length} vehicle(s) blocked from readiness</strong>
-            <div>{blockedVehicles.map((vehicle) => vehicle.name).join(', ')}</div>
+            <div className="vehicle-blocked-reason-list">
+              {blockedVehicles.map((vehicle) => {
+                const blockers = getVehicleReadinessReasons(vehicle, 'blocked');
+                return (
+                  <div className="vehicle-blocked-reason-row" key={vehicle.id}>
+                    <strong>{vehicle.name}</strong>
+                    {blockers.length ? blockers.map((reason) => (
+                      <button
+                        className="vehicle-blocked-reason-link"
+                        key={`${reason.type}-${reason.source_id || reason.label}`}
+                        onClick={() => openReadinessReason(vehicle, reason)}
+                        type="button"
+                      >
+                        {reason.label}{reason.detail ? ` · ${reason.detail}` : ''}
+                      </button>
+                    )) : <span>Blocked reason unavailable</span>}
+                  </div>
+                );
+              })}
+            </div>
           </div>
         </div>
       ) : null}
@@ -3340,41 +4384,54 @@ export default function VehiclesPage() {
           <div className="vehicles-table-toolbar">
             <div>
               <div className="card-title">Fleet Inventory</div>
-              <div className="driver-meta">Vehicle records, availability, mileage, and registration status.</div>
+              <div className="driver-meta">Vehicle readiness, assignment, service, and documents.</div>
             </div>
           </div>
-          <div className="vehicles-table">
+          <div className="vehicles-table" style={fleetGridStyle}>
             <div className="vehicles-table-header">
-              <span>Truck Number</span>
-              <span>Status</span>
-              <span>Driver / Route</span>
-              <span>Odometer</span>
-              <span>Next Service</span>
-              <span>Registration</span>
-              <span>Latest Issue</span>
-              <span>Actions</span>
+              <span>Vehicle</span>
+              <span>Readiness</span>
+              {visibleFleetColumnSet.has('assignment') ? <span>Driver / Route</span> : null}
+              {visibleFleetColumnSet.has('odometer') ? <span>Odometer</span> : null}
+              {visibleFleetColumnSet.has('service') ? <span>Next Service</span> : null}
+              {visibleFleetColumnSet.has('documents') ? <span>Documents</span> : null}
+              <span aria-label="Actions" />
             </div>
             {[0, 1, 2].map((value) => (
               <div className="vehicles-table-row" key={value}>
-                {Array.from({ length: 8 }).map((_, index) => (
+                {Array.from({ length: visibleFleetColumns.length + 3 }).map((_, index) => (
                   <div className="skeleton-line skeleton-label" key={index} />
                 ))}
               </div>
             ))}
           </div>
         </div>
+      ) : vehiclesQuery.isError ? (
+        <div className="card vehicles-table-card">
+          <div className="vehicles-table-toolbar">
+            <div>
+              <div className="card-title">Fleet Inventory</div>
+              <div className="driver-meta">Vehicle readiness, assignment, service, and documents.</div>
+            </div>
+          </div>
+          <ErrorState
+            title="Unable to load vehicles"
+            description="Fleet inventory could not be loaded."
+            onRetry={() => vehiclesQuery.refetch()}
+          />
+        </div>
       ) : (
         <div className="card vehicles-table-card">
           <div className="vehicles-table-toolbar">
             <div>
               <div className="card-title">Fleet Inventory</div>
-              <div className="driver-meta">Vehicle records, availability, mileage, and registration status.</div>
+              <div className="driver-meta">Vehicle readiness, assignment, service, and documents.</div>
             </div>
             <div className="vehicles-table-toolbar-actions">
               <input
                 className="text-field"
                 onChange={(event) => setVehicleSearch(event.target.value)}
-                placeholder="Search trucks by number or description"
+                placeholder="Search by vehicle ID, plate, make, or model"
                 type="search"
                 value={vehicleSearch}
               />
@@ -3383,46 +4440,41 @@ export default function VehiclesPage() {
                 onChange={(event) => setVehicleStatusFilter(event.target.value)}
                 value={vehicleStatusFilter}
               >
-                <option value="all">All Statuses</option>
+                <option value="all">All Readiness</option>
                 <option value="ready">Ready</option>
                 <option value="assigned">Assigned</option>
                 <option value="maintenance_soon">Maintenance Soon</option>
                 <option value="blocked">Blocked</option>
               </select>
+              <FleetColumnsMenu onToggle={toggleFleetColumn} visibleColumns={visibleFleetColumns} />
               <span className="driver-meta">{filteredVehicles.length} vehicle{filteredVehicles.length === 1 ? '' : 's'}</span>
             </div>
           </div>
 
           {vehicles.length ? (
             <>
-              <div className="vehicles-table">
+              <div className="vehicles-table" style={fleetGridStyle}>
                 <div className="vehicles-table-header">
-                  <span>Truck Number</span>
-                  <span>Status</span>
-                  <span>Driver / Route</span>
-                  <span>Odometer</span>
-                  <span>Next Service</span>
-                  <span>Registration</span>
-                  <span>Latest Issue</span>
-                  <span>Actions</span>
+                  <span>Vehicle</span>
+                  <span>Readiness</span>
+                  {visibleFleetColumnSet.has('assignment') ? <span>Driver / Route</span> : null}
+                  {visibleFleetColumnSet.has('odometer') ? <span>Odometer</span> : null}
+                  {visibleFleetColumnSet.has('service') ? <span>Next Service</span> : null}
+                  {visibleFleetColumnSet.has('documents') ? <span>Documents</span> : null}
+                  <span aria-label="Actions" />
                 </div>
                 {filteredVehicles.map((vehicle) => {
                   const statusMeta = getReadinessMeta(vehicle);
                   const maintenanceAlert = getNextServiceLabel(vehicle);
-                  const registration = getExpirationStatus(
-                    vehicle.registration_expiration,
-                    'Registration',
-                    Number(activeReminderScheduleDraft.document_warning_days)
-                  );
+                  const registration = getRegistrationStatus(vehicle, Number(activeReminderScheduleDraft.document_warning_days));
                   const insurance = getExpirationStatus(
                     vehicle.insurance_expiration,
                     'Insurance',
                     Number(activeReminderScheduleDraft.document_warning_days)
                   );
-                  const latestIssue = getLatestIssueLabel(vehicle, Number(activeReminderScheduleDraft.document_warning_days));
                   const hasTruckType = Boolean(vehicle.truck_type || vehicle.custom_truck_type);
-                  const vehicleStatusValue = getVehicleStatusValue(vehicle);
-                  const vehicleStatusTone = VEHICLE_STATUS_TONES[vehicleStatusValue] || 'ready';
+                  const registrationStatus = getFleetDocumentStatus(registration);
+                  const insuranceStatus = getFleetDocumentStatus(insurance);
 
                   return (
                     <div
@@ -3441,134 +4493,80 @@ export default function VehiclesPage() {
                     >
                       <div className="vehicles-table-primary">
                         <strong>{vehicle.name}</strong>
-                        <span>{getVehicleDescription(vehicle)}</span>
-                        <span>{hasTruckType ? getVehicleTypeLabel(vehicle) : 'Truck type missing'}</span>
+                        <span>
+                          {getVehicleDescription(vehicle)} • {hasTruckType ? getVehicleTypeLabel(vehicle) : 'Truck type missing'}
+                        </span>
+                        <span>{getRecordedLicensePlate(vehicle) || 'License plate not recorded'}</span>
                       </div>
-                      <div className="vehicle-status-select-wrap" onClick={(event) => event.stopPropagation()}>
-                        <select
-                          aria-label={`Vehicle status for Truck ${vehicle.name}`}
-                          className={`vehicle-status-select vehicle-status-badge ${vehicleStatusTone}`}
-                          disabled={updateVehicleStatusMutation.isPending}
-                          onChange={(event) => {
-                            event.stopPropagation();
-                            updateVehicleStatusMutation.mutate({
-                              vehicleId: vehicle.id,
-                              vehicleStatus: event.target.value
-                            });
-                          }}
-                          onKeyDown={(event) => event.stopPropagation()}
-                          value={vehicleStatusValue}
-                        >
-                          {VEHICLE_STATUS_OPTIONS.map((option) => (
-                            <option key={option.value} value={option.value}>
-                              {option.label}
-                            </option>
-                          ))}
-                        </select>
-                        {statusMeta.filter !== 'ready' ? (
-                          <span className="vehicle-readiness-note">{statusMeta.label}</span>
+                      <div className="vehicle-readiness-cell">
+                        <span className={`vehicle-readiness-pill ${statusMeta.filter}`}>{statusMeta.label}</span>
+                        {vehicle.readiness?.primary_reason ? (
+                          <button
+                            className="vehicle-issue-link"
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              openReadinessReason(vehicle, vehicle.readiness.primary_reason);
+                            }}
+                            type="button"
+                          >
+                            {getVehicleReadinessSummary(vehicle)}
+                          </button>
+                        ) : statusMeta.filter === 'ready' ? (
+                          <span className="vehicle-readiness-clear">No active warning</span>
                         ) : null}
                       </div>
-                      <div className="vehicles-table-primary">
-                        <strong>{getAssignedToLabel(vehicle)}</strong>
-                        <span>{vehicle.today_assignment?.work_area_name ? `Route ${vehicle.today_assignment.work_area_name}` : 'No route today'}</span>
-                      </div>
-                      <div className="vehicles-mileage-cell">
-                        <strong>{formatMileage(vehicle.current_mileage)} miles</strong>
-                      </div>
-                      <div className="vehicles-table-primary">
-                        <strong>{maintenanceAlert.itemLabel}</strong>
-                        <span>{maintenanceAlert.detailLabel}</span>
-                      </div>
-                      <div className="vehicles-table-primary">
-                        <strong>{registration.label}</strong>
-                        <span>{insurance.label}</span>
-                      </div>
-                      <div className="vehicles-table-primary">
-                        <strong>{latestIssue.label}</strong>
-                        <span>{latestIssue.detail}</span>
-                      </div>
+                      {visibleFleetColumnSet.has('assignment') ? (
+                        <div className="vehicles-table-primary">
+                          <strong>{getAssignedToLabel(vehicle)}</strong>
+                          <span>{vehicle.today_assignment?.work_area_name ? `Route ${vehicle.today_assignment.work_area_name}` : 'No route today'}</span>
+                        </div>
+                      ) : null}
+                      {visibleFleetColumnSet.has('odometer') ? (
+                        <div className="vehicles-mileage-cell">
+                          <strong>{formatMileage(vehicle.current_mileage)} mi</strong>
+                        </div>
+                      ) : null}
+                      {visibleFleetColumnSet.has('service') ? (
+                        <div className="vehicles-table-primary">
+                          <strong>{maintenanceAlert.itemLabel}</strong>
+                          <span>{maintenanceAlert.detailLabel}</span>
+                        </div>
+                      ) : null}
+                      {visibleFleetColumnSet.has('documents') ? (
+                        <div className="vehicle-document-list">
+                          <span className={registrationStatus.tone}>
+                            <i aria-hidden="true" />{registrationStatus.label}
+                          </span>
+                          <span className={insuranceStatus.tone}>
+                            <i aria-hidden="true" />{insuranceStatus.label}
+                          </span>
+                        </div>
+                      ) : null}
                       <div className="vehicles-table-actions">
-                        <button
-                          className="secondary-inline-button"
-                          onClick={(event) => {
-                            event.stopPropagation();
-                            openOdometerEditor(vehicle);
+                        <VehicleRowActions
+                          onAssignInspection={() => openInspectionAssignment(vehicle)}
+                          onLogMaintenance={() => {
+                            setMaintenanceVehicle(vehicle);
+                            setMaintenanceForm(buildMaintenanceForm({ vehicle, settings: activeMaintenanceSettings }));
+                            setMaintenanceError('');
                           }}
-                          type="button"
-                        >
-                          Edit Odometer
-                        </button>
-                        <button
-                          className="secondary-inline-button"
-                          onClick={(event) => {
-                            event.stopPropagation();
-                            openEditVehicle(vehicle);
-                          }}
-                          type="button"
-                        >
-                          Edit
-                        </button>
-                        {statusMeta.filter === 'maintenance_soon' ? (
-                          <button
-                            className="primary-inline-button"
-                            onClick={(event) => {
-                              event.stopPropagation();
-                              setHistoryVehicle(vehicle);
-                            }}
-                            type="button"
-                          >
-                            Review
-                          </button>
-                        ) : null}
-                        {statusMeta.filter === 'blocked' ? (
-                          <button
-                            className="primary-inline-button"
-                            onClick={(event) => {
-                              event.stopPropagation();
-                              setMaintenanceVehicle(vehicle);
-                              setMaintenanceForm(buildMaintenanceForm({ vehicle, settings: activeMaintenanceSettings }));
-                              setMaintenanceError('');
-                            }}
-                            type="button"
-                          >
-                            Fix
-                          </button>
-                        ) : null}
-                        <details className="vehicles-row-menu" onClick={(event) => event.stopPropagation()}>
-                          <summary aria-label={`More actions for Truck ${vehicle.name}`} title={`More actions for Truck ${vehicle.name}`}>
-                            <span aria-hidden="true">•••</span>
-                            <span className="sr-only">More actions for Truck {vehicle.name}</span>
-                          </summary>
-                          <div className="vehicles-row-menu-panel">
-                            <button onClick={() => openEditVehicle(vehicle)} type="button">
-                              View Details
-                            </button>
-                            <button onClick={() => openOdometerEditor(vehicle)} type="button">
-                              Edit Odometer
-                            </button>
-                            <button
-                              onClick={() => {
-                                setMaintenanceVehicle(vehicle);
-                                setMaintenanceForm(buildMaintenanceForm({ vehicle, settings: activeMaintenanceSettings }));
-                                setMaintenanceError('');
-                              }}
-                              type="button"
-                            >
-                              Log Maintenance
-                            </button>
-                            <button onClick={() => setHistoryVehicle(vehicle)} type="button">
-                              View Maintenance History
-                            </button>
-                          </div>
-                        </details>
+                          onOpenDetails={() => openEditVehicle(vehicle)}
+                          onRunInspection={() => openInspectionRunner(vehicle)}
+                          onUpdateOdometer={() => openOdometerEditor(vehicle)}
+                          onViewHistory={() => openEditVehicle(vehicle, 'history')}
+                          vehicle={vehicle}
+                        />
                       </div>
                     </div>
                   );
                 })}
               </div>
               {!filteredVehicles.length ? (
-                <div className="labor-empty-state">No vehicles match the current search or status filter.</div>
+                <EmptyState
+                  variant="inline"
+                  title="No vehicles match the current search or status filter"
+                  description="Clear or adjust the search and status filter to see more vehicles."
+                />
               ) : null}
               <div className="maintenance-alert-legend">
                 <span><strong>OK:</strong> Outside reminder windows</span>
@@ -3577,7 +4575,11 @@ export default function VehiclesPage() {
               </div>
             </>
           ) : (
-            <div className="labor-empty-state">No vehicles are in this fleet yet.</div>
+            <EmptyState
+              variant="inline"
+              title="No vehicles are in this fleet yet"
+              description="Add vehicles to make them available for route assignment, readiness, and maintenance tracking."
+            />
           )}
         </div>
           )}
@@ -3586,6 +4588,7 @@ export default function VehiclesPage() {
 
       {activeVehiclesTab === 'Maintenance' ? (
         <MaintenanceRecordsPanel
+          errorMessage={maintenanceRecordsQuery.isError ? 'Maintenance records could not be loaded.' : ''}
           filters={maintenanceRecordFilters}
           isLoading={maintenanceRecordsQuery.isLoading && !latestVehicleMaintenanceRecords.length}
           onChangeFilters={updateMaintenanceRecordFilter}
@@ -3594,6 +4597,7 @@ export default function VehiclesPage() {
             `readyroute-maintenance-records-${getTodayString()}.csv`,
             buildMaintenanceRecordsCsvRows(filteredMaintenanceRecords)
           )}
+          onRetry={() => maintenanceRecordsQuery.refetch()}
           onViewHistory={setHistoryVehicle}
           records={filteredMaintenanceRecords}
           serviceTypeOptions={serviceTypeOptions}
@@ -3603,6 +4607,7 @@ export default function VehiclesPage() {
 
       {activeVehiclesTab === 'Inspections' ? (
         <InspectionsPanel
+          errorMessage={inspectionsQuery.isError ? 'Vehicle inspection submissions could not be loaded.' : ''}
           inspections={filteredInspections}
           isLoading={inspectionsQuery.isLoading}
           onExportCsv={() => downloadCsv(
@@ -3613,6 +4618,7 @@ export default function VehiclesPage() {
             setSelectedInspection(inspection);
             setInspectionReviewNote(inspection.manager_review_note || '');
           }}
+          onRetry={() => inspectionsQuery.refetch()}
           onStatusFilterChange={setInspectionStatusFilter}
           statusFilter={inspectionStatusFilter}
         />
@@ -3702,6 +4708,7 @@ export default function VehiclesPage() {
         <VehicleDetailsDrawer
           errorMessage={editVehicleError}
           form={editVehicleForm}
+          historyMenuOpen={editVehicleFocus === 'history'}
           isSubmitting={updateVehicleMutation.isPending}
           onAddService={() => {
             setMaintenanceVehicle(editingVehicle);
@@ -3709,8 +4716,16 @@ export default function VehiclesPage() {
             setMaintenanceError('');
             setEditingVehicle(null);
           }}
+          onAssignInspection={() => {
+            openInspectionAssignment(editingVehicle);
+            setEditingVehicle(null);
+          }}
           onChange={updateEditVehicleField}
           onClose={() => setEditingVehicle(null)}
+          onRunInspection={() => {
+            openInspectionRunner(editingVehicle);
+            setEditingVehicle(null);
+          }}
           onViewAssignmentHistory={() => {
             setAssignmentHistoryVehicle(editingVehicle);
             setEditingVehicle(null);
@@ -3731,6 +4746,37 @@ export default function VehiclesPage() {
           vehicle={editingVehicle}
         />
       ) : null}
+
+      <InspectionRunnerModal
+        errorMessage={inspectionRunnerError}
+        form={inspectionRunnerForm}
+        isSubmitting={createInspectionMutation.isPending}
+        onChange={updateInspectionRunnerField}
+        onChangeStatus={updateInspectionRunnerStatus}
+        onClose={() => {
+          setInspectionRunnerVehicle(null);
+          setInspectionRunnerForm(getInspectionForm(null, activeChecklistTemplateFields));
+          setInspectionRunnerError('');
+        }}
+        onSubmit={handleCreateInspection}
+        vehicle={inspectionRunnerVehicle}
+      />
+
+      <InspectionAssignmentModal
+        drivers={drivers}
+        errorMessage={inspectionAssignmentError}
+        form={inspectionAssignmentForm}
+        isOpen={isInspectionAssignmentModalOpen}
+        isSubmitting={assignInspectionMutation.isPending}
+        onChange={updateInspectionAssignmentField}
+        onClose={() => {
+          setIsInspectionAssignmentModalOpen(false);
+          setInspectionAssignmentForm(emptyInspectionAssignmentForm);
+          setInspectionAssignmentError('');
+        }}
+        onSubmit={handleAssignInspection}
+        vehicles={vehicles}
+      />
 
       {maintenanceVehicle ? (
         <MaintenanceModal
@@ -3783,6 +4829,7 @@ export default function VehiclesPage() {
       <InspectionHistoryModal
         onClose={() => setInspectionHistoryVehicle(null)}
         onOpenInspection={(inspection) => {
+          setInspectionHistoryVehicle(null);
           setSelectedInspection(inspection);
           setInspectionReviewNote(inspection.manager_review_note || '');
         }}
@@ -3808,13 +4855,30 @@ export default function VehiclesPage() {
       <InspectionDetailModal
         inspection={inspectionDetailQuery.data || selectedInspection}
         isReviewing={reviewInspectionMutation.isPending}
+        isUpdatingVehicleStatus={updateVehicleStatusMutation.isPending}
         onChangeReviewNote={setInspectionReviewNote}
         onClose={() => {
           setSelectedInspection(null);
           setInspectionReviewNote('');
+          clearInspectionLinkParams();
         }}
         onLogMaintenanceFromIssue={() => openMaintenanceFromInspection(inspectionDetailQuery.data || selectedInspection)}
         onReview={() => reviewInspectionMutation.mutate()}
+        onVehicleStatusDecision={(vehicleStatus) => {
+          const inspection = inspectionDetailQuery.data || selectedInspection;
+          const vehicleId = inspection?.vehicle?.id || inspection?.vehicle_id;
+
+          if (!vehicleId) {
+            setToastMessage('Inspection is missing a vehicle record.');
+            return;
+          }
+
+          updateVehicleStatusMutation.mutate({
+            vehicleId,
+            vehicleStatus,
+            sourceInspectionId: inspection?.id || null
+          });
+        }}
         reviewNote={inspectionReviewNote}
       />
     </section>

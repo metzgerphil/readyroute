@@ -118,6 +118,104 @@ function createSupabaseStub(initialAccount = {}) {
   };
 }
 
+class AuthRouteMockQueryBuilder {
+  constructor(supabase, table) {
+    this.supabase = supabase;
+    this.table = table;
+    this.operation = 'select';
+    this.state = {
+      table,
+      filters: [],
+      payload: undefined,
+      columns: null,
+      options: {}
+    };
+  }
+
+  select(columns) {
+    if (this.operation === 'insert' || this.operation === 'update' || this.operation === 'upsert') {
+      this.state.returning = columns;
+      return this;
+    }
+
+    this.operation = 'select';
+    this.state.columns = columns;
+    return this;
+  }
+
+  insert(payload) {
+    this.operation = 'insert';
+    this.state.payload = payload;
+    return this;
+  }
+
+  update(payload) {
+    this.operation = 'update';
+    this.state.payload = payload;
+    return this;
+  }
+
+  upsert(payload, options = {}) {
+    this.operation = 'upsert';
+    this.state.payload = payload;
+    this.state.options = options;
+    return this;
+  }
+
+  delete() {
+    this.operation = 'delete';
+    return this;
+  }
+
+  eq(column, value) {
+    this.state.filters.push({ op: 'eq', column, value });
+    return this;
+  }
+
+  order() {
+    return this;
+  }
+
+  maybeSingle() {
+    return this.execute('maybeSingle');
+  }
+
+  single() {
+    return this.execute('single');
+  }
+
+  then(resolve, reject) {
+    return this.execute('all').then(resolve, reject);
+  }
+
+  execute(mode) {
+    return Promise.resolve(
+      this.supabase.execute({
+        table: this.table,
+        operation: this.operation,
+        mode,
+        ...this.state
+      })
+    );
+  }
+}
+
+class AuthRouteMockSupabase {
+  constructor(handler) {
+    this.handler = handler;
+    this.calls = [];
+  }
+
+  from(table) {
+    return new AuthRouteMockQueryBuilder(this, table);
+  }
+
+  execute(query) {
+    this.calls.push(query);
+    return this.handler(query, this.calls);
+  }
+}
+
 test('manager login supports manager_users records', async () => {
   const hash = await bcrypt.hash('VladPass!2026', 10);
   const supabase = createSupabaseStub({
@@ -225,6 +323,163 @@ test('mobile login returns both portal tokens for a linked manager-driver identi
   assert.equal(driverPayload.email, 'vlad@example.com');
   assert.equal(managerPayload.manager_user_id, 'manager-user-1');
   assert.equal(managerPayload.role, 'manager');
+});
+
+test('public manager trial signup is disabled unless explicitly enabled', async () => {
+  const originalPublicTrials = process.env.READYROUTE_ENABLE_PUBLIC_TRIALS;
+  delete process.env.READYROUTE_ENABLE_PUBLIC_TRIALS;
+
+  try {
+    const supabase = createSupabaseStub();
+    const app = createApp({ supabase, jwtSecret: 'test-secret', enforceBilling: false });
+
+    const response = await request(app)
+      .post('/auth/manager/start-trial')
+      .send({
+        company_name: 'Bridge Transportation',
+        full_name: 'Phillip Metzger',
+        email: 'phillovesjoy@gmail.com',
+        password: 'StrongPass!2026',
+        vehicle_count: 15
+      });
+
+    assert.equal(response.status, 403);
+    assert.equal(response.body.error, 'Public workspace creation is currently disabled. Please request access through readyroute.org/mvp.');
+    assert.equal(response.body.redirect_url, 'https://readyroute.org/mvp');
+  } finally {
+    if (originalPublicTrials === undefined) {
+      delete process.env.READYROUTE_ENABLE_PUBLIC_TRIALS;
+    } else {
+      process.env.READYROUTE_ENABLE_PUBLIC_TRIALS = originalPublicTrials;
+    }
+  }
+});
+
+test('public manager trial signup seeds route billing commitment before checkout', async () => {
+  const originalPublicTrials = process.env.READYROUTE_ENABLE_PUBLIC_TRIALS;
+  process.env.READYROUTE_ENABLE_PUBLIC_TRIALS = 'true';
+  const accountState = {
+    id: 'acct-trial',
+    company_name: 'Bridge Transportation',
+    manager_email: 'owner@example.com',
+    stripe_customer_id: null,
+    vehicle_count: 15,
+    plan: 'starter'
+  };
+
+  try {
+    const supabase = new AuthRouteMockSupabase((query) => {
+      if (query.table === 'manager_users' && query.operation === 'select') {
+        return { data: [], error: null };
+      }
+
+      if (query.table === 'accounts' && query.operation === 'select') {
+        const emailFilter = query.filters.find((filter) => filter.column === 'manager_email');
+
+        if (emailFilter) {
+          return { data: null, error: null };
+        }
+
+        return { data: { ...accountState }, error: null };
+      }
+
+      if (query.table === 'accounts' && query.operation === 'insert') {
+        assert.equal(query.payload.company_name, 'Bridge Transportation');
+        assert.equal(query.payload.manager_email, 'owner@example.com');
+        assert.equal(query.payload.vehicle_count, 15);
+        return {
+          data: {
+            id: accountState.id,
+            company_name: accountState.company_name,
+            manager_email: accountState.manager_email,
+            stripe_customer_id: null,
+            vehicle_count: 15
+          },
+          error: null
+        };
+      }
+
+      if (query.table === 'manager_users' && query.operation === 'insert') {
+        assert.equal(query.payload.account_id, accountState.id);
+        assert.equal(query.payload.email, 'owner@example.com');
+        assert.equal(query.payload.full_name, 'Phil Manager');
+        return { data: null, error: null };
+      }
+
+      if (query.table === 'account_billing_settings' && query.operation === 'upsert') {
+        assert.equal(query.payload.account_id, accountState.id);
+        assert.equal(query.payload.committed_route_count, 15);
+        assert.equal(query.options.onConflict, 'account_id');
+        return {
+          data: {
+            committed_route_count: 15,
+            billing_rate_cents: 1500,
+            currency: 'usd',
+            free_month_started_on: null,
+            free_month_ends_on: null,
+            is_billing_exempt: false
+          },
+          error: null
+        };
+      }
+
+      if (query.table === 'accounts' && query.operation === 'update') {
+        if (query.payload.stripe_customer_id) {
+          accountState.stripe_customer_id = query.payload.stripe_customer_id;
+        }
+        return { data: null, error: null };
+      }
+
+      throw new Error(`Unexpected query ${query.table}:${query.operation}`);
+    });
+
+    const stripeClient = {
+      customers: {
+        create: async (payload) => {
+          assert.equal(payload.email, 'owner@example.com');
+          assert.equal(payload.metadata.account_id, accountState.id);
+          return { id: 'cus_trial' };
+        }
+      },
+      checkout: {
+        sessions: {
+          create: async (payload) => {
+            assert.equal(payload.line_items[0].quantity, 15);
+            assert.equal(payload.subscription_data.trial_period_days, 30);
+            assert.equal(payload.subscription_data.metadata.account_id, accountState.id);
+            return { id: 'cs_trial', url: 'https://checkout.stripe.test/cs_trial' };
+          }
+        }
+      }
+    };
+    const app = createApp({
+      supabase,
+      jwtSecret: 'test-secret',
+      stripeClient,
+      stripePriceId: 'price_route',
+      trialDays: 30,
+      enforceBilling: false
+    });
+
+    const response = await request(app)
+      .post('/auth/manager/start-trial')
+      .send({
+        company_name: 'Bridge Transportation',
+        full_name: 'Phil Manager',
+        email: 'owner@example.com',
+        password: 'StrongPass!2026',
+        route_count: 15
+      });
+
+    assert.equal(response.status, 200);
+    assert.equal(response.body.checkout_url, 'https://checkout.stripe.test/cs_trial');
+  } finally {
+    if (originalPublicTrials === undefined) {
+      delete process.env.READYROUTE_ENABLE_PUBLIC_TRIALS;
+    } else {
+      process.env.READYROUTE_ENABLE_PUBLIC_TRIALS = originalPublicTrials;
+    }
+  }
 });
 
 test('manager session can request driver mode even before a route is assigned', async () => {

@@ -2,6 +2,14 @@
 
 This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
 
+## ReadyRoute Environment
+
+- `VITE_API_URL`: production backend API URL.
+- `VITE_API_URL_LOCAL`: local backend API URL for development.
+- `VITE_GOOGLE_MAPS_KEY`: Google Maps browser key.
+
+ReadyRoute employee access is handled by staff accounts through `/readyroute/login`; it does not use a browser-side admin email allowlist.
+
 Currently, two official plugins are available:
 
 - [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)

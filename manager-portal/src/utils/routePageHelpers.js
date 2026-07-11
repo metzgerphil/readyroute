@@ -1,6 +1,10 @@
 import { format } from 'date-fns';
 
 import { buildTelHref, getStopContactDetails } from './contactInfo';
+import {
+  getResolvedOperationsDate,
+  getTodayString as getOperationsTodayString
+} from './operationsDate';
 
 export const ROUTE_STATUS_META = {
   pending: { label: 'Pending', color: '#9ca3af' },
@@ -10,12 +14,11 @@ export const ROUTE_STATUS_META = {
 };
 
 export function getTodayString() {
-  return format(new Date(), 'yyyy-MM-dd');
+  return getOperationsTodayString();
 }
 
 export function getInitialRouteDate(searchParams) {
-  const requestedDate = searchParams.get('date');
-  return requestedDate || getTodayString();
+  return getResolvedOperationsDate(searchParams);
 }
 
 export function getGoogleMapsErrorMessage(error) {
@@ -113,7 +116,7 @@ function formatTimeCommit(stop) {
   return `${stop.ready_time} — ${stop.close_time}`;
 }
 
-function escapeHtml(value) {
+export function escapeHtml(value) {
   return String(value ?? '')
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
@@ -255,14 +258,34 @@ export function getRouteDispatchWarnings({ route, allStops, roadFlags = [] }) {
   return warnings;
 }
 
+export function isUsableMapCoordinate(lat, lng) {
+  const parsedLat = Number(lat);
+  const parsedLng = Number(lng);
+
+  if (!Number.isFinite(parsedLat) || !Number.isFinite(parsedLng)) {
+    return false;
+  }
+
+  if (parsedLat === 0 && parsedLng === 0) {
+    return false;
+  }
+
+  return parsedLat >= -90 && parsedLat <= 90 && parsedLng >= -180 && parsedLng <= 180;
+}
+
+export function toUsableMapPoint(value) {
+  if (!value || !isUsableMapCoordinate(value.lat, value.lng)) {
+    return null;
+  }
+
+  return {
+    lat: Number(value.lat),
+    lng: Number(value.lng)
+  };
+}
+
 export function buildBoundary(stops) {
-  const mappableStops = (stops || []).filter(
-    (stop) =>
-      stop?.lat != null &&
-      stop?.lng != null &&
-      Number.isFinite(Number(stop.lat)) &&
-      Number.isFinite(Number(stop.lng))
-  );
+  const mappableStops = (stops || []).filter((stop) => isUsableMapCoordinate(stop?.lat, stop?.lng));
 
   if (!mappableStops.length) {
     return null;
@@ -294,13 +317,7 @@ export function getDistanceMiles(left, right) {
 }
 
 export function getRouteCentroid(stops = []) {
-  const validStops = (stops || []).filter(
-    (stop) =>
-      stop?.lat != null &&
-      stop?.lng != null &&
-      Number.isFinite(Number(stop.lat)) &&
-      Number.isFinite(Number(stop.lng))
-  );
+  const validStops = (stops || []).filter((stop) => isUsableMapCoordinate(stop?.lat, stop?.lng));
 
   if (!validStops.length) {
     return null;
@@ -468,18 +485,18 @@ export function buildDriverInfoWindow({ route, routeDriverName, nextStop, pendin
 
   return `
     <div style="min-width:280px; color:#173042; padding:8px 6px;">
-      <div style="font-size:15px; font-weight:900;">${routeDriverName}</div>
-      <div style="margin-top:4px; font-size:13px; color:#5f6b76; font-weight:700;">Work Area ${route?.work_area_name || '—'}</div>
-      <div style="margin-top:10px; font-size:12px; color:#5f6b76;">${route?.completed_stops || 0} / ${route?.total_stops || 0} completed</div>
-      <div style="margin-top:4px; font-size:12px; color:#5f6b76;">Stops/Hour: ${stopsPerHour}</div>
+      <div style="font-size:15px; font-weight:900;">${escapeHtml(routeDriverName)}</div>
+      <div style="margin-top:4px; font-size:13px; color:#5f6b76; font-weight:700;">Work Area ${escapeHtml(route?.work_area_name || '—')}</div>
+      <div style="margin-top:10px; font-size:12px; color:#5f6b76;">${escapeHtml(route?.completed_stops || 0)} / ${escapeHtml(route?.total_stops || 0)} completed</div>
+      <div style="margin-top:4px; font-size:12px; color:#5f6b76;">Stops/Hour: ${escapeHtml(stopsPerHour)}</div>
       <div style="margin-top:10px; font-size:12px; font-weight:900; color:#173042;">Next stop</div>
-      <div style="margin-top:4px; font-size:12px; color:#374151;">${nextStopAddress}</div>
+      <div style="margin-top:4px; font-size:12px; color:#374151;">${escapeHtml(nextStopAddress)}</div>
       ${
         nextStopTimeCommit
-          ? `<div style="margin-top:8px; font-size:12px; font-weight:900; color:#b45309;">TC: ${nextStopTimeCommit}</div>`
+          ? `<div style="margin-top:8px; font-size:12px; font-weight:900; color:#b45309;">TC: ${escapeHtml(nextStopTimeCommit)}</div>`
           : ''
       }
-      <div style="margin-top:8px; font-size:12px; color:#5f6b76;">Pending time commits remaining: ${pendingTimeCommitCount}</div>
+      <div style="margin-top:8px; font-size:12px; color:#5f6b76;">Pending time commits remaining: ${escapeHtml(pendingTimeCommitCount)}</div>
     </div>
   `;
 }

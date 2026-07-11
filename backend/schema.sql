@@ -40,9 +40,16 @@ create table if not exists public.accounts (
   manifest_sync_interval_minutes integer not null default 15,
   manager_email text unique,
   manager_password_hash text,
+  account_status text not null default 'active',
+  cancellation_requested_at timestamptz,
+  service_ends_at timestamptz,
+  retention_ends_at timestamptz,
+  canceled_at timestamptz,
+  cancellation_reason text,
   created_at timestamptz not null default now(),
   constraint accounts_vehicle_count_nonnegative check (vehicle_count >= 0),
   constraint accounts_plan_check check (plan in ('starter', 'pro', 'active', 'suspended')),
+  constraint accounts_account_status_check check (account_status in ('active', 'canceling', 'retained')),
   constraint accounts_driver_starter_pin_check check (driver_starter_pin is null or driver_starter_pin ~ '^[0-9]{4}$'),
   constraint accounts_dispatch_window_start_hour_check check (dispatch_window_start_hour >= 0 and dispatch_window_start_hour <= 23),
   constraint accounts_dispatch_window_end_hour_check check (dispatch_window_end_hour >= 1 and dispatch_window_end_hour <= 23),
@@ -61,6 +68,109 @@ create table if not exists public.manager_users (
   accepted_at timestamptz,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
+);
+
+create table if not exists public.readyroute_staff_users (
+  id uuid primary key default gen_random_uuid(),
+  email text not null,
+  full_name text not null,
+  password_hash text,
+  role text not null default 'support',
+  is_active boolean not null default true,
+  invited_by_staff_user_id uuid references public.readyroute_staff_users(id) on delete set null,
+  invited_at timestamptz,
+  accepted_at timestamptz,
+  last_login_at timestamptz,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  constraint readyroute_staff_users_role_check check (role in ('owner', 'admin', 'support', 'read_only'))
+);
+
+create table if not exists public.account_cancellation_events (
+  id uuid primary key default gen_random_uuid(),
+  account_id uuid references public.accounts(id) on delete cascade,
+  event_type text not null,
+  requested_by_manager_user_id uuid references public.manager_users(id) on delete set null,
+  requested_by_staff_user_id uuid references public.readyroute_staff_users(id) on delete set null,
+  actor_email text,
+  reason text,
+  metadata jsonb not null default '{}'::jsonb,
+  created_at timestamptz not null default now(),
+  constraint account_cancellation_events_type_check
+    check (event_type in ('requested', 'retained', 'recovered', 'purged'))
+);
+
+create table if not exists public.account_internal_profiles (
+  account_id uuid primary key references public.accounts(id) on delete cascade,
+  lifecycle_status text not null default 'lead',
+  onboarding_stage text,
+  internal_owner_staff_user_id uuid references public.readyroute_staff_users(id) on delete set null,
+  internal_notes text,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  constraint account_internal_profiles_lifecycle_status_check
+    check (lifecycle_status in ('lead', 'trial', 'onboarding', 'active', 'at_risk', 'canceled'))
+);
+
+create table if not exists public.readyroute_staff_invites (
+  id uuid primary key default gen_random_uuid(),
+  email text not null,
+  full_name text not null,
+  role text not null default 'support',
+  status text not null default 'pending',
+  token_hash text not null unique,
+  invited_by_staff_user_id uuid references public.readyroute_staff_users(id) on delete set null,
+  accepted_by_staff_user_id uuid references public.readyroute_staff_users(id) on delete set null,
+  email_provider_id text,
+  expires_at timestamptz not null,
+  accepted_at timestamptz,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  constraint readyroute_staff_invites_role_check check (role in ('owner', 'admin', 'support', 'read_only')),
+  constraint readyroute_staff_invites_status_check check (status in ('pending', 'accepted', 'expired', 'revoked'))
+);
+
+create table if not exists public.readyroute_staff_audit_log (
+  id uuid primary key default gen_random_uuid(),
+  staff_user_id uuid references public.readyroute_staff_users(id) on delete set null,
+  staff_email text,
+  action text not null,
+  target_type text,
+  target_id text,
+  account_id uuid references public.accounts(id) on delete set null,
+  metadata jsonb not null default '{}'::jsonb,
+  created_at timestamptz not null default now()
+);
+
+create table if not exists public.readyroute_operating_costs (
+  id uuid primary key default gen_random_uuid(),
+  period_month date not null,
+  category text not null default 'other',
+  vendor text not null,
+  amount_cents integer not null default 0,
+  billing_date date,
+  is_recurring boolean not null default true,
+  notes text,
+  receipt_url text,
+  created_by_staff_user_id uuid references public.readyroute_staff_users(id) on delete set null,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  constraint readyroute_operating_costs_amount_nonnegative check (amount_cents >= 0),
+  constraint readyroute_operating_costs_category_check check (
+    category in (
+      'ai_tools',
+      'vercel',
+      'google_cloud_run',
+      'supabase',
+      'email',
+      'maps',
+      'apple_developer',
+      'stripe_fees',
+      'domains',
+      'software',
+      'other'
+    )
+  )
 );
 
 create table if not exists public.account_link_codes (
@@ -136,8 +246,17 @@ create table if not exists public.vehicles (
   next_service_mileage integer,
   notes text,
   is_active boolean not null default true,
+  readiness_source_type text,
+  readiness_source_id uuid,
+  constraint vehicles_readiness_source_type_check check (
+    readiness_source_type is null or readiness_source_type in ('inspection')
+  ),
   constraint vehicles_current_mileage_nonnegative check (current_mileage >= 0)
 );
+
+create index if not exists vehicles_readiness_source_idx
+  on public.vehicles (account_id, readiness_source_type, readiness_source_id)
+  where readiness_source_id is not null;
 
 create table if not exists public.vehicle_maintenance (
   id uuid primary key default gen_random_uuid(),
@@ -269,6 +388,132 @@ create table if not exists public.route_sync_events (
   created_at timestamptz not null default timezone('utc', now()),
   constraint route_sync_events_type_check check (event_type in ('manifest_staged', 'manifest_updated', 'route_assignment_updated', 'routes_dispatched', 'post_dispatch_change', 'fcc_progress_synced')),
   constraint route_sync_events_status_check check (event_status in ('info', 'warning', 'urgent'))
+);
+
+create table if not exists public.account_billing_settings (
+  id uuid primary key default gen_random_uuid(),
+  account_id uuid not null unique references public.accounts(id) on delete cascade,
+  committed_route_count integer not null default 0,
+  billing_rate_cents integer not null default 1500,
+  currency text not null default 'usd',
+  free_month_started_on date,
+  free_month_ends_on date,
+  is_billing_exempt boolean not null default false,
+  billing_notes text,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  constraint account_billing_settings_committed_route_count_check check (committed_route_count >= 0),
+  constraint account_billing_settings_billing_rate_cents_check check (billing_rate_cents >= 0),
+  constraint account_billing_settings_currency_check check (currency ~ '^[a-z]{3}$'),
+  constraint account_billing_settings_free_month_order_check check (
+    free_month_started_on is null or free_month_ends_on is null or free_month_ends_on > free_month_started_on
+  )
+);
+
+create table if not exists public.billing_manifest_imports (
+  id uuid primary key default gen_random_uuid(),
+  account_id uuid not null references public.accounts(id) on delete cascade,
+  route_id uuid references public.routes(id) on delete set null,
+  route_date date not null,
+  billing_period_start date not null,
+  billing_period_end date not null,
+  route_key text not null,
+  route_display_name text not null,
+  source text not null default 'manifest_upload',
+  manifest_fingerprint text,
+  manifest_layer_count integer not null default 0,
+  manager_user_id uuid references public.manager_users(id) on delete set null,
+  imported_at timestamptz not null default now(),
+  billing_exempt boolean not null default false,
+  metadata jsonb not null default '{}'::jsonb,
+  constraint billing_manifest_imports_period_order_check check (billing_period_end > billing_period_start),
+  constraint billing_manifest_imports_manifest_layer_count_check check (manifest_layer_count >= 0)
+);
+
+create table if not exists public.billable_route_months (
+  id uuid primary key default gen_random_uuid(),
+  account_id uuid not null references public.accounts(id) on delete cascade,
+  billing_period_start date not null,
+  billing_period_end date not null,
+  route_key text not null,
+  route_display_name text not null,
+  first_route_id uuid references public.routes(id) on delete set null,
+  last_route_id uuid references public.routes(id) on delete set null,
+  first_imported_at timestamptz not null,
+  last_imported_at timestamptz not null,
+  status text not null default 'pending',
+  stripe_usage_event_id text,
+  stripe_invoice_id text,
+  metadata jsonb not null default '{}'::jsonb,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  constraint billable_route_months_period_order_check check (billing_period_end > billing_period_start),
+  constraint billable_route_months_import_order_check check (last_imported_at >= first_imported_at),
+  constraint billable_route_months_status_check check (status in ('pending', 'reported', 'invoiced', 'credited', 'void'))
+);
+
+create table if not exists public.billing_usage_reports (
+  id uuid primary key default gen_random_uuid(),
+  account_id uuid not null references public.accounts(id) on delete cascade,
+  billing_period_start date not null,
+  billing_period_end date not null,
+  committed_route_count integer not null default 0,
+  imported_route_count integer not null default 0,
+  billable_quantity integer not null default 0,
+  amount_cents integer not null default 0,
+  currency text not null default 'usd',
+  stripe_subscription_id text,
+  stripe_invoice_id text,
+  status text not null default 'draft',
+  metadata jsonb not null default '{}'::jsonb,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  constraint billing_usage_reports_period_order_check check (billing_period_end > billing_period_start),
+  constraint billing_usage_reports_counts_check check (
+    committed_route_count >= 0 and imported_route_count >= 0 and billable_quantity >= 0 and amount_cents >= 0
+  ),
+  constraint billing_usage_reports_currency_check check (currency ~ '^[a-z]{3}$'),
+  constraint billing_usage_reports_status_check check (status in ('draft', 'reported', 'invoiced', 'void'))
+);
+
+create table if not exists public.account_cost_snapshots (
+  id uuid primary key default gen_random_uuid(),
+  account_id uuid not null references public.accounts(id) on delete cascade,
+  period_month date not null,
+  estimated_revenue_cents integer not null default 0,
+  cloud_run_cents integer not null default 0,
+  database_cents integer not null default 0,
+  storage_cents integer not null default 0,
+  email_cents integer not null default 0,
+  maps_cents integer not null default 0,
+  support_cents integer not null default 0,
+  other_cents integer not null default 0,
+  total_cost_cents integer not null default 0,
+  notes text,
+  created_by_staff_user_id uuid references public.readyroute_staff_users(id) on delete set null,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  constraint account_cost_snapshots_cents_nonnegative check (
+    estimated_revenue_cents >= 0
+    and cloud_run_cents >= 0
+    and database_cents >= 0
+    and storage_cents >= 0
+    and email_cents >= 0
+    and maps_cents >= 0
+    and support_cents >= 0
+    and other_cents >= 0
+    and total_cost_cents >= 0
+  )
+);
+
+create table if not exists public.stripe_webhook_events (
+  stripe_event_id text primary key,
+  event_type text not null,
+  processing_status text not null default 'processed',
+  processed_at timestamptz not null default now(),
+  account_id uuid references public.accounts(id) on delete set null,
+  payload jsonb not null default '{}'::jsonb,
+  constraint stripe_webhook_events_processing_status_check check (processing_status in ('processed', 'failed', 'ignored'))
 );
 
 create table if not exists public.fedex_sync_runs (
@@ -547,6 +792,73 @@ create table if not exists public.driver_positions (
   is_online boolean not null default true
 );
 
+create table if not exists public.support_tickets (
+  id uuid primary key default gen_random_uuid(),
+  ticket_reference text not null unique,
+  account_id uuid references public.accounts(id) on delete set null,
+  manager_user_id uuid references public.manager_users(id) on delete set null,
+  driver_id uuid references public.drivers(id) on delete set null,
+  requester_type text not null default 'public',
+  requester_name text not null,
+  requester_email text not null,
+  requester_phone text,
+  requester_role text,
+  company_name text,
+  category text not null default 'other',
+  urgency text not null default 'question',
+  priority text not null default 'low',
+  status text not null default 'new',
+  subject text,
+  description text not null,
+  request_call boolean not null default false,
+  source text,
+  app_surface text,
+  app_version text,
+  page_url text,
+  user_agent text,
+  context jsonb,
+  internal_notes text,
+  assigned_staff_user_id uuid references public.readyroute_staff_users(id) on delete set null,
+  resolved_at timestamptz,
+  closed_at timestamptz,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  constraint support_tickets_requester_type_check check (requester_type in ('public', 'manager', 'driver')),
+  constraint support_tickets_category_check check (category in (
+    'login',
+    'routes',
+    'manifest',
+    'driver_app',
+    'manager_portal',
+    'vehicle_inspection',
+    'vehicles',
+    'billing',
+    'maps_location',
+    'onboarding',
+    'bug',
+    'feature_request',
+    'other'
+  )),
+  constraint support_tickets_urgency_check check (urgency in ('blocking_today', 'needs_help_soon', 'question', 'low')),
+  constraint support_tickets_priority_check check (priority in ('low', 'normal', 'high', 'urgent')),
+  constraint support_tickets_status_check check (status in ('new', 'open', 'waiting_on_customer', 'resolved', 'closed'))
+);
+
+create index if not exists support_tickets_account_created_idx
+  on public.support_tickets (account_id, created_at desc);
+
+create index if not exists support_tickets_status_created_idx
+  on public.support_tickets (status, created_at desc);
+
+create index if not exists support_tickets_requester_email_idx
+  on public.support_tickets (requester_email);
+
+alter table public.support_tickets
+  add column if not exists assigned_staff_user_id uuid references public.readyroute_staff_users(id) on delete set null;
+
+create index if not exists support_tickets_assigned_staff_idx
+  on public.support_tickets (assigned_staff_user_id, status, created_at desc);
+
 -- compatibility migrations for existing projects
 alter table public.accounts add column if not exists manager_email text;
 alter table public.accounts add column if not exists manager_password_hash text;
@@ -724,6 +1036,18 @@ alter table public.manager_users drop constraint if exists manager_users_email_k
 drop index if exists public.manager_users_email_uidx;
 drop index if exists public.manager_users_lower_email_uidx;
 create unique index if not exists manager_users_account_email_uidx on public.manager_users(account_id, lower(email));
+create unique index if not exists readyroute_staff_users_lower_email_uidx on public.readyroute_staff_users(lower(email));
+create index if not exists readyroute_staff_users_role_idx on public.readyroute_staff_users(role, is_active);
+create index if not exists account_internal_profiles_lifecycle_idx on public.account_internal_profiles(lifecycle_status, updated_at desc);
+create unique index if not exists readyroute_staff_invites_pending_email_uidx
+  on public.readyroute_staff_invites(lower(email))
+  where status = 'pending';
+create index if not exists readyroute_staff_invites_status_idx on public.readyroute_staff_invites(status, created_at desc);
+create index if not exists readyroute_staff_audit_log_created_idx on public.readyroute_staff_audit_log(created_at desc);
+create index if not exists readyroute_staff_audit_log_account_idx on public.readyroute_staff_audit_log(account_id, created_at desc);
+create index if not exists readyroute_staff_audit_log_staff_idx on public.readyroute_staff_audit_log(staff_user_id, created_at desc);
+create index if not exists readyroute_operating_costs_period_idx on public.readyroute_operating_costs(period_month desc, billing_date desc);
+create index if not exists readyroute_operating_costs_category_idx on public.readyroute_operating_costs(category, period_month desc);
 create index if not exists account_link_codes_account_id_idx on public.account_link_codes(account_id);
 create index if not exists account_link_codes_expires_at_idx on public.account_link_codes(expires_at desc);
 create index if not exists fedex_accounts_account_id_idx on public.fedex_accounts(account_id);
@@ -771,6 +1095,16 @@ create index if not exists daily_labor_snapshots_account_date_idx on public.dail
 create unique index if not exists daily_labor_snapshots_account_date_uidx on public.daily_labor_snapshots(account_id, work_date);
 create index if not exists route_sync_events_route_created_idx on public.route_sync_events(route_id, created_at desc);
 create index if not exists route_sync_events_account_work_date_idx on public.route_sync_events(account_id, work_date desc, created_at desc);
+create unique index if not exists account_billing_settings_account_uidx on public.account_billing_settings(account_id);
+create index if not exists billing_manifest_imports_account_period_idx on public.billing_manifest_imports(account_id, billing_period_start, imported_at desc);
+create index if not exists billing_manifest_imports_route_idx on public.billing_manifest_imports(route_id, imported_at desc);
+create unique index if not exists billable_route_months_account_period_route_uidx
+  on public.billable_route_months(account_id, billing_period_start, route_key);
+create index if not exists billable_route_months_account_period_idx on public.billable_route_months(account_id, billing_period_start);
+create index if not exists billing_usage_reports_account_period_idx on public.billing_usage_reports(account_id, billing_period_start desc);
+create unique index if not exists account_cost_snapshots_account_period_uidx on public.account_cost_snapshots(account_id, period_month);
+create index if not exists account_cost_snapshots_period_idx on public.account_cost_snapshots(period_month desc, account_id);
+create index if not exists stripe_webhook_events_account_idx on public.stripe_webhook_events(account_id, processed_at desc);
 create index if not exists fedex_sync_runs_account_work_date_idx on public.fedex_sync_runs(account_id, work_date desc, created_at desc);
 create index if not exists fedex_sync_runs_status_idx on public.fedex_sync_runs(run_status, created_at desc);
 create index if not exists daily_driver_labor_batch_id_idx on public.daily_driver_labor(batch_id);
@@ -784,6 +1118,12 @@ create index if not exists driver_positions_account_id_idx on public.driver_posi
 create index if not exists driver_positions_timestamp_idx on public.driver_positions(timestamp);
 
 alter table public.accounts enable row level security;
+alter table public.manager_users enable row level security;
+alter table public.readyroute_staff_users enable row level security;
+alter table public.account_internal_profiles enable row level security;
+alter table public.readyroute_staff_invites enable row level security;
+alter table public.readyroute_staff_audit_log enable row level security;
+alter table public.readyroute_operating_costs enable row level security;
 alter table public.drivers enable row level security;
 alter table public.vehicles enable row level security;
 alter table public.vehicle_maintenance enable row level security;
@@ -799,6 +1139,13 @@ alter table public.fedex_accounts enable row level security;
 alter table public.fedex_accounts add column if not exists fcc_username text;
 alter table public.fedex_accounts add column if not exists fcc_password_encrypted text;
 alter table public.fedex_accounts add column if not exists fcc_password_updated_at timestamptz;
+alter table public.route_sync_events enable row level security;
+alter table public.account_billing_settings enable row level security;
+alter table public.billing_manifest_imports enable row level security;
+alter table public.billable_route_months enable row level security;
+alter table public.billing_usage_reports enable row level security;
+alter table public.account_cost_snapshots enable row level security;
+alter table public.stripe_webhook_events enable row level security;
 alter table public.fedex_sync_runs enable row level security;
 alter table public.timecards enable row level security;
 alter table public.driver_positions enable row level security;
@@ -927,6 +1274,41 @@ with check (account_id = public.readyroute_account_id());
 drop policy if exists fedex_sync_runs_by_account on public.fedex_sync_runs;
 create policy fedex_sync_runs_by_account
 on public.fedex_sync_runs
+for all
+using (account_id = public.readyroute_account_id())
+with check (account_id = public.readyroute_account_id());
+
+drop policy if exists route_sync_events_by_account on public.route_sync_events;
+create policy route_sync_events_by_account
+on public.route_sync_events
+for all
+using (account_id = public.readyroute_account_id())
+with check (account_id = public.readyroute_account_id());
+
+drop policy if exists account_billing_settings_by_account on public.account_billing_settings;
+create policy account_billing_settings_by_account
+on public.account_billing_settings
+for all
+using (account_id = public.readyroute_account_id())
+with check (account_id = public.readyroute_account_id());
+
+drop policy if exists billing_manifest_imports_by_account on public.billing_manifest_imports;
+create policy billing_manifest_imports_by_account
+on public.billing_manifest_imports
+for all
+using (account_id = public.readyroute_account_id())
+with check (account_id = public.readyroute_account_id());
+
+drop policy if exists billable_route_months_by_account on public.billable_route_months;
+create policy billable_route_months_by_account
+on public.billable_route_months
+for all
+using (account_id = public.readyroute_account_id())
+with check (account_id = public.readyroute_account_id());
+
+drop policy if exists billing_usage_reports_by_account on public.billing_usage_reports;
+create policy billing_usage_reports_by_account
+on public.billing_usage_reports
 for all
 using (account_id = public.readyroute_account_id())
 with check (account_id = public.readyroute_account_id());

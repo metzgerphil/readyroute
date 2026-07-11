@@ -5,6 +5,10 @@ const jwt = require('jsonwebtoken');
 process.env.JWT_SECRET = 'test-secret';
 
 const { createApp } = require('../app');
+const {
+  buildVehicleReadiness,
+  mapInspectionReadinessContext
+} = require('./vehicles');
 
 class MockQueryBuilder {
   constructor(supabase, table) {
@@ -154,6 +158,38 @@ async function startTestServer(supabase, now = () => new Date('2026-04-12T16:00:
   };
 }
 
+test('vehicle readiness exposes an unsafe inspection as a linked blocker', () => {
+  const inspection = {
+    id: 'inspection-unsafe-1',
+    vehicle_id: 'vehicle-1',
+    inspection_date: '2026-04-12',
+    status: 'urgent_manager_review',
+    items: [
+      {
+        checklist_item_key: 'tires',
+        label: 'Tires',
+        status: 'issue',
+        severity: 'unsafe',
+        issue_details: { issue: ['Damage'] }
+      }
+    ]
+  };
+  const context = mapInspectionReadinessContext([inspection]);
+  const readiness = buildVehicleReadiness(
+    { id: 'vehicle-1', is_active: true },
+    { status: 'ok' },
+    null,
+    '2026-04-12',
+    undefined,
+    { pendingUnsafeInspection: context.pendingUnsafeByVehicleId.get('vehicle-1') }
+  );
+
+  assert.equal(readiness.status, 'blocked');
+  assert.equal(readiness.primary_reason.label, 'Unsafe inspection: Tires');
+  assert.equal(readiness.primary_reason.source_type, 'inspection');
+  assert.equal(readiness.primary_reason.source_id, 'inspection-unsafe-1');
+});
+
 test('GET /vehicles returns vehicles with latest maintenance, today assignment, and service_due', async () => {
   const supabase = new MockSupabase((query) => {
     if (query.table === 'vehicles' && query.operation === 'select') {
@@ -292,6 +328,13 @@ test('GET /vehicles returns vehicles with latest maintenance, today assignment, 
       };
     }
 
+    if (query.table === 'vehicle_inspections' && query.operation === 'select') {
+      return {
+        data: [],
+        error: null
+      };
+    }
+
     throw new Error(`Unexpected query ${query.table}:${query.operation}:${query.mode}`);
   });
 
@@ -332,9 +375,12 @@ test('POST /vehicles creates a vehicle for the authenticated account', async () 
     if (query.table === 'vehicles' && query.operation === 'insert') {
       assert.equal(query.payload.account_id, 'acct-1');
       assert.equal(query.payload.name, 'Truck 24');
+      assert.equal(query.payload.plate, 'NEW123');
       assert.equal(query.payload.truck_type, 'Other');
       assert.equal(query.payload.custom_truck_type, 'P900 Reefer');
       assert.equal(query.payload.registration_expiration, '2026-09-30');
+      assert.equal(query.payload.fuel_type, 'Diesel');
+      assert.equal(query.payload.notes, 'No DEF');
       assert.equal(query.payload.current_mileage, 0);
       return {
         data: { id: 'vehicle-new' },
@@ -362,12 +408,119 @@ test('POST /vehicles creates a vehicle for the authenticated account', async () 
         model: 'Transit',
         year: 2024,
         plate: 'NEW123',
-        registration_expiration: '2026-09-30'
+        registration_expiration: '2026-09-30',
+        fuel_type: 'diesel',
+        notes: 'No DEF'
       })
     });
 
     assert.equal(response.status, 201);
     assert.deepEqual(await response.json(), { vehicle_id: 'vehicle-new' });
+  } finally {
+    await server.close();
+  }
+});
+
+test('POST /vehicles/inspection-assignments creates an assignment and notifies the driver', async () => {
+  const supabase = new MockSupabase((query) => {
+    if (query.table === 'vehicles' && query.operation === 'select') {
+      assert.equal(query.filters.find((filter) => filter.column === 'id')?.value, 'vehicle-1');
+      assert.equal(query.filters.find((filter) => filter.column === 'account_id')?.value, 'acct-1');
+      return {
+        data: {
+          id: 'vehicle-1',
+          account_id: 'acct-1',
+          name: '411987',
+          make: 'Ford',
+          model: 'Transit',
+          year: 2022
+        },
+        error: null
+      };
+    }
+
+    if (query.table === 'drivers' && query.operation === 'select') {
+      assert.equal(query.filters.find((filter) => filter.column === 'id')?.value, 'driver-1');
+      assert.equal(query.filters.find((filter) => filter.column === 'account_id')?.value, 'acct-1');
+      return {
+        data: {
+          id: 'driver-1',
+          account_id: 'acct-1',
+          name: 'Phillip'
+        },
+        error: null
+      };
+    }
+
+    if (query.table === 'vehicle_inspection_assignments' && query.operation === 'insert') {
+      assert.equal(query.payload.account_id, 'acct-1');
+      assert.equal(query.payload.vehicle_id, 'vehicle-1');
+      assert.equal(query.payload.assigned_driver_id, 'driver-1');
+      assert.equal(query.payload.assigned_by_manager_user_id, 'manager-1');
+      assert.equal(query.payload.due_date, '2026-06-27');
+      assert.equal(query.payload.priority, 'urgent');
+      assert.equal(query.payload.require_before_route_start, false);
+      assert.equal(query.payload.status, 'pending');
+      return {
+        data: {
+          id: 'assignment-1',
+          created_at: '2026-06-27T16:00:00.000Z',
+          updated_at: '2026-06-27T16:00:00.000Z',
+          ...query.payload
+        },
+        error: null
+      };
+    }
+
+    if (query.table === 'app_notifications' && query.operation === 'insert') {
+      assert.equal(query.payload.account_id, 'acct-1');
+      assert.equal(query.payload.recipient_type, 'driver');
+      assert.equal(query.payload.driver_id, 'driver-1');
+      assert.equal(query.payload.notification_type, 'driver_manual_inspection_assigned');
+      assert.equal(query.payload.link_type, 'vehicle_inspection_assignment');
+      assert.equal(query.payload.link_ref.assignment_id, 'assignment-1');
+      assert.equal(query.payload.severity, 'warning');
+      assert.match(query.payload.body, /411987/);
+      return {
+        data: {
+          id: 'notification-1',
+          status: 'unread',
+          read_at: null,
+          created_at: '2026-06-27T16:00:00.000Z',
+          ...query.payload
+        },
+        error: null
+      };
+    }
+
+    throw new Error(`Unexpected query ${query.table}:${query.operation}:${query.mode}`);
+  });
+
+  const server = await startTestServer(supabase, () => new Date('2026-06-27T16:00:00.000Z'));
+
+  try {
+    const response = await fetch(`${server.baseUrl}/vehicles/inspection-assignments`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${signManagerToken()}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        vehicle_id: 'vehicle-1',
+        driver_id: 'driver-1',
+        due_date: '2026-06-27',
+        priority: 'urgent',
+        note: 'Check this truck before leaving.',
+        require_before_route_start: false
+      })
+    });
+
+    assert.equal(response.status, 201);
+    const body = await response.json();
+    assert.equal(body.assignment.id, 'assignment-1');
+    assert.equal(body.assignment.vehicle.name, '411987');
+    assert.equal(body.assignment.driver.name, 'Phillip');
+    assert.equal(body.assignment.require_before_route_start, false);
   } finally {
     await server.close();
   }
@@ -413,6 +566,80 @@ test('POST /vehicles accepts P1100 as a supported truck type', async () => {
   }
 });
 
+test('POST /vehicles requires a separate license plate', async () => {
+  const supabase = new MockSupabase(() => {
+    throw new Error('Should not hit supabase');
+  });
+  const server = await startTestServer(supabase);
+
+  try {
+    const response = await fetch(`${server.baseUrl}/vehicles`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${signManagerToken()}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        name: '329310',
+        make: 'Freightliner',
+        model: 'MT45',
+        year: 2012
+      })
+    });
+
+    assert.equal(response.status, 400);
+    assert.deepEqual(await response.json(), {
+      error: 'Vehicle ID, license plate, make, model, and year are required'
+    });
+  } finally {
+    await server.close();
+  }
+});
+
+test('POST /vehicles accepts P900 as a supported truck type', async () => {
+  const supabase = new MockSupabase((query) => {
+    if (query.table === 'vehicles' && query.operation === 'insert') {
+      assert.equal(query.payload.truck_type, 'P900');
+      assert.equal(query.payload.custom_truck_type, null);
+      assert.equal(query.payload.name, '538785');
+      assert.equal(query.payload.plate, 'WA-538785');
+      return {
+        data: { id: 'vehicle-p900' },
+        error: null
+      };
+    }
+
+    throw new Error(`Unexpected query ${query.table}:${query.operation}:${query.mode}`);
+  });
+
+  const server = await startTestServer(supabase);
+
+  try {
+    const response = await fetch(`${server.baseUrl}/vehicles`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${signManagerToken()}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        name: '538785',
+        truck_type: 'P900',
+        make: 'Ford',
+        model: 'F59',
+        year: 2019,
+        plate: 'WA-538785',
+        registration_expiration: '2026-07-31',
+        current_mileage: 65855
+      })
+    });
+
+    assert.equal(response.status, 201);
+    assert.deepEqual(await response.json(), { vehicle_id: 'vehicle-p900' });
+  } finally {
+    await server.close();
+  }
+});
+
 test('POST /vehicles validates custom truck type when Other is selected', async () => {
   const supabase = new MockSupabase(() => {
     throw new Error('Should not hit supabase');
@@ -439,6 +666,38 @@ test('POST /vehicles validates custom truck type when Other is selected', async 
 
     assert.equal(response.status, 400);
     assert.deepEqual(await response.json(), { error: 'custom_truck_type is required when truck_type is Other' });
+  } finally {
+    await server.close();
+  }
+});
+
+test('POST /vehicles validates fuel type', async () => {
+  const supabase = new MockSupabase(() => {
+    throw new Error('Should not hit supabase');
+  });
+
+  const server = await startTestServer(supabase);
+
+  try {
+    const response = await fetch(`${server.baseUrl}/vehicles`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${signManagerToken()}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        name: '329310',
+        truck_type: 'P700',
+        make: 'Freightliner',
+        model: 'MT45',
+        year: 2012,
+        plate: '329310',
+        fuel_type: 'Hydrogen'
+      })
+    });
+
+    assert.equal(response.status, 400);
+    assert.deepEqual(await response.json(), { error: 'fuel_type must be Gas, Diesel, or EV' });
   } finally {
     await server.close();
   }
@@ -590,6 +849,518 @@ test('POST /vehicles/:id/maintenance saves maintenance and updates the vehicle m
     assert.equal(response.status, 201);
     assert.deepEqual(await response.json(), { maintenance_id: 'maint-new' });
     assert.equal(vehicleUpdateSeen, true);
+  } finally {
+    await server.close();
+  }
+});
+
+test('POST /vehicles/:id/inspections saves a manager inspection and updates mileage', async () => {
+  let vehicleUpdateSeen = false;
+
+  const supabase = new MockSupabase((query) => {
+    if (query.table === 'vehicles' && query.operation === 'select') {
+      return {
+        data: {
+          id: 'vehicle-1',
+          account_id: 'acct-1',
+          name: '204526',
+          make: 'Ford',
+          model: 'Transit',
+          year: 2022,
+          truck_type: 'P1100',
+          current_mileage: 12000
+        },
+        error: null
+      };
+    }
+
+    if (query.table === 'vehicle_inspections' && query.operation === 'insert') {
+      assert.equal(query.payload.account_id, 'acct-1');
+      assert.equal(query.payload.vehicle_id, 'vehicle-1');
+      assert.equal(query.payload.inspection_type, 'manager');
+      assert.equal(query.payload.inspection_date, '2026-06-02');
+      assert.equal(query.payload.odometer, 12345);
+      assert.equal(query.payload.status, 'safe_with_maintenance_reported');
+      assert.equal(query.payload.submitted_by_type, 'manager');
+      assert.equal(query.payload.submitted_by_manager_user_id, 'manager-1');
+      assert.equal(query.payload.items[0].checklist_item_key, 'tires');
+      assert.equal(query.payload.items[0].status, 'issue');
+      assert.equal(query.payload.items[0].severity, 'maintenance_soon');
+      return {
+        data: {
+          id: 'inspection-1',
+          ...query.payload
+        },
+        error: null
+      };
+    }
+
+    if (query.table === 'vehicles' && query.operation === 'update') {
+      vehicleUpdateSeen = true;
+      assert.equal(query.payload.current_mileage, 12345);
+      return { data: null, error: null };
+    }
+
+    throw new Error(`Unexpected query ${query.table}:${query.operation}:${query.mode}`);
+  });
+
+  const server = await startTestServer(supabase);
+
+  try {
+    const response = await fetch(`${server.baseUrl}/vehicles/vehicle-1/inspections`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${signManagerToken({ manager_name: 'Phillip Manager' })}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        inspection_date: '2026-06-02',
+        odometer: 12345,
+        issue_note: 'Left rear tire needs review',
+        items: [
+          { checklist_item_key: 'tires', label: 'Tires', status: 'fail' },
+          { checklist_item_key: 'lights', label: 'Lights', status: 'pass' }
+        ]
+      })
+    });
+
+    const body = await response.json();
+    assert.equal(response.status, 201);
+    assert.equal(body.inspection.id, 'inspection-1');
+    assert.equal(body.inspection.status, 'safe_with_maintenance_reported');
+    assert.equal(body.inspection.failed_items_count, 1);
+    assert.equal(body.inspection.vehicle.name, '204526');
+    assert.equal(vehicleUpdateSeen, true);
+  } finally {
+    await server.close();
+  }
+});
+
+test('POST /vehicles/:id/inspection-photo uploads a manager inspection photo', async () => {
+  let uploadedBucket = null;
+  let uploadedPath = null;
+  let uploadedContentType = null;
+
+  const supabase = new MockSupabase((query) => {
+    if (query.table === 'vehicles' && query.operation === 'select') {
+      return {
+        data: {
+          id: 'vehicle-1',
+          account_id: 'acct-1',
+          name: '204526'
+        },
+        error: null
+      };
+    }
+
+    throw new Error(`Unexpected query ${query.table}:${query.operation}:${query.mode}`);
+  });
+  supabase.storage = {
+    from(bucket) {
+      uploadedBucket = bucket;
+      return {
+        async upload(path, buffer, options) {
+          uploadedPath = path;
+          uploadedContentType = options.contentType;
+          assert.ok(Buffer.isBuffer(buffer));
+          assert.equal(buffer.toString(), 'image');
+          return { error: null };
+        },
+        async createSignedUrl(path) {
+          return {
+            data: { signedUrl: `https://signed.readyroute.test/${path}` },
+            error: null
+          };
+        },
+        async remove() {
+          return { data: null, error: null };
+        }
+      };
+    }
+  };
+
+  const server = await startTestServer(supabase);
+
+  try {
+    const response = await fetch(`${server.baseUrl}/vehicles/vehicle-1/inspection-photo`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${signManagerToken()}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        checklist_item_key: 'tires',
+        image_base64: Buffer.from('image').toString('base64'),
+        mime_type: 'image/jpeg',
+        file_name: 'tire.jpg'
+      })
+    });
+
+    const body = await response.json();
+    assert.equal(response.status, 201);
+    assert.equal(uploadedBucket, 'vehicle-inspection-photos');
+    assert.match(uploadedPath, /^acct-1\/vehicle-1\/manager-inspection\/tires\/\d+-[a-f0-9]+-tire\.jpg$/);
+    assert.equal(uploadedContentType, 'image/jpeg');
+    assert.equal(body.photo.storage_bucket, 'vehicle-inspection-photos');
+    assert.equal(body.photo.storage_path, uploadedPath);
+    assert.equal(body.photo.url, `https://signed.readyroute.test/${uploadedPath}`);
+  } finally {
+    await server.close();
+  }
+});
+
+test('GET /vehicles/inspections derives display status from legacy submitted checklist issues', async () => {
+  const supabase = new MockSupabase((query) => {
+    if (query.table === 'vehicle_inspections' && query.operation === 'select') {
+      return {
+        data: [
+          {
+            id: 'inspection-legacy',
+            account_id: 'acct-1',
+            vehicle_id: 'vehicle-1',
+            inspection_date: '2026-06-27',
+            inspection_type: 'driver',
+            odometer: 10000,
+            status: 'submitted',
+            issue_reported: true,
+            submitted_by_type: 'driver',
+            submitted_by_driver_id: 'driver-1',
+            submitted_by_name: 'Driver One',
+            submitted_at: '2026-06-27T23:11:27.936Z',
+            items: [
+              {
+                checklist_item_key: 'wipers',
+                label: 'Wipers',
+                status: 'issue',
+                severity: 'maintenance_soon',
+                issue_details: {
+                  position: 'Both',
+                  issue_type: 'Torn'
+                }
+              },
+              { checklist_item_key: 'lights', label: 'Lights', status: 'pass' }
+            ]
+          }
+        ],
+        error: null
+      };
+    }
+
+    if (query.table === 'vehicles' && query.operation === 'select') {
+      assert.deepEqual(query.filters.find((filter) => filter.op === 'in')?.value, ['vehicle-1']);
+      return {
+        data: [
+          {
+            id: 'vehicle-1',
+            name: '321049',
+            make: 'Ford',
+            model: 'Transit',
+            year: 2022,
+            truck_type: 'P1000'
+          }
+        ],
+        error: null
+      };
+    }
+
+    throw new Error(`Unexpected query ${query.table}:${query.operation}:${query.mode}`);
+  });
+
+  const server = await startTestServer(supabase);
+
+  try {
+    const response = await fetch(`${server.baseUrl}/vehicles/inspections`, {
+      headers: {
+        Authorization: `Bearer ${signManagerToken()}`
+      }
+    });
+
+    const body = await response.json();
+    assert.equal(response.status, 200);
+    assert.equal(body.inspections[0].status, 'safe_with_maintenance_reported');
+    assert.equal(body.inspections[0].status_label, 'Safe with Maintenance Reported');
+    assert.equal(body.inspections[0].issue_count, 1);
+    assert.equal(body.inspections[0].items[0].status, 'issue');
+    assert.equal(body.inspections[0].vehicle.name, '321049');
+  } finally {
+    await server.close();
+  }
+});
+
+test('POST /vehicles/:id/inspections rejects unanswered inspection items', async () => {
+  const supabase = new MockSupabase((query) => {
+    throw new Error(`Unexpected query ${query.table}:${query.operation}:${query.mode}`);
+  });
+
+  const server = await startTestServer(supabase);
+
+  try {
+    const response = await fetch(`${server.baseUrl}/vehicles/vehicle-1/inspections`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${signManagerToken()}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        inspection_date: '2026-06-02',
+        odometer: 12345,
+        items: [
+          { checklist_item_key: 'tires', label: 'Tires', status: 'pass' },
+          { checklist_item_key: 'lights', label: 'Lights' }
+        ]
+      })
+    });
+
+    assert.equal(response.status, 400);
+    assert.deepEqual(await response.json(), {
+      error: 'All inspection items must be answered before submitting'
+    });
+  } finally {
+    await server.close();
+  }
+});
+
+test('POST /vehicles/:id/inspections saves unsafe issues as urgent manager review', async () => {
+  const supabase = new MockSupabase((query) => {
+    if (query.table === 'vehicles' && query.operation === 'select') {
+      return {
+        data: {
+          id: 'vehicle-1',
+          account_id: 'acct-1',
+          name: '204526',
+          make: 'Ford',
+          model: 'Transit',
+          year: 2022,
+          truck_type: 'P1100',
+          current_mileage: 65000
+        },
+        error: null
+      };
+    }
+
+    if (query.table === 'vehicle_inspections' && query.operation === 'insert') {
+      assert.equal(query.payload.status, 'urgent_manager_review');
+      assert.equal(query.payload.issue_reported, true);
+      assert.equal(query.payload.items[0].status, 'issue');
+      assert.equal(query.payload.items[0].severity, 'unsafe');
+      assert.equal(query.payload.items[0].urgent_review, true);
+      assert.deepEqual(query.payload.items[0].issue_details, {
+        position: 'Back Right',
+        issue_type: 'Exposed cord'
+      });
+
+      return {
+        data: {
+          id: 'inspection-unsafe',
+          ...query.payload
+        },
+        error: null
+      };
+    }
+
+    throw new Error(`Unexpected query ${query.table}:${query.operation}:${query.mode}`);
+  });
+
+  const server = await startTestServer(supabase);
+
+  try {
+    const response = await fetch(`${server.baseUrl}/vehicles/vehicle-1/inspections`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${signManagerToken()}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        inspection_date: '2026-06-27',
+        odometer: 65000,
+        items: [
+          {
+            checklist_item_key: 'tires',
+            label: 'Tires',
+            status: 'issue',
+            severity: 'unsafe',
+            issue_details: {
+              position: 'Back Right',
+              issue_type: 'Exposed cord'
+            }
+          },
+          { checklist_item_key: 'lights', label: 'Lights', status: 'pass' }
+        ]
+      })
+    });
+
+    const body = await response.json();
+    assert.equal(response.status, 201);
+    assert.equal(body.inspection.status, 'urgent_manager_review');
+    assert.equal(body.inspection.urgent_review, true);
+    assert.equal(body.inspection.highest_severity, 'unsafe');
+    assert.equal(body.inspection.failed_items_count, 1);
+  } finally {
+    await server.close();
+  }
+});
+
+test('POST /vehicles/:id/inspections retries with legacy payload when optional inspection columns are missing', async () => {
+  let insertAttempts = 0;
+  let vehicleUpdateSeen = false;
+
+  const supabase = new MockSupabase((query) => {
+    if (query.table === 'vehicles' && query.operation === 'select') {
+      return {
+        data: {
+          id: 'vehicle-1',
+          account_id: 'acct-1',
+          name: '204526',
+          make: 'Ford',
+          model: 'Transit',
+          year: 2022,
+          truck_type: 'P1100',
+          current_mileage: 12000
+        },
+        error: null
+      };
+    }
+
+    if (query.table === 'vehicle_inspections' && query.operation === 'insert') {
+      insertAttempts += 1;
+
+      if (insertAttempts === 1) {
+        assert.equal(query.payload.submitted_by_manager_user_id, 'manager-1');
+        return {
+          data: null,
+          error: {
+            code: 'PGRST204',
+            message: "Could not find the 'submitted_by_manager_user_id' column of 'vehicle_inspections' in the schema cache"
+          }
+        };
+      }
+
+      assert.equal(query.payload.account_id, 'acct-1');
+      assert.equal(query.payload.vehicle_id, 'vehicle-1');
+      assert.equal(query.payload.inspection_type, 'manager');
+      assert.equal(query.payload.submitted_by_manager_user_id, undefined);
+      assert.equal(query.payload.submitted_by_type, 'manager');
+      return {
+        data: {
+          id: 'inspection-legacy',
+          ...query.payload
+        },
+        error: null
+      };
+    }
+
+    if (query.table === 'vehicles' && query.operation === 'update') {
+      vehicleUpdateSeen = true;
+      assert.equal(query.payload.current_mileage, 12345);
+      return { data: null, error: null };
+    }
+
+    throw new Error(`Unexpected query ${query.table}:${query.operation}:${query.mode}`);
+  });
+
+  const server = await startTestServer(supabase);
+
+  try {
+    const response = await fetch(`${server.baseUrl}/vehicles/vehicle-1/inspections`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${signManagerToken()}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        inspection_date: '2026-06-02',
+        odometer: 12345,
+        items: [
+          { checklist_item_key: 'tires', label: 'Tires', status: 'pass' }
+        ]
+      })
+    });
+
+    const body = await response.json();
+    assert.equal(response.status, 201);
+    assert.equal(body.inspection.id, 'inspection-legacy');
+    assert.equal(insertAttempts, 2);
+    assert.equal(vehicleUpdateSeen, true);
+  } finally {
+    await server.close();
+  }
+});
+
+test('POST /vehicles/:id/inspections retries as daily_check when the legacy inspection type constraint rejects manager', async () => {
+  let insertAttempts = 0;
+
+  const supabase = new MockSupabase((query) => {
+    if (query.table === 'vehicles' && query.operation === 'select') {
+      return {
+        data: {
+          id: 'vehicle-1',
+          account_id: 'acct-1',
+          name: '204526',
+          make: 'Ford',
+          model: 'Transit',
+          year: 2022,
+          truck_type: 'P1100',
+          current_mileage: 65000
+        },
+        error: null
+      };
+    }
+
+    if (query.table === 'vehicle_inspections' && query.operation === 'insert') {
+      insertAttempts += 1;
+
+      if (insertAttempts === 1) {
+        assert.equal(query.payload.inspection_type, 'manager');
+        return {
+          data: null,
+          error: {
+            code: '23514',
+            message: 'new row for relation "vehicle_inspections" violates check constraint "vehicle_inspections_type_check"',
+            details: 'Failing row contains manager.'
+          }
+        };
+      }
+
+      assert.equal(query.payload.inspection_type, 'daily_check');
+      assert.equal(query.payload.issue_reported, true);
+      assert.equal(query.payload.submitted_by_type, 'manager');
+      assert.equal(query.payload.items, undefined);
+      return {
+        data: {
+          id: 'inspection-daily-check',
+          ...query.payload
+        },
+        error: null
+      };
+    }
+
+    throw new Error(`Unexpected query ${query.table}:${query.operation}:${query.mode}`);
+  });
+
+  const server = await startTestServer(supabase);
+
+  try {
+    const response = await fetch(`${server.baseUrl}/vehicles/vehicle-1/inspections`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${signManagerToken({ manager_name: 'Phillip Manager' })}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        inspection_date: '2026-06-26',
+        odometer: 65000,
+        issue_note: 'Needs manager review',
+        items: [
+          { checklist_item_key: 'tires', label: 'Tires', status: 'fail' }
+        ]
+      })
+    });
+
+    const body = await response.json();
+    assert.equal(response.status, 201);
+    assert.equal(body.inspection.id, 'inspection-daily-check');
+    assert.equal(body.inspection.inspection_type_label, 'Manager Inspection');
+    assert.equal(insertAttempts, 2);
   } finally {
     await server.close();
   }
@@ -1417,9 +2188,9 @@ test('GET /vehicles/settings/checklist-template returns default checklist fields
 
     assert.equal(response.status, 200);
     const body = await response.json();
-    assert.equal(body.template.fields.length, 14);
+    assert.equal(body.template.fields.length, 19);
     assert.equal(body.template.fields[2].id, 'truck_number');
-    assert.equal(body.template.fields[2].label, 'Truck Number');
+    assert.equal(body.template.fields[2].label, 'Vehicle ID');
     assert.equal(body.template.fields.every((field) => field.enabled), true);
   } finally {
     await server.close();
@@ -1430,9 +2201,9 @@ test('PUT /vehicles/settings/checklist-template persists enabled checklist field
   const supabase = new MockSupabase((query) => {
     if (query.table === 'vehicle_checklist_template_settings' && query.operation === 'upsert') {
       assert.equal(query.payload.account_id, 'acct-1');
-      assert.equal(query.payload.fields.length, 14);
+      assert.equal(query.payload.fields.length, 19);
       assert.equal(query.payload.fields.find((field) => field.id === 'coolant').enabled, false);
-      assert.equal(query.payload.fields.find((field) => field.id === 'truck_number').label, 'Truck Number');
+      assert.equal(query.payload.fields.find((field) => field.id === 'truck_number').label, 'Vehicle ID');
       assert.equal(query.payload.updated_by_manager_user_id, 'manager-1');
       assert.equal(query.payload.updated_at, '2026-04-12T16:00:00.000Z');
       assert.equal(query.upsertOptions.onConflict, 'account_id');

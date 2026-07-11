@@ -10,6 +10,16 @@ function getWorkerSecret(options = {}) {
   return String(options.workerSecret || process.env.FEDEX_SYNC_WORKER_SECRET || '').trim();
 }
 
+function getLifecycleWorkerSecret(options = {}) {
+  return String(
+    options.accountLifecycleWorkerSecret ||
+    process.env.READYROUTE_INTERNAL_WORKER_SECRET ||
+    options.workerSecret ||
+    process.env.FEDEX_SYNC_WORKER_SECRET ||
+    ''
+  ).trim();
+}
+
 function getProvidedSecret(req) {
   const authorization = String(req.headers.authorization || '').trim();
   const bearerMatch = authorization.match(/^Bearer\s+(.+)$/i);
@@ -119,11 +129,85 @@ function createInternalSyncRouter(options = {}) {
   router.post('/fedex-sync', runSync);
   router.get('/fedex-sync', runSync);
 
+  router.post('/account-retention-sweep', async (req, res) => {
+    const workerSecret = getLifecycleWorkerSecret(options);
+
+    if (!workerSecret) {
+      return res.status(503).json({ error: 'Account lifecycle worker endpoint is not configured.' });
+    }
+
+    if (getProvidedSecret(req) !== workerSecret) {
+      return res.status(403).json({ error: 'Invalid account lifecycle worker secret.' });
+    }
+
+    try {
+      const nowIso = now().toISOString();
+      const { data: accounts, error: accountsError } = await supabase
+        .from('accounts')
+        .select('id, account_status, service_ends_at, retention_ends_at')
+        .in('account_status', ['canceling', 'retained']);
+
+      if (accountsError) {
+        throw accountsError;
+      }
+
+      const transitionedAccountIds = [];
+      const purgeEligibleAccountIds = [];
+
+      for (const account of accounts || []) {
+        const serviceEnded = account.service_ends_at && new Date(account.service_ends_at).getTime() <= new Date(nowIso).getTime();
+        const retentionEnded = account.retention_ends_at && new Date(account.retention_ends_at).getTime() <= new Date(nowIso).getTime();
+
+        if (account.account_status === 'canceling' && serviceEnded) {
+          const { error: updateError } = await supabase
+            .from('accounts')
+            .update({ account_status: 'retained', canceled_at: nowIso })
+            .eq('id', account.id);
+
+          if (updateError) {
+            throw updateError;
+          }
+
+          const { error: eventError } = await supabase
+            .from('account_cancellation_events')
+            .insert({
+              account_id: account.id,
+              event_type: 'retained',
+              metadata: { transitioned_at: nowIso }
+            });
+
+          if (eventError) {
+            console.error('Account retained event write failed:', eventError);
+          }
+
+          transitionedAccountIds.push(account.id);
+        }
+
+        if (retentionEnded) {
+          purgeEligibleAccountIds.push(account.id);
+        }
+      }
+
+      return res.status(200).json({
+        checked_at: nowIso,
+        transitioned_to_retained: transitionedAccountIds.length,
+        transition_account_ids: transitionedAccountIds,
+        purge_eligible: purgeEligibleAccountIds.length,
+        purge_eligible_account_ids: purgeEligibleAccountIds,
+        automatic_purge_enabled: false
+      });
+    } catch (error) {
+      console.error('Account retention sweep failed:', error);
+      return res.status(500).json({ error: 'Account retention sweep failed.' });
+    }
+  });
+
   return router;
 }
 
 module.exports = {
   createInternalSyncRouter,
+  getLifecycleWorkerSecret,
   getProvidedSecret,
   parseAccountIds
 };

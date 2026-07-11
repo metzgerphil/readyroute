@@ -4,7 +4,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { BrowserRouter } from 'react-router-dom';
 
 import App from './App';
-import { getManagerAccountId } from './services/auth';
+import { getManagerAccountId, getReadyRouteStaffTokenPayload } from './services/auth';
 import './index.css';
 
 const queryClient = new QueryClient({
@@ -13,6 +13,7 @@ const queryClient = new QueryClient({
       queryKeyHashFn: (queryKey) => JSON.stringify([
         'manager-account',
         getManagerAccountId() || 'anonymous',
+        getReadyRouteStaffTokenPayload()?.staff_user_id || 'no-staff',
         queryKey
       ])
     }

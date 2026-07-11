@@ -10,7 +10,7 @@ const FCC_SYNC_BEFORE_WINDOW_SUMMARY = 'FCC sync is blocked until the morning ma
 const MIN_FCC_SYNC_START_HOUR = 9;
 
 function isFccAutomationEnabled(_options = {}) {
-  // FCC portal scraping is disabled pending removal — do not re-enable via env var
+  // FCC portal scraping is disabled pending FedEx-approved access.
   return false;
 }
 

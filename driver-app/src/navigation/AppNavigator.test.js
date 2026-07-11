@@ -71,6 +71,7 @@ jest.mock('../services/auth', () => ({
 jest.mock('../services/api', () => ({
   __esModule: true,
   default: {
+    get: jest.fn(),
     post: jest.fn()
   }
 }));
@@ -88,6 +89,11 @@ jest.mock('../screens/LoginScreen', () => function MockLoginScreen() {
 jest.mock('../screens/ManagerDashboardScreen', () => function MockManagerDashboardScreen() {
   const { Text: MockText } = require('react-native');
   return <MockText>ManagerDashboardScreen</MockText>;
+});
+
+jest.mock('../screens/ManagerAccessCodesScreen', () => function MockManagerAccessCodesScreen() {
+  const { Text: MockText } = require('react-native');
+  return <MockText>ManagerAccessCodesScreen</MockText>;
 });
 
 jest.mock('../screens/ManagerDriversScreen', () => function MockManagerDriversScreen() {
@@ -125,9 +131,19 @@ jest.mock('../screens/ManagerSettingsScreen', () => function MockManagerSettings
   return <MockText>ManagerSettingsScreen</MockText>;
 });
 
+jest.mock('../screens/ManagerVedrScreen', () => function MockManagerVedrScreen() {
+  const { Text: MockText } = require('react-native');
+  return <MockText>ManagerVedrScreen</MockText>;
+});
+
 jest.mock('../screens/MyDriveScreen', () => function MockMyDriveScreen() {
   const { Text: MockText } = require('react-native');
   return <MockText>MyDriveScreen</MockText>;
+});
+
+jest.mock('../screens/NotificationsScreen', () => function MockNotificationsScreen({ mode }) {
+  const { Text: MockText } = require('react-native');
+  return <MockText>{mode === 'manager' ? 'ManagerNotificationsScreen' : 'NotificationsScreen'}</MockText>;
 });
 
 jest.mock('../screens/PortalEntryScreen', () => function MockPortalEntryScreen() {
@@ -148,6 +164,7 @@ describe('AppNavigator', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     mockDrawerProps.current = null;
+    api.get.mockResolvedValue({ data: { current_csa: null, csas: [] } });
     usePortalSession.mockReturnValue({
       activeMode: null,
       authenticate,
@@ -227,6 +244,7 @@ describe('AppNavigator', () => {
 
     const screenLabels = tree.root.findAllByType(Text).map((node) => node.props.children);
     expect(screenLabels).toContain('HomeScreen');
+    expect(screenLabels).toContain('NotificationsScreen');
     expect(screenLabels).toContain('MyDriveScreen');
     expect(screenLabels).toContain('ManifestScreen');
     expect(screenLabels).toContain('StopDetailScreen');
@@ -257,15 +275,117 @@ describe('AppNavigator', () => {
 
     const screenLabels = tree.root.findAllByType(Text).map((node) => node.props.children);
     expect(screenLabels).toContain('ManagerDashboardScreen');
+    expect(screenLabels).toContain('ManagerAccessCodesScreen');
     expect(screenLabels).toContain('ManagerDriversScreen');
     expect(screenLabels).toContain('ManagerManifestScreen');
     expect(screenLabels).toContain('ManagerMapScreen');
+    expect(screenLabels).toContain('ManagerNotificationsScreen');
     expect(screenLabels).toContain('ManagerRoutesScreen');
+    expect(screenLabels).toContain('ManagerVedrScreen');
     expect(screenLabels).toContain('ManagerVehiclesScreen');
     expect(screenLabels).toContain('ManagerSettingsScreen');
     expect(screenLabels).not.toContain('Routes');
     expect(screenLabels).not.toContain('HomeScreen');
     expect(screenLabels).not.toContain('PortalEntryScreen');
+  });
+
+  it('passes manager notification attention into the mobile drawer', async () => {
+    api.get.mockImplementation((url) => {
+      if (url === '/manager/notifications') {
+        return Promise.resolve({
+          data: {
+            notifications: [
+              {
+                id: 'notification-1',
+                severity: 'urgent',
+                status: 'unread'
+              }
+            ]
+          }
+        });
+      }
+
+      return Promise.resolve({ data: { current_csa: null, csas: [] } });
+    });
+    usePortalSession.mockReturnValue({
+      activeMode: 'manager',
+      authenticate,
+      availableModes: ['manager'],
+      hasAnyAccess: true,
+      identity: {
+        fullName: 'Vlad Fedoryshyn',
+        companyName: 'Bridge Transportation',
+        primaryRole: 'Manager'
+      },
+      isBootstrapping: false,
+      logout,
+      needsModeSelection: false,
+      selectMode,
+      sessionTokens: {
+        managerToken: 'manager-token'
+      }
+    });
+
+    await act(async () => {
+      renderer.create(<AppNavigator />);
+    });
+
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    expect(api.get).toHaveBeenCalledWith('/manager/notifications', {
+      authMode: 'manager'
+    });
+    expect(mockDrawerProps.current.hasNotificationAttention).toBe(true);
+  });
+
+  it('does not keep notification attention after urgent notifications are read', async () => {
+    api.get.mockImplementation((url) => {
+      if (url === '/manager/notifications') {
+        return Promise.resolve({
+          data: {
+            notifications: [
+              {
+                id: 'notification-1',
+                severity: 'urgent',
+                status: 'read'
+              }
+            ]
+          }
+        });
+      }
+
+      return Promise.resolve({ data: { current_csa: null, csas: [] } });
+    });
+    usePortalSession.mockReturnValue({
+      activeMode: 'manager',
+      authenticate,
+      availableModes: ['manager'],
+      hasAnyAccess: true,
+      identity: {
+        fullName: 'Vlad Fedoryshyn',
+        companyName: 'Bridge Transportation',
+        primaryRole: 'Manager'
+      },
+      isBootstrapping: false,
+      logout,
+      needsModeSelection: false,
+      selectMode,
+      sessionTokens: {
+        managerToken: 'manager-token'
+      }
+    });
+
+    await act(async () => {
+      renderer.create(<AppNavigator />);
+    });
+
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    expect(mockDrawerProps.current.hasNotificationAttention).toBe(false);
   });
 
   it('shows the loading screen while the portal session bootstraps', async () => {

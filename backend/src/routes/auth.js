@@ -6,6 +6,8 @@ const jwt = require('jsonwebtoken');
 const defaultSupabase = require('../lib/supabase');
 const { requireManager } = require('../middleware/auth');
 const { createBillingService } = require('../services/billing');
+const { getEffectiveAccountStatus } = require('../services/accountLifecycle');
+const { updateRouteBillingSettings } = require('../services/routeBilling');
 const { sendManagerPasswordResetEmail: defaultSendManagerPasswordResetEmail } = require('../services/managerInviteEmail');
 
 function createAuthRouter(options = {}) {
@@ -70,6 +72,10 @@ function createAuthRouter(options = {}) {
 
   function isValidEmail(email) {
     return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizeEmail(email));
+  }
+
+  function getRequestedRouteCommitment(body = {}) {
+    return Number(body.route_count ?? body.routes ?? body.vehicle_count);
   }
 
   function normalizeManagerIdentity(row) {
@@ -240,7 +246,7 @@ function createAuthRouter(options = {}) {
 
     const { data, error } = await supabase
       .from('accounts')
-      .select('id, company_name')
+      .select('id, company_name, account_status, service_ends_at, retention_ends_at')
       .eq('id', accountId)
       .maybeSingle();
 
@@ -249,6 +255,10 @@ function createAuthRouter(options = {}) {
     }
 
     return data || null;
+  }
+
+  function isAccountLoginAvailable(account) {
+    return getEffectiveAccountStatus(account || {}) !== 'retained';
   }
 
   function buildDriverAuthPayload(driver, accountSummary = null) {
@@ -324,11 +334,22 @@ function createAuthRouter(options = {}) {
   }
 
   router.post('/manager/start-trial', async (req, res) => {
+    const publicTrialsEnabled = String(process.env.READYROUTE_ENABLE_PUBLIC_TRIALS || '')
+      .trim()
+      .toLowerCase() === 'true';
+
+    if (!publicTrialsEnabled) {
+      return res.status(403).json({
+        error: 'Public workspace creation is currently disabled. Please request access through readyroute.org/mvp.',
+        redirect_url: 'https://readyroute.org/mvp'
+      });
+    }
+
     const companyName = String(req.body?.company_name || '').trim();
     const fullName = String(req.body?.full_name || '').trim();
     const email = String(req.body?.email || '').trim().toLowerCase();
     const password = String(req.body?.password || '');
-    const vehicleCount = Number(req.body?.vehicle_count);
+    const routeCommitment = getRequestedRouteCommitment(req.body);
 
     if (!companyName || !fullName || !email || !password) {
       return res.status(400).json({ error: 'company_name, full_name, email, and password are required' });
@@ -338,8 +359,8 @@ function createAuthRouter(options = {}) {
       return res.status(400).json({ error: 'A valid email is required' });
     }
 
-    if (!Number.isInteger(vehicleCount) || vehicleCount <= 0) {
-      return res.status(400).json({ error: 'vehicle_count must be a positive integer' });
+    if (!Number.isInteger(routeCommitment) || routeCommitment <= 0) {
+      return res.status(400).json({ error: 'route_count must be a positive integer' });
     }
 
     if (!isStrongEnoughPassword(password)) {
@@ -361,7 +382,7 @@ function createAuthRouter(options = {}) {
           company_name: companyName,
           manager_email: email,
           manager_password_hash: passwordHash,
-          vehicle_count: vehicleCount,
+          vehicle_count: routeCommitment,
           plan: 'starter',
           driver_starter_pin: '1234'
         })
@@ -390,6 +411,17 @@ function createAuthRouter(options = {}) {
       }
 
       try {
+        const billingSettingsResult = await updateRouteBillingSettings({
+          supabase,
+          accountId: account.id,
+          committedRouteCount: routeCommitment,
+          updatedAt: createdAt
+        });
+
+        if (!billingSettingsResult.valid) {
+          throw new Error(billingSettingsResult.error);
+        }
+
         await billingService.createCustomer(email, companyName, account.id);
         const activationToken = signToken(
           {
@@ -400,7 +432,7 @@ function createAuthRouter(options = {}) {
           '24h'
         );
 
-        const checkoutSession = await billingService.createTrialCheckoutSession(account.id, vehicleCount, {
+        const checkoutSession = await billingService.createTrialCheckoutSession(account.id, routeCommitment, {
           successUrl: buildTrialActivationUrl(activationToken),
           cancelUrl: buildTrialCancelUrl(email)
         });
@@ -492,6 +524,18 @@ function createAuthRouter(options = {}) {
         throw accountUpdateError;
       }
 
+      if (Number.isInteger(quantity) && quantity > 0) {
+        const billingSettingsResult = await updateRouteBillingSettings({
+          supabase,
+          accountId: payload.account_id,
+          committedRouteCount: quantity
+        });
+
+        if (!billingSettingsResult.valid) {
+          throw new Error(billingSettingsResult.error);
+        }
+      }
+
       const loginToken = signToken(
         {
           account_id: managerIdentity.account_id,
@@ -544,6 +588,10 @@ function createAuthRouter(options = {}) {
         return res.status(401).json({ error: 'Invalid credentials' });
       }
 
+      if (!isAccountLoginAvailable(accountSummary)) {
+        return res.status(403).json({ error: 'This ReadyRoute workspace is in its data-retention period.' });
+      }
+
       const token = signToken(
         buildDriverAuthPayload(driver, accountSummary),
         '12h'
@@ -580,6 +628,10 @@ function createAuthRouter(options = {}) {
 
       if (!managerIdentity) {
         return res.status(401).json({ error: 'Invalid credentials' });
+      }
+
+      if (!isAccountLoginAvailable(accountSummary)) {
+        return res.status(403).json({ error: 'This ReadyRoute workspace is in its data-retention period.' });
       }
 
       const token = signToken(
@@ -646,6 +698,13 @@ function createAuthRouter(options = {}) {
 
       if (!hasDriverAccess && !hasManagerAccess) {
         return res.status(401).json({ error: 'Invalid credentials' });
+      }
+
+      const driverAccountAvailable = !driver || isAccountLoginAvailable(driverAccountSummary);
+      const managerAccountAvailable = !managerIdentity || isAccountLoginAvailable(managerAccountSummary);
+
+      if ((hasDriverAccess && !driverAccountAvailable) || (hasManagerAccess && !managerAccountAvailable)) {
+        return res.status(403).json({ error: 'This ReadyRoute workspace is in its data-retention period.' });
       }
 
       const linkedDriverAccess = Boolean(
@@ -757,7 +816,6 @@ function createAuthRouter(options = {}) {
       );
 
       const resetUrl = buildPasswordResetUrl(token);
-      console.log(`Manager password reset link for ${managerIdentity.email}: ${resetUrl}`);
 
       const accountQuery = await supabase
         .from('accounts')

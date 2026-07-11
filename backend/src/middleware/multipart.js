@@ -1,4 +1,5 @@
 function parseMultipartForm(req, res, next) {
+  const maximumBytes = 12 * 1024 * 1024;
   const contentType = req.headers['content-type'] || '';
   const boundaryMatch = contentType.match(/boundary=(?:(?:"([^"]+)")|([^;]+))/i);
 
@@ -6,14 +7,36 @@ function parseMultipartForm(req, res, next) {
     return res.status(400).json({ error: 'multipart/form-data with a boundary is required' });
   }
 
+  const declaredBytes = Number(req.headers['content-length']);
+  if (Number.isFinite(declaredBytes) && declaredBytes > maximumBytes) {
+    return res.status(413).json({ error: 'Upload must be 12 MB or smaller.' });
+  }
+
   const boundary = `--${boundaryMatch[1] || boundaryMatch[2]}`;
   const chunks = [];
+  let receivedBytes = 0;
+  let rejected = false;
 
   req.on('data', (chunk) => {
+    if (rejected) {
+      return;
+    }
+
+    receivedBytes += chunk.length;
+    if (receivedBytes > maximumBytes) {
+      rejected = true;
+      chunks.length = 0;
+      res.status(413).json({ error: 'Upload must be 12 MB or smaller.' });
+      return;
+    }
+
     chunks.push(chunk);
   });
 
   req.on('end', () => {
+    if (rejected) {
+      return;
+    }
     try {
       const bodyBuffer = Buffer.concat(chunks);
       const body = bodyBuffer.toString('latin1');

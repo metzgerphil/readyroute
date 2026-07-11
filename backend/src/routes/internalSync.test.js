@@ -8,6 +8,59 @@ process.env.JWT_SECRET = process.env.JWT_SECRET || 'test-secret';
 
 const { createApp } = require('../app');
 
+class MockQueryBuilder {
+  constructor(supabase, table) {
+    this.supabase = supabase;
+    this.table = table;
+    this.operation = 'select';
+    this.state = { filters: [], payload: undefined };
+  }
+
+  select() {
+    return this;
+  }
+
+  update(payload) {
+    this.operation = 'update';
+    this.state.payload = payload;
+    return this;
+  }
+
+  insert(payload) {
+    this.operation = 'insert';
+    this.state.payload = payload;
+    return this;
+  }
+
+  eq(column, value) {
+    this.state.filters.push({ column, value });
+    return this;
+  }
+
+  in(column, value) {
+    this.state.filters.push({ column, value });
+    return this;
+  }
+
+  then(resolve, reject) {
+    return Promise.resolve(this.supabase.handler({
+      table: this.table,
+      operation: this.operation,
+      ...this.state
+    })).then(resolve, reject);
+  }
+}
+
+class MockSupabase {
+  constructor(handler) {
+    this.handler = handler;
+  }
+
+  from(table) {
+    return new MockQueryBuilder(this, table);
+  }
+}
+
 async function startTestServer(appOptions = {}) {
   const app = createApp({
     enforceBilling: false,
@@ -123,6 +176,73 @@ test('GET /internal/fedex-sync can trigger progress mode for cron services', asy
     assert.equal(body.mode, 'progress');
     assert.equal(body.progress.trigger, 'progress_sync');
     assert.deepEqual(calls, [{ accountIds: ['acct-1', 'acct-2'] }]);
+  } finally {
+    await server.close();
+  }
+});
+
+test('POST /internal/account-retention-sweep transitions expired cancellations without purging data', async () => {
+  const updates = [];
+  const events = [];
+  const supabase = new MockSupabase((query) => {
+    if (query.table === 'accounts' && query.operation === 'select') {
+      return {
+        data: [
+          {
+            id: 'acct-retain',
+            account_status: 'canceling',
+            service_ends_at: '2026-07-10T00:00:00.000Z',
+            retention_ends_at: '2026-09-08T00:00:00.000Z'
+          },
+          {
+            id: 'acct-purge-review',
+            account_status: 'retained',
+            service_ends_at: '2026-05-01T00:00:00.000Z',
+            retention_ends_at: '2026-06-30T00:00:00.000Z'
+          }
+        ],
+        error: null
+      };
+    }
+
+    if (query.table === 'accounts' && query.operation === 'update') {
+      updates.push(query);
+      return { data: null, error: null };
+    }
+
+    if (query.table === 'account_cancellation_events' && query.operation === 'insert') {
+      events.push(query.payload);
+      return { data: null, error: null };
+    }
+
+    throw new Error(`Unexpected query ${query.table}:${query.operation}`);
+  });
+  const server = await startTestServer({
+    supabase,
+    accountLifecycleWorkerSecret: 'lifecycle-secret',
+    now: () => new Date('2026-07-11T00:00:00.000Z'),
+    fedexSyncService: {
+      async runScheduledAutomationCycle() {
+        return {};
+      }
+    }
+  });
+
+  try {
+    const response = await fetch(`${server.baseUrl}/internal/account-retention-sweep`, {
+      method: 'POST',
+      headers: { authorization: 'Bearer lifecycle-secret' }
+    });
+    const body = await response.json();
+
+    assert.equal(response.status, 200);
+    assert.equal(body.transitioned_to_retained, 1);
+    assert.deepEqual(body.transition_account_ids, ['acct-retain']);
+    assert.equal(body.purge_eligible, 1);
+    assert.deepEqual(body.purge_eligible_account_ids, ['acct-purge-review']);
+    assert.equal(body.automatic_purge_enabled, false);
+    assert.equal(updates[0].payload.account_status, 'retained');
+    assert.equal(events[0].event_type, 'retained');
   } finally {
     await server.close();
   }

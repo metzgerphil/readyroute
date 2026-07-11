@@ -198,6 +198,6 @@ describe('ManagerDashboardScreen', () => {
     expect(screen.getAllByText('0').length).toBeGreaterThanOrEqual(3);
     expect(screen.queryByText(/FCC connection required/i)).toBeNull();
     expect(screen.queryByText(/GPS stale/i)).toBeNull();
-    expect(screen.queryByText('Add Routes')).toBeNull();
+    expect(screen.queryByText('Upload Manifest')).toBeNull();
   });
 });

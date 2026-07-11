@@ -39,10 +39,6 @@ ${waypoints}
 </gpx>`;
 }
 
-function getTinyTestImageBase64() {
-  return '/9j/4AAQSkZJRgABAQAAAQABAAD/2wCEAAkGBxAQEBUQEBAVFhUVFRUVFRUVFRUVFRUVFRUWFhUVFRUYHSggGBolGxUVITEhJSkrLi4uFx8zODMsNygtLisBCgoKDg0OGhAQGi0fHyUtLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLf/AABEIAAEAAQMBIgACEQEDEQH/xAAXAAADAQAAAAAAAAAAAAAAAAAAAQID/8QAFBABAAAAAAAAAAAAAAAAAAAAAP/aAAwDAQACEAMQAAAB6AAAAP/EABQQAQAAAAAAAAAAAAAAAAAAADD/2gAIAQEAAT8Af//EABQRAQAAAAAAAAAAAAAAAAAAADD/2gAIAQIBAT8Af//EABQRAQAAAAAAAAAAAAAAAAAAADD/2gAIAQMBAT8Af//Z';
-}
-
 describe('ReadyRoute end-to-end workflow', () => {
   test('runs the complete delivery day flow and cleans up test data', async () => {
     const app = createApp();
@@ -79,7 +75,7 @@ describe('ReadyRoute end-to-end workflow', () => {
       const { data: account, error: accountError } = await supabase
         .from('accounts')
         .insert({
-          company_name: `ReadyRoute Test ${uniqueSuffix}`,
+          company_name: `ReadyRoute E2E ${uniqueSuffix}`,
           manager_email: managerEmail,
           manager_password_hash: managerPasswordHash,
           plan: 'starter'
@@ -94,7 +90,7 @@ describe('ReadyRoute end-to-end workflow', () => {
         .from('drivers')
         .insert({
           account_id: cleanup.accountId,
-          name: `Test Driver ${uniqueSuffix}`,
+          name: `E2E Driver ${uniqueSuffix}`,
           email: driverEmail,
           phone: '619-555-0101',
           hourly_rate: 25,
@@ -111,7 +107,7 @@ describe('ReadyRoute end-to-end workflow', () => {
         .from('vehicles')
         .insert({
           account_id: cleanup.accountId,
-          name: `Test Van ${uniqueSuffix}`,
+          name: `E2E Van ${uniqueSuffix}`,
           make: 'Ford',
           model: 'Transit',
           year: 2023,
@@ -142,7 +138,7 @@ describe('ReadyRoute end-to-end workflow', () => {
         .field('driver_id', cleanup.driverId)
         .field('vehicle_id', cleanup.vehicleId)
         .field('date', today)
-        .attach('file', Buffer.from(gpxContent, 'utf8'), 'test-manifest.gpx');
+        .attach('file', Buffer.from(gpxContent, 'utf8'), 'e2e-manifest.gpx');
 
       expect(uploadResponse.status).toBe(201);
       expect(uploadResponse.body.total_stops).toBe(5);
@@ -313,49 +309,26 @@ describe('ReadyRoute end-to-end workflow', () => {
       expect(managerDriverReleaseStop).toBeTruthy();
       expect(managerDriverReleaseStop.delivery_type_code).toBe('014');
 
-      // SCENARIO B — Delivery with Signature (Code 013)
-      const signatureStop = routeStops[1];
-      const signatureUploadResponse = await api
-        .post(`/routes/stops/${signatureStop.id}/signature`)
-        .set('Authorization', `Bearer ${driverToken}`)
-        .send({
-          image_base64: getTinyTestImageBase64(),
-          signer_name: 'John Smith',
-          age_confirmed: false
-        });
-
-      expect(signatureUploadResponse.status).toBe(201);
-      expect(signatureUploadResponse.body.signature_url).toBeTruthy();
-
-      const { data: signatureStopAfterUpload, error: signatureUploadError } = await supabase
-        .from('stops')
-        .select('signature_url, signer_name, age_confirmed')
-        .eq('id', signatureStop.id)
-        .maybeSingle();
-
-      expect(signatureUploadError).toBeNull();
-      expect(signatureStopAfterUpload.signature_url).toBeTruthy();
-      expect(signatureStopAfterUpload.signer_name).toBe('John Smith');
-      expect(signatureStopAfterUpload.age_confirmed).toBe(false);
-
-      const signatureCompleteResponse = await api
-        .patch(`/routes/stops/${signatureStop.id}/complete`)
+      // SCENARIO B — Delivery with residential signature code does not require app signature capture
+      const residentialDeliveryStop = routeStops[1];
+      const residentialDeliveryResponse = await api
+        .patch(`/routes/stops/${residentialDeliveryStop.id}/complete`)
         .set('Authorization', `Bearer ${driverToken}`)
         .send({
           status: 'delivered',
           delivery_type_code: '013'
         });
 
-      expect(signatureCompleteResponse.status).toBe(200);
+      expect(residentialDeliveryResponse.status).toBe(200);
 
-      const managerSignatureResponse = await api
-        .get(`/manager/stops/${signatureStop.id}/signature`)
-        .set('Authorization', `Bearer ${managerToken}`);
+      const { data: residentialDeliveryRecord, error: residentialDeliveryError } = await supabase
+        .from('stops')
+        .select('delivery_type_code')
+        .eq('id', residentialDeliveryStop.id)
+        .maybeSingle();
 
-      expect(managerSignatureResponse.status).toBe(200);
-      expect(managerSignatureResponse.body.stop.signature_url).toBeTruthy();
-      expect(managerSignatureResponse.body.stop.signer_name).toBe('John Smith');
-      expect(managerSignatureResponse.body.stop.delivery_type_code).toBe('013');
+      expect(residentialDeliveryError).toBeNull();
+      expect(residentialDeliveryRecord.delivery_type_code).toBe('013');
 
       // SCENARIO C — Category 2 code with service score warning
       const category2Stop = routeStops[3];

@@ -246,9 +246,7 @@ function getGroupedStopUnitLabel(stop) {
 }
 
 function getPackageDisplayTitle(pkg, index) {
-  const trackingNumber = normalizeContactText(pkg?.tracking_number);
-
-  return trackingNumber || `Package ${index + 1}`;
+  return `Package ${index + 1}`;
 }
 
 function getPackageDetailLine(pkg) {
@@ -466,6 +464,16 @@ export default function StopDetailScreen({ navigation, route }) {
     } finally {
       setIsSavingAccessIntel(false);
     }
+  }
+
+  function handleUseInstructionsAsAccessInfo() {
+    if (!contactDetails.instructions) {
+      return;
+    }
+
+    setAccessCodeDraft(accessCode);
+    setAccessNoteDraft(contactDetails.instructions);
+    setIsEditingAccessIntel(true);
   }
 
   async function handleFlagRoad(flagType) {
@@ -764,8 +772,13 @@ export default function StopDetailScreen({ navigation, route }) {
 
             {contactDetails.instructions ? (
               <View style={styles.contactInstructionsBox}>
-                <Text style={styles.contactActionLabel}>Instructions</Text>
+                <Text style={styles.contactActionLabel}>Manifest instructions</Text>
                 <Text style={styles.contactInstructionsText}>{contactDetails.instructions}</Text>
+                {!isManagerMode ? (
+                  <Pressable onPress={handleUseInstructionsAsAccessInfo} style={styles.inlineAccessButton}>
+                    <Text style={styles.inlineAccessButtonText}>Save as access info</Text>
+                  </Pressable>
+                ) : null}
               </View>
             ) : null}
           </View>
@@ -819,7 +832,7 @@ export default function StopDetailScreen({ navigation, route }) {
         {shouldShowPropertyIntel ? (
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>Delivery Intel</Text>
-            <View style={styles.intelCard}>
+            <View style={[styles.intelCard, hasPropertyIntel ? styles.intelCardActive : null]}>
               {hasPropertyIntel ? (
                 <View style={styles.intelBadgeRow}>
                 {displayLocationType ? (
@@ -856,16 +869,23 @@ export default function StopDetailScreen({ navigation, route }) {
               ) : null}
 
               {accessCode ? (
-                <View style={styles.intelRow}>
+                <View style={[styles.intelRow, styles.intelHighlightRow]}>
                   <Text style={styles.intelLabel}>Access code</Text>
-                  <Text style={styles.intelText}>{accessCode.toUpperCase()}</Text>
+                  <Text style={styles.intelAccessCodeText}>{accessCode.toUpperCase()}</Text>
                 </View>
               ) : null}
 
               {propertyIntel?.access_note ? (
-                <View style={styles.intelRow}>
-                  <Text style={styles.intelLabel}>Access</Text>
+                <View style={[styles.intelRow, styles.intelHighlightRow]}>
+                  <Text style={styles.intelLabel}>Entry note</Text>
                   <Text style={styles.intelText}>{propertyIntel.access_note}</Text>
+                </View>
+              ) : null}
+
+              {!propertyIntel?.access_note && contactDetails.instructions ? (
+                <View style={styles.intelRow}>
+                  <Text style={styles.intelLabel}>Manifest instructions</Text>
+                  <Text style={styles.intelText}>{contactDetails.instructions}</Text>
                 </View>
               ) : null}
 
@@ -1322,6 +1342,22 @@ const styles = StyleSheet.create({
     lineHeight: 20,
     marginTop: 4
   },
+  inlineAccessButton: {
+    alignItems: 'center',
+    alignSelf: 'flex-start',
+    backgroundColor: '#fff7ed',
+    borderColor: '#fed7aa',
+    borderRadius: 999,
+    borderWidth: 1,
+    marginTop: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 8
+  },
+  inlineAccessButtonText: {
+    color: '#c2410c',
+    fontSize: 12,
+    fontWeight: '900'
+  },
   apartmentBox: {
     backgroundColor: '#f5f3ff',
     borderLeftColor: '#7c3aed',
@@ -1358,6 +1394,10 @@ const styles = StyleSheet.create({
     gap: 12,
     padding: 16
   },
+  intelCardActive: {
+    backgroundColor: '#fff7ed',
+    borderColor: '#fdba74'
+  },
   intelBadgeRow: {
     flexDirection: 'row',
     flexWrap: 'wrap',
@@ -1388,6 +1428,13 @@ const styles = StyleSheet.create({
   intelRow: {
     gap: 6
   },
+  intelHighlightRow: {
+    backgroundColor: '#ffffff',
+    borderColor: '#fed7aa',
+    borderRadius: 14,
+    borderWidth: 1,
+    padding: 12
+  },
   intelLabel: {
     color: '#7a848d',
     fontSize: 11,
@@ -1400,6 +1447,12 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: '600',
     lineHeight: 21
+  },
+  intelAccessCodeText: {
+    color: '#c2410c',
+    fontSize: 22,
+    fontWeight: '900',
+    lineHeight: 28
   },
   intelEmptyText: {
     color: '#66737c',

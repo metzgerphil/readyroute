@@ -43,6 +43,22 @@ Runtime secrets/config stay in Google Cloud, not in GitHub:
 - `RESEND_FROM_EMAIL`
 - Stripe, Google, FedEx, and map provider secrets as needed
 
+ReadyRoute staff accounts are provisioned by an authenticated staff owner or admin.
+The original `/staff/bootstrap` endpoint is retired and no bootstrap secret should be
+configured in Cloud Run.
+
+Supabase Storage buckets containing operational files must remain private. The backend
+uploads with the service role after ReadyRoute authorization and returns short-lived
+signed URLs to authorized users. Do not store new public object URLs or mark these
+buckets public: `driver-documents`, `vehicle-inspection-photos`, `pod-photos`, and
+the retired legacy `signatures` bucket.
+
+The API uses security headers, strict production CORS, bounded request parsing, and
+tiered rate limits. Driver GPS posting remains every five seconds and has a separate
+per-driver allowance of 30 updates per minute. Configure limits with the `RATE_LIMIT_*`
+environment variables documented in `backend/.env.example`; do not apply the stricter
+login or public-form limits to `/routes/position`.
+
 ## Release Flow
 
 1. Open a pull request.

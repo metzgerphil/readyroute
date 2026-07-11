@@ -1,0 +1,1887 @@
+const express = require('express');
+const bcrypt = require('bcrypt');
+const crypto = require('crypto');
+const jwt = require('jsonwebtoken');
+
+const defaultSupabase = require('../lib/supabase');
+const { createBillingService } = require('../services/billing');
+const {
+  sendReadyRouteStaffInviteEmail: defaultSendReadyRouteStaffInviteEmail,
+  sendReadyRouteStaffPasswordResetEmail: defaultSendReadyRouteStaffPasswordResetEmail
+} = require('../services/readyRouteStaffEmail');
+const {
+  READYROUTE_STAFF_ADMIN_ROLES,
+  READYROUTE_STAFF_ROLES,
+  READYROUTE_STAFF_WRITE_ROLES,
+  isValidEmail,
+  normalizeEmail,
+  normalizeStaffRole,
+  presentStaffUser,
+  readRequiredStaffContext,
+  signStaffToken
+} = require('../services/readyRouteStaffAuth');
+
+const ACCOUNT_LIFECYCLE_STATUSES = new Set([
+  'lead',
+  'trial',
+  'onboarding',
+  'active',
+  'at_risk',
+  'canceled'
+]);
+
+const STAFF_INVITE_STATUSES = new Set(['pending', 'accepted', 'expired', 'revoked']);
+const OPERATING_COST_CATEGORIES = new Set([
+  'ai_tools',
+  'vercel',
+  'google_cloud_run',
+  'supabase',
+  'email',
+  'maps',
+  'apple_developer',
+  'stripe_fees',
+  'domains',
+  'software',
+  'other'
+]);
+
+function normalizeText(value, maxLength = 500) {
+  const text = String(value || '').trim();
+  return text ? text.slice(0, maxLength) : null;
+}
+
+function isStrongEnoughPassword(password) {
+  return typeof password === 'string' && password.length >= 10;
+}
+
+function normalizeLifecycleStatus(value, fallback = 'lead') {
+  const status = String(value || '').trim().toLowerCase();
+  return ACCOUNT_LIFECYCLE_STATUSES.has(status) ? status : fallback;
+}
+
+function normalizeInviteStatus(value, fallback = 'pending') {
+  const status = String(value || '').trim().toLowerCase();
+  return STAFF_INVITE_STATUSES.has(status) ? status : fallback;
+}
+
+function normalizeCents(value, fallback = 0) {
+  if (value === null || value === undefined || value === '') {
+    return fallback;
+  }
+
+  const numeric = Number(value);
+
+  if (!Number.isFinite(numeric) || numeric < 0) {
+    return fallback;
+  }
+
+  return Math.round(numeric);
+}
+
+function normalizeBoolean(value, fallback = false) {
+  if (value === undefined || value === null || value === '') {
+    return fallback;
+  }
+
+  if (typeof value === 'boolean') {
+    return value;
+  }
+
+  const normalized = String(value).trim().toLowerCase();
+  if (['true', '1', 'yes', 'y'].includes(normalized)) {
+    return true;
+  }
+
+  if (['false', '0', 'no', 'n'].includes(normalized)) {
+    return false;
+  }
+
+  return fallback;
+}
+
+function normalizeDateOnly(value, fallback = null) {
+  const raw = String(value || '').trim();
+  const match = raw.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+
+  if (!match) {
+    return fallback;
+  }
+
+  const date = new Date(`${raw}T00:00:00.000Z`);
+  if (Number.isNaN(date.getTime())) {
+    return fallback;
+  }
+
+  return raw;
+}
+
+function normalizePeriodMonth(value, fallbackDate = new Date()) {
+  const raw = String(value || '').trim();
+  const match = raw.match(/^(\d{4})-(\d{2})/);
+
+  if (match) {
+    const month = Number(match[2]);
+
+    if (month >= 1 && month <= 12) {
+      return `${match[1]}-${match[2]}-01`;
+    }
+  }
+
+  const date = fallbackDate instanceof Date ? fallbackDate : new Date(fallbackDate);
+  const year = date.getUTCFullYear();
+  const month = String(date.getUTCMonth() + 1).padStart(2, '0');
+  return `${year}-${month}-01`;
+}
+
+function normalizeOperatingCostCategory(value) {
+  const category = String(value || '').trim().toLowerCase();
+  return OPERATING_COST_CATEGORIES.has(category) ? category : 'other';
+}
+
+function isMissingOperatingCostsTableError(error) {
+  const message = String(error?.message || error?.details || '').toLowerCase();
+  return (
+    error?.code === '42P01' ||
+    error?.code === 'PGRST205' ||
+    (message.includes('readyroute_operating_costs') && (
+      message.includes('does not exist') ||
+      message.includes('schema cache') ||
+      message.includes('not found')
+    ))
+  );
+}
+
+function createOpaqueToken(byteLength = 32) {
+  return crypto.randomBytes(byteLength).toString('base64url');
+}
+
+function hashOpaqueToken(token) {
+  return crypto.createHash('sha256').update(String(token || '')).digest('hex');
+}
+
+function countByAccount(rows = [], predicate = () => true) {
+  return rows.reduce((counts, row) => {
+    if (!row?.account_id || !predicate(row)) {
+      return counts;
+    }
+
+    counts[row.account_id] = (counts[row.account_id] || 0) + 1;
+    return counts;
+  }, {});
+}
+
+function latestByAccount(rows = [], getTimestamp = (row) => row.created_at) {
+  return rows.reduce((latest, row) => {
+    if (!row?.account_id) {
+      return latest;
+    }
+
+    const timestamp = new Date(getTimestamp(row) || 0).getTime();
+    const currentTimestamp = latest[row.account_id]
+      ? new Date(getTimestamp(latest[row.account_id]) || 0).getTime()
+      : 0;
+
+    if (!latest[row.account_id] || timestamp > currentTimestamp) {
+      latest[row.account_id] = row;
+    }
+
+    return latest;
+  }, {});
+}
+
+function mapByAccount(rows = []) {
+  return rows.reduce((map, row) => {
+    if (row?.account_id) {
+      map[row.account_id] = row;
+    }
+
+    return map;
+  }, {});
+}
+
+function getRequestStaff(req, jwtSecret, allowedRoles = READYROUTE_STAFF_ROLES) {
+  return readRequiredStaffContext(req, jwtSecret, allowedRoles);
+}
+
+function sendAuthError(res, error) {
+  if (error.status === 401) {
+    return res.status(401).json({ error: error.message || 'Invalid or expired token' });
+  }
+
+  if (error.status === 403) {
+    return res.status(403).json({ error: error.message || 'ReadyRoute staff access required' });
+  }
+
+  return null;
+}
+
+function presentAccountSummary(account, profile, counts = {}, latestTicket = null) {
+  return {
+    id: account.id,
+    company_name: account.company_name,
+    manager_email: account.manager_email || null,
+    subscription_status: account.subscription_status || null,
+    plan: account.plan || null,
+    vehicle_count: account.vehicle_count || 0,
+    stripe_customer_id: account.stripe_customer_id || null,
+    stripe_subscription_id: account.stripe_subscription_id || null,
+    account_status: account.account_status || 'active',
+    cancellation_requested_at: account.cancellation_requested_at || null,
+    service_ends_at: account.service_ends_at || null,
+    retention_ends_at: account.retention_ends_at || null,
+    canceled_at: account.canceled_at || null,
+    cancellation_reason: account.cancellation_reason || null,
+    created_at: account.created_at || null,
+    internal_profile: {
+      lifecycle_status: profile?.lifecycle_status || 'lead',
+      onboarding_stage: profile?.onboarding_stage || null,
+      internal_notes: profile?.internal_notes || null,
+      internal_owner_staff_user_id: profile?.internal_owner_staff_user_id || null,
+      updated_at: profile?.updated_at || null
+    },
+    counts: {
+      active_managers: counts.activeManagers || 0,
+      active_drivers: counts.activeDrivers || 0,
+      open_support_tickets: counts.openTickets || 0,
+      urgent_support_tickets: counts.urgentTickets || 0
+    },
+    latest_support_ticket: latestTicket ? {
+      id: latestTicket.id,
+      ticket_reference: latestTicket.ticket_reference,
+      subject: latestTicket.subject,
+      status: latestTicket.status,
+      priority: latestTicket.priority,
+      created_at: latestTicket.created_at
+    } : null
+  };
+}
+
+function presentStaffInvite(row = {}) {
+  return {
+    id: row.id,
+    email: normalizeEmail(row.email),
+    full_name: row.full_name || '',
+    role: normalizeStaffRole(row.role),
+    status: normalizeInviteStatus(row.status),
+    invited_by_staff_user_id: row.invited_by_staff_user_id || null,
+    accepted_by_staff_user_id: row.accepted_by_staff_user_id || null,
+    email_provider_id: row.email_provider_id || null,
+    expires_at: row.expires_at || null,
+    accepted_at: row.accepted_at || null,
+    created_at: row.created_at || null,
+    updated_at: row.updated_at || null
+  };
+}
+
+function presentAuditLog(row = {}) {
+  return {
+    id: row.id,
+    staff_user_id: row.staff_user_id || null,
+    staff_email: row.staff_email || null,
+    action: row.action || '',
+    target_type: row.target_type || null,
+    target_id: row.target_id || null,
+    account_id: row.account_id || null,
+    metadata: row.metadata || {},
+    created_at: row.created_at || null
+  };
+}
+
+function presentOperatingCost(row = {}) {
+  return {
+    id: row.id,
+    period_month: row.period_month || null,
+    category: normalizeOperatingCostCategory(row.category),
+    vendor: row.vendor || '',
+    amount_cents: Number(row.amount_cents || 0),
+    billing_date: row.billing_date || null,
+    is_recurring: row.is_recurring !== false,
+    notes: row.notes || null,
+    receipt_url: row.receipt_url || null,
+    created_by_staff_user_id: row.created_by_staff_user_id || null,
+    created_at: row.created_at || null,
+    updated_at: row.updated_at || null
+  };
+}
+
+function buildOperatingCostSummary(rows = []) {
+  const costs = rows.map(presentOperatingCost);
+  const categoryTotals = {};
+  const vendors = new Set();
+  let totalCostCents = 0;
+  let recurringCostCents = 0;
+  let oneTimeCostCents = 0;
+
+  for (const cost of costs) {
+    const amountCents = Number(cost.amount_cents || 0);
+    totalCostCents += amountCents;
+    categoryTotals[cost.category] = (categoryTotals[cost.category] || 0) + amountCents;
+
+    if (cost.vendor) {
+      vendors.add(cost.vendor.trim().toLowerCase());
+    }
+
+    if (cost.is_recurring) {
+      recurringCostCents += amountCents;
+    } else {
+      oneTimeCostCents += amountCents;
+    }
+  }
+
+  return {
+    total_cost_cents: totalCostCents,
+    recurring_cost_cents: recurringCostCents,
+    one_time_cost_cents: oneTimeCostCents,
+    category_totals: categoryTotals,
+    vendor_count: vendors.size,
+    entry_count: costs.length
+  };
+}
+
+function buildAccountTimeline({ account, profile, supportTickets = [], auditLogs = [], billingRoutes = [] } = {}) {
+  const events = [];
+
+  if (account?.created_at) {
+    events.push({
+      id: `account-created-${account.id}`,
+      type: 'account_created',
+      title: 'Account created',
+      description: account.company_name || account.manager_email || 'Customer account created',
+      created_at: account.created_at
+    });
+  }
+
+  if (profile?.updated_at) {
+    events.push({
+      id: `profile-updated-${account?.id}`,
+      type: 'internal_profile_updated',
+      title: 'Internal profile updated',
+      description: `${profile.lifecycle_status || 'lead'}${profile.onboarding_stage ? ` · ${profile.onboarding_stage}` : ''}`,
+      created_at: profile.updated_at
+    });
+  }
+
+  for (const ticket of supportTickets.slice(0, 12)) {
+    events.push({
+      id: `ticket-${ticket.id}`,
+      type: 'support_ticket',
+      title: `${ticket.ticket_reference || 'Ticket'} · ${ticket.status || 'new'}`,
+      description: ticket.subject || ticket.description || 'Support ticket',
+      created_at: ticket.updated_at || ticket.created_at
+    });
+  }
+
+  for (const route of billingRoutes.slice(0, 12)) {
+    events.push({
+      id: `billable-route-${route.id}`,
+      type: 'billable_route',
+      title: `Billable route ${route.route_display_name || route.route_key || ''}`.trim(),
+      description: route.status || 'pending',
+      created_at: route.last_imported_at || route.first_imported_at || route.created_at
+    });
+  }
+
+  for (const log of auditLogs.slice(0, 20)) {
+    events.push({
+      id: `audit-${log.id}`,
+      type: 'staff_audit',
+      title: log.action || 'Staff action',
+      description: log.staff_email || log.target_type || 'ReadyRoute staff',
+      created_at: log.created_at,
+      metadata: log.metadata || {}
+    });
+  }
+
+  return events
+    .filter((event) => event.created_at)
+    .sort((left, right) => new Date(right.created_at).getTime() - new Date(left.created_at).getTime())
+    .slice(0, 40);
+}
+
+function createReadyRouteStaffRouter(options = {}) {
+  const router = express.Router();
+  const supabase = options.supabase || defaultSupabase;
+  const jwtSecret = options.jwtSecret || process.env.JWT_SECRET;
+  const now = options.now || (() => new Date());
+  const sendReadyRouteStaffInviteEmail =
+    options.sendReadyRouteStaffInviteEmail || defaultSendReadyRouteStaffInviteEmail;
+  const sendReadyRouteStaffPasswordResetEmail =
+    options.sendReadyRouteStaffPasswordResetEmail || defaultSendReadyRouteStaffPasswordResetEmail;
+  const billingService = options.billingService || createBillingService({
+    supabase,
+    stripeClient: options.stripeClient
+  });
+
+  function getManagerPortalBaseUrl() {
+    return (
+      process.env.MANAGER_PORTAL_URL ||
+      process.env.VITE_MANAGER_PORTAL_URL ||
+      'http://127.0.0.1:5173'
+    );
+  }
+
+  function getPasswordVersion(hash) {
+    return crypto.createHash('sha256').update(String(hash || '')).digest('hex').slice(0, 16);
+  }
+
+  function signToken(payload, expiresIn) {
+    if (!jwtSecret) {
+      throw new Error('Missing JWT_SECRET environment variable');
+    }
+
+    return jwt.sign(payload, jwtSecret, { expiresIn });
+  }
+
+  function buildStaffPasswordResetUrl(token) {
+    const baseUrl = getManagerPortalBaseUrl().replace(/\/$/, '');
+    return `${baseUrl}/readyroute/reset-password?token=${encodeURIComponent(token)}`;
+  }
+
+  function buildStaffInviteUrl(token) {
+    const baseUrl = getManagerPortalBaseUrl().replace(/\/$/, '');
+    return `${baseUrl}/readyroute/accept-invite?token=${encodeURIComponent(token)}`;
+  }
+
+  async function writeAuditLog({
+    staff,
+    action,
+    targetType,
+    targetId,
+    accountId,
+    metadata = {}
+  }) {
+    try {
+      await supabase
+        .from('readyroute_staff_audit_log')
+        .insert({
+          staff_user_id: staff?.staff_user_id || null,
+          staff_email: staff?.staff_email || null,
+          action,
+          target_type: targetType || null,
+          target_id: targetId || null,
+          account_id: accountId || null,
+          metadata,
+          created_at: now().toISOString()
+        });
+    } catch (error) {
+      console.warn('ReadyRoute staff audit log write failed:', error);
+    }
+  }
+
+  async function findStaffUserByEmail(email) {
+    const normalizedEmail = normalizeEmail(email);
+    const { data, error } = await supabase
+      .from('readyroute_staff_users')
+      .select('id, email, full_name, password_hash, role, is_active, invited_at, accepted_at, last_login_at, created_at, updated_at')
+      .eq('email', normalizedEmail)
+      .maybeSingle();
+
+    if (error) {
+      throw error;
+    }
+
+    return data || null;
+  }
+
+  async function findStaffUserById(staffUserId) {
+    const { data, error } = await supabase
+      .from('readyroute_staff_users')
+      .select('id, email, full_name, password_hash, role, is_active, invited_at, accepted_at, last_login_at, created_at, updated_at')
+      .eq('id', staffUserId)
+      .maybeSingle();
+
+    if (error) {
+      throw error;
+    }
+
+    return data || null;
+  }
+
+  async function loadAccountInternalProfile(accountId) {
+    const { data, error } = await supabase
+      .from('account_internal_profiles')
+      .select('*')
+      .eq('account_id', accountId)
+      .maybeSingle();
+
+    if (error) {
+      throw error;
+    }
+
+    return data || null;
+  }
+
+  router.post('/login', async (req, res) => {
+    const email = normalizeEmail(req.body?.email);
+    const password = String(req.body?.password || '');
+
+    if (!email || !password) {
+      return res.status(400).json({ error: 'Email and password are required.' });
+    }
+
+    try {
+      const staffUser = await findStaffUserByEmail(email);
+
+      if (!staffUser || staffUser.is_active === false || !staffUser.password_hash) {
+        return res.status(401).json({ error: 'Invalid credentials' });
+      }
+
+      const isValidPassword = await bcrypt.compare(password, staffUser.password_hash);
+
+      if (!isValidPassword) {
+        return res.status(401).json({ error: 'Invalid credentials' });
+      }
+
+      const loginTimestamp = now().toISOString();
+      await supabase
+        .from('readyroute_staff_users')
+        .update({ last_login_at: loginTimestamp, updated_at: loginTimestamp })
+        .eq('id', staffUser.id);
+
+      const user = {
+        ...staffUser,
+        last_login_at: loginTimestamp
+      };
+
+      await writeAuditLog({
+        staff: {
+          staff_user_id: staffUser.id,
+          staff_email: staffUser.email
+        },
+        action: 'staff.login',
+        targetType: 'readyroute_staff_user',
+        targetId: staffUser.id
+      });
+
+      return res.status(200).json({
+        token: signStaffToken(user, jwtSecret),
+        user: presentStaffUser(user)
+      });
+    } catch (error) {
+      console.error('ReadyRoute staff login failed:', error);
+      return res.status(500).json({ error: 'Failed to log in ReadyRoute staff user.' });
+    }
+  });
+
+  router.post('/request-password-reset', async (req, res) => {
+    const email = normalizeEmail(req.body?.email);
+
+    if (!isValidEmail(email)) {
+      return res.status(400).json({ error: 'A valid email is required.' });
+    }
+
+    const responsePayload = {
+      message: 'If that staff account exists, a password reset link has been prepared.'
+    };
+
+    try {
+      const staffUser = await findStaffUserByEmail(email);
+
+      if (!staffUser || staffUser.is_active === false || !staffUser.password_hash) {
+        return res.status(200).json(responsePayload);
+      }
+
+      const token = signToken(
+        {
+          staff_user_id: staffUser.id,
+          email: normalizeEmail(staffUser.email),
+          purpose: 'readyroute_staff_password_reset',
+          pwdv: getPasswordVersion(staffUser.password_hash)
+        },
+        '30m'
+      );
+      const resetUrl = buildStaffPasswordResetUrl(token);
+
+      let emailDelivery = {
+        delivered: false,
+        skipped: true,
+        reason: 'Email service is not configured'
+      };
+
+      try {
+        emailDelivery = await sendReadyRouteStaffPasswordResetEmail({
+          to: staffUser.email,
+          fullName: staffUser.full_name,
+          resetUrl
+        });
+      } catch (emailError) {
+        console.error('ReadyRoute staff password reset email delivery failed:', emailError);
+        emailDelivery = {
+          delivered: false,
+          skipped: false,
+          reason: 'Email delivery failed'
+        };
+      }
+
+      if (process.env.NODE_ENV === 'production' && emailDelivery?.skipped) {
+        return res.status(503).json({ error: 'Staff password reset email service is not configured yet.' });
+      }
+
+      if (process.env.NODE_ENV === 'production' && !emailDelivery?.delivered) {
+        return res.status(503).json({
+          error: 'Staff password reset email could not be sent. Ask a ReadyRoute owner or admin to reset your password.'
+        });
+      }
+
+      if (process.env.NODE_ENV !== 'production') {
+        responsePayload.reset_url = resetUrl;
+      }
+
+      if (emailDelivery?.delivered) {
+        responsePayload.message = 'Password reset email sent. Check your inbox for the reset link.';
+      }
+
+      return res.status(200).json(responsePayload);
+    } catch (error) {
+      console.error('ReadyRoute staff password reset request failed:', error);
+      return res.status(500).json({ error: 'Failed to process staff password reset request.' });
+    }
+  });
+
+  router.post('/change-password', async (req, res) => {
+    const currentPassword = String(req.body?.current_password || '');
+    const nextPassword = String(req.body?.new_password || '');
+
+    if (!currentPassword || !nextPassword) {
+      return res.status(400).json({ error: 'Current password and new password are required.' });
+    }
+
+    if (!isStrongEnoughPassword(nextPassword)) {
+      return res.status(400).json({ error: 'Password must be at least 10 characters.' });
+    }
+
+    if (currentPassword === nextPassword) {
+      return res.status(400).json({ error: 'New password must be different from the current password.' });
+    }
+
+    try {
+      const staff = getRequestStaff(req, jwtSecret);
+      const staffUser = await findStaffUserById(staff.staff_user_id);
+
+      if (!staffUser || staffUser.is_active === false || !staffUser.password_hash) {
+        return res.status(403).json({ error: 'ReadyRoute staff access required.' });
+      }
+
+      const currentPasswordMatches = await bcrypt.compare(currentPassword, staffUser.password_hash);
+
+      if (!currentPasswordMatches) {
+        return res.status(401).json({ error: 'Current password is incorrect.' });
+      }
+
+      const passwordHash = await bcrypt.hash(nextPassword, 10);
+      const { error } = await supabase
+        .from('readyroute_staff_users')
+        .update({
+          password_hash: passwordHash,
+          updated_at: now().toISOString()
+        })
+        .eq('id', staffUser.id);
+
+      if (error) {
+        throw error;
+      }
+
+      await writeAuditLog({
+        staff,
+        action: 'staff.password_changed',
+        targetType: 'readyroute_staff_user',
+        targetId: staffUser.id
+      });
+
+      return res.status(200).json({ message: 'Password updated.' });
+    } catch (error) {
+      const authResponse = sendAuthError(res, error);
+      if (authResponse) {
+        return authResponse;
+      }
+
+      console.error('ReadyRoute staff password change failed:', error);
+      return res.status(500).json({ error: 'Unable to update staff password.' });
+    }
+  });
+
+  router.post('/reset-password', async (req, res) => {
+    const token = String(req.body?.token || '');
+    const password = String(req.body?.password || '');
+
+    if (!token || !password) {
+      return res.status(400).json({ error: 'Reset token and new password are required.' });
+    }
+
+    if (!isStrongEnoughPassword(password)) {
+      return res.status(400).json({ error: 'Password must be at least 10 characters.' });
+    }
+
+    try {
+      let payload;
+
+      try {
+        payload = jwt.verify(token, jwtSecret);
+      } catch (_error) {
+        return res.status(400).json({ error: 'Reset link is invalid or expired.' });
+      }
+
+      if (
+        payload?.purpose !== 'readyroute_staff_password_reset' ||
+        !payload.staff_user_id ||
+        !payload.email ||
+        !payload.pwdv
+      ) {
+        return res.status(400).json({ error: 'Reset link is invalid or expired.' });
+      }
+
+      const staffUser = await findStaffUserById(payload.staff_user_id);
+
+      if (
+        !staffUser ||
+        staffUser.is_active === false ||
+        normalizeEmail(staffUser.email) !== normalizeEmail(payload.email) ||
+        !staffUser.password_hash ||
+        getPasswordVersion(staffUser.password_hash) !== payload.pwdv
+      ) {
+        return res.status(400).json({ error: 'Reset link is invalid or expired.' });
+      }
+
+      const passwordHash = await bcrypt.hash(password, 10);
+      const { error } = await supabase
+        .from('readyroute_staff_users')
+        .update({
+          password_hash: passwordHash,
+          updated_at: now().toISOString()
+        })
+        .eq('id', staffUser.id);
+
+      if (error) {
+        throw error;
+      }
+
+      await writeAuditLog({
+        staff: {
+          staff_user_id: staffUser.id,
+          staff_email: staffUser.email
+        },
+        action: 'staff.password_reset_completed',
+        targetType: 'readyroute_staff_user',
+        targetId: staffUser.id
+      });
+
+      return res.status(200).json({ message: 'Password updated. You can sign in now.' });
+    } catch (error) {
+      console.error('ReadyRoute staff password reset failed:', error);
+      return res.status(500).json({ error: 'Failed to reset staff password.' });
+    }
+  });
+
+  router.get('/me', async (req, res) => {
+    try {
+      const staff = getRequestStaff(req, jwtSecret);
+      return res.status(200).json({ staff });
+    } catch (error) {
+      const authResponse = sendAuthError(res, error);
+      if (authResponse) {
+        return authResponse;
+      }
+
+      console.error('ReadyRoute staff me failed:', error);
+      return res.status(500).json({ error: 'Unable to load staff session.' });
+    }
+  });
+
+  router.get('/audit-log', async (req, res) => {
+    try {
+      getRequestStaff(req, jwtSecret);
+      const accountId = normalizeText(req.query?.account_id, 120);
+      const limit = Math.min(Math.max(Number(req.query?.limit) || 50, 1), 200);
+      let query = supabase
+        .from('readyroute_staff_audit_log')
+        .select('id, staff_user_id, staff_email, action, target_type, target_id, account_id, metadata, created_at')
+        .order('created_at', { ascending: false })
+        .limit(limit);
+
+      if (accountId) {
+        query = query.eq('account_id', accountId);
+      }
+
+      const { data, error } = await query;
+
+      if (error) {
+        throw error;
+      }
+
+      return res.status(200).json({ audit_logs: (data || []).map(presentAuditLog) });
+    } catch (error) {
+      const authResponse = sendAuthError(res, error);
+      if (authResponse) {
+        return authResponse;
+      }
+
+      console.error('ReadyRoute staff audit log list failed:', error);
+      return res.status(500).json({ error: 'Unable to load ReadyRoute staff audit log.' });
+    }
+  });
+
+  router.get('/invites', async (req, res) => {
+    try {
+      getRequestStaff(req, jwtSecret, READYROUTE_STAFF_ADMIN_ROLES);
+
+      const { data, error } = await supabase
+        .from('readyroute_staff_invites')
+        .select('id, email, full_name, role, status, invited_by_staff_user_id, accepted_by_staff_user_id, email_provider_id, expires_at, accepted_at, created_at, updated_at')
+        .order('created_at', { ascending: false })
+        .limit(100);
+
+      if (error) {
+        throw error;
+      }
+
+      return res.status(200).json({ invites: (data || []).map(presentStaffInvite) });
+    } catch (error) {
+      const authResponse = sendAuthError(res, error);
+      if (authResponse) {
+        return authResponse;
+      }
+
+      console.error('ReadyRoute staff invite list failed:', error);
+      return res.status(500).json({ error: 'Unable to load ReadyRoute staff invites.' });
+    }
+  });
+
+  router.post('/invites', async (req, res) => {
+    try {
+      const staff = getRequestStaff(req, jwtSecret, READYROUTE_STAFF_ADMIN_ROLES);
+      const email = normalizeEmail(req.body?.email);
+      const fullName = normalizeText(req.body?.full_name || req.body?.name, 180);
+      const role = normalizeStaffRole(req.body?.role, 'support');
+      const timestamp = now();
+      const expiresAt = new Date(timestamp.getTime() + 7 * 24 * 60 * 60 * 1000).toISOString();
+
+      if (!isValidEmail(email)) {
+        return res.status(400).json({ error: 'A valid email is required.' });
+      }
+
+      if (!fullName) {
+        return res.status(400).json({ error: 'Full name is required.' });
+      }
+
+      const existingStaffUser = await findStaffUserByEmail(email);
+
+      if (existingStaffUser) {
+        return res.status(409).json({ error: 'A ReadyRoute staff user already exists for that email.' });
+      }
+
+      const inviteToken = createOpaqueToken();
+      const inviteUrl = buildStaffInviteUrl(inviteToken);
+      const { data, error } = await supabase
+        .from('readyroute_staff_invites')
+        .insert({
+          email,
+          full_name: fullName,
+          role,
+          status: 'pending',
+          token_hash: hashOpaqueToken(inviteToken),
+          invited_by_staff_user_id: staff.staff_user_id,
+          expires_at: expiresAt,
+          created_at: timestamp.toISOString(),
+          updated_at: timestamp.toISOString()
+        })
+        .select('id, email, full_name, role, status, invited_by_staff_user_id, accepted_by_staff_user_id, email_provider_id, expires_at, accepted_at, created_at, updated_at')
+        .single();
+
+      if (error) {
+        if (error.code === '23505') {
+          return res.status(409).json({ error: 'A pending ReadyRoute staff invite already exists for that email.' });
+        }
+
+        throw error;
+      }
+
+      let emailDelivery = {
+        delivered: false,
+        skipped: true,
+        reason: 'Email service is not configured'
+      };
+
+      try {
+        emailDelivery = await sendReadyRouteStaffInviteEmail({
+          to: email,
+          fullName,
+          inviteUrl,
+          inviterName: staff.staff_name || staff.staff_email,
+          role
+        });
+      } catch (emailError) {
+        console.error('ReadyRoute staff invite email delivery failed:', emailError);
+        emailDelivery = {
+          delivered: false,
+          skipped: false,
+          reason: 'Email delivery failed'
+        };
+      }
+
+      if (emailDelivery?.provider_id) {
+        await supabase
+          .from('readyroute_staff_invites')
+          .update({ email_provider_id: emailDelivery.provider_id, updated_at: now().toISOString() })
+          .eq('id', data.id);
+      }
+
+      await writeAuditLog({
+        staff,
+        action: 'staff.invite_created',
+        targetType: 'readyroute_staff_invite',
+        targetId: data.id,
+        metadata: {
+          email,
+          role,
+          email_delivered: Boolean(emailDelivery?.delivered)
+        }
+      });
+
+      const responsePayload = {
+        invite: presentStaffInvite({
+          ...data,
+          email_provider_id: emailDelivery?.provider_id || data.email_provider_id || null
+        }),
+        email_delivery: emailDelivery
+      };
+
+      if (process.env.NODE_ENV !== 'production' || !emailDelivery?.delivered) {
+        responsePayload.invite_url = inviteUrl;
+      }
+
+      return res.status(201).json(responsePayload);
+    } catch (error) {
+      const authResponse = sendAuthError(res, error);
+      if (authResponse) {
+        return authResponse;
+      }
+
+      console.error('ReadyRoute staff invite create failed:', error);
+      return res.status(500).json({ error: 'Unable to create ReadyRoute staff invite.' });
+    }
+  });
+
+  router.post('/invites/:inviteId/resend', async (req, res) => {
+    try {
+      const staff = getRequestStaff(req, jwtSecret, READYROUTE_STAFF_ADMIN_ROLES);
+      const inviteId = normalizeText(req.params.inviteId, 120);
+
+      const { data: existingInvite, error: existingError } = await supabase
+        .from('readyroute_staff_invites')
+        .select('id, email, full_name, role, status')
+        .eq('id', inviteId)
+        .maybeSingle();
+
+      if (existingError) {
+        throw existingError;
+      }
+
+      if (!existingInvite || existingInvite.status !== 'pending') {
+        return res.status(404).json({ error: 'Pending ReadyRoute staff invite not found.' });
+      }
+
+      const timestamp = now();
+      const expiresAt = new Date(timestamp.getTime() + 7 * 24 * 60 * 60 * 1000).toISOString();
+      const inviteToken = createOpaqueToken();
+      const inviteUrl = buildStaffInviteUrl(inviteToken);
+      let emailDelivery = {
+        delivered: false,
+        skipped: true,
+        reason: 'Email service is not configured'
+      };
+
+      try {
+        emailDelivery = await sendReadyRouteStaffInviteEmail({
+          to: existingInvite.email,
+          fullName: existingInvite.full_name,
+          inviteUrl,
+          inviterName: staff.staff_name || staff.staff_email,
+          role: existingInvite.role
+        });
+      } catch (emailError) {
+        console.error('ReadyRoute staff invite resend email delivery failed:', emailError);
+        emailDelivery = {
+          delivered: false,
+          skipped: false,
+          reason: 'Email delivery failed'
+        };
+      }
+
+      const { data, error } = await supabase
+        .from('readyroute_staff_invites')
+        .update({
+          token_hash: hashOpaqueToken(inviteToken),
+          email_provider_id: emailDelivery?.provider_id || null,
+          expires_at: expiresAt,
+          updated_at: timestamp.toISOString()
+        })
+        .eq('id', inviteId)
+        .select('id, email, full_name, role, status, invited_by_staff_user_id, accepted_by_staff_user_id, email_provider_id, expires_at, accepted_at, created_at, updated_at')
+        .maybeSingle();
+
+      if (error) {
+        throw error;
+      }
+
+      await writeAuditLog({
+        staff,
+        action: 'staff.invite_resent',
+        targetType: 'readyroute_staff_invite',
+        targetId: inviteId,
+        metadata: {
+          email: existingInvite.email,
+          email_delivered: Boolean(emailDelivery?.delivered)
+        }
+      });
+
+      const responsePayload = {
+        invite: presentStaffInvite(data),
+        email_delivery: emailDelivery
+      };
+
+      if (process.env.NODE_ENV !== 'production' || !emailDelivery?.delivered) {
+        responsePayload.invite_url = inviteUrl;
+      }
+
+      return res.status(200).json(responsePayload);
+    } catch (error) {
+      const authResponse = sendAuthError(res, error);
+      if (authResponse) {
+        return authResponse;
+      }
+
+      console.error('ReadyRoute staff invite resend failed:', error);
+      return res.status(500).json({ error: 'Unable to resend ReadyRoute staff invite.' });
+    }
+  });
+
+  router.post('/invites/accept', async (req, res) => {
+    const token = String(req.body?.token || '').trim();
+    const password = String(req.body?.password || '');
+
+    if (!token || !password) {
+      return res.status(400).json({ error: 'Invite token and password are required.' });
+    }
+
+    if (!isStrongEnoughPassword(password)) {
+      return res.status(400).json({ error: 'Password must be at least 10 characters.' });
+    }
+
+    try {
+      const tokenHash = hashOpaqueToken(token);
+      const { data: invite, error: inviteError } = await supabase
+        .from('readyroute_staff_invites')
+        .select('id, email, full_name, role, status, expires_at')
+        .eq('token_hash', tokenHash)
+        .maybeSingle();
+
+      if (inviteError) {
+        throw inviteError;
+      }
+
+      if (!invite || invite.status !== 'pending' || new Date(invite.expires_at).getTime() <= now().getTime()) {
+        return res.status(400).json({ error: 'Invite link is invalid or expired.' });
+      }
+
+      const existingStaffUser = await findStaffUserByEmail(invite.email);
+
+      if (existingStaffUser) {
+        return res.status(409).json({ error: 'A ReadyRoute staff user already exists for that email.' });
+      }
+
+      const timestamp = now().toISOString();
+      const passwordHash = await bcrypt.hash(password, 10);
+      const { data: staffUser, error: staffError } = await supabase
+        .from('readyroute_staff_users')
+        .insert({
+          email: invite.email,
+          full_name: invite.full_name,
+          password_hash: passwordHash,
+          role: normalizeStaffRole(invite.role, 'support'),
+          is_active: true,
+          invited_at: timestamp,
+          accepted_at: timestamp,
+          created_at: timestamp,
+          updated_at: timestamp
+        })
+        .select('id, email, full_name, role, is_active, invited_at, accepted_at, last_login_at, created_at, updated_at')
+        .single();
+
+      if (staffError) {
+        if (staffError.code === '23505') {
+          return res.status(409).json({ error: 'A ReadyRoute staff user already exists for that email.' });
+        }
+
+        throw staffError;
+      }
+
+      const { error: updateInviteError } = await supabase
+        .from('readyroute_staff_invites')
+        .update({
+          status: 'accepted',
+          accepted_at: timestamp,
+          accepted_by_staff_user_id: staffUser.id,
+          updated_at: timestamp
+        })
+        .eq('id', invite.id);
+
+      if (updateInviteError) {
+        throw updateInviteError;
+      }
+
+      await writeAuditLog({
+        staff: {
+          staff_user_id: staffUser.id,
+          staff_email: staffUser.email
+        },
+        action: 'staff.invite_accepted',
+        targetType: 'readyroute_staff_invite',
+        targetId: invite.id,
+        metadata: {
+          email: staffUser.email,
+          role: staffUser.role
+        }
+      });
+
+      return res.status(201).json({
+        token: signStaffToken(staffUser, jwtSecret),
+        user: presentStaffUser(staffUser)
+      });
+    } catch (error) {
+      console.error('ReadyRoute staff invite accept failed:', error);
+      return res.status(500).json({ error: 'Unable to accept ReadyRoute staff invite.' });
+    }
+  });
+
+  router.get('/users', async (req, res) => {
+    try {
+      getRequestStaff(req, jwtSecret, READYROUTE_STAFF_ADMIN_ROLES);
+
+      const { data, error } = await supabase
+        .from('readyroute_staff_users')
+        .select('id, email, full_name, role, is_active, invited_at, accepted_at, last_login_at, created_at, updated_at')
+        .order('created_at', { ascending: false });
+
+      if (error) {
+        throw error;
+      }
+
+      return res.status(200).json({ staff_users: (data || []).map(presentStaffUser) });
+    } catch (error) {
+      const authResponse = sendAuthError(res, error);
+      if (authResponse) {
+        return authResponse;
+      }
+
+      console.error('ReadyRoute staff user list failed:', error);
+      return res.status(500).json({ error: 'Unable to load ReadyRoute staff users.' });
+    }
+  });
+
+  router.post('/users', async (req, res) => {
+    try {
+      const staff = getRequestStaff(req, jwtSecret, READYROUTE_STAFF_ADMIN_ROLES);
+      const email = normalizeEmail(req.body?.email);
+      const fullName = normalizeText(req.body?.full_name || req.body?.name, 180);
+      const password = String(req.body?.password || '');
+      const role = normalizeStaffRole(req.body?.role, 'support');
+      const timestamp = now().toISOString();
+
+      if (!isValidEmail(email)) {
+        return res.status(400).json({ error: 'A valid email is required.' });
+      }
+
+      if (!fullName) {
+        return res.status(400).json({ error: 'Full name is required.' });
+      }
+
+      if (!isStrongEnoughPassword(password)) {
+        return res.status(400).json({ error: 'Password must be at least 10 characters.' });
+      }
+
+      const passwordHash = await bcrypt.hash(password, 10);
+      const { data, error } = await supabase
+        .from('readyroute_staff_users')
+        .insert({
+          email,
+          full_name: fullName,
+          password_hash: passwordHash,
+          role,
+          is_active: true,
+          invited_by_staff_user_id: staff.staff_user_id,
+          invited_at: timestamp,
+          accepted_at: timestamp,
+          created_at: timestamp,
+          updated_at: timestamp
+        })
+        .select('id, email, full_name, role, is_active, invited_at, accepted_at, last_login_at, created_at, updated_at')
+        .single();
+
+      if (error) {
+        if (error.code === '23505') {
+          return res.status(409).json({ error: 'A ReadyRoute staff user already exists for that email.' });
+        }
+
+        throw error;
+      }
+
+      return res.status(201).json({ staff_user: presentStaffUser(data) });
+    } catch (error) {
+      const authResponse = sendAuthError(res, error);
+      if (authResponse) {
+        return authResponse;
+      }
+
+      console.error('ReadyRoute staff user create failed:', error);
+      return res.status(500).json({ error: 'Unable to create ReadyRoute staff user.' });
+    }
+  });
+
+  router.patch('/users/:staffUserId', async (req, res) => {
+    try {
+      const staff = getRequestStaff(req, jwtSecret, READYROUTE_STAFF_ADMIN_ROLES);
+      const staffUserId = normalizeText(req.params.staffUserId, 120);
+      const updates = {
+        updated_at: now().toISOString()
+      };
+
+      if (!staffUserId) {
+        return res.status(404).json({ error: 'ReadyRoute staff user not found.' });
+      }
+
+      if (Object.prototype.hasOwnProperty.call(req.body || {}, 'full_name')) {
+        const fullName = normalizeText(req.body.full_name, 180);
+
+        if (!fullName) {
+          return res.status(400).json({ error: 'Full name is required.' });
+        }
+
+        updates.full_name = fullName;
+      }
+
+      if (Object.prototype.hasOwnProperty.call(req.body || {}, 'role')) {
+        updates.role = normalizeStaffRole(req.body.role, null);
+
+        if (!updates.role) {
+          return res.status(400).json({ error: 'Staff role is invalid.' });
+        }
+      }
+
+      if (Object.prototype.hasOwnProperty.call(req.body || {}, 'is_active')) {
+        updates.is_active = req.body.is_active !== false;
+
+        if (staffUserId === staff.staff_user_id && updates.is_active === false) {
+          return res.status(400).json({ error: 'You cannot deactivate your own staff account.' });
+        }
+      }
+
+      if (Object.prototype.hasOwnProperty.call(req.body || {}, 'password')) {
+        const password = String(req.body.password || '');
+
+        if (!isStrongEnoughPassword(password)) {
+          return res.status(400).json({ error: 'Password must be at least 10 characters.' });
+        }
+
+        updates.password_hash = await bcrypt.hash(password, 10);
+      }
+
+      const { data, error } = await supabase
+        .from('readyroute_staff_users')
+        .update(updates)
+        .eq('id', staffUserId)
+        .select('id, email, full_name, role, is_active, invited_at, accepted_at, last_login_at, created_at, updated_at')
+        .maybeSingle();
+
+      if (error) {
+        throw error;
+      }
+
+      if (!data) {
+        return res.status(404).json({ error: 'ReadyRoute staff user not found.' });
+      }
+
+      return res.status(200).json({ staff_user: presentStaffUser(data) });
+    } catch (error) {
+      const authResponse = sendAuthError(res, error);
+      if (authResponse) {
+        return authResponse;
+      }
+
+      console.error('ReadyRoute staff user update failed:', error);
+      return res.status(500).json({ error: 'Unable to update ReadyRoute staff user.' });
+    }
+  });
+
+  router.get('/operating-costs', async (req, res) => {
+    try {
+      getRequestStaff(req, jwtSecret);
+      const periodMonth = normalizePeriodMonth(req.query?.period_month, now());
+
+      const { data, error } = await supabase
+        .from('readyroute_operating_costs')
+        .select('id, period_month, category, vendor, amount_cents, billing_date, is_recurring, notes, receipt_url, created_by_staff_user_id, created_at, updated_at')
+        .eq('period_month', periodMonth)
+        .order('billing_date', { ascending: false })
+        .order('created_at', { ascending: false });
+
+      if (error) {
+        if (isMissingOperatingCostsTableError(error)) {
+          return res.status(200).json({
+            period_month: periodMonth,
+            operating_costs: [],
+            summary: buildOperatingCostSummary([]),
+            setup_required: true
+          });
+        }
+
+        throw error;
+      }
+
+      const operatingCosts = (data || []).map(presentOperatingCost);
+
+      return res.status(200).json({
+        period_month: periodMonth,
+        operating_costs: operatingCosts,
+        summary: buildOperatingCostSummary(operatingCosts),
+        setup_required: false
+      });
+    } catch (error) {
+      const authResponse = sendAuthError(res, error);
+      if (authResponse) {
+        return authResponse;
+      }
+
+      console.error('ReadyRoute operating costs list failed:', error);
+      return res.status(500).json({ error: 'Unable to load ReadyRoute operating costs.' });
+    }
+  });
+
+  router.post('/operating-costs', async (req, res) => {
+    try {
+      const staff = getRequestStaff(req, jwtSecret, READYROUTE_STAFF_ADMIN_ROLES);
+      const timestamp = now().toISOString();
+      const periodMonth = normalizePeriodMonth(req.body?.period_month, now());
+      const vendor = normalizeText(req.body?.vendor, 180);
+      const amountCents = normalizeCents(req.body?.amount_cents, -1);
+
+      if (!vendor) {
+        return res.status(400).json({ error: 'Vendor or tool name is required.' });
+      }
+
+      if (amountCents < 0) {
+        return res.status(400).json({ error: 'Amount must be zero or greater.' });
+      }
+
+      const payload = {
+        period_month: periodMonth,
+        category: normalizeOperatingCostCategory(req.body?.category),
+        vendor,
+        amount_cents: amountCents,
+        billing_date: normalizeDateOnly(req.body?.billing_date, periodMonth),
+        is_recurring: normalizeBoolean(req.body?.is_recurring, true),
+        notes: normalizeText(req.body?.notes, 2000),
+        receipt_url: normalizeText(req.body?.receipt_url, 1000),
+        created_by_staff_user_id: staff.staff_user_id,
+        updated_at: timestamp
+      };
+
+      const { data, error } = await supabase
+        .from('readyroute_operating_costs')
+        .insert(payload)
+        .select('id, period_month, category, vendor, amount_cents, billing_date, is_recurring, notes, receipt_url, created_by_staff_user_id, created_at, updated_at')
+        .single();
+
+      if (error) {
+        if (isMissingOperatingCostsTableError(error)) {
+          return res.status(409).json({ error: 'Operating costs table is not installed yet.' });
+        }
+
+        throw error;
+      }
+
+      const operatingCost = presentOperatingCost(data);
+
+      await writeAuditLog({
+        staff,
+        action: 'operating_cost.created',
+        targetType: 'readyroute_operating_cost',
+        targetId: data.id,
+        metadata: {
+          period_month: periodMonth,
+          category: operatingCost.category,
+          vendor: operatingCost.vendor,
+          amount_cents: operatingCost.amount_cents
+        }
+      });
+
+      return res.status(201).json({ operating_cost: operatingCost });
+    } catch (error) {
+      const authResponse = sendAuthError(res, error);
+      if (authResponse) {
+        return authResponse;
+      }
+
+      console.error('ReadyRoute operating cost create failed:', error);
+      return res.status(500).json({ error: 'Unable to save ReadyRoute operating cost.' });
+    }
+  });
+
+  router.patch('/operating-costs/:costId', async (req, res) => {
+    try {
+      const staff = getRequestStaff(req, jwtSecret, READYROUTE_STAFF_ADMIN_ROLES);
+      const costId = normalizeText(req.params.costId, 120);
+      const updates = {
+        updated_at: now().toISOString()
+      };
+
+      if (!costId) {
+        return res.status(404).json({ error: 'Operating cost not found.' });
+      }
+
+      if (Object.prototype.hasOwnProperty.call(req.body || {}, 'period_month')) {
+        updates.period_month = normalizePeriodMonth(req.body.period_month, now());
+      }
+
+      if (Object.prototype.hasOwnProperty.call(req.body || {}, 'category')) {
+        updates.category = normalizeOperatingCostCategory(req.body.category);
+      }
+
+      if (Object.prototype.hasOwnProperty.call(req.body || {}, 'vendor')) {
+        const vendor = normalizeText(req.body.vendor, 180);
+        if (!vendor) {
+          return res.status(400).json({ error: 'Vendor or tool name is required.' });
+        }
+        updates.vendor = vendor;
+      }
+
+      if (Object.prototype.hasOwnProperty.call(req.body || {}, 'amount_cents')) {
+        const amountCents = normalizeCents(req.body.amount_cents, -1);
+        if (amountCents < 0) {
+          return res.status(400).json({ error: 'Amount must be zero or greater.' });
+        }
+        updates.amount_cents = amountCents;
+      }
+
+      if (Object.prototype.hasOwnProperty.call(req.body || {}, 'billing_date')) {
+        updates.billing_date = normalizeDateOnly(req.body.billing_date, null);
+      }
+
+      if (Object.prototype.hasOwnProperty.call(req.body || {}, 'is_recurring')) {
+        updates.is_recurring = normalizeBoolean(req.body.is_recurring, true);
+      }
+
+      if (Object.prototype.hasOwnProperty.call(req.body || {}, 'notes')) {
+        updates.notes = normalizeText(req.body.notes, 2000);
+      }
+
+      if (Object.prototype.hasOwnProperty.call(req.body || {}, 'receipt_url')) {
+        updates.receipt_url = normalizeText(req.body.receipt_url, 1000);
+      }
+
+      const { data, error } = await supabase
+        .from('readyroute_operating_costs')
+        .update(updates)
+        .eq('id', costId)
+        .select('id, period_month, category, vendor, amount_cents, billing_date, is_recurring, notes, receipt_url, created_by_staff_user_id, created_at, updated_at')
+        .maybeSingle();
+
+      if (error) {
+        if (isMissingOperatingCostsTableError(error)) {
+          return res.status(409).json({ error: 'Operating costs table is not installed yet.' });
+        }
+
+        throw error;
+      }
+
+      if (!data) {
+        return res.status(404).json({ error: 'Operating cost not found.' });
+      }
+
+      const operatingCost = presentOperatingCost(data);
+
+      await writeAuditLog({
+        staff,
+        action: 'operating_cost.updated',
+        targetType: 'readyroute_operating_cost',
+        targetId: data.id,
+        metadata: {
+          period_month: operatingCost.period_month,
+          category: operatingCost.category,
+          vendor: operatingCost.vendor,
+          amount_cents: operatingCost.amount_cents
+        }
+      });
+
+      return res.status(200).json({ operating_cost: operatingCost });
+    } catch (error) {
+      const authResponse = sendAuthError(res, error);
+      if (authResponse) {
+        return authResponse;
+      }
+
+      console.error('ReadyRoute operating cost update failed:', error);
+      return res.status(500).json({ error: 'Unable to update ReadyRoute operating cost.' });
+    }
+  });
+
+  router.get('/accounts', async (req, res) => {
+    try {
+      getRequestStaff(req, jwtSecret);
+
+      const [accountsResult, profilesResult, managersResult, driversResult, ticketsResult] = await Promise.all([
+        supabase
+          .from('accounts')
+          .select('id, company_name, manager_email, subscription_status, plan, vehicle_count, stripe_customer_id, stripe_subscription_id, account_status, cancellation_requested_at, service_ends_at, retention_ends_at, canceled_at, cancellation_reason, created_at')
+          .order('created_at', { ascending: false }),
+        supabase
+          .from('account_internal_profiles')
+          .select('account_id, lifecycle_status, onboarding_stage, internal_notes, internal_owner_staff_user_id, updated_at'),
+        supabase
+          .from('manager_users')
+          .select('account_id, is_active'),
+        supabase
+          .from('drivers')
+          .select('account_id, is_active'),
+        supabase
+          .from('support_tickets')
+          .select('id, account_id, ticket_reference, subject, status, priority, created_at')
+          .order('created_at', { ascending: false })
+          .limit(1000)
+      ]);
+
+      const firstError = [accountsResult, profilesResult, managersResult, driversResult, ticketsResult]
+        .find((result) => result.error)?.error;
+
+      if (firstError) {
+        throw firstError;
+      }
+
+      const profilesByAccount = mapByAccount(profilesResult.data || []);
+      const activeManagersByAccount = countByAccount(managersResult.data || [], (manager) => manager.is_active !== false);
+      const activeDriversByAccount = countByAccount(driversResult.data || [], (driver) => driver.is_active !== false);
+      const openTicketsByAccount = countByAccount(ticketsResult.data || [], (ticket) => !['resolved', 'closed'].includes(ticket.status));
+      const urgentTicketsByAccount = countByAccount(ticketsResult.data || [], (ticket) => ['urgent', 'high'].includes(ticket.priority) && !['resolved', 'closed'].includes(ticket.status));
+      const latestTicketByAccount = latestByAccount(ticketsResult.data || []);
+
+      const accounts = (accountsResult.data || []).map((account) => presentAccountSummary(
+        account,
+        profilesByAccount[account.id],
+        {
+          activeManagers: activeManagersByAccount[account.id],
+          activeDrivers: activeDriversByAccount[account.id],
+          openTickets: openTicketsByAccount[account.id],
+          urgentTickets: urgentTicketsByAccount[account.id]
+        },
+        latestTicketByAccount[account.id]
+      ));
+
+      return res.status(200).json({ accounts });
+    } catch (error) {
+      const authResponse = sendAuthError(res, error);
+      if (authResponse) {
+        return authResponse;
+      }
+
+      console.error('ReadyRoute staff accounts list failed:', error);
+      return res.status(500).json({ error: 'Unable to load ReadyRoute accounts.' });
+    }
+  });
+
+  router.get('/accounts/:accountId', async (req, res) => {
+    try {
+      getRequestStaff(req, jwtSecret);
+      const accountId = normalizeText(req.params.accountId, 120);
+
+      const accountResult = await supabase
+        .from('accounts')
+        .select('id, company_name, manager_email, subscription_status, plan, vehicle_count, stripe_customer_id, stripe_subscription_id, account_status, cancellation_requested_at, service_ends_at, retention_ends_at, canceled_at, cancellation_reason, created_at')
+        .eq('id', accountId)
+        .maybeSingle();
+
+      if (accountResult.error) {
+        throw accountResult.error;
+      }
+
+      if (!accountResult.data) {
+        return res.status(404).json({ error: 'Account not found.' });
+      }
+
+      const [
+        profile,
+        managersResult,
+        driversResult,
+        ticketsResult,
+        billingSettingsResult,
+        billingRoutesResult,
+        routesResult,
+        auditLogsResult
+      ] = await Promise.all([
+        loadAccountInternalProfile(accountId),
+        supabase
+          .from('manager_users')
+          .select('id, email, full_name, is_active, created_at, accepted_at')
+          .eq('account_id', accountId)
+          .order('created_at', { ascending: false }),
+        supabase
+          .from('drivers')
+          .select('id, name, email, is_active, created_at')
+          .eq('account_id', accountId)
+          .order('created_at', { ascending: false }),
+        supabase
+          .from('support_tickets')
+          .select('id, ticket_reference, requester_name, requester_email, category, priority, status, subject, description, created_at, updated_at')
+          .eq('account_id', accountId)
+          .order('created_at', { ascending: false })
+          .limit(25),
+        supabase
+          .from('account_billing_settings')
+          .select('account_id, committed_route_count, billing_rate_cents, currency, is_billing_exempt, billing_notes, updated_at')
+          .eq('account_id', accountId)
+          .maybeSingle(),
+        supabase
+          .from('billable_route_months')
+          .select('id, billing_period_start, billing_period_end, route_key, route_display_name, first_imported_at, last_imported_at, status')
+          .eq('account_id', accountId)
+          .order('last_imported_at', { ascending: false })
+          .limit(50),
+        supabase
+          .from('routes')
+          .select('id, work_area_name, date, status, dispatch_state, total_stops, completed_stops, created_at')
+          .eq('account_id', accountId)
+          .order('date', { ascending: false })
+          .limit(50),
+        supabase
+          .from('readyroute_staff_audit_log')
+          .select('id, staff_user_id, staff_email, action, target_type, target_id, account_id, metadata, created_at')
+          .eq('account_id', accountId)
+          .order('created_at', { ascending: false })
+          .limit(25)
+      ]);
+
+      const firstError = [
+        managersResult,
+        driversResult,
+        ticketsResult,
+        billingSettingsResult,
+        billingRoutesResult,
+        routesResult,
+        auditLogsResult
+      ].find((result) => result.error)?.error;
+
+      if (firstError) {
+        throw firstError;
+      }
+
+      const supportTickets = ticketsResult.data || [];
+      const auditLogs = (auditLogsResult.data || []).map(presentAuditLog);
+      const account = presentAccountSummary(
+        accountResult.data,
+        profile,
+        {
+          activeManagers: (managersResult.data || []).filter((manager) => manager.is_active !== false).length,
+          activeDrivers: (driversResult.data || []).filter((driver) => driver.is_active !== false).length,
+          openTickets: supportTickets.filter((ticket) => !['resolved', 'closed'].includes(ticket.status)).length,
+          urgentTickets: supportTickets.filter((ticket) => ['urgent', 'high'].includes(ticket.priority) && !['resolved', 'closed'].includes(ticket.status)).length
+        },
+        supportTickets[0] || null
+      );
+
+      return res.status(200).json({
+        account,
+        managers: managersResult.data || [],
+        drivers: driversResult.data || [],
+        support_tickets: supportTickets,
+        billing_settings: billingSettingsResult.data || null,
+        billing_routes: billingRoutesResult.data || [],
+        routes: routesResult.data || [],
+        audit_logs: auditLogs,
+        timeline: buildAccountTimeline({
+          account: accountResult.data,
+          profile,
+          supportTickets,
+          auditLogs,
+          billingRoutes: billingRoutesResult.data || []
+        })
+      });
+    } catch (error) {
+      const authResponse = sendAuthError(res, error);
+      if (authResponse) {
+        return authResponse;
+      }
+
+      console.error('ReadyRoute staff account detail failed:', error);
+      return res.status(500).json({ error: 'Unable to load ReadyRoute account.' });
+    }
+  });
+
+  router.patch('/accounts/:accountId/internal-profile', async (req, res) => {
+    try {
+      const staff = getRequestStaff(req, jwtSecret, READYROUTE_STAFF_WRITE_ROLES);
+      const accountId = normalizeText(req.params.accountId, 120);
+
+      if (!accountId) {
+        return res.status(404).json({ error: 'Account not found.' });
+      }
+
+      const { data: account, error: accountError } = await supabase
+        .from('accounts')
+        .select('id')
+        .eq('id', accountId)
+        .maybeSingle();
+
+      if (accountError) {
+        throw accountError;
+      }
+
+      if (!account) {
+        return res.status(404).json({ error: 'Account not found.' });
+      }
+
+      const profilePayload = {
+        account_id: accountId,
+        updated_at: now().toISOString()
+      };
+
+      if (Object.prototype.hasOwnProperty.call(req.body || {}, 'lifecycle_status')) {
+        profilePayload.lifecycle_status = normalizeLifecycleStatus(req.body.lifecycle_status);
+      }
+
+      if (Object.prototype.hasOwnProperty.call(req.body || {}, 'onboarding_stage')) {
+        profilePayload.onboarding_stage = normalizeText(req.body.onboarding_stage, 180);
+      }
+
+      if (Object.prototype.hasOwnProperty.call(req.body || {}, 'internal_notes')) {
+        profilePayload.internal_notes = normalizeText(req.body.internal_notes, 12000);
+      }
+
+      if (Object.prototype.hasOwnProperty.call(req.body || {}, 'internal_owner_staff_user_id')) {
+        profilePayload.internal_owner_staff_user_id = normalizeText(req.body.internal_owner_staff_user_id, 120);
+      }
+
+      const { data, error } = await supabase
+        .from('account_internal_profiles')
+        .upsert(profilePayload, { onConflict: 'account_id' })
+        .select('*')
+        .single();
+
+      if (error) {
+        throw error;
+      }
+
+      await writeAuditLog({
+        staff,
+        action: 'account.profile_updated',
+        targetType: 'account_internal_profile',
+        targetId: accountId,
+        accountId,
+        metadata: {
+          lifecycle_status: data.lifecycle_status,
+          onboarding_stage: data.onboarding_stage
+        }
+      });
+
+      return res.status(200).json({ internal_profile: data });
+    } catch (error) {
+      const authResponse = sendAuthError(res, error);
+      if (authResponse) {
+        return authResponse;
+      }
+
+      console.error('ReadyRoute staff account profile update failed:', error);
+      return res.status(500).json({ error: 'Unable to update account profile.' });
+    }
+  });
+
+  router.post('/accounts/:accountId/recover', async (req, res) => {
+    try {
+      const staff = getRequestStaff(req, jwtSecret, READYROUTE_STAFF_ADMIN_ROLES);
+      const accountId = normalizeText(req.params.accountId, 120);
+      const { data: account, error: accountError } = await supabase
+        .from('accounts')
+        .select('id, company_name, account_status, stripe_subscription_id, retention_ends_at')
+        .eq('id', accountId)
+        .maybeSingle();
+
+      if (accountError) {
+        throw accountError;
+      }
+
+      if (!account) {
+        return res.status(404).json({ error: 'Account not found.' });
+      }
+
+      if (!['canceling', 'retained'].includes(account.account_status)) {
+        return res.status(409).json({ error: 'This account is not scheduled for cancellation.' });
+      }
+
+      const billingResume = await billingService.resumeAccountSubscription(accountId);
+      const recoveredAt = now().toISOString();
+      const { data: recoveredAccount, error: updateError } = await supabase
+        .from('accounts')
+        .update({
+          account_status: 'active',
+          cancellation_requested_at: null,
+          service_ends_at: null,
+          retention_ends_at: null,
+          canceled_at: null,
+          cancellation_reason: null
+        })
+        .eq('id', accountId)
+        .select('id, company_name, manager_email, subscription_status, plan, vehicle_count, stripe_customer_id, stripe_subscription_id, account_status, cancellation_requested_at, service_ends_at, retention_ends_at, canceled_at, cancellation_reason, created_at')
+        .maybeSingle();
+
+      if (updateError) {
+        throw updateError;
+      }
+
+      const { error: eventError } = await supabase
+        .from('account_cancellation_events')
+        .insert({
+          account_id: accountId,
+          event_type: 'recovered',
+          requested_by_staff_user_id: staff.staff_user_id,
+          actor_email: staff.staff_email,
+          metadata: {
+            recovered_at: recoveredAt,
+            subscription_resumed: billingResume.resumed,
+            subscription_id: billingResume.subscription_id || null
+          }
+        });
+
+      if (eventError) {
+        throw eventError;
+      }
+
+      await writeAuditLog({
+        staff,
+        action: 'account.recovered',
+        targetType: 'account',
+        targetId: accountId,
+        accountId,
+        metadata: {
+          previous_status: account.account_status,
+          subscription_resumed: billingResume.resumed
+        }
+      });
+
+      return res.status(200).json({
+        account: recoveredAccount,
+        subscription_resumed: billingResume.resumed,
+        billing_reactivation_required: !billingResume.resumed && Boolean(account.stripe_subscription_id)
+      });
+    } catch (error) {
+      const authResponse = sendAuthError(res, error);
+      if (authResponse) {
+        return authResponse;
+      }
+
+      console.error('ReadyRoute staff account recovery failed:', error);
+      return res.status(500).json({ error: 'Unable to recover ReadyRoute account.' });
+    }
+  });
+
+  return router;
+}
+
+module.exports = createReadyRouteStaffRouter();
+module.exports.createReadyRouteStaffRouter = createReadyRouteStaffRouter;

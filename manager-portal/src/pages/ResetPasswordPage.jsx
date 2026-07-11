@@ -8,28 +8,28 @@ export default function ResetPasswordPage() {
   const [searchParams] = useSearchParams();
   const token = useMemo(() => searchParams.get('token') || '', [searchParams]);
   const mode = useMemo(() => searchParams.get('mode') || '', [searchParams]);
+  const isInvite = mode === 'invite';
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [errorMessage, setErrorMessage] = useState('');
   const infoMessage = useMemo(
     () => (
       token
-        ? mode === 'invite'
+        ? isInvite
           ? 'Set your manager password to activate this ReadyRoute invite.'
           : 'Choose a new password for your manager account.'
-        : 'Open this page from a reset link, or paste the reset token below.'
+        : 'This invite or reset link is missing. Ask your CSA manager to send a new invite.'
     ),
-    [mode, token]
+    [isInvite, token]
   );
-  const [manualToken, setManualToken] = useState(token);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   async function handleSubmit(event) {
     event.preventDefault();
     setErrorMessage('');
 
-    if (!manualToken.trim()) {
-      setErrorMessage('Reset token is required.');
+    if (!token.trim()) {
+      setErrorMessage('This invite or reset link is missing. Ask your CSA manager to send a new invite.');
       return;
     }
 
@@ -47,10 +47,10 @@ export default function ResetPasswordPage() {
 
     try {
       await api.post('/auth/manager/reset-password', {
-        token: manualToken.trim(),
+        token: token.trim(),
         password
       });
-      navigate(`/login?reset=success${mode === 'invite' ? '&invite=accepted' : ''}`, { replace: true });
+      navigate(`/login?reset=success${isInvite ? '&invite=accepted' : ''}`, { replace: true });
     } catch (error) {
       if (!error.response) {
         setErrorMessage('Backend server is unavailable. Start the ReadyRoute backend and try again.');
@@ -69,42 +69,39 @@ export default function ResetPasswordPage() {
           <span className="brand-ready">ready</span>
           <span className="brand-route">Route</span>
         </div>
-        <div className="brand-subtitle">{mode === 'invite' ? 'Activate manager access' : 'Reset manager password'}</div>
+        <div className="brand-subtitle">{isInvite ? 'Set your manager password' : 'Reset manager password'}</div>
 
         {infoMessage ? <div className="info-banner">{infoMessage}</div> : null}
 
-        <label className="field-label" htmlFor="reset-token">Reset token</label>
-        <textarea
-          className="text-field"
-          id="reset-token"
-          onChange={(event) => setManualToken(event.target.value)}
-          rows={4}
-          value={manualToken}
-        />
+        {token ? (
+          <>
+            <label className="field-label" htmlFor="new-password">New password</label>
+            <input
+              autoComplete="new-password"
+              className="text-field"
+              id="new-password"
+              onChange={(event) => setPassword(event.target.value)}
+              type="password"
+              value={password}
+            />
 
-        <label className="field-label" htmlFor="new-password">New password</label>
-        <input
-          className="text-field"
-          id="new-password"
-          onChange={(event) => setPassword(event.target.value)}
-          type="password"
-          value={password}
-        />
+            <label className="field-label" htmlFor="confirm-password">Confirm password</label>
+            <input
+              autoComplete="new-password"
+              className="text-field"
+              id="confirm-password"
+              onChange={(event) => setConfirmPassword(event.target.value)}
+              type="password"
+              value={confirmPassword}
+            />
 
-        <label className="field-label" htmlFor="confirm-password">Confirm password</label>
-        <input
-          className="text-field"
-          id="confirm-password"
-          onChange={(event) => setConfirmPassword(event.target.value)}
-          type="password"
-          value={confirmPassword}
-        />
+            {errorMessage ? <div className="error-banner">{errorMessage}</div> : null}
 
-        {errorMessage ? <div className="error-banner">{errorMessage}</div> : null}
-
-        <button className="primary-cta" disabled={isSubmitting} type="submit">
-          {isSubmitting ? 'Updating password...' : 'Update password'}
-        </button>
+            <button className="primary-cta" disabled={isSubmitting} type="submit">
+              {isSubmitting ? 'Saving password...' : isInvite ? 'Activate account' : 'Update password'}
+            </button>
+          </>
+        ) : null}
 
         <div className="login-helper-note">
           <Link to="/login">Back to sign in</Link>

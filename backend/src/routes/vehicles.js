@@ -1,12 +1,30 @@
+const crypto = require('crypto');
 const express = require('express');
 
 const defaultSupabase = require('../lib/supabase');
-const { requireManager } = require('../middleware/auth');
+const { requireDriver, requireManager } = require('../middleware/auth');
 const { parseMultipartForm } = require('../middleware/multipart');
 const { parseVehicleImportRows } = require('../services/resourceImport');
+const { filterProductionRows, isProductionTestArtifact } = require('../services/testDataFilter');
+const { notifyDriverManualInspectionAssigned } = require('../services/appNotifications');
+const {
+  addInspectionPhotoAccessUrls,
+  createSignedStorageUrl
+} = require('../services/privateStorage');
+const {
+  getInspectionStatusLabel,
+  insertVehicleInspectionWithSchemaFallback,
+  isInspectionTypeConstraintError,
+  isMissingColumnError,
+  normalizeInspectionItems,
+  resolveInspectionStatus,
+  summarizeInspectionItems,
+  validateInspectionItemsForSubmission
+} = require('../services/vehicleInspectionRecords');
 
 const ALLOWED_TRUCK_TYPES = new Set([
   'P700',
+  'P900',
   'P1000',
   'P1100',
   'P1200',
@@ -73,22 +91,42 @@ const VEHICLE_STATUS_LABELS = {
   needs_repair: 'Needs Repair'
 };
 
+const INSPECTION_ASSIGNMENT_PRIORITIES = new Set(['normal', 'urgent']);
+const INSPECTION_ASSIGNMENT_STATUS_PENDING = 'pending';
+
+const FUEL_TYPE_OPTIONS = new Set(['Gas', 'Diesel', 'EV']);
+const VEHICLE_INSPECTION_PHOTO_BUCKET = process.env.VEHICLE_INSPECTION_PHOTO_BUCKET || 'vehicle-inspection-photos';
+
 const DEFAULT_CHECKLIST_TEMPLATE_FIELDS = [
   { id: 'date', label: 'Date', detail: 'Inspection date', enabled: true },
   { id: 'company_name', label: 'Company name', detail: 'CSA or company name', enabled: true },
-  { id: 'truck_number', label: 'Truck Number', detail: 'Truck identifier for the inspection', enabled: true },
+  { id: 'truck_number', label: 'Vehicle ID', detail: 'Vehicle identifier for the inspection', enabled: true },
   { id: 'driver_name', label: 'Driver first and last name', detail: 'Driver completing the inspection', enabled: true },
-  { id: 'tires', label: 'Tires, front, rear inner, rear outer', detail: 'Tire condition across front and rear positions', enabled: true },
-  { id: 'check_engine_light', label: 'Check engine light', detail: 'On or Off', enabled: true },
-  { id: 'coolant', label: 'Coolant', detail: 'Good or Needs Added', enabled: true },
-  { id: 'engine_oil', label: 'Engine oil', detail: 'Good, Needs Added, or Needs Full Change', enabled: true },
-  { id: 'brake_fluid', label: 'Brake fluid', detail: 'Good or Needs Added', enabled: true },
-  { id: 'windshield_fluid', label: 'Windshield fluid', detail: 'Good or Needs Added', enabled: true },
-  { id: 'wipers', label: 'Wipers', detail: 'Good, Left Bad, Right Bad, or Both Bad', enabled: true },
-  { id: 'lights', label: 'Lights', detail: 'Headlights, stop lights, and turning signals', enabled: true },
-  { id: 'truck_cleanliness', label: 'Truck cleanliness', detail: 'Good or Bad', enabled: true },
+  { id: 'tires', label: 'Tires', detail: 'Front left, front right, back left, and back right tire condition', enabled: true },
+  { id: 'check_engine_light', label: 'Check engine light', detail: 'Dashboard warning state and driving symptoms', enabled: true },
+  { id: 'lights', label: 'Lights', detail: 'Marker, turn signal, headlight, cargo, and license plate lights', enabled: true },
+  { id: 'brake_fluid', label: 'Brake fluid', detail: 'Brake fluid level, warning light, leaks, or pedal concerns', enabled: true },
+  { id: 'vedr', label: 'VEDR', detail: 'Video event data recorder condition', enabled: true },
+  { id: 'back_up_camera', label: 'Back up camera', detail: 'Rear camera image and operation', enabled: true },
+  { id: 'turn_cameras', label: 'Turn cameras', detail: 'Side turn camera image and operation', enabled: true },
+  { id: 'parking_sensors', label: 'Parking sensors', detail: 'Parking sensor operation', enabled: true },
+  { id: 'horn', label: 'Horn', detail: 'Horn operation', enabled: true },
+  { id: 'coolant', label: 'Coolant', detail: 'Coolant level, leak, warning light, or overheating', enabled: true },
+  { id: 'engine_oil', label: 'Engine oil', detail: 'Engine oil level, leak, oil light, or service due', enabled: true },
+  { id: 'windshield_fluid', label: 'Windshield fluid', detail: 'Washer fluid level or leak', enabled: true },
+  { id: 'wipers', label: 'Wipers', detail: 'Left, right, or both wiper condition', enabled: true },
+  { id: 'truck_cleanliness', label: 'Truck cleanliness', detail: 'Clean, dirty, or needs attention', enabled: true },
   { id: 'driver_notes', label: 'Driver notes', detail: 'Free-text notes from the driver', enabled: true }
 ];
+
+function isMissingRelationError(error) {
+  return ['42P01', 'PGRST106', 'PGRST205'].includes(error?.code);
+}
+
+function isMissingTestDataColumn(error) {
+  const message = String(error?.message || error?.details || '');
+  return /is_test|test_data/i.test(message) && /column|schema|cache/i.test(message);
+}
 
 function createDefaultMaintenanceSettings() {
   return [
@@ -223,6 +261,103 @@ function createDefaultChecklistTemplateSetting() {
     fields: DEFAULT_CHECKLIST_TEMPLATE_FIELDS.map((field) => ({ ...field })),
     updated_by_manager_user_id: null,
     updated_at: null
+  };
+}
+
+function presentInspection(inspection = {}, vehiclesById = new Map()) {
+  const vehicle = inspection.vehicle || vehiclesById.get(inspection.vehicle_id) || null;
+  const items = normalizeInspectionItems(inspection.items || []);
+  const summary = summarizeInspectionItems(items, { issueNote: inspection.issue_note });
+  const derivedStatus = resolveInspectionStatus({ items, issueNote: inspection.issue_note });
+  let status = inspection.status || derivedStatus;
+
+  if (status === 'submitted') {
+    status = derivedStatus;
+  } else if (status === 'needs_review') {
+    status = derivedStatus === 'urgent_manager_review' ? derivedStatus : 'manager_review_required';
+  } else if (status === 'safe_to_operate' && derivedStatus !== 'safe_to_operate') {
+    status = derivedStatus;
+  }
+
+  const managerReviewRequired = summary.manager_review_required ||
+    status === 'manager_review_required' ||
+    status === 'urgent_manager_review';
+  const urgentReview = summary.urgent_review || status === 'urgent_manager_review';
+
+  return {
+    ...inspection,
+    items,
+    issue_items: summary.issue_items,
+    issue_count: summary.issue_count,
+    failed_items: summary.failed_items,
+    failed_items_count: summary.failed_items_count,
+    inspection_summary: summary,
+    critical_safety_issue_count: summary.critical_safety_issue_count,
+    maintenance_issue_count: summary.maintenance_issue_count,
+    safety_equipment_issue_count: summary.safety_equipment_issue_count,
+    vehicle_condition_issue_count: summary.vehicle_condition_issue_count,
+    highest_severity: summary.highest_severity,
+    manager_review_required: managerReviewRequired,
+    urgent_review: urgentReview,
+    status,
+    status_label: getInspectionStatusLabel(status),
+    inspection_type_label: inspection.inspection_type === 'manager' || inspection.submitted_by_type === 'manager'
+      ? 'Manager Inspection'
+      : 'Driver Inspection',
+    driver: inspection.submitted_by_type === 'manager'
+      ? { id: inspection.submitted_by_manager_user_id || null, name: inspection.submitted_by_name || 'Manager' }
+      : { id: inspection.submitted_by_driver_id || null, name: inspection.submitted_by_name || 'Driver' },
+    vehicle: vehicle
+      ? {
+          id: vehicle.id,
+          name: vehicle.name,
+          make: vehicle.make,
+          model: vehicle.model,
+          year: vehicle.year,
+          truck_type: vehicle.truck_type,
+          custom_truck_type: vehicle.custom_truck_type,
+          vehicle_status: vehicle.vehicle_status || (vehicle.is_active === false ? 'out_of_service' : 'active')
+        }
+      : null
+  };
+}
+
+async function presentInspectionWithPrivatePhotos(supabase, inspection = {}, vehiclesById = new Map()) {
+  return addInspectionPhotoAccessUrls(supabase, presentInspection(inspection, vehiclesById));
+}
+
+function presentManualInspectionAssignment(assignment = {}, { vehicle = null, driver = null } = {}) {
+  return {
+    id: assignment.id,
+    account_id: assignment.account_id,
+    vehicle_id: assignment.vehicle_id,
+    assigned_driver_id: assignment.assigned_driver_id,
+    assigned_by_manager_user_id: assignment.assigned_by_manager_user_id || null,
+    route_id: assignment.route_id || null,
+    due_date: assignment.due_date,
+    priority: assignment.priority || 'normal',
+    note: assignment.note || null,
+    require_before_route_start: assignment.require_before_route_start !== false,
+    status: assignment.status || INSPECTION_ASSIGNMENT_STATUS_PENDING,
+    completed_inspection_id: assignment.completed_inspection_id || null,
+    completed_at: assignment.completed_at || null,
+    created_at: assignment.created_at || null,
+    updated_at: assignment.updated_at || null,
+    vehicle: vehicle
+      ? {
+          id: vehicle.id,
+          name: vehicle.name,
+          make: vehicle.make || null,
+          model: vehicle.model || null,
+          year: vehicle.year || null
+        }
+      : null,
+    driver: driver
+      ? {
+          id: driver.id,
+          name: driver.name || null
+        }
+      : null
   };
 }
 
@@ -367,6 +502,34 @@ function toInteger(value) {
   return Number.isInteger(parsed) ? parsed : null;
 }
 
+function sanitizeStorageSegment(value) {
+  return String(value || 'file')
+    .trim()
+    .replace(/[^a-zA-Z0-9._-]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 80) || 'file';
+}
+
+function getImageFileExtension(mimeType = '') {
+  const normalized = String(mimeType || '').toLowerCase();
+
+  if (normalized.includes('png')) {
+    return 'png';
+  }
+
+  if (normalized.includes('webp')) {
+    return 'webp';
+  }
+
+  return 'jpg';
+}
+
+function decodeBase64Image(imageBase64) {
+  const normalized = String(imageBase64 || '').trim();
+  const cleaned = normalized.includes(',') ? normalized.split(',').pop() : normalized;
+  return Buffer.from(cleaned, 'base64');
+}
+
 function toNumeric(value) {
   if (value === undefined || value === null || value === '') {
     return null;
@@ -433,6 +596,24 @@ function normalizeTruckType({ truckType, customTruckType }) {
     truck_type: normalizedTruckType,
     custom_truck_type: null
   };
+}
+
+function normalizeFuelType(value) {
+  const normalized = value === null || value === undefined || value === ''
+    ? null
+    : String(value).trim();
+
+  if (normalized === null) {
+    return null;
+  }
+
+  const matched = Array.from(FUEL_TYPE_OPTIONS).find((option) => option.toLowerCase() === normalized.toLowerCase());
+
+  if (!matched) {
+    return { error: 'fuel_type must be Gas, Diesel, or EV' };
+  }
+
+  return matched;
 }
 
 function mapLatestMaintenance(records) {
@@ -549,6 +730,7 @@ function buildVehicleMaintenanceAlert(
       return {
         service_type: serviceType,
         status,
+        source_maintenance_id: latestService?.id || null,
         last_completed_mileage: lastCompletedMileage,
         interval_miles: intervalMiles,
         interval_days: intervalDays,
@@ -593,16 +775,51 @@ function buildVehicleReadiness(
   maintenanceAlert = {},
   todayAssignment = null,
   todayString = getCurrentDateString(),
-  reminderSchedule = DEFAULT_REMINDER_SCHEDULE
+  reminderSchedule = DEFAULT_REMINDER_SCHEDULE,
+  inspectionContext = {}
 ) {
   const registrationDays = differenceInDays(vehicle.registration_expiration, todayString);
   const insuranceDays = differenceInDays(vehicle.insurance_expiration, todayString);
   const documentWarningDays = toInteger(reminderSchedule.document_warning_days) ?? DEFAULT_REMINDER_SCHEDULE.document_warning_days;
   const maintenanceItem = maintenanceAlert.most_urgent || null;
   const reasons = [];
+  const sourceInspection = inspectionContext.sourceInspection || null;
+  const pendingUnsafeInspection = inspectionContext.pendingUnsafeInspection || null;
+
+  const getUnsafeInspectionLabel = (inspection) => {
+    const summary = summarizeInspectionItems(normalizeInspectionItems(inspection?.items || []), {
+      issueNote: inspection?.issue_note
+    });
+    const unsafeLabels = summary.issue_items
+      .filter((item) => item.severity === 'unsafe')
+      .map((item) => item.label || item.checklist_item_key)
+      .filter(Boolean);
+
+    return unsafeLabels.length ? unsafeLabels.slice(0, 2).join(', ') : 'Unsafe item reported';
+  };
 
   if (vehicle.is_active === false) {
-    reasons.push({ type: 'inactive', severity: 'blocked', label: getVehicleStatusLabel(vehicle) });
+    reasons.push({
+      type: 'inactive',
+      severity: 'blocked',
+      label: getVehicleStatusLabel(vehicle),
+      detail: sourceInspection ? `Unsafe inspection: ${getUnsafeInspectionLabel(sourceInspection)}` : 'Vehicle status prevents dispatch',
+      source_type: sourceInspection ? 'inspection' : 'vehicle',
+      source_id: sourceInspection?.id || vehicle.id,
+      action_label: sourceInspection ? 'View inspection' : 'View vehicle'
+    });
+  }
+
+  if (pendingUnsafeInspection && pendingUnsafeInspection.id !== sourceInspection?.id) {
+    reasons.push({
+      type: 'inspection_unsafe',
+      severity: 'blocked',
+      label: `Unsafe inspection: ${getUnsafeInspectionLabel(pendingUnsafeInspection)}`,
+      detail: pendingUnsafeInspection.inspection_date || 'Manager review required',
+      source_type: 'inspection',
+      source_id: pendingUnsafeInspection.id,
+      action_label: 'View inspection'
+    });
   }
 
   if (maintenanceAlert.status === 'overdue') {
@@ -617,7 +834,10 @@ function buildVehicleReadiness(
         ? `${Math.abs(maintenanceItem.remaining_miles)} mi overdue`
         : maintenanceItem?.remaining_days !== null && maintenanceItem?.remaining_days < 0
           ? `${Math.abs(maintenanceItem.remaining_days)} days overdue`
-          : null
+          : null,
+      source_type: 'maintenance',
+      source_id: maintenanceItem?.source_maintenance_id || null,
+      action_label: 'View maintenance'
     });
   }
 
@@ -626,7 +846,11 @@ function buildVehicleReadiness(
       type: 'registration_expired',
       severity: 'blocked',
       label: 'Registration expired',
-      detail: vehicle.registration_expiration
+      detail: vehicle.registration_expiration,
+      source_type: 'vehicle',
+      source_id: vehicle.id,
+      source_section: 'registration',
+      action_label: 'View registration'
     });
   }
 
@@ -635,7 +859,11 @@ function buildVehicleReadiness(
       type: 'insurance_expired',
       severity: 'blocked',
       label: 'Insurance expired',
-      detail: vehicle.insurance_expiration
+      detail: vehicle.insurance_expiration,
+      source_type: 'vehicle',
+      source_id: vehicle.id,
+      source_section: 'insurance',
+      action_label: 'View insurance'
     });
   }
 
@@ -644,7 +872,11 @@ function buildVehicleReadiness(
       type: 'registration_soon',
       severity: 'maintenance_soon',
       label: 'Registration expiring soon',
-      detail: `${registrationDays} days left`
+      detail: `${registrationDays} days left`,
+      source_type: 'vehicle',
+      source_id: vehicle.id,
+      source_section: 'registration',
+      action_label: 'View registration'
     });
   }
 
@@ -653,7 +885,11 @@ function buildVehicleReadiness(
       type: 'insurance_soon',
       severity: 'maintenance_soon',
       label: 'Insurance expiring soon',
-      detail: `${insuranceDays} days left`
+      detail: `${insuranceDays} days left`,
+      source_type: 'vehicle',
+      source_id: vehicle.id,
+      source_section: 'insurance',
+      action_label: 'View insurance'
     });
   }
 
@@ -668,7 +904,10 @@ function buildVehicleReadiness(
         ? `${maintenanceItem.remaining_miles} mi left`
         : maintenanceItem?.remaining_days !== null
           ? `${maintenanceItem.remaining_days} days left`
-          : null
+          : null,
+      source_type: 'maintenance',
+      source_id: maintenanceItem?.source_maintenance_id || null,
+      action_label: 'View maintenance'
     });
   }
 
@@ -693,6 +932,29 @@ function buildVehicleReadiness(
     reasons,
     primary_reason: reasons[0] || null
   };
+}
+
+function mapInspectionReadinessContext(inspections = []) {
+  const inspectionsById = new Map();
+  const pendingUnsafeByVehicleId = new Map();
+
+  for (const inspection of inspections || []) {
+    inspectionsById.set(inspection.id, inspection);
+
+    if (inspection.status === 'reviewed' || pendingUnsafeByVehicleId.has(inspection.vehicle_id)) {
+      continue;
+    }
+
+    const summary = summarizeInspectionItems(normalizeInspectionItems(inspection.items || []), {
+      issueNote: inspection.issue_note
+    });
+
+    if (summary.urgent_review) {
+      pendingUnsafeByVehicleId.set(inspection.vehicle_id, inspection);
+    }
+  }
+
+  return { inspectionsById, pendingUnsafeByVehicleId };
 }
 
 function buildAssignmentMap(routes, driversById) {
@@ -744,10 +1006,13 @@ function createVehiclesRouter(options = {}) {
         return res.status(500).json({ error: 'Failed to load vehicles' });
       }
 
-      const vehicleIds = (vehicles || []).map((vehicle) => vehicle.id);
+      const productionVehicles = filterProductionRows(vehicles || [], ['name', 'plate', 'make', 'model', 'custom_truck_type']);
+      const vehicleIds = productionVehicles.map((vehicle) => vehicle.id);
       let maintenanceByVehicleId = new Map();
       let maintenanceByVehicleAndType = new Map();
       let assignmentsByVehicleId = new Map();
+      let inspectionsById = new Map();
+      let pendingUnsafeByVehicleId = new Map();
       let activeMaintenanceSettings = [];
       let reminderSchedule = { ...DEFAULT_REMINDER_SCHEDULE };
 
@@ -795,8 +1060,31 @@ function createVehiclesRouter(options = {}) {
           return res.status(500).json({ error: 'Failed to load vehicle maintenance' });
         }
 
-        maintenanceByVehicleId = mapLatestMaintenance(maintenanceRows);
-        maintenanceByVehicleAndType = getLatestMaintenanceByVehicleAndType(maintenanceRows);
+        const productionMaintenanceRows = filterProductionRows(maintenanceRows || [], [
+          'service_type',
+          'description',
+          'condition_notes',
+          'vendor_name',
+          'notes'
+        ]);
+
+        maintenanceByVehicleId = mapLatestMaintenance(productionMaintenanceRows);
+        maintenanceByVehicleAndType = getLatestMaintenanceByVehicleAndType(productionMaintenanceRows);
+
+        const { data: inspectionRows, error: inspectionsError } = await supabase
+          .from('vehicle_inspections')
+          .select('id, vehicle_id, inspection_date, status, issue_note, items, submitted_at')
+          .eq('account_id', req.account.account_id)
+          .in('vehicle_id', vehicleIds)
+          .order('submitted_at', { ascending: false })
+          .limit(500);
+
+        if (inspectionsError && !isMissingRelationError(inspectionsError)) {
+          console.error('Vehicle readiness inspection lookup failed:', inspectionsError);
+          return res.status(500).json({ error: 'Failed to load vehicle inspection readiness' });
+        }
+
+        ({ inspectionsById, pendingUnsafeByVehicleId } = mapInspectionReadinessContext(inspectionRows || []));
 
         const { data: routeAssignments, error: assignmentsError } = await supabase
           .from('routes')
@@ -832,7 +1120,7 @@ function createVehiclesRouter(options = {}) {
       }
 
       return res.status(200).json({
-        vehicles: (vehicles || []).map((vehicle) => {
+        vehicles: productionVehicles.map((vehicle) => {
           const nextServiceMileage = toInteger(vehicle.next_service_mileage);
           const currentMileage = toInteger(vehicle.current_mileage) || 0;
           const serviceDue = Number.isInteger(nextServiceMileage)
@@ -847,7 +1135,19 @@ function createVehiclesRouter(options = {}) {
           );
           const maintenanceServiceDue = ['due_soon', 'overdue'].includes(maintenanceAlert.status);
           const todayAssignment = assignmentsByVehicleId.get(vehicle.id) || null;
-          const readiness = buildVehicleReadiness(vehicle, maintenanceAlert, todayAssignment, today, reminderSchedule);
+          const readiness = buildVehicleReadiness(
+            vehicle,
+            maintenanceAlert,
+            todayAssignment,
+            today,
+            reminderSchedule,
+            {
+              sourceInspection: vehicle.readiness_source_type === 'inspection'
+                ? inspectionsById.get(vehicle.readiness_source_id) || null
+                : null,
+              pendingUnsafeInspection: pendingUnsafeByVehicleId.get(vehicle.id) || null
+            }
+          );
 
           return {
             ...vehicle,
@@ -868,6 +1168,114 @@ function createVehiclesRouter(options = {}) {
     }
   });
 
+  router.get('/:id/readiness', requireDriver, async (req, res) => {
+    const today = getCurrentDateString(nowProvider());
+
+    try {
+      const { data: vehicle, error: vehicleError } = await supabase
+        .from('vehicles')
+        .select('*')
+        .eq('id', req.params.id)
+        .eq('account_id', req.driver.account_id)
+        .maybeSingle();
+
+      if (vehicleError) {
+        console.error('Driver vehicle readiness lookup failed:', vehicleError);
+        return res.status(500).json({ error: 'Failed to load vehicle readiness' });
+      }
+
+      if (!vehicle) {
+        return res.status(404).json({ error: 'Vehicle not found' });
+      }
+
+      const [maintenanceSettingsResult, reminderResult, maintenanceResult, inspectionsResult] = await Promise.all([
+        supabase
+          .from('vehicle_maintenance_settings')
+          .select('*')
+          .eq('account_id', req.driver.account_id)
+          .order('service_type'),
+        supabase
+          .from('vehicle_check_requirement_settings')
+          .select('weekly_inspection_day, maintenance_warning_miles, maintenance_warning_days, document_warning_days')
+          .eq('account_id', req.driver.account_id)
+          .maybeSingle(),
+        supabase
+          .from('vehicle_maintenance')
+          .select('*')
+          .eq('account_id', req.driver.account_id)
+          .eq('vehicle_id', vehicle.id)
+          .order('service_date', { ascending: false }),
+        supabase
+          .from('vehicle_inspections')
+          .select('id, vehicle_id, inspection_date, status, issue_note, items, submitted_at')
+          .eq('account_id', req.driver.account_id)
+          .eq('vehicle_id', vehicle.id)
+          .order('submitted_at', { ascending: false })
+          .limit(100)
+      ]);
+
+      const fatalError = [maintenanceSettingsResult.error, maintenanceResult.error]
+        .find(Boolean);
+      if (fatalError) {
+        console.error('Driver vehicle readiness context lookup failed:', fatalError);
+        return res.status(500).json({ error: 'Failed to load vehicle readiness' });
+      }
+
+      if (inspectionsResult.error && !isMissingRelationError(inspectionsResult.error)) {
+        console.error('Driver vehicle inspection readiness lookup failed:', inspectionsResult.error);
+        return res.status(500).json({ error: 'Failed to load vehicle readiness' });
+      }
+
+      const reminderSchedule = reminderResult.error
+        ? { ...DEFAULT_REMINDER_SCHEDULE }
+        : presentReminderSchedule(reminderResult.data);
+      const activeMaintenanceSettings = maintenanceSettingsResult.data?.length
+        ? maintenanceSettingsResult.data
+        : createDefaultMaintenanceSettings();
+      const productionMaintenanceRows = filterProductionRows(maintenanceResult.data || [], [
+        'service_type',
+        'description',
+        'condition_notes',
+        'vendor_name',
+        'notes'
+      ]);
+      const maintenanceAlert = buildVehicleMaintenanceAlert(
+        vehicle,
+        activeMaintenanceSettings,
+        getLatestMaintenanceByVehicleAndType(productionMaintenanceRows),
+        today,
+        reminderSchedule
+      );
+      const inspectionRows = inspectionsResult.data || [];
+      const { inspectionsById, pendingUnsafeByVehicleId } = mapInspectionReadinessContext(inspectionRows);
+      const readiness = buildVehicleReadiness(
+        vehicle,
+        maintenanceAlert,
+        null,
+        today,
+        reminderSchedule,
+        {
+          sourceInspection: vehicle.readiness_source_type === 'inspection'
+            ? inspectionsById.get(vehicle.readiness_source_id) || null
+            : null,
+          pendingUnsafeInspection: pendingUnsafeByVehicleId.get(vehicle.id) || null
+        }
+      );
+
+      return res.status(200).json({
+        vehicle: {
+          id: vehicle.id,
+          name: vehicle.name,
+          readiness,
+          readiness_status: readiness.status
+        }
+      });
+    } catch (error) {
+      console.error('Driver vehicle readiness endpoint failed:', error);
+      return res.status(500).json({ error: 'Failed to load vehicle readiness' });
+    }
+  });
+
   router.get('/due-soon', requireManager, async (req, res) => {
     try {
       const { data: vehicles, error } = await supabase
@@ -881,7 +1289,7 @@ function createVehiclesRouter(options = {}) {
         return res.status(500).json({ error: 'Failed to load vehicles due for service' });
       }
 
-      const dueSoon = (vehicles || []).filter((vehicle) => {
+      const dueSoon = filterProductionRows(vehicles || [], ['name', 'plate', 'make', 'model', 'custom_truck_type']).filter((vehicle) => {
         const nextServiceMileage = toInteger(vehicle.next_service_mileage);
         const currentMileage = toInteger(vehicle.current_mileage) || 0;
         return Number.isInteger(nextServiceMileage) && currentMileage >= nextServiceMileage - 500;
@@ -909,29 +1317,49 @@ function createVehiclesRouter(options = {}) {
         return res.status(500).json({ error: 'Failed to load maintenance records' });
       }
 
-      const vehicleIds = [...new Set((records || []).map((record) => record.vehicle_id).filter(Boolean))];
+      const productionRecords = filterProductionRows(records || [], [
+        'service_type',
+        'description',
+        'condition_notes',
+        'vendor_name',
+        'notes'
+      ]);
+      const vehicleIds = [...new Set(productionRecords.map((record) => record.vehicle_id).filter(Boolean))];
       let vehiclesById = new Map();
 
       if (vehicleIds.length > 0) {
-        const { data: vehicles, error: vehiclesError } = await supabase
+        let vehiclesQuery = await supabase
           .from('vehicles')
-          .select('id, name, make, model, year, truck_type, custom_truck_type')
+          .select('id, name, make, model, year, truck_type, custom_truck_type, is_test, test_data')
           .eq('account_id', req.account.account_id)
           .in('id', vehicleIds);
 
-        if (vehiclesError) {
-          console.error('Vehicle maintenance records vehicle lookup failed:', vehiclesError);
+        if (vehiclesQuery.error && isMissingTestDataColumn(vehiclesQuery.error)) {
+          vehiclesQuery = await supabase
+            .from('vehicles')
+            .select('id, name, make, model, year, truck_type, custom_truck_type')
+            .eq('account_id', req.account.account_id)
+            .in('id', vehicleIds);
+        }
+
+        if (vehiclesQuery.error) {
+          console.error('Vehicle maintenance records vehicle lookup failed:', vehiclesQuery.error);
           return res.status(500).json({ error: 'Failed to load maintenance records' });
         }
 
-        vehiclesById = new Map((vehicles || []).map((vehicle) => [vehicle.id, vehicle]));
+        vehiclesById = new Map(
+          filterProductionRows(vehiclesQuery.data || [], ['name', 'make', 'model', 'custom_truck_type'])
+            .map((vehicle) => [vehicle.id, vehicle])
+        );
       }
 
       return res.status(200).json({
-        maintenance: (records || []).map((record) => ({
-          ...record,
-          vehicle: vehiclesById.get(record.vehicle_id) || null
-        }))
+        maintenance: productionRecords
+          .filter((record) => !isProductionTestArtifact(vehiclesById.get(record.vehicle_id), ['name', 'make', 'model', 'custom_truck_type']))
+          .map((record) => ({
+            ...record,
+            vehicle: vehiclesById.get(record.vehicle_id) || null
+          }))
       });
     } catch (error) {
       console.error('Vehicle maintenance records endpoint failed:', error);
@@ -1253,19 +1681,28 @@ function createVehiclesRouter(options = {}) {
       plate,
       registration_expiration: registrationExpiration,
       insurance_expiration: insuranceExpiration,
-      current_mileage: currentMileage
+      current_mileage: currentMileage,
+      fuel_type: fuelType,
+      notes
     } = req.body || {};
 
+    const vehicleIdentifier = String(name || '').trim();
+    const licensePlate = String(plate || '').trim();
     const parsedYear = toInteger(year);
     const parsedCurrentMileage = currentMileage === undefined ? 0 : toInteger(currentMileage);
     const normalizedTruckType = normalizeTruckType({ truckType, customTruckType });
+    const normalizedFuelType = normalizeFuelType(fuelType);
 
-    if (!name || !make || !model || parsedYear === null || !plate || parsedCurrentMileage === null) {
-      return res.status(400).json({ error: 'name, make, model, year, and plate are required' });
+    if (!vehicleIdentifier || !licensePlate || !make || !model || parsedYear === null || parsedCurrentMileage === null) {
+      return res.status(400).json({ error: 'Vehicle ID, license plate, make, model, and year are required' });
     }
 
     if (normalizedTruckType.error) {
       return res.status(400).json({ error: normalizedTruckType.error });
+    }
+
+    if (normalizedFuelType?.error) {
+      return res.status(400).json({ error: normalizedFuelType.error });
     }
 
     try {
@@ -1273,16 +1710,18 @@ function createVehiclesRouter(options = {}) {
         .from('vehicles')
         .insert({
           account_id: req.account.account_id,
-          name: String(name).trim(),
           truck_type: normalizedTruckType.truck_type,
           custom_truck_type: normalizedTruckType.custom_truck_type,
           make: String(make).trim(),
           model: String(model).trim(),
           year: parsedYear,
-          plate: String(plate).trim(),
+          plate: licensePlate,
+          name: vehicleIdentifier,
           registration_expiration: registrationExpiration || null,
           insurance_expiration: insuranceExpiration || null,
-          current_mileage: parsedCurrentMileage
+          current_mileage: parsedCurrentMileage,
+          fuel_type: normalizedFuelType,
+          notes: notes ? String(notes).trim() : null
         })
         .select('id')
         .single();
@@ -1332,16 +1771,23 @@ function createVehiclesRouter(options = {}) {
           truckType: row.truck_type,
           customTruckType: row.custom_truck_type
         });
-        const name = String(row.name || '').trim();
-        const nameKey = name.toLowerCase();
+        const normalizedFuelType = normalizeFuelType(row.fuel_type);
+        const vehicleIdentifier = String(row.name || '').trim();
+        const licensePlate = String(row.plate || '').trim();
+        const nameKey = vehicleIdentifier.toLowerCase();
 
-        if (!name || !row.make || !row.model || parsedYear === null || !row.plate || parsedCurrentMileage === null) {
-          result.errors.push({ row: row.row_number, error: 'Vehicle ID, make, model, year, and plate are required.' });
+        if (!vehicleIdentifier || !licensePlate || !row.make || !row.model || parsedYear === null || parsedCurrentMileage === null) {
+          result.errors.push({ row: row.row_number, error: 'Vehicle ID, license plate, make, model, and year are required.' });
           continue;
         }
 
         if (normalizedTruckType.error) {
           result.errors.push({ row: row.row_number, error: normalizedTruckType.error });
+          continue;
+        }
+
+        if (normalizedFuelType?.error) {
+          result.errors.push({ row: row.row_number, error: normalizedFuelType.error });
           continue;
         }
 
@@ -1354,15 +1800,16 @@ function createVehiclesRouter(options = {}) {
           .from('vehicles')
           .insert({
             account_id: req.account.account_id,
-            name,
+            name: vehicleIdentifier,
             truck_type: normalizedTruckType.truck_type,
             custom_truck_type: normalizedTruckType.custom_truck_type,
             make: String(row.make).trim(),
             model: String(row.model).trim(),
             year: parsedYear,
-            plate: String(row.plate).trim(),
+            plate: licensePlate,
             registration_expiration: row.registration_expiration || null,
             insurance_expiration: row.insurance_expiration || null,
+            fuel_type: normalizedFuelType,
             current_mileage: parsedCurrentMileage,
             notes: row.notes || null
           })
@@ -1387,16 +1834,233 @@ function createVehiclesRouter(options = {}) {
     }
   });
 
+  router.post('/inspection-assignments', requireManager, async (req, res) => {
+    const vehicleId = String(req.body?.vehicle_id || '').trim();
+    const driverId = String(req.body?.driver_id || '').trim();
+    const routeId = req.body?.route_id ? String(req.body.route_id).trim() : null;
+    const dueDate = String(req.body?.due_date || getCurrentDateString(nowProvider())).trim();
+    const submittedPriority = String(req.body?.priority || 'normal').trim();
+    const priority = INSPECTION_ASSIGNMENT_PRIORITIES.has(submittedPriority) ? submittedPriority : 'normal';
+    const note = req.body?.note ? String(req.body.note).trim().slice(0, 1000) : null;
+    const requireBeforeRouteStart = req.body?.require_before_route_start !== false;
+
+    if (!vehicleId || !driverId) {
+      return res.status(400).json({ error: 'vehicle_id and driver_id are required' });
+    }
+
+    if (!dueDate || Number.isNaN(new Date(`${dueDate}T12:00:00`).getTime())) {
+      return res.status(400).json({ error: 'due_date is required' });
+    }
+
+    try {
+      const { data: vehicle, error: vehicleError } = await loadOwnedVehicle(supabase, {
+        vehicleId,
+        accountId: req.account.account_id
+      });
+
+      if (vehicleError) {
+        console.error('Inspection assignment vehicle lookup failed:', vehicleError);
+        return res.status(500).json({ error: 'Failed to validate vehicle' });
+      }
+
+      if (!vehicle) {
+        return res.status(404).json({ error: 'Vehicle not found' });
+      }
+
+      const { data: driver, error: driverError } = await supabase
+        .from('drivers')
+        .select('id, name, account_id, is_active')
+        .eq('id', driverId)
+        .eq('account_id', req.account.account_id)
+        .maybeSingle();
+
+      if (driverError) {
+        console.error('Inspection assignment driver lookup failed:', driverError);
+        return res.status(500).json({ error: 'Failed to validate driver' });
+      }
+
+      if (!driver) {
+        return res.status(404).json({ error: 'Driver not found' });
+      }
+
+      const { data: assignment, error: assignmentError } = await supabase
+        .from('vehicle_inspection_assignments')
+        .insert({
+          account_id: req.account.account_id,
+          vehicle_id: vehicleId,
+          assigned_driver_id: driverId,
+          assigned_by_manager_user_id: req.account.manager_user_id || null,
+          route_id: routeId,
+          due_date: dueDate,
+          priority,
+          note,
+          require_before_route_start: requireBeforeRouteStart,
+          status: INSPECTION_ASSIGNMENT_STATUS_PENDING
+        })
+        .select('*')
+        .single();
+
+      if (assignmentError) {
+        if (isMissingRelationError(assignmentError)) {
+          return res.status(500).json({ error: 'Vehicle inspection assignments are not configured yet. Run the latest database migration.' });
+        }
+
+        console.error('Inspection assignment insert failed:', assignmentError);
+        return res.status(500).json({ error: 'Failed to assign vehicle inspection' });
+      }
+
+      await notifyDriverManualInspectionAssigned(supabase, {
+        accountId: req.account.account_id,
+        driverId,
+        assignment,
+        vehicle,
+        managerName: req.account.manager_name || req.account.manager_email || null
+      });
+
+      return res.status(201).json({
+        assignment: presentManualInspectionAssignment(assignment, { vehicle, driver })
+      });
+    } catch (error) {
+      console.error('Inspection assignment endpoint failed:', error);
+      return res.status(500).json({ error: 'Failed to assign vehicle inspection' });
+    }
+  });
+
   router.get('/inspections', requireManager, async (req, res) => {
-    return res.status(200).json({ inspections: [] });
+    try {
+      const status = String(req.query.status || '').trim();
+      let query = supabase
+        .from('vehicle_inspections')
+        .select('*')
+        .eq('account_id', req.account.account_id)
+        .order('submitted_at', { ascending: false })
+        .limit(100);
+
+      if (status && status !== 'all') {
+        query = query.eq('status', status);
+      }
+
+      const { data: inspections, error } = await query;
+
+      if (error) {
+        if (isMissingRelationError(error)) {
+          return res.status(200).json({ inspections: [] });
+        }
+
+        console.error('Vehicle inspections lookup failed:', error);
+        return res.status(500).json({ error: 'Failed to load vehicle inspections' });
+      }
+
+      const vehicleIds = [...new Set((inspections || []).map((inspection) => inspection.vehicle_id).filter(Boolean))];
+      let vehiclesById = new Map();
+
+      if (vehicleIds.length > 0) {
+        const { data: vehicles, error: vehiclesError } = await supabase
+          .from('vehicles')
+          .select('id, name, make, model, year, truck_type, custom_truck_type, vehicle_status, is_active')
+          .eq('account_id', req.account.account_id)
+          .in('id', vehicleIds);
+
+        if (vehiclesError) {
+          console.error('Vehicle inspections vehicle lookup failed:', vehiclesError);
+          return res.status(500).json({ error: 'Failed to load vehicle inspections' });
+        }
+
+        vehiclesById = new Map((vehicles || []).map((vehicle) => [vehicle.id, vehicle]));
+      }
+
+      const presentedInspections = await Promise.all(
+        (inspections || []).map((inspection) => presentInspectionWithPrivatePhotos(supabase, inspection, vehiclesById))
+      );
+
+      return res.status(200).json({ inspections: presentedInspections });
+    } catch (error) {
+      console.error('Vehicle inspections endpoint failed:', error);
+      return res.status(500).json({ error: 'Failed to load vehicle inspections' });
+    }
   });
 
   router.get('/inspections/:inspection_id', requireManager, async (req, res) => {
-    return res.status(404).json({ error: 'Vehicle inspection records are not configured yet.' });
+    try {
+      const { data: inspection, error } = await supabase
+        .from('vehicle_inspections')
+        .select('*')
+        .eq('id', req.params.inspection_id)
+        .eq('account_id', req.account.account_id)
+        .maybeSingle();
+
+      if (error) {
+        if (isMissingRelationError(error)) {
+          return res.status(404).json({ error: 'Vehicle inspection records are not configured yet.' });
+        }
+
+        console.error('Vehicle inspection detail lookup failed:', error);
+        return res.status(500).json({ error: 'Failed to load vehicle inspection' });
+      }
+
+      if (!inspection) {
+        return res.status(404).json({ error: 'Vehicle inspection not found' });
+      }
+
+      let vehiclesById = new Map();
+      if (inspection.vehicle_id) {
+        const { data: vehicle, error: vehicleError } = await loadOwnedVehicle(supabase, {
+          vehicleId: inspection.vehicle_id,
+          accountId: req.account.account_id
+        });
+
+        if (vehicleError) {
+          console.error('Vehicle inspection detail vehicle lookup failed:', vehicleError);
+          return res.status(500).json({ error: 'Failed to load vehicle inspection' });
+        }
+
+        if (vehicle) {
+          vehiclesById = new Map([[vehicle.id, vehicle]]);
+        }
+      }
+
+      return res.status(200).json({
+        inspection: await presentInspectionWithPrivatePhotos(supabase, inspection, vehiclesById)
+      });
+    } catch (error) {
+      console.error('Vehicle inspection detail endpoint failed:', error);
+      return res.status(500).json({ error: 'Failed to load vehicle inspection' });
+    }
   });
 
   router.put('/inspections/:inspection_id/review', requireManager, async (req, res) => {
-    return res.status(404).json({ error: 'Vehicle inspection records are not configured yet.' });
+    const managerReviewNote = req.body?.manager_review_note ? String(req.body.manager_review_note).trim() : null;
+
+    try {
+      const { data: inspection, error } = await supabase
+        .from('vehicle_inspections')
+        .update({
+          status: 'reviewed',
+          manager_review_note: managerReviewNote,
+          reviewed_by_manager_user_id: req.account.manager_user_id,
+          reviewed_at: nowProvider().toISOString()
+        })
+        .eq('id', req.params.inspection_id)
+        .eq('account_id', req.account.account_id)
+        .select('*')
+        .single();
+
+      if (error) {
+        if (isMissingRelationError(error)) {
+          return res.status(404).json({ error: 'Vehicle inspection records are not configured yet.' });
+        }
+
+        console.error('Vehicle inspection review failed:', error);
+        return res.status(500).json({ error: 'Failed to review vehicle inspection' });
+      }
+
+      return res.status(200).json({
+        inspection: await presentInspectionWithPrivatePhotos(supabase, inspection)
+      });
+    } catch (error) {
+      console.error('Vehicle inspection review endpoint failed:', error);
+      return res.status(500).json({ error: 'Failed to review vehicle inspection' });
+    }
   });
 
   router.get('/:id/inspection-history', requireManager, async (req, res) => {
@@ -1417,10 +2081,226 @@ function createVehiclesRouter(options = {}) {
         return res.status(403).json({ error: 'Vehicle does not belong to this account' });
       }
 
-      return res.status(200).json({ inspections: [] });
+      const { data: inspections, error: inspectionsError } = await supabase
+        .from('vehicle_inspections')
+        .select('*')
+        .eq('account_id', req.account.account_id)
+        .eq('vehicle_id', vehicleId)
+        .order('submitted_at', { ascending: false })
+        .limit(100);
+
+      if (inspectionsError) {
+        if (isMissingRelationError(inspectionsError)) {
+          return res.status(200).json({ inspections: [] });
+        }
+
+        console.error('Vehicle inspection history lookup failed:', inspectionsError);
+        return res.status(500).json({ error: 'Failed to load inspection history' });
+      }
+
+      const vehiclesById = new Map([[vehicle.id, vehicle]]);
+
+      const presentedInspections = await Promise.all(
+        (inspections || []).map((inspection) => presentInspectionWithPrivatePhotos(supabase, inspection, vehiclesById))
+      );
+
+      return res.status(200).json({ inspections: presentedInspections });
     } catch (error) {
       console.error('Vehicle inspection history endpoint failed:', error);
       return res.status(500).json({ error: 'Failed to load inspection history' });
+    }
+  });
+
+  router.post('/:id/inspection-photo', requireManager, async (req, res) => {
+    const vehicleId = req.params.id;
+    const {
+      checklist_item_key: checklistItemKeyInput,
+      image_base64: imageBase64,
+      mime_type: mimeTypeInput,
+      file_name: fileNameInput
+    } = req.body || {};
+    const checklistItemKey = sanitizeStorageSegment(checklistItemKeyInput || 'inspection-item');
+    const mimeType = String(mimeTypeInput || 'image/jpeg').trim().toLowerCase();
+
+    if (!imageBase64) {
+      return res.status(400).json({ error: 'image_base64 is required' });
+    }
+
+    if (!mimeType.startsWith('image/')) {
+      return res.status(400).json({ error: 'Only image uploads are supported for inspection photos' });
+    }
+
+    try {
+      const { data: vehicle, error: vehicleError } = await loadOwnedVehicle(supabase, {
+        vehicleId,
+        accountId: req.account.account_id
+      });
+
+      if (vehicleError) {
+        console.error('Manager inspection photo vehicle lookup failed:', vehicleError);
+        return res.status(500).json({ error: 'Failed to validate vehicle' });
+      }
+
+      if (!vehicle) {
+        return res.status(403).json({ error: 'Vehicle does not belong to this account' });
+      }
+
+      const imageBuffer = decodeBase64Image(imageBase64);
+
+      if (!imageBuffer.length) {
+        return res.status(400).json({ error: 'image_base64 is invalid' });
+      }
+
+      if (imageBuffer.length > 8 * 1024 * 1024) {
+        return res.status(400).json({ error: 'Inspection photo must be 8 MB or smaller' });
+      }
+
+      const extension = getImageFileExtension(mimeType);
+      const originalName = sanitizeStorageSegment(fileNameInput || `${checklistItemKey}.${extension}`);
+      const storagePath = [
+        req.account.account_id,
+        vehicleId,
+        'manager-inspection',
+        checklistItemKey,
+        `${Date.now()}-${crypto.randomBytes(4).toString('hex')}-${originalName}`
+      ].join('/');
+
+      const { error: uploadError } = await supabase.storage
+        .from(VEHICLE_INSPECTION_PHOTO_BUCKET)
+        .upload(storagePath, imageBuffer, {
+          contentType: mimeType,
+          upsert: false
+        });
+
+      if (uploadError) {
+        console.error('Manager inspection photo upload failed:', uploadError);
+        return res.status(500).json({ error: 'Failed to upload inspection photo. Confirm the vehicle-inspection-photos storage bucket exists.' });
+      }
+
+      const signedUrl = await createSignedStorageUrl(supabase, {
+        bucket: VEHICLE_INSPECTION_PHOTO_BUCKET,
+        path: storagePath
+      });
+
+      if (!signedUrl) {
+        await supabase.storage.from(VEHICLE_INSPECTION_PHOTO_BUCKET).remove([storagePath]).catch(() => null);
+        return res.status(500).json({ error: 'Failed to prepare secure inspection photo access' });
+      }
+
+      return res.status(201).json({
+        photo: {
+          url: signedUrl,
+          storage_bucket: VEHICLE_INSPECTION_PHOTO_BUCKET,
+          storage_path: storagePath,
+          caption: null
+        }
+      });
+    } catch (error) {
+      console.error('Manager inspection photo endpoint failed:', error);
+      return res.status(500).json({ error: 'Failed to upload inspection photo' });
+    }
+  });
+
+  router.post('/:id/inspections', requireManager, async (req, res) => {
+    const vehicleId = req.params.id;
+    const inspectionDate = String(req.body?.inspection_date || getCurrentDateString(nowProvider())).trim();
+    const odometer = toInteger(req.body?.odometer);
+    const normalizedSubmission = validateInspectionItemsForSubmission(req.body?.items);
+    const items = normalizedSubmission.items || [];
+    const issueNote = req.body?.issue_note ? String(req.body.issue_note).trim() : null;
+    const inspectionSummary = summarizeInspectionItems(items, { issueNote });
+
+    if (!inspectionDate || Number.isNaN(new Date(`${inspectionDate}T12:00:00`).getTime())) {
+      return res.status(400).json({ error: 'inspection_date is required' });
+    }
+
+    if (odometer === null || odometer < 0) {
+      return res.status(400).json({ error: 'odometer is required' });
+    }
+
+    if (normalizedSubmission.error) {
+      return res.status(400).json({ error: normalizedSubmission.error });
+    }
+
+    try {
+      const { data: vehicle, error: vehicleError } = await loadOwnedVehicle(supabase, {
+        vehicleId,
+        accountId: req.account.account_id
+      });
+
+      if (vehicleError) {
+        console.error('Vehicle inspection vehicle lookup failed:', vehicleError);
+        return res.status(500).json({ error: 'Failed to validate vehicle' });
+      }
+
+      if (!vehicle) {
+        return res.status(403).json({ error: 'Vehicle does not belong to this account' });
+      }
+
+      const status = resolveInspectionStatus({ items, issueNote });
+      const submittedAt = nowProvider().toISOString();
+      const { data: inspection, error: inspectionError, fallbackReasons } = await insertVehicleInspectionWithSchemaFallback(supabase, {
+        account_id: req.account.account_id,
+        vehicle_id: vehicleId,
+        inspection_date: inspectionDate,
+        inspection_type: 'manager',
+        odometer,
+        issue_reported: Boolean(inspectionSummary.issue_count),
+        status,
+        issue_note: issueNote,
+        items,
+        submitted_by_type: 'manager',
+        submitted_by_manager_user_id: req.account.manager_user_id,
+        submitted_by_name: req.account.manager_name || req.account.manager_email || 'Manager',
+        submitted_at: submittedAt
+      });
+
+      if (inspectionError) {
+        if (isMissingRelationError(inspectionError)) {
+          return res.status(503).json({ error: 'Vehicle inspection records are not configured yet.' });
+        }
+
+        if (isMissingColumnError(inspectionError) ||
+          isInspectionTypeConstraintError(inspectionError) ||
+          inspectionError.code === 'INSPECTION_SCHEMA_FALLBACK_EXHAUSTED') {
+          console.error('Vehicle inspection insert schema mismatch:', inspectionError);
+          return res.status(500).json({ error: 'Vehicle inspection records need the latest database migration before saving inspections.' });
+        }
+
+        console.error('Vehicle inspection insert failed:', inspectionError);
+        return res.status(500).json({ error: 'Failed to save vehicle inspection' });
+      }
+
+      if (fallbackReasons?.length) {
+        console.warn('Vehicle inspection saved with legacy schema fallback:', {
+          fallbackReasons,
+          vehicle_id: vehicleId,
+          account_id: req.account.account_id
+        });
+      }
+
+      if (odometer > Number(vehicle.current_mileage || 0)) {
+        const { error: vehicleUpdateError } = await supabase
+          .from('vehicles')
+          .update({ current_mileage: odometer })
+          .eq('id', vehicleId)
+          .eq('account_id', req.account.account_id);
+
+        if (vehicleUpdateError) {
+          console.error('Vehicle inspection mileage update failed:', vehicleUpdateError);
+        }
+      }
+
+      return res.status(201).json({
+        inspection: await presentInspectionWithPrivatePhotos(
+          supabase,
+          inspection,
+          new Map([[vehicle.id, vehicle]])
+        )
+      });
+    } catch (error) {
+      console.error('Vehicle inspection submit endpoint failed:', error);
+      return res.status(500).json({ error: 'Failed to save vehicle inspection' });
     }
   });
 
@@ -1578,6 +2458,7 @@ function createVehiclesRouter(options = {}) {
       'plate',
       'registration_expiration',
       'insurance_expiration',
+      'fuel_type',
       'current_mileage',
       'vehicle_status',
       'notes',
@@ -1629,11 +2510,51 @@ function createVehiclesRouter(options = {}) {
         continue;
       }
 
+      if (field === 'fuel_type') {
+        const normalizedFuelType = normalizeFuelType(req.body[field]);
+        if (normalizedFuelType?.error) {
+          return res.status(400).json({ error: normalizedFuelType.error });
+        }
+        payload.fuel_type = normalizedFuelType;
+        continue;
+      }
+
       payload[field] = req.body[field] === null ? null : String(req.body[field]).trim();
     }
 
     if ('vehicle_status' in payload) {
       payload.is_active = payload.vehicle_status === 'active';
+
+      if (payload.vehicle_status === 'active') {
+        payload.readiness_source_type = null;
+        payload.readiness_source_id = null;
+      } else if (
+        req.body?.readiness_source_type === 'inspection'
+        && req.body?.readiness_source_id
+      ) {
+        payload.readiness_source_type = 'inspection';
+        payload.readiness_source_id = String(req.body.readiness_source_id).trim();
+      }
+    }
+
+    if ('name' in payload && !String(payload.name || '').trim()) {
+      return res.status(400).json({ error: 'Vehicle ID is required' });
+    }
+
+    if ('plate' in payload && !String(payload.plate || '').trim()) {
+      return res.status(400).json({ error: 'License plate is required' });
+    }
+
+    if ('name' in payload) {
+      const vehicleIdentifier = String(payload.name).trim();
+      if (!vehicleIdentifier) {
+        return res.status(400).json({ error: 'Vehicle ID is required' });
+      }
+      payload.name = vehicleIdentifier;
+    }
+
+    if ('plate' in payload) {
+      payload.plate = String(payload.plate).trim();
     }
 
     if (!Object.keys(payload).length) {
@@ -1961,3 +2882,5 @@ function createVehiclesRouter(options = {}) {
 
 module.exports = createVehiclesRouter();
 module.exports.createVehiclesRouter = createVehiclesRouter;
+module.exports.buildVehicleReadiness = buildVehicleReadiness;
+module.exports.mapInspectionReadinessContext = mapInspectionReadinessContext;

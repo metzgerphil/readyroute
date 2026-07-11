@@ -113,7 +113,7 @@ describe('ManagerRoutesScreen', () => {
     expect(screen.getByText('ReadyRoute')).toBeTruthy();
     expect(screen.getByText('Bridge Transportation Inc.')).toBeTruthy();
     expect(screen.getByText('Stop Search')).toBeTruthy();
-    expect(screen.getAllByText('Add Routes').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('Upload Manifest').length).toBeGreaterThan(0);
     expect(screen.getAllByText('SAN').length).toBeGreaterThan(0);
     expect(screen.getByText('Luis Perez')).toBeTruthy();
     expect(screen.getByText('2026-05-08')).toBeTruthy();
@@ -195,9 +195,9 @@ describe('ManagerRoutesScreen', () => {
       expect(screen.getByText('No routes available.')).toBeTruthy();
     });
 
-    fireEvent.press(screen.getAllByText('Add Routes')[0]);
+    fireEvent.press(screen.getAllByText('Upload Manifest')[0]);
 
-    expect(screen.getByText('Upload today’s route files. ReadyRoute will use them to build routes, stops, packages, pickups, customer contact detail, and map pins.')).toBeTruthy();
+    expect(screen.getByText('Upload today’s manifest files. ReadyRoute will use them to build routes, stops, packages, pickups, customer contact detail, and map pins.')).toBeTruthy();
     expect(screen.getByText('For best results, attach Combined, Delivery, Pickup, and the matching GPX files together so ReadyRoute can merge route pins, package detail, service codes, and customer contact data in one pass.')).toBeTruthy();
     expect(screen.queryByText(/FCC/i)).toBeNull();
 
@@ -211,7 +211,8 @@ describe('ManagerRoutesScreen', () => {
       expect(screen.getByText('route.gpx')).toBeTruthy();
     });
 
-    fireEvent.press(screen.getByText('Upload Routes'));
+    const uploadManifestLabels = screen.getAllByText('Upload Manifest');
+    fireEvent.press(uploadManifestLabels[uploadManifestLabels.length - 1]);
 
     await waitFor(() => {
       expect(api.post).toHaveBeenCalledWith('/routes/upload-manifest', expect.any(FormData), expect.objectContaining({
@@ -220,7 +221,7 @@ describe('ManagerRoutesScreen', () => {
           'Content-Type': 'multipart/form-data'
         }
       }));
-      expect(screen.getByText('Routes uploaded successfully.')).toBeTruthy();
+      expect(screen.getByText('Manifest uploaded successfully.')).toBeTruthy();
       expect(onManagerDataRefresh).toHaveBeenCalled();
     });
   });
@@ -248,7 +249,7 @@ describe('ManagerRoutesScreen', () => {
       expect(screen.getByText('No routes available.')).toBeTruthy();
     });
 
-    fireEvent.press(screen.getAllByText('Add Routes')[0]);
+    fireEvent.press(screen.getAllByText('Upload Manifest')[0]);
     fireEvent.press(screen.getByText('Combined XLS'));
 
     await waitFor(() => {

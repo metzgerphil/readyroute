@@ -1,5 +1,6 @@
 import React from 'react';
 import { fireEvent, render } from '@testing-library/react-native';
+import { StyleSheet } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 import MobileNavigationDrawer, { getMobileMenuLayout } from './MobileNavigationDrawer';
@@ -175,6 +176,7 @@ describe('MobileNavigationDrawer', () => {
     expect(screen.getByText('L')).toBeTruthy();
     expect(screen.getByText('Switch to Manager Mode')).toBeTruthy();
     expect(screen.getByText('Driver Home')).toBeTruthy();
+    expect(screen.getByText('Notifications')).toBeTruthy();
     expect(screen.getByText('My Drive')).toBeTruthy();
     expect(screen.getByText('Manifest')).toBeTruthy();
     expect(screen.queryByText('DH')).toBeNull();
@@ -185,7 +187,7 @@ describe('MobileNavigationDrawer', () => {
     const onNavigate = jest.fn();
     const screen = renderDrawer({
       activeMode: 'manager',
-      currentRouteName: 'ManagerOverview',
+      currentRouteName: 'ManagerMap',
       identity: {
         fullName: 'Vlad Fedoryshyn',
         companyName: 'ReadyRoute CSA West',
@@ -201,7 +203,10 @@ describe('MobileNavigationDrawer', () => {
 
     expect(screen.getByText('Map View')).toBeTruthy();
     expect(screen.getByText('Routes')).toBeTruthy();
-    expect(screen.queryByText('Notifications')).toBeNull();
+    expect(screen.getByText('Drivers')).toBeTruthy();
+    expect(screen.getByText('Access Codes')).toBeTruthy();
+    expect(screen.getByText('Notifications')).toBeTruthy();
+    expect(screen.getByText('VEDR')).toBeTruthy();
     expect(screen.getByText('Settings')).toBeTruthy();
     expect(screen.queryByText('MV')).toBeNull();
     expect(screen.queryByText('RO')).toBeNull();
@@ -209,14 +214,14 @@ describe('MobileNavigationDrawer', () => {
     expect(screen.queryByText('Switch to Driver Mode')).toBeNull();
 
     fireEvent.press(screen.getByText('Map View'));
-    expect(onNavigate).toHaveBeenCalledWith('ManagerOverview');
+    expect(onNavigate).toHaveBeenCalledWith('ManagerMap');
   });
 
   it('navigates manager rows through the existing destinations', () => {
     const onNavigate = jest.fn();
     const screen = renderDrawer({
       activeMode: 'manager',
-      currentRouteName: 'ManagerOverview',
+      currentRouteName: 'ManagerMap',
       identity: {
         fullName: 'Vlad Fedoryshyn',
         companyName: 'ReadyRoute CSA West',
@@ -232,11 +237,41 @@ describe('MobileNavigationDrawer', () => {
 
     fireEvent.press(screen.getByText('Routes'));
     fireEvent.press(screen.getByText('Map View'));
+    fireEvent.press(screen.getByText('Drivers'));
+    fireEvent.press(screen.getByText('Access Codes'));
     fireEvent.press(screen.getByText('Vehicles'));
+    fireEvent.press(screen.getByText('Notifications'));
+    fireEvent.press(screen.getByText('VEDR'));
 
     expect(onNavigate).toHaveBeenCalledWith('ManagerRoutes');
-    expect(onNavigate).toHaveBeenCalledWith('ManagerOverview');
+    expect(onNavigate).toHaveBeenCalledWith('ManagerMap');
+    expect(onNavigate).toHaveBeenCalledWith('ManagerDrivers');
+    expect(onNavigate).toHaveBeenCalledWith('ManagerAccessCodes');
     expect(onNavigate).toHaveBeenCalledWith('ManagerVehicles');
+    expect(onNavigate).toHaveBeenCalledWith('ManagerNotifications');
+    expect(onNavigate).toHaveBeenCalledWith('ManagerVedr');
+  });
+
+  it('highlights the notifications tile when manager attention is needed', () => {
+    const screen = renderDrawer({
+      activeMode: 'manager',
+      currentRouteName: 'ManagerVehicles',
+      hasNotificationAttention: true,
+      identity: {
+        fullName: 'Vlad Fedoryshyn',
+        companyName: 'ReadyRoute CSA West',
+        primaryRole: 'Manager'
+      },
+      isOpen: true,
+      onClose: jest.fn(),
+      onLogout: jest.fn(),
+      onNavigate: jest.fn(),
+      onSwitchMode: jest.fn(),
+      showModeSwitch: true
+    });
+
+    expect(screen.getByTestId('manager-notifications-attention-dot')).toBeTruthy();
+    expect(StyleSheet.flatten(screen.getByText('Notifications').props.style).color).toBe('#f05a00');
   });
 
   it('shows linked CSA workspaces and switches from the drawer', () => {
@@ -272,12 +307,13 @@ describe('MobileNavigationDrawer', () => {
     expect(onManagerCsaSelect).toHaveBeenCalledWith('csa-pv');
   });
 
-  it('keeps mode switching and logout wired to the existing callbacks', () => {
+  it('keeps mode switching, support, and logout wired to the existing callbacks', () => {
     const onLogout = jest.fn();
+    const onSupportPress = jest.fn();
     const onSwitchMode = jest.fn();
     const screen = renderDrawer({
       activeMode: 'manager',
-      currentRouteName: 'ManagerOverview',
+      currentRouteName: 'ManagerMap',
       identity: {
         fullName: 'Vlad Fedoryshyn',
         companyName: 'ReadyRoute CSA West',
@@ -287,14 +323,17 @@ describe('MobileNavigationDrawer', () => {
       onClose: jest.fn(),
       onLogout,
       onNavigate: jest.fn(),
+      onSupportPress,
       onSwitchMode,
       showModeSwitch: true
     });
 
     fireEvent.press(screen.getByText('Switch to Driver Mode'));
+    fireEvent.press(screen.getByText('Support'));
     fireEvent.press(screen.getByText('Logout'));
 
     expect(onSwitchMode).toHaveBeenCalledTimes(1);
+    expect(onSupportPress).toHaveBeenCalledTimes(1);
     expect(onLogout).toHaveBeenCalledTimes(1);
   });
 
@@ -325,7 +364,7 @@ describe('MobileNavigationDrawer', () => {
     const onClose = jest.fn();
     const screen = renderDrawer({
       activeMode: 'manager',
-      currentRouteName: 'ManagerOverview',
+      currentRouteName: 'ManagerMap',
       identity: {
         fullName: 'Vlad Fedoryshyn',
         companyName: 'ReadyRoute CSA West',

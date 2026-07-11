@@ -1,12 +1,20 @@
 import { useQuery } from '@tanstack/react-query';
-import { useMemo, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { useEffect, useMemo } from 'react';
+import { Link, useSearchParams } from 'react-router-dom';
 
 import api from '../services/api';
-import { EmptyState, PageHeader, StatCard, StatusBadge } from '../components/PortalDesignSystem';
+import { EmptyState, ErrorState, PageHeader, StatCard, StatusBadge } from '../components/PortalDesignSystem';
 import { useSelectedCsa } from '../context/SelectedCsaContext';
-import { getTodayString, loadStoredOperationsDate, saveStoredOperationsDate } from '../utils/operationsDate';
+import {
+  buildOperationsDatePath,
+  getResolvedOperationsDate,
+  saveStoredOperationsDate
+} from '../utils/operationsDate';
+import { getRouteStatusMeta } from '../utils/routeStatus';
 import { sortRoutesByWorkArea } from '../utils/routeSort';
+
+const ROUTES_SKELETON_ROWS = Array.from({ length: 5 }, (_, index) => index);
+const ROUTES_SKELETON_CELLS = Array.from({ length: 9 }, (_, index) => index);
 
 function formatDisplayDate(value) {
   if (!value) {
@@ -35,38 +43,6 @@ function formatRouteName(route) {
   return route.work_area_name || route.route_number || route.id || 'Route';
 }
 
-function getRouteStatus(route) {
-  if (route.dispatch_state === 'dispatched') {
-    return { label: 'Dispatched', tone: 'active' };
-  }
-
-  if (route.sync_state === 'dispatch_blocked' || route.sync_state === 'needs_attention') {
-    return { label: 'Needs review', tone: 'warning' };
-  }
-
-  if (route.sync_state === 'staged_changed' || route.sync_state === 'changed_after_dispatch') {
-    return { label: 'Changed', tone: 'warning' };
-  }
-
-  if (route.sync_state === 'sync_failed') {
-    return { label: 'Sync failed', tone: 'warning' };
-  }
-
-  if (route.sync_state === 'staged' || route.dispatch_state === 'staged') {
-    return { label: 'Staged', tone: 'purple' };
-  }
-
-  if (route.status === 'in_progress') {
-    return { label: 'In progress', tone: 'active' };
-  }
-
-  if (route.status === 'complete') {
-    return { label: 'Complete', tone: 'active' };
-  }
-
-  return { label: route.sync_state || route.status || 'Available', tone: 'neutral' };
-}
-
 function getStopProgress(route) {
   const completed = safeNumber(route.completed_stops);
   const total = safeNumber(route.total_stops || route.stops?.length);
@@ -86,7 +62,38 @@ function getPickupSummary(route) {
   }
 
   const completed = safeNumber(route.pickup_stops_completed);
-  return `${completed} / ${total}`;
+  const combined = getCombinedStopCount(route);
+  return `${completed} / ${total}${combined ? ` (${combined} also delivery)` : ''}`;
+}
+
+function getCombinedStopCount(route) {
+  return safeNumber(route.combined_stops || route.combined_stop_count || route.total_combined_stops);
+}
+
+function RoutesLoadingSkeleton() {
+  return (
+    <div className="routes-loading-skeleton" role="status" aria-busy="true" aria-live="polite">
+      <span className="sr-only">Loading routes</span>
+      <div className="routes-loading-status" aria-hidden="true">
+        <span className="routes-loading-spinner" />
+        <span className="skeleton-line routes-loading-title" />
+      </div>
+      <div className="routes-operations-table routes-loading-table" aria-hidden="true">
+        <div className="routes-operations-table-header routes-loading-row">
+          {ROUTES_SKELETON_CELLS.map((cell) => (
+            <span className="skeleton-line" key={`header-${cell}`} />
+          ))}
+        </div>
+        {ROUTES_SKELETON_ROWS.map((row) => (
+          <div className="routes-operations-table-row routes-loading-row" key={row}>
+            {ROUTES_SKELETON_CELLS.map((cell) => (
+              <span className="skeleton-line" key={`${row}-${cell}`} />
+            ))}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
 }
 
 function RoutesTable({ routes, date }) {
@@ -105,8 +112,8 @@ function RoutesTable({ routes, date }) {
           <span>Actions</span>
         </div>
         {routes.map((route) => {
-          const status = getRouteStatus(route);
-          const routeUrl = `/routes/${route.id}?date=${date}`;
+          const status = getRouteStatusMeta(route);
+          const routeUrl = buildOperationsDatePath(`/routes/${route.id}`, date);
 
           return (
             <div className="routes-operations-table-row" key={route.id}>
@@ -130,8 +137,8 @@ function RoutesTable({ routes, date }) {
 
       <div className="routes-operations-card-list">
         {routes.map((route) => {
-          const status = getRouteStatus(route);
-          const routeUrl = `/routes/${route.id}?date=${date}`;
+          const status = getRouteStatusMeta(route);
+          const routeUrl = buildOperationsDatePath(`/routes/${route.id}`, date);
 
           return (
             <article className="card routes-operations-card" key={route.id}>
@@ -161,8 +168,21 @@ function RoutesTable({ routes, date }) {
 }
 
 export default function RoutesPage() {
-  const [date, setDate] = useState(loadStoredOperationsDate() || getTodayString());
+  const [searchParams, setSearchParams] = useSearchParams();
+  const date = getResolvedOperationsDate(searchParams);
   const { selectedCsaId, selectedCsaName } = useSelectedCsa();
+
+  useEffect(() => {
+    saveStoredOperationsDate(date);
+
+    if (searchParams.get('date') === date) {
+      return;
+    }
+
+    const nextParams = new URLSearchParams(searchParams);
+    nextParams.set('date', date);
+    setSearchParams(nextParams, { replace: true });
+  }, [date, searchParams, setSearchParams]);
 
   const routesQuery = useQuery({
     queryKey: ['operations-routes', selectedCsaId, date],
@@ -180,10 +200,14 @@ export default function RoutesPage() {
   const dispatchedCount = safeNumber(syncStatus.routes_dispatched || routes.filter((route) => route.dispatch_state === 'dispatched').length);
   const exceptionCount = routes.reduce((sum, route) => sum + safeNumber(route.exception_count || route.exceptions), 0);
   const pickupCount = routes.reduce((sum, route) => sum + safeNumber(route.pickup_stops || route.pickup_stop_count), 0);
+  const combinedStopCount = routes.reduce((sum, route) => sum + getCombinedStopCount(route), 0);
 
   function handleDateChange(nextDate) {
-    setDate(nextDate);
     saveStoredOperationsDate(nextDate);
+
+    const nextParams = new URLSearchParams(searchParams);
+    nextParams.set('date', nextDate);
+    setSearchParams(nextParams);
   }
 
   return (
@@ -202,11 +226,11 @@ export default function RoutesPage() {
                 value={date}
               />
             </label>
-            <Link className="secondary-button" to={`/fleet-map?date=${date}`}>
+            <Link className="secondary-button" to={buildOperationsDatePath('/fleet-map', date)}>
               Fleet Map
             </Link>
-            <Link className="primary-cta manifest-button" to={`/manifest?date=${date}`}>
-              Add Routes
+            <Link className="primary-cta manifest-button" to={buildOperationsDatePath('/manifest', date)}>
+              Upload Manifest
             </Link>
           </div>
         )}
@@ -216,7 +240,12 @@ export default function RoutesPage() {
         <StatCard label="Routes" value={routes.length} detail={`${assignedCount} assigned`} />
         <StatCard label="Dispatched" value={dispatchedCount} detail="Visible to drivers" tone={dispatchedCount ? 'active' : 'default'} />
         <StatCard label="Exceptions" value={exceptionCount} detail="Routes needing attention" tone={exceptionCount ? 'warning' : 'default'} />
-        <StatCard label="Pickups" value={pickupCount} detail="From manifest data" tone={pickupCount ? 'info' : 'default'} />
+        <StatCard
+          label="Pickup Stops"
+          value={pickupCount}
+          detail={combinedStopCount ? `${combinedStopCount} also count as delivery stops` : 'From manifest data'}
+          tone={pickupCount ? 'info' : 'default'}
+        />
       </div>
 
       <div className="card routes-operations-list-card">
@@ -229,18 +258,23 @@ export default function RoutesPage() {
         </div>
 
         {routesQuery.isLoading ? (
-          <div className="driver-meta">Loading routes...</div>
+          <RoutesLoadingSkeleton />
         ) : routesQuery.isError ? (
-          <div className="error-banner">Unable to load routes.</div>
+          <ErrorState
+            title="Unable to load routes"
+            description="Route operations could not be loaded for this day."
+            onRetry={() => routesQuery.refetch()}
+          />
         ) : routes.length ? (
           <RoutesTable routes={routes} date={date} />
         ) : (
           <EmptyState
+            variant="inline"
             title="No routes for this day"
             description="Upload today’s manifest or route files to start reviewing work areas."
             actions={(
-              <Link className="primary-cta manifest-button" to={`/manifest?date=${date}`}>
-                Add Routes
+              <Link className="primary-cta manifest-button" to={buildOperationsDatePath('/manifest', date)}>
+                Upload Manifest
               </Link>
             )}
           />

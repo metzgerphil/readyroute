@@ -3,23 +3,20 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link, useSearchParams } from 'react-router-dom';
 
+import { ErrorState } from '../components/PortalDesignSystem';
 import api from '../services/api';
-import { getTodayString, loadStoredOperationsDate, saveStoredOperationsDate } from '../utils/operationsDate';
+import {
+  buildOperationsDatePath,
+  getResolvedOperationsDate,
+  getTodayString,
+  saveStoredOperationsDate
+} from '../utils/operationsDate';
 
 const MANIFEST_UPLOAD_STORAGE_KEY = 'readyroute:manifest-latest-upload';
 const EMPTY_ARRAY = [];
 
 function formatMorningDate(dateValue) {
   return format(new Date(`${dateValue}T12:00:00`), 'EEEE, MMMM d');
-}
-
-function formatSyncLine(timestamp) {
-  if (!timestamp) {
-    return 'Not synced today';
-  }
-
-  const date = new Date(timestamp);
-  return `Last synced today at ${format(date, 'h:mm a')}`;
 }
 
 function formatAuditEventTime(timestamp) {
@@ -37,7 +34,7 @@ function getDispatchWindowCopy(routeSyncSettings) {
 
   switch (routeSyncSettings.dispatch_window_state) {
     case 'before_window':
-      return `It is still before this CSA’s local dispatch window (${routeSyncSettings.dispatch_window_label} ${routeSyncSettings.operations_timezone}). ReadyRoute should keep staging morning changes.`;
+      return `It is still before this CSA’s local dispatch window (${routeSyncSettings.dispatch_window_label} ${routeSyncSettings.operations_timezone}). ReadyRoute should keep uploaded route changes staged.`;
     case 'active_window':
       return `This CSA is inside its active dispatch window (${routeSyncSettings.dispatch_window_label} ${routeSyncSettings.operations_timezone}). Dispatch can happen as soon as blockers are cleared.`;
     case 'after_window':
@@ -46,7 +43,7 @@ function getDispatchWindowCopy(routeSyncSettings) {
       return `You are reviewing a historical date. Dispatch timing is shown using ${routeSyncSettings.operations_timezone}.`;
     case 'scheduled':
     default:
-      return `ReadyRoute will use ${routeSyncSettings.operations_timezone} and the ${routeSyncSettings.dispatch_window_label} window for this CSA’s morning route sync logic.`;
+      return `ReadyRoute will use ${routeSyncSettings.operations_timezone} and the ${routeSyncSettings.dispatch_window_label} window for this CSA’s morning route review.`;
   }
 }
 
@@ -266,6 +263,14 @@ function routeNeedsDispatchReview(route) {
   );
 }
 
+function areRouteIdListsEqual(left = [], right = []) {
+  if (left.length !== right.length) {
+    return false;
+  }
+
+  return left.every((value, index) => value === right[index]);
+}
+
 function getRouteDispatchSummary(route) {
   if (routeBlocksDispatch(route)) {
     if (!route?.driver_id && !route?.vehicle_id) {
@@ -348,7 +353,7 @@ function getRouteDetailPath(route, date) {
     return null;
   }
 
-  return `/routes/${routeId}?date=${date}`;
+  return buildOperationsDatePath(`/routes/${routeId}`, date);
 }
 
 export default function ManifestPage() {
@@ -358,9 +363,7 @@ export default function ManifestPage() {
   const routeCardRefs = useRef(new Map());
   const routeFieldRefs = useRef(new Map());
   const [searchParams, setSearchParams] = useSearchParams();
-  const initialDate = searchParams.get('date') || loadStoredOperationsDate() || getTodayString();
-  const [date, setDate] = useState(initialDate);
-  const [activeTab, setActiveTab] = useState('upload');
+  const date = getResolvedOperationsDate(searchParams);
   const [selectedFile, setSelectedFile] = useState(null);
   const [selectedGpxFile, setSelectedGpxFile] = useState(null);
   const [manifestBundleFiles, setManifestBundleFiles] = useState({
@@ -373,7 +376,7 @@ export default function ManifestPage() {
   const [workAreaName, setWorkAreaName] = useState('');
   const [driverId, setDriverId] = useState('');
   const [vehicleId, setVehicleId] = useState('');
-  const [latestUpload, setLatestUpload] = useState(() => loadStoredManifestUpload(initialDate));
+  const [latestUpload, setLatestUpload] = useState(() => loadStoredManifestUpload(date));
   const [warningsExpanded, setWarningsExpanded] = useState(true);
   const [editedWarnings, setEditedWarnings] = useState({});
   const [editingWarningIds, setEditingWarningIds] = useState({});
@@ -409,9 +412,7 @@ export default function ManifestPage() {
 
   const routePayload = routesQuery.data || {};
   const routeSummaries = useMemo(() => routePayload.routes || EMPTY_ARRAY, [routePayload.routes]);
-  const syncStatus = routePayload.sync_status || { routes_today: 0, routes_assigned: 0, last_sync_at: null };
   const routeSyncSettings = routePayload.route_sync_settings || null;
-  const fedexConnection = routePayload.fedex_connection || { is_connected: false, terminal_label: null };
   const warningRows = useMemo(() => createWarningRows(routeSummaries, editedWarnings), [routeSummaries, editedWarnings]);
   const selectedFileName = selectedFile?.name?.toLowerCase() || '';
   const bundleFileList = useMemo(
@@ -423,28 +424,37 @@ export default function ManifestPage() {
   const isSpreadsheetUpload = selectedFileName.endsWith('.xls') || selectedFileName.endsWith('.xlsx');
   const isManifestBundleUpload = hasManifestBundleFiles;
   const needsGpxUploadFields = hasSelectedFile && !isSpreadsheetUpload && !isManifestBundleUpload && (!workAreaName.trim() || !driverId || !vehicleId);
+  const processManifestDisabledReason = isPastDate
+    ? 'Upload is disabled for historical dates.'
+    : !hasSelectedFile
+      ? 'Add a file to continue.'
+      : needsGpxUploadFields
+        ? 'Add a route name, driver, and vehicle to continue.'
+        : '';
+  const processManifestHelperId = processManifestDisabledReason ? 'process-manifest-disabled-helper' : undefined;
   const latestUploadRoute = latestUpload ? routeSummaries.find((route) => route.id === latestUpload.route_id) : null;
   const hasRoutesToday = routeSummaries.length > 0;
   const canModifyExistingRoutes = hasRoutesToday;
-  const routesNeedingDrivers = routeSummaries.filter((route) => !route.driver_id);
-  const routesNeedingVehicles = routeSummaries.filter((route) => !route.vehicle_id);
-  const routesNeedingPins = routeSummaries.filter((route) => route.map_status === 'needs_pins');
-  const partiallyMappedRoutes = routeSummaries.filter((route) => route.map_status === 'partially_mapped');
-  const routesWithWarnings = routeSummaries.filter((route) => routeHasAddressWarnings(route));
-  const routesWithSyncWarnings = routeSummaries.filter((route) => route.sync_state === 'staged_changed');
-  const routesChangedAfterDispatch = routeSummaries.filter((route) => route.sync_state === 'changed_after_dispatch');
-  const routesWithSyncFailures = routeSummaries.filter((route) => route.sync_state === 'sync_failed');
-  const stagedRoutes = routeSummaries.filter((route) => route.dispatch_state !== 'dispatched');
-  const dispatchedRoutes = routeSummaries.filter((route) => route.dispatch_state === 'dispatched');
-  const blockedDispatchRoutes = routeSummaries.filter((route) => routeBlocksDispatch(route));
-  const reviewDispatchRoutes = routeSummaries.filter((route) => routeNeedsDispatchReview(route));
-  const readyDispatchRoutes = routeSummaries.filter(
+  const routesNeedingDrivers = useMemo(() => routeSummaries.filter((route) => !route.driver_id), [routeSummaries]);
+  const routesNeedingVehicles = useMemo(() => routeSummaries.filter((route) => !route.vehicle_id), [routeSummaries]);
+  const routesNeedingPins = useMemo(() => routeSummaries.filter((route) => route.map_status === 'needs_pins'), [routeSummaries]);
+  const partiallyMappedRoutes = useMemo(() => routeSummaries.filter((route) => route.map_status === 'partially_mapped'), [routeSummaries]);
+  const routesWithWarnings = useMemo(() => routeSummaries.filter((route) => routeHasAddressWarnings(route)), [routeSummaries]);
+  const routesWithSyncWarnings = useMemo(() => routeSummaries.filter((route) => route.sync_state === 'staged_changed'), [routeSummaries]);
+  const routesChangedAfterDispatch = useMemo(() => routeSummaries.filter((route) => route.sync_state === 'changed_after_dispatch'), [routeSummaries]);
+  const routesWithSyncFailures = useMemo(() => routeSummaries.filter((route) => route.sync_state === 'sync_failed'), [routeSummaries]);
+  const stagedRoutes = useMemo(() => routeSummaries.filter((route) => route.dispatch_state !== 'dispatched'), [routeSummaries]);
+  const dispatchedRoutes = useMemo(() => routeSummaries.filter((route) => route.dispatch_state === 'dispatched'), [routeSummaries]);
+  const blockedDispatchRoutes = useMemo(() => routeSummaries.filter((route) => routeBlocksDispatch(route)), [routeSummaries]);
+  const reviewDispatchRoutes = useMemo(() => routeSummaries.filter((route) => routeNeedsDispatchReview(route)), [routeSummaries]);
+  const readyDispatchRoutes = useMemo(() => routeSummaries.filter(
     (route) =>
       route.dispatch_state !== 'dispatched' && !routeBlocksDispatch(route) && !routeNeedsDispatchReview(route)
-  );
-  const dispatchableRoutes = routeSummaries.filter(
+  ), [routeSummaries]);
+  const dispatchableRoutes = useMemo(() => routeSummaries.filter(
     (route) => route.dispatch_state !== 'dispatched' && !routeBlocksDispatch(route)
-  );
+  ), [routeSummaries]);
+  const dispatchableRouteIds = useMemo(() => dispatchableRoutes.map((route) => route.id), [dispatchableRoutes]);
   const isSetupFlow = searchParams.get('source') === 'setup';
   const setupFocus = searchParams.get('focus') || '';
   const setupBanner = useMemo(() => {
@@ -457,7 +467,7 @@ export default function ManifestPage() {
         tone: 'done',
         title: 'First routes are in ReadyRoute',
         body: `${routeSummaries.length} route${routeSummaries.length === 1 ? '' : 's'} loaded for ${formatMorningDate(date)}. You can assign, review, and dispatch from here.`,
-        actionTo: `/?date=${date}`,
+        actionTo: buildOperationsDatePath('/', date),
         actionLabel: 'Open Dashboard'
       };
     }
@@ -474,8 +484,10 @@ export default function ManifestPage() {
   }, [date]);
 
   useEffect(() => {
-    setSelectedDispatchRouteIds(dispatchableRoutes.map((route) => route.id));
-  }, [dispatchableRoutes]);
+    setSelectedDispatchRouteIds((current) => (
+      areRouteIdListsEqual(current, dispatchableRouteIds) ? current : dispatchableRouteIds
+    ));
+  }, [dispatchableRouteIds]);
 
   useEffect(() => {
     saveStoredManifestUpload(date, latestUpload);
@@ -483,9 +495,7 @@ export default function ManifestPage() {
 
   useEffect(() => {
     saveStoredOperationsDate(date);
-  }, [date]);
 
-  useEffect(() => {
     if (searchParams.get('date') === date) {
       return;
     }
@@ -495,29 +505,19 @@ export default function ManifestPage() {
     setSearchParams(nextParams, { replace: true });
   }, [date, searchParams, setSearchParams]);
 
+  function handleDateChange(nextDate, options) {
+    saveStoredOperationsDate(nextDate);
+
+    const nextParams = new URLSearchParams(searchParams);
+    nextParams.set('date', nextDate);
+    setSearchParams(nextParams, options);
+  }
+
   function toggleDispatchRoute(routeId) {
     setSelectedDispatchRouteIds((current) =>
       current.includes(routeId) ? current.filter((value) => value !== routeId) : [...current, routeId]
     );
   }
-
-  const pullManifestMutation = useMutation({
-    mutationFn: async () => {
-      const response = await api.post('/routes/pull-fedex');
-      return response.data;
-    },
-    onSuccess: async () => {
-      const refreshed = await queryClient.fetchQuery({
-        queryKey: ['manager-routes', date],
-        queryFn: async () => {
-          const response = await api.get('/manager/routes', { params: { date } });
-          return response.data;
-        }
-      });
-
-      return refreshed;
-    }
-  });
 
   const dispatchRoutesMutation = useMutation({
     mutationFn: async () => {
@@ -619,7 +619,7 @@ export default function ManifestPage() {
         ...data,
         upload_mode: uploadMode
       });
-      setDate(resolvedDate);
+      handleDateChange(resolvedDate, { replace: true });
 
       if (fileInputRef.current) {
         fileInputRef.current.value = '';
@@ -650,6 +650,7 @@ export default function ManifestPage() {
       setWarningsExpanded((data.address_warnings || []).length > 0);
     }
   });
+  const isProcessManifestDisabled = uploadManifestMutation.isPending || Boolean(processManifestDisabledReason);
 
   async function handleAssignmentChange(route, field, value) {
     setSavingRouteIds((current) => new Set(current).add(route.id));
@@ -791,16 +792,17 @@ export default function ManifestPage() {
       return [];
     }
 
+    const combinedCount = Number(latestUpload.combined_count || 0);
+    const stopTypeSummary = combinedCount
+      ? `${latestUpload.delivery_count} delivery-only, ${latestUpload.pickup_count} pickup-only, ${combinedCount} both delivery/pickup`
+      : `${latestUpload.delivery_count} deliveries, ${latestUpload.pickup_count} pickups`;
+
     const lines = [
-      `${latestUpload.total_stops} stops loaded — ${latestUpload.delivery_count} deliveries, ${latestUpload.pickup_count} pickups`
+      `${latestUpload.total_stops} physical stops loaded — ${stopTypeSummary}`
     ];
 
     if (latestUpload.merged_into_existing_route) {
       lines.unshift('Existing pending route updated in place with the new manifest upload');
-    }
-
-    if (latestUpload.combined_count > 0) {
-      lines.push(`${latestUpload.combined_count} stops have both a delivery and pickup`);
     }
 
     if (latestUpload.time_commit_count > 0) {
@@ -875,7 +877,7 @@ export default function ManifestPage() {
         <div className="page-header-actions">
           <input
             className="date-field"
-            onChange={(event) => setDate(event.target.value)}
+            onChange={(event) => handleDateChange(event.target.value)}
             type="date"
             value={date}
           />
@@ -920,86 +922,31 @@ export default function ManifestPage() {
         </div>
 
         <div className="manifest-sync-panel">
-            <div className="toggle-group">
-              <button
-                className={activeTab === 'auto' ? 'toggle-button active' : 'toggle-button'}
-                onClick={() => setActiveTab('auto')}
-                type="button"
-              >
-                FedEx Auto-Sync
-              </button>
-              <button
-                className={activeTab === 'upload' ? 'toggle-button active' : 'toggle-button'}
-                onClick={() => setActiveTab('upload')}
-                type="button"
-              >
-                Upload Manifest
-              </button>
-            </div>
-
-            {activeTab === 'auto' ? (
               <div className="manifest-sync-body">
-                <div className="fedex-connection-row">
-                  <span className={fedexConnection.is_connected ? 'status-dot online' : 'status-dot offline'} />
-                  <div>
-                    <strong>
-                      {fedexConnection.is_connected
-                        ? `FedEx Connected — ${fedexConnection.default_account_label || fedexConnection.terminal_label || '--'}`
-                        : 'Not connected'}
-                    </strong>
-                    {!fedexConnection.is_connected ? (
-                      <div>
-                        <a className="configure-link" href="/csa?focus=fedex">
-                          Configure
-                        </a>
-                      </div>
-                    ) : null}
-                  </div>
+                <div className="info-banner">
+                  FedEx Customer Connection automation is paused. Download manifests directly from FCC and upload the files here.
                 </div>
-
-                <div className="integration-meta">{formatSyncLine(syncStatus.last_sync_at)}</div>
-
-                <button
-                  className="primary-cta manifest-button"
-                  disabled={pullManifestMutation.isPending || isPastDate}
-                  onClick={() => pullManifestMutation.mutate()}
-                  type="button"
-                >
-                  {pullManifestMutation.isPending ? 'Pulling routes from FedEx...' : `Sync Routes For ${format(new Date(`${date}T12:00:00`), 'MMM d')}`}
-                </button>
-
-                {pullManifestMutation.isPending ? <div className="progress-bar"><div className="progress-bar-fill indeterminate" /></div> : null}
-
-                {pullManifestMutation.isError ? (
-                  <div className="error-banner manifest-error-row">
-                    <span>{pullManifestMutation.error?.response?.data?.error || 'Sync failed. Try again.'}</span>
-                    <button className="secondary-inline-button" onClick={() => pullManifestMutation.mutate()} type="button">
-                      Retry
-                    </button>
-                  </div>
-                ) : null}
-
-                {pullManifestMutation.data?.message ? <div className="info-banner">{pullManifestMutation.data.message}</div> : null}
-
-                <div className="manifest-note">
-                  Make sure ReadyRoute is set as a Vendor under Data Subscriptions in your FCC portal.
-                </div>
-              </div>
-            ) : (
-              <div className="manifest-sync-body">
                 <div
                   className="upload-dropzone"
-                  onClick={() => fileInputRef.current?.click()}
                   onDragOver={(event) => event.preventDefault()}
                   onDrop={(event) => {
                     event.preventDefault();
                     handleFileSelection(event.dataTransfer.files);
                   }}
-                  role="button"
-                  tabIndex={0}
+                  aria-label="Manifest file drop zone"
                 >
                   <span className="upload-cloud-icon" aria-hidden="true">↑</span>
                   <span className="upload-title">Drop Combined, Delivery, Pickup, or GPX files here</span>
+                  <button
+                    className="secondary-inline-button upload-picker-button"
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      fileInputRef.current?.click();
+                    }}
+                    type="button"
+                  >
+                    Choose files
+                  </button>
                   <span className="upload-subtitle">
                     {hasManifestBundleFiles
                       ? bundleFileList.map((file) => file.name).join(' + ')
@@ -1014,22 +961,25 @@ export default function ManifestPage() {
                       <span>.gpx</span>
                     </div>
                   ) : null}
-                  <button
-                    className="primary-cta manifest-button"
-                    disabled={
-                      !hasSelectedFile ||
-                      uploadManifestMutation.isPending ||
-                      isPastDate ||
-                      (!isSpreadsheetUpload && !isManifestBundleUpload && (!workAreaName.trim() || !driverId || !vehicleId))
-                    }
-                    onClick={(event) => {
-                      event.stopPropagation();
-                      uploadManifestMutation.mutate();
-                    }}
-                    type="button"
-                  >
-                    {uploadManifestMutation.isPending ? 'Processing...' : 'Process Manifest'}
-                  </button>
+                  <div className="manifest-upload-action" title={processManifestDisabledReason || undefined}>
+                    <button
+                      aria-describedby={processManifestHelperId}
+                      className="primary-cta manifest-button"
+                      disabled={isProcessManifestDisabled}
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        uploadManifestMutation.mutate();
+                      }}
+                      type="button"
+                    >
+                      {uploadManifestMutation.isPending ? 'Processing...' : 'Process Manifest'}
+                    </button>
+                    {processManifestDisabledReason ? (
+                      <span className="manifest-button-helper" id={processManifestHelperId}>
+                        {processManifestDisabledReason}
+                      </span>
+                    ) : null}
+                  </div>
                 </div>
 
                 <input
@@ -1167,17 +1117,19 @@ export default function ManifestPage() {
 
                 {uploadManifestMutation.isPending ? <div className="progress-bar"><div className="progress-bar-fill indeterminate" /></div> : null}
                 {uploadManifestMutation.isError ? (
-                  <div className="error-banner">
-                    {uploadManifestMutation.error?.response?.data?.error || 'Manifest upload failed. Please try again.'}
-                  </div>
+                  <ErrorState
+                    title="Manifest upload failed"
+                    description={uploadManifestMutation.error?.response?.data?.error || 'Please try again.'}
+                  />
                 ) : null}
               </div>
-            )}
 
             {routesQuery.isError ? (
-              <div className="error-banner">
-                {routesQuery.error?.response?.data?.error || 'Unable to load routes for this date right now.'}
-              </div>
+              <ErrorState
+                title="Unable to load routes"
+                description={routesQuery.error?.response?.data?.error || 'Routes for this date could not be loaded right now.'}
+                onRetry={() => routesQuery.refetch()}
+              />
             ) : null}
             {isPastDate ? (
               <div className="info-banner">
@@ -1185,9 +1137,10 @@ export default function ManifestPage() {
               </div>
             ) : null}
             {archiveRoutesMutation.isError ? (
-              <div className="error-banner">
-                {archiveRoutesMutation.error?.response?.data?.error || 'Failed to archive routes for this date.'}
-              </div>
+              <ErrorState
+                title="Failed to archive routes"
+                description={archiveRoutesMutation.error?.response?.data?.error || 'Routes for this date could not be archived.'}
+              />
             ) : null}
             {archiveRoutesMutation.data?.archived_count ? (
               <div className="success-banner">
@@ -1237,11 +1190,11 @@ export default function ManifestPage() {
                       : `${readyDispatchRoutes.length} route${readyDispatchRoutes.length === 1 ? '' : 's'} are ready to dispatch`}
                 </div>
                 <div className="manifest-step-subtitle">
-                  ReadyRoute is staging FCC route data in the background. Use this board to clear blockers, review changed routes, and dispatch when the day is ready.
+                  ReadyRoute stages uploaded route files here. Use this board to clear blockers, review changed routes, and dispatch when the day is ready.
                 </div>
                 {routeSyncSettings ? (
                   <div className="manifest-note">
-                    {getDispatchWindowCopy(routeSyncSettings)} FCC polling target: every {routeSyncSettings.manifest_sync_interval_minutes} minutes.
+                    {getDispatchWindowCopy(routeSyncSettings)}
                   </div>
                 ) : null}
               </div>
@@ -1298,9 +1251,10 @@ export default function ManifestPage() {
           </div>
 
           {dispatchRoutesMutation.isError ? (
-            <div className="error-banner">
-              {dispatchRoutesMutation.error?.response?.data?.error || 'Failed to dispatch routes.'}
-            </div>
+            <ErrorState
+              title="Failed to dispatch routes"
+              description={dispatchRoutesMutation.error?.response?.data?.error || 'Routes could not be dispatched.'}
+            />
           ) : null}
           {dispatchRoutesMutation.data?.dispatched_count ? (
             <div className="success-banner">

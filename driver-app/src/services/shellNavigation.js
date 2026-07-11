@@ -2,9 +2,9 @@ export function getDrawerMenuItems(activeMode) {
   if (activeMode === 'manager') {
     return [
       {
-        key: 'manager-overview',
+        key: 'manager-map',
         label: 'Map View',
-        screen: 'ManagerOverview'
+        screen: 'ManagerMap'
       },
       {
         key: 'manager-routes',
@@ -12,9 +12,29 @@ export function getDrawerMenuItems(activeMode) {
         screen: 'ManagerRoutes'
       },
       {
+        key: 'manager-drivers',
+        label: 'Drivers',
+        screen: 'ManagerDrivers'
+      },
+      {
+        key: 'manager-access-codes',
+        label: 'Access Codes',
+        screen: 'ManagerAccessCodes'
+      },
+      {
         key: 'manager-vehicles',
         label: 'Vehicles',
         screen: 'ManagerVehicles'
+      },
+      {
+        key: 'manager-notifications',
+        label: 'Notifications',
+        screen: 'ManagerNotifications'
+      },
+      {
+        key: 'manager-vedr',
+        label: 'VEDR',
+        screen: 'ManagerVedr'
       },
       {
         key: 'manager-settings',
@@ -29,6 +49,11 @@ export function getDrawerMenuItems(activeMode) {
       key: 'driver-home',
       label: 'Driver Home',
       screen: 'Home'
+    },
+    {
+      key: 'driver-notifications',
+      label: 'Notifications',
+      screen: 'Notifications'
     },
     {
       key: 'driver-my-drive',

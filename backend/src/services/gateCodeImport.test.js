@@ -2,6 +2,7 @@ const assert = require('node:assert/strict');
 const test = require('node:test');
 
 const { parseGateCodeText, splitGateCodeLine } = require('./gateCodeImport');
+const { parseAccessCodeImportRows } = require('./resourceImport');
 
 test('splitGateCodeLine parses explicit and compact access code lines', () => {
   assert.deepEqual(splitGateCodeLine('702-706 N Fig#7526'), {
@@ -41,4 +42,25 @@ WA 817
   assert.equal(candidates[0].access_code, '#7295');
   assert.equal(candidates[0].access_note, '(right side call box)');
   assert.deepEqual(candidates[1].work_area_codes, ['817']);
+});
+
+test('parseAccessCodeImportRows reads ReadyRoute CSV template columns', () => {
+  const csv = [
+    'Address,Access Code,Entry Note,Driver Note,Property Name,Building,Property Type,Parking Note,Shared Note',
+    '"250 W 15th Ave, Escondido, CA",#1357,"Use left call box",Helpful driver note,Fifteenth Apartments,Building A,apartment,Visitor parking,Shared detail'
+  ].join('\n');
+
+  const rows = parseAccessCodeImportRows({
+    originalname: 'readyroute-access-code-template.csv',
+    buffer: Buffer.from(csv)
+  });
+
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0].row_number, 2);
+  assert.equal(rows[0].display_address, '250 W 15th Ave, Escondido, CA');
+  assert.equal(rows[0].access_code, '#1357');
+  assert.equal(rows[0].entry_note, 'Use left call box');
+  assert.equal(rows[0].access_note, 'Helpful driver note');
+  assert.equal(rows[0].property_name, 'Fifteenth Apartments');
+  assert.equal(rows[0].building, 'Building A');
 });

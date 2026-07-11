@@ -32,6 +32,7 @@ import {
   buildRouteFocusRegion,
   clampSheetOffset,
   getGpsFreshness,
+  getDriverInitials,
   getPickupStopCount,
   getRouteColor,
   getRouteDisplayName,
@@ -810,6 +811,7 @@ export default function ManagerOverviewScreen({
                   key: `driver:${selectedRouteSummary.id}`,
                   routeId: selectedRouteSummary.id,
                   coordinate: selectedRouteMapModel.driverMarker.coordinate,
+                  driverInitials: getDriverInitials(selectedRouteMapModel.driverMarker.driverName || selectedRouteSummary.driver_name),
                   gpsFreshness: selectedDriverPosition
                     ? {
                         state: 'live',
@@ -821,8 +823,8 @@ export default function ManagerOverviewScreen({
             : mapModel.driverMarkers
           ).map((marker) => (
             <Marker coordinate={marker.coordinate} key={marker.key} testID={`driver-marker-${marker.routeId}`}>
-              <View style={[styles.driverMarker, marker.gpsFreshness.state === 'live' ? styles.driverMarkerLive : styles.driverMarkerIdle]}>
-                <Text style={styles.driverMarkerText}>{marker.gpsFreshness.shortLabel}</Text>
+              <View style={styles.driverMarker}>
+                <Text style={styles.driverMarkerText}>{marker.driverInitials || '--'}</Text>
               </View>
             </Marker>
           ))}
@@ -1298,21 +1300,18 @@ const styles = StyleSheet.create({
   },
   driverMarker: {
     alignItems: 'center',
+    backgroundColor: appTheme.colors.purple,
+    borderColor: appTheme.colors.surface,
     borderRadius: appTheme.radius.pill,
+    borderWidth: 2,
+    height: 34,
     justifyContent: 'center',
-    minHeight: 24,
-    minWidth: 24,
-    paddingHorizontal: 8
-  },
-  driverMarkerLive: {
-    backgroundColor: appTheme.colors.green
-  },
-  driverMarkerIdle: {
-    backgroundColor: appTheme.colors.textSecondary
+    width: 34,
+    ...appTheme.shadows.lifted
   },
   driverMarkerText: {
     color: appTheme.colors.textInverse,
-    fontSize: 10,
+    fontSize: 12,
     fontWeight: appTheme.typography.weights.heavy
   },
   stopMarker: {

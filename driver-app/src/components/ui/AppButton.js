@@ -2,12 +2,22 @@ import { Pressable, StyleSheet, Text } from 'react-native';
 
 import appTheme from '../../theme/appTheme';
 
-export default function AppButton({ label, onPress, style, textStyle, variant = 'primary' }) {
+export default function AppButton({ disabled = false, label, onPress, style, textStyle, variant = 'primary' }) {
   const buttonVariant = variantStyles[variant] || variantStyles.primary;
 
   return (
-    <Pressable onPress={onPress} style={({ pressed }) => [styles.base, buttonVariant.button, pressed ? styles.pressed : null, style]}>
-      <Text style={[styles.text, buttonVariant.text, textStyle]}>{label}</Text>
+    <Pressable
+      disabled={disabled}
+      onPress={onPress}
+      style={({ pressed }) => [
+        styles.base,
+        buttonVariant.button,
+        pressed && !disabled ? styles.pressed : null,
+        disabled ? styles.disabled : null,
+        style
+      ]}
+    >
+      <Text style={[styles.text, buttonVariant.text, disabled ? styles.disabledText : null, textStyle]}>{label}</Text>
     </Pressable>
   );
 }
@@ -26,6 +36,12 @@ const styles = StyleSheet.create({
   },
   pressed: {
     opacity: 0.92
+  },
+  disabled: {
+    opacity: 0.58
+  },
+  disabledText: {
+    opacity: 0.9
   }
 });
 

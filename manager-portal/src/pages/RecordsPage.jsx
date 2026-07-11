@@ -3,7 +3,7 @@ import { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 
 import api from '../services/api';
-import { PageHeader, StatCard, StatusBadge } from '../components/PortalDesignSystem';
+import { EmptyState, ErrorState, LoadingState, PageHeader, StatCard, StatusBadge } from '../components/PortalDesignSystem';
 import { useSelectedCsa } from '../context/SelectedCsaContext';
 import { getTodayString, loadStoredOperationsDate, saveStoredOperationsDate } from '../utils/operationsDate';
 
@@ -893,9 +893,13 @@ export default function RecordsPage() {
           </div>
 
           {recordsQuery.isLoading ? (
-            <div className="driver-meta">Loading records...</div>
+            <LoadingState title="Loading records" />
           ) : recordsQuery.isError ? (
-            <div className="error-banner">Unable to load records.</div>
+            <ErrorState
+              title="Unable to load records"
+              description="The daily records overview could not be loaded."
+              onRetry={() => recordsQuery.refetch()}
+            />
           ) : (
             <div className="records-summary-grid records-labor-summary-grid">
               <StatCard label="Assigned Drivers" value={assignedDriverCount} detail="Routes assigned" />
@@ -953,9 +957,13 @@ export default function RecordsPage() {
             </div>
 
             {liveLaborQuery.isLoading ? (
-              <div className="driver-meta">Loading driver labor records...</div>
+              <LoadingState title="Loading driver labor records" />
             ) : liveLaborQuery.isError ? (
-              <div className="error-banner">Unable to load driver labor records.</div>
+              <ErrorState
+                title="Unable to load driver labor records"
+                description="Daily labor rows could not be loaded for this date."
+                onRetry={() => liveLaborQuery.refetch()}
+              />
             ) : laborRecordRows.length ? (
               <div className="records-labor-table">
                 <div className="records-labor-table-header">
@@ -984,10 +992,12 @@ export default function RecordsPage() {
                 })}
               </div>
             ) : (
-              <div className="labor-empty-state records-labor-empty-state">
-                <strong>No driver labor records yet for this day.</strong>
-                <span>Labor records will appear when routes are assigned, drivers clock in, or a manager creates a record.</span>
-              </div>
+              <EmptyState
+                className="records-labor-empty-state"
+                variant="inline"
+                title="No driver labor records yet for this day"
+                description="Labor records will appear when routes are assigned, drivers clock in, or a manager creates a record."
+              />
             )}
           </div>
           </>
@@ -1041,7 +1051,11 @@ export default function RecordsPage() {
                 ))}
               </div>
             ) : (
-              <div className="labor-empty-state">No routes recorded for this day.</div>
+              <EmptyState
+                variant="inline"
+                title="No routes recorded for this day"
+                description="Route history will appear here after routes are loaded for the selected date."
+              />
             )}
           </div>
         ) : null}
@@ -1080,7 +1094,11 @@ export default function RecordsPage() {
                 ))}
               </div>
             ) : (
-              <div className="labor-empty-state">No manager corrections recorded for this day.</div>
+              <EmptyState
+                variant="inline"
+                title="No manager corrections recorded for this day"
+                description="Labor corrections and audit notes will appear here after a manager saves an edit."
+              />
             )}
           </div>
         ) : null}

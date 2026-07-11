@@ -12,8 +12,8 @@ import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 import Svg, { Path } from 'react-native-svg';
 
 import ErrorState from '../components/ui/ErrorState';
-import api from '../services/api';
 import { getPinColorMode, savePinColorMode, subscribePinColorMode } from '../services/auth';
+import { fetchDriverManifest, getCachedDriverManifest } from '../services/driverRouteCache';
 import appTheme from '../theme/appTheme';
 import { getSidBucketTheme } from '../utils/sidBuckets';
 
@@ -198,21 +198,37 @@ export default function ManifestScreen({ navigation, route }) {
     let isMounted = true;
 
     async function loadRoute() {
+      let hasCachedRoute = false;
+
+      const cachedManifest = await getCachedDriverManifest().catch(() => null);
+
+      if (isMounted && cachedManifest?.route) {
+        hasCachedRoute = true;
+        setErrorMessage('');
+        setRouteData(cachedManifest.route);
+        setDriverDay(
+          cachedManifest.driver_day || {
+            status: 'dispatched'
+          }
+        );
+        setIsLoading(false);
+      }
+
       try {
-        const response = await api.get('/routes/today');
-        const nextRoute = response.data?.route || null;
+        const response = await fetchDriverManifest();
+        const nextRoute = response?.route || null;
 
         if (isMounted) {
           setErrorMessage('');
           setRouteData(nextRoute);
           setDriverDay(
-            response.data?.driver_day || {
+            response?.driver_day || {
               status: nextRoute ? 'dispatched' : 'unassigned'
             }
           );
         }
       } catch (_error) {
-        if (isMounted) {
+        if (isMounted && !hasCachedRoute) {
           setErrorMessage('Unable to load your route right now.');
         }
       } finally {
@@ -320,48 +336,51 @@ export default function ManifestScreen({ navigation, route }) {
               <Text style={[styles.stopCircleText, { color: pinTheme.text }]}>{item.sequence_order}</Text>
             </View>
             <View style={styles.sidWrap}>
-              <Text style={[styles.sidLabel, { color: pinTheme.text }]}>
+              <Text
+                adjustsFontSizeToFit
+                minimumFontScale={0.72}
+                numberOfLines={1}
+                style={[styles.sidLabel, { color: pinTheme.text }]}
+              >
                 {item.sid ? `SID ${item.sid}` : 'No SID'}
               </Text>
             </View>
           </View>
 
-          <View style={styles.rowBody}>
-            <View style={styles.rowMainCopy}>
-              <Text numberOfLines={2} style={styles.address}>{item.address}</Text>
-              {secondaryLine ? (
-                <Text numberOfLines={1} style={styles.secondaryLine}>{secondaryLine}</Text>
-              ) : null}
-              <View style={styles.stopTypeBadgeRow}>
-                {stopIsPickup ? (
-                  <View style={styles.pickupTypeBadge}>
-                    <Text style={styles.pickupTypeBadgeText}>{stopIsDelivery ? 'Delivery + Pickup' : 'Pickup'}</Text>
-                  </View>
-                ) : null}
-                {pickupWindowLabel ? (
-                  <Text numberOfLines={1} style={styles.pickupWindowText}>{pickupWindowLabel}</Text>
-                ) : null}
-              </View>
+          <View style={styles.rowMetaRail}>
+            <View style={styles.packageMetaRow}>
+              <OpenBoxIcon />
+              <Text style={styles.packageMetaText}>{packageCount}</Text>
             </View>
-
-            <View style={styles.rowMetaRail}>
-              <View style={styles.rowMetaTop}>
-                <View style={styles.packageMetaRow}>
-                  <OpenBoxIcon />
-                  <Text style={styles.packageMetaText}>{packageCount}</Text>
-                </View>
-                <View style={styles.statusWrap}>
-                  <View style={[styles.statusDot, statusConfig.dot]} />
-                  <Text style={styles.statusLabel}>{statusConfig.label}</Text>
-                </View>
-              </View>
-              {item.has_note ? (
-                <View style={[styles.metaBadge, styles.metaBadgeNoteCompact]}>
-                  <Text style={[styles.metaBadgeText, styles.metaBadgeTextNote]}>Has note</Text>
-                </View>
-              ) : null}
+            <View style={styles.statusWrap}>
+              <View style={[styles.statusDot, statusConfig.dot]} />
+              <Text numberOfLines={1} style={styles.statusLabel}>{statusConfig.label}</Text>
             </View>
             <Text style={styles.rowChevron}>›</Text>
+          </View>
+        </View>
+
+        <View style={styles.rowMainCopy}>
+          <Text numberOfLines={2} style={styles.address}>{item.address}</Text>
+          {secondaryLine ? (
+            <Text numberOfLines={1} style={styles.secondaryLine}>{secondaryLine}</Text>
+          ) : null}
+          <View style={styles.stopTypeBadgeRow}>
+            {stopIsPickup ? (
+              <View style={styles.pickupTypeBadge}>
+                <Text numberOfLines={1} style={styles.pickupTypeBadgeText}>
+                  {stopIsDelivery ? 'Delivery + Pickup' : 'Pickup'}
+                </Text>
+              </View>
+            ) : null}
+            {pickupWindowLabel ? (
+              <Text numberOfLines={1} style={styles.pickupWindowText}>{pickupWindowLabel}</Text>
+            ) : null}
+            {item.has_note ? (
+              <View style={[styles.metaBadge, styles.metaBadgeNoteCompact]}>
+                <Text style={[styles.metaBadgeText, styles.metaBadgeTextNote]}>Has note</Text>
+              </View>
+            ) : null}
           </View>
         </View>
       </Pressable>
@@ -447,10 +466,6 @@ export default function ManifestScreen({ navigation, route }) {
               {groupAddress}
             </Text>
           ) : null}
-          <View style={styles.sortChip}>
-            <Text style={styles.sortChipText}>By Stop #</Text>
-            <Text style={styles.sortChipChevron}>⌄</Text>
-          </View>
         </View>
 
         {!isLoading && !routeData && driverDay?.status === 'awaiting_dispatch' ? (
@@ -489,14 +504,14 @@ export default function ManifestScreen({ navigation, route }) {
           <FlatList
             contentContainerStyle={[styles.listContent, { paddingBottom: appTheme.spacing.xxl + insets.bottom }]}
             data={visibleStops}
-            getItemLayout={(_, index) => ({
-              index,
-              length: 82,
-              offset: 82 * index
-            })}
+            initialNumToRender={14}
             keyExtractor={(item) => item.id}
             ListEmptyComponent={<Text style={styles.emptyText}>No stops match that search.</Text>}
+            maxToRenderPerBatch={12}
+            removeClippedSubviews
             renderItem={renderStopRow}
+            updateCellsBatchingPeriod={50}
+            windowSize={7}
           />
         ) : null}
       </View>
@@ -613,7 +628,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: appTheme.spacing.xs,
-    marginBottom: appTheme.spacing.xs
+    marginBottom: appTheme.spacing.sm
   },
   summaryText: {
     color: appTheme.colors.textSecondary,
@@ -630,28 +645,6 @@ const styles = StyleSheet.create({
     flexBasis: '100%',
     fontSize: appTheme.typography.caption,
     fontWeight: appTheme.typography.weights.bold
-  },
-  sortChip: {
-    alignItems: 'center',
-    backgroundColor: appTheme.colors.surface,
-    borderColor: appTheme.colors.border,
-    borderRadius: appTheme.radius.pill,
-    borderWidth: 1,
-    flexDirection: 'row',
-    marginLeft: 'auto',
-    paddingHorizontal: appTheme.spacing.sm,
-    paddingVertical: 4
-  },
-  sortChipText: {
-    color: appTheme.colors.textSecondary,
-    fontSize: appTheme.typography.caption,
-    fontWeight: appTheme.typography.weights.bold
-  },
-  sortChipChevron: {
-    color: appTheme.colors.textSecondary,
-    fontSize: 12,
-    fontWeight: appTheme.typography.weights.bold,
-    marginLeft: 4
   },
   noticeCard: {
     backgroundColor: appTheme.colors.warningSoft,
@@ -687,10 +680,10 @@ const styles = StyleSheet.create({
     borderColor: appTheme.colors.border,
     borderRadius: appTheme.radius.md,
     borderWidth: 1,
-    marginBottom: appTheme.spacing.xs,
-    minHeight: 72,
+    marginBottom: appTheme.spacing.sm,
+    minHeight: 108,
     paddingHorizontal: 12,
-    paddingVertical: 7
+    paddingVertical: 10
   },
   selectedRow: {
     borderColor: appTheme.colors.charcoalSoft,
@@ -704,50 +697,47 @@ const styles = StyleSheet.create({
   },
   rowInner: {
     alignItems: 'center',
-    flexDirection: 'row'
+    flexDirection: 'row',
+    gap: 8,
+    justifyContent: 'space-between'
   },
   rowIdentityWrap: {
     alignItems: 'center',
     flexDirection: 'row',
-    flexShrink: 0,
-    marginRight: 8,
-    paddingRight: 8
+    flex: 1,
+    minWidth: 0
   },
   stopCircle: {
     alignItems: 'center',
     borderRadius: appTheme.radius.pill,
     borderWidth: 2,
-    height: 28,
+    height: 34,
     justifyContent: 'center',
-    width: 28
+    width: 34
   },
   stopCircleText: {
-    fontSize: 12,
+    fontSize: appTheme.typography.body,
     fontWeight: appTheme.typography.weights.heavy
   },
   sidWrap: {
     borderLeftColor: appTheme.colors.border,
     borderLeftWidth: 1,
-    marginLeft: 8,
-    minWidth: 86,
-    paddingLeft: 8
+    flexShrink: 1,
+    marginLeft: 10,
+    minWidth: 0,
+    paddingLeft: 10
   },
   sidLabel: {
-    fontSize: 12,
+    fontSize: 18,
     fontWeight: appTheme.typography.weights.heavy,
-    letterSpacing: 0.2
+    lineHeight: 22
   },
   rowMetaRail: {
-    alignItems: 'flex-end',
-    gap: 3,
-    justifyContent: 'flex-start',
-    marginLeft: 6,
-    minWidth: 94
-  },
-  rowMetaTop: {
     alignItems: 'center',
-    columnGap: 6,
-    flexDirection: 'row'
+    flexDirection: 'row',
+    flexShrink: 0,
+    gap: 7,
+    justifyContent: 'flex-end'
   },
   statusWrap: {
     alignItems: 'center',
@@ -757,8 +747,9 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     flexDirection: 'row',
     gap: 4,
+    maxWidth: 96,
     paddingHorizontal: 7,
-    paddingVertical: 2
+    paddingVertical: 3
   },
   statusDot: {
     borderRadius: 6,
@@ -784,37 +775,29 @@ const styles = StyleSheet.create({
     fontSize: appTheme.typography.caption,
     fontWeight: appTheme.typography.weights.bold
   },
-  rowBody: {
-    alignItems: 'flex-start',
-    flex: 1,
-    flexDirection: 'row',
-    gap: 6,
-    minWidth: 0
-  },
   rowMainCopy: {
-    flex: 1,
-    gap: 1,
-    justifyContent: 'center',
+    gap: 3,
+    marginTop: 8,
     minWidth: 0
   },
   address: {
     color: appTheme.colors.textPrimary,
-    flex: 1,
-    fontSize: 11,
+    fontSize: 15,
     fontWeight: appTheme.typography.weights.heavy,
-    lineHeight: 14
+    lineHeight: 19
   },
   secondaryLine: {
     color: appTheme.colors.textSecondary,
-    fontSize: 10,
-    fontWeight: appTheme.typography.weights.medium
+    fontSize: appTheme.typography.bodySmall,
+    fontWeight: appTheme.typography.weights.medium,
+    lineHeight: appTheme.typography.lineHeights.bodySmall
   },
   stopTypeBadgeRow: {
     alignItems: 'center',
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: 5,
-    minHeight: 18
+    minHeight: 20
   },
   pickupTypeBadge: {
     backgroundColor: '#2980b9',
@@ -824,19 +807,20 @@ const styles = StyleSheet.create({
   },
   pickupTypeBadgeText: {
     color: appTheme.colors.textInverse,
-    fontSize: 9,
+    fontSize: appTheme.typography.caption,
     fontWeight: appTheme.typography.weights.heavy
   },
   pickupWindowText: {
     color: '#1e5f8d',
     flexShrink: 1,
-    fontSize: 10,
+    fontSize: appTheme.typography.caption,
     fontWeight: appTheme.typography.weights.bold
   },
   rowChevron: {
     color: appTheme.colors.textSecondary,
-    fontSize: 18,
-    fontWeight: appTheme.typography.weights.bold
+    fontSize: 24,
+    fontWeight: appTheme.typography.weights.bold,
+    lineHeight: 26
   },
   metaBadge: {
     borderRadius: appTheme.radius.pill,
@@ -862,7 +846,7 @@ const styles = StyleSheet.create({
   },
   packageMetaText: {
     color: appTheme.colors.textSecondary,
-    fontSize: 12,
+    fontSize: appTheme.typography.bodySmall,
     fontWeight: appTheme.typography.weights.heavy
   },
   emptyText: {

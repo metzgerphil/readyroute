@@ -1,211 +1,33 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const fs = require('fs/promises');
-const path = require('path');
-
-process.env.FEDEX_SYNC_CREDENTIALS_KEY = 'test-fedex-key';
 
 const { createCliFedexFccAdapter, getSessionStatePath } = require('./fccDownloader');
-const { encryptFedexSecret } = require('./fedexCredentials');
 
-test('createCliFedexFccAdapter falls back to the in-repo FCC runner by default', async () => {
-  const adapter = createCliFedexFccAdapter();
-  assert.ok(adapter);
-  assert.equal(typeof adapter.pullDailyManifests, 'function');
-});
-
-test('pullDailyManifests decrypts credentials and returns manifest buffers from the runner output', async () => {
-  const tempDir = await fs.mkdtemp(path.join('/tmp', 'readyroute-fcc-test-'));
-  const xlsPath = path.join(tempDir, 'route-810-combined.xls');
-  const gpxPath = path.join(tempDir, 'route-810-combined.gpx');
-  const deliveryXlsPath = path.join(tempDir, 'route-810-delivery.xls');
-  const pickupXlsPath = path.join(tempDir, 'route-810-pickup.xls');
-
-  await fs.writeFile(xlsPath, Buffer.from('xls-body'));
-  await fs.writeFile(gpxPath, Buffer.from('gpx-body'));
-  await fs.writeFile(deliveryXlsPath, Buffer.from('delivery-body'));
-  await fs.writeFile(pickupXlsPath, Buffer.from('pickup-body'));
-
-  let receivedEnv = null;
-  const adapter = createCliFedexFccAdapter({
-    command: '/usr/bin/fake-runner',
-    commandArgs: ['--json'],
-    async runCommand({ executable, args, env }) {
-      receivedEnv = { executable, args, env };
-      return {
-        stdout: JSON.stringify({
-          summary: 'Pulled 1 FCC manifest.',
-          manifests: [
-            {
-              work_area_name: '810',
-              date: '2026-04-24',
-              combined_xls_path: xlsPath,
-              combined_gpx_path: gpxPath,
-              delivery_xls_path: deliveryXlsPath,
-              pickup_xls_path: pickupXlsPath
-            }
-          ]
-        }),
-        stderr: ''
-      };
-    }
-  });
-
-  const result = await adapter.pullDailyManifests({
-    account: {
-      id: 'acct-1',
-      operations_timezone: 'America/Los_Angeles'
-    },
-    fedexAccount: {
-      id: 'fx-1',
-      account_number: '123456789',
-      connection_reference: 'bridge-fcc',
-      fcc_username: 'bridge@example.com',
-      fcc_password_encrypted: encryptFedexSecret('super-secret-password')
-    },
-    workDate: '2026-04-24',
-    routeSyncSettings: {
-      operations_timezone: 'America/Los_Angeles'
-    },
-    triggerSource: 'manual'
-  });
-
-  assert.equal(receivedEnv.executable, '/usr/bin/fake-runner');
-  assert.deepEqual(receivedEnv.args, ['--json']);
-  assert.equal(receivedEnv.env.READYROUTE_FCC_USERNAME, 'bridge@example.com');
-  assert.equal(receivedEnv.env.READYROUTE_FCC_PASSWORD, 'super-secret-password');
-  assert.equal(receivedEnv.env.READYROUTE_FCC_WORK_DATE, '2026-04-24');
-  assert.equal(result.manifest_count, 1);
-  assert.equal(result.manifest_pairs[0].work_area_name, '810');
-  assert.equal(String(result.manifest_pairs[0].manifest_file.buffer), 'xls-body');
-  assert.equal(String(result.manifest_pairs[0].companion_gpx_file.buffer), 'gpx-body');
-  assert.equal(String(result.manifest_pairs[0].combined_manifest_file.buffer), 'xls-body');
-  assert.equal(String(result.manifest_pairs[0].combined_gpx_file.buffer), 'gpx-body');
-  assert.equal(String(result.manifest_pairs[0].delivery_manifest_file.buffer), 'delivery-body');
-  assert.equal(String(result.manifest_pairs[0].pickup_manifest_file.buffer), 'pickup-body');
-  assert.deepEqual(result.details.manifest_artifacts[0], {
-    work_area_name: '810',
-    raw_work_area_name: '810',
-    date: '2026-04-24',
-    has_combined_xls: true,
-    has_combined_gpx: true,
-    has_delivery_xls: true,
-    has_pickup_xls: true,
-    download_errors: [],
-    artifact_record_counts: {}
-  });
-});
-
-test('pullDailyManifests accepts delivery-only FCC manifests when combined XLS is unavailable', async () => {
-  const tempDir = await fs.mkdtemp(path.join('/tmp', 'readyroute-fcc-test-'));
-  const deliveryXlsPath = path.join(tempDir, 'route-847-delivery.xls');
-
-  await fs.writeFile(deliveryXlsPath, Buffer.from('delivery-only-body'));
-
+test('createCliFedexFccAdapter exposes disabled FCC automation methods', async () => {
   const adapter = createCliFedexFccAdapter({
     command: '/usr/bin/fake-runner',
     async runCommand() {
-      return {
-        stdout: JSON.stringify({
-          summary: 'Pulled 1 FCC manifest.',
-          manifests: [
-            {
-              work_area_name: '847',
-              date: '2026-04-24',
-              delivery_xls_path: deliveryXlsPath,
-              download_errors: [{ artifact: 'combined_xls', message: 'No combined XLS available.' }],
-              artifact_record_counts: { delivery: 40, combined_xls: null }
-            }
-          ]
-        }),
-        stderr: ''
-      };
+      throw new Error('runner should not be called while FCC automation is disabled');
     }
   });
 
-  const result = await adapter.pullDailyManifests({
-    account: {
-      id: 'acct-1',
-      operations_timezone: 'America/Los_Angeles'
-    },
-    fedexAccount: {
-      id: 'fx-1',
-      account_number: '123456789',
-      connection_reference: 'bridge-fcc',
-      fcc_username: 'bridge@example.com',
-      fcc_password_encrypted: encryptFedexSecret('super-secret-password')
-    },
-    workDate: '2026-04-24',
-    routeSyncSettings: {
-      operations_timezone: 'America/Los_Angeles'
-    },
-    triggerSource: 'manual'
-  });
-
-  assert.equal(result.manifest_count, 1);
-  assert.equal(result.manifest_pairs[0].work_area_name, '847');
-  assert.equal(String(result.manifest_pairs[0].manifest_file.buffer), 'delivery-only-body');
-  assert.equal(String(result.manifest_pairs[0].delivery_manifest_file.buffer), 'delivery-only-body');
-  assert.equal(result.manifest_pairs[0].combined_manifest_file, null);
-  assert.equal(result.details.manifest_artifacts[0].has_combined_xls, false);
-  assert.equal(result.details.manifest_artifacts[0].has_delivery_xls, true);
-  assert.deepEqual(result.details.manifest_artifacts[0].artifact_record_counts, {
-    delivery: 40,
-    combined_xls: null
-  });
-});
-
-test('pullRouteProgress returns parsed FCC progress snapshots from the runner output', async () => {
-  let receivedEnv = null;
-  const adapter = createCliFedexFccAdapter({
-    command: '/usr/bin/fake-runner',
-    async runCommand({ executable, args, env }) {
-      receivedEnv = { executable, args, env };
-      return {
-        stdout: JSON.stringify({
-          summary: 'Synced 1 FCC progress snapshot.',
-          progress_snapshots: [
-            {
-              work_area_name: '823',
-              record_count: 172,
-              rows: [
-                { sid: '1001', is_completed: false },
-                { sid: '1002', is_completed: true },
-                { sid: '1003', is_exception: true, exception_code: '07' }
-              ]
-            }
-          ]
-        }),
-        stderr: ''
-      };
-    }
-  });
-
-  const result = await adapter.pullRouteProgress({
-    account: {
-      id: 'acct-1',
-      operations_timezone: 'America/Los_Angeles'
-    },
-    fedexAccount: {
-      id: 'fx-1',
-      account_number: '123456789',
-      connection_reference: 'bridge-fcc',
-      fcc_username: 'bridge@example.com',
-      fcc_password_encrypted: encryptFedexSecret('super-secret-password')
-    },
-    workDate: '2026-04-24',
-    routeSyncSettings: {
-      operations_timezone: 'America/Los_Angeles'
-    },
-    triggerSource: 'scheduled'
-  });
-
-  assert.equal(receivedEnv.executable, '/usr/bin/fake-runner');
-  assert.equal(receivedEnv.env.READYROUTE_FCC_RUN_MODE, 'progress');
-  assert.equal(result.route_count, 1);
-  assert.equal(result.completed_stop_count, 1);
-  assert.equal(result.exception_stop_count, 1);
-  assert.equal(result.progress_snapshots[0].record_count, 172);
+  assert.ok(adapter);
+  await assert.rejects(
+    () => adapter.pullDailyManifests({
+      account: { id: 'acct-1' },
+      fedexAccount: { id: 'fx-1' },
+      workDate: '2026-04-24'
+    }),
+    /FCC portal automation is disabled/
+  );
+  await assert.rejects(
+    () => adapter.pullRouteProgress({
+      account: { id: 'acct-1' },
+      fedexAccount: { id: 'fx-1' },
+      workDate: '2026-04-24'
+    }),
+    /FCC portal automation is disabled/
+  );
 });
 
 test('getSessionStatePath builds a stable per-fedex-account cache path', () => {

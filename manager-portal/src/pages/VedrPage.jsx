@@ -7,7 +7,7 @@ import {
   VEDR_PROVIDER_CONFIG,
   VEDR_PROVIDERS
 } from '../config/constants';
-import { PageHeader, StatusBadge } from '../components/PortalDesignSystem';
+import { ErrorState, LoadingState, PageHeader, StatusBadge } from '../components/PortalDesignSystem';
 import { useSelectedCsa } from '../context/SelectedCsaContext';
 import api from '../services/api';
 
@@ -43,22 +43,47 @@ function getProviderLaunchUrl(settings, providerKey) {
 
 const AVAILABLE_PROVIDER_KEYS = Object.values(VEDR_PROVIDERS);
 
-function ProviderRow({ isActive, isSubmitting, onConnect, onManage, providerKey }) {
+const PROVIDER_CONNECTION_STATES = Object.freeze({
+  NONE: 'none',
+  IN_PROGRESS: 'in_progress',
+  CURRENT: 'current'
+});
+
+function getProviderConnectionState(providerKey, connectionStatus) {
+  if (!providerKey) {
+    return PROVIDER_CONNECTION_STATES.NONE;
+  }
+
+  if (connectionStatus === VEDR_CONNECTION_STATUSES.CONNECTED) {
+    return PROVIDER_CONNECTION_STATES.CURRENT;
+  }
+
+  return PROVIDER_CONNECTION_STATES.IN_PROGRESS;
+}
+
+function ProviderRow({ connectionState, isSelected, isSubmitting, onConnect, onManage, providerKey }) {
   const provider = VEDR_PROVIDER_CONFIG[providerKey];
+  const isCurrent = connectionState === PROVIDER_CONNECTION_STATES.CURRENT;
+  const isInProgress = connectionState === PROVIDER_CONNECTION_STATES.IN_PROGRESS;
+  const providerStatusLabel = isCurrent
+    ? 'Current provider'
+    : isInProgress
+      ? 'Connection in progress'
+      : '';
 
   return (
-    <div className={`vedr-provider-table-row${isActive ? ' active' : ''}`}>
+    <div className={`vedr-provider-table-row${isSelected ? ' active' : ''}`}>
       <div className="vedr-provider-name-cell">
         <div>
           <strong>{provider.brandName}</strong>
-          {isActive ? <span>Current provider</span> : null}
+          {providerStatusLabel ? <span>{providerStatusLabel}</span> : null}
         </div>
       </div>
 
       <div className="vedr-provider-action-cell">
-        {isActive ? (
+        {isSelected ? (
           <button className="secondary-button vedr-provider-button" onClick={() => onManage(providerKey)} type="button">
-            Manage
+            {isCurrent ? 'Manage' : 'Continue setup'}
           </button>
         ) : (
           <button
@@ -72,50 +97,6 @@ function ProviderRow({ isActive, isSubmitting, onConnect, onManage, providerKey 
         )}
       </div>
     </div>
-  );
-}
-
-function ReturningProviderCard({
-  providerKey,
-  helperMessage,
-  isMutating,
-  onOpenDashboard,
-  onSwitchProvider
-}) {
-  const provider = VEDR_PROVIDER_CONFIG[providerKey];
-  const primaryLabel = helperMessage
-    ? `I'm connected — go to my dashboard →`
-    : `Open ${provider.shortName} Dashboard →`;
-
-  return (
-    <>
-      <div className="vedr-provider-eyebrow">Connected Provider</div>
-      <h2>{provider.brandName}</h2>
-      <p>{provider.description}</p>
-
-      {helperMessage ? (
-        <div className="vedr-helper-banner">
-          {helperMessage}
-        </div>
-      ) : null}
-
-      <button className="primary-cta vedr-dashboard-button" onClick={onOpenDashboard} type="button">
-        {primaryLabel}
-      </button>
-
-      <div className="vedr-muted-note">
-        If prompted to log in when you open the dashboard, just sign in once and your session will persist for future visits.
-      </div>
-
-      <button
-        className="vedr-switch-link"
-        disabled={isMutating}
-        onClick={onSwitchProvider}
-        type="button"
-      >
-        Switch provider
-      </button>
-    </>
   );
 }
 
@@ -161,8 +142,9 @@ export default function VedrPage() {
   const effectiveSettings = localSettings || settingsQuery.data || createEmptySettings();
   const activeProviderKey = effectiveSettings.provider;
   const activeConnectionStatus = effectiveSettings.connection_status || VEDR_CONNECTION_STATUSES.NOT_STARTED;
-  const isAwaitingLogin = activeConnectionStatus === VEDR_CONNECTION_STATUSES.WAITING_FOR_LOGIN
-    || activeConnectionStatus === VEDR_CONNECTION_STATUSES.PROVIDER_SELECTED;
+  const activeProviderConnectionState = getProviderConnectionState(activeProviderKey, activeConnectionStatus);
+  const isConnectionInProgress = activeProviderConnectionState === PROVIDER_CONNECTION_STATES.IN_PROGRESS;
+  const isCurrentProvider = activeProviderConnectionState === PROVIDER_CONNECTION_STATES.CURRENT;
   const isSubmittingProvider = saveSettingsMutation.isPending || markConnectedMutation.isPending;
   const isSetupFlow = searchParams.get('source') === 'setup';
   const setupBanner = useMemo(() => {
@@ -170,7 +152,7 @@ export default function VedrPage() {
       return null;
     }
 
-    if (activeConnectionStatus === VEDR_CONNECTION_STATUSES.CONNECTED) {
+    if (isCurrentProvider) {
       return {
         tone: 'done',
         title: 'VEDR is connected',
@@ -180,12 +162,20 @@ export default function VedrPage() {
       };
     }
 
+    if (isConnectionInProgress) {
+      return {
+        tone: 'active',
+        title: 'Finish the VEDR connection',
+        body: 'Complete the provider login handoff, then mark the connection complete here to keep onboarding moving.'
+      };
+    }
+
     return {
       tone: 'active',
       title: 'Connect the CSA camera provider',
-      body: 'Choose the provider, complete the login handoff, then mark the connection complete here to keep onboarding moving.'
+      body: 'Choose the provider your CSA uses, complete the login handoff, then mark the connection complete here.'
     };
-  }, [activeConnectionStatus, isSetupFlow]);
+  }, [isConnectionInProgress, isCurrentProvider, isSetupFlow]);
 
   useEffect(() => {
     const previousTitle = document.title;
@@ -195,18 +185,6 @@ export default function VedrPage() {
       document.title = previousTitle;
     };
   }, []);
-
-  const stateOneHelper = useMemo(() => {
-    if (!helperMessage) {
-      return null;
-    }
-
-    return (
-      <div className="vedr-helper-banner">
-        {helperMessage}
-      </div>
-    );
-  }, [helperMessage]);
 
   function handleConnectProvider(providerKey) {
     const provider = VEDR_PROVIDER_CONFIG[providerKey];
@@ -257,7 +235,12 @@ export default function VedrPage() {
 
   function handleManageProvider(providerKey) {
     if (providerKey === activeProviderKey) {
-      handleOpenDashboard(providerKey);
+      if (isCurrentProvider) {
+        handleOpenDashboard(providerKey);
+        return;
+      }
+
+      handleOpenLogin(providerKey);
       return;
     }
 
@@ -296,7 +279,7 @@ export default function VedrPage() {
   if (settingsQuery.isLoading) {
     return (
       <section className="page-section">
-        <div className="card page-loading-card">Loading VEDR settings...</div>
+        <LoadingState title="Loading VEDR settings" variant="card" />
       </section>
     );
   }
@@ -304,10 +287,11 @@ export default function VedrPage() {
   if (settingsQuery.isError) {
     return (
       <section className="page-section">
-        <div className="card">
-          <div className="card-title">VEDR Setup</div>
-          <div className="error-banner">We couldn&apos;t load your VEDR settings right now.</div>
-        </div>
+        <ErrorState
+          title="Unable to load VEDR settings"
+          description="We couldn't load your VEDR settings right now."
+          onRetry={() => settingsQuery.refetch()}
+        />
       </section>
     );
   }
@@ -346,17 +330,17 @@ export default function VedrPage() {
 
       {activeProviderKey ? (
         <div className="card vedr-returning-card">
-          <div className="vedr-provider-eyebrow">{isAwaitingLogin ? 'Connection in progress' : 'Connected Provider'}</div>
+          <div className="vedr-provider-eyebrow">{isConnectionInProgress ? 'Connection in progress' : 'Current provider'}</div>
           <h2>{VEDR_PROVIDER_CONFIG[activeProviderKey].brandName}</h2>
           <p>{VEDR_PROVIDER_CONFIG[activeProviderKey].description}</p>
 
-          {helperMessage ? (
+          {isConnectionInProgress && helperMessage ? (
             <div className="vedr-helper-banner">
               {helperMessage}
             </div>
           ) : null}
 
-          {isAwaitingLogin ? (
+          {isConnectionInProgress ? (
             <div className="vedr-returning-actions">
               <button className="secondary-button" onClick={() => handleOpenLogin(activeProviderKey)} type="button">
                 {`Open ${VEDR_PROVIDER_CONFIG[activeProviderKey].shortName} Login →`}
@@ -366,16 +350,27 @@ export default function VedrPage() {
               </button>
             </div>
           ) : (
-            <ReturningProviderCard
-              helperMessage={helperMessage}
-              isMutating={isSubmittingProvider}
-              onOpenDashboard={() => handleOpenDashboard(activeProviderKey)}
-              onSwitchProvider={handleSwitchProvider}
-              providerKey={activeProviderKey}
-            />
+            <>
+              <button className="primary-cta vedr-dashboard-button" onClick={() => handleOpenDashboard(activeProviderKey)} type="button">
+                {`Open ${VEDR_PROVIDER_CONFIG[activeProviderKey].shortName} Dashboard →`}
+              </button>
+
+              <div className="vedr-muted-note">
+                If prompted to log in when you open the dashboard, just sign in once and your session will persist for future visits.
+              </div>
+
+              <button
+                className="vedr-switch-link"
+                disabled={isSubmittingProvider}
+                onClick={handleSwitchProvider}
+                type="button"
+              >
+                Switch provider
+              </button>
+            </>
           )}
 
-          {isAwaitingLogin ? (
+          {isConnectionInProgress ? (
             <>
               <div className="vedr-muted-note">
                 We&apos;ll treat this as fully connected once you confirm your provider session from this page.
@@ -417,8 +412,6 @@ export default function VedrPage() {
           </div>
         ) : null}
 
-        {stateOneHelper}
-
         <div className="vedr-provider-table">
           <div className="vedr-provider-table-header">
             <span>Company</span>
@@ -426,7 +419,8 @@ export default function VedrPage() {
           </div>
           {AVAILABLE_PROVIDER_KEYS.map((providerKey) => (
             <ProviderRow
-              isActive={activeProviderKey === providerKey}
+              connectionState={activeProviderKey === providerKey ? activeProviderConnectionState : PROVIDER_CONNECTION_STATES.NONE}
+              isSelected={activeProviderKey === providerKey}
               isSubmitting={isSubmittingProvider}
               key={providerKey}
               onConnect={activeProviderKey ? handleSwitchProvider : handleConnectProvider}

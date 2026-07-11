@@ -4,9 +4,15 @@ import { useQuery } from '@tanstack/react-query';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 
 import api from '../services/api';
+import { EmptyState, ErrorState, LoadingState } from '../components/PortalDesignSystem';
 import { loadGoogleMaps } from '../lib/googleMapsLoader';
 import { createDriverPositionMarker } from '../utils/stopMarkers';
-import { getTodayString, loadStoredOperationsDate, saveStoredOperationsDate } from '../utils/operationsDate';
+import {
+  buildOperationsDatePath,
+  getResolvedOperationsDate,
+  saveStoredOperationsDate
+} from '../utils/operationsDate';
+import { escapeHtml, toUsableMapPoint } from '../utils/routePageHelpers';
 import './FleetMapPage.css';
 
 const EMPTY_ARRAY = [];
@@ -73,18 +79,30 @@ export default function FleetMapPage() {
   const stopMarkersRef = useRef([]);
   const driverMarkersRef = useRef(new Map());
   const routeLinesRef = useRef([]);
-  const initialDate = searchParams.get('date') || loadStoredOperationsDate() || getTodayString();
-  const [date, setDate] = useState(initialDate);
+  const date = getResolvedOperationsDate(searchParams);
   const [mapError, setMapError] = useState('');
   const [mapReady, setMapReady] = useState(false);
   const [selectedRouteId, setSelectedRouteId] = useState(null);
 
   useEffect(() => {
     saveStoredOperationsDate(date);
+
+    if (searchParams.get('date') === date) {
+      return;
+    }
+
     const nextParams = new URLSearchParams(searchParams);
     nextParams.set('date', date);
     setSearchParams(nextParams, { replace: true });
   }, [date, searchParams, setSearchParams]);
+
+  function handleDateChange(nextDate) {
+    saveStoredOperationsDate(nextDate);
+
+    const nextParams = new URLSearchParams(searchParams);
+    nextParams.set('date', nextDate);
+    setSearchParams(nextParams);
+  }
 
   const routesQuery = useQuery({
     queryKey: ['fleet-map-routes', date],
@@ -95,7 +113,7 @@ export default function FleetMapPage() {
   });
 
   const routes = useMemo(() => routesQuery.data || EMPTY_ARRAY, [routesQuery.data]);
-  const hasNoRoutes = !routesQuery.isLoading && routes.length === 0;
+  const hasNoRoutes = !routesQuery.isLoading && !routesQuery.isError && routes.length === 0;
   const routesWithColors = useMemo(
     () => routes.map((route, index) => ({ ...route, routeColor: getRouteColor(route, index) })),
     [routes]
@@ -128,16 +146,27 @@ export default function FleetMapPage() {
 
   const routeRows = useMemo(
     () =>
-      routesWithColors.map((route) => ({
-        route,
-        position: driverPositions[route.id] || null,
-        stops: (route.stops || []).filter((stop) => Number.isFinite(Number(stop.lat)) && Number.isFinite(Number(stop.lng)))
-      })),
+      routesWithColors.map((route) => {
+        const stops = route.stops || EMPTY_ARRAY;
+        const mappableStops = stops.filter((stop) => toUsableMapPoint(stop));
+        const driverPoint = toUsableMapPoint(driverPositions[route.id]);
+
+        return {
+          route,
+          position: driverPoint ? { ...driverPositions[route.id], ...driverPoint } : null,
+          stops: mappableStops,
+          unmappedStopCount: Math.max(0, stops.length - mappableStops.length)
+        };
+      }),
     [driverPositions, routesWithColors]
   );
 
   const totalVisibleStops = useMemo(
     () => routeRows.reduce((sum, row) => sum + row.stops.length, 0),
+    [routeRows]
+  );
+  const totalUnmappedStops = useMemo(
+    () => routeRows.reduce((sum, row) => sum + row.unmappedStopCount, 0),
     [routeRows]
   );
 
@@ -225,7 +254,7 @@ export default function FleetMapPage() {
       if (stops.length > 1) {
         const routeLine = new google.maps.Polyline({
           map,
-          path: stops.map((stop) => ({ lat: Number(stop.lat), lng: Number(stop.lng) })),
+          path: stops.map((stop) => toUsableMapPoint(stop)).filter(Boolean),
           strokeColor: route.routeColor,
           strokeOpacity: selectedRouteId === route.id ? 0.9 : 0.45,
           strokeWeight: selectedRouteId === route.id ? 4 : 2,
@@ -235,9 +264,14 @@ export default function FleetMapPage() {
       }
 
       stops.forEach((stop) => {
+        const stopPoint = toUsableMapPoint(stop);
+        if (!stopPoint) {
+          return;
+        }
+
         const stopMarker = new google.maps.Marker({
           map,
-          position: { lat: Number(stop.lat), lng: Number(stop.lng) },
+          position: stopPoint,
           title: `${route.work_area_name || 'Route'} · Stop ${stop.sequence_order}`,
           icon: {
             path: google.maps.SymbolPath.CIRCLE,
@@ -255,23 +289,23 @@ export default function FleetMapPage() {
           setSelectedRouteId(route.id);
           infoWindow.setContent(`
             <div style="min-width:220px; color:#173042; padding:8px 6px;">
-              <div style="font-size:14px; font-weight:900; color:${route.routeColor};">Route ${route.work_area_name || '—'}</div>
-              <div style="margin-top:4px; font-size:13px; font-weight:900;">Stop ${stop.sequence_order}</div>
-              <div style="margin-top:6px; font-size:12px; color:#374151;">${stop.address || 'No address available'}</div>
-              <div style="margin-top:8px; font-size:12px; color:#5f6b76;">${route.driver_name || 'Unassigned driver'}</div>
+              <div style="font-size:14px; font-weight:900; color:${route.routeColor};">Route ${escapeHtml(route.work_area_name || '—')}</div>
+              <div style="margin-top:4px; font-size:13px; font-weight:900;">Stop ${escapeHtml(stop.sequence_order)}</div>
+              <div style="margin-top:6px; font-size:12px; color:#374151;">${escapeHtml(stop.address || 'No address available')}</div>
+              <div style="margin-top:8px; font-size:12px; color:#5f6b76;">${escapeHtml(route.driver_name || 'Unassigned driver')}</div>
             </div>
           `);
           infoWindow.open({ anchor: stopMarker, map });
         });
 
         stopMarkersRef.current.push(stopMarker);
-        bounds.extend({ lat: Number(stop.lat), lng: Number(stop.lng) });
+        bounds.extend(stopPoint);
       });
 
-      if (position?.lat != null && position?.lng != null) {
+      if (position) {
         const driverMarker = new google.maps.Marker({
           map,
-          position: { lat: Number(position.lat), lng: Number(position.lng) },
+          position,
           title: route.driver_name || route.work_area_name || 'Route',
           icon: createDriverPositionMarker(route.driver_name, route.status),
           zIndex: selectedRouteId === route.id ? 50 : 30
@@ -281,17 +315,17 @@ export default function FleetMapPage() {
           setSelectedRouteId(route.id);
           infoWindow.setContent(`
             <div style="min-width:220px; color:#173042; padding:8px 6px;">
-              <div style="font-size:15px; font-weight:900;">${route.driver_name || 'Unassigned'}</div>
-              <div style="margin-top:4px; font-size:13px; color:${route.routeColor}; font-weight:900;">Work Area ${route.work_area_name || '—'}</div>
-              <div style="margin-top:10px; font-size:12px; color:#5f6b76;">${getProgressText(route)}</div>
-              <div style="margin-top:4px; font-size:12px; color:#5f6b76;">Status: ${getDisplayStatusLabel(route)}</div>
+              <div style="font-size:15px; font-weight:900;">${escapeHtml(route.driver_name || 'Unassigned')}</div>
+              <div style="margin-top:4px; font-size:13px; color:${route.routeColor}; font-weight:900;">Work Area ${escapeHtml(route.work_area_name || '—')}</div>
+              <div style="margin-top:10px; font-size:12px; color:#5f6b76;">${escapeHtml(getProgressText(route))}</div>
+              <div style="margin-top:4px; font-size:12px; color:#5f6b76;">Status: ${escapeHtml(getDisplayStatusLabel(route))}</div>
             </div>
           `);
           infoWindow.open({ anchor: driverMarker, map });
         });
 
         driverMarkersRef.current.set(route.id, driverMarker);
-        bounds.extend({ lat: Number(position.lat), lng: Number(position.lng) });
+        bounds.extend(position);
       }
     });
 
@@ -323,7 +357,10 @@ export default function FleetMapPage() {
 
     const bounds = new window.google.maps.LatLngBounds();
     selectedRoute.stops.forEach((stop) => {
-      bounds.extend({ lat: Number(stop.lat), lng: Number(stop.lng) });
+      const stopPoint = toUsableMapPoint(stop);
+      if (stopPoint) {
+        bounds.extend(stopPoint);
+      }
     });
     map.fitBounds(bounds, 72);
   }, [routeRows, selectedRouteId]);
@@ -340,13 +377,33 @@ export default function FleetMapPage() {
       <div className="card fleet-map-toolbar">
         <label className="route-page-field">
           <span>Date</span>
-          <input className="date-field route-toolbar-input" type="date" value={date} onChange={(event) => setDate(event.target.value)} />
+          <input className="date-field route-toolbar-input" type="date" value={date} onChange={(event) => handleDateChange(event.target.value)} />
         </label>
       </div>
+
+      {totalUnmappedStops > 0 ? (
+        <div className="fleet-map-coordinate-warning" role="status">
+          {totalUnmappedStops} stop{totalUnmappedStops === 1 ? '' : 's'} could not be mapped.
+        </div>
+      ) : null}
 
       <div className="fleet-map-layout">
         <div className="card fleet-map-canvas-card">
           <div ref={mapContainerRef} className="fleet-map-canvas" />
+          {routesQuery.isLoading ? (
+            <div className="fleet-map-empty-state">
+              <LoadingState title="Loading fleet map routes" />
+            </div>
+          ) : null}
+          {routesQuery.isError ? (
+            <div className="fleet-map-empty-state">
+              <ErrorState
+                title="Unable to load fleet map routes"
+                description="Routes for this map could not be loaded."
+                onRetry={() => routesQuery.refetch()}
+              />
+            </div>
+          ) : null}
           {hasNoRoutes ? (
             <div className="fleet-map-empty-state">
               <div className="fleet-map-empty-state-title">No routes loaded for this date yet.</div>
@@ -355,10 +412,10 @@ export default function FleetMapPage() {
                 the Manifest page.
               </p>
               <div className="fleet-map-empty-state-actions">
-                <button className="primary-cta" onClick={() => navigate(`/manifest?date=${date}&action=sync`)} type="button">
+                <button className="primary-cta" onClick={() => navigate(buildOperationsDatePath('/manifest?action=sync', date))} type="button">
                   Open Route Sync
                 </button>
-                <button className="secondary-button" onClick={() => navigate(`/manifest?date=${date}`)} type="button">
+                <button className="secondary-button" onClick={() => navigate(buildOperationsDatePath('/manifest', date))} type="button">
                   Open Manifest
                 </button>
               </div>
@@ -369,12 +426,23 @@ export default function FleetMapPage() {
 
         <aside className="card fleet-map-summary-card">
           <div className="card-title">Active Routes</div>
-          {routesQuery.isLoading ? <div className="fleet-map-empty">Loading routes...</div> : null}
-          {!routesQuery.isLoading && routesWithColors.length === 0 ? (
-            <div className="fleet-map-empty">Waiting for route sync or manual upload.</div>
+          {routesQuery.isLoading ? <LoadingState skeletonRows={2} title="Loading routes" /> : null}
+          {routesQuery.isError ? (
+            <ErrorState
+              title="Unable to load routes"
+              description="Active route rows could not be loaded for this date."
+              onRetry={() => routesQuery.refetch()}
+            />
+          ) : null}
+          {hasNoRoutes ? (
+            <EmptyState
+              variant="inline"
+              title="Waiting for route sync or manual upload"
+              description="Routes will appear here after a manifest or route file is loaded for this date."
+            />
           ) : null}
           <div className="fleet-map-route-key">
-            {routesWithColors.map((route) => (
+            {routeRows.map(({ route }) => (
               <div className="fleet-map-route-key-row" key={route.id}>
                 <span className="fleet-map-route-key-dot" style={{ backgroundColor: route.routeColor }} />
                 <span>{route.work_area_name || '—'}</span>
@@ -382,7 +450,7 @@ export default function FleetMapPage() {
             ))}
           </div>
           <div className="fleet-map-summary-list">
-            {routesWithColors.map((route) => (
+            {routeRows.map(({ route, position, stops, unmappedStopCount }) => (
               <button
                 key={route.id}
                 type="button"
@@ -396,9 +464,14 @@ export default function FleetMapPage() {
                 <div className="fleet-map-summary-driver">{route.driver_name || 'Unassigned'}</div>
                 <div className="fleet-map-summary-progress">{getProgressText(route)}</div>
                 <div className="fleet-map-summary-muted">
-                  {route.stops?.length ? `${route.stops.length} mapped points` : 'No mapped stops'}
+                  {stops.length ? `${stops.length} mapped points` : 'No mapped stops'}
                 </div>
-                {!driverPositions[route.id]?.lat ? <div className="fleet-map-summary-muted">Driver GPS not live yet</div> : null}
+                {unmappedStopCount > 0 ? (
+                  <div className="fleet-map-summary-warning">
+                    {unmappedStopCount} stop{unmappedStopCount === 1 ? '' : 's'} could not be mapped
+                  </div>
+                ) : null}
+                {!position ? <div className="fleet-map-summary-muted">Driver GPS not live yet</div> : null}
               </button>
             ))}
           </div>

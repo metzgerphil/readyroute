@@ -1,13 +1,17 @@
 const googleMapsApiKey = process.env.EXPO_PUBLIC_GOOGLE_MAPS_API_KEY || undefined;
 const bundleIdentifier = 'com.readyroute.driverapp';
 
+if (process.env.EAS_BUILD === 'true' && !googleMapsApiKey) {
+  throw new Error('Missing EXPO_PUBLIC_GOOGLE_MAPS_API_KEY for EAS build. Add it to the EAS build environment before creating Android builds.');
+}
+
 module.exports = {
   expo: {
-    name: 'Ready Route',
+    name: 'ReadyRoute',
     slug: 'driver-app',
-    version: '1.0.0',
+    version: '1.0.3',
     orientation: 'portrait',
-    icon: './assets/icon.png',
+    icon: './assets/readyroute-app-icon.png',
     userInterfaceStyle: 'light',
     newArchEnabled: true,
     splash: {
@@ -24,6 +28,8 @@ module.exports = {
           'comgooglemaps',
           'maps'
         ],
+        NSPhotoLibraryUsageDescription:
+          'ReadyRoute lets drivers and managers choose photos from their camera roll for inspections and driver documents.',
         NSLocationWhenInUseUsageDescription:
           'ReadyRoute uses your location while you are on route so your manager can see route progress, support dispatch decisions, and locate drivers during the workday.'
       },
@@ -34,7 +40,7 @@ module.exports = {
     android: {
       package: bundleIdentifier,
       adaptiveIcon: {
-        foregroundImage: './assets/adaptive-icon.png',
+        foregroundImage: './assets/readyroute-adaptive-icon.png',
         backgroundColor: '#ffffff'
       },
       edgeToEdgeEnabled: true,

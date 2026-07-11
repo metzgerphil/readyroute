@@ -521,12 +521,11 @@ test('PUT /api/vedr/settings rejects invalid providers', async () => {
     });
 
     assert.equal(response.status, 400);
-    assert.deepEqual(await response.json(), {
-      error: 'Invalid VEDR settings',
-      details: {
-        provider: 'provider must be one of: groundcloud, velocitor'
-      }
-    });
+    const body = await response.json();
+    assert.equal(body.error, 'Invalid VEDR settings');
+    assert.match(body.details.provider, /provider must be one of:/);
+    assert.match(body.details.provider, /groundcloud/);
+    assert.match(body.details.provider, /velocitor/);
   } finally {
     await server.close();
   }

@@ -7,19 +7,25 @@ CLOUD_RUN_PROJECT="${CLOUD_RUN_PROJECT:-ready-route-project}"
 CLOUD_RUN_REGION="${CLOUD_RUN_REGION:-us-west1}"
 CLOUD_RUN_SERVICE="${CLOUD_RUN_SERVICE:-readyroute-api}"
 BACKEND_HEALTH_URL="${BACKEND_HEALTH_URL:-https://api.readyroute.org/health}"
+SOURCE_COMMIT="$(git -C "$ROOT_DIR" rev-parse HEAD)"
 
 echo "==> Running backend tests"
 cd "$BACKEND_DIR"
-npm test -- --runInBand
+npm run test:unit
+
+echo "==> Applying pending Supabase migrations"
+cd "$ROOT_DIR"
+supabase db push --linked --dry-run
+supabase db push --linked --yes
 
 echo "==> Deploying backend to Google Cloud Run"
-cd "$ROOT_DIR"
 gcloud run deploy "$CLOUD_RUN_SERVICE" \
   --source "$BACKEND_DIR" \
   --project "$CLOUD_RUN_PROJECT" \
   --region "$CLOUD_RUN_REGION" \
   --allow-unauthenticated \
-  --port 8080
+  --port 8080 \
+  --update-env-vars "SOURCE_COMMIT=$SOURCE_COMMIT,NODE_ENV=production"
 
 gcloud run services update-traffic "$CLOUD_RUN_SERVICE" \
   --project "$CLOUD_RUN_PROJECT" \
@@ -27,5 +33,10 @@ gcloud run services update-traffic "$CLOUD_RUN_SERVICE" \
   --to-latest
 
 echo "==> Verifying backend health"
-curl -sS "$BACKEND_HEALTH_URL"
+HEALTH_BODY="$(curl --fail --silent --show-error "$BACKEND_HEALTH_URL")"
+echo "$HEALTH_BODY"
+if [[ "$HEALTH_BODY" != *"$SOURCE_COMMIT"* ]]; then
+  echo "Production health does not report source commit $SOURCE_COMMIT" >&2
+  exit 1
+fi
 echo

@@ -1,6 +1,13 @@
 import axios from 'axios';
 
-import { clearManagerToken, getManagerAccountId, getManagerToken, getSelectedCsaId } from './auth';
+import {
+  clearManagerToken,
+  clearReadyRouteStaffToken,
+  getManagerAccountId,
+  getManagerToken,
+  getReadyRouteStaffToken,
+  getSelectedCsaId
+} from './auth';
 
 const LOCAL_API_URL = import.meta.env.VITE_API_URL_LOCAL || 'http://localhost:3001';
 const PRODUCTION_API_URL = import.meta.env.VITE_API_URL || 'https://api.readyroute.org';
@@ -11,10 +18,22 @@ const api = axios.create({
 });
 
 api.interceptors.request.use((config) => {
-  const token = getManagerToken();
+  const method = String(config.method || 'get').toLowerCase();
+  const url = String(config.url || '');
+  const isReadyRouteStaffRequest = (
+    url.startsWith('/staff') ||
+    (url.startsWith('/support/tickets') && method !== 'post')
+  );
+  const token = isReadyRouteStaffRequest
+    ? getReadyRouteStaffToken()
+    : getManagerToken();
 
   if (token) {
     config.headers.Authorization = `Bearer ${token}`;
+  }
+
+  if (isReadyRouteStaffRequest) {
+    return config;
   }
 
   const selectedCsaId = getSelectedCsaId();
@@ -30,8 +49,23 @@ api.interceptors.response.use(
   (response) => response,
   (error) => {
     if (error.response?.status === 401) {
-      clearManagerToken();
-      if (window.location.pathname !== '/login') {
+      const requestUrl = String(error.config?.url || '');
+      const requestMethod = String(error.config?.method || 'get').toLowerCase();
+      const isReadyRouteStaffRequest = (
+        requestUrl.startsWith('/staff') ||
+        (requestUrl.startsWith('/support/tickets') && requestMethod !== 'post')
+      );
+
+      if (isReadyRouteStaffRequest) {
+        clearReadyRouteStaffToken();
+        if (window.location.pathname !== '/readyroute/login') {
+          window.location.assign('/readyroute/login');
+        }
+      } else {
+        clearManagerToken();
+      }
+
+      if (!isReadyRouteStaffRequest && window.location.pathname !== '/login') {
         window.location.assign('/login');
       }
     }

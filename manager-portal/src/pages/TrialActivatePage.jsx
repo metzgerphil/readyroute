@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Link, useNavigate, useSearchParams } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 
 import api from '../services/api';
 import { saveManagerToken } from '../services/auth';
@@ -79,7 +79,7 @@ export default function TrialActivatePage() {
             <>
               <div className="error-banner">{errorMessage}</div>
               <div className="login-helper-note">
-                You can try again from <Link to="/start-trial">Start Free Trial</Link> or sign in if your account was
+                You can request access from <a href="https://readyroute.org/mvp">ReadyRoute MVP</a> or sign in if your account was
                 already activated.
               </div>
             </>

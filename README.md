@@ -2,6 +2,8 @@
 
 ## Planning Docs
 
+- [ReadyRoute code map](./READYROUTE_CODE_MAP.md)
+- [ReadyRoute procedures and platforms](./READYROUTE_PROCEDURES.md)
 - [FCC dispatch sync plan](./FCC_DISPATCH_SYNC_PLAN.md)
 - [FCC dispatch sync spec](./FCC_DISPATCH_SYNC_SPEC.md)
 
