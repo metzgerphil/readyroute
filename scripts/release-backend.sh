@@ -11,6 +11,7 @@ SOURCE_COMMIT="$(git -C "$ROOT_DIR" rev-parse HEAD)"
 
 echo "==> Running backend tests"
 cd "$BACKEND_DIR"
+npm run verify:schema
 npm run test:unit
 
 echo "==> Applying pending Supabase migrations"
@@ -35,8 +36,8 @@ gcloud run services update-traffic "$CLOUD_RUN_SERVICE" \
 echo "==> Verifying backend health"
 HEALTH_BODY="$(curl --fail --silent --show-error "$BACKEND_HEALTH_URL")"
 echo "$HEALTH_BODY"
-if [[ "$HEALTH_BODY" != *"$SOURCE_COMMIT"* ]]; then
-  echo "Production health does not report source commit $SOURCE_COMMIT" >&2
+if [[ "$HEALTH_BODY" != *"$SOURCE_COMMIT"* || "$HEALTH_BODY" != *'"compatible":true'* ]]; then
+  echo "Production health does not report source commit $SOURCE_COMMIT with a compatible schema" >&2
   exit 1
 fi
 echo
