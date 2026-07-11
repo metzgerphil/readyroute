@@ -43,6 +43,10 @@ Runtime secrets/config stay in Google Cloud, not in GitHub:
 - `RESEND_FROM_EMAIL`
 - Stripe, Google, FedEx, and map provider secrets as needed
 
+ReadyRoute staff accounts are provisioned by an authenticated staff owner or admin.
+The original `/staff/bootstrap` endpoint is retired and no bootstrap secret should be
+configured in Cloud Run.
+
 ## Release Flow
 
 1. Open a pull request.

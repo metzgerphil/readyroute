@@ -901,33 +901,12 @@ test('POST /staff/operating-costs saves a ReadyRoute-wide operating cost', async
   }
 });
 
-test('POST /staff/bootstrap creates the first staff user when the bootstrap secret matches', async () => {
+test('POST /staff/bootstrap stays retired even when the legacy secret is configured', async () => {
   const originalSecret = process.env.READYROUTE_STAFF_BOOTSTRAP_SECRET;
   process.env.READYROUTE_STAFF_BOOTSTRAP_SECRET = 'bootstrap-secret';
 
-  const supabase = new MockSupabase((query) => {
-    if (query.table === 'readyroute_staff_users' && query.operation === 'insert') {
-      assert.equal(query.payload.email, 'owner@readyroute.org');
-      assert.equal(query.payload.role, 'owner');
-      assert.ok(query.payload.password_hash);
-
-      return {
-        data: {
-          id: 'staff-owner',
-          email: query.payload.email,
-          full_name: query.payload.full_name,
-          role: query.payload.role,
-          is_active: true,
-          invited_at: query.payload.invited_at,
-          accepted_at: query.payload.accepted_at,
-          created_at: query.payload.created_at,
-          updated_at: query.payload.updated_at
-        },
-        error: null
-      };
-    }
-
-    return { data: null, error: null };
+  const supabase = new MockSupabase(() => {
+    assert.fail('The retired staff bootstrap path must not access the database.');
   });
   const server = await startTestServer({ supabase });
 
@@ -945,10 +924,10 @@ test('POST /staff/bootstrap creates the first staff user when the bootstrap secr
         role: 'owner'
       })
     });
-    const payload = await response.json();
+    const payload = await response.text();
 
-    assert.equal(response.status, 201);
-    assert.equal(payload.staff_user.email, 'owner@readyroute.org');
+    assert.equal(response.status, 404);
+    assert.equal(payload.includes('bootstrap-secret'), false);
   } finally {
     if (originalSecret == null) {
       delete process.env.READYROUTE_STAFF_BOOTSTRAP_SECRET;

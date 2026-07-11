@@ -500,78 +500,6 @@ function createReadyRouteStaffRouter(options = {}) {
     return data || null;
   }
 
-  router.post('/bootstrap', async (req, res) => {
-    const configuredSecret = String(process.env.READYROUTE_STAFF_BOOTSTRAP_SECRET || '').trim();
-    const providedSecret = String(req.get('x-readyroute-bootstrap-secret') || req.body?.bootstrap_secret || '').trim();
-
-    if (!configuredSecret || providedSecret !== configuredSecret) {
-      return res.status(404).json({ error: 'Not found' });
-    }
-
-    const email = normalizeEmail(req.body?.email);
-    const fullName = normalizeText(req.body?.full_name || req.body?.name, 180);
-    const password = String(req.body?.password || '');
-    const role = normalizeStaffRole(req.body?.role, 'owner');
-    const timestamp = now().toISOString();
-
-    if (!isValidEmail(email)) {
-      return res.status(400).json({ error: 'A valid email is required.' });
-    }
-
-    if (!fullName) {
-      return res.status(400).json({ error: 'Full name is required.' });
-    }
-
-    if (!isStrongEnoughPassword(password)) {
-      return res.status(400).json({ error: 'Password must be at least 10 characters.' });
-    }
-
-    try {
-      const passwordHash = await bcrypt.hash(password, 10);
-      const { data, error } = await supabase
-        .from('readyroute_staff_users')
-        .insert({
-          email,
-          full_name: fullName,
-          password_hash: passwordHash,
-          role,
-          is_active: true,
-          invited_at: timestamp,
-          accepted_at: timestamp,
-          created_at: timestamp,
-          updated_at: timestamp
-        })
-        .select('id, email, full_name, role, is_active, invited_at, accepted_at, last_login_at, created_at, updated_at')
-        .single();
-
-      if (error) {
-        if (error.code === '23505') {
-          return res.status(409).json({ error: 'A ReadyRoute staff user already exists for that email.' });
-        }
-
-        throw error;
-      }
-
-      await writeAuditLog({
-        staff: {
-          staff_user_id: data.id,
-          staff_email: data.email
-        },
-        action: 'staff.bootstrap',
-        targetType: 'readyroute_staff_user',
-        targetId: data.id,
-        metadata: {
-          role: data.role
-        }
-      });
-
-      return res.status(201).json({ staff_user: presentStaffUser(data) });
-    } catch (error) {
-      console.error('ReadyRoute staff bootstrap failed:', error);
-      return res.status(500).json({ error: 'Unable to create ReadyRoute staff user.' });
-    }
-  });
-
   router.post('/login', async (req, res) => {
     const email = normalizeEmail(req.body?.email);
     const password = String(req.body?.password || '');
@@ -652,7 +580,6 @@ function createReadyRouteStaffRouter(options = {}) {
         '30m'
       );
       const resetUrl = buildStaffPasswordResetUrl(token);
-      console.log(`ReadyRoute staff password reset link for ${staffUser.email}: ${resetUrl}`);
 
       let emailDelivery = {
         delivered: false,

@@ -3827,8 +3827,6 @@ function createManagerRouter(options = {}) {
         };
       }
 
-      console.log(`Manager invite link for ${managerUser.email}: ${inviteUrl}`);
-
       return res.status(200).json({
         message: managerUser.password_hash
           ? `${managerUser.email} already has ReadyRoute access, so they were linked to this CSA immediately.`
@@ -3911,8 +3909,6 @@ function createManagerRouter(options = {}) {
       }
 
       if (linkedExistingManager) {
-        console.log(`Manager invite link for ${updatedManagerUser.email}: null`);
-
         return res.status(200).json({
           message: `${updatedManagerUser.email} already has ReadyRoute access, so they were linked to this CSA immediately.`,
           invite_url: null,
@@ -3955,8 +3951,6 @@ function createManagerRouter(options = {}) {
           reason: 'Email delivery failed'
         };
       }
-
-      console.log(`Manager invite link for ${updatedManagerUser.email}: ${inviteUrl}`);
 
       return res.status(200).json({
         message: emailResult.delivered
@@ -4044,8 +4038,6 @@ function createManagerRouter(options = {}) {
           reason: 'Email delivery failed'
         };
       }
-
-      console.log(`Manager password reset link for ${managerUser.email}: ${resetUrl}`);
 
       return res.status(200).json({
         message: emailResult.delivered

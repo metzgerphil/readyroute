@@ -796,7 +796,6 @@ function createAuthRouter(options = {}) {
       );
 
       const resetUrl = buildPasswordResetUrl(token);
-      console.log(`Manager password reset link for ${managerIdentity.email}: ${resetUrl}`);
 
       const accountQuery = await supabase
         .from('accounts')
