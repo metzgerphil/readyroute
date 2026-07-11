@@ -92,13 +92,15 @@ function readRequiredStaffContext(req, jwtSecret, allowedRoles = READYROUTE_STAF
       throw error;
     }
 
-    return {
+    const staffContext = {
       staff_user_id: payload.staff_user_id,
       staff_email: normalizeEmail(payload.staff_email),
       staff_name: payload.staff_name || null,
       staff_role: staffRole,
       role: payload.role
     };
+    req.readyrouteStaff = staffContext;
+    return staffContext;
   } catch (error) {
     if (error.status) {
       throw error;
