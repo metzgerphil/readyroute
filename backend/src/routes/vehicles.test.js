@@ -190,6 +190,158 @@ test('vehicle readiness exposes an unsafe inspection as a linked blocker', () =>
   assert.equal(readiness.primary_reason.source_id, 'inspection-unsafe-1');
 });
 
+test('PUT /vehicles/inspections/:id/review requires an explicit decision for an unsafe inspection', async () => {
+  const supabase = new MockSupabase((query) => {
+    if (query.table === 'vehicle_inspections' && query.operation === 'select') {
+      return {
+        data: {
+          id: 'inspection-unsafe-1',
+          account_id: 'acct-1',
+          vehicle_id: 'vehicle-1',
+          status: 'urgent_manager_review',
+          items: [
+            {
+              checklist_item_key: 'parking_sensors',
+              label: 'Parking Sensors',
+              status: 'issue',
+              severity: 'unsafe'
+            }
+          ]
+        },
+        error: null
+      };
+    }
+
+    throw new Error(`Unexpected query ${query.table}:${query.operation}:${query.mode}`);
+  });
+  const server = await startTestServer(supabase);
+
+  try {
+    const response = await fetch(`${server.baseUrl}/vehicles/inspections/inspection-unsafe-1/review`, {
+      method: 'PUT',
+      headers: {
+        Authorization: `Bearer ${signManagerToken()}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({ manager_review_note: 'Reviewed the sensor issue.' })
+    });
+
+    assert.equal(response.status, 400);
+    const body = await response.json();
+    assert.equal(body.code, 'VEHICLE_STATUS_DECISION_REQUIRED');
+    assert.match(body.error, /manager decision/i);
+    assert.equal(supabase.calls.length, 1);
+  } finally {
+    await server.close();
+  }
+});
+
+test('PUT /vehicles/inspections/:id/review saves the unsafe decision and review together', async () => {
+  const supabase = new MockSupabase((query) => {
+    if (query.table === 'vehicle_inspections' && query.operation === 'select') {
+      return {
+        data: {
+          id: 'inspection-unsafe-1',
+          account_id: 'acct-1',
+          vehicle_id: 'vehicle-1',
+          status: 'urgent_manager_review',
+          items: [
+            {
+              checklist_item_key: 'parking_sensors',
+              label: 'Parking Sensors',
+              status: 'issue',
+              severity: 'unsafe'
+            }
+          ]
+        },
+        error: null
+      };
+    }
+
+    if (query.table === 'vehicles' && query.operation === 'select') {
+      return {
+        data: {
+          id: 'vehicle-1',
+          account_id: 'acct-1',
+          name: '204526',
+          vehicle_status: 'active',
+          is_active: true,
+          readiness_source_type: null,
+          readiness_source_id: null
+        },
+        error: null
+      };
+    }
+
+    if (query.table === 'vehicles' && query.operation === 'update') {
+      assert.equal(query.payload.vehicle_status, 'needs_repair');
+      assert.equal(query.payload.is_active, false);
+      assert.equal(query.payload.readiness_source_type, 'inspection');
+      assert.equal(query.payload.readiness_source_id, 'inspection-unsafe-1');
+      return {
+        data: {
+          id: 'vehicle-1',
+          account_id: 'acct-1',
+          name: '204526',
+          vehicle_status: 'needs_repair',
+          is_active: false,
+          readiness_source_type: 'inspection',
+          readiness_source_id: 'inspection-unsafe-1'
+        },
+        error: null
+      };
+    }
+
+    if (query.table === 'vehicle_inspections' && query.operation === 'update') {
+      assert.equal(query.payload.status, 'reviewed');
+      assert.equal(query.payload.manager_review_note, 'Send to repair.');
+      return {
+        data: {
+          id: 'inspection-unsafe-1',
+          account_id: 'acct-1',
+          vehicle_id: 'vehicle-1',
+          status: 'reviewed',
+          manager_review_note: 'Send to repair.',
+          items: [
+            {
+              checklist_item_key: 'parking_sensors',
+              label: 'Parking Sensors',
+              status: 'issue',
+              severity: 'unsafe'
+            }
+          ]
+        },
+        error: null
+      };
+    }
+
+    throw new Error(`Unexpected query ${query.table}:${query.operation}:${query.mode}`);
+  });
+  const server = await startTestServer(supabase);
+
+  try {
+    const response = await fetch(`${server.baseUrl}/vehicles/inspections/inspection-unsafe-1/review`, {
+      method: 'PUT',
+      headers: {
+        Authorization: `Bearer ${signManagerToken()}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        manager_review_note: 'Send to repair.',
+        vehicle_status_decision: 'needs_repair'
+      })
+    });
+
+    assert.equal(response.status, 200);
+    const body = await response.json();
+    assert.equal(body.inspection.status, 'reviewed');
+    assert.equal(body.inspection.vehicle.vehicle_status, 'needs_repair');
+    assert.equal(body.vehicle.vehicle_status, 'needs_repair');
+  } finally {
+    await server.close();
+  }
+});
+
 test('GET /vehicles returns vehicles with latest maintenance, today assignment, and service_due', async () => {
   const supabase = new MockSupabase((query) => {
     if (query.table === 'vehicles' && query.operation === 'select') {

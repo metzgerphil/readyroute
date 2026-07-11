@@ -91,6 +91,13 @@ const VEHICLE_STATUS_LABELS = {
   needs_repair: 'Needs Repair'
 };
 
+const INSPECTION_REVIEW_VEHICLE_STATUSES = new Set([
+  'active',
+  'out_of_service',
+  'at_the_shop',
+  'needs_repair'
+]);
+
 const INSPECTION_ASSIGNMENT_PRIORITIES = new Set(['normal', 'urgent']);
 const INSPECTION_ASSIGNMENT_STATUS_PENDING = 'pending';
 
@@ -2030,8 +2037,89 @@ function createVehiclesRouter(options = {}) {
 
   router.put('/inspections/:inspection_id/review', requireManager, async (req, res) => {
     const managerReviewNote = req.body?.manager_review_note ? String(req.body.manager_review_note).trim() : null;
+    const requestedVehicleStatus = req.body?.vehicle_status_decision;
 
     try {
+      const { data: existingInspection, error: inspectionLookupError } = await supabase
+        .from('vehicle_inspections')
+        .select('*')
+        .eq('id', req.params.inspection_id)
+        .eq('account_id', req.account.account_id)
+        .maybeSingle();
+
+      if (inspectionLookupError) {
+        if (isMissingRelationError(inspectionLookupError)) {
+          return res.status(404).json({ error: 'Vehicle inspection records are not configured yet.' });
+        }
+
+        console.error('Vehicle inspection review lookup failed:', inspectionLookupError);
+        return res.status(500).json({ error: 'Failed to review vehicle inspection' });
+      }
+
+      if (!existingInspection) {
+        return res.status(404).json({ error: 'Vehicle inspection not found' });
+      }
+
+      const inspectionSummary = presentInspection(existingInspection);
+      const requiresVehicleDecision = existingInspection.status !== 'reviewed' && inspectionSummary.urgent_review;
+      let normalizedVehicleStatus = null;
+
+      if (requestedVehicleStatus !== undefined && requestedVehicleStatus !== null && requestedVehicleStatus !== '') {
+        const normalized = normalizeVehicleStatus(requestedVehicleStatus);
+        if (normalized.error || !INSPECTION_REVIEW_VEHICLE_STATUSES.has(normalized.vehicle_status)) {
+          return res.status(400).json({ error: 'Choose a supported vehicle status decision.' });
+        }
+        normalizedVehicleStatus = normalized.vehicle_status;
+      }
+
+      if (requiresVehicleDecision && !normalizedVehicleStatus) {
+        return res.status(400).json({
+          error: 'Choose a manager decision before completing an urgent inspection review.',
+          code: 'VEHICLE_STATUS_DECISION_REQUIRED'
+        });
+      }
+
+      let previousVehicle = null;
+      let reviewedVehicle = null;
+
+      if (normalizedVehicleStatus) {
+        const { data: vehicle, error: vehicleLookupError } = await loadOwnedVehicle(supabase, {
+          vehicleId: existingInspection.vehicle_id,
+          accountId: req.account.account_id
+        });
+
+        if (vehicleLookupError) {
+          console.error('Vehicle inspection review vehicle lookup failed:', vehicleLookupError);
+          return res.status(500).json({ error: 'Failed to save the vehicle decision.' });
+        }
+
+        if (!vehicle) {
+          return res.status(404).json({ error: 'Inspection vehicle not found.' });
+        }
+
+        previousVehicle = vehicle;
+        const vehicleUpdate = {
+          vehicle_status: normalizedVehicleStatus,
+          is_active: normalizedVehicleStatus === 'active',
+          readiness_source_type: normalizedVehicleStatus === 'active' ? null : 'inspection',
+          readiness_source_id: normalizedVehicleStatus === 'active' ? null : existingInspection.id
+        };
+        const { data: updatedVehicle, error: vehicleUpdateError } = await supabase
+          .from('vehicles')
+          .update(vehicleUpdate)
+          .eq('id', vehicle.id)
+          .eq('account_id', req.account.account_id)
+          .select('*')
+          .single();
+
+        if (vehicleUpdateError) {
+          console.error('Vehicle inspection review decision failed:', vehicleUpdateError);
+          return res.status(500).json({ error: 'Failed to save the vehicle decision.' });
+        }
+
+        reviewedVehicle = updatedVehicle || { ...vehicle, ...vehicleUpdate };
+      }
+
       const { data: inspection, error } = await supabase
         .from('vehicle_inspections')
         .update({
@@ -2046,6 +2134,19 @@ function createVehiclesRouter(options = {}) {
         .single();
 
       if (error) {
+        if (previousVehicle && normalizedVehicleStatus) {
+          await supabase
+            .from('vehicles')
+            .update({
+              vehicle_status: previousVehicle.vehicle_status || (previousVehicle.is_active === false ? 'out_of_service' : 'active'),
+              is_active: previousVehicle.is_active !== false,
+              readiness_source_type: previousVehicle.readiness_source_type || null,
+              readiness_source_id: previousVehicle.readiness_source_id || null
+            })
+            .eq('id', previousVehicle.id)
+            .eq('account_id', req.account.account_id);
+        }
+
         if (isMissingRelationError(error)) {
           return res.status(404).json({ error: 'Vehicle inspection records are not configured yet.' });
         }
@@ -2055,7 +2156,12 @@ function createVehiclesRouter(options = {}) {
       }
 
       return res.status(200).json({
-        inspection: await presentInspectionWithPrivatePhotos(supabase, inspection)
+        inspection: await presentInspectionWithPrivatePhotos(
+          supabase,
+          inspection,
+          reviewedVehicle ? new Map([[reviewedVehicle.id, reviewedVehicle]]) : new Map()
+        ),
+        vehicle: reviewedVehicle
       });
     } catch (error) {
       console.error('Vehicle inspection review endpoint failed:', error);

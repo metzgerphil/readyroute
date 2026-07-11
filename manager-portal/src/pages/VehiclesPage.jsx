@@ -61,6 +61,13 @@ const VEHICLE_STATUS_OPTIONS = [
   { value: 'needs_repair', label: 'Needs Repair' }
 ];
 
+const INSPECTION_DECISION_OPTIONS = [
+  { value: 'active', label: 'Return to Service' },
+  { value: 'needs_repair', label: 'Needs Repair' },
+  { value: 'at_the_shop', label: 'At the Shop' },
+  { value: 'out_of_service', label: 'Out of Service' }
+];
+
 const SERVICE_TYPE_OPTIONS = [
   'Inspection',
   'Oil Change',
@@ -2860,28 +2867,44 @@ function VehiclePlaceholderPanel({ title, description }) {
 }
 
 function InspectionDetailModal({
+  fleetVehicle,
   inspection,
   isReviewing,
-  isUpdatingVehicleStatus,
   onChangeReviewNote,
   onClose,
   onLogMaintenanceFromIssue,
   onReview,
-  onVehicleStatusDecision,
   reviewNote
 }) {
   const [copySummaryResult, setCopySummaryResult] = useState({ inspectionId: null, message: '' });
+  const [vehicleStatusDecision, setVehicleStatusDecision] = useState('');
 
   if (!inspection) {
     return null;
   }
 
   const issueItems = getInspectionIssueItems(inspection);
-  const currentVehicleStatus = inspection?.vehicle?.vehicle_status || 'active';
+  const currentVehicleStatus = inspection?.vehicle?.vehicle_status || fleetVehicle?.vehicle_status || 'active';
+  const isUnresolvedUnsafeReview = inspection.status !== 'reviewed' && inspection.urgent_review;
+  const readinessStatus = isUnresolvedUnsafeReview
+    ? 'blocked'
+    : fleetVehicle?.readiness_status || fleetVehicle?.readiness?.status || 'ready';
+  const readinessLabel = readinessStatus === 'blocked'
+    ? 'Blocked'
+    : readinessStatus === 'maintenance_soon'
+      ? 'Maintenance Soon'
+      : readinessStatus === 'assigned'
+        ? 'Assigned'
+        : 'Ready';
+  const unsafeIssueLabels = issueItems
+    .filter((item) => item.severity === 'unsafe' || item.urgent_review)
+    .map((item) => item.label || item.checklist_item_key)
+    .filter(Boolean);
+  const readinessReason = isUnresolvedUnsafeReview
+    ? `Unsafe inspection: ${unsafeIssueLabels.join(', ') || 'manager review required'}`
+    : fleetVehicle?.readiness?.primary_reason?.label || 'No active readiness blocker';
   const copySummaryStatus = copySummaryResult.inspectionId === inspection.id ? copySummaryResult.message : '';
-  const statusDecisionOptions = VEHICLE_STATUS_OPTIONS.filter((option) => (
-    ['active', 'out_of_service', 'at_the_shop', 'needs_repair'].includes(option.value)
-  ));
+  const requiresDecision = inspection.status !== 'reviewed' && inspection.urgent_review;
 
   async function handleCopyInspectionSummary() {
     try {
@@ -2906,9 +2929,9 @@ function InspectionDetailModal({
         </div>
 
         <div className="inspection-detail-summary">
-          <div>
-            <span>Status</span>
-            <strong>{getInspectionReviewStatusLabel(inspection)}</strong>
+            <div>
+              <span>Review Status</span>
+              <strong>{getInspectionReviewStatusLabel(inspection)}</strong>
           </div>
           <div>
             <span>Odometer</span>
@@ -2924,7 +2947,7 @@ function InspectionDetailModal({
           </div>
         </div>
 
-        {inspection.urgent_review ? (
+        {isUnresolvedUnsafeReview ? (
           <div className="inspection-urgent-note">
             <strong>Urgent manager review</strong>
             <span>The driver marked at least one issue unsafe. Review the details and choose the vehicle status before dispatch decisions continue.</span>
@@ -2938,25 +2961,47 @@ function InspectionDetailModal({
           </div>
         ) : null}
 
-        <div className="inspection-decision-panel">
-          <div>
-            <strong>Vehicle Status Decision</strong>
-            <span>Current status: {getVehicleStatusLabelFromValue(currentVehicleStatus)}</span>
+        <div className="inspection-vehicle-state-grid">
+          <div className={`inspection-vehicle-state ${readinessStatus === 'blocked' ? 'blocked' : ''}`}>
+            <span>Readiness</span>
+            <strong>{readinessLabel}</strong>
+            <small>{readinessReason}</small>
           </div>
-          <div className="inspection-decision-grid">
-            {statusDecisionOptions.map((option) => (
-              <button
-                className={`inspection-decision-button ${currentVehicleStatus === option.value ? 'selected' : ''}`}
-                disabled={isUpdatingVehicleStatus}
-                key={option.value}
-                onClick={() => onVehicleStatusDecision(option.value)}
-                type="button"
-              >
-                {option.label}
-              </button>
-            ))}
+          <div className="inspection-vehicle-state">
+            <span>Operational Status</span>
+            <strong>{getVehicleStatusLabelFromValue(currentVehicleStatus)}</strong>
+            <small>{currentVehicleStatus === 'active'
+              ? 'Active administratively; dispatch still follows readiness.'
+              : 'This operating status prevents dispatch.'}</small>
           </div>
         </div>
+
+        {inspection.status !== 'reviewed' ? (
+          <div className="inspection-decision-panel">
+            <div>
+              <strong>Manager Decision</strong>
+              <span>{requiresDecision
+                ? 'Choose what happens to this vehicle before completing the urgent review.'
+                : 'Optionally update the vehicle operating status while completing this review.'}</span>
+            </div>
+            <div className="inspection-decision-grid">
+              {INSPECTION_DECISION_OPTIONS.map((option) => (
+                <button
+                  className={`inspection-decision-button ${vehicleStatusDecision === option.value ? 'selected' : ''}`}
+                  disabled={isReviewing}
+                  key={option.value}
+                  onClick={() => setVehicleStatusDecision(option.value)}
+                  type="button"
+                >
+                  {option.label}
+                </button>
+              ))}
+            </div>
+            {requiresDecision && !vehicleStatusDecision ? (
+              <span className="inspection-decision-required">Select a manager decision to complete this urgent review.</span>
+            ) : null}
+          </div>
+        ) : null}
 
         <div className="inspection-items-list">
           {(inspection.items || []).length ? inspection.items.map((item) => {
@@ -3019,8 +3064,17 @@ function InspectionDetailModal({
             Log Maintenance from Issue
           </button>
           {inspection.status !== 'reviewed' ? (
-            <button className="primary-inline-button" disabled={isReviewing} onClick={onReview} type="button">
-              {isReviewing ? 'Saving...' : 'Mark Reviewed'}
+            <button
+              className="primary-inline-button"
+              disabled={isReviewing || (requiresDecision && !vehicleStatusDecision)}
+              onClick={() => onReview(vehicleStatusDecision || null)}
+              type="button"
+            >
+              {isReviewing
+                ? 'Saving...'
+                : requiresDecision
+                  ? 'Save Decision & Complete Review'
+                  : 'Mark Reviewed'}
             </button>
           ) : null}
           {copySummaryStatus ? <span className="inspection-copy-status">{copySummaryStatus}</span> : null}
@@ -3311,10 +3365,11 @@ export default function VehiclesPage() {
   });
 
   const reviewInspectionMutation = useMutation({
-    mutationFn: async () => {
+    mutationFn: async (vehicleStatusDecision = null) => {
       const inspectionId = inspectionDetailQuery.data?.id || selectedInspection?.id;
       const response = await api.put(`/vehicles/inspections/${inspectionId}/review`, {
-        manager_review_note: inspectionReviewNote || undefined
+        manager_review_note: inspectionReviewNote || undefined,
+        vehicle_status_decision: vehicleStatusDecision || undefined
       });
       return response.data?.inspection;
     },
@@ -3329,6 +3384,9 @@ export default function VehiclesPage() {
       if (inspectionHistoryVehicle) {
         await queryClient.invalidateQueries({ queryKey: ['vehicle-inspection-history', selectedCsaId, inspectionHistoryVehicle.id] });
       }
+    },
+    onError: (error) => {
+      setToastMessage(error.response?.data?.error || 'Unable to complete the inspection review.');
     }
   });
 
@@ -3368,34 +3426,6 @@ export default function VehiclesPage() {
     },
     onError: (error) => {
       setEditVehicleError(error.response?.data?.error || 'Unable to update vehicle.');
-    }
-  });
-
-  const updateVehicleStatusMutation = useMutation({
-    mutationFn: async ({ vehicleId, vehicleStatus, sourceInspectionId = null }) => {
-      const response = await api.put(`/vehicles/${vehicleId}`, {
-        vehicle_status: vehicleStatus,
-        ...(sourceInspectionId
-          ? {
-              readiness_source_type: 'inspection',
-              readiness_source_id: sourceInspectionId
-            }
-          : {})
-      });
-      return response.data;
-    },
-    onSuccess: async (_, variables) => {
-      const option = getVehicleStatusOption(variables.vehicleStatus);
-      setToastMessage(`Vehicle status updated to ${option.label}`);
-      await queryClient.invalidateQueries({ queryKey: ['fleet-vehicles', selectedCsaId] });
-      await queryClient.invalidateQueries({ queryKey: ['vehicle-inspections', selectedCsaId] });
-      await queryClient.invalidateQueries({ queryKey: ['vehicle-inspection-detail', selectedCsaId] });
-      if (inspectionHistoryVehicle) {
-        await queryClient.invalidateQueries({ queryKey: ['vehicle-inspection-history', selectedCsaId, inspectionHistoryVehicle.id] });
-      }
-    },
-    onError: () => {
-      setToastMessage('Unable to update vehicle status.');
     }
   });
 
@@ -4853,9 +4883,13 @@ export default function VehiclesPage() {
       />
 
       <InspectionDetailModal
+        fleetVehicle={vehicles.find((vehicle) => {
+          const inspection = inspectionDetailQuery.data || selectedInspection;
+          return vehicle.id === (inspection?.vehicle?.id || inspection?.vehicle_id);
+        }) || null}
         inspection={inspectionDetailQuery.data || selectedInspection}
         isReviewing={reviewInspectionMutation.isPending}
-        isUpdatingVehicleStatus={updateVehicleStatusMutation.isPending}
+        key={(inspectionDetailQuery.data || selectedInspection)?.id || 'closed-inspection'}
         onChangeReviewNote={setInspectionReviewNote}
         onClose={() => {
           setSelectedInspection(null);
@@ -4863,22 +4897,7 @@ export default function VehiclesPage() {
           clearInspectionLinkParams();
         }}
         onLogMaintenanceFromIssue={() => openMaintenanceFromInspection(inspectionDetailQuery.data || selectedInspection)}
-        onReview={() => reviewInspectionMutation.mutate()}
-        onVehicleStatusDecision={(vehicleStatus) => {
-          const inspection = inspectionDetailQuery.data || selectedInspection;
-          const vehicleId = inspection?.vehicle?.id || inspection?.vehicle_id;
-
-          if (!vehicleId) {
-            setToastMessage('Inspection is missing a vehicle record.');
-            return;
-          }
-
-          updateVehicleStatusMutation.mutate({
-            vehicleId,
-            vehicleStatus,
-            sourceInspectionId: inspection?.id || null
-          });
-        }}
+        onReview={(vehicleStatusDecision) => reviewInspectionMutation.mutate(vehicleStatusDecision)}
         reviewNote={inspectionReviewNote}
       />
     </section>

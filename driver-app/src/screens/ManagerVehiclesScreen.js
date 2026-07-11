@@ -120,10 +120,10 @@ const VEHICLE_TYPE_OPTIONS = [
 const FUEL_TYPE_OPTIONS = ['Gas', 'Diesel', 'EV'];
 
 const VEHICLE_STATUS_REVIEW_OPTIONS = [
-  { value: 'active', label: 'Active' },
-  { value: 'out_of_service', label: 'Out of Service' },
-  { value: 'at_the_shop', label: 'At the shop' },
-  { value: 'needs_repair', label: 'Needs Repair' }
+  { value: 'active', label: 'Return to Service' },
+  { value: 'needs_repair', label: 'Needs Repair' },
+  { value: 'at_the_shop', label: 'At the Shop' },
+  { value: 'out_of_service', label: 'Out of Service' }
 ];
 
 const DEFAULT_CHECKLIST_TEMPLATE_FIELDS = [
@@ -1600,7 +1600,7 @@ function EditVehicleModal({ errorMessage, form, isSaving, mode = 'edit', onChang
   );
 }
 
-function TruckActionRow({ disabled = false, label, onPress, primary = false }) {
+function TruckActionRow({ disabled = false, disabledHint = 'Coming soon', label, onPress, primary = false }) {
   return (
     <Pressable
       accessibilityRole="button"
@@ -1621,7 +1621,7 @@ function TruckActionRow({ disabled = false, label, onPress, primary = false }) {
       ]}>
         {label}
       </Text>
-      {disabled ? <Text style={styles.truckActionRowMeta}>Coming soon</Text> : null}
+      {disabled && disabledHint ? <Text style={styles.truckActionRowMeta}>{disabledHint}</Text> : null}
     </Pressable>
   );
 }
@@ -2450,24 +2450,45 @@ function AssignmentHistoryModal({ history, isLoading, onClose, vehicle }) {
 
 function InspectionDetailModal({
   copySummaryMessage,
+  errorMessage,
+  fleetVehicle,
   inspection,
-  isUpdatingVehicleStatus,
   isLoading,
   isReviewing,
   onChangeReviewNote,
   onClose,
   onCopyInspectionSummary,
   onLogMaintenance,
-  onVehicleStatusDecision,
   onReview,
   reviewNote
 }) {
+  const [vehicleStatusDecision, setVehicleStatusDecision] = useState('');
+
   if (!inspection && !isLoading) {
     return null;
   }
 
   const issueItems = getInspectionIssueItems(inspection);
-  const currentVehicleStatus = inspection?.vehicle?.vehicle_status || 'active';
+  const currentVehicleStatus = inspection?.vehicle?.vehicle_status || fleetVehicle?.vehicle_status || 'active';
+  const isUnresolvedUnsafeReview = inspection?.status !== 'reviewed' && inspection?.urgent_review;
+  const readinessStatus = isUnresolvedUnsafeReview
+    ? 'blocked'
+    : fleetVehicle?.readiness_status || fleetVehicle?.readiness?.status || 'ready';
+  const readinessLabel = readinessStatus === 'blocked'
+    ? 'Blocked'
+    : readinessStatus === 'maintenance_soon'
+      ? 'Maintenance Soon'
+      : readinessStatus === 'assigned'
+        ? 'Assigned'
+        : 'Ready';
+  const unsafeIssueLabels = issueItems
+    .filter((item) => item.severity === 'unsafe' || item.urgent_review)
+    .map((item) => item.label || item.checklist_item_key)
+    .filter(Boolean);
+  const readinessReason = isUnresolvedUnsafeReview
+    ? `Unsafe inspection: ${unsafeIssueLabels.join(', ') || 'manager review required'}`
+    : fleetVehicle?.readiness?.primary_reason?.label || 'No active readiness blocker';
+  const requiresDecision = inspection?.status !== 'reviewed' && inspection?.urgent_review;
 
   return (
     <KeyboardAwareModal onClose={onClose} visible={Boolean(inspection) || isLoading}>
@@ -2498,7 +2519,7 @@ function InspectionDetailModal({
             >
               <View style={styles.profileGrid}>
                 <View style={styles.profileTile}>
-                  <Text style={styles.summaryLabel}>Status</Text>
+                  <Text style={styles.summaryLabel}>Review Status</Text>
                   <Text style={styles.summaryValue}>{getInspectionReviewStatusLabel(inspection)}</Text>
                 </View>
                 <View style={styles.profileTile}>
@@ -2511,7 +2532,7 @@ function InspectionDetailModal({
                 </View>
               </View>
 
-              {inspection.urgent_review ? (
+              {isUnresolvedUnsafeReview ? (
                 <View style={styles.inspectionUrgentBox}>
                   <Text style={styles.settingName}>Urgent manager review</Text>
                   <Text style={styles.historyMeta}>
@@ -2527,34 +2548,60 @@ function InspectionDetailModal({
                 </View>
               ) : null}
 
-              <View style={styles.inspectionDecisionPanel}>
-                <Text style={styles.profileSectionLabel}>Vehicle Status Decision</Text>
-                <Text style={styles.historyMeta}>Current status: {formatInspectionStatus(currentVehicleStatus)}</Text>
-                <View style={styles.inspectionDecisionGrid}>
-                  {VEHICLE_STATUS_REVIEW_OPTIONS.map((option) => (
-                    <Pressable
-                      accessibilityRole="button"
-                      disabled={isUpdatingVehicleStatus}
-                      key={option.value}
-                      onPress={() => onVehicleStatusDecision(option.value)}
-                      style={({ pressed }) => [
-                        styles.inspectionDecisionButton,
-                        currentVehicleStatus === option.value ? styles.inspectionDecisionButtonActive : null,
-                        isUpdatingVehicleStatus ? styles.truckActionRowDisabled : null,
-                        pressed && !isUpdatingVehicleStatus ? styles.pressed : null
-                      ]}
-                    >
-                      <Text style={[
-                        styles.inspectionDecisionButtonText,
-                        currentVehicleStatus === option.value ? styles.inspectionDecisionButtonTextActive : null
-                      ]}
-                      >
-                        {option.label}
-                      </Text>
-                    </Pressable>
-                  ))}
+              <View style={styles.inspectionVehicleStateGrid}>
+                <View style={[styles.inspectionVehicleStateCard, readinessStatus === 'blocked' ? styles.inspectionVehicleStateCardBlocked : null]}>
+                  <Text style={styles.summaryLabel}>Readiness</Text>
+                  <Text style={[styles.summaryValue, readinessStatus === 'blocked' ? styles.inspectionVehicleStateBlockedText : null]}>{readinessLabel}</Text>
+                  <Text style={styles.historyMeta}>{readinessReason}</Text>
+                </View>
+                <View style={styles.inspectionVehicleStateCard}>
+                  <Text style={styles.summaryLabel}>Operational Status</Text>
+                  <Text style={styles.summaryValue}>{formatInspectionStatus(currentVehicleStatus)}</Text>
+                  <Text style={styles.historyMeta}>
+                    {currentVehicleStatus === 'active'
+                      ? 'Active administratively; dispatch still follows readiness.'
+                      : 'This operating status prevents dispatch.'}
+                  </Text>
                 </View>
               </View>
+
+              {inspection.status !== 'reviewed' ? (
+                <View style={styles.inspectionDecisionPanel}>
+                  <Text style={styles.profileSectionLabel}>Manager Decision</Text>
+                  <Text style={styles.historyMeta}>
+                    {requiresDecision
+                      ? 'Choose what happens to this vehicle before completing the urgent review.'
+                      : 'Optionally update the vehicle operating status while completing this review.'}
+                  </Text>
+                  <View style={styles.inspectionDecisionGrid}>
+                    {VEHICLE_STATUS_REVIEW_OPTIONS.map((option) => (
+                      <Pressable
+                        accessibilityRole="button"
+                        disabled={isReviewing}
+                        key={option.value}
+                        onPress={() => setVehicleStatusDecision(option.value)}
+                        style={({ pressed }) => [
+                          styles.inspectionDecisionButton,
+                          vehicleStatusDecision === option.value ? styles.inspectionDecisionButtonActive : null,
+                          isReviewing ? styles.truckActionRowDisabled : null,
+                          pressed && !isReviewing ? styles.pressed : null
+                        ]}
+                      >
+                        <Text style={[
+                          styles.inspectionDecisionButtonText,
+                          vehicleStatusDecision === option.value ? styles.inspectionDecisionButtonTextActive : null
+                        ]}
+                        >
+                          {option.label}
+                        </Text>
+                      </Pressable>
+                    ))}
+                  </View>
+                  {requiresDecision && !vehicleStatusDecision ? (
+                    <Text style={styles.modalError}>Select a manager decision to complete this urgent review.</Text>
+                  ) : null}
+                </View>
+              ) : null}
 
               <View style={styles.recordsList}>
                 {(inspection.items || []).length ? inspection.items.map((item) => {
@@ -2607,9 +2654,20 @@ function InspectionDetailModal({
                 <TruckActionRow label="Copy Inspection Summary" onPress={onCopyInspectionSummary} />
                 <TruckActionRow label="Log Maintenance from Issue" onPress={onLogMaintenance} />
                 {inspection.status !== 'reviewed' ? (
-                  <TruckActionRow label={isReviewing ? 'Saving Review' : 'Mark Reviewed'} onPress={onReview} primary />
+                  <TruckActionRow
+                    disabled={isReviewing || (requiresDecision && !vehicleStatusDecision)}
+                    disabledHint={requiresDecision && !vehicleStatusDecision ? 'Decision required' : null}
+                    label={isReviewing
+                      ? 'Saving Review'
+                      : requiresDecision
+                        ? 'Save Decision & Complete Review'
+                        : 'Mark Reviewed'}
+                    onPress={() => onReview(vehicleStatusDecision || null)}
+                    primary
+                  />
                 ) : null}
               </View>
+              {errorMessage ? <Text style={styles.modalError}>{errorMessage}</Text> : null}
               {copySummaryMessage ? <Text style={styles.historyMeta}>{copySummaryMessage}</Text> : null}
             </ScrollView>
           )}
@@ -2685,9 +2743,9 @@ export default function ManagerVehiclesScreen({ csaWorkspaceVersion = 0, identit
   const [inspectionDetail, setInspectionDetail] = useState(null);
   const [isLoadingInspectionDetail, setIsLoadingInspectionDetail] = useState(false);
   const [inspectionReviewNote, setInspectionReviewNote] = useState('');
+  const [inspectionReviewError, setInspectionReviewError] = useState('');
   const [inspectionSummaryCopyMessage, setInspectionSummaryCopyMessage] = useState('');
   const [isReviewingInspection, setIsReviewingInspection] = useState(false);
-  const [isUpdatingInspectionVehicleStatus, setIsUpdatingInspectionVehicleStatus] = useState(false);
   const linkedInspectionKeyRef = useRef(null);
 
   async function loadVehicles() {
@@ -3550,6 +3608,7 @@ export default function ManagerVehiclesScreen({ csaWorkspaceVersion = 0, identit
     setInspectionHistoryVehicle(null);
     setInspectionDetail(inspection);
     setInspectionReviewNote(inspection.manager_review_note || '');
+    setInspectionReviewError('');
     setInspectionSummaryCopyMessage('');
     setIsLoadingInspectionDetail(true);
     try {
@@ -3601,6 +3660,7 @@ export default function ManagerVehiclesScreen({ csaWorkspaceVersion = 0, identit
   function closeInspectionDetail() {
     setInspectionDetail(null);
     setInspectionReviewNote('');
+    setInspectionReviewError('');
     setInspectionSummaryCopyMessage('');
     setIsLoadingInspectionDetail(false);
     if (route?.params?.inspectionId) {
@@ -3614,15 +3674,17 @@ export default function ManagerVehiclesScreen({ csaWorkspaceVersion = 0, identit
     }
   }
 
-  async function reviewInspectionDetail() {
+  async function reviewInspectionDetail(vehicleStatusDecision = null) {
     if (!inspectionDetail?.id || isReviewingInspection) {
       return;
     }
 
     setIsReviewingInspection(true);
+    setInspectionReviewError('');
     try {
       const response = await api.put(`/vehicles/inspections/${inspectionDetail.id}/review`, {
-        manager_review_note: inspectionReviewNote || undefined
+        manager_review_note: inspectionReviewNote || undefined,
+        vehicle_status_decision: vehicleStatusDecision || undefined
       }, { authMode: 'manager' });
       const reviewedInspection = response.data?.inspection || {
         ...inspectionDetail,
@@ -3638,44 +3700,10 @@ export default function ManagerVehiclesScreen({ csaWorkspaceVersion = 0, identit
         inspection.id === reviewedInspection.id ? { ...inspection, ...reviewedInspection } : inspection
       )));
       await loadVehicles();
-    } catch (_error) {
-      // Keep the modal open so the manager can try again.
+    } catch (error) {
+      setInspectionReviewError(getApiErrorMessage(error, 'Unable to complete the inspection review.'));
     } finally {
       setIsReviewingInspection(false);
-    }
-  }
-
-  async function updateInspectionVehicleStatus(vehicleStatus) {
-    const vehicleId = inspectionDetail?.vehicle?.id || inspectionDetail?.vehicle_id;
-
-    if (!vehicleId || isUpdatingInspectionVehicleStatus) {
-      return;
-    }
-
-    setIsUpdatingInspectionVehicleStatus(true);
-    try {
-      await api.put(`/vehicles/${vehicleId}`, {
-        vehicle_status: vehicleStatus,
-        readiness_source_type: 'inspection',
-        readiness_source_id: inspectionDetail.id
-      }, { authMode: 'manager' });
-      setInspectionDetail((current) => (current ? {
-        ...current,
-        vehicle: {
-          ...(current.vehicle || {}),
-          id: vehicleId,
-          vehicle_status: vehicleStatus
-        }
-      } : current));
-      setVehicles((current) => current.map((vehicle) => (
-        vehicle.id === vehicleId
-          ? { ...vehicle, vehicle_status: vehicleStatus, is_active: vehicleStatus === 'active' }
-          : vehicle
-      )));
-    } catch (_error) {
-      // Keep the modal open so the manager can try again.
-    } finally {
-      setIsUpdatingInspectionVehicleStatus(false);
     }
   }
 
@@ -4046,16 +4074,19 @@ export default function ManagerVehiclesScreen({ csaWorkspaceVersion = 0, identit
       />
       <InspectionDetailModal
         copySummaryMessage={inspectionSummaryCopyMessage}
+        errorMessage={inspectionReviewError}
+        fleetVehicle={vehicles.find((vehicle) => (
+          vehicle.id === (inspectionDetail?.vehicle?.id || inspectionDetail?.vehicle_id)
+        )) || null}
         inspection={inspectionDetail}
         isLoading={isLoadingInspectionDetail}
         isReviewing={isReviewingInspection}
-        isUpdatingVehicleStatus={isUpdatingInspectionVehicleStatus}
+        key={inspectionDetail?.id || 'closed-inspection'}
         onChangeReviewNote={setInspectionReviewNote}
         onClose={closeInspectionDetail}
         onCopyInspectionSummary={copyInspectionSummaryFromInspection}
         onLogMaintenance={logMaintenanceFromInspection}
         onReview={reviewInspectionDetail}
-        onVehicleStatusDecision={updateInspectionVehicleStatus}
         reviewNote={inspectionReviewNote}
       />
     </>
@@ -5320,6 +5351,30 @@ const styles = StyleSheet.create({
     gap: 3,
     marginBottom: appTheme.spacing.xs,
     padding: appTheme.spacing.md
+  },
+  inspectionVehicleStateGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: appTheme.spacing.xs,
+    marginBottom: appTheme.spacing.xs
+  },
+  inspectionVehicleStateCard: {
+    backgroundColor: appTheme.colors.surfaceTint,
+    borderColor: appTheme.colors.border,
+    borderRadius: appTheme.radius.md,
+    borderWidth: 1,
+    flexBasis: '48%',
+    flexGrow: 1,
+    gap: 3,
+    minHeight: 96,
+    padding: appTheme.spacing.md
+  },
+  inspectionVehicleStateCardBlocked: {
+    backgroundColor: appTheme.colors.dangerSoft,
+    borderColor: '#f5b7b1'
+  },
+  inspectionVehicleStateBlockedText: {
+    color: appTheme.colors.danger
   },
   inspectionDecisionPanel: {
     backgroundColor: appTheme.colors.surfaceTint,
