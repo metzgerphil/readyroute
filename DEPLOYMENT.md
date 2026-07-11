@@ -57,8 +57,9 @@ npm run release:smoke
    - Portal CI
 4. Merge to `main`.
 5. Vercel deploys `landing-page` and `manager-portal` from GitHub.
-6. Deploy `backend` to Cloud Run.
-7. Run Production Smoke:
+6. `.github/workflows/release-production.yml` applies pending Supabase migrations.
+7. The same workflow deploys the exact merge commit to Cloud Run through keyless Google Workload Identity Federation.
+8. The workflow confirms `/health` reports that commit and runs Production Smoke.
 
 ```bash
 npm run smoke
@@ -79,6 +80,8 @@ Backend:
 ```bash
 npm run deploy:backend
 ```
+
+The emergency backend script still runs tests, previews and applies migrations, stamps the Git commit, deploys Cloud Run, and verifies release identity. It should not be used from an uncommitted worktree.
 
 Landing page:
 
@@ -201,21 +204,37 @@ GitHub production smoke secrets:
 - `SMOKE_PASSWORD_RESET_EMAIL`
 - `SUPABASE_URL`
 - `SUPABASE_SERVICE_KEY`
+- `SUPABASE_ACCESS_TOKEN`
+- `READYROUTE_INTERNAL_WORKER_SECRET`
 
 Optional GitHub variables:
 
 - `SMOKE_BACKEND_URL`
 - `SMOKE_PORTAL_URL`
 
+Required GitHub deployment variables:
+
+- `SUPABASE_PROJECT_REF`
+- `GCP_PROJECT_ID`
+- `GCP_PROJECT_NUMBER`
+- `GCP_REGION`
+- `GCP_CLOUD_RUN_SERVICE`
+- `GCP_WORKLOAD_IDENTITY_PROVIDER`
+- `GCP_DEPLOY_SERVICE_ACCOUNT`
+
 ## GitHub Actions
 
-GitHub Actions should check code, not own production deployment.
+GitHub is the production source of truth.
 
 - `.github/workflows/backend-ci.yml` runs backend unit checks.
 - `.github/workflows/portal-ci.yml` lints/builds the manager portal.
 - `.github/workflows/production-smoke.yml` runs production smoke manually or by dispatch.
+- `.github/workflows/release-production.yml` serializes backend verification, production migrations, Cloud Run deployment, release-identity checks, and smoke tests.
+- `.github/workflows/account-retention.yml` transitions expired cancellations daily and reports accounts eligible for owner/admin deletion review.
 
-Vercel remains the production deployment owner for web surfaces. Cloud Run owns the backend API.
+Vercel remains the GitHub-connected deployment owner for web surfaces. GitHub Actions owns the ordered Supabase/Cloud Run backend release.
+
+Google authentication uses Workload Identity Federation. Do not create or store a Google service-account JSON key in GitHub.
 
 ## FCC Background Sync
 

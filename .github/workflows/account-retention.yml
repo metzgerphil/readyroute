@@ -1,0 +1,44 @@
+name: Account Retention Sweep
+
+on:
+  schedule:
+    - cron: '17 9 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: readyroute-account-retention
+  cancel-in-progress: false
+
+jobs:
+  sweep:
+    name: Transition Expired Cancellations
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    environment: production
+    steps:
+      - name: Run authenticated retention sweep
+        id: sweep
+        env:
+          API_URL: ${{ vars.SMOKE_BACKEND_URL || 'https://api.readyroute.org' }}
+          WORKER_SECRET: ${{ secrets.READYROUTE_INTERNAL_WORKER_SECRET }}
+        shell: bash
+        run: |
+          test -n "$WORKER_SECRET" || { echo "READYROUTE_INTERNAL_WORKER_SECRET is not configured"; exit 1; }
+          response="$(curl --fail --silent --show-error \
+            --request POST \
+            --header "Authorization: Bearer $WORKER_SECRET" \
+            "$API_URL/internal/account-retention-sweep")"
+          echo "$response" | jq .
+          echo "response=$response" >> "$GITHUB_OUTPUT"
+
+      - name: Summarize review queue
+        env:
+          RESPONSE: ${{ steps.sweep.outputs.response }}
+        run: |
+          echo "### ReadyRoute account retention" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Transitioned to retained: $(jq -r '.transitioned_to_retained' <<< "$RESPONSE")" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Eligible for owner/admin purge review: $(jq -r '.purge_eligible' <<< "$RESPONSE")" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Automatic permanent purge: disabled" >> "$GITHUB_STEP_SUMMARY"

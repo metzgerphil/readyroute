@@ -1,0 +1,147 @@
+name: Release Production Backend
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+    paths:
+      - 'backend/**'
+      - 'supabase/migrations/**'
+      - '.github/workflows/release-production.yml'
+      - '.github/workflows/production-smoke.yml'
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: readyroute-production-backend
+  cancel-in-progress: false
+
+jobs:
+  verify:
+    name: Verify Backend
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - name: Check out release commit
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: backend/package-lock.json
+
+      - name: Install backend dependencies
+        run: npm ci
+
+      - name: Run backend unit tests
+        env:
+          SUPABASE_URL: https://example.supabase.co
+          SUPABASE_SERVICE_KEY: test-service-role-key
+          JWT_SECRET: test-secret
+        run: npm run test:unit
+
+  migrate:
+    name: Apply Supabase Migrations
+    needs: verify
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment: production
+    env:
+      SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+      SUPABASE_PROJECT_REF: ${{ vars.SUPABASE_PROJECT_REF }}
+    steps:
+      - name: Check out release commit
+        uses: actions/checkout@v4
+
+      - name: Verify migration configuration
+        shell: bash
+        run: |
+          test -n "$SUPABASE_ACCESS_TOKEN" || { echo "SUPABASE_ACCESS_TOKEN is not configured"; exit 1; }
+          test -n "$SUPABASE_PROJECT_REF" || { echo "SUPABASE_PROJECT_REF is not configured"; exit 1; }
+
+      - name: Set up Supabase CLI
+        uses: supabase/setup-cli@v1
+        with:
+          version: latest
+
+      - name: Link production project
+        run: supabase link --project-ref "$SUPABASE_PROJECT_REF"
+
+      - name: Preview pending migrations
+        run: supabase db push --linked --dry-run
+
+      - name: Apply pending migrations
+        run: supabase db push --linked --yes
+
+  deploy:
+    name: Deploy Cloud Run
+    needs: migrate
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment: production
+    steps:
+      - name: Check out release commit
+        uses: actions/checkout@v4
+
+      - name: Authenticate to Google Cloud without a service-account key
+        uses: google-github-actions/auth@v3
+        with:
+          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.GCP_DEPLOY_SERVICE_ACCOUNT }}
+
+      - name: Deploy immutable commit to Cloud Run
+        id: deploy
+        uses: google-github-actions/deploy-cloudrun@v3
+        with:
+          project_id: ${{ vars.GCP_PROJECT_ID }}
+          region: ${{ vars.GCP_REGION }}
+          service: ${{ vars.GCP_CLOUD_RUN_SERVICE }}
+          source: backend
+          env_vars: |-
+            SOURCE_COMMIT=${{ github.sha }}
+            NODE_ENV=production
+          env_vars_update_strategy: merge
+
+      - name: Verify production release identity
+        env:
+          HEALTH_URL: ${{ vars.SMOKE_BACKEND_URL || 'https://api.readyroute.org' }}/health
+          EXPECTED_COMMIT: ${{ github.sha }}
+        shell: bash
+        run: |
+          for attempt in {1..30}; do
+            body="$(curl --fail --silent --show-error "$HEALTH_URL" || true)"
+            if [[ "$body" == *"$EXPECTED_COMMIT"* ]]; then
+              echo "Production is serving $EXPECTED_COMMIT"
+              exit 0
+            fi
+            sleep 10
+          done
+          echo "Production health did not report $EXPECTED_COMMIT" >&2
+          exit 1
+
+      - name: Run public production smoke
+        env:
+          SMOKE_BACKEND_URL: ${{ vars.SMOKE_BACKEND_URL || 'https://api.readyroute.org' }}
+          SMOKE_PORTAL_URL: ${{ vars.SMOKE_PORTAL_URL || 'https://portal.readyroute.org' }}
+          SMOKE_MANAGER_EMAIL: ${{ secrets.SMOKE_MANAGER_EMAIL }}
+          SMOKE_MANAGER_PASSWORD: ${{ secrets.SMOKE_MANAGER_PASSWORD }}
+          SMOKE_PASSWORD_RESET_EMAIL: ${{ secrets.SMOKE_PASSWORD_RESET_EMAIL }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+        working-directory: backend
+        run: npm ci --ignore-scripts --omit=dev && npm run smoke:production
+
+      - name: Release summary
+        run: |
+          echo "### ReadyRoute production release" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Commit: \`${{ github.sha }}\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Cloud Run URL: ${{ steps.deploy.outputs.url }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Database migrations applied before backend deployment" >> "$GITHUB_STEP_SUMMARY"
