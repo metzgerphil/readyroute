@@ -138,8 +138,104 @@ async function sendSupportTicketNotification({
   };
 }
 
+async function sendSupportReplyNotification({
+  ticket,
+  message,
+  staffName,
+  fetchImpl = fetch
+} = {}) {
+  const apiKey = process.env.RESEND_API_KEY;
+  const from = process.env.RESEND_FROM_EMAIL || 'ReadyRoute <info@readyroute.org>';
+  const recipient = String(ticket?.requester_email || '').trim();
+
+  if (!apiKey || !recipient) {
+    return {
+      delivered: false,
+      skipped: true,
+      reason: !apiKey ? 'Resend API key is not configured' : 'Requester email is unavailable',
+      provider_id: null
+    };
+  }
+
+  const reference = ticket.ticket_reference || ticket.id || 'support ticket';
+  const replyBody = String(message?.body || '').trim();
+  const subject = `ReadyRoute support reply: ${reference}`;
+  const response = await fetchImpl('https://api.resend.com/emails', {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({
+      from,
+      to: [recipient],
+      reply_to: SUPPORT_NOTIFY_EMAIL,
+      subject,
+      text: `ReadyRoute replied to ${reference}\n\n${replyBody}\n\nOpen ReadyRoute support if you still need help.`,
+      html: `
+        <div style="font-family:Arial,Helvetica,sans-serif;line-height:1.6;color:#173042;">
+          <p style="color:#ff6b1a;font-size:12px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;">ReadyRoute Support</p>
+          <h2 style="margin:0 0 16px;">Reply to ${escapeHtml(reference)}</h2>
+          <p>Hi ${escapeHtml(ticket.requester_name || 'there')},</p>
+          <div style="background:#f6f9fc;border:1px solid #dce6ee;border-radius:12px;padding:16px;white-space:pre-wrap;">${escapeHtml(replyBody)}</div>
+          <p style="color:#637586;">${escapeHtml(staffName || 'ReadyRoute Support')}</p>
+          <p>Open ReadyRoute support if you still need help.</p>
+        </div>
+      `
+    })
+  });
+
+  if (!response.ok) {
+    const bodyText = await response.text();
+    const error = new Error(`Resend support reply notification failed: ${response.status} ${bodyText}`);
+    error.status = response.status;
+    throw error;
+  }
+
+  const payload = await response.json();
+  return { delivered: true, skipped: false, provider_id: payload?.id || null };
+}
+
+async function sendSupportAssignmentNotification({
+  ticket,
+  staffUser,
+  fetchImpl = fetch
+} = {}) {
+  const apiKey = process.env.RESEND_API_KEY;
+  const from = process.env.RESEND_FROM_EMAIL || 'ReadyRoute <info@readyroute.org>';
+  const recipient = String(staffUser?.email || '').trim();
+
+  if (!apiKey || !recipient) {
+    return { delivered: false, skipped: true, provider_id: null };
+  }
+
+  const reference = ticket.ticket_reference || ticket.id || 'support ticket';
+  const staffPortalUrl = `${String(process.env.MANAGER_PORTAL_URL || 'https://portal.readyroute.org').replace(/\/$/, '')}/readyroute/support`;
+  const response = await fetchImpl('https://api.resend.com/emails', {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      from,
+      to: [recipient],
+      subject: `ReadyRoute ticket assigned: ${reference}`,
+      text: `You were assigned ${reference}: ${ticket.subject || ticket.description || 'Support request'}\n\n${staffPortalUrl}`,
+      html: `<p>You were assigned <strong>${escapeHtml(reference)}</strong>.</p><p>${escapeHtml(ticket.subject || ticket.description || 'Support request')}</p><p><a href="${escapeHtml(staffPortalUrl)}">Open Support Desk</a></p>`
+    })
+  });
+
+  if (!response.ok) {
+    const bodyText = await response.text();
+    throw new Error(`Resend support assignment notification failed: ${response.status} ${bodyText}`);
+  }
+
+  const payload = await response.json();
+  return { delivered: true, skipped: false, provider_id: payload?.id || null };
+}
+
 module.exports = {
   SUPPORT_NOTIFY_EMAIL,
   buildSupportTicketNotificationEmail,
+  sendSupportAssignmentNotification,
+  sendSupportReplyNotification,
   sendSupportTicketNotification
 };

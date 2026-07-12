@@ -8,7 +8,7 @@ const supabaseUrl = String(process.env.SUPABASE_URL || '').replace(/\/$/, '');
 const serviceKey = process.env.SUPABASE_SERVICE_KEY || '';
 const outputDirectory = path.resolve(process.argv[2] || 'backup/storage');
 const bucketNames = String(
-  process.env.BACKUP_STORAGE_BUCKETS || 'driver-documents,pod-photos,vehicle-inspection-photos'
+  process.env.BACKUP_STORAGE_BUCKETS || 'driver-documents,pod-photos,support-attachments,vehicle-inspection-photos'
 )
   .split(',')
   .map((value) => value.trim())

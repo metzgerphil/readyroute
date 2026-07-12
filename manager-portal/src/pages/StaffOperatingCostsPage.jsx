@@ -4,6 +4,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { EmptyState, ErrorState, LoadingState, PageHeader, StatCard, StatusBadge } from '../components/PortalDesignSystem';
 import api from '../services/api';
 import { getReadyRouteStaffTokenPayload } from '../services/auth';
+import { parseOperatingCostCsv } from '../services/operatingCostCsv';
 
 const COST_CATEGORIES = [
   { value: 'ai_tools', label: 'AI / Codex' },
@@ -132,6 +133,13 @@ export default function StaffOperatingCostsPage() {
   const [selectedCostId, setSelectedCostId] = useState('');
   const [draft, setDraft] = useState(() => createDraft(periodMonth));
   const [saveMessage, setSaveMessage] = useState('');
+  const [templateDraft, setTemplateDraft] = useState({
+    category: 'ai_tools',
+    vendor: '',
+    amount: '',
+    billing_day: '1',
+    notes: ''
+  });
 
   const costsQuery = useQuery({
     queryKey: ['staff-operating-costs', periodMonth],
@@ -140,6 +148,13 @@ export default function StaffOperatingCostsPage() {
         params: { period_month: periodMonth }
       });
       return response.data || {};
+    }
+  });
+  const templatesQuery = useQuery({
+    queryKey: ['staff-operating-cost-templates'],
+    queryFn: async () => {
+      const response = await api.get('/staff/operating-cost-templates');
+      return response.data?.templates || [];
     }
   });
 
@@ -182,6 +197,46 @@ export default function StaffOperatingCostsPage() {
       setSelectedCostId('');
       setDraft(createDraft(nextPeriodMonth));
       setSaveMessage(selectedCostId ? 'Operating cost updated.' : 'Operating cost added.');
+      queryClient.invalidateQueries({ queryKey: ['staff-operating-costs'] });
+    }
+  });
+  const createTemplateMutation = useMutation({
+    mutationFn: async () => {
+      const response = await api.post('/staff/operating-cost-templates', {
+        category: templateDraft.category,
+        vendor: templateDraft.vendor,
+        default_amount_cents: inputToCents(templateDraft.amount),
+        billing_day: Number(templateDraft.billing_day),
+        notes: templateDraft.notes,
+        is_active: true
+      });
+      return response.data?.template;
+    },
+    onSuccess: () => {
+      setTemplateDraft({ category: 'ai_tools', vendor: '', amount: '', billing_day: '1', notes: '' });
+      setSaveMessage('Recurring cost template added.');
+      queryClient.invalidateQueries({ queryKey: ['staff-operating-cost-templates'] });
+    }
+  });
+
+  const applyTemplatesMutation = useMutation({
+    mutationFn: async () => {
+      const response = await api.post('/staff/operating-cost-templates/apply', { period_month: periodMonth });
+      return response.data || {};
+    },
+    onSuccess: (payload) => {
+      setSaveMessage(`${payload.inserted_count || 0} recurring costs added; ${payload.skipped_count || 0} already existed.`);
+      queryClient.invalidateQueries({ queryKey: ['staff-operating-costs', periodMonth] });
+    }
+  });
+
+  const importCostsMutation = useMutation({
+    mutationFn: async (rows) => {
+      const response = await api.post('/staff/operating-costs/import', { rows });
+      return response.data || {};
+    },
+    onSuccess: (payload) => {
+      setSaveMessage(`${payload.imported_count || 0} costs imported from CSV.`);
       queryClient.invalidateQueries({ queryKey: ['staff-operating-costs'] });
     }
   });
@@ -240,6 +295,26 @@ export default function StaffOperatingCostsPage() {
             <button className="secondary-inline-button" onClick={() => costsQuery.refetch()} type="button">
               Refresh
             </button>
+            {canManageCosts ? (
+              <label className="secondary-inline-button staff-csv-import-button">
+                Import CSV
+                <input
+                  accept=".csv,text/csv"
+                  onChange={async (event) => {
+                    const file = event.target.files?.[0];
+                    if (!file) return;
+                    try {
+                      await importCostsMutation.mutateAsync(parseOperatingCostCsv(await file.text()));
+                    } catch (error) {
+                      if (!error?.response) setSaveMessage(error.message || 'CSV could not be read.');
+                    } finally {
+                      event.target.value = '';
+                    }
+                  }}
+                  type="file"
+                />
+              </label>
+            ) : null}
           </div>
         )}
       />
@@ -419,6 +494,46 @@ export default function StaffOperatingCostsPage() {
           ) : (
             <EmptyState title="No category totals yet" description="Category totals appear after costs are added." variant="inline" />
           )}
+        </section>
+
+        <section className="staff-detail-panel staff-detail-panel-wide">
+          <div className="staff-section-heading-row">
+            <div>
+              <h3>Recurring Cost Templates</h3>
+              <p>Save predictable vendors once, then add them to each month without duplicate entries.</p>
+            </div>
+            {canManageCosts ? (
+              <button className="secondary-inline-button" disabled={applyTemplatesMutation.isPending} onClick={() => applyTemplatesMutation.mutate()} type="button">
+                {applyTemplatesMutation.isPending ? 'Applying...' : `Apply to ${periodMonth}`}
+              </button>
+            ) : null}
+          </div>
+          <div className="staff-cost-template-layout">
+            <div className="staff-compact-list">
+              {(templatesQuery.data || []).map((template) => (
+                <article key={template.id}>
+                  <strong>{template.vendor} · {formatCurrencyFromCents(template.default_amount_cents)}</strong>
+                  <span>{getCategoryLabel(template.category)} · bills around day {template.billing_day || 1}</span>
+                </article>
+              ))}
+              {!templatesQuery.isLoading && !(templatesQuery.data || []).length ? (
+                <EmptyState title="No recurring templates" description="Add predictable monthly vendors such as Vercel or Supabase." variant="inline" />
+              ) : null}
+            </div>
+            {canManageCosts ? (
+              <form className="staff-cost-form staff-cost-template-form" onSubmit={async (event) => { event.preventDefault(); await createTemplateMutation.mutateAsync(); }}>
+                <label>Vendor<input required value={templateDraft.vendor} onChange={(event) => setTemplateDraft((current) => ({ ...current, vendor: event.target.value }))} /></label>
+                <label>Category<select value={templateDraft.category} onChange={(event) => setTemplateDraft((current) => ({ ...current, category: event.target.value }))}>{COST_CATEGORIES.map((category) => <option key={category.value} value={category.value}>{category.label}</option>)}</select></label>
+                <label>Default amount<input min="0" required step="0.01" type="number" value={templateDraft.amount} onChange={(event) => setTemplateDraft((current) => ({ ...current, amount: event.target.value }))} /></label>
+                <label>Billing day<input max="31" min="1" required type="number" value={templateDraft.billing_day} onChange={(event) => setTemplateDraft((current) => ({ ...current, billing_day: event.target.value }))} /></label>
+                <label className="staff-cost-form-notes">Notes<input value={templateDraft.notes} onChange={(event) => setTemplateDraft((current) => ({ ...current, notes: event.target.value }))} /></label>
+                <button className="primary-cta" disabled={createTemplateMutation.isPending} type="submit">{createTemplateMutation.isPending ? 'Saving...' : 'Add Template'}</button>
+              </form>
+            ) : null}
+          </div>
+          {importCostsMutation.isError || createTemplateMutation.isError || applyTemplatesMutation.isError ? (
+            <div className="error-banner">{importCostsMutation.error?.response?.data?.error || createTemplateMutation.error?.response?.data?.error || applyTemplatesMutation.error?.response?.data?.error || 'Operating cost action failed.'}</div>
+          ) : null}
         </section>
       </div>
     </section>

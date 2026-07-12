@@ -133,6 +133,13 @@ function normalizePeriodMonth(value, fallbackDate = new Date()) {
   return `${year}-${month}-01`;
 }
 
+function billingDateForPeriod(periodMonth, billingDay) {
+  const [year, month] = String(periodMonth || '').slice(0, 7).split('-').map(Number);
+  const lastDay = new Date(Date.UTC(year, month, 0)).getUTCDate();
+  const day = Math.min(Math.max(Number(billingDay) || 1, 1), lastDay);
+  return `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+}
+
 function normalizeOperatingCostCategory(value) {
   const category = String(value || '').trim().toLowerCase();
   return OPERATING_COST_CATEGORIES.has(category) ? category : 'other';
@@ -298,6 +305,23 @@ function presentOperatingCost(row = {}) {
     is_recurring: row.is_recurring !== false,
     notes: row.notes || null,
     receipt_url: row.receipt_url || null,
+    template_id: row.template_id || null,
+    import_batch_id: row.import_batch_id || null,
+    created_by_staff_user_id: row.created_by_staff_user_id || null,
+    created_at: row.created_at || null,
+    updated_at: row.updated_at || null
+  };
+}
+
+function presentOperatingCostTemplate(row = {}) {
+  return {
+    id: row.id,
+    category: normalizeOperatingCostCategory(row.category),
+    vendor: row.vendor || '',
+    default_amount_cents: Number(row.default_amount_cents || 0),
+    billing_day: row.billing_day || null,
+    notes: row.notes || null,
+    is_active: row.is_active !== false,
     created_by_staff_user_id: row.created_by_staff_user_id || null,
     created_at: row.created_at || null,
     updated_at: row.updated_at || null
@@ -509,6 +533,34 @@ function createReadyRouteStaffRouter(options = {}) {
     }
 
     return data || null;
+  }
+
+  async function loadActiveCompanyAccessSession({ sessionId, accountId, staff }) {
+    const { data, error } = await supabase
+      .from('readyroute_staff_company_access_sessions')
+      .select('*')
+      .eq('id', sessionId)
+      .eq('account_id', accountId)
+      .eq('staff_user_id', staff.staff_user_id)
+      .maybeSingle();
+
+    if (error) {
+      throw error;
+    }
+
+    if (!data || data.status !== 'active') {
+      return null;
+    }
+
+    if (new Date(data.expires_at).getTime() <= now().getTime()) {
+      await supabase
+        .from('readyroute_staff_company_access_sessions')
+        .update({ status: 'expired', ended_at: now().toISOString() })
+        .eq('id', data.id);
+      return null;
+    }
+
+    return data;
   }
 
   router.post('/login', async (req, res) => {
@@ -1319,7 +1371,7 @@ function createReadyRouteStaffRouter(options = {}) {
 
       const { data, error } = await supabase
         .from('readyroute_operating_costs')
-        .select('id, period_month, category, vendor, amount_cents, billing_date, is_recurring, notes, receipt_url, created_by_staff_user_id, created_at, updated_at')
+        .select('id, period_month, category, vendor, amount_cents, billing_date, is_recurring, notes, receipt_url, template_id, import_batch_id, created_by_staff_user_id, created_at, updated_at')
         .eq('period_month', periodMonth)
         .order('billing_date', { ascending: false })
         .order('created_at', { ascending: false });
@@ -1388,7 +1440,7 @@ function createReadyRouteStaffRouter(options = {}) {
       const { data, error } = await supabase
         .from('readyroute_operating_costs')
         .insert(payload)
-        .select('id, period_month, category, vendor, amount_cents, billing_date, is_recurring, notes, receipt_url, created_by_staff_user_id, created_at, updated_at')
+        .select('id, period_month, category, vendor, amount_cents, billing_date, is_recurring, notes, receipt_url, template_id, import_batch_id, created_by_staff_user_id, created_at, updated_at')
         .single();
 
       if (error) {
@@ -1482,7 +1534,7 @@ function createReadyRouteStaffRouter(options = {}) {
         .from('readyroute_operating_costs')
         .update(updates)
         .eq('id', costId)
-        .select('id, period_month, category, vendor, amount_cents, billing_date, is_recurring, notes, receipt_url, created_by_staff_user_id, created_at, updated_at')
+        .select('id, period_month, category, vendor, amount_cents, billing_date, is_recurring, notes, receipt_url, template_id, import_batch_id, created_by_staff_user_id, created_at, updated_at')
         .maybeSingle();
 
       if (error) {
@@ -1521,6 +1573,178 @@ function createReadyRouteStaffRouter(options = {}) {
 
       console.error('ReadyRoute operating cost update failed:', error);
       return res.status(500).json({ error: 'Unable to update ReadyRoute operating cost.' });
+    }
+  });
+
+  router.get('/operating-cost-templates', async (req, res) => {
+    try {
+      await getRequestStaff(req, jwtSecret, READYROUTE_STAFF_ROLES, supabase);
+      const { data, error } = await supabase
+        .from('readyroute_operating_cost_templates')
+        .select('*')
+        .order('is_active', { ascending: false })
+        .order('vendor', { ascending: true });
+      if (error) throw error;
+      return res.status(200).json({ templates: (data || []).map(presentOperatingCostTemplate) });
+    } catch (error) {
+      const authResponse = sendAuthError(res, error);
+      if (authResponse) return authResponse;
+      console.error('ReadyRoute operating cost templates list failed:', error);
+      return res.status(500).json({ error: 'Unable to load operating cost templates.' });
+    }
+  });
+
+  router.post('/operating-cost-templates', async (req, res) => {
+    try {
+      const staff = await getRequestStaff(req, jwtSecret, READYROUTE_STAFF_ADMIN_ROLES, supabase);
+      const vendor = normalizeText(req.body?.vendor, 180);
+      const amountCents = normalizeCents(req.body?.default_amount_cents, -1);
+      const billingDay = Math.trunc(Number(req.body?.billing_day || 1));
+      if (!vendor) return res.status(400).json({ error: 'Vendor or tool name is required.' });
+      if (amountCents < 0) return res.status(400).json({ error: 'Default amount must be zero or greater.' });
+      if (billingDay < 1 || billingDay > 31) return res.status(400).json({ error: 'Billing day must be between 1 and 31.' });
+
+      const timestamp = now().toISOString();
+      const { data, error } = await supabase
+        .from('readyroute_operating_cost_templates')
+        .insert({
+          category: normalizeOperatingCostCategory(req.body?.category),
+          vendor,
+          default_amount_cents: amountCents,
+          billing_day: billingDay,
+          notes: normalizeText(req.body?.notes, 2000),
+          is_active: normalizeBoolean(req.body?.is_active, true),
+          created_by_staff_user_id: staff.staff_user_id,
+          created_at: timestamp,
+          updated_at: timestamp
+        })
+        .select('*')
+        .single();
+      if (error) throw error;
+      await writeAuditLog({
+        staff,
+        action: 'operating_cost_template.created',
+        targetType: 'readyroute_operating_cost_template',
+        targetId: data.id,
+        metadata: { vendor, amount_cents: amountCents }
+      });
+      return res.status(201).json({ template: presentOperatingCostTemplate(data) });
+    } catch (error) {
+      const authResponse = sendAuthError(res, error);
+      if (authResponse) return authResponse;
+      console.error('ReadyRoute operating cost template create failed:', error);
+      return res.status(500).json({ error: 'Unable to save the operating cost template.' });
+    }
+  });
+
+  router.post('/operating-cost-templates/apply', async (req, res) => {
+    try {
+      const staff = await getRequestStaff(req, jwtSecret, READYROUTE_STAFF_ADMIN_ROLES, supabase);
+      const periodMonth = normalizePeriodMonth(req.body?.period_month, now());
+      const [templatesResult, existingResult] = await Promise.all([
+        supabase.from('readyroute_operating_cost_templates').select('*').eq('is_active', true),
+        supabase.from('readyroute_operating_costs').select('template_id').eq('period_month', periodMonth).not('template_id', 'is', null)
+      ]);
+      const firstError = templatesResult.error || existingResult.error;
+      if (firstError) throw firstError;
+      const existingTemplateIds = new Set((existingResult.data || []).map((row) => row.template_id));
+      const rows = (templatesResult.data || [])
+        .filter((template) => !existingTemplateIds.has(template.id))
+        .map((template) => ({
+          period_month: periodMonth,
+          category: template.category,
+          vendor: template.vendor,
+          amount_cents: template.default_amount_cents,
+          billing_date: billingDateForPeriod(periodMonth, template.billing_day),
+          is_recurring: true,
+          notes: template.notes,
+          template_id: template.id,
+          created_by_staff_user_id: staff.staff_user_id,
+          updated_at: now().toISOString()
+        }));
+      let inserted = [];
+      if (rows.length) {
+        const { data, error } = await supabase
+          .from('readyroute_operating_costs')
+          .insert(rows)
+          .select('*');
+        if (error) throw error;
+        inserted = data || [];
+      }
+      await writeAuditLog({
+        staff,
+        action: 'operating_cost_templates.applied',
+        targetType: 'readyroute_operating_cost',
+        metadata: { period_month: periodMonth, inserted_count: inserted.length }
+      });
+      return res.status(200).json({
+        period_month: periodMonth,
+        inserted_count: inserted.length,
+        skipped_count: (templatesResult.data || []).length - inserted.length,
+        operating_costs: inserted.map(presentOperatingCost)
+      });
+    } catch (error) {
+      const authResponse = sendAuthError(res, error);
+      if (authResponse) return authResponse;
+      console.error('ReadyRoute operating cost template apply failed:', error);
+      return res.status(500).json({ error: 'Unable to apply recurring cost templates.' });
+    }
+  });
+
+  router.post('/operating-costs/import', async (req, res) => {
+    try {
+      const staff = await getRequestStaff(req, jwtSecret, READYROUTE_STAFF_ADMIN_ROLES, supabase);
+      const sourceRows = Array.isArray(req.body?.rows) ? req.body.rows.slice(0, 500) : [];
+      if (!sourceRows.length) return res.status(400).json({ error: 'At least one CSV row is required.' });
+      const importBatchId = crypto.randomUUID();
+      const rows = sourceRows.map((row, index) => {
+        const vendor = normalizeText(row.vendor || row.tool || row.description, 180);
+        const amountCents = row.amount_cents !== undefined
+          ? normalizeCents(row.amount_cents, -1)
+          : Math.round(Number(row.amount || row.cost || -1) * 100);
+        if (!vendor || !Number.isFinite(amountCents) || amountCents < 0) {
+          const error = new Error(`CSV row ${index + 2} needs a vendor and nonnegative amount.`);
+          error.status = 400;
+          throw error;
+        }
+        const periodMonth = normalizePeriodMonth(row.period_month || row.month, now());
+        return {
+          period_month: periodMonth,
+          category: normalizeOperatingCostCategory(row.category),
+          vendor,
+          amount_cents: amountCents,
+          billing_date: normalizeDateOnly(row.billing_date || row.date, periodMonth),
+          is_recurring: normalizeBoolean(row.is_recurring ?? row.recurring, false),
+          notes: normalizeText(row.notes, 2000),
+          receipt_url: normalizeText(row.receipt_url, 1000),
+          import_batch_id: importBatchId,
+          created_by_staff_user_id: staff.staff_user_id,
+          updated_at: now().toISOString()
+        };
+      });
+      const { data, error } = await supabase
+        .from('readyroute_operating_costs')
+        .insert(rows)
+        .select('*');
+      if (error) throw error;
+      await writeAuditLog({
+        staff,
+        action: 'operating_costs.imported',
+        targetType: 'readyroute_operating_cost',
+        targetId: importBatchId,
+        metadata: { import_batch_id: importBatchId, row_count: rows.length }
+      });
+      return res.status(201).json({
+        import_batch_id: importBatchId,
+        imported_count: rows.length,
+        operating_costs: (data || []).map(presentOperatingCost)
+      });
+    } catch (error) {
+      const authResponse = sendAuthError(res, error);
+      if (authResponse) return authResponse;
+      if (error.status === 400) return res.status(400).json({ error: error.message });
+      console.error('ReadyRoute operating costs CSV import failed:', error);
+      return res.status(500).json({ error: 'Unable to import operating costs.' });
     }
   });
 
@@ -1584,6 +1808,225 @@ function createReadyRouteStaffRouter(options = {}) {
 
       console.error('ReadyRoute staff accounts list failed:', error);
       return res.status(500).json({ error: 'Unable to load ReadyRoute accounts.' });
+    }
+  });
+
+  router.post('/accounts/:accountId/access-sessions', async (req, res) => {
+    try {
+      const staff = await getRequestStaff(req, jwtSecret, READYROUTE_STAFF_WRITE_ROLES, supabase);
+      const accountId = normalizeText(req.params.accountId, 120);
+      const reason = normalizeText(req.body?.reason, 1000);
+      const supportTicketId = normalizeText(req.body?.support_ticket_id, 120);
+
+      if (!reason || reason.length < 10) {
+        return res.status(400).json({ error: 'Explain why company access is needed in at least 10 characters.' });
+      }
+
+      const { data: account, error: accountError } = await supabase
+        .from('accounts')
+        .select('id, company_name')
+        .eq('id', accountId)
+        .maybeSingle();
+      if (accountError) {
+        throw accountError;
+      }
+      if (!account) {
+        return res.status(404).json({ error: 'Account not found.' });
+      }
+
+      if (supportTicketId) {
+        const { data: supportTicket, error: supportTicketError } = await supabase
+          .from('support_tickets')
+          .select('id')
+          .eq('id', supportTicketId)
+          .eq('account_id', accountId)
+          .maybeSingle();
+        if (supportTicketError) {
+          throw supportTicketError;
+        }
+        if (!supportTicket) {
+          return res.status(400).json({ error: 'The selected support ticket does not belong to this company.' });
+        }
+      }
+
+      const timestamp = now();
+      const expiresAt = new Date(timestamp.getTime() + 30 * 60 * 1000).toISOString();
+      const forwardedFor = String(req.headers['x-forwarded-for'] || '').split(',')[0].trim();
+      const { data, error } = await supabase
+        .from('readyroute_staff_company_access_sessions')
+        .insert({
+          staff_user_id: staff.staff_user_id,
+          account_id: accountId,
+          support_ticket_id: supportTicketId,
+          reason,
+          status: 'active',
+          expires_at: expiresAt,
+          request_ip: normalizeText(forwardedFor || req.ip, 120),
+          user_agent: normalizeText(req.get('user-agent'), 500),
+          created_at: timestamp.toISOString()
+        })
+        .select('*')
+        .single();
+      if (error) {
+        throw error;
+      }
+
+      await writeAuditLog({
+        staff,
+        action: 'company_support_view.started',
+        targetType: 'account',
+        targetId: accountId,
+        accountId,
+        metadata: {
+          access_session_id: data.id,
+          reason,
+          support_ticket_id: supportTicketId,
+          expires_at: expiresAt
+        }
+      });
+
+      return res.status(201).json({
+        access_session: data,
+        account: { id: account.id, company_name: account.company_name }
+      });
+    } catch (error) {
+      const authResponse = sendAuthError(res, error);
+      if (authResponse) {
+        return authResponse;
+      }
+      console.error('ReadyRoute company support view start failed:', error);
+      return res.status(500).json({ error: 'Unable to start the company support view.' });
+    }
+  });
+
+  router.get('/accounts/:accountId/support-view', async (req, res) => {
+    try {
+      const staff = await getRequestStaff(req, jwtSecret, READYROUTE_STAFF_WRITE_ROLES, supabase);
+      const accountId = normalizeText(req.params.accountId, 120);
+      const sessionId = normalizeText(req.query?.session_id, 120);
+      const accessSession = await loadActiveCompanyAccessSession({ sessionId, accountId, staff });
+
+      if (!accessSession) {
+        return res.status(403).json({ error: 'This Support View session has ended or expired.' });
+      }
+
+      const [accountResult, managersResult, driversResult, vehiclesResult, routesResult, inspectionsResult, ticketsResult] = await Promise.all([
+        supabase
+          .from('accounts')
+          .select('id, company_name, manager_email, subscription_status, plan, account_status, created_at')
+          .eq('id', accountId)
+          .maybeSingle(),
+        supabase
+          .from('manager_users')
+          .select('id, full_name, email, is_active, accepted_at, created_at')
+          .eq('account_id', accountId)
+          .order('created_at', { ascending: false }),
+        supabase
+          .from('drivers')
+          .select('id, name, email, is_active, created_at')
+          .eq('account_id', accountId)
+          .order('created_at', { ascending: false }),
+        supabase
+          .from('vehicles')
+          .select('id, name, make, model, year, plate, truck_type, is_active, current_mileage')
+          .eq('account_id', accountId)
+          .order('name', { ascending: true })
+          .limit(250),
+        supabase
+          .from('routes')
+          .select('id, work_area_name, date, status, dispatch_state, total_stops, completed_stops, created_at')
+          .eq('account_id', accountId)
+          .order('date', { ascending: false })
+          .limit(50),
+        supabase
+          .from('vehicle_inspections')
+          .select('id, vehicle_id, inspection_date, status, issue_reported, submitted_by_type, submitted_by_name, submitted_at, created_at')
+          .eq('account_id', accountId)
+          .order('created_at', { ascending: false })
+          .limit(50),
+        supabase
+          .from('support_tickets')
+          .select('id, ticket_reference, subject, category, priority, status, created_at')
+          .eq('account_id', accountId)
+          .order('created_at', { ascending: false })
+          .limit(50)
+      ]);
+      const firstError = [accountResult, managersResult, driversResult, vehiclesResult, routesResult, inspectionsResult, ticketsResult]
+        .find((result) => result.error)?.error;
+      if (firstError) {
+        throw firstError;
+      }
+      if (!accountResult.data) {
+        return res.status(404).json({ error: 'Account not found.' });
+      }
+
+      await writeAuditLog({
+        staff,
+        action: 'company_support_view.viewed',
+        targetType: 'account',
+        targetId: accountId,
+        accountId,
+        metadata: { access_session_id: accessSession.id, surface: 'company_overview' }
+      });
+
+      return res.status(200).json({
+        access_session: accessSession,
+        read_only: true,
+        account: accountResult.data,
+        managers: managersResult.data || [],
+        drivers: driversResult.data || [],
+        vehicles: vehiclesResult.data || [],
+        routes: routesResult.data || [],
+        inspections: inspectionsResult.data || [],
+        support_tickets: ticketsResult.data || []
+      });
+    } catch (error) {
+      const authResponse = sendAuthError(res, error);
+      if (authResponse) {
+        return authResponse;
+      }
+      console.error('ReadyRoute company support view failed:', error);
+      return res.status(500).json({ error: 'Unable to load the company support view.' });
+    }
+  });
+
+  router.delete('/accounts/:accountId/access-sessions/:sessionId', async (req, res) => {
+    try {
+      const staff = await getRequestStaff(req, jwtSecret, READYROUTE_STAFF_WRITE_ROLES, supabase);
+      const accountId = normalizeText(req.params.accountId, 120);
+      const sessionId = normalizeText(req.params.sessionId, 120);
+      const { data, error } = await supabase
+        .from('readyroute_staff_company_access_sessions')
+        .update({ status: 'ended', ended_at: now().toISOString() })
+        .eq('id', sessionId)
+        .eq('account_id', accountId)
+        .eq('staff_user_id', staff.staff_user_id)
+        .eq('status', 'active')
+        .select('id')
+        .maybeSingle();
+      if (error) {
+        throw error;
+      }
+      if (!data) {
+        return res.status(404).json({ error: 'Active Support View session not found.' });
+      }
+
+      await writeAuditLog({
+        staff,
+        action: 'company_support_view.ended',
+        targetType: 'account',
+        targetId: accountId,
+        accountId,
+        metadata: { access_session_id: sessionId }
+      });
+      return res.status(200).json({ message: 'Support View ended.' });
+    } catch (error) {
+      const authResponse = sendAuthError(res, error);
+      if (authResponse) {
+        return authResponse;
+      }
+      console.error('ReadyRoute company support view end failed:', error);
+      return res.status(500).json({ error: 'Unable to end the company support view.' });
     }
   });
 

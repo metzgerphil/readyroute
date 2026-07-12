@@ -7,7 +7,18 @@ const {
   READYROUTE_STAFF_WRITE_ROLES,
   readRequiredStaffContext
 } = require('../services/readyRouteStaffAuth');
-const { sendSupportTicketNotification: defaultSendSupportTicketNotification } = require('../services/supportEmail');
+const {
+  sendSupportAssignmentNotification: defaultSendSupportAssignmentNotification,
+  sendSupportReplyNotification: defaultSendSupportReplyNotification,
+  sendSupportTicketNotification: defaultSendSupportTicketNotification
+} = require('../services/supportEmail');
+const { createSignedStorageUrl } = require('../services/privateStorage');
+const {
+  SUPPORT_ATTACHMENT_BUCKET,
+  buildSupportAttachmentUpload,
+  buildTicketEvent,
+  buildTicketMessage
+} = require('../services/supportTicketWorkflow');
 
 const SUPPORT_CATEGORIES = new Set([
   'login',
@@ -323,6 +334,101 @@ function createSupportRouter(options = {}) {
   const jwtSecret = options.jwtSecret || process.env.JWT_SECRET;
   const now = options.now || (() => new Date());
   const sendSupportTicketNotification = options.sendSupportTicketNotification || defaultSendSupportTicketNotification;
+  const sendSupportReplyNotification = options.sendSupportReplyNotification || defaultSendSupportReplyNotification;
+  const sendSupportAssignmentNotification = options.sendSupportAssignmentNotification || defaultSendSupportAssignmentNotification;
+
+  async function loadTicketWorkflow(ticketId) {
+    const [messagesResult, attachmentsResult, eventsResult] = await Promise.all([
+      supabase
+        .from('support_ticket_messages')
+        .select('*')
+        .eq('ticket_id', ticketId)
+        .order('created_at', { ascending: true }),
+      supabase
+        .from('support_ticket_attachments')
+        .select('*')
+        .eq('ticket_id', ticketId)
+        .order('created_at', { ascending: true }),
+      supabase
+        .from('support_ticket_events')
+        .select('*')
+        .eq('ticket_id', ticketId)
+        .order('created_at', { ascending: true })
+    ]);
+    const firstError = [messagesResult, attachmentsResult, eventsResult].find((result) => result.error)?.error;
+    if (firstError) {
+      throw firstError;
+    }
+
+    const attachments = await Promise.all((attachmentsResult.data || []).map(async (attachment) => ({
+      ...attachment,
+      access_url: await createSignedStorageUrl(supabase, {
+        bucket: attachment.storage_bucket,
+        path: attachment.storage_path
+      }, {
+        download: attachment.file_name || true
+      })
+    })));
+
+    return {
+      messages: messagesResult.data || [],
+      attachments,
+      events: eventsResult.data || []
+    };
+  }
+
+  async function uploadTicketAttachment({ ticket, body, uploaderType, staffUserId = null, messageId = null }) {
+    if (!body?.file_base64 && !body?.fileBase64) {
+      return null;
+    }
+
+    const upload = buildSupportAttachmentUpload(body, {
+      accountId: ticket.account_id,
+      ticketId: ticket.id,
+      now: now()
+    });
+
+    if (upload.error) {
+      const error = new Error(upload.error);
+      error.status = 400;
+      throw error;
+    }
+
+    const { error: storageError } = await supabase.storage
+      .from(SUPPORT_ATTACHMENT_BUCKET)
+      .upload(upload.storagePath, upload.buffer, {
+        contentType: upload.mimeType,
+        upsert: false
+      });
+
+    if (storageError) {
+      throw storageError;
+    }
+
+    const { data, error } = await supabase
+      .from('support_ticket_attachments')
+      .insert({
+        ticket_id: ticket.id,
+        message_id: messageId,
+        uploader_type: uploaderType,
+        staff_user_id: staffUserId,
+        file_name: upload.fileName,
+        mime_type: upload.mimeType,
+        size_bytes: upload.buffer.length,
+        storage_bucket: SUPPORT_ATTACHMENT_BUCKET,
+        storage_path: upload.storagePath,
+        created_at: now().toISOString()
+      })
+      .select('*')
+      .single();
+
+    if (error) {
+      await supabase.storage.from(SUPPORT_ATTACHMENT_BUCKET).remove([upload.storagePath]).catch(() => null);
+      throw error;
+    }
+
+    return data;
+  }
 
   router.get('/tickets', async (req, res) => {
     try {
@@ -406,7 +512,8 @@ function createSupportRouter(options = {}) {
         return res.status(404).json({ error: 'Support ticket not found.' });
       }
 
-      return res.status(200).json({ ticket: data });
+      const workflow = await loadTicketWorkflow(ticketId);
+      return res.status(200).json({ ticket: data, ...workflow });
     } catch (error) {
       if (error.status === 401) {
         return res.status(401).json({ error: error.message || 'Invalid or expired token' });
@@ -423,7 +530,7 @@ function createSupportRouter(options = {}) {
 
   router.patch('/tickets/:ticketId', async (req, res) => {
     try {
-      await readRequiredStaffContext(req, jwtSecret, READYROUTE_STAFF_WRITE_ROLES, { supabase });
+      const staff = await readRequiredStaffContext(req, jwtSecret, READYROUTE_STAFF_WRITE_ROLES, { supabase });
 
       const ticketId = normalizeText(req.params.ticketId, 120);
       const { updates, error: updateError } = buildSupportTicketUpdate(req.body, now());
@@ -452,6 +559,27 @@ function createSupportRouter(options = {}) {
         return res.status(404).json({ error: 'Support ticket not found.' });
       }
 
+      await supabase.from('support_ticket_events').insert(buildTicketEvent({
+        ticketId,
+        staffUserId: staff.staff_user_id,
+        eventType: 'ticket.updated',
+        metadata: updates,
+        now: now()
+      }));
+
+      if (updates.assigned_staff_user_id) {
+        const { data: assignedStaff } = await supabase
+          .from('readyroute_staff_users')
+          .select('id, email, full_name')
+          .eq('id', updates.assigned_staff_user_id)
+          .maybeSingle();
+        if (assignedStaff) {
+          sendSupportAssignmentNotification({ ticket: data, staffUser: assignedStaff }).catch((error) => {
+            console.error('Support assignment notification failed:', error);
+          });
+        }
+      }
+
       return res.status(200).json({ ticket: data });
     } catch (error) {
       if (error.status === 401) {
@@ -464,6 +592,96 @@ function createSupportRouter(options = {}) {
 
       console.error('Support ticket update endpoint failed:', error);
       return res.status(500).json({ error: 'Unable to update support ticket.' });
+    }
+  });
+
+  router.post('/tickets/:ticketId/messages', async (req, res) => {
+    try {
+      const staff = await readRequiredStaffContext(req, jwtSecret, READYROUTE_STAFF_WRITE_ROLES, { supabase });
+      const ticketId = normalizeText(req.params.ticketId, 120);
+      const { data: ticket, error: ticketError } = await supabase
+        .from('support_tickets')
+        .select('*')
+        .eq('id', ticketId)
+        .maybeSingle();
+
+      if (ticketError) {
+        throw ticketError;
+      }
+      if (!ticket) {
+        return res.status(404).json({ error: 'Support ticket not found.' });
+      }
+
+      const isInternal = normalizeBoolean(req.body?.is_internal);
+      const { message, error: messageError } = buildTicketMessage({
+        ticketId,
+        authorType: 'staff',
+        staffUserId: staff.staff_user_id,
+        body: req.body?.body,
+        isInternal,
+        now: now()
+      });
+      if (messageError) {
+        return res.status(400).json({ error: messageError });
+      }
+
+      const { data, error } = await supabase
+        .from('support_ticket_messages')
+        .insert(message)
+        .select('*')
+        .single();
+      if (error) {
+        throw error;
+      }
+
+      const attachment = await uploadTicketAttachment({
+        ticket,
+        body: req.body?.attachment || {},
+        uploaderType: 'staff',
+        staffUserId: staff.staff_user_id,
+        messageId: data.id
+      });
+
+      let notification = { delivered: false, skipped: true };
+      if (!isInternal) {
+        try {
+          notification = await sendSupportReplyNotification({
+            ticket,
+            message: data,
+            staffName: staff.staff_name
+          });
+          if (notification.delivered) {
+            await supabase
+              .from('support_ticket_messages')
+              .update({ email_delivered: true, email_provider_id: notification.provider_id })
+              .eq('id', data.id);
+          }
+        } catch (notificationError) {
+          console.error('Support reply notification failed:', notificationError);
+        }
+      }
+
+      await supabase.from('support_ticket_events').insert(buildTicketEvent({
+        ticketId,
+        staffUserId: staff.staff_user_id,
+        eventType: isInternal ? 'internal_note.added' : 'reply.sent',
+        metadata: { message_id: data.id, attachment_id: attachment?.id || null },
+        now: now()
+      }));
+
+      return res.status(201).json({
+        message: { ...data, email_delivered: Boolean(notification.delivered) },
+        attachment
+      });
+    } catch (error) {
+      if (error.status === 400) {
+        return res.status(400).json({ error: error.message });
+      }
+      if (error.status === 401 || error.status === 403) {
+        return res.status(error.status).json({ error: error.message });
+      }
+      console.error('Support ticket reply failed:', error);
+      return res.status(500).json({ error: 'Unable to add the support reply.' });
     }
   });
 
@@ -487,6 +705,30 @@ function createSupportRouter(options = {}) {
         return res.status(500).json({ error: 'Unable to create support ticket.' });
       }
 
+      const createdTicket = { ...payload, ...(data || {}) };
+      let attachment = null;
+      try {
+        attachment = await uploadTicketAttachment({
+          ticket: createdTicket,
+          body: req.body?.attachment || {},
+          uploaderType: 'requester'
+        });
+        await supabase.from('support_ticket_events').insert(buildTicketEvent({
+          ticketId: data.id,
+          eventType: 'ticket.created',
+          metadata: { source: payload.source, attachment_id: attachment?.id || null },
+          now: now()
+        }));
+      } catch (attachmentError) {
+        console.error('Support ticket attachment failed:', attachmentError);
+        return res.status(attachmentError.status || 500).json({
+          error: attachmentError.status === 400
+            ? attachmentError.message
+            : 'Ticket was created, but the attachment could not be saved.',
+          ticket: data
+        });
+      }
+
       let notification = {
         delivered: false,
         skipped: true,
@@ -496,8 +738,7 @@ function createSupportRouter(options = {}) {
       try {
         notification = await sendSupportTicketNotification({
           ticket: {
-            ...payload,
-            ...(data || {})
+            ...createdTicket
           }
         });
       } catch (notificationError) {
@@ -511,6 +752,7 @@ function createSupportRouter(options = {}) {
 
       return res.status(201).json({
         ticket: data,
+        attachment,
         notification: {
           delivered: Boolean(notification?.delivered),
           skipped: Boolean(notification?.skipped)
