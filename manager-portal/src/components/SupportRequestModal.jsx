@@ -38,6 +38,18 @@ function getInitialForm(managerIdentity = {}) {
   };
 }
 
+function readFileAsBase64(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = () => reject(new Error('Attachment could not be read.'));
+    reader.onload = () => {
+      const result = String(reader.result || '');
+      resolve(result.includes(',') ? result.slice(result.indexOf(',') + 1) : result);
+    };
+    reader.readAsDataURL(file);
+  });
+}
+
 export default function SupportRequestModal({
   context = {},
   isOpen,
@@ -54,6 +66,7 @@ export default function SupportRequestModal({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState('');
   const [submittedTicket, setSubmittedTicket] = useState(null);
+  const [attachment, setAttachment] = useState(null);
 
   useEffect(() => {
     if (isOpen) {
@@ -61,6 +74,7 @@ export default function SupportRequestModal({
       setIsSubmitting(false);
       setSubmitError('');
       setSubmittedTicket(null);
+      setAttachment(null);
     }
   }, [initialForm, isOpen]);
 
@@ -81,6 +95,11 @@ export default function SupportRequestModal({
     setSubmitError('');
 
     try {
+      const attachmentPayload = attachment ? {
+        file_name: attachment.name,
+        mime_type: attachment.type || 'application/octet-stream',
+        file_base64: await readFileAsBase64(attachment)
+      } : null;
       const response = await api.post('/support/tickets', {
         name: form.name,
         email: form.email,
@@ -95,6 +114,7 @@ export default function SupportRequestModal({
         source: 'manager_portal_support_modal',
         app_surface: 'manager_portal',
         page_url: `${context.pathname || '/'}${context.search || ''}${context.hash || ''}`,
+        attachment: attachmentPayload,
         context: {
           surface: 'manager_portal',
           path: context.pathname || '/',
@@ -233,6 +253,26 @@ export default function SupportRequestModal({
                 rows={6}
                 value={form.description}
               />
+            </label>
+
+            <label className="support-attachment-field">
+              Screenshot or file
+              <input
+                accept="image/*,.pdf,.txt"
+                onChange={(event) => {
+                  const file = event.target.files?.[0] || null;
+                  if (file && file.size > 8 * 1024 * 1024) {
+                    setSubmitError('Attachment must be 8 MB or smaller.');
+                    event.target.value = '';
+                    setAttachment(null);
+                    return;
+                  }
+                  setSubmitError('');
+                  setAttachment(file);
+                }}
+                type="file"
+              />
+              <span>{attachment ? attachment.name : 'Optional. Image, PDF, or text file up to 8 MB.'}</span>
             </label>
 
             <label className="support-checkbox-row">

@@ -1,5 +1,8 @@
 import { useEffect, useMemo, useState } from 'react';
 import Constants from 'expo-constants';
+import * as DocumentPicker from 'expo-document-picker';
+import * as FileSystem from 'expo-file-system/legacy';
+import * as ImagePicker from 'expo-image-picker';
 import { ActivityIndicator, Alert, Modal, Pressable, ScrollView, StyleSheet, Switch, Text, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -60,6 +63,7 @@ export default function SupportRequestModal({
   const [phone, setPhone] = useState('');
   const [requestCall, setRequestCall] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [attachment, setAttachment] = useState(null);
 
   useEffect(() => {
     if (visible) {
@@ -70,6 +74,7 @@ export default function SupportRequestModal({
       setPhone('');
       setRequestCall(false);
       setIsSubmitting(false);
+      setAttachment(null);
     }
   }, [initialCategory, visible]);
 
@@ -83,6 +88,13 @@ export default function SupportRequestModal({
     setIsSubmitting(true);
 
     try {
+      const attachmentPayload = attachment ? {
+        file_name: attachment.name,
+        mime_type: attachment.mimeType || 'application/octet-stream',
+        file_base64: await FileSystem.readAsStringAsync(attachment.uri, {
+          encoding: FileSystem.EncodingType.Base64
+        })
+      } : null;
       const response = await api.post('/support/tickets', {
         name: identity?.fullName,
         phone,
@@ -97,6 +109,7 @@ export default function SupportRequestModal({
         app_surface: activeMode === 'manager' ? 'mobile_manager' : 'driver_app',
         app_version: Constants.expoConfig?.version || Constants.manifest?.version || null,
         page_url: currentRouteName,
+        attachment: attachmentPayload,
         context: {
           surface: 'mobile_app',
           mode: activeMode,
@@ -112,6 +125,46 @@ export default function SupportRequestModal({
       Alert.alert('Could not send request', error.response?.data?.error || 'Try again in a moment.');
     } finally {
       setIsSubmitting(false);
+    }
+  }
+
+  async function handleChooseAttachment() {
+    try {
+      const result = await DocumentPicker.getDocumentAsync({
+        copyToCacheDirectory: true,
+        multiple: false,
+        type: ['image/*', 'application/pdf', 'text/plain']
+      });
+      if (result.canceled) {
+        return;
+      }
+      const selected = result.assets?.[0];
+      if (selected?.size && selected.size > 8 * 1024 * 1024) {
+        Alert.alert('File too large', 'Choose a file that is 8 MB or smaller.');
+        return;
+      }
+      setAttachment(selected || null);
+    } catch (_error) {
+      Alert.alert('Could not attach file', 'Choose an image, PDF, or text file and try again.');
+    }
+  }
+
+  async function handleChooseScreenshot() {
+    try {
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ['images'],
+        quality: 0.8
+      });
+      if (!result.canceled) {
+        const selected = result.assets?.[0];
+        setAttachment(selected ? {
+          ...selected,
+          name: selected.fileName || `support-${Date.now()}.jpg`,
+          mimeType: selected.mimeType || 'image/jpeg'
+        } : null);
+      }
+    } catch (_error) {
+      Alert.alert('Could not attach image', 'Choose a screenshot or photo and try again.');
     }
   }
 
@@ -208,6 +261,20 @@ export default function SupportRequestModal({
                 style={styles.input}
                 value={phone}
               />
+            </View>
+
+
+            <View style={styles.fieldGroup}>
+              <Text style={styles.label}>Screenshot or file</Text>
+              <View style={styles.attachmentActions}>
+                <Pressable onPress={handleChooseScreenshot} style={({ pressed }) => [styles.attachmentButton, pressed ? styles.pressed : null]}>
+                  <Text style={styles.attachmentButtonText}>Choose image</Text>
+                </Pressable>
+                <Pressable onPress={handleChooseAttachment} style={({ pressed }) => [styles.attachmentButton, pressed ? styles.pressed : null]}>
+                  <Text style={styles.attachmentButtonText}>Choose file</Text>
+                </Pressable>
+              </View>
+              <Text style={styles.attachmentName}>{attachment?.name || 'Optional. Image, PDF, or text file up to 8 MB.'}</Text>
             </View>
 
             <View style={styles.callRow}>
@@ -359,6 +426,31 @@ const styles = StyleSheet.create({
   },
   textArea: {
     minHeight: 118
+  },
+  attachmentButton: {
+    alignItems: 'center',
+    borderColor: appTheme.colors.orange,
+    borderRadius: 14,
+    borderWidth: 1,
+    justifyContent: 'center',
+    flex: 1,
+    minHeight: 46,
+    paddingHorizontal: 14
+  },
+  attachmentActions: {
+    flexDirection: 'row',
+    gap: 8
+  },
+  attachmentButtonText: {
+    color: appTheme.colors.orangeDeep,
+    fontSize: 14,
+    fontWeight: '900'
+  },
+  attachmentName: {
+    color: appTheme.colors.textSecondary,
+    fontSize: 12,
+    fontWeight: '700',
+    lineHeight: 17
   },
   callRow: {
     alignItems: 'center',

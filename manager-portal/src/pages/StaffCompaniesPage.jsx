@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useNavigate } from 'react-router-dom';
 
 import { EmptyState, ErrorState, LoadingState, PageHeader, StatCard, StatusBadge } from '../components/PortalDesignSystem';
 import api from '../services/api';
@@ -101,6 +102,7 @@ function getAccountSearchText(account) {
 
 export default function StaffCompaniesPage() {
   const queryClient = useQueryClient();
+  const navigate = useNavigate();
   const [selectedAccountId, setSelectedAccountId] = useState('');
   const [companySearch, setCompanySearch] = useState('');
   const [lifecycleFilter, setLifecycleFilter] = useState('');
@@ -108,6 +110,9 @@ export default function StaffCompaniesPage() {
   const [profileDraft, setProfileDraft] = useState(null);
   const [saveMessage, setSaveMessage] = useState('');
   const [accountActionMessage, setAccountActionMessage] = useState('');
+  const [supportViewReason, setSupportViewReason] = useState('');
+  const [supportViewTicketId, setSupportViewTicketId] = useState('');
+  const [isSupportViewPromptOpen, setIsSupportViewPromptOpen] = useState(false);
 
   const accountsQuery = useQuery({
     queryKey: ['staff-accounts'],
@@ -222,6 +227,21 @@ export default function StaffCompaniesPage() {
         : 'Workspace recovered and cancellation removed.');
       queryClient.invalidateQueries({ queryKey: ['staff-accounts'] });
       queryClient.invalidateQueries({ queryKey: ['staff-account-detail', detailedAccount.id] });
+    }
+  });
+
+  const startSupportViewMutation = useMutation({
+    mutationFn: async () => {
+      const response = await api.post(`/staff/accounts/${detailedAccount.id}/access-sessions`, {
+        reason: supportViewReason,
+        support_ticket_id: supportViewTicketId || null
+      });
+      return response.data?.access_session || null;
+    },
+    onSuccess: (accessSession) => {
+      if (accessSession?.id) {
+        navigate(`/readyroute/companies/${detailedAccount.id}/view?session=${encodeURIComponent(accessSession.id)}`);
+      }
     }
   });
 
@@ -399,6 +419,9 @@ export default function StaffCompaniesPage() {
                 </StatusBadge>
                 <h2>{detailedAccount.company_name}</h2>
                 <p>{detailedAccount.manager_email || 'No manager email'} · Created {formatDateTime(detailedAccount.created_at)}</p>
+                <button className="secondary-inline-button" onClick={() => setIsSupportViewPromptOpen(true)} type="button">
+                  Open Support View
+                </button>
               </header>
 
               {accountDetailQuery.isLoading ? (
@@ -600,6 +623,57 @@ export default function StaffCompaniesPage() {
           description="Customer accounts will appear here after signup or account creation."
         />
       )}
+
+      {isSupportViewPromptOpen && detailedAccount ? (
+        <div className="support-modal-backdrop" role="presentation">
+          <form
+            aria-labelledby="support-view-prompt-title"
+            aria-modal="true"
+            className="support-modal staff-support-view-prompt"
+            onSubmit={async (event) => {
+              event.preventDefault();
+              await startSupportViewMutation.mutateAsync();
+            }}
+            role="dialog"
+          >
+            <div className="support-modal-header">
+              <div>
+                <p className="rr-eyebrow">Audited Access</p>
+                <h2 id="support-view-prompt-title">View {detailedAccount.company_name}</h2>
+                <p>This opens a read-only company snapshot for 30 minutes. The reason and activity are recorded.</p>
+              </div>
+            </div>
+            <label>
+              Reason for access
+              <textarea
+                minLength={10}
+                onChange={(event) => setSupportViewReason(event.target.value)}
+                placeholder="Example: Investigating ticket RR-123 about missing vehicle inspections."
+                required
+                value={supportViewReason}
+              />
+            </label>
+            <label>
+              Related support ticket
+              <select onChange={(event) => setSupportViewTicketId(event.target.value)} value={supportViewTicketId}>
+                <option value="">No related ticket</option>
+                {(detail.support_tickets || []).map((ticket) => (
+                  <option key={ticket.id} value={ticket.id}>{ticket.ticket_reference || ticket.subject || 'Support ticket'}</option>
+                ))}
+              </select>
+            </label>
+            {startSupportViewMutation.isError ? (
+              <div className="support-ticket-save-error">{startSupportViewMutation.error?.response?.data?.error || 'Support View could not start.'}</div>
+            ) : null}
+            <div className="support-modal-actions">
+              <button className="secondary-button" onClick={() => setIsSupportViewPromptOpen(false)} type="button">Cancel</button>
+              <button className="primary-button" disabled={startSupportViewMutation.isPending} type="submit">
+                {startSupportViewMutation.isPending ? 'Opening...' : 'Open Read-Only View'}
+              </button>
+            </div>
+          </form>
+        </div>
+      ) : null}
     </section>
   );
 }

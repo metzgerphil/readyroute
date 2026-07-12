@@ -97,12 +97,27 @@ function formatContext(context) {
   }
 }
 
+function readFileAsBase64(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = () => reject(new Error('Attachment could not be read.'));
+    reader.onload = () => {
+      const result = String(reader.result || '');
+      resolve(result.includes(',') ? result.slice(result.indexOf(',') + 1) : result);
+    };
+    reader.readAsDataURL(file);
+  });
+}
+
 export default function AdminSupportPage() {
   const queryClient = useQueryClient();
   const [statusFilter, setStatusFilter] = useState('');
   const [selectedTicketId, setSelectedTicketId] = useState('');
   const [editorDraft, setEditorDraft] = useState(null);
   const [saveMessage, setSaveMessage] = useState('');
+  const [replyBody, setReplyBody] = useState('');
+  const [replyIsInternal, setReplyIsInternal] = useState(false);
+  const [replyAttachment, setReplyAttachment] = useState(null);
 
   const ticketsQueryKey = ['readyroute-support-tickets', statusFilter];
   const ticketsQuery = useQuery({
@@ -127,11 +142,31 @@ export default function AdminSupportPage() {
     () => tickets.find((ticket) => ticket.id === selectedTicketId) || tickets[0] || null,
     [selectedTicketId, tickets]
   );
+  const ticketDetailQuery = useQuery({
+    enabled: Boolean(selectedTicket?.id),
+    queryKey: ['readyroute-support-ticket-detail', selectedTicket?.id],
+    queryFn: async () => {
+      const response = await api.get(`/support/tickets/${selectedTicket.id}`);
+      return response.data || {};
+    }
+  });
+  const staffUsersQuery = useQuery({
+    queryKey: ['staff-users'],
+    queryFn: async () => {
+      const response = await api.get('/staff/users');
+      return response.data?.staff_users || [];
+    }
+  });
+  const detailedTicket = ticketDetailQuery.data?.ticket || selectedTicket;
+  const ticketMessages = ticketDetailQuery.data?.messages || [];
+  const ticketAttachments = ticketDetailQuery.data?.attachments || [];
+  const ticketEvents = ticketDetailQuery.data?.events || [];
   const selectedEditorDraft = editorDraft?.ticketId === selectedTicket?.id ? editorDraft : null;
   const statusDraft = selectedEditorDraft?.status || selectedTicket?.status || 'new';
   const priorityDraft = selectedEditorDraft?.priority || selectedTicket?.priority || 'normal';
   const notesDraft = selectedEditorDraft?.internal_notes ?? selectedTicket?.internal_notes ?? '';
-  const contextJson = formatContext(selectedTicket?.context);
+  const assigneeDraft = selectedEditorDraft?.assigned_staff_user_id ?? selectedTicket?.assigned_staff_user_id ?? '';
+  const contextJson = formatContext(detailedTicket?.context);
   const openCount = tickets.filter((ticket) => ['new', 'open'].includes(ticket.status)).length;
   const urgentCount = tickets.filter((ticket) => ['urgent', 'high'].includes(ticket.priority)).length;
   const waitingCount = tickets.filter((ticket) => ticket.status === 'waiting_on_customer').length;
@@ -146,7 +181,10 @@ export default function AdminSupportPage() {
       const response = await api.patch(`/support/tickets/${selectedTicket.id}`, {
         status: statusDraft,
         priority: priorityDraft,
-        internal_notes: notesDraft
+        internal_notes: notesDraft,
+        ...(assigneeDraft !== (selectedTicket.assigned_staff_user_id || '')
+          ? { assigned_staff_user_id: assigneeDraft || null }
+          : {})
       });
 
       return response.data?.ticket || null;
@@ -163,6 +201,7 @@ export default function AdminSupportPage() {
       setEditorDraft(null);
       setSaveMessage('Ticket updated.');
       queryClient.invalidateQueries({ queryKey: ['readyroute-support-tickets'] });
+      queryClient.invalidateQueries({ queryKey: ['readyroute-support-ticket-detail', selectedTicket?.id] });
     }
   });
 
@@ -179,11 +218,38 @@ export default function AdminSupportPage() {
         status: currentMatchesTicket ? current.status : selectedTicket.status || 'new',
         priority: currentMatchesTicket ? current.priority : selectedTicket.priority || 'normal',
         internal_notes: currentMatchesTicket ? current.internal_notes : selectedTicket.internal_notes || '',
+        assigned_staff_user_id: currentMatchesTicket ? current.assigned_staff_user_id : selectedTicket.assigned_staff_user_id || '',
         ...patch
       };
     });
     setSaveMessage('');
+    setReplyBody('');
+    setReplyIsInternal(false);
+    setReplyAttachment(null);
   }
+
+  const addMessageMutation = useMutation({
+    mutationFn: async () => {
+      const attachment = replyAttachment ? {
+        file_name: replyAttachment.name,
+        mime_type: replyAttachment.type || 'application/octet-stream',
+        file_base64: await readFileAsBase64(replyAttachment)
+      } : null;
+      const response = await api.post(`/support/tickets/${selectedTicket.id}/messages`, {
+        body: replyBody,
+        is_internal: replyIsInternal,
+        attachment
+      });
+      return response.data || {};
+    },
+    onSuccess: () => {
+      setReplyBody('');
+      setReplyIsInternal(false);
+      setReplyAttachment(null);
+      queryClient.invalidateQueries({ queryKey: ['readyroute-support-ticket-detail', selectedTicket?.id] });
+      queryClient.invalidateQueries({ queryKey: ['readyroute-support-tickets'] });
+    }
+  });
 
   function handleSelectTicket(ticketId) {
     setSelectedTicketId(ticketId);
@@ -290,7 +356,7 @@ export default function AdminSupportPage() {
                     {formatLabel(selectedTicket.priority || 'normal')}
                   </StatusBadge>
                 </div>
-                <h2>{getTicketTitle(selectedTicket)}</h2>
+                <h2>{getTicketTitle(detailedTicket)}</h2>
                 <p>
                   {selectedTicket.ticket_reference || 'No reference'} · Created {formatTicketTime(selectedTicket.created_at)}
                 </p>
@@ -298,7 +364,7 @@ export default function AdminSupportPage() {
 
               <section className="support-ticket-description">
                 <h3>Request</h3>
-                <p>{selectedTicket.description || 'No description provided.'}</p>
+                <p>{detailedTicket.description || 'No description provided.'}</p>
               </section>
 
               <div className="support-ticket-meta-grid">
@@ -357,6 +423,15 @@ export default function AdminSupportPage() {
                       ))}
                     </select>
                   </label>
+                  <label>
+                    Assigned to
+                    <select value={assigneeDraft} onChange={(event) => updateEditorDraft({ assigned_staff_user_id: event.target.value })}>
+                      <option value="">Unassigned</option>
+                      {(staffUsersQuery.data || []).filter((staffUser) => staffUser.is_active !== false).map((staffUser) => (
+                        <option key={staffUser.id} value={staffUser.id}>{staffUser.full_name || staffUser.email}</option>
+                      ))}
+                    </select>
+                  </label>
                 </div>
 
                 <label>
@@ -383,6 +458,76 @@ export default function AdminSupportPage() {
                   </button>
                 </div>
               </form>
+
+              <section className="support-ticket-conversation">
+                <div className="staff-section-heading-row">
+                  <h3>Conversation and History</h3>
+                  <span>{ticketMessages.length} messages · {ticketEvents.length} events</span>
+                </div>
+                {ticketDetailQuery.isLoading ? (
+                  <LoadingState title="Loading ticket history" />
+                ) : (
+                  <div className="support-ticket-timeline">
+                    <article className="support-ticket-message requester">
+                      <strong>{detailedTicket.requester_name || 'Requester'}</strong>
+                      <span>{formatTicketTime(detailedTicket.created_at)}</span>
+                      <p>{detailedTicket.description}</p>
+                    </article>
+                    {ticketMessages.map((message) => (
+                      <article className={`support-ticket-message ${message.is_internal ? 'internal' : message.author_type}`} key={message.id}>
+                        <strong>{message.is_internal ? 'Internal note' : message.author_type === 'staff' ? 'ReadyRoute Support' : 'Requester'}</strong>
+                        <span>{formatTicketTime(message.created_at)}</span>
+                        <p>{message.body}</p>
+                      </article>
+                    ))}
+                    {ticketEvents.map((event) => (
+                      <div className="support-ticket-event" key={event.id}>
+                        <span>{formatLabel(event.event_type)} · {formatTicketTime(event.created_at)}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {ticketAttachments.length ? (
+                  <div className="support-ticket-attachments">
+                    <h4>Attachments</h4>
+                    {ticketAttachments.map((attachment) => (
+                      <a href={attachment.access_url || '#'} key={attachment.id} rel="noreferrer" target="_blank">
+                        {attachment.file_name} · {Math.max(1, Math.round(Number(attachment.size_bytes || 0) / 1024))} KB
+                      </a>
+                    ))}
+                  </div>
+                ) : null}
+
+                <form
+                  className="support-reply-form"
+                  onSubmit={async (event) => {
+                    event.preventDefault();
+                    await addMessageMutation.mutateAsync();
+                  }}
+                >
+                  <label className="support-checkbox-row">
+                    <input checked={replyIsInternal} onChange={(event) => setReplyIsInternal(event.target.checked)} type="checkbox" />
+                    Internal note only
+                  </label>
+                  <label>
+                    {replyIsInternal ? 'Internal note' : 'Reply to customer'}
+                    <textarea onChange={(event) => setReplyBody(event.target.value)} required value={replyBody} />
+                  </label>
+                  <label>
+                    Optional attachment
+                    <input
+                      accept="image/*,.pdf,.txt"
+                      onChange={(event) => setReplyAttachment(event.target.files?.[0] || null)}
+                      type="file"
+                    />
+                  </label>
+                  {addMessageMutation.isError ? <span className="support-ticket-save-error">Reply could not be saved.</span> : null}
+                  <button className="primary-cta" disabled={addMessageMutation.isPending} type="submit">
+                    {addMessageMutation.isPending ? 'Sending...' : replyIsInternal ? 'Add Internal Note' : 'Send Reply'}
+                  </button>
+                </form>
+              </section>
             </article>
           ) : null}
         </div>

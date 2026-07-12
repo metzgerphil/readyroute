@@ -30,7 +30,9 @@ const { createRequestObservability, logUnhandledRequestError } = require('./midd
 const PHOTO_JSON_PATHS = [
   '/routes/inspection-photo',
   '/routes/stops/:stop_id/pod-photo',
-  '/vehicles/:id/inspection-photo'
+  '/vehicles/:id/inspection-photo',
+  '/support/tickets',
+  '/support/tickets/:ticketId/messages'
 ];
 
 function createApp(options = {}) {
@@ -165,6 +167,8 @@ function createApp(options = {}) {
         supabase: options.supabase,
         jwtSecret: options.jwtSecret,
         now: options.now,
+        sendSupportAssignmentNotification: options.sendSupportAssignmentNotification,
+        sendSupportReplyNotification: options.sendSupportReplyNotification,
         sendSupportTicketNotification: options.sendSupportTicketNotification
       })
     : supportRoutes;

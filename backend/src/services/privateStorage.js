@@ -3,6 +3,7 @@ const DEFAULT_SIGNED_URL_TTL_SECONDS = 15 * 60;
 const PRIVATE_STORAGE_BUCKETS = new Set([
   'driver-documents',
   'pod-photos',
+  'support-attachments',
   'vehicle-inspection-photos'
 ]);
 

@@ -858,6 +858,104 @@ button {
   font-weight: 850;
 }
 
+.support-ticket-conversation,
+.support-reply-form,
+.support-ticket-timeline,
+.support-ticket-attachments {
+  display: grid;
+  gap: 12px;
+}
+
+.support-ticket-conversation {
+  padding-top: 16px;
+  border-top: 1px solid var(--rr-color-border);
+}
+
+.support-ticket-conversation h3,
+.support-ticket-conversation h4 {
+  margin: 0;
+  color: var(--rr-color-text-strong);
+}
+
+.support-ticket-conversation .staff-section-heading-row > span {
+  color: var(--rr-color-text-muted);
+  font-size: 0.82rem;
+  font-weight: 760;
+}
+
+.support-ticket-message {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 5px 12px;
+  padding: 13px 14px;
+  border: 1px solid var(--rr-color-border);
+  border-radius: var(--rr-radius-sm);
+  background: #ffffff;
+}
+
+.support-ticket-message.staff {
+  border-color: var(--rr-color-green-border);
+  background: var(--rr-color-green-soft);
+}
+
+.support-ticket-message.internal {
+  border-color: var(--rr-color-orange-border);
+  background: var(--rr-color-orange-soft);
+}
+
+.support-ticket-message > span,
+.support-ticket-event {
+  color: var(--rr-color-text-muted);
+  font-size: 0.78rem;
+  font-weight: 740;
+}
+
+.support-ticket-message p {
+  grid-column: 1 / -1;
+  margin: 4px 0 0;
+  white-space: pre-wrap;
+}
+
+.support-ticket-event {
+  padding-left: 12px;
+  border-left: 2px solid var(--rr-color-border);
+}
+
+.support-ticket-attachments a {
+  width: fit-content;
+  color: var(--rr-color-link);
+  font-weight: 800;
+}
+
+.support-reply-form {
+  padding: 14px;
+  border: 1px solid var(--rr-color-border);
+  border-radius: var(--rr-radius-md);
+  background: var(--rr-color-surface-muted);
+}
+
+.support-reply-form > label,
+.support-attachment-field {
+  display: grid;
+  gap: 7px;
+  color: var(--rr-color-text);
+  font-weight: 850;
+}
+
+.support-reply-form textarea {
+  min-height: 110px;
+  padding: 10px 12px;
+  border: 1px solid var(--rr-color-border);
+  border-radius: 12px;
+  resize: vertical;
+}
+
+.support-attachment-field span {
+  color: var(--rr-color-text-muted);
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+
 .staff-shell {
   --rr-staff-sidebar-width: 260px;
   display: block;
@@ -1559,6 +1657,141 @@ button {
   display: grid;
   gap: 16px;
   grid-template-columns: minmax(0, 1.05fr) minmax(320px, 0.95fr);
+}
+
+.staff-support-view-prompt {
+  display: grid;
+  gap: 16px;
+}
+
+.staff-support-view-prompt > label {
+  display: grid;
+  gap: 7px;
+  color: var(--rr-color-text);
+  font-weight: 850;
+}
+
+.staff-support-view-prompt textarea,
+.staff-support-view-prompt select {
+  width: 100%;
+  padding: 11px 12px;
+  border: 1px solid var(--rr-color-border);
+  border-radius: 12px;
+  background: #ffffff;
+  color: var(--rr-color-text);
+}
+
+.staff-support-view-prompt textarea {
+  min-height: 120px;
+  resize: vertical;
+}
+
+.staff-support-view-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  padding: 14px 16px;
+  border: 1px solid var(--rr-color-orange-border);
+  border-radius: var(--rr-radius-md);
+  background: var(--rr-color-orange-soft);
+}
+
+.staff-support-view-banner > div {
+  display: grid;
+  gap: 3px;
+}
+
+.staff-support-view-banner strong {
+  color: var(--rr-color-orange-deep);
+  font-size: 1rem;
+}
+
+.staff-support-view-banner span {
+  color: var(--rr-color-text-muted);
+  font-size: 0.84rem;
+  font-weight: 740;
+}
+
+.staff-support-view-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.staff-support-view-table-wrap {
+  overflow-x: auto;
+}
+
+.staff-support-view-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.staff-support-view-table th,
+.staff-support-view-table td {
+  padding: 11px 12px;
+  border-bottom: 1px solid var(--rr-color-border);
+  text-align: left;
+  vertical-align: middle;
+}
+
+.staff-support-view-table th {
+  color: var(--rr-color-text-soft);
+  font-size: 0.72rem;
+  font-weight: 900;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.staff-support-view-table td:first-child {
+  display: grid;
+  gap: 2px;
+}
+
+.staff-support-view-table td span {
+  color: var(--rr-color-text-muted);
+  font-size: 0.8rem;
+  font-weight: 700;
+}
+
+.staff-csv-import-button {
+  position: relative;
+  cursor: pointer;
+}
+
+.staff-csv-import-button input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+}
+
+.staff-cost-template-layout {
+  display: grid;
+  grid-template-columns: minmax(260px, 0.85fr) minmax(360px, 1.15fr);
+  gap: 18px;
+  align-items: start;
+}
+
+.staff-cost-template-form {
+  padding: 14px;
+  border: 1px solid var(--rr-color-border);
+  border-radius: var(--rr-radius-md);
+  background: var(--rr-color-surface-muted);
+}
+
+@media (max-width: 900px) {
+  .staff-support-view-grid,
+  .staff-cost-template-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .staff-support-view-banner {
+    align-items: stretch;
+    flex-direction: column;
+  }
 }
 
 .staff-operating-cost-list {
