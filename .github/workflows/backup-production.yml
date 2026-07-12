@@ -65,6 +65,7 @@ jobs:
           supabase db dump --linked --schema public --file backup/database/schema.sql
           supabase db dump --linked --data-only --schema public --use-copy --file backup/database/data.sql
           node scripts/sanitize-supabase-schema-backup.mjs backup/database/schema.sql
+          node scripts/sanitize-supabase-schema-backup.mjs backup/database/data.sql
           if grep --extended-regexp --quiet 'Bearer[[:space:]]+eyJ[A-Za-z0-9._-]+' backup/database/schema.sql; then
             echo "Schema backup still contains a bearer credential" >&2
             exit 1
@@ -84,20 +85,6 @@ jobs:
           tar -czf "readyroute-backup-${backup_stamp}.tar.gz" backup
           sha256sum "readyroute-backup-${backup_stamp}.tar.gz" > "readyroute-backup-${backup_stamp}.tar.gz.sha256"
           echo "BACKUP_STAMP=$backup_stamp" >> "$GITHUB_ENV"
-
-      - name: Authenticate to Google Cloud
-        uses: google-github-actions/auth@v3
-        with:
-          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
-          service_account: ${{ vars.GCP_DEPLOY_SERVICE_ACCOUNT }}
-
-      - name: Upload durable recovery copy to private Cloud Storage
-        shell: bash
-        run: |
-          gcloud storage cp \
-            "readyroute-backup-${BACKUP_STAMP}.tar.gz" \
-            "readyroute-backup-${BACKUP_STAMP}.tar.gz.sha256" \
-            "gs://${GCP_BACKUP_BUCKET}/daily/${BACKUP_STAMP}/"
 
       - name: Restore database into disposable project
         shell: bash
@@ -119,6 +106,20 @@ jobs:
           psql "$database_url" --set ON_ERROR_STOP=1 --file backup/database/data.sql
           psql "$database_url" --set ON_ERROR_STOP=1 --tuples-only --command "select count(*) from information_schema.tables where table_schema = 'public';"
           psql "$database_url" --set ON_ERROR_STOP=1 --command "select to_regclass('public.accounts'), to_regclass('public.routes'), to_regclass('public.vehicles'), to_regclass('public.vehicle_inspections');"
+
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v3
+        with:
+          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.GCP_DEPLOY_SERVICE_ACCOUNT }}
+
+      - name: Upload verified recovery copy to private Cloud Storage
+        shell: bash
+        run: |
+          gcloud storage cp \
+            "readyroute-backup-${BACKUP_STAMP}.tar.gz" \
+            "readyroute-backup-${BACKUP_STAMP}.tar.gz.sha256" \
+            "gs://${GCP_BACKUP_BUCKET}/daily/${BACKUP_STAMP}/"
 
       - name: Upload short-retention GitHub recovery artifact
         uses: actions/upload-artifact@v6

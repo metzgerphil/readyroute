@@ -5,7 +5,9 @@ import path from 'node:path';
 
 const schemaPath = path.resolve(process.argv[2] || 'backup/database/schema.sql');
 const schema = await readFile(schemaPath, 'utf8');
-const sanitized = schema.replace(/Bearer\s+eyJ[A-Za-z0-9._-]+/g, 'Bearer REDACTED_RESTORE_REQUIRED');
+const sanitized = schema
+  .replace(/Bearer\s+eyJ[A-Za-z0-9._-]+/g, 'Bearer REDACTED_RESTORE_REQUIRED')
+  .replace(/^SET transaction_timeout = 0;\s*$/gm, '-- transaction_timeout removed for portable restore');
 
 if (/Bearer\s+eyJ[A-Za-z0-9._-]+/.test(sanitized)) {
   throw new Error('A bearer JWT remains in the schema backup');
