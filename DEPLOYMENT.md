@@ -55,11 +55,19 @@ npm run release:smoke
 3. GitHub Actions should pass:
    - Backend CI
    - Portal CI
+   - Mobile CI
 4. Merge to `main`.
 5. Vercel deploys `landing-page` and `manager-portal` from GitHub.
 6. `.github/workflows/release-production.yml` applies pending Supabase migrations.
 7. The same workflow deploys the exact merge commit to Cloud Run through keyless Google Workload Identity Federation.
 8. The workflow confirms `/health` reports that commit and runs Production Smoke.
+
+The Cloud Run service uses
+`readyroute-api-runtime@ready-route-project.iam.gserviceaccount.com`. GitHub deploys
+through `readyroute-github-deployer@ready-route-project.iam.gserviceaccount.com` and
+may impersonate the runtime identity, but the runtime identity itself has access only
+to the `RESEND_API_KEY` secret. The default Compute Engine service account is retained
+as the source-build identity with `roles/run.builder`, not project Editor.
 
 ```bash
 npm run smoke

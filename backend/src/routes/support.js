@@ -326,7 +326,7 @@ function createSupportRouter(options = {}) {
 
   router.get('/tickets', async (req, res) => {
     try {
-      readRequiredStaffContext(req, jwtSecret, READYROUTE_STAFF_ROLES);
+      await readRequiredStaffContext(req, jwtSecret, READYROUTE_STAFF_ROLES, { supabase });
 
       const status = normalizeOptionalChoice(req.query.status, SUPPORT_STATUSES);
       const priority = normalizeOptionalChoice(req.query.priority, SUPPORT_PRIORITIES);
@@ -383,7 +383,7 @@ function createSupportRouter(options = {}) {
 
   router.get('/tickets/:ticketId', async (req, res) => {
     try {
-      readRequiredStaffContext(req, jwtSecret, READYROUTE_STAFF_ROLES);
+      await readRequiredStaffContext(req, jwtSecret, READYROUTE_STAFF_ROLES, { supabase });
 
       const ticketId = normalizeText(req.params.ticketId, 120);
 
@@ -423,7 +423,7 @@ function createSupportRouter(options = {}) {
 
   router.patch('/tickets/:ticketId', async (req, res) => {
     try {
-      readRequiredStaffContext(req, jwtSecret, READYROUTE_STAFF_WRITE_ROLES);
+      await readRequiredStaffContext(req, jwtSecret, READYROUTE_STAFF_WRITE_ROLES, { supabase });
 
       const ticketId = normalizeText(req.params.ticketId, 120);
       const { updates, error: updateError } = buildSupportTicketUpdate(req.body, now());

@@ -2,7 +2,7 @@ const express = require('express');
 const Stripe = require('stripe');
 
 const defaultSupabase = require('../lib/supabase');
-const { requireManager } = require('../middleware/auth');
+const { requireManager: defaultRequireManager } = require('../middleware/auth');
 const { createBillingService } = require('../services/billing');
 
 function getStripeClient(stripeClient) {
@@ -19,6 +19,7 @@ function getStripeClient(stripeClient) {
 
 function createBillingRouter(options = {}) {
   const router = express.Router();
+  const requireManager = options.requireManager || defaultRequireManager;
   const supabase = options.supabase || defaultSupabase;
   const stripeClient = options.stripeClient;
   const billingService = createBillingService({

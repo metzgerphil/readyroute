@@ -6,9 +6,13 @@ const jwt = require('jsonwebtoken');
 const defaultSupabase = require('../lib/supabase');
 const { addDriverDocumentAccessUrl } = require('../services/privateStorage');
 const { PRIVILEGED_MANAGER_ROLES } = require('../config/constants');
-const { requireManager } = require('../middleware/auth');
+const { requireManager: defaultRequireManager } = require('../middleware/auth');
 const { parseMultipartForm } = require('../middleware/multipart');
 const { createBillingService } = require('../services/billing');
+const {
+  SESSION_SUBJECT_TYPES,
+  buildCredentialSessionClaims
+} = require('../services/credentialSession');
 const { buildCancellationSchedule } = require('../services/accountLifecycle');
 const { attachApartmentIntelligenceToStops } = require('../services/apartmentIntelligence');
 const { isUsableCoordinate, summarizeCoordinateHealth } = require('../services/coordinates');
@@ -1334,7 +1338,14 @@ function buildManagerAuthTokenPayload(identity) {
     manager_name: identity.full_name,
     company_name: companyName,
     csa_name: companyName,
-    role: 'manager'
+    role: 'manager',
+    ...buildCredentialSessionClaims({
+      subjectType: identity.source === 'manager_user'
+        ? SESSION_SUBJECT_TYPES.MANAGER_USER
+        : SESSION_SUBJECT_TYPES.ACCOUNT_MANAGER,
+      subjectId: identity.source === 'manager_user' ? identity.id : identity.account_id,
+      credentialHash: identity.password_hash
+    })
   };
 }
 
@@ -2149,6 +2160,7 @@ function requireAccountSettingsAccess(req, res, next) {
 
 function createManagerRouter(options = {}) {
   const router = express.Router();
+  const requireManager = options.requireManager || defaultRequireManager;
   const supabase = options.supabase || defaultSupabase;
   const nowProvider = options.now || (() => new Date());
   const jwtSecret = options.jwtSecret || process.env.JWT_SECRET;

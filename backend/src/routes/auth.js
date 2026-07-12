@@ -4,16 +4,21 @@ const crypto = require('crypto');
 const jwt = require('jsonwebtoken');
 
 const defaultSupabase = require('../lib/supabase');
-const { requireManager } = require('../middleware/auth');
+const { requireManager: defaultRequireManager } = require('../middleware/auth');
 const { createBillingService } = require('../services/billing');
 const { getEffectiveAccountStatus } = require('../services/accountLifecycle');
 const { updateRouteBillingSettings } = require('../services/routeBilling');
 const { sendManagerPasswordResetEmail: defaultSendManagerPasswordResetEmail } = require('../services/managerInviteEmail');
+const {
+  SESSION_SUBJECT_TYPES,
+  buildCredentialSessionClaims
+} = require('../services/credentialSession');
 
 function createAuthRouter(options = {}) {
   const router = express.Router();
   const supabase = options.supabase || defaultSupabase;
   const jwtSecret = options.jwtSecret || process.env.JWT_SECRET;
+  const requireManager = options.requireManager || defaultRequireManager;
   const billingService = createBillingService({
     supabase,
     stripeClient: options.stripeClient,
@@ -271,7 +276,12 @@ function createAuthRouter(options = {}) {
       company_name: accountSummary?.company_name || null,
       csa_name: accountSummary?.company_name || null,
       primary_role: 'driver',
-      role: 'driver'
+      role: 'driver',
+      ...buildCredentialSessionClaims({
+        subjectType: SESSION_SUBJECT_TYPES.DRIVER,
+        subjectId: driver.id,
+        credentialHash: driver.pin
+      })
     };
   }
 
@@ -285,7 +295,16 @@ function createAuthRouter(options = {}) {
       company_name: accountSummary?.company_name || null,
       csa_name: accountSummary?.company_name || null,
       primary_role: 'manager',
-      role: 'manager'
+      role: 'manager',
+      ...buildCredentialSessionClaims({
+        subjectType: managerIdentity.source === 'manager_user'
+          ? SESSION_SUBJECT_TYPES.MANAGER_USER
+          : SESSION_SUBJECT_TYPES.ACCOUNT_MANAGER,
+        subjectId: managerIdentity.source === 'manager_user'
+          ? managerIdentity.id
+          : managerIdentity.account_id,
+        credentialHash: managerIdentity.password_hash
+      })
     };
   }
 
@@ -300,7 +319,16 @@ function createAuthRouter(options = {}) {
       csa_name: accountSummary?.company_name || null,
       primary_role: 'driver',
       role: 'driver',
-      driver_mode_source: 'manager'
+      driver_mode_source: 'manager',
+      ...buildCredentialSessionClaims({
+        subjectType: managerIdentity.source === 'manager_user'
+          ? SESSION_SUBJECT_TYPES.MANAGER_USER
+          : SESSION_SUBJECT_TYPES.ACCOUNT_MANAGER,
+        subjectId: managerIdentity.source === 'manager_user'
+          ? managerIdentity.id
+          : managerIdentity.account_id,
+        credentialHash: managerIdentity.password_hash
+      })
     };
   }
 
@@ -536,16 +564,7 @@ function createAuthRouter(options = {}) {
         }
       }
 
-      const loginToken = signToken(
-        {
-          account_id: managerIdentity.account_id,
-          manager_user_id: managerIdentity.source === 'manager_user' ? managerIdentity.id : null,
-          manager_email: managerIdentity.email,
-          manager_name: managerIdentity.full_name,
-          role: 'manager'
-        },
-        '24h'
-      );
+      const loginToken = signToken(buildManagerAuthPayload(managerIdentity, account), '24h');
 
       return res.status(200).json({
         token: loginToken,
@@ -578,7 +597,7 @@ function createAuthRouter(options = {}) {
       const driver = await findDriverByEmail(email);
       const accountSummary = await getAccountSummary(driver?.account_id);
 
-      if (!driver || !driver.pin) {
+      if (!driver || driver.is_active === false || !driver.pin) {
         return res.status(401).json({ error: 'Invalid credentials' });
       }
 
@@ -678,7 +697,7 @@ function createAuthRouter(options = {}) {
       let hasDriverAccess = false;
       let managerIdentity = null;
 
-      if (driver?.pin) {
+      if (driver?.pin && driver.is_active !== false) {
         hasDriverAccess = await bcrypt.compare(secret, driver.pin);
       }
 

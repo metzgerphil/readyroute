@@ -60,13 +60,13 @@ describe('HomeScreen helpers', () => {
   });
 
   it('returns the correct greeting by time of day', () => {
-    jest.useFakeTimers().setSystemTime(new Date('2026-04-15T08:00:00-07:00'));
+    jest.useFakeTimers().setSystemTime(new Date(2026, 3, 15, 8, 0, 0));
     expect(getGreetingByTime()).toBe('Good morning');
 
-    jest.setSystemTime(new Date('2026-04-15T14:00:00-07:00'));
+    jest.setSystemTime(new Date(2026, 3, 15, 14, 0, 0));
     expect(getGreetingByTime()).toBe('Good afternoon');
 
-    jest.setSystemTime(new Date('2026-04-15T20:00:00-07:00'));
+    jest.setSystemTime(new Date(2026, 3, 15, 20, 0, 0));
     expect(getGreetingByTime()).toBe('Good evening');
   });
 

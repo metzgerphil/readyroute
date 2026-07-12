@@ -199,8 +199,8 @@ function mapByAccount(rows = []) {
   }, {});
 }
 
-function getRequestStaff(req, jwtSecret, allowedRoles = READYROUTE_STAFF_ROLES) {
-  return readRequiredStaffContext(req, jwtSecret, allowedRoles);
+function getRequestStaff(req, jwtSecret, allowedRoles = READYROUTE_STAFF_ROLES, supabase = defaultSupabase) {
+  return readRequiredStaffContext(req, jwtSecret, allowedRoles, { supabase });
 }
 
 function sendAuthError(res, error) {
@@ -655,7 +655,7 @@ function createReadyRouteStaffRouter(options = {}) {
     }
 
     try {
-      const staff = getRequestStaff(req, jwtSecret);
+      const staff = await getRequestStaff(req, jwtSecret, READYROUTE_STAFF_ROLES, supabase);
       const staffUser = await findStaffUserById(staff.staff_user_id);
 
       if (!staffUser || staffUser.is_active === false || !staffUser.password_hash) {
@@ -774,7 +774,7 @@ function createReadyRouteStaffRouter(options = {}) {
 
   router.get('/me', async (req, res) => {
     try {
-      const staff = getRequestStaff(req, jwtSecret);
+      const staff = await getRequestStaff(req, jwtSecret, READYROUTE_STAFF_ROLES, supabase);
       return res.status(200).json({ staff });
     } catch (error) {
       const authResponse = sendAuthError(res, error);
@@ -789,7 +789,7 @@ function createReadyRouteStaffRouter(options = {}) {
 
   router.get('/audit-log', async (req, res) => {
     try {
-      getRequestStaff(req, jwtSecret);
+      await getRequestStaff(req, jwtSecret, READYROUTE_STAFF_ROLES, supabase);
       const accountId = normalizeText(req.query?.account_id, 120);
       const limit = Math.min(Math.max(Number(req.query?.limit) || 50, 1), 200);
       let query = supabase
@@ -822,7 +822,7 @@ function createReadyRouteStaffRouter(options = {}) {
 
   router.get('/invites', async (req, res) => {
     try {
-      getRequestStaff(req, jwtSecret, READYROUTE_STAFF_ADMIN_ROLES);
+      await getRequestStaff(req, jwtSecret, READYROUTE_STAFF_ADMIN_ROLES, supabase);
 
       const { data, error } = await supabase
         .from('readyroute_staff_invites')
@@ -848,7 +848,7 @@ function createReadyRouteStaffRouter(options = {}) {
 
   router.post('/invites', async (req, res) => {
     try {
-      const staff = getRequestStaff(req, jwtSecret, READYROUTE_STAFF_ADMIN_ROLES);
+      const staff = await getRequestStaff(req, jwtSecret, READYROUTE_STAFF_ADMIN_ROLES, supabase);
       const email = normalizeEmail(req.body?.email);
       const fullName = normalizeText(req.body?.full_name || req.body?.name, 180);
       const role = normalizeStaffRole(req.body?.role, 'support');
@@ -963,7 +963,7 @@ function createReadyRouteStaffRouter(options = {}) {
 
   router.post('/invites/:inviteId/resend', async (req, res) => {
     try {
-      const staff = getRequestStaff(req, jwtSecret, READYROUTE_STAFF_ADMIN_ROLES);
+      const staff = await getRequestStaff(req, jwtSecret, READYROUTE_STAFF_ADMIN_ROLES, supabase);
       const inviteId = normalizeText(req.params.inviteId, 120);
 
       const { data: existingInvite, error: existingError } = await supabase
@@ -1104,7 +1104,7 @@ function createReadyRouteStaffRouter(options = {}) {
           created_at: timestamp,
           updated_at: timestamp
         })
-        .select('id, email, full_name, role, is_active, invited_at, accepted_at, last_login_at, created_at, updated_at')
+        .select('id, email, full_name, password_hash, role, is_active, invited_at, accepted_at, last_login_at, created_at, updated_at')
         .single();
 
       if (staffError) {
@@ -1144,7 +1144,7 @@ function createReadyRouteStaffRouter(options = {}) {
       });
 
       return res.status(201).json({
-        token: signStaffToken(staffUser, jwtSecret),
+        token: signStaffToken({ ...staffUser, password_hash: passwordHash }, jwtSecret),
         user: presentStaffUser(staffUser)
       });
     } catch (error) {
@@ -1155,7 +1155,7 @@ function createReadyRouteStaffRouter(options = {}) {
 
   router.get('/users', async (req, res) => {
     try {
-      getRequestStaff(req, jwtSecret, READYROUTE_STAFF_ADMIN_ROLES);
+      await getRequestStaff(req, jwtSecret, READYROUTE_STAFF_ADMIN_ROLES, supabase);
 
       const { data, error } = await supabase
         .from('readyroute_staff_users')
@@ -1180,7 +1180,7 @@ function createReadyRouteStaffRouter(options = {}) {
 
   router.post('/users', async (req, res) => {
     try {
-      const staff = getRequestStaff(req, jwtSecret, READYROUTE_STAFF_ADMIN_ROLES);
+      const staff = await getRequestStaff(req, jwtSecret, READYROUTE_STAFF_ADMIN_ROLES, supabase);
       const email = normalizeEmail(req.body?.email);
       const fullName = normalizeText(req.body?.full_name || req.body?.name, 180);
       const password = String(req.body?.password || '');
@@ -1239,7 +1239,7 @@ function createReadyRouteStaffRouter(options = {}) {
 
   router.patch('/users/:staffUserId', async (req, res) => {
     try {
-      const staff = getRequestStaff(req, jwtSecret, READYROUTE_STAFF_ADMIN_ROLES);
+      const staff = await getRequestStaff(req, jwtSecret, READYROUTE_STAFF_ADMIN_ROLES, supabase);
       const staffUserId = normalizeText(req.params.staffUserId, 120);
       const updates = {
         updated_at: now().toISOString()
@@ -1314,7 +1314,7 @@ function createReadyRouteStaffRouter(options = {}) {
 
   router.get('/operating-costs', async (req, res) => {
     try {
-      getRequestStaff(req, jwtSecret);
+      await getRequestStaff(req, jwtSecret, READYROUTE_STAFF_ROLES, supabase);
       const periodMonth = normalizePeriodMonth(req.query?.period_month, now());
 
       const { data, error } = await supabase
@@ -1358,7 +1358,7 @@ function createReadyRouteStaffRouter(options = {}) {
 
   router.post('/operating-costs', async (req, res) => {
     try {
-      const staff = getRequestStaff(req, jwtSecret, READYROUTE_STAFF_ADMIN_ROLES);
+      const staff = await getRequestStaff(req, jwtSecret, READYROUTE_STAFF_ADMIN_ROLES, supabase);
       const timestamp = now().toISOString();
       const periodMonth = normalizePeriodMonth(req.body?.period_month, now());
       const vendor = normalizeText(req.body?.vendor, 180);
@@ -1428,7 +1428,7 @@ function createReadyRouteStaffRouter(options = {}) {
 
   router.patch('/operating-costs/:costId', async (req, res) => {
     try {
-      const staff = getRequestStaff(req, jwtSecret, READYROUTE_STAFF_ADMIN_ROLES);
+      const staff = await getRequestStaff(req, jwtSecret, READYROUTE_STAFF_ADMIN_ROLES, supabase);
       const costId = normalizeText(req.params.costId, 120);
       const updates = {
         updated_at: now().toISOString()
@@ -1526,7 +1526,7 @@ function createReadyRouteStaffRouter(options = {}) {
 
   router.get('/accounts', async (req, res) => {
     try {
-      getRequestStaff(req, jwtSecret);
+      await getRequestStaff(req, jwtSecret, READYROUTE_STAFF_ROLES, supabase);
 
       const [accountsResult, profilesResult, managersResult, driversResult, ticketsResult] = await Promise.all([
         supabase
@@ -1589,7 +1589,7 @@ function createReadyRouteStaffRouter(options = {}) {
 
   router.get('/accounts/:accountId', async (req, res) => {
     try {
-      getRequestStaff(req, jwtSecret);
+      await getRequestStaff(req, jwtSecret, READYROUTE_STAFF_ROLES, supabase);
       const accountId = normalizeText(req.params.accountId, 120);
 
       const accountResult = await supabase
@@ -1716,7 +1716,7 @@ function createReadyRouteStaffRouter(options = {}) {
 
   router.patch('/accounts/:accountId/internal-profile', async (req, res) => {
     try {
-      const staff = getRequestStaff(req, jwtSecret, READYROUTE_STAFF_WRITE_ROLES);
+      const staff = await getRequestStaff(req, jwtSecret, READYROUTE_STAFF_WRITE_ROLES, supabase);
       const accountId = normalizeText(req.params.accountId, 120);
 
       if (!accountId) {
@@ -1794,7 +1794,7 @@ function createReadyRouteStaffRouter(options = {}) {
 
   router.post('/accounts/:accountId/recover', async (req, res) => {
     try {
-      const staff = getRequestStaff(req, jwtSecret, READYROUTE_STAFF_ADMIN_ROLES);
+      const staff = await getRequestStaff(req, jwtSecret, READYROUTE_STAFF_ADMIN_ROLES, supabase);
       const accountId = normalizeText(req.params.accountId, 120);
       const { data: account, error: accountError } = await supabase
         .from('accounts')

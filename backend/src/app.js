@@ -2,18 +2,14 @@ const express = require('express');
 const cors = require('cors');
 const helmet = require('helmet');
 
-const authRoutes = require('./routes/auth');
 const { createAuthRouter } = require('./routes/auth');
 const { createBillingRouter } = require('./routes/billing');
-const managerRoutes = require('./routes/manager');
 const { createManagerRouter } = require('./routes/manager');
 const propertyIntelManagerRoutes = require('./routes/propertyIntelManager');
 const { createPropertyIntelManagerRouter } = require('./routes/propertyIntelManager');
-const { requireDriver, requireManager } = require('./middleware/auth');
+const { createAuthMiddleware } = require('./middleware/auth');
 const { createRequireActiveSubscription } = require('./middleware/billing');
-const timecardRoutes = require('./routes/timecards');
 const { createTimecardsRouter } = require('./routes/timecards');
-const vehicleRoutes = require('./routes/vehicles');
 const { createVehiclesRouter } = require('./routes/vehicles');
 const safetyFocusesRoutes = require('./routes/safetyFocuses');
 const { createSafetyFocusesRouter } = require('./routes/safetyFocuses');
@@ -48,6 +44,11 @@ function createApp(options = {}) {
   const rateLimiters = createApiRateLimiters({
     enabled: options.rateLimitEnabled !== false,
     limits: options.rateLimits
+  });
+  const { requireDriver, requireManager } = createAuthMiddleware({
+    supabase: options.supabase || defaultSupabase,
+    jwtSecret: options.jwtSecret,
+    enforceSessionValidation: options.enforceSessionValidation
   });
   app.set('trust proxy', isProduction ? 1 : false);
   app.disable('x-powered-by');
@@ -86,20 +87,20 @@ function createApp(options = {}) {
       return false;
     }
   }
-  const authRouter = options.supabase || options.jwtSecret
-    ? createAuthRouter({
-        supabase: options.supabase,
-        jwtSecret: options.jwtSecret,
-        stripeClient: options.stripeClient,
-        stripePriceId: options.stripePriceId,
-        trialDays: options.trialDays,
-        sendManagerPasswordResetEmail: options.sendManagerPasswordResetEmail
-      })
-    : authRoutes;
+  const authRouter = createAuthRouter({
+    supabase: options.supabase,
+    jwtSecret: options.jwtSecret,
+    stripeClient: options.stripeClient,
+    stripePriceId: options.stripePriceId,
+    trialDays: options.trialDays,
+    requireManager,
+    sendManagerPasswordResetEmail: options.sendManagerPasswordResetEmail
+  });
   const billingRouter = options.supabase && !options.stripeClient && !process.env.STRIPE_SECRET_KEY
-    ? express.Router()
-    : createBillingRouter({
+      ? express.Router()
+      : createBillingRouter({
         supabase: options.supabase,
+        requireManager,
         stripeClient: options.stripeClient,
         webhookSecret: options.webhookSecret,
         stripePriceId: options.stripePriceId
@@ -116,30 +117,32 @@ function createApp(options = {}) {
     inboundIngestSecret: options.inboundIngestSecret,
     requireActiveSubscription,
     rateLimitEnabled: options.rateLimitEnabled !== false,
-    driverPositionRateLimit: options.rateLimits?.driverPosition
+    driverPositionRateLimit: options.rateLimits?.driverPosition,
+    requireDriver,
+    requireManager
   });
-  const managerRouter = options.supabase || options.now
-    ? createManagerRouter({
-        supabase: options.supabase,
-        now: options.now,
-        jwtSecret: options.jwtSecret,
-        sendManagerInviteEmail: options.sendManagerInviteEmail,
-        sendManagerPasswordResetEmail: options.sendManagerPasswordResetEmail,
-        stripeClient: options.stripeClient,
-        stripePriceId: options.stripePriceId,
-        trialDays: options.trialDays,
-        billingService: options.billingService
-      })
-    : managerRoutes;
+  const managerRouter = createManagerRouter({
+    supabase: options.supabase,
+    now: options.now,
+    jwtSecret: options.jwtSecret,
+    sendManagerInviteEmail: options.sendManagerInviteEmail,
+    sendManagerPasswordResetEmail: options.sendManagerPasswordResetEmail,
+    stripeClient: options.stripeClient,
+    stripePriceId: options.stripePriceId,
+    trialDays: options.trialDays,
+    billingService: options.billingService,
+    requireManager
+  });
   const propertyIntelManagerRouter = options.supabase
     ? createPropertyIntelManagerRouter({ supabase: options.supabase })
     : propertyIntelManagerRoutes;
-  const timecardsRouter = options.supabase
-    ? createTimecardsRouter({ supabase: options.supabase })
-    : timecardRoutes;
-  const vehiclesRouter = options.supabase || options.now
-    ? createVehiclesRouter({ supabase: options.supabase, now: options.now })
-    : vehicleRoutes;
+  const timecardsRouter = createTimecardsRouter({ supabase: options.supabase, requireDriver });
+  const vehiclesRouter = createVehiclesRouter({
+    supabase: options.supabase,
+    now: options.now,
+    requireDriver,
+    requireManager
+  });
   const safetyFocusesRouter = options.supabase || options.now
     ? createSafetyFocusesRouter({ supabase: options.supabase, now: options.now })
     : safetyFocusesRoutes;

@@ -2,7 +2,10 @@ const crypto = require('crypto');
 const express = require('express');
 
 const defaultSupabase = require('../lib/supabase');
-const { requireDriver, requireManager } = require('../middleware/auth');
+const {
+  requireDriver: defaultRequireDriver,
+  requireManager: defaultRequireManager
+} = require('../middleware/auth');
 const { createCliFedexFccAdapter } = require('../services/fccDownloader');
 const { createFccProgressSyncService } = require('../services/fccProgressSync');
 const { createFedexSyncService } = require('../services/fedexSync');
@@ -1495,6 +1498,8 @@ function mergePendingManifestStops(existingStops = [], incomingStops = []) {
 
 function createRoutesRouter(options = {}) {
   const router = express.Router();
+  const requireDriver = options.requireDriver || defaultRequireDriver;
+  const requireManager = options.requireManager || defaultRequireManager;
   const supabase = options.supabase || defaultSupabase;
   const nowProvider = options.now || (() => new Date());
   const requireActiveSubscription = options.requireActiveSubscription || ((_req, _res, next) => next());
