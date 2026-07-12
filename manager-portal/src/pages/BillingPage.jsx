@@ -140,6 +140,7 @@ export default function BillingPage() {
   const [hasTouchedCommitment, setHasTouchedCommitment] = useState(false);
   const [isEditingCommitment, setIsEditingCommitment] = useState(false);
   const [saveMessage, setSaveMessage] = useState('');
+  const [overageConsentChecked, setOverageConsentChecked] = useState(false);
   const [cancellationConfirm, setCancellationConfirm] = useState('');
   const [cancellationReason, setCancellationReason] = useState('');
   const [cancellationMessage, setCancellationMessage] = useState('');
@@ -206,6 +207,41 @@ export default function BillingPage() {
       setCancellationConfirm('');
       setCancellationReason('');
       queryClient.invalidateQueries({ queryKey: ['account-lifecycle', selectedCsaId] });
+    }
+  });
+  const acceptOverageMutation = useMutation({
+    mutationFn: async () => {
+      const response = await api.post('/manager/billing/overage-authorization', {
+        accepted: true,
+        terms_version: billing?.overage_authorization?.current_terms_version,
+        month: billingMonth
+      });
+      return response.data || {};
+    },
+    onSuccess: (data) => {
+      if (data.billing) {
+        queryClient.setQueryData(billingQueryKey, data.billing);
+      }
+      setOverageConsentChecked(false);
+    }
+  });
+  const revokeOverageMutation = useMutation({
+    mutationFn: async () => {
+      const response = await api.delete('/manager/billing/overage-authorization', {
+        params: { month: billingMonth }
+      });
+      return response.data || {};
+    },
+    onSuccess: (data) => {
+      if (data.billing) {
+        queryClient.setQueryData(billingQueryKey, data.billing);
+      }
+    }
+  });
+  const invoicePreviewMutation = useMutation({
+    mutationFn: async () => {
+      const response = await api.post('/manager/billing/invoice-preview', { month: billingMonth });
+      return response.data?.preview || null;
     }
   });
 
@@ -435,7 +471,73 @@ export default function BillingPage() {
                   <strong>{formatCurrency(billing.estimated_total_cents, billing.currency)}</strong>
                 </div>
               </div>
+              <div className="billing-settings-actions">
+                <button
+                  className="secondary-button"
+                  disabled={invoicePreviewMutation.isPending}
+                  onClick={() => invoicePreviewMutation.mutate()}
+                  type="button"
+                >
+                  {invoicePreviewMutation.isPending ? 'Creating...' : 'Create Monthly Preview'}
+                </button>
+                {invoicePreviewMutation.isSuccess ? <span className="driver-meta">Preview saved for reconciliation.</span> : null}
+              </div>
+              {invoicePreviewMutation.isError ? (
+                <div className="error-banner">
+                  {invoicePreviewMutation.error?.response?.data?.error || 'Billing preview could not be created.'}
+                </div>
+              ) : null}
             </div>
+          </div>
+
+          <div className="card billing-overage-authorization-card">
+            <div>
+              <div className="card-title">Additional route authorization</div>
+              <p>{billing.overage_authorization?.terms_text}</p>
+            </div>
+
+            {billing.overage_authorization?.current_terms_accepted ? (
+              <div className="billing-account-lifecycle-status">
+                <StatusBadge tone="active">Authorized</StatusBadge>
+                <span>Accepted {formatDateTime(billing.overage_authorization.accepted_at)}</span>
+                <span>Automatic charging remains off while ReadyRoute is in shadow billing mode.</span>
+                <button
+                  className="secondary-button"
+                  disabled={revokeOverageMutation.isPending}
+                  onClick={() => revokeOverageMutation.mutate()}
+                  type="button"
+                >
+                  {revokeOverageMutation.isPending ? 'Revoking...' : 'Revoke Future Overage Authorization'}
+                </button>
+              </div>
+            ) : (
+              <div className="billing-overage-consent">
+                <label>
+                  <input
+                    checked={overageConsentChecked}
+                    onChange={(event) => setOverageConsentChecked(event.target.checked)}
+                    type="checkbox"
+                  />
+                  <span>I have reviewed and agree to the additional route authorization above.</span>
+                </label>
+                <button
+                  className="primary-cta"
+                  disabled={!overageConsentChecked || acceptOverageMutation.isPending}
+                  onClick={() => acceptOverageMutation.mutate()}
+                  type="button"
+                >
+                  {acceptOverageMutation.isPending ? 'Saving...' : 'Authorize Additional Routes'}
+                </button>
+              </div>
+            )}
+
+            {acceptOverageMutation.isError || revokeOverageMutation.isError ? (
+              <div className="error-banner">
+                {acceptOverageMutation.error?.response?.data?.error ||
+                  revokeOverageMutation.error?.response?.data?.error ||
+                  'ReadyRoute could not update the authorization.'}
+              </div>
+            ) : null}
           </div>
 
           <div className="card billing-routes-card">

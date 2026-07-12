@@ -11,7 +11,6 @@ import {
   View
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import * as Location from 'expo-location';
 import * as ImagePicker from 'expo-image-picker';
 
 import { getApiErrorMessage } from '../utils/apiError';
@@ -24,6 +23,12 @@ import {
 } from '../services/auth';
 import { prefetchDriverDriveRoute, prefetchDriverManifest, saveDriverRouteSummary } from '../services/driverRouteCache';
 import { loadStatusCodes } from '../services/statusCodes';
+import {
+  getAlwaysLocationPermission,
+  requestAlwaysLocationPermission,
+  startDriverLocationTracking,
+  stopDriverLocationTracking
+} from '../services/driverLocationTracking';
 import {
   INSPECTION_ITEM_DEFINITIONS,
   INSPECTION_SEVERITY_OPTIONS,
@@ -412,14 +417,14 @@ export function hasGrantedLocationPermission(permission) {
 export function getLocationRequirementCopy() {
   return {
     title: 'Enable location for route tracking',
-    body: 'ReadyRoute uses your location while you are on route so your manager can see route progress, support dispatch decisions, and locate drivers during the workday.',
+    body: 'ReadyRoute uses your location while you run a route, including when the app is in the background or your phone is locked.',
     bullets: [
       'Shows your route location to your manager while you are working.',
       'Helps dispatch support pickups, rescues, and route progress.',
-      'Keeps the fleet map accurate during the day.'
+      'Keeps the fleet map accurate while the app is backgrounded.'
     ],
     secondary: 'You can manage location access later in your device settings.',
-    blocked: 'Location access is required to run a route in ReadyRoute.'
+    blocked: 'Always Allow location access is required to run a route in ReadyRoute.'
   };
 }
 
@@ -472,11 +477,9 @@ export default function HomeScreen({ navigation, onLogout }) {
     setIsResolvingLocationPermission(true);
 
     try {
-      const currentPermission = await Location.getForegroundPermissionsAsync();
-      const permission = shouldPromptForLocationPermission(currentPermission)
-        ? await Location.requestForegroundPermissionsAsync()
-        : currentPermission;
-      const granted = hasGrantedLocationPermission(permission);
+      const permissionState = await requestAlwaysLocationPermission();
+      const permission = permissionState.background || permissionState.foreground;
+      const granted = permissionState.granted;
       const blocked = isBlockedLocationPermission(permission);
 
       if (isMountedRef.current) {
@@ -523,10 +526,11 @@ export default function HomeScreen({ navigation, onLogout }) {
 
   async function checkLocationPermission() {
     try {
-      const currentPermission = await Location.getForegroundPermissionsAsync();
+      const permissionState = await getAlwaysLocationPermission();
+      const currentPermission = permissionState.background || permissionState.foreground;
 
       if (isMountedRef.current) {
-        setHasLocationAccess(hasGrantedLocationPermission(currentPermission));
+        setHasLocationAccess(permissionState.granted);
         setIsLocationPermissionBlocked(isBlockedLocationPermission(currentPermission));
         setIsLocationPermissionDenied(isDeniedLocationPermission(currentPermission));
       }
@@ -659,6 +663,18 @@ export default function HomeScreen({ navigation, onLogout }) {
   }, [navigation]);
 
   useEffect(() => {
+    if (!route?.id) {
+      return;
+    }
+
+    if (route.status === 'in_progress') {
+      Promise.resolve(startDriverLocationTracking(route.id)).catch(() => {});
+    } else if (route.status === 'complete' || route.status === 'completed') {
+      Promise.resolve(stopDriverLocationTracking()).catch(() => {});
+    }
+  }, [route?.id, route?.status]);
+
+  useEffect(() => {
     const driverDayStatus = getDriverDayStatus(driverDay, route);
 
     if (driverDayStatus !== 'awaiting_dispatch') {
@@ -743,6 +759,7 @@ export default function HomeScreen({ navigation, onLogout }) {
   }
 
   async function handleLogout() {
+    await stopDriverLocationTracking().catch(() => {});
     await removeClockInTime();
     await removeToken();
     onLogout();
@@ -768,6 +785,7 @@ export default function HomeScreen({ navigation, onLogout }) {
       await api.patch(`/routes/${route.id}/status`, {
         status: 'in_progress'
       });
+      await startDriverLocationTracking(route.id);
 
       const nextRoute = {
         ...route,
@@ -1160,6 +1178,7 @@ export default function HomeScreen({ navigation, onLogout }) {
     try {
       if (clockedInAt) {
         await api.post('/timecards/clock-out');
+        await stopDriverLocationTracking().catch(() => {});
         await removeClockInTime();
         setClockedInAt(null);
         setActiveBreak(null);

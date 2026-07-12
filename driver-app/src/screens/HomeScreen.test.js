@@ -13,6 +13,21 @@ jest.mock('../services/api', () => ({
   }
 }));
 
+jest.mock('../services/driverLocationTracking', () => ({
+  getAlwaysLocationPermission: jest.fn(async () => ({
+    foreground: { status: 'granted', granted: true },
+    background: { status: 'granted', granted: true },
+    granted: true
+  })),
+  requestAlwaysLocationPermission: jest.fn(async () => ({
+    foreground: { status: 'granted', granted: true },
+    background: { status: 'granted', granted: true },
+    granted: true
+  })),
+  startDriverLocationTracking: jest.fn(async () => ({ started: true })),
+  stopDriverLocationTracking: jest.fn(async () => {})
+}));
+
 jest.mock('expo-location', () => ({
   getForegroundPermissionsAsync: jest.fn(),
   requestForegroundPermissionsAsync: jest.fn()
@@ -457,7 +472,7 @@ describe('HomeScreen helpers', () => {
     expect(isDeniedLocationPermission({ status: 'denied', granted: false, canAskAgain: true })).toBe(true);
     expect(isDeniedLocationPermission({ status: 'undetermined', granted: false })).toBe(false);
     expect(getLocationRequirementCopy().title).toBe('Enable location for route tracking');
-    expect(getLocationRequirementCopy().blocked).toBe('Location access is required to run a route in ReadyRoute.');
+    expect(getLocationRequirementCopy().blocked).toBe('Always Allow location access is required to run a route in ReadyRoute.');
     expect(getLocationRequirementCopy().bullets).toHaveLength(3);
     expect(getLocationRequirementCopy().bullets[0]).toMatch(/\.$/);
   });

@@ -1,4 +1,5 @@
 const { REQUIRED_SCHEMA_VERSION } = require('../config/schemaVersion');
+const { getLaunchReadiness } = require('../config/launchReadiness');
 
 function releaseCommit() {
   return (
@@ -39,11 +40,17 @@ async function readSchemaCompatibility(supabase) {
 function createHealthService({ supabase }) {
   async function snapshot() {
     const schema = await readSchemaCompatibility(supabase);
+    const launch = getLaunchReadiness(process.env);
     return {
       status: schema.compatible ? 'ok' : 'degraded',
       timestamp: new Date().toISOString(),
       release: { commit: releaseCommit() },
-      schema
+      schema,
+      launch: {
+        ready: launch.ready,
+        modes: launch.modes,
+        capabilities: launch.capabilities
+      }
     };
   }
 

@@ -91,6 +91,21 @@ function createBillingRouter(options = {}) {
 
     try {
       const object = event.data.object;
+      const eventRecord = await supabase
+        .from('stripe_webhook_events')
+        .insert({
+          stripe_event_id: event.id,
+          event_type: event.type,
+          processing_status: 'ignored',
+          payload: event
+        });
+
+      if (eventRecord.error?.code === '23505') {
+        return res.status(200).json({ received: true, duplicate: true });
+      }
+      if (eventRecord.error) {
+        throw eventRecord.error;
+      }
 
       if (event.type === 'customer.subscription.updated') {
         const quantity = object.items?.data?.[0]?.quantity ?? 0;
@@ -136,8 +151,49 @@ function createBillingRouter(options = {}) {
         }
       }
 
+      const usageReportId = object.metadata?.readyroute_usage_report_id || null;
+      if (usageReportId && (event.type === 'invoice.payment_succeeded' || event.type === 'invoice.payment_failed')) {
+        const { error } = await supabase
+          .from('billing_usage_reports')
+          .update({
+            stripe_invoice_id: object.id || null,
+            status: event.type === 'invoice.payment_succeeded' ? 'invoiced' : 'reported',
+            updated_at: new Date().toISOString()
+          })
+          .eq('id', usageReportId);
+
+        if (error) {
+          throw error;
+        }
+      }
+
+      const { error: eventUpdateError } = await supabase
+        .from('stripe_webhook_events')
+        .update({
+          processing_status: 'processed',
+          processed_at: new Date().toISOString()
+        })
+        .eq('stripe_event_id', event.id);
+
+      if (eventUpdateError) {
+        throw eventUpdateError;
+      }
+
       return res.status(200).json({ received: true });
     } catch (error) {
+      if (event?.id) {
+        try {
+          await supabase
+            .from('stripe_webhook_events')
+            .update({
+              processing_status: 'failed',
+              processed_at: new Date().toISOString()
+            })
+            .eq('stripe_event_id', event.id);
+        } catch (_eventUpdateError) {
+          // Keep the original webhook processing error as the primary failure.
+        }
+      }
       console.error('Stripe webhook processing failed:', error);
       return res.status(500).json({ error: 'Failed to process Stripe webhook' });
     }

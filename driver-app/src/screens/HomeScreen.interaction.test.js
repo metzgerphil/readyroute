@@ -16,6 +16,7 @@ import {
 } from '../services/auth';
 import { prefetchDriverDriveRoute, prefetchDriverManifest, saveDriverRouteSummary } from '../services/driverRouteCache';
 import { loadStatusCodes } from '../services/statusCodes';
+import { getAlwaysLocationPermission } from '../services/driverLocationTracking';
 
 jest.mock('../services/api', () => ({
   __esModule: true,
@@ -43,6 +44,21 @@ jest.mock('../services/driverRouteCache', () => ({
   prefetchDriverDriveRoute: jest.fn(),
   prefetchDriverManifest: jest.fn(),
   saveDriverRouteSummary: jest.fn()
+}));
+
+jest.mock('../services/driverLocationTracking', () => ({
+  getAlwaysLocationPermission: jest.fn(async () => ({
+    foreground: { status: 'granted', granted: true },
+    background: { status: 'granted', granted: true },
+    granted: true
+  })),
+  requestAlwaysLocationPermission: jest.fn(async () => ({
+    foreground: { status: 'granted', granted: true },
+    background: { status: 'granted', granted: true },
+    granted: true
+  })),
+  startDriverLocationTracking: jest.fn(async () => ({ started: true })),
+  stopDriverLocationTracking: jest.fn(async () => {})
 }));
 
 jest.mock('expo-location', () => ({
@@ -983,7 +999,11 @@ describe('HomeScreen interactions', () => {
   });
 
   it('shows a location-sharing gate when driver location permission is denied', async () => {
-    Location.getForegroundPermissionsAsync.mockResolvedValue({ status: 'denied', granted: false });
+    getAlwaysLocationPermission.mockResolvedValueOnce({
+      foreground: { status: 'granted', granted: true },
+      background: { status: 'denied', granted: false, canAskAgain: false },
+      granted: false
+    });
 
     const screen = await renderAndFlush();
 

@@ -36,6 +36,22 @@ jest.mock('../services/driverRouteCache', () => ({
   getCachedDriverDriveRoute: jest.fn()
 }));
 
+jest.mock('../services/driverLocationTracking', () => ({
+  getAlwaysLocationPermission: jest.fn(async () => ({
+    foreground: { status: 'granted', granted: true },
+    background: { status: 'granted', granted: true },
+    granted: true
+  })),
+  postDriverLocation: jest.fn(async () => true),
+  requestAlwaysLocationPermission: jest.fn(async () => ({
+    foreground: { status: 'granted', granted: true },
+    background: { status: 'granted', granted: true },
+    granted: true
+  })),
+  startDriverLocationTracking: jest.fn(async () => ({ started: true })),
+  stopDriverLocationTracking: jest.fn(async () => {})
+}));
+
 jest.mock('expo-location', () => ({
   Accuracy: {
     BestForNavigation: 6,

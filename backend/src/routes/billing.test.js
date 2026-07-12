@@ -233,6 +233,14 @@ test('POST /billing/setup creates a Stripe customer and subscription', async () 
 test('POST /billing/webhook processes Stripe test events', async () => {
   const updates = [];
   const supabase = new MockSupabase((query) => {
+    if (query.table === 'stripe_webhook_events' && query.operation === 'insert') {
+      return { data: null, error: null };
+    }
+
+    if (query.table === 'stripe_webhook_events' && query.operation === 'update') {
+      return { data: null, error: null };
+    }
+
     if (query.table === 'accounts' && query.operation === 'update') {
       updates.push(query.payload);
       return { data: null, error: null };
@@ -243,6 +251,7 @@ test('POST /billing/webhook processes Stripe test events', async () => {
 
   const events = [
     {
+      id: 'evt_subscription',
       type: 'customer.subscription.updated',
       data: {
         object: {
@@ -254,6 +263,7 @@ test('POST /billing/webhook processes Stripe test events', async () => {
       }
     },
     {
+      id: 'evt_failed',
       type: 'invoice.payment_failed',
       data: {
         object: {
@@ -262,6 +272,7 @@ test('POST /billing/webhook processes Stripe test events', async () => {
       }
     },
     {
+      id: 'evt_succeeded',
       type: 'invoice.payment_succeeded',
       data: {
         object: {
@@ -313,6 +324,47 @@ test('POST /billing/webhook processes Stripe test events', async () => {
       plan: 'pro',
       subscription_status: 'active'
     });
+  } finally {
+    await server.close();
+  }
+});
+
+test('POST /billing/webhook acknowledges duplicate Stripe events without processing twice', async () => {
+  const supabase = new MockSupabase((query) => {
+    if (query.table === 'stripe_webhook_events' && query.operation === 'insert') {
+      return { data: null, error: { code: '23505', message: 'duplicate event' } };
+    }
+
+    throw new Error(`Unexpected query ${query.table}:${query.operation}`);
+  });
+  const stripeClient = {
+    webhooks: {
+      constructEvent: () => ({
+        id: 'evt_duplicate',
+        type: 'invoice.payment_succeeded',
+        data: { object: { customer: 'cus_123' } }
+      })
+    }
+  };
+  const server = await startTestServer({
+    supabase,
+    stripeClient,
+    webhookSecret: 'whsec_test',
+    stripePriceId: 'price_123'
+  });
+
+  try {
+    const response = await fetch(`${server.baseUrl}/billing/webhook`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Stripe-Signature': 'sig_test'
+      },
+      body: JSON.stringify({ id: 'evt_duplicate' })
+    });
+
+    assert.equal(response.status, 200);
+    assert.deepEqual(await response.json(), { received: true, duplicate: true });
   } finally {
     await server.close();
   }

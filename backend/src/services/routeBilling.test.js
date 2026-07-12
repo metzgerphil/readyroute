@@ -2,10 +2,13 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 
 const {
+  OVERAGE_TERMS_VERSION,
+  acceptOverageAuthorization,
   getBillingPeriodForDate,
   getRouteBillingSummary,
   normalizeRouteBillingKey,
   recordBillableManifestImport,
+  revokeOverageAuthorization,
   updateRouteBillingSettings
 } = require('./routeBilling');
 
@@ -64,6 +67,10 @@ class QueryStub {
 
   maybeSingle() {
     return this.execute('maybeSingle');
+  }
+
+  single() {
+    return this.execute('single');
   }
 
   then(resolve, reject) {
@@ -269,6 +276,112 @@ test('getRouteBillingSummary uses committed route floor and imported route ledge
   assert.equal(summary.additional_route_count, 1);
   assert.equal(summary.estimated_total_cents, 4500);
   assert.equal(summary.billing_mode, 'shadow');
+  assert.equal(summary.overage_authorization.status, 'not_requested');
+  assert.equal(summary.overage_authorization.current_terms_accepted, false);
+});
+
+test('acceptOverageAuthorization records immutable consent and keeps live charging disabled', async () => {
+  const supabase = createSupabaseStub((query) => {
+    if (query.table === 'account_billing_settings' && query.operation === 'select') {
+      return {
+        data: { committed_route_count: 10, billing_rate_cents: 1500, currency: 'usd' },
+        error: null
+      };
+    }
+
+    if (query.table === 'billing_overage_authorizations' && query.operation === 'insert') {
+      assert.equal(query.payload.account_id, 'acct-1');
+      assert.equal(query.payload.manager_user_id, 'manager-1');
+      assert.equal(query.payload.committed_route_count, 10);
+      assert.equal(query.payload.billing_rate_cents, 1500);
+      assert.match(query.payload.terms_text, /payment method on file/);
+      return {
+        data: {
+          id: 'authorization-1',
+          status: 'accepted',
+          terms_version: OVERAGE_TERMS_VERSION,
+          accepted_at: query.payload.accepted_at
+        },
+        error: null
+      };
+    }
+
+    if (query.table === 'account_billing_settings' && query.operation === 'upsert') {
+      assert.equal(query.payload.overage_authorization_status, 'accepted');
+      assert.equal(query.payload.overage_billing_enabled, false);
+      return { data: query.payload, error: null };
+    }
+
+    throw new Error(`Unexpected query ${query.table}:${query.operation}`);
+  });
+
+  const result = await acceptOverageAuthorization({
+    supabase,
+    accountId: 'acct-1',
+    managerUserId: 'manager-1',
+    managerEmail: 'owner@example.com',
+    termsVersion: OVERAGE_TERMS_VERSION,
+    acceptedAt: '2026-07-12T01:00:00.000Z'
+  });
+
+  assert.equal(result.valid, true);
+  assert.equal(result.authorization.id, 'authorization-1');
+  assert.equal(result.settings.overage_billing_enabled, false);
+});
+
+test('acceptOverageAuthorization rejects stale terms without writing', async () => {
+  const supabase = createSupabaseStub((query) => {
+    throw new Error(`Unexpected query ${query.table}:${query.operation}`);
+  });
+
+  const result = await acceptOverageAuthorization({
+    supabase,
+    accountId: 'acct-1',
+    termsVersion: 'old-terms'
+  });
+
+  assert.equal(result.valid, false);
+  assert.equal(supabase.calls.length, 0);
+});
+
+test('revokeOverageAuthorization preserves history and disables charging', async () => {
+  const supabase = createSupabaseStub((query) => {
+    if (query.table === 'account_billing_settings' && query.operation === 'select') {
+      return {
+        data: {
+          committed_route_count: 10,
+          billing_rate_cents: 1500,
+          currency: 'usd',
+          overage_authorization_id: 'authorization-1',
+          overage_authorization_status: 'accepted'
+        },
+        error: null
+      };
+    }
+
+    if (query.table === 'billing_overage_authorizations' && query.operation === 'update') {
+      assert.equal(query.payload.status, 'revoked');
+      assert.equal(query.payload.revoked_by_manager_user_id, 'manager-1');
+      return { data: null, error: null };
+    }
+
+    if (query.table === 'account_billing_settings' && query.operation === 'upsert') {
+      assert.equal(query.payload.overage_authorization_status, 'revoked');
+      assert.equal(query.payload.overage_billing_enabled, false);
+      return { data: query.payload, error: null };
+    }
+
+    throw new Error(`Unexpected query ${query.table}:${query.operation}`);
+  });
+
+  const result = await revokeOverageAuthorization({
+    supabase,
+    accountId: 'acct-1',
+    managerUserId: 'manager-1',
+    revokedAt: '2026-07-12T02:00:00.000Z'
+  });
+
+  assert.equal(result.settings.overage_authorization_status, 'revoked');
 });
 
 test('updateRouteBillingSettings upserts committed route count only', async () => {
