@@ -7,6 +7,7 @@ import {
   removeSecureItem,
   setSecureItem
 } from './secureStorage';
+import * as SecureStore from 'expo-secure-store';
 
 const TOKEN_KEY = 'readyroute_driver_token';
 const MANAGER_TOKEN_KEY = 'readyroute_manager_token';
@@ -23,7 +24,9 @@ function decodeBase64Url(value) {
 }
 
 export async function saveToken(token) {
-  await setSecureItem(TOKEN_KEY, token);
+  await setSecureItem(TOKEN_KEY, token, {
+    keychainAccessible: SecureStore.AFTER_FIRST_UNLOCK_THIS_DEVICE_ONLY
+  });
 }
 
 export async function saveManagerToken(token) {
@@ -61,7 +64,11 @@ export async function removeManagerToken() {
 
 export async function saveSessionTokens({ driverToken = null, managerToken = null } = {}) {
   await Promise.all([
-    driverToken ? setSecureItem(TOKEN_KEY, driverToken) : removeSecureItem(TOKEN_KEY),
+    driverToken
+      ? setSecureItem(TOKEN_KEY, driverToken, {
+          keychainAccessible: SecureStore.AFTER_FIRST_UNLOCK_THIS_DEVICE_ONLY
+        })
+      : removeSecureItem(TOKEN_KEY),
     managerToken ? setSecureItem(MANAGER_TOKEN_KEY, managerToken) : removeSecureItem(MANAGER_TOKEN_KEY)
   ]);
 }

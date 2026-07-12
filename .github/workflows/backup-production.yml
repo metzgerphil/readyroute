@@ -1,0 +1,115 @@
+name: Backup Production Data
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '17 8 * * *'
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: readyroute-production-backup
+  cancel-in-progress: false
+
+jobs:
+  backup-and-verify:
+    name: Backup and Verify Supabase
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    environment: production
+    services:
+      postgres:
+        image: supabase/postgres:15.8.1.060
+        env:
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 54322:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+      SUPABASE_PROJECT_REF: ${{ vars.SUPABASE_PROJECT_REF }}
+      SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+      SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+      GCP_BACKUP_BUCKET: ${{ vars.GCP_BACKUP_BUCKET }}
+    steps:
+      - name: Check out recovery tooling
+        uses: actions/checkout@v7
+
+      - name: Verify backup configuration
+        shell: bash
+        run: |
+          test -n "$SUPABASE_ACCESS_TOKEN" || { echo "SUPABASE_ACCESS_TOKEN is not configured"; exit 1; }
+          test -n "$SUPABASE_PROJECT_REF" || { echo "SUPABASE_PROJECT_REF is not configured"; exit 1; }
+          test -n "$SUPABASE_URL" || { echo "SUPABASE_URL is not configured"; exit 1; }
+          test -n "$SUPABASE_SERVICE_KEY" || { echo "SUPABASE_SERVICE_KEY is not configured"; exit 1; }
+          test -n "$GCP_BACKUP_BUCKET" || { echo "GCP_BACKUP_BUCKET is not configured"; exit 1; }
+
+      - name: Set up Supabase CLI
+        uses: supabase/setup-cli@v1
+        with:
+          version: latest
+
+      - name: Link production project
+        run: supabase link --project-ref "$SUPABASE_PROJECT_REF"
+
+      - name: Create authoritative database backup
+        shell: bash
+        run: |
+          mkdir -p backup/database backup/storage
+          supabase db dump --linked --schema public --file backup/database/schema.sql
+          supabase db dump --linked --data-only --schema public --use-copy --file backup/database/data.sql
+
+      - name: Back up private Storage objects
+        run: node scripts/backup-supabase-storage.mjs backup/storage
+
+      - name: Verify private Storage checksums
+        run: node scripts/verify-supabase-storage-backup.mjs backup/storage
+
+      - name: Create compressed transport archive and checksums
+        shell: bash
+        run: |
+          backup_stamp="$(date -u +'%Y-%m-%dT%H-%M-%SZ')"
+          echo "$backup_stamp" > backup/BACKUP_ID
+          tar -czf "readyroute-backup-${backup_stamp}.tar.gz" backup
+          sha256sum "readyroute-backup-${backup_stamp}.tar.gz" > "readyroute-backup-${backup_stamp}.tar.gz.sha256"
+          echo "BACKUP_STAMP=$backup_stamp" >> "$GITHUB_ENV"
+
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v3
+        with:
+          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.GCP_DEPLOY_SERVICE_ACCOUNT }}
+
+      - name: Upload durable recovery copy to private Cloud Storage
+        shell: bash
+        run: |
+          gcloud storage cp \
+            "readyroute-backup-${BACKUP_STAMP}.tar.gz" \
+            "readyroute-backup-${BACKUP_STAMP}.tar.gz.sha256" \
+            "gs://${GCP_BACKUP_BUCKET}/daily/${BACKUP_STAMP}/"
+
+      - name: Restore database into disposable project
+        shell: bash
+        run: |
+          database_url="postgresql://postgres:postgres@127.0.0.1:54322/postgres"
+          psql "$database_url" --set ON_ERROR_STOP=1 --command 'drop schema public cascade; create schema public; grant all on schema public to postgres, anon, authenticated, service_role;'
+          psql "$database_url" --set ON_ERROR_STOP=1 --file backup/database/schema.sql
+          psql "$database_url" --set ON_ERROR_STOP=1 --file backup/database/data.sql
+          psql "$database_url" --set ON_ERROR_STOP=1 --tuples-only --command "select count(*) from information_schema.tables where table_schema = 'public';"
+          psql "$database_url" --set ON_ERROR_STOP=1 --command "select to_regclass('public.accounts'), to_regclass('public.routes'), to_regclass('public.vehicles'), to_regclass('public.vehicle_inspections');"
+
+      - name: Upload short-retention GitHub recovery artifact
+        uses: actions/upload-artifact@v6
+        with:
+          name: readyroute-production-backup-${{ env.BACKUP_STAMP }}
+          path: |
+            readyroute-backup-${{ env.BACKUP_STAMP }}.tar.gz
+            readyroute-backup-${{ env.BACKUP_STAMP }}.tar.gz.sha256
+          retention-days: 14
+          if-no-files-found: error

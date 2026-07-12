@@ -9,6 +9,7 @@ const { PRIVILEGED_MANAGER_ROLES } = require('../config/constants');
 const { requireManager: defaultRequireManager } = require('../middleware/auth');
 const { parseMultipartForm } = require('../middleware/multipart');
 const { createBillingService } = require('../services/billing');
+const { createRouteInvoicingService } = require('../services/routeInvoicing');
 const {
   SESSION_SUBJECT_TYPES,
   buildCredentialSessionClaims
@@ -34,7 +35,13 @@ const {
 const { attachStopNotesToStops, saveStopNote } = require('../services/stopNotes');
 const { parseDriverImportRows } = require('../services/resourceImport');
 const { filterProductionRows, isProductionTestArtifact } = require('../services/testDataFilter');
-const { getRouteBillingSummary, parseBillingMonth, updateRouteBillingSettings } = require('../services/routeBilling');
+const {
+  acceptOverageAuthorization,
+  getRouteBillingSummary,
+  parseBillingMonth,
+  revokeOverageAuthorization,
+  updateRouteBillingSettings
+} = require('../services/routeBilling');
 const {
   listManagerNotifications,
   markNotificationRead,
@@ -2172,6 +2179,11 @@ function createManagerRouter(options = {}) {
     stripePriceId: options.stripePriceId,
     trialDays: options.trialDays
   });
+  const routeInvoicingService = options.routeInvoicingService || createRouteInvoicingService({
+    supabase,
+    stripeClient: options.stripeClient,
+    nowProvider
+  });
 
   router.get('/dashboard', requireManager, async (req, res) => {
     const requestedDate = parseDateParam(req.query?.date, nowProvider);
@@ -2834,6 +2846,84 @@ function createManagerRouter(options = {}) {
     } catch (error) {
       console.error('Manager billing settings update failed:', error);
       return res.status(500).json({ error: 'Failed to update billing settings' });
+    }
+  });
+
+  router.post('/billing/overage-authorization', requireManager, requireAccountSettingsAccess, async (req, res) => {
+    if (req.body?.accepted !== true) {
+      return res.status(400).json({ error: 'Confirm the overage authorization before continuing.' });
+    }
+
+    try {
+      const result = await acceptOverageAuthorization({
+        supabase,
+        accountId: req.account.account_id,
+        managerUserId: req.account.manager_user_id,
+        managerEmail: req.account.manager_email,
+        termsVersion: String(req.body?.terms_version || '').trim(),
+        requestIp: String(req.headers['x-forwarded-for'] || req.socket?.remoteAddress || '').split(',')[0].trim() || null,
+        requestUserAgent: String(req.headers['user-agent'] || '').slice(0, 500) || null,
+        acceptedAt: nowProvider().toISOString()
+      });
+
+      if (!result.valid) {
+        return res.status(409).json({ error: result.error });
+      }
+
+      const summary = await getRouteBillingSummary({
+        supabase,
+        accountId: req.account.account_id,
+        month: String(req.body?.month || '').trim(),
+        nowProvider
+      });
+
+      return res.status(201).json({
+        authorization: result.authorization,
+        billing: summary
+      });
+    } catch (error) {
+      console.error('Manager overage authorization failed:', error);
+      return res.status(500).json({ error: 'Could not save overage authorization.' });
+    }
+  });
+
+  router.post('/billing/invoice-preview', requireManager, requireAccountSettingsAccess, async (req, res) => {
+    const month = String(req.body?.month || '').trim();
+    if (!parseBillingMonth(month, nowProvider)) {
+      return res.status(400).json({ error: 'month must be in YYYY-MM format' });
+    }
+
+    try {
+      const preview = await routeInvoicingService.createPreview(req.account.account_id, month);
+      if (!preview || preview.not_found) {
+        return res.status(404).json({ error: 'Account not found' });
+      }
+      return res.status(200).json({ preview });
+    } catch (error) {
+      console.error('Manager billing invoice preview failed:', error);
+      return res.status(500).json({ error: 'Could not create the billing preview.' });
+    }
+  });
+
+  router.delete('/billing/overage-authorization', requireManager, requireAccountSettingsAccess, async (req, res) => {
+    try {
+      await revokeOverageAuthorization({
+        supabase,
+        accountId: req.account.account_id,
+        managerUserId: req.account.manager_user_id,
+        revokedAt: nowProvider().toISOString()
+      });
+      const summary = await getRouteBillingSummary({
+        supabase,
+        accountId: req.account.account_id,
+        month: String(req.query?.month || '').trim(),
+        nowProvider
+      });
+
+      return res.status(200).json({ billing: summary });
+    } catch (error) {
+      console.error('Manager overage authorization revocation failed:', error);
+      return res.status(500).json({ error: 'Could not revoke overage authorization.' });
     }
   });
 

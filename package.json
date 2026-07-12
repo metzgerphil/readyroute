@@ -12,6 +12,8 @@
     "release:landing": "bash ./scripts/release-landing.sh",
     "release:portal": "bash ./scripts/release-portal.sh",
     "release:smoke": "bash ./scripts/release-smoke.sh",
-    "release:app:prep": "cd driver-app && npm run release:prep"
+    "release:app:prep": "cd driver-app && npm run release:prep",
+    "backup:storage": "node ./scripts/backup-supabase-storage.mjs",
+    "verify:storage-backup": "node ./scripts/verify-supabase-storage-backup.mjs"
   }
 }

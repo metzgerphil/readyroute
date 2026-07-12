@@ -48,6 +48,7 @@ function main() {
   const googleMapsKey = process.env.EXPO_PUBLIC_GOOGLE_MAPS_API_KEY || '';
   const appConfigPath = path.join(rootDir, 'app.config.js');
   const easJsonPath = path.join(rootDir, 'eas.json');
+  const packageJsonPath = path.join(rootDir, 'package.json');
 
   if (!apiUrl) {
     errors.push('Missing EXPO_PUBLIC_API_URL.');
@@ -67,6 +68,28 @@ function main() {
 
   if (!fs.existsSync(easJsonPath)) {
     errors.push('eas.json is missing.');
+  }
+
+  if (fs.existsSync(appConfigPath) && fs.existsSync(packageJsonPath)) {
+    const appConfig = require(appConfigPath).expo;
+    const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, 'utf8'));
+    const backgroundModes = appConfig?.ios?.infoPlist?.UIBackgroundModes || [];
+    const locationPlugin = (appConfig?.plugins || []).find((plugin) => (
+      Array.isArray(plugin) ? plugin[0] === 'expo-location' : plugin === 'expo-location'
+    ));
+
+    if (!backgroundModes.includes('location')) {
+      errors.push('iOS background location mode is not enabled.');
+    }
+    if (!appConfig?.ios?.infoPlist?.NSLocationAlwaysAndWhenInUseUsageDescription) {
+      errors.push('iOS Always location permission copy is missing.');
+    }
+    if (!locationPlugin || !Array.isArray(locationPlugin) || locationPlugin[1]?.isIosBackgroundLocationEnabled !== true) {
+      errors.push('Expo location background configuration is incomplete.');
+    }
+    if (!packageJson.dependencies?.['expo-task-manager']) {
+      errors.push('expo-task-manager is required for background location delivery.');
+    }
   }
 
   if (!errors.length && isLocalUrl(apiUrl)) {

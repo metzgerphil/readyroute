@@ -20,14 +20,14 @@ async function isSecureStoreAvailable() {
   }
 }
 
-export async function setSecureItem(key, value) {
+export async function setSecureItem(key, value, options = {}) {
   if (!(await isSecureStoreAvailable())) {
     await AsyncStorage.removeItem(key);
     return false;
   }
 
   await SecureStore.setItemAsync(key, value, {
-    keychainAccessible: SecureStore.WHEN_UNLOCKED_THIS_DEVICE_ONLY
+    keychainAccessible: options.keychainAccessible || SecureStore.WHEN_UNLOCKED_THIS_DEVICE_ONLY
   });
   await AsyncStorage.removeItem(key);
   return true;

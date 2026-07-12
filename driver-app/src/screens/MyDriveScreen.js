@@ -9,6 +9,13 @@ import api from '../services/api';
 import appTheme from '../theme/appTheme';
 import { getPinColorMode, removeClockInTime, saveClockInTime, subscribePinColorMode } from '../services/auth';
 import { fetchDriverDriveRoute, getCachedDriverDriveRoute } from '../services/driverRouteCache';
+import {
+  getAlwaysLocationPermission,
+  postDriverLocation,
+  requestAlwaysLocationPermission,
+  startDriverLocationTracking,
+  stopDriverLocationTracking
+} from '../services/driverLocationTracking';
 import { getApiErrorMessage } from '../utils/apiError';
 import { getSidBucketTheme } from '../utils/sidBuckets';
 
@@ -1147,9 +1154,6 @@ export default function MyDriveScreen({ navigation, route: screenRoute }) {
   const activeBreakTimerRef = useRef(null);
   const markerRefreshTimerRef = useRef(null);
   const hasInitializedMarkerRefreshRef = useRef(false);
-  const lastPostedLocationAtRef = useRef(0);
-  const lastPostedCoordinateRef = useRef(null);
-  const isPostingLocationRef = useRef(false);
   const isMountedRef = useRef(true);
   const fullRouteHydrationVersionRef = useRef(0);
   const [route, setRoute] = useState(null);
@@ -1388,8 +1392,9 @@ export default function MyDriveScreen({ navigation, route: screenRoute }) {
       }
 
       try {
-        const currentPermission = await Location.getForegroundPermissionsAsync();
-        const granted = hasGrantedLocationPermission(currentPermission);
+        const permissionState = await getAlwaysLocationPermission();
+        const currentPermission = permissionState.background || permissionState.foreground;
+        const granted = permissionState.granted;
 
         if (isMounted) {
           setHasLocationAccess(granted);
@@ -1437,6 +1442,11 @@ export default function MyDriveScreen({ navigation, route: screenRoute }) {
       return undefined;
     }
 
+    if (route.status === 'complete' || route.status === 'completed') {
+      Promise.resolve(stopDriverLocationTracking()).catch(() => {});
+      return undefined;
+    }
+
     const rateInterval = setInterval(() => {
       refreshRoute({ allowStateUpdate: true, hydrateDetails: false, showAlert: false });
     }, 60000);
@@ -1446,13 +1456,14 @@ export default function MyDriveScreen({ navigation, route: screenRoute }) {
 
     async function startLocationWatch() {
       try {
-        const currentPermission = await Location.getForegroundPermissionsAsync();
+        const permissionState = await getAlwaysLocationPermission();
+        const currentPermission = permissionState.background || permissionState.foreground;
 
         if (!isActive) {
           return;
         }
 
-        if (!hasGrantedLocationPermission(currentPermission)) {
+        if (!permissionState.granted) {
           setHasLocationAccess(false);
           setIsLocationPermissionBlocked(isBlockedLocationPermission(currentPermission));
           setIsLocationPermissionDenied(isDeniedLocationPermission(currentPermission));
@@ -1462,6 +1473,8 @@ export default function MyDriveScreen({ navigation, route: screenRoute }) {
         setHasLocationAccess(true);
         setIsLocationPermissionBlocked(false);
         setIsLocationPermissionDenied(false);
+
+        await startDriverLocationTracking(route.id);
 
         const initialPosition = await Location.getCurrentPositionAsync({
           accuracy: getDriverLocationAccuracy()
@@ -1497,7 +1510,13 @@ export default function MyDriveScreen({ navigation, route: screenRoute }) {
       locationSubscription?.remove?.();
       clearInterval(rateInterval);
     };
-  }, [route?.id]);
+  }, [route?.id, route?.status]);
+
+  useEffect(() => {
+    if (route?.status === 'complete' || route?.status === 'completed') {
+      Promise.resolve(stopDriverLocationTracking()).catch(() => {});
+    }
+  }, [route?.status]);
 
   useEffect(() => {
     const map = mapRef.current;
@@ -1616,39 +1635,10 @@ export default function MyDriveScreen({ navigation, route: screenRoute }) {
       return;
     }
 
-    if (
-      !shouldPostDriverLocationUpdate({
-        forcePost,
-        lastPostedAt: lastPostedLocationAtRef.current,
-        lastPostedCoordinate: lastPostedCoordinateRef.current,
-        position
-      })
-    ) {
-      return;
-    }
-
-    if (isPostingLocationRef.current) {
-      return;
-    }
-
-    isPostingLocationRef.current = true;
-
     try {
-      await api.post('/routes/position', {
-        lat: position.coords.latitude,
-        lng: position.coords.longitude,
-        route_id: route.id
-      });
-
-      lastPostedLocationAtRef.current = Date.now();
-      lastPostedCoordinateRef.current = {
-        latitude: Number(position.coords.latitude),
-        longitude: Number(position.coords.longitude)
-      };
+      await postDriverLocation(route.id, position, { force: forcePost });
     } catch (_error) {
       // Keep the driver flow resilient and retry later.
-    } finally {
-      isPostingLocationRef.current = false;
     }
   }
 
@@ -1661,8 +1651,9 @@ export default function MyDriveScreen({ navigation, route: screenRoute }) {
     setIsResolvingLocationPermission(true);
 
     try {
-      const permission = await Location.requestForegroundPermissionsAsync();
-      const granted = hasGrantedLocationPermission(permission);
+      const permissionState = await requestAlwaysLocationPermission();
+      const permission = permissionState.background || permissionState.foreground;
+      const granted = permissionState.granted;
 
       setHasLocationAccess(granted);
       setIsLocationPermissionBlocked(isBlockedLocationPermission(permission));
@@ -1672,7 +1663,7 @@ export default function MyDriveScreen({ navigation, route: screenRoute }) {
         return;
       }
 
-      await Location.requestBackgroundPermissionsAsync().catch(() => {});
+      await startDriverLocationTracking(route?.id);
 
       const position = await Location.getCurrentPositionAsync({
         accuracy: getDriverLocationAccuracy()

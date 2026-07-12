@@ -1,20 +1,10 @@
 require('dotenv').config();
 
-const fs = require('fs');
-const crypto = require('crypto');
 const axios = require('axios');
+const { GoogleAuth } = require('google-auth-library');
 
 const ROUTE_OPTIMIZATION_BASE_URL = 'https://routeoptimization.googleapis.com/v1';
-const GOOGLE_OAUTH_TOKEN_URL = 'https://oauth2.googleapis.com/token';
 const GOOGLE_CLOUD_SCOPE = 'https://www.googleapis.com/auth/cloud-platform';
-
-function base64UrlEncode(value) {
-  return Buffer.from(value)
-    .toString('base64')
-    .replace(/=/g, '')
-    .replace(/\+/g, '-')
-    .replace(/\//g, '_');
-}
 
 function isPriorityStop(stop) {
   return typeof stop.notes === 'string' && stop.notes.toUpperCase().includes('PRIORITY');
@@ -105,83 +95,37 @@ function buildOriginalResult(stops, warning) {
   };
 }
 
-function loadServiceAccountCredentials(customPath) {
-  const credentialsPath =
-    customPath ||
-    process.env.GOOGLE_SERVICE_ACCOUNT_KEY_PATH ||
-    process.env.GOOGLE_APPLICATION_CREDENTIALS;
+async function fetchAccessToken(auth) {
+  const client = await auth.getClient();
+  const tokenResult = await client.getAccessToken();
+  const token = typeof tokenResult === 'string' ? tokenResult : tokenResult?.token;
 
-  if (!credentialsPath) {
-    return null;
+  if (!token) {
+    throw new Error('Google Application Default Credentials did not return an access token');
   }
 
-  try {
-    const raw = fs.readFileSync(credentialsPath, 'utf8');
-    const credentials = JSON.parse(raw);
-
-    if (!credentials.client_email || !credentials.private_key) {
-      throw new Error('Service account JSON is missing client_email or private_key');
-    }
-
-    return credentials;
-  } catch (error) {
-    console.error('Failed to load Google service account credentials:', error.message);
-    return null;
-  }
-}
-
-async function fetchAccessToken(httpClient, credentials) {
-  const now = Math.floor(Date.now() / 1000);
-  const header = {
-    alg: 'RS256',
-    typ: 'JWT'
-  };
-  const payload = {
-    iss: credentials.client_email,
-    scope: GOOGLE_CLOUD_SCOPE,
-    aud: GOOGLE_OAUTH_TOKEN_URL,
-    exp: now + 3600,
-    iat: now
-  };
-
-  const encodedHeader = base64UrlEncode(JSON.stringify(header));
-  const encodedPayload = base64UrlEncode(JSON.stringify(payload));
-  const unsignedToken = `${encodedHeader}.${encodedPayload}`;
-  const signature = crypto
-    .sign('RSA-SHA256', Buffer.from(unsignedToken), credentials.private_key)
-    .toString('base64')
-    .replace(/=/g, '')
-    .replace(/\+/g, '-')
-    .replace(/\//g, '_');
-
-  const assertion = `${unsignedToken}.${signature}`;
-  const response = await httpClient.post(
-    GOOGLE_OAUTH_TOKEN_URL,
-    new URLSearchParams({
-      grant_type: 'urn:ietf:params:oauth:grant-type:jwt-bearer',
-      assertion
-    }).toString(),
-    {
-      headers: {
-        'Content-Type': 'application/x-www-form-urlencoded'
-      },
-      timeout: 15000
-    }
-  );
-
-  return response.data.access_token;
+  return token;
 }
 
 function createRouteOptimizer(options = {}) {
   const httpClient = options.httpClient || axios;
-  const credentials = options.credentials || loadServiceAccountCredentials(options.credentialsPath);
-  const projectId =
-    options.projectId ||
-    process.env.GOOGLE_ROUTE_OPTIMIZATION_PROJECT_ID ||
-    process.env.GOOGLE_CLOUD_PROJECT_ID ||
-    process.env.GOOGLE_PROJECT_ID ||
-    process.env.GCLOUD_PROJECT ||
-    credentials?.project_id;
+  const credentialsPath =
+    options.credentialsPath ||
+    process.env.GOOGLE_APPLICATION_CREDENTIALS;
+  const auth = options.auth || new GoogleAuth({
+    ...(options.credentials ? { credentials: options.credentials } : {}),
+    ...(credentialsPath && !options.credentials ? { keyFilename: credentialsPath } : {}),
+    scopes: [GOOGLE_CLOUD_SCOPE]
+  });
+  const configuredProjectId = Object.prototype.hasOwnProperty.call(options, 'projectId')
+    ? options.projectId
+    : (
+        process.env.GOOGLE_ROUTE_OPTIMIZATION_PROJECT_ID ||
+        process.env.GOOGLE_CLOUD_PROJECT_ID ||
+        process.env.GOOGLE_PROJECT_ID ||
+        process.env.GCLOUD_PROJECT ||
+        options.credentials?.project_id
+      );
 
   async function optimizeRoute(stops, startLat, startLng, roadRules) {
     const normalizedStops = Array.isArray(stops) ? [...stops] : [];
@@ -190,12 +134,12 @@ function createRouteOptimizer(options = {}) {
       return { stops: applyPriorityPlacement(normalizedStops), warning: null };
     }
 
-    if (!credentials || !projectId) {
-      return buildOriginalResult(normalizedStops, 'optimization_unavailable');
-    }
-
     try {
-      const accessToken = await fetchAccessToken(httpClient, credentials);
+      const projectId = configuredProjectId || await auth.getProjectId();
+      if (!projectId) {
+        return buildOriginalResult(normalizedStops, 'optimization_unavailable');
+      }
+      const accessToken = await fetchAccessToken(auth);
       const requestBody = buildRequestBody(normalizedStops, startLat, startLng, roadRules);
       const response = await httpClient.post(
         `${ROUTE_OPTIMIZATION_BASE_URL}/projects/${encodeURIComponent(projectId)}:optimizeTours`,

@@ -31,7 +31,10 @@ module.exports = {
         NSPhotoLibraryUsageDescription:
           'ReadyRoute lets drivers and managers choose photos from their camera roll for inspections and driver documents.',
         NSLocationWhenInUseUsageDescription:
-          'ReadyRoute uses your location while you are on route so your manager can see route progress, support dispatch decisions, and locate drivers during the workday.'
+          'ReadyRoute uses your location while you are on route so your manager can see route progress, support dispatch decisions, and locate drivers during the workday.',
+        NSLocationAlwaysAndWhenInUseUsageDescription:
+          'ReadyRoute shares your location with your company while you are actively running a route, including when the app is in the background or your phone is locked.',
+        UIBackgroundModes: ['location', 'remote-notification']
       },
       config: {
         ...(googleMapsApiKey ? { googleMapsApiKey } : {})
@@ -63,7 +66,17 @@ module.exports = {
       favicon: './assets/favicon.png'
     },
     plugins: [
-      'expo-secure-store'
+      'expo-secure-store',
+      [
+        'expo-location',
+        {
+          locationAlwaysAndWhenInUsePermission:
+            'ReadyRoute shares your location with your company while you are actively running a route, including when the app is in the background or your phone is locked.',
+          isIosBackgroundLocationEnabled: true,
+          isAndroidBackgroundLocationEnabled: true,
+          isAndroidForegroundServiceEnabled: true
+        }
+      ]
     ],
     extra: {
       eas: {

@@ -1,6 +1,22 @@
 const DEFAULT_ROUTE_RATE_CENTS = 1500;
 const DEFAULT_CURRENCY = 'usd';
 const MAX_COMMITTED_ROUTE_COUNT = 10000;
+const OVERAGE_TERMS_VERSION = '2026-07-12';
+const OVERAGE_TERMS_TEXT = 'I authorize ReadyRoute to charge the payment method on file at the account route rate for each unique monthly route used above this account\'s committed route count. I understand that this authorization applies to future billing periods until revoked and that revocation does not remove charges already incurred.';
+const BILLING_SETTING_FIELDS = [
+  'committed_route_count',
+  'billing_rate_cents',
+  'currency',
+  'free_month_started_on',
+  'free_month_ends_on',
+  'is_billing_exempt',
+  'overage_authorization_status',
+  'overage_authorization_id',
+  'overage_terms_version',
+  'overage_authorized_at',
+  'overage_authorized_by_manager_user_id',
+  'overage_billing_enabled'
+].join(', ');
 
 function normalizeRouteBillingKey(workAreaName) {
   const normalized = String(workAreaName || '')
@@ -96,7 +112,7 @@ function normalizeCommittedRouteCount(value) {
 async function loadBillingSettings(supabase, accountId) {
   const { data, error } = await supabase
     .from('account_billing_settings')
-    .select('committed_route_count, billing_rate_cents, currency, free_month_started_on, free_month_ends_on, is_billing_exempt')
+    .select(BILLING_SETTING_FIELDS)
     .eq('account_id', accountId)
     .maybeSingle();
 
@@ -137,7 +153,7 @@ async function updateRouteBillingSettings({
       committed_route_count: normalizedCommittedRouteCount,
       updated_at: updatedAt
     }, { onConflict: 'account_id' })
-    .select('committed_route_count, billing_rate_cents, currency, free_month_started_on, free_month_ends_on, is_billing_exempt')
+    .select(BILLING_SETTING_FIELDS)
     .maybeSingle();
 
   if (error) {
@@ -170,8 +186,116 @@ function buildSettingsWithDefaults(settings = null, account = {}) {
     free_month_started_on: settings?.free_month_started_on || null,
     free_month_ends_on: settings?.free_month_ends_on || null,
     is_billing_exempt: Boolean(settings?.is_billing_exempt),
+    overage_authorization_status: settings?.overage_authorization_status || 'not_requested',
+    overage_authorization_id: settings?.overage_authorization_id || null,
+    overage_terms_version: settings?.overage_terms_version || null,
+    overage_authorized_at: settings?.overage_authorized_at || null,
+    overage_authorized_by_manager_user_id: settings?.overage_authorized_by_manager_user_id || null,
+    overage_billing_enabled: Boolean(settings?.overage_billing_enabled),
     commitment_source: hasCommittedRouteSetting ? 'billing_settings' : 'legacy_vehicle_count'
   };
+}
+
+async function acceptOverageAuthorization({
+  supabase,
+  accountId,
+  managerUserId = null,
+  managerEmail = null,
+  requestIp = null,
+  requestUserAgent = null,
+  termsVersion,
+  acceptedAt = new Date().toISOString()
+}) {
+  if (termsVersion !== OVERAGE_TERMS_VERSION) {
+    return { valid: false, error: 'The overage terms changed. Refresh the page and review them again.' };
+  }
+
+  const settings = buildSettingsWithDefaults(await loadBillingSettings(supabase, accountId));
+  const { data: authorization, error: authorizationError } = await supabase
+    .from('billing_overage_authorizations')
+    .insert({
+      account_id: accountId,
+      manager_user_id: managerUserId,
+      manager_email: managerEmail,
+      status: 'accepted',
+      terms_version: OVERAGE_TERMS_VERSION,
+      terms_text: OVERAGE_TERMS_TEXT,
+      committed_route_count: settings.committed_route_count,
+      billing_rate_cents: settings.billing_rate_cents,
+      currency: settings.currency,
+      accepted_at: acceptedAt,
+      request_ip: requestIp,
+      request_user_agent: requestUserAgent
+    })
+    .select('id, status, terms_version, accepted_at, committed_route_count, billing_rate_cents, currency')
+    .single();
+
+  if (authorizationError) {
+    throw authorizationError;
+  }
+
+  const { data: updatedSettings, error: updateError } = await supabase
+    .from('account_billing_settings')
+    .upsert({
+      account_id: accountId,
+      overage_authorization_status: 'accepted',
+      overage_authorization_id: authorization.id,
+      overage_terms_version: OVERAGE_TERMS_VERSION,
+      overage_authorized_at: acceptedAt,
+      overage_authorized_by_manager_user_id: managerUserId,
+      overage_billing_enabled: false,
+      updated_at: acceptedAt
+    }, { onConflict: 'account_id' })
+    .select(BILLING_SETTING_FIELDS)
+    .single();
+
+  if (updateError) {
+    throw updateError;
+  }
+
+  return { valid: true, authorization, settings: updatedSettings };
+}
+
+async function revokeOverageAuthorization({
+  supabase,
+  accountId,
+  managerUserId = null,
+  revokedAt = new Date().toISOString()
+}) {
+  const settings = buildSettingsWithDefaults(await loadBillingSettings(supabase, accountId));
+
+  if (settings.overage_authorization_id) {
+    const { error: authorizationError } = await supabase
+      .from('billing_overage_authorizations')
+      .update({
+        status: 'revoked',
+        revoked_at: revokedAt,
+        revoked_by_manager_user_id: managerUserId
+      })
+      .eq('id', settings.overage_authorization_id)
+      .eq('account_id', accountId);
+
+    if (authorizationError) {
+      throw authorizationError;
+    }
+  }
+
+  const { data, error } = await supabase
+    .from('account_billing_settings')
+    .upsert({
+      account_id: accountId,
+      overage_authorization_status: 'revoked',
+      overage_billing_enabled: false,
+      updated_at: revokedAt
+    }, { onConflict: 'account_id' })
+    .select(BILLING_SETTING_FIELDS)
+    .single();
+
+  if (error) {
+    throw error;
+  }
+
+  return { settings: data };
 }
 
 function isPeriodInsideFreeMonth(periodStart, settings) {
@@ -386,6 +510,18 @@ async function getRouteBillingSummary({
     free_month_applied: freeMonthApplied,
     is_billing_exempt: settings.is_billing_exempt,
     billing_mode: 'shadow',
+    overage_authorization: {
+      status: settings.overage_authorization_status,
+      authorization_id: settings.overage_authorization_id,
+      terms_version: settings.overage_terms_version,
+      accepted_at: settings.overage_authorized_at,
+      billing_enabled: settings.overage_billing_enabled,
+      current_terms_version: OVERAGE_TERMS_VERSION,
+      terms_text: OVERAGE_TERMS_TEXT,
+      current_terms_accepted:
+        settings.overage_authorization_status === 'accepted' &&
+        settings.overage_terms_version === OVERAGE_TERMS_VERSION
+    },
     routes: billableRoutes.map((row) => ({
       id: row.id,
       route_key: row.route_key,
@@ -403,12 +539,16 @@ module.exports = {
   DEFAULT_ROUTE_RATE_CENTS,
   DEFAULT_CURRENCY,
   MAX_COMMITTED_ROUTE_COUNT,
+  OVERAGE_TERMS_VERSION,
+  OVERAGE_TERMS_TEXT,
   normalizeRouteBillingKey,
   getBillingPeriodForDate,
   parseBillingMonth,
   recordBillableManifestImport,
   getRouteBillingSummary,
   updateRouteBillingSettings,
+  acceptOverageAuthorization,
+  revokeOverageAuthorization,
   __private: {
     buildSettingsWithDefaults,
     isPeriodInsideFreeMonth,
