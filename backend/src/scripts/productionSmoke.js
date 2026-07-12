@@ -92,6 +92,166 @@ async function deleteSmokeDriverByEmail(supabase, email) {
   }
 }
 
+function assertSmokeVehicle(vehicle) {
+  const name = String(vehicle?.name || '');
+  const plate = String(vehicle?.plate || '');
+  const notes = String(vehicle?.notes || '');
+
+  if (!/^Smoke Test Vehicle [a-z0-9-]+$/i.test(name) || !/^SMK[A-Z0-9]+$/.test(plate) || !notes.startsWith('ReadyRoute production smoke ')) {
+    throw new Error('Refusing to clean up a vehicle that is not an isolated smoke record');
+  }
+}
+
+function assertSmokeInspectionPhoto(photo, vehicleId) {
+  const bucket = String(photo?.storage_bucket || '');
+  const path = String(photo?.storage_path || '');
+
+  if (bucket !== 'vehicle-inspection-photos' || !path.includes(`/${vehicleId}/manager-inspection/vedr/`)) {
+    throw new Error('Refusing to clean up a photo that is not an isolated manager inspection smoke record');
+  }
+}
+
+async function deleteSmokeVehicle(supabase, vehicleId, photo = null) {
+  const { data: vehicle, error: vehicleLookupError } = await supabase
+    .from('vehicles')
+    .select('id, account_id, name, plate, notes')
+    .eq('id', vehicleId)
+    .maybeSingle();
+
+  if (vehicleLookupError) {
+    throw vehicleLookupError;
+  }
+
+  if (!vehicle) {
+    return;
+  }
+
+  assertSmokeVehicle(vehicle);
+
+  if (photo?.storage_path) {
+    assertSmokeInspectionPhoto(photo, vehicleId);
+    const { error: photoDeleteError } = await supabase.storage
+      .from(photo.storage_bucket)
+      .remove([photo.storage_path]);
+
+    if (photoDeleteError) {
+      throw photoDeleteError;
+    }
+  }
+
+  const { error: vehicleDeleteError } = await supabase
+    .from('vehicles')
+    .delete()
+    .eq('id', vehicle.id)
+    .eq('account_id', vehicle.account_id);
+
+  if (vehicleDeleteError) {
+    throw vehicleDeleteError;
+  }
+}
+
+async function runManagerInspectionSmoke({ backendUrl, authHeaders, supabase, smokeId }) {
+  const vehicleName = `Smoke Test Vehicle ${smokeId}`;
+  const vehiclePlate = `SMK${smokeId.replace(/[^a-z0-9]/gi, '').slice(-9).toUpperCase()}`;
+  const vehicleNotes = `ReadyRoute production smoke ${smokeId}`;
+  let vehicleId = null;
+  let inspectionPhoto = null;
+
+  try {
+    const createdVehicle = await requestJson(`${backendUrl}/vehicles`, {
+      method: 'POST',
+      headers: authHeaders,
+      body: JSON.stringify({
+        name: vehicleName,
+        plate: vehiclePlate,
+        truck_type: 'P1000',
+        make: 'ReadyRoute',
+        model: 'Smoke Test',
+        year: 2026,
+        current_mileage: 1,
+        fuel_type: 'Diesel',
+        notes: vehicleNotes
+      })
+    });
+
+    assert(createdVehicle?.vehicle_id, 'Vehicle create did not return a vehicle_id');
+    vehicleId = createdVehicle.vehicle_id;
+
+    console.log(`ok manager inspection smoke vehicle ${vehicleId}`);
+
+    const uploadedPhoto = await requestJson(`${backendUrl}/vehicles/${vehicleId}/inspection-photo`, {
+      method: 'POST',
+      headers: authHeaders,
+      body: JSON.stringify({
+        checklist_item_key: 'vedr',
+        image_base64: 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=',
+        mime_type: 'image/png',
+        file_name: `smoke-${smokeId}.png`
+      })
+    });
+
+    inspectionPhoto = uploadedPhoto?.photo;
+    assert(inspectionPhoto?.storage_path, 'Manager inspection photo upload did not return a storage path');
+    assert(inspectionPhoto?.url, 'Manager inspection photo upload did not return a signed URL');
+    assertSmokeInspectionPhoto(inspectionPhoto, vehicleId);
+    console.log('ok manager inspection private photo upload');
+
+    const createdInspection = await requestJson(`${backendUrl}/vehicles/${vehicleId}/inspections`, {
+      method: 'POST',
+      headers: authHeaders,
+      body: JSON.stringify({
+        inspection_date: new Date().toISOString().slice(0, 10),
+        odometer: 1,
+        issue_note: `Production smoke ${smokeId}`,
+        items: [
+          {
+            checklist_item_key: 'vedr',
+            label: 'VEDR',
+            category: 'safety_equipment',
+            status: 'issue',
+            severity: 'maintenance_soon',
+            issue_details: { issue_type: 'Not Connected' },
+            note: 'Production smoke inspection',
+            photos: [inspectionPhoto]
+          },
+          {
+            checklist_item_key: 'parking_sensors',
+            label: 'Parking Sensors',
+            category: 'safety_equipment',
+            status: 'pass',
+            severity: null,
+            issue_details: {},
+            photos: []
+          }
+        ]
+      })
+    });
+
+    const inspection = createdInspection?.inspection;
+    assert(inspection?.id, 'Manager inspection create did not return an inspection id');
+    assert(inspection.status === 'safe_with_maintenance_reported', 'Manager inspection did not preserve maintenance severity');
+    assert(inspection.issue_count === 1, 'Manager inspection did not preserve its issue count');
+    assert(inspection.items?.[0]?.issue_details?.issue_type === 'Not Connected', 'Manager inspection did not preserve the VEDR issue choice');
+    assert(inspection.items?.[0]?.photos?.[0]?.url, 'Manager inspection response did not provide private photo access');
+    console.log(`ok detailed manager inspection ${inspection.id}`);
+
+    const loadedInspection = await requestJson(`${backendUrl}/vehicles/inspections/${inspection.id}`, {
+      headers: authHeaders
+    });
+    const loadedVedr = loadedInspection?.inspection?.items?.find((item) => item.checklist_item_key === 'vedr');
+
+    assert(loadedInspection?.inspection?.id === inspection.id, 'Manager inspection detail did not return the created inspection');
+    assert(loadedVedr?.issue_details?.issue_type === 'Not Connected', 'Manager inspection detail lost the VEDR issue choice');
+    assert(loadedVedr?.photos?.[0]?.url, 'Manager inspection detail did not return a signed photo URL');
+    console.log('ok manager inspection detail and private photo retrieval');
+  } finally {
+    if (vehicleId) {
+      await deleteSmokeVehicle(supabase, vehicleId, inspectionPhoto);
+      console.log('ok manager inspection smoke cleanup');
+    }
+  }
+}
+
 async function main() {
   const backendUrl = normalizeBaseUrl(process.env.SMOKE_BACKEND_URL || DEFAULT_BACKEND_URL);
   const portalUrl = normalizeBaseUrl(process.env.SMOKE_PORTAL_URL || DEFAULT_PORTAL_URL);
@@ -131,12 +291,15 @@ async function main() {
     console.log('skip manager password reset request: SMOKE_PASSWORD_RESET_EMAIL not set');
   }
 
-  const hasDriverSmokeEnv = managerEmail && managerPassword && supabaseUrl && supabaseServiceKey;
+  const missingAuthenticatedSmokeEnv = [
+    ['SMOKE_MANAGER_EMAIL', managerEmail],
+    ['SMOKE_MANAGER_PASSWORD', managerPassword],
+    ['SUPABASE_URL', supabaseUrl],
+    ['SUPABASE_SERVICE_KEY', supabaseServiceKey]
+  ].filter(([, value]) => !value).map(([name]) => name);
 
-  if (!hasDriverSmokeEnv) {
-    console.log('skip authenticated driver smoke: SMOKE_MANAGER_EMAIL, SMOKE_MANAGER_PASSWORD, SUPABASE_URL, or SUPABASE_SERVICE_KEY not set');
-    console.log('production smoke passed');
-    return;
+  if (missingAuthenticatedSmokeEnv.length) {
+    throw new Error(`Authenticated production smoke is not configured: ${missingAuthenticatedSmokeEnv.join(', ')}`);
   }
 
   const supabase = createClient(supabaseUrl, supabaseServiceKey);
@@ -173,27 +336,60 @@ async function main() {
     const drivers = await requestJson(`${backendUrl}/manager/drivers`, {
       headers: authHeaders
     });
-    const foundDriver = (drivers?.drivers || []).find((driver) => driver.email === smokeDriver.email);
+    const leakedDriver = (drivers?.drivers || []).find((driver) => driver.email === smokeDriver.email);
 
-    assert(foundDriver, 'Created smoke driver was not returned by GET /manager/drivers');
-    assert(foundDriver.fedex_driver_id === smokeDriver.fedex_driver_id, 'Created smoke driver FedEx ID did not round-trip');
-    assert(!foundDriver.phone, 'Created smoke driver unexpectedly has a phone value');
-    console.log('ok driver list verification');
+    assert(!leakedDriver, 'Smoke driver leaked into the manager-facing driver list');
+    console.log('ok smoke driver production-list filtering');
+
+    const { data: persistedDriver, error: persistedDriverError } = await supabase
+      .from('drivers')
+      .select('id, email, fedex_driver_id, phone')
+      .eq('id', created.driver_id)
+      .maybeSingle();
+
+    if (persistedDriverError) {
+      throw persistedDriverError;
+    }
+
+    assert(persistedDriver?.email === smokeDriver.email, 'Created smoke driver was not persisted');
+    assert(persistedDriver.fedex_driver_id === smokeDriver.fedex_driver_id, 'Created smoke driver FedEx ID did not round-trip');
+    assert(!persistedDriver.phone, 'Created smoke driver unexpectedly has a phone value');
+    console.log('ok driver persistence verification');
   } finally {
     await deleteSmokeDriverByEmail(supabase, smokeDriver.email);
   }
 
-  const remaining = await requestJson(`${backendUrl}/manager/drivers`, {
-    headers: authHeaders
-  });
-  const stillPresent = (remaining?.drivers || []).some((driver) => driver.email === smokeDriver.email);
+  const { data: remainingDriver, error: remainingDriverError } = await supabase
+    .from('drivers')
+    .select('id')
+    .eq('email', smokeDriver.email)
+    .maybeSingle();
 
-  assert(!stillPresent, 'Smoke driver cleanup did not remove the driver');
+  if (remainingDriverError) {
+    throw remainingDriverError;
+  }
+  assert(!remainingDriver, 'Smoke driver cleanup did not remove the driver');
   console.log('ok smoke driver cleanup');
+
+  await runManagerInspectionSmoke({
+    backendUrl,
+    authHeaders,
+    supabase,
+    smokeId
+  });
+
   console.log('production smoke passed');
 }
 
-main().catch((error) => {
-  console.error(error.message || error);
-  process.exit(1);
-});
+if (require.main === module) {
+  main().catch((error) => {
+    console.error(error.message || error);
+    process.exit(1);
+  });
+}
+
+module.exports = {
+  assertSmokeEmail,
+  assertSmokeInspectionPhoto,
+  assertSmokeVehicle
+};

@@ -1,196 +1,142 @@
-# ReadyRoute Phase 1 Final Checklist
+# ReadyRoute Phase 1 Release-Readiness Checklist
 
-Use this as the single source of truth before calling Phase 1 complete.
+Last updated: `2026-07-11`
 
-## Status Key
+This is the source of truth for deciding whether ReadyRoute is ready for a controlled live pilot. It separates checks the release pipeline can prove from checks that require a real phone, driver, vehicle, and route day.
 
-- `[x]` Verified
-- `[ ]` Not yet verified
-- `Local only` = confirmed in local/dev testing, not yet proven in production or with a real route
+## Current Status
 
-## Current Reality
+ReadyRoute is feature-complete enough for structured field validation, but Phase 1 is not fully proven until a real route day succeeds.
 
-As of now, ReadyRoute looks like this:
+Current decisions:
 
-- Backend implementation: largely complete
-- Driver app: implemented and partially tested
-- Manager portal: implemented and partially tested
-- Automated backend tests: passing locally
-- Real production verification: still incomplete
-- Full real-world route-day validation: not done yet
+- Delivery signatures are not part of ReadyRoute and have been removed from the app, portal, API, database, and storage.
+- Driver location updates remain approximately every 5 seconds during active tracking.
+- Route billing remains in shadow mode until ReadyRoute is approved to charge customers.
+- Planned billing is `$15 USD` per imported route, including routes above the customer's original monthly commitment after authorization.
+- Do not create a new TestFlight build until the current product work is ready for a coordinated mobile release.
 
-That means:
+## 1. Automated Release Gate
 
-- Phase 1 is **not** ready to call fully complete yet
-- Phase 1 is **ready for structured field verification**
+These checks must pass on every production backend release through GitHub Actions.
 
-## 1. Backend Checklist
+- [x] Backend unit tests pass.
+- [x] Required database schema version matches production.
+- [x] Supabase migrations apply before Cloud Run deployment.
+- [x] Cloud Run reports the exact Git commit being served.
+- [x] `/health` reports `compatible: true` for the database schema.
+- [x] Manager portal production routes respond successfully.
+- [x] Manager login succeeds with the isolated smoke account.
+- [x] Manager driver creation, persistence, production-list filtering, and cleanup succeed.
+- [x] Manager vehicle creation and cleanup succeed using explicitly marked test data.
+- [x] Detailed manager inspection submission preserves issue choice and severity.
+- [x] Manager inspection photo upload uses the private `vehicle-inspection-photos` bucket.
+- [x] Inspection detail returns temporary signed photo access.
+- [x] Production smoke records and their private photos are removed after each run.
 
-### Database / Supabase
+Release workflow: `.github/workflows/release-production.yml`
 
-- [ ] Confirm all 10 operational tables exist in Supabase
-  Tables to verify:
-  `accounts`, `drivers`, `vehicles`, `routes`, `stops`, `packages`, `driver_positions`, `timecards`, `road_rules`, `stop_notes`
+Production smoke: `backend/src/scripts/productionSmoke.js`
 
-- [ ] Confirm RLS is enabled on all 10 tables
+## 2. Production Infrastructure
 
-- [ ] Confirm the `pod-photos` storage bucket exists and behaves correctly
+- [x] Operational storage buckets are private.
+- [x] Legacy delivery-signature storage is removed.
+- [x] Customer and ReadyRoute staff authentication are separate.
+- [x] Staff-only support and CRM routes reject customer manager tokens.
+- [x] Request limits, rate limits, CORS, and structured request logging are enabled.
+- [x] Production deployment uses GitHub Actions, Supabase migrations, and immutable Cloud Run releases.
+- [x] Account cancellation retains data for the configured recovery period instead of deleting immediately.
+- [ ] Perform and document one database restore rehearsal from a Supabase backup.
+- [ ] Confirm production alert recipients and escalation ownership for Cloud Run/API failures.
 
-### Production Backend
+## 3. Manager Portal Field Validation
 
-- [ ] Verify `GET /health` returns `200` on the Cloud Run production URL
-  Expected response:
-  ```json
-  { "status": "ok", "timestamp": "..." }
-  ```
+Run these checks in `https://portal.readyroute.org` with a controlled pilot company.
 
-- [ ] Confirm Cloud Run env vars and secrets are set correctly
-  Reference:
-  [DEPLOYMENT.md](/Users/phillipmetzger/readyroute/DEPLOYMENT.md)
+- [ ] Manager login and password reset work in a real browser.
+- [ ] Dashboard metrics match the pilot company's actual route data.
+- [ ] Fleet readiness reasons link to the correct inspection, maintenance, or document record.
+- [ ] Manager-created inspections show the same detailed choices as driver inspections.
+- [ ] Inspection photos remain visible to managers after submission and refresh.
+- [ ] Unsafe inspection review requires an explicit vehicle decision.
+- [ ] Vehicle readiness and vehicle operating status remain consistent across Fleet and Inspections.
+- [ ] Real FedEx manifest upload creates the expected route, stops, packages, and assignments.
+- [ ] Route dispatch and post-dispatch change warnings behave correctly.
+- [ ] Live driver position appears on the manager map.
 
-### Manifest / Routing
+## 4. Driver App Field Validation
 
-- [ ] Upload a real FedEx GPX manifest file
-- [ ] Confirm the manifest creates the correct route and stop count
-- [ ] Confirm addresses are parsed correctly
-- [ ] Confirm route optimization reorders stops logically
+Run on the current internal build first. A new TestFlight build is a separate release decision.
 
-### Stop Completion Logic
+- [ ] Login works on a real iPhone.
+- [ ] Login works on a real Android phone before Android launch is claimed.
+- [ ] Background and always-location permission flow is understandable and successful.
+- [ ] Active tracking posts approximately every 5 seconds without unacceptable battery or heat impact.
+- [ ] Driver inspection starts neutral and requires every enabled item to be answered.
+- [ ] Driver and manager inspection issue choices match exactly.
+- [ ] Inspection photo upload survives ordinary cellular conditions.
+- [ ] Submitted photos are visible in the manager portal.
+- [ ] `My Drive`, manifest, stop detail, and map all agree on the current/next stop.
+- [ ] External navigation opens the expected destination.
+- [ ] Delivered and attempted stops save the correct status and advance correctly.
+- [ ] Temporary signal loss queues work safely and recovers without duplicate completion.
+- [ ] Driver can recover cleanly after force-closing and reopening the app.
 
-- [ ] Manually verify `stops/hr` uses the first completed stop time, not departure time
-- [ ] Confirm a Code `02` stop saves correctly as `attempted`
-- [ ] Confirm delivered stops increment `route.completed_stops`
+## 5. Real Route-Day Pilot
 
-### Billing
+This is the final Phase 1 proof and cannot be replaced by automated tests.
 
-- [ ] Create a real Stripe test subscription at `$15/vehicle`
-- [ ] Confirm the Stripe customer is created
-- [ ] Confirm the Stripe subscription quantity matches vehicle count
-- [ ] Confirm webhook events update account billing state
+- [ ] Import one real route into ReadyRoute.
+- [ ] Run ReadyRoute alongside the current operating system for one complete delivery day.
+- [ ] Compare route stop count, package count, sequence, and assignments before dispatch.
+- [ ] Compare completed and attempted stop results after the route.
+- [ ] Compare ReadyRoute stops-per-hour with the existing system.
+- [ ] Confirm location continuity from departure through return.
+- [ ] Confirm inspection issues, photos, manager review, and vehicle readiness end to end.
+- [ ] Record every failure, confusing interaction, unnecessary tap, and missing capability.
 
-### Automated Tests
+## 6. Pilot Findings Template
 
-- [x] `npm test` passes locally
-  Location:
-  [backend](/Users/phillipmetzger/readyroute/backend)
-
-## 2. Driver App Checklist
-
-### Authentication
-
-- [ ] Login works on a real iPhone
-- [ ] Login works on a real Android phone
-
-### Route-Day Experience
-
-- [ ] `My Drive` shows the correct current stop
-- [ ] Stop banner matches the actual next stop in sequence
-- [ ] Manifest screen shows all stops correctly
-- [ ] Stop detail shows correct stop/package data
-
-### Delivery Actions
-
-- [ ] Delivering a stop captures a photo successfully
-- [ ] After delivery, the app advances to the next stop
-- [ ] Attempted stop flow works for common exception codes
-- [ ] Code `02` shows the service-score warning before completion
-
-### GPS / Sync
-
-- [ ] GPS position updates post every 30 seconds during an active route
-- [ ] Those GPS updates appear in the manager dashboard
-
-### Navigation / Maps
-
-- [ ] In-app map shows the current stop correctly
-- [ ] Remaining stops appear correctly on the map
-- [ ] External navigation opens Google Maps turn-by-turn on a real device
-
-### Offline / Reliability
-
-- [ ] App still behaves acceptably in airplane mode
-- [ ] Offline map behavior is acceptable for your use case
-- [ ] Driver can recover cleanly after temporary signal loss
-
-## 3. Manager Portal Checklist
-
-### Deployment / Login
-
-- [ ] Login works in the browser at the Vercel production URL
-- [ ] Browser refreshes on nested routes do not 404
-  Reference:
-  [DEPLOYMENT.md](/Users/phillipmetzger/readyroute/DEPLOYMENT.md)
-
-### Dashboard
-
-- [ ] Dashboard metrics match real route data
-- [ ] List-view `stops/hr` is accurate
-- [ ] Map view shows live driver positions
-
-### Fleet Map / Manifest Workflow
-
-- [ ] Fleet Map loads correctly in production
-- [ ] GPX upload works end to end from the manager portal
-- [ ] Route assignment works end to end
-- [ ] Route optimization feedback is clear to the manager
-
-### Driver Admin
-
-- [ ] `Add Driver` creates a new driver successfully
-- [ ] Newly added driver can log into the driver app
-- [ ] Driver deactivation behaves correctly
-
-## 4. Real-World Test Checklist
-
-This is the part that actually determines whether Phase 1 is done.
-
-- [ ] Run one of your own real routes through ReadyRoute
-- [ ] Run it alongside GroundCloud for one full delivery day
-- [ ] Note every friction point
-- [ ] Note every broken feature
-- [ ] Note every missing feature
-- [ ] Compare ReadyRoute `stops/hr` against GroundCloud
-- [ ] Identify where drivers hesitate, get confused, or need extra taps
-
-## 5. Required Output From Real-World Test
-
-Create a simple list with these sections after the route-day test:
+Record the route-day result under these headings:
 
 ### Broken
 
-- Anything that failed or produced the wrong result
+Behavior that failed, saved incorrect data, or prevented work.
 
 ### Friction
 
-- Anything that worked but felt slow, awkward, or confusing
+Behavior that worked but was slow, confusing, repetitive, or easy to misuse.
 
 ### Missing
 
-- Anything GroundCloud supports that ReadyRoute still needs
+Capabilities required for the pilot company to operate without a fallback product.
 
-### Metrics Comparison
+### Metrics
 
-- ReadyRoute `stops/hr`
-- GroundCloud `stops/hr`
-- Any obvious gap and why you think it happened
+- ReadyRoute stops per hour
+- Existing-system stops per hour
+- Location gaps or delayed updates
+- Failed or retried uploads
+- Battery usage over the route day
 
-### Top Phase 2 Priorities
+### Decision
 
-- The top 5 issues to fix next, in priority order
+- Continue pilot
+- Continue after fixes
+- Pause pilot
 
-## 6. Call-It-Done Rule
+## 7. Phase 1 Completion Rule
 
-You should only call Phase 1 complete when all of these are true:
+Phase 1 is complete only when:
 
-- Backend production health check works
-- Real FedEx manifest upload works
-- Driver app is proven on a real phone
-- Manager portal works at the real Vercel URL
-- GPS shows up live in the dashboard
-- Stripe billing works in test mode
-- One full real route day has been completed alongside GroundCloud
-- The Phase 2 priority list has been written down
+- the automated production release gate passes;
+- the manager portal field checks pass;
+- the driver app field checks pass on real hardware;
+- one complete real route day succeeds;
+- no unresolved issue can lose customer route, stop, inspection, photo, location, or billing data; and
+- the top five Phase 2 priorities are written from observed pilot evidence.
 
-If any of those are still missing, the correct status is:
+Until then, the accurate status is:
 
-**Phase 1 implemented, but not fully validated.**
+**Phase 1 implemented and production-hardened, pending controlled field validation.**

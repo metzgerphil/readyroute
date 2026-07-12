@@ -1,297 +1,162 @@
 # ReadyRoute Release Playbook
 
-Last updated: `2026-04-17`
+Last updated: `2026-07-11`
 
-## Purpose
+## Production Surfaces
 
-This is the practical ship guide for ReadyRoute.
+- API: `https://api.readyroute.org`
+- Manager portal: `https://portal.readyroute.org`
+- ReadyRoute staff portal: `https://readyroute.org/staff`
+- Driver app: Expo/EAS production build distributed through TestFlight or the App Store
 
-Use it when you are:
-- releasing backend changes
-- pushing manager portal changes
-- building or submitting the driver app
-- doing a coordinated production release across all 3 surfaces
+## Production Source Of Truth
 
-## Current Production Surfaces
+GitHub `main` is the production source of truth. Do not deploy an uncommitted local directory directly to Cloud Run or Vercel.
 
-- Backend: `https://api.readyroute.org`
-- Manager portal: `https://manager-portal-ten.vercel.app`
-- Driver app: iOS build and TestFlight/App Store flow through EAS
+Backend releases run through `.github/workflows/release-production.yml` when backend code, Supabase migrations, or release workflow files reach `main`.
 
-## Repo-Level Release Commands
+The backend workflow runs in this order:
 
-From the repo root:
-- `npm run release:backend`
-- `npm run release:portal`
-- `npm run release:smoke`
-- `npm run release:app:prep`
+1. Install dependencies and run backend tests.
+2. Preview and apply pending Supabase migrations.
+3. Deploy the exact Git commit to Cloud Run.
+4. Confirm `/health` reports that commit and a compatible schema.
+5. Run authenticated production smoke tests.
 
-These are thin wrappers around the real Cloud Run, Vercel, and driver-app prep commands.
-They are the fastest way to run the standard ReadyRoute release flow consistently.
+Manager portal releases are built and deployed by Vercel from GitHub.
+
+Driver app code does not reach installed phones until a new EAS build is created and distributed.
+
+## Standard Change Flow
+
+1. Create a `codex/...` or feature branch.
+2. Make the change and run local verification.
+3. Push the branch and open a pull request.
+4. Confirm pull-request checks pass.
+5. Merge the pull request into `main`.
+6. Watch the production workflows to completion.
+7. Confirm the production API commit, schema, portal, and smoke checks.
+
+Useful commands:
+
+```bash
+cd /Users/phillipmetzger/readyroute
+npm run verify
+gh pr checks <PR_NUMBER> --watch
+gh run list --workflow release-production.yml --limit 3
+gh run watch <RUN_ID> --exit-status
+curl --fail --silent --show-error https://api.readyroute.org/health
+```
 
 ## Release Types
 
-### 1. Manager Portal Only
+### Portal Only
 
-Use this when:
-- you changed manager portal UI
-- you changed dashboard, routes, manifest, drivers, or fleet map
-- backend API shape did not change in a breaking way
+Use for manager/staff web UI changes with no backend contract change.
 
-Expected result:
-- live website updates after Vercel deploy
-- no iPhone app rebuild needed
+- Run portal lint, utility tests, and production build locally.
+- Merge through GitHub.
+- Verify the Vercel production deployment at `https://portal.readyroute.org`.
+- No TestFlight build is needed.
 
-### 2. Backend Only
+### Backend Or Database
 
-Use this when:
-- you changed API routes
-- you changed manifest parsing
-- you changed timecards/labor logic
-- you changed Supabase or server-side business logic
+Use for API, server-side business logic, security, storage, and Supabase schema changes.
 
-Expected result:
-- live API updates after Cloud Run deploy
-- manager portal and driver app use the new backend immediately
-- no iPhone app rebuild needed unless the mobile code also changed
+- Add every database change as a timestamped migration under `supabase/migrations`.
+- Update `backend/src/config/schemaVersion.js` when the release requires that migration.
+- Merge through GitHub and let the production workflow migrate before deploying Cloud Run.
+- Never apply a required destructive migration before compatible runtime code is already live.
 
-### 3. Driver App Only
+### Driver App
 
-Use this when:
-- you changed app screens
-- you changed map behavior in the driver app
-- you changed stop flow, notes, pin saving, or timecard UX
+Use for driver or mobile manager screens, native permissions, background location, and app behavior.
 
-Expected result:
-- local changes do not update live users automatically
-- you need a new EAS build for native app changes
-- you need TestFlight/App Store submission for users to get the update
+Prepare locally:
 
-### 4. Full Release
-
-Use this when:
-- backend changed
-- manager portal changed
-- driver app changed
-
-Expected result:
-- deploy backend first
-- deploy manager portal second
-- build and submit driver app third
-
-That order keeps web surfaces pointed at a working API before the mobile app build is published.
-
-## Standard Release Order
-
-For a full coordinated release, use this order:
-
-1. Backend
-2. Manager portal
-3. Driver app
-4. Production smoke test
-
-## Backend Release Workflow
-
-Working directory:
-- `/Users/phillipmetzger/readyroute/backend`
-
-Pre-release checks:
-```bash
-cd /Users/phillipmetzger/readyroute
-npm run release:backend
-```
-
-What `npm run release:backend` does:
-- runs backend tests
-- deploys the backend to Google Cloud Run
-- checks production health
-
-Manual equivalent:
-```bash
-cd /Users/phillipmetzger/readyroute/backend
-npm test -- --runInBand
-export NPM_CONFIG_CACHE=/tmp/readyroute-npm-cache
-gcloud run deploy readyroute-api \
-  --source backend \
-  --project ready-route-project \
-  --region us-west1 \
-  --allow-unauthenticated \
-  --port 8080
-curl -sS https://api.readyroute.org/health
-```
-
-Expected result:
-- returns `{"status":"ok",...}`
-
-If backend crashes:
-- check Cloud Run revision logs
-- most likely causes are missing env vars or startup config issues
-
-## Manager Portal Release Workflow
-
-Working directory:
-- `/Users/phillipmetzger/readyroute/manager-portal`
-
-Pre-release checks:
-```bash
-cd /Users/phillipmetzger/readyroute
-npm run release:portal
-```
-
-What `npm run release:portal` does:
-- builds the manager portal
-- deploys it to Vercel production
-
-Manual equivalent:
-```bash
-cd /Users/phillipmetzger/readyroute/manager-portal
-npm run build
-export NPM_CONFIG_CACHE=/tmp/readyroute-npm-cache
-export XDG_CONFIG_HOME=/tmp/readyroute-xdg
-export XDG_CACHE_HOME=/tmp/readyroute-xdg
-npx vercel --prod
-```
-
-Live URL:
-- `https://manager-portal-ten.vercel.app`
-
-Production envs to verify in Vercel:
-- `VITE_API_URL`
-- `VITE_GOOGLE_MAPS_KEY`
-
-Expected result:
-- Vercel returns a ready production deployment
-- `/dashboard`, `/manifest`, `/drivers`, and `/routes/...` hard-refresh correctly
-
-## Driver App Release Workflow
-
-Working directory:
-- `/Users/phillipmetzger/readyroute/driver-app`
-
-Pre-release checks:
-```bash
-cd /Users/phillipmetzger/readyroute
-npm run release:app:prep
-```
-
-What `npm run release:app:prep` verifies:
-- Expo config is valid
-- tests pass
-- native production export succeeds
-- release env points at production
-
-Manual equivalent:
 ```bash
 cd /Users/phillipmetzger/readyroute/driver-app
 npm run release:prep
 ```
 
-Production build:
-```bash
-cd /Users/phillipmetzger/readyroute/driver-app
-eas build --platform ios --profile production
-```
+Only after an explicit mobile release decision:
 
-Submission:
 ```bash
-cd /Users/phillipmetzger/readyroute/driver-app
+eas build --platform ios --profile production
 eas submit --platform ios --profile production
 ```
 
-Important:
-- local code changes do not update iPhone users automatically
-- new mobile code requires a new EAS build
-- Apple account/team access is required for production signing/submission
+Do not create a TestFlight build merely because portal or backend code changed.
 
-## What Updates Automatically vs Not
+### Coordinated Full Release
 
-### Backend
+Release in this order:
 
-- changes go live after Cloud Run deploy
-- manager portal and driver app will use new backend behavior immediately
+1. Backward-compatible backend/runtime changes.
+2. Required database migrations.
+3. Final backend release using the new schema contract.
+4. Manager portal deployment.
+5. Driver app build and distribution.
+6. Real-device field smoke test.
 
-### Manager Portal
+For destructive schema changes, use two backend releases when necessary: first remove runtime dependence on the old data, then remove the old schema/storage.
 
-- changes go live after Vercel deploy
-- browser users see updates on refresh/new load
+## Local Verification
 
-### Driver App
+Repository verification:
 
-- changes do not go live just because code changed locally
-- changes do not go live just because backend/portal changed
-- native app updates require a new build and App Store/TestFlight delivery
-
-## Production Smoke Test
-
-After a full release, run this in order.
-
-### Manager Portal
-
-1. Log in with a real manager account
-2. Open `Dashboard`
-3. Confirm dispatch/readiness state looks correct
-4. Open one route page
-5. Confirm map, pins, and stop drawer work
-6. Open `Manifest`
-7. Confirm route board and upload actions load
-8. Open `Drivers`
-9. Confirm driver rows and labor views load
-
-### Driver App
-
-1. Log in with a real driver account
-2. Open `Home`
-3. Open `My Drive`
-4. Confirm map loads and stop tap preserves zoom
-5. Confirm `Nav` opens Google Maps
-6. Confirm stop detail loads
-7. Confirm note save and corrected pin save work
-8. Confirm timecard actions persist
-
-### Backend/API
-
-1. Check `/health`
-2. Confirm manager login works
-3. Confirm manager API routes return data
-4. Confirm auth-protected routes reject unauthorized requests correctly
-
-For a quick automated smoke pass, run:
 ```bash
 cd /Users/phillipmetzger/readyroute
-npm run release:smoke
+npm run verify
 ```
 
-## Release Notes To Record
+Manager portal utility tests:
 
-For every real release, record:
-- date
-- backend deploy yes/no
-- portal deploy yes/no
-- driver app build id
-- driver app submitted yes/no
-- production API URL used
-- any known follow-up issues
+```bash
+cd /Users/phillipmetzger/readyroute/manager-portal
+node --test src/**/*.test.js
+```
 
-## Current Known Gaps
+Driver app tests:
 
-- Cloud Run scheduled worker/FCC sync migration still needs to be finalized
-- manager portal production Google Maps key/referrer restrictions should be verified against the live Vercel domain
-- driver app OTA updates are not configured as an automatic release path right now
+```bash
+cd /Users/phillipmetzger/readyroute/driver-app
+npm test -- --runInBand
+```
 
-## Fast Decision Guide
+## Production Smoke Coverage
 
-If you changed only manager portal code:
-- deploy Vercel only
+The authenticated production smoke test verifies:
 
-If you changed only backend code:
-- deploy Cloud Run only
+- API health and portal routes;
+- manager login and password-reset request;
+- isolated driver creation, persistence, production-list filtering, and cleanup;
+- isolated vehicle creation and cleanup;
+- detailed manager inspection issue choice and severity;
+- private manager inspection photo upload;
+- signed photo retrieval after inspection submission; and
+- cleanup of the smoke inspection, vehicle, and photo.
 
-If you changed only driver app code:
-- run release prep, build with EAS, then submit
+The smoke test may be run manually from the GitHub Actions `Production Smoke` workflow. It also runs automatically after backend deployment.
 
-If you changed everything:
-- Cloud Run
-- Vercel
-- EAS build
-- EAS submit
-- smoke test
+## Rollback Rules
+
+- If migration fails, Cloud Run deployment must not begin.
+- If Cloud Run health or release identity fails, do not claim the release succeeded.
+- If production smoke fails, inspect the failed step before retrying or rolling traffic.
+- Do not delete or rewrite a migration already recorded in production.
+- Prefer a forward-fix migration over manual database edits.
+- Never paste terminal prompts, command output, or secret values back into a shell command.
+
+## What Still Requires A Human
+
+Automation cannot certify:
+
+- real iPhone/Android permissions;
+- 5-second active/background location behavior and battery impact;
+- actual cellular/offline recovery;
+- a real FedEx manifest and dispatch day;
+- driver usability under route pressure; or
+- TestFlight/App Store delivery.
+
+Use `PHASE1_FINAL_CHECKLIST.md` for the controlled field-validation sequence.
