@@ -94,7 +94,7 @@ jobs:
 
           lookup_status="$(curl --silent --show-error --output /tmp/signature-bucket-lookup.json --write-out '%{http_code}' \
             "${auth_headers[@]}" "$bucket_url")"
-          if [[ "$lookup_status" == "404" ]]; then
+          if [[ "$lookup_status" == "404" ]] || { [[ "$lookup_status" == "400" ]] && grep --quiet '"error":"Bucket not found"' /tmp/signature-bucket-lookup.json; }; then
             echo "Legacy signature bucket is already absent"
           elif [[ "$lookup_status" != "200" ]]; then
             cat /tmp/signature-bucket-lookup.json
