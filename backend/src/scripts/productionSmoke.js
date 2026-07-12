@@ -291,12 +291,15 @@ async function main() {
     console.log('skip manager password reset request: SMOKE_PASSWORD_RESET_EMAIL not set');
   }
 
-  const hasDriverSmokeEnv = managerEmail && managerPassword && supabaseUrl && supabaseServiceKey;
+  const missingAuthenticatedSmokeEnv = [
+    ['SMOKE_MANAGER_EMAIL', managerEmail],
+    ['SMOKE_MANAGER_PASSWORD', managerPassword],
+    ['SUPABASE_URL', supabaseUrl],
+    ['SUPABASE_SERVICE_KEY', supabaseServiceKey]
+  ].filter(([, value]) => !value).map(([name]) => name);
 
-  if (!hasDriverSmokeEnv) {
-    console.log('skip authenticated driver smoke: SMOKE_MANAGER_EMAIL, SMOKE_MANAGER_PASSWORD, SUPABASE_URL, or SUPABASE_SERVICE_KEY not set');
-    console.log('production smoke passed');
-    return;
+  if (missingAuthenticatedSmokeEnv.length) {
+    throw new Error(`Authenticated production smoke is not configured: ${missingAuthenticatedSmokeEnv.join(', ')}`);
   }
 
   const supabase = createClient(supabaseUrl, supabaseServiceKey);
@@ -333,22 +336,39 @@ async function main() {
     const drivers = await requestJson(`${backendUrl}/manager/drivers`, {
       headers: authHeaders
     });
-    const foundDriver = (drivers?.drivers || []).find((driver) => driver.email === smokeDriver.email);
+    const leakedDriver = (drivers?.drivers || []).find((driver) => driver.email === smokeDriver.email);
 
-    assert(foundDriver, 'Created smoke driver was not returned by GET /manager/drivers');
-    assert(foundDriver.fedex_driver_id === smokeDriver.fedex_driver_id, 'Created smoke driver FedEx ID did not round-trip');
-    assert(!foundDriver.phone, 'Created smoke driver unexpectedly has a phone value');
-    console.log('ok driver list verification');
+    assert(!leakedDriver, 'Smoke driver leaked into the manager-facing driver list');
+    console.log('ok smoke driver production-list filtering');
+
+    const { data: persistedDriver, error: persistedDriverError } = await supabase
+      .from('drivers')
+      .select('id, email, fedex_driver_id, phone')
+      .eq('id', created.driver_id)
+      .maybeSingle();
+
+    if (persistedDriverError) {
+      throw persistedDriverError;
+    }
+
+    assert(persistedDriver?.email === smokeDriver.email, 'Created smoke driver was not persisted');
+    assert(persistedDriver.fedex_driver_id === smokeDriver.fedex_driver_id, 'Created smoke driver FedEx ID did not round-trip');
+    assert(!persistedDriver.phone, 'Created smoke driver unexpectedly has a phone value');
+    console.log('ok driver persistence verification');
   } finally {
     await deleteSmokeDriverByEmail(supabase, smokeDriver.email);
   }
 
-  const remaining = await requestJson(`${backendUrl}/manager/drivers`, {
-    headers: authHeaders
-  });
-  const stillPresent = (remaining?.drivers || []).some((driver) => driver.email === smokeDriver.email);
+  const { data: remainingDriver, error: remainingDriverError } = await supabase
+    .from('drivers')
+    .select('id')
+    .eq('email', smokeDriver.email)
+    .maybeSingle();
 
-  assert(!stillPresent, 'Smoke driver cleanup did not remove the driver');
+  if (remainingDriverError) {
+    throw remainingDriverError;
+  }
+  assert(!remainingDriver, 'Smoke driver cleanup did not remove the driver');
   console.log('ok smoke driver cleanup');
 
   await runManagerInspectionSmoke({

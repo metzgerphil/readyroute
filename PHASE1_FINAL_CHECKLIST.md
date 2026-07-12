@@ -27,7 +27,7 @@ These checks must pass on every production backend release through GitHub Action
 - [x] `/health` reports `compatible: true` for the database schema.
 - [x] Manager portal production routes respond successfully.
 - [x] Manager login succeeds with the isolated smoke account.
-- [x] Manager driver creation, retrieval, and cleanup succeed.
+- [x] Manager driver creation, persistence, production-list filtering, and cleanup succeed.
 - [x] Manager vehicle creation and cleanup succeed using explicitly marked test data.
 - [x] Detailed manager inspection submission preserves issue choice and severity.
 - [x] Manager inspection photo upload uses the private `vehicle-inspection-photos` bucket.

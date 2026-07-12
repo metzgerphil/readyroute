@@ -130,7 +130,7 @@ The authenticated production smoke test verifies:
 
 - API health and portal routes;
 - manager login and password-reset request;
-- isolated driver creation, retrieval, and cleanup;
+- isolated driver creation, persistence, production-list filtering, and cleanup;
 - isolated vehicle creation and cleanup;
 - detailed manager inspection issue choice and severity;
 - private manager inspection photo upload;
