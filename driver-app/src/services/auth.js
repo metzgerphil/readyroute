@@ -1,6 +1,13 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Buffer } from 'buffer';
 
+import {
+  clearRouteCacheEncryptionKey,
+  getSecureItem,
+  removeSecureItem,
+  setSecureItem
+} from './secureStorage';
+
 const TOKEN_KEY = 'readyroute_driver_token';
 const MANAGER_TOKEN_KEY = 'readyroute_manager_token';
 const CLOCKED_IN_AT_KEY = 'readyroute_clocked_in_at';
@@ -16,57 +23,53 @@ function decodeBase64Url(value) {
 }
 
 export async function saveToken(token) {
-  await AsyncStorage.setItem(TOKEN_KEY, token);
+  await setSecureItem(TOKEN_KEY, token);
 }
 
 export async function saveManagerToken(token) {
   if (!token) {
-    await AsyncStorage.removeItem(MANAGER_TOKEN_KEY);
+    await removeSecureItem(MANAGER_TOKEN_KEY);
     return;
   }
 
-  await AsyncStorage.setItem(MANAGER_TOKEN_KEY, token);
+  await setSecureItem(MANAGER_TOKEN_KEY, token);
 }
 
 export async function getToken() {
-  return AsyncStorage.getItem(TOKEN_KEY);
+  return getSecureItem(TOKEN_KEY);
 }
 
 export async function getManagerToken() {
-  return AsyncStorage.getItem(MANAGER_TOKEN_KEY);
+  return getSecureItem(MANAGER_TOKEN_KEY);
 }
 
 export async function removeToken() {
-  await AsyncStorage.removeItem(TOKEN_KEY);
-  await AsyncStorage.removeItem(MANAGER_TOKEN_KEY);
+  await Promise.all([
+    removeSecureItem(TOKEN_KEY),
+    removeSecureItem(MANAGER_TOKEN_KEY),
+    clearRouteCacheEncryptionKey()
+  ]);
 }
 
 export async function removeDriverToken() {
-  await AsyncStorage.removeItem(TOKEN_KEY);
+  await removeSecureItem(TOKEN_KEY);
 }
 
 export async function removeManagerToken() {
-  await AsyncStorage.removeItem(MANAGER_TOKEN_KEY);
+  await removeSecureItem(MANAGER_TOKEN_KEY);
 }
 
 export async function saveSessionTokens({ driverToken = null, managerToken = null } = {}) {
-  if (driverToken) {
-    await AsyncStorage.setItem(TOKEN_KEY, driverToken);
-  } else {
-    await AsyncStorage.removeItem(TOKEN_KEY);
-  }
-
-  if (managerToken) {
-    await AsyncStorage.setItem(MANAGER_TOKEN_KEY, managerToken);
-  } else {
-    await AsyncStorage.removeItem(MANAGER_TOKEN_KEY);
-  }
+  await Promise.all([
+    driverToken ? setSecureItem(TOKEN_KEY, driverToken) : removeSecureItem(TOKEN_KEY),
+    managerToken ? setSecureItem(MANAGER_TOKEN_KEY, managerToken) : removeSecureItem(MANAGER_TOKEN_KEY)
+  ]);
 }
 
 export async function getSessionTokens() {
   const [driverToken, managerToken] = await Promise.all([
-    AsyncStorage.getItem(TOKEN_KEY),
-    AsyncStorage.getItem(MANAGER_TOKEN_KEY)
+    getSecureItem(TOKEN_KEY),
+    getSecureItem(MANAGER_TOKEN_KEY)
   ]);
 
   return {

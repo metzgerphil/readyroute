@@ -2,6 +2,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 
 import api from './api';
 import { getDriverFromToken, getToken } from './auth';
+import { readEncryptedCacheItem, writeEncryptedCacheItem } from './secureStorage';
 
 const CACHE_VERSION = 1;
 const MANIFEST_CACHE_PREFIX = `readyroute_driver_manifest:v${CACHE_VERSION}`;
@@ -132,7 +133,7 @@ function isCachedRouteFresh(cached, { date, routeId, summary = null } = {}) {
 
 async function getCachedRouteSummary(date = getTodayStorageDate()) {
   const key = await getSummaryCacheKey(date);
-  const cached = parseCachedJson(await AsyncStorage.getItem(key));
+  const cached = parseCachedJson(await readEncryptedCacheItem(key));
 
   if (!cached || cached.cache_version !== CACHE_VERSION || cached.date !== date) {
     if (cached) {
@@ -147,7 +148,7 @@ async function getCachedRouteSummary(date = getTodayStorageDate()) {
 export async function saveDriverRouteSummary(payload = {}) {
   const summary = normalizeRouteSummary(payload);
   const key = await getSummaryCacheKey(summary.date);
-  await AsyncStorage.setItem(key, JSON.stringify(summary));
+  await writeEncryptedCacheItem(key, JSON.stringify(summary));
   return summary;
 }
 
@@ -164,7 +165,7 @@ export async function saveDriverManifest(payload = {}) {
     saveDriverRouteSummary(payload)
   ]);
 
-  await AsyncStorage.setItem(manifestKey, JSON.stringify(manifest));
+  await writeEncryptedCacheItem(manifestKey, JSON.stringify(manifest));
   return manifest;
 }
 
@@ -181,7 +182,7 @@ export async function saveDriverDriveRoute(payload = {}) {
     saveDriverRouteSummary(payload)
   ]);
 
-  await AsyncStorage.setItem(driveRouteKey, JSON.stringify(driveRoute));
+  await writeEncryptedCacheItem(driveRouteKey, JSON.stringify(driveRoute));
   return driveRoute;
 }
 
@@ -196,7 +197,7 @@ export async function getCachedDriverManifest({ date = getTodayStorageDate(), ro
   }
 
   const key = await getManifestCacheKey(resolvedRouteId);
-  const cached = parseCachedJson(await AsyncStorage.getItem(key));
+  const cached = parseCachedJson(await readEncryptedCacheItem(key));
 
   if (!isCachedRouteFresh(cached, { date, routeId: resolvedRouteId, summary })) {
     if (cached) {
@@ -230,7 +231,7 @@ export async function getCachedDriverDriveRoute({ date = getTodayStorageDate(), 
   }
 
   const key = await getDriveRouteCacheKey(resolvedRouteId);
-  const cached = parseCachedJson(await AsyncStorage.getItem(key));
+  const cached = parseCachedJson(await readEncryptedCacheItem(key));
 
   if (!isCachedRouteFresh(cached, { date, routeId: resolvedRouteId, summary })) {
     if (cached) {

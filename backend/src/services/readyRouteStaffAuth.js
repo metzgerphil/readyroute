@@ -1,5 +1,12 @@
 const jwt = require('jsonwebtoken');
 
+const defaultSupabase = require('../lib/supabase');
+const {
+  SESSION_SUBJECT_TYPES,
+  buildCredentialSessionClaims,
+  getCredentialVersion
+} = require('./credentialSession');
+
 const READYROUTE_STAFF_ROLES = new Set(['owner', 'admin', 'support', 'read_only']);
 const READYROUTE_STAFF_WRITE_ROLES = new Set(['owner', 'admin', 'support']);
 const READYROUTE_STAFF_ADMIN_ROLES = new Set(['owner', 'admin']);
@@ -34,7 +41,12 @@ function buildStaffTokenPayload(staffUser) {
     staff_name: staffUser.full_name || null,
     staff_role: normalizeStaffRole(staffUser.role),
     primary_role: 'readyroute_staff',
-    role: 'readyroute_staff'
+    role: 'readyroute_staff',
+    ...buildCredentialSessionClaims({
+      subjectType: SESSION_SUBJECT_TYPES.READYROUTE_STAFF,
+      subjectId: staffUser.id,
+      credentialHash: staffUser.password_hash
+    })
   };
 }
 
@@ -61,7 +73,12 @@ function signStaffToken(staffUser, jwtSecret, expiresIn = '12h') {
   return jwt.sign(buildStaffTokenPayload(staffUser), jwtSecret, { expiresIn });
 }
 
-function readRequiredStaffContext(req, jwtSecret, allowedRoles = READYROUTE_STAFF_ROLES) {
+async function readRequiredStaffContext(
+  req,
+  jwtSecret,
+  allowedRoles = READYROUTE_STAFF_ROLES,
+  options = {}
+) {
   const token = extractBearerToken(req);
 
   if (!token) {
@@ -78,12 +95,42 @@ function readRequiredStaffContext(req, jwtSecret, allowedRoles = READYROUTE_STAF
 
   try {
     const payload = jwt.verify(token, jwtSecret);
-    const staffRole = normalizeStaffRole(payload.staff_role, '');
+    let staffRole = normalizeStaffRole(payload.staff_role, '');
 
     if (payload.role !== 'readyroute_staff' || !payload.staff_user_id || !payload.staff_email) {
       const error = new Error('ReadyRoute staff access required');
       error.status = 403;
       throw error;
+    }
+
+    const enforceSessionValidation = options.enforceSessionValidation ?? process.env.NODE_ENV === 'production';
+    if (enforceSessionValidation) {
+      const supabase = options.supabase || defaultSupabase;
+      const { data: staffUser, error } = await supabase
+        .from('readyroute_staff_users')
+        .select('id, email, password_hash, role, is_active')
+        .eq('id', payload.staff_user_id)
+        .maybeSingle();
+
+      if (error) {
+        throw error;
+      }
+
+      if (
+        !staffUser ||
+        staffUser.is_active === false ||
+        !staffUser.password_hash ||
+        normalizeEmail(staffUser.email) !== normalizeEmail(payload.staff_email) ||
+        payload.auth_subject_type !== SESSION_SUBJECT_TYPES.READYROUTE_STAFF ||
+        payload.auth_subject_id !== staffUser.id ||
+        getCredentialVersion(staffUser.password_hash) !== payload.auth_version
+      ) {
+        const error = new Error('Session ended. Sign in again.');
+        error.status = 401;
+        throw error;
+      }
+
+      staffRole = normalizeStaffRole(staffUser.role, '');
     }
 
     if (!allowedRoles.has(staffRole)) {

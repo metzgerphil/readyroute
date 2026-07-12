@@ -2,7 +2,10 @@ const crypto = require('crypto');
 const express = require('express');
 
 const defaultSupabase = require('../lib/supabase');
-const { requireDriver, requireManager } = require('../middleware/auth');
+const {
+  requireDriver: defaultRequireDriver,
+  requireManager: defaultRequireManager
+} = require('../middleware/auth');
 const { parseMultipartForm } = require('../middleware/multipart');
 const { parseVehicleImportRows } = require('../services/resourceImport');
 const { filterProductionRows, isProductionTestArtifact } = require('../services/testDataFilter');
@@ -995,6 +998,8 @@ async function loadOwnedVehicle(supabase, { vehicleId, accountId }) {
 
 function createVehiclesRouter(options = {}) {
   const router = express.Router();
+  const requireDriver = options.requireDriver || defaultRequireDriver;
+  const requireManager = options.requireManager || defaultRequireManager;
   const supabase = options.supabase || defaultSupabase;
   const nowProvider = options.now || (() => new Date());
 

@@ -31,6 +31,12 @@ Cloud Run service:
 - Service: `readyroute-api`
 - Public domain: `https://api.readyroute.org`
 - Health endpoint: `/health`
+- Runtime identity: `readyroute-api-runtime@ready-route-project.iam.gserviceaccount.com`
+
+The API runtime identity is separate from the GitHub deployment identity and from the
+default Compute Engine account. It has Secret Manager accessor only on
+`RESEND_API_KEY`. The default Compute Engine account keeps `roles/run.builder` for
+source builds and must not regain the project-wide Editor role.
 
 Runtime secrets/config stay in Google Cloud, not in GitHub:
 
@@ -62,11 +68,11 @@ login or public-form limits to `/routes/position`.
 ## Release Flow
 
 1. Open a pull request.
-2. Backend CI and Portal CI must pass.
+2. Backend CI, Portal CI, and Mobile CI must pass.
 3. Merge to `main`.
 4. Vercel deploys the web surfaces.
-5. Deploy the backend to Cloud Run with `npm run deploy:backend`.
-6. Run production smoke with `npm run smoke`.
+5. The production workflow applies migrations and deploys the merge commit to Cloud Run.
+6. Production smoke runs against the deployed commit.
 
 ## Resend
 

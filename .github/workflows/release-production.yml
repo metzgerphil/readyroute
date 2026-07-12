@@ -29,10 +29,10 @@ jobs:
         working-directory: backend
     steps:
       - name: Check out release commit
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Set up Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
           node-version: 20
           cache: npm
@@ -59,7 +59,7 @@ jobs:
       SUPABASE_PROJECT_REF: ${{ vars.SUPABASE_PROJECT_REF }}
     steps:
       - name: Check out release commit
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Verify migration configuration
         env:
@@ -145,7 +145,7 @@ jobs:
     environment: production
     steps:
       - name: Check out release commit
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Authenticate to Google Cloud without a service-account key
         uses: google-github-actions/auth@v3

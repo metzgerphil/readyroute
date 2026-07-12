@@ -1,7 +1,7 @@
 const express = require('express');
 
 const defaultSupabase = require('../lib/supabase');
-const { requireDriver } = require('../middleware/auth');
+const { requireDriver: defaultRequireDriver } = require('../middleware/auth');
 
 function getUtcTimestamp() {
   return new Date().toISOString();
@@ -433,6 +433,7 @@ async function finalizeLaborDayIfComplete({ supabase, accountId, routeId, now = 
 
 function createTimecardsRouter(options = {}) {
   const router = express.Router();
+  const requireDriver = options.requireDriver || defaultRequireDriver;
   const supabase = options.supabase || defaultSupabase;
 
   router.get('/status', requireDriver, async (req, res) => {

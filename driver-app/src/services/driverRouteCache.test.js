@@ -1,4 +1,5 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import * as SecureStore from 'expo-secure-store';
 
 import api from './api';
 import {
@@ -18,6 +19,18 @@ jest.mock('@react-native-async-storage/async-storage', () => ({
   removeItem: jest.fn()
 }));
 
+jest.mock('expo-secure-store', () => ({
+  WHEN_UNLOCKED_THIS_DEVICE_ONLY: 'WHEN_UNLOCKED_THIS_DEVICE_ONLY',
+  isAvailableAsync: jest.fn(),
+  setItemAsync: jest.fn(),
+  getItemAsync: jest.fn(),
+  deleteItemAsync: jest.fn()
+}));
+
+jest.mock('expo-crypto', () => ({
+  getRandomBytesAsync: jest.fn(async (length) => new Uint8Array(length).fill(7))
+}));
+
 jest.mock('./api', () => ({
   __esModule: true,
   default: {
@@ -32,10 +45,17 @@ jest.mock('./auth', () => ({
 
 describe('driverRouteCache', () => {
   let storage;
+  let secureStorage;
 
   beforeEach(() => {
     storage = new Map();
+    secureStorage = new Map();
     jest.clearAllMocks();
+    SecureStore.isAvailableAsync.mockResolvedValue(true);
+    SecureStore.getItemAsync.mockImplementation(async (key) => secureStorage.get(key) || null);
+    SecureStore.setItemAsync.mockImplementation(async (key, value) => {
+      secureStorage.set(key, value);
+    });
     getToken.mockResolvedValue('driver-token');
     getDriverFromToken.mockReturnValue({
       account_id: 'acct-1',
@@ -195,5 +215,43 @@ describe('driverRouteCache', () => {
     await Promise.all([first, second]);
 
     expect(api.get).toHaveBeenCalledTimes(1);
+  });
+
+  it('stores route manifests as authenticated ciphertext', async () => {
+    api.get.mockResolvedValue({
+      data: {
+        route: {
+          id: 'route-private',
+          date: '2026-04-08',
+          stops: [{ id: 'stop-private', address: '123 Private Street' }]
+        }
+      }
+    });
+
+    await fetchDriverManifest();
+
+    const storedValues = [...storage.values()];
+    expect(storedValues.some((value) => value.includes('123 Private Street'))).toBe(false);
+    expect(storedValues.some((value) => value.includes('ciphertext'))).toBe(true);
+  });
+
+  it('rejects an encrypted route cache after ciphertext is changed', async () => {
+    api.get.mockResolvedValue({
+      data: {
+        route: {
+          id: 'route-1',
+          date: '2026-04-08',
+          stops: [{ id: 'stop-1' }]
+        }
+      }
+    });
+
+    await fetchDriverManifest();
+    const manifestKey = [...storage.keys()].find((key) => key.includes('driver_manifest'));
+    const envelope = JSON.parse(storage.get(manifestKey));
+    envelope.ciphertext = `${envelope.ciphertext.slice(0, -2)}AA`;
+    storage.set(manifestKey, JSON.stringify(envelope));
+
+    await expect(getCachedDriverManifest({ date: '2026-04-08' })).resolves.toBeNull();
   });
 });

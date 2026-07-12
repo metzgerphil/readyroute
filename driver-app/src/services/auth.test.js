@@ -6,13 +6,23 @@ jest.mock('@react-native-async-storage/async-storage', () => ({
   removeItem: jest.fn()
 }));
 
+jest.mock('expo-secure-store', () => ({
+  WHEN_UNLOCKED_THIS_DEVICE_ONLY: 'WHEN_UNLOCKED_THIS_DEVICE_ONLY',
+  isAvailableAsync: jest.fn(),
+  setItemAsync: jest.fn(),
+  getItemAsync: jest.fn(),
+  deleteItemAsync: jest.fn()
+}));
+
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import * as SecureStore from 'expo-secure-store';
 import {
   getDriverFromToken,
   getLastPortalMode,
   getPinColorMode,
   getPortalAccess,
   getSessionIdentity,
+  getToken,
   saveLastPortalMode,
   savePinColorMode,
   saveSessionTokens,
@@ -30,6 +40,12 @@ function makeToken(payload) {
 }
 
 describe('auth service helpers', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    SecureStore.isAvailableAsync.mockResolvedValue(true);
+    SecureStore.getItemAsync.mockResolvedValue(null);
+  });
+
   it('extracts the driver payload from a token', () => {
     const token = makeToken({
       sub: 'driver-1',
@@ -56,14 +72,14 @@ describe('auth service helpers', () => {
       name: 'Luis'
     });
 
-    AsyncStorage.getItem.mockResolvedValueOnce(token);
+    SecureStore.getItemAsync.mockResolvedValueOnce(token);
     AsyncStorage.setItem.mockResolvedValueOnce();
 
     await savePinColorMode('black');
 
     expect(AsyncStorage.setItem).toHaveBeenCalledWith('readyroute_pin_color_mode:driver-42', 'black');
 
-    AsyncStorage.getItem.mockResolvedValueOnce(token);
+    SecureStore.getItemAsync.mockResolvedValueOnce(token);
     AsyncStorage.getItem.mockResolvedValueOnce('black');
 
     await expect(getPinColorMode()).resolves.toBe('black');
@@ -75,7 +91,7 @@ describe('auth service helpers', () => {
     const listener = jest.fn();
     const unsubscribe = subscribePinColorMode(listener);
 
-    AsyncStorage.getItem.mockResolvedValueOnce(token);
+    SecureStore.getItemAsync.mockResolvedValueOnce(token);
     AsyncStorage.setItem.mockResolvedValueOnce();
 
     await savePinColorMode('sid');
@@ -86,15 +102,46 @@ describe('auth service helpers', () => {
   });
 
   it('stores both driver and manager tokens for a mobile session', async () => {
-    AsyncStorage.setItem.mockResolvedValue();
+    SecureStore.setItemAsync.mockResolvedValue();
 
     await saveSessionTokens({
       driverToken: 'driver-token',
       managerToken: 'manager-token'
     });
 
-    expect(AsyncStorage.setItem).toHaveBeenCalledWith('readyroute_driver_token', 'driver-token');
-    expect(AsyncStorage.setItem).toHaveBeenCalledWith('readyroute_manager_token', 'manager-token');
+    expect(SecureStore.setItemAsync).toHaveBeenCalledWith(
+      'readyroute_driver_token',
+      'driver-token',
+      expect.any(Object)
+    );
+    expect(SecureStore.setItemAsync).toHaveBeenCalledWith(
+      'readyroute_manager_token',
+      'manager-token',
+      expect.any(Object)
+    );
+  });
+
+  it('migrates a legacy AsyncStorage token into SecureStore', async () => {
+    SecureStore.getItemAsync.mockResolvedValueOnce(null);
+    AsyncStorage.getItem.mockResolvedValueOnce('legacy-driver-token');
+
+    await expect(getToken()).resolves.toBe('legacy-driver-token');
+
+    expect(SecureStore.setItemAsync).toHaveBeenCalledWith(
+      'readyroute_driver_token',
+      'legacy-driver-token',
+      expect.any(Object)
+    );
+    expect(AsyncStorage.removeItem).toHaveBeenCalledWith('readyroute_driver_token');
+  });
+
+  it('does not fall back to plaintext tokens when SecureStore is unavailable', async () => {
+    SecureStore.isAvailableAsync.mockResolvedValue(false);
+
+    await expect(getToken()).resolves.toBeNull();
+
+    expect(AsyncStorage.removeItem).toHaveBeenCalledWith('readyroute_driver_token');
+    expect(AsyncStorage.getItem).not.toHaveBeenCalled();
   });
 
   it('stores the last selected portal by the current account identity', async () => {
