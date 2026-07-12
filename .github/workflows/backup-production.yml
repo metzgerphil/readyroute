@@ -64,6 +64,11 @@ jobs:
           mkdir -p backup/database backup/storage
           supabase db dump --linked --schema public --file backup/database/schema.sql
           supabase db dump --linked --data-only --schema public --use-copy --file backup/database/data.sql
+          node scripts/sanitize-supabase-schema-backup.mjs backup/database/schema.sql
+          if grep --extended-regexp --quiet 'Bearer[[:space:]]+eyJ[A-Za-z0-9._-]+' backup/database/schema.sql; then
+            echo "Schema backup still contains a bearer credential" >&2
+            exit 1
+          fi
 
       - name: Back up private Storage objects
         run: node scripts/backup-supabase-storage.mjs backup/storage
@@ -99,6 +104,17 @@ jobs:
         run: |
           database_url="postgresql://postgres:postgres@127.0.0.1:54322/postgres"
           psql "$database_url" --set ON_ERROR_STOP=1 --command 'drop schema public cascade; create schema public; grant all on schema public to postgres, anon, authenticated, service_role;'
+          psql "$database_url" --set ON_ERROR_STOP=1 <<'SQL'
+          create schema if not exists supabase_functions;
+          create or replace function supabase_functions.http_request()
+          returns trigger
+          language plpgsql
+          as $$
+          begin
+            return new;
+          end;
+          $$;
+          SQL
           psql "$database_url" --set ON_ERROR_STOP=1 --file backup/database/schema.sql
           psql "$database_url" --set ON_ERROR_STOP=1 --file backup/database/data.sql
           psql "$database_url" --set ON_ERROR_STOP=1 --tuples-only --command "select count(*) from information_schema.tables where table_schema = 'public';"
