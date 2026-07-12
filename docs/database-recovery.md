@@ -9,7 +9,7 @@ ReadyRoute creates an automated production recovery package every night. Each pa
 
 Bearer credentials embedded in database trigger definitions are replaced with `REDACTED_RESTORE_REQUIRED` before any archive is created. A restored environment must recreate those webhook credentials through its own secret-management process; production credentials are never part of a recovery archive.
 
-The GitHub workflow restores the database dump into a disposable local Supabase project and verifies core tables before it accepts the backup. It also verifies every downloaded Storage object against its checksum.
+The GitHub workflow restores the database dump into a disposable local Supabase project and verifies core tables before it accepts or uploads the backup. It also verifies every downloaded Storage object against its checksum. PostgreSQL settings that are not portable across supported restore versions are removed from both SQL dumps.
 
 ## Retention
 

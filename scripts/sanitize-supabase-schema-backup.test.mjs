@@ -10,7 +10,7 @@ test('schema sanitizer removes embedded bearer JWTs without removing the trigger
   const schemaPath = path.join(directory, 'schema.sql');
   await writeFile(
     schemaPath,
-    `CREATE TRIGGER example EXECUTE FUNCTION supabase_functions.http_request('Authorization: Bearer eyJheader.payload.signature');\n`
+    `SET transaction_timeout = 0;\nCREATE TRIGGER example EXECUTE FUNCTION supabase_functions.http_request('Authorization: Bearer eyJheader.payload.signature');\n`
   );
   const result = spawnSync(process.execPath, [
     path.resolve('scripts/sanitize-supabase-schema-backup.mjs'),
@@ -22,4 +22,5 @@ test('schema sanitizer removes embedded bearer JWTs without removing the trigger
   assert.match(sanitized, /CREATE TRIGGER example/);
   assert.match(sanitized, /Bearer REDACTED_RESTORE_REQUIRED/);
   assert.doesNotMatch(sanitized, /eyJheader/);
+  assert.doesNotMatch(sanitized, /^SET transaction_timeout/m);
 });
