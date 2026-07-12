@@ -14,6 +14,7 @@
     "release:smoke": "bash ./scripts/release-smoke.sh",
     "release:app:prep": "cd driver-app && npm run release:prep",
     "backup:storage": "node ./scripts/backup-supabase-storage.mjs",
-    "verify:storage-backup": "node ./scripts/verify-supabase-storage-backup.mjs"
+    "verify:storage-backup": "node ./scripts/verify-supabase-storage-backup.mjs",
+    "sanitize:schema-backup": "node ./scripts/sanitize-supabase-schema-backup.mjs"
   }
 }
