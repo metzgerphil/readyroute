@@ -119,10 +119,13 @@ export default function DriverHelpScreen() {
       setQuestion('');
       setDictationHint(false);
     } catch (requestError) {
-      setError(getApiErrorMessage(
-        requestError,
-        'Ready Route could not check the approved procedures right now. Contact your manager if you need an immediate answer.'
-      ));
+      const requestFailedBeforeVerification = requestError?.code === 'ECONNABORTED' || !requestError?.response;
+      setError(requestFailedBeforeVerification
+        ? 'Ready Route did not receive a verified answer. Check your connection and tap Ask Ready Route again. Contact your manager if you need an immediate answer.'
+        : getApiErrorMessage(
+          requestError,
+          'Ready Route could not check the approved procedures right now. Contact your manager if you need an immediate answer.'
+        ));
     } finally {
       setIsSubmitting(false);
     }
@@ -303,6 +306,14 @@ export default function DriverHelpScreen() {
           {error ? (
             <View style={styles.errorCard}>
               <Text style={styles.errorText}>{error}</Text>
+            </View>
+          ) : null}
+
+          {isSubmitting && result ? (
+            <View style={styles.verificationNotice}>
+              <Text style={styles.verificationNoticeText}>
+                Checking your follow-up. The answer below is from your previous question until verification finishes.
+              </Text>
             </View>
           ) : null}
 
@@ -599,5 +610,7 @@ const styles = StyleSheet.create({
   newSituationButton: { backgroundColor: appTheme.colors.surface, borderColor: appTheme.colors.border, borderRadius: 14, borderWidth: 1, paddingHorizontal: 13, paddingVertical: 9 },
   newSituationText: { color: appTheme.colors.textPrimary, fontSize: 13, fontWeight: '800' },
   errorCard: { backgroundColor: appTheme.colors.dangerSoft, borderColor: appTheme.colors.danger, borderRadius: 16, borderWidth: 1, marginTop: 16, maxWidth: 680, padding: 14, width: '100%' },
-  errorText: { color: appTheme.colors.dangerText, fontSize: 14, lineHeight: 20 }
+  errorText: { color: appTheme.colors.dangerText, fontSize: 14, lineHeight: 20 },
+  verificationNotice: { backgroundColor: appTheme.colors.warningSoft, borderColor: appTheme.colors.warning, borderRadius: 16, borderWidth: 1, marginTop: 16, maxWidth: 680, padding: 14, width: '100%' },
+  verificationNoticeText: { color: appTheme.colors.warningText, fontSize: 14, fontWeight: '700', lineHeight: 20 }
 });

@@ -43,11 +43,25 @@ begin
   perform public.readyroute_accrue_active_driver_month(
     (date_trunc('month', current_date) + interval '1 month')::date
   );
+  perform public.readyroute_accrue_active_driver_month(
+    (date_trunc('month', current_date) + interval '1 month')::date
+  );
   select count(*) into charge_count
   from public.driver_month_activation_charges
   where account_id = account_one and driver_id = driver_one;
   if charge_count <> 2 then
-    raise exception 'next active month should create one additional charge, found %', charge_count;
+    raise exception 'duplicate monthly jobs should create exactly one additional charge, found %', charge_count;
+  end if;
+
+  update public.drivers set is_active = false where id = driver_two;
+  perform public.readyroute_accrue_active_driver_month(
+    (date_trunc('month', current_date) + interval '2 months')::date
+  );
+  select count(*) into charge_count
+  from public.driver_month_activation_charges
+  where account_id = account_two and driver_id = driver_two;
+  if charge_count <> 2 then
+    raise exception 'an inactive driver should not accrue a later month, found %', charge_count;
   end if;
 
   insert into public.driver_authorized_devices (

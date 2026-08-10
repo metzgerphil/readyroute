@@ -13,6 +13,8 @@ const TOKEN_ALIASES = new Map([
   ['carton', 'package'],
   ['cartons', 'packages'],
   ['sig', 'signature'],
+  ['singer', 'signature'],
+  ['signer', 'signature'],
   ['scann', 'scan'],
   ['scanned', 'scan'],
   ['scanning', 'scan'],
@@ -29,7 +31,9 @@ const TOKEN_ALIASES = new Map([
   ['refuse', 'refused'],
   ['refuses', 'refused'],
   ['refuzed', 'refused'],
-  ['rong', 'wrong']
+  ['rong', 'wrong'],
+  ['misdelivered', 'wrong'],
+  ['misdelivery', 'wrong']
 ]);
 
 const ANSWER_THRESHOLD = 15;
@@ -117,23 +121,54 @@ function scoreKnowledgeRecord(question, record, context = {}) {
   }
 
   const intentSignals = [
+    { id: 'KNO-DEL-SIG-DSR-001', anySets: [['dsr'], ['direct', 'signature']] },
+    { id: 'KNO-DEL-SIG-ISR-001', anySets: [['isr'], ['indirect', 'signature']] },
+    { id: 'KNO-DEL-SIG-ASR-001', anySets: [['asr'], ['adult', 'signature']] },
+    { id: 'KNO-SAF-DOG-ENCOUNTER-001', required: ['dog'], any: ['loose', 'porch', 'approach', 'bite', 'blocks'], boost: 60 },
     { id: 'KNO-FORGE-VEHICLE-CHANGE-001', required: ['vehicle', 'change'] },
     { id: 'KNO-DEL-MISDELIVERY-RECOVERY-001', required: ['wrong'], any: ['house', 'address', 'door'] },
-    { id: 'KNO-PUP-SCANNER-FAIL-001', required: ['pickup', 'scanner'], any: ['barcode', 'package', 'read'] },
+    { id: 'KNO-PUP-SCANNER-FAIL-001', required: ['pickup', 'scanner'], any: ['barcode', 'package', 'read', 'scan'], boost: 60 },
     { id: 'KNO-PUP-VEHICLE-CAPACITY-001', required: ['pickup', 'vehicle', 'fit'] },
-    { id: 'KNO-DEL-OP206-001', required: ['scanner', 'refused'], any: ['recipient', 'name', 'sign'] }
+    { id: 'KNO-DEL-OP206-001', required: ['scanner', 'refused'], any: ['recipient', 'name', 'sign'] },
+    { id: 'KNO-PUP-INTERNATIONAL-DOCS-001', required: ['international', 'pickup'], any: ['document', 'documents', 'paper', 'papers'] },
+    { id: 'KNO-FORGE-EDIT-ADDRESS-001', required: ['address'], any: ['edit', 'wrong', 'incorrect', 'label'] }
   ];
   const signal = intentSignals.find((candidate) => candidate.id === record.knowledge_id);
   if (
     signal &&
-    signal.required.every((token) => queryTokenSet.has(token)) &&
+    (!signal.required || signal.required.every((token) => queryTokenSet.has(token))) &&
+    (!signal.anySets || signal.anySets.some((set) => set.every((token) => queryTokenSet.has(token)))) &&
     (!signal.any || signal.any.some((token) => queryTokenSet.has(token)))
   ) {
-    bestSurfaceScore += 24;
+    bestSurfaceScore += signal.boost || 24;
   }
 
   const contextBoost = (context.knowledge_ids || []).includes(record.knowledge_id) ? 8 : 0;
   return Number((bestSurfaceScore + contextBoost).toFixed(5));
+}
+
+function buildExplicitMultiIssueClarification(question) {
+  const normalized = normalizeDriverQuestion(question);
+  const joinsIssues = /\b(and|also|another|separately|plus)\b/.test(normalized);
+  if (!joinsIssues) return null;
+
+  const hasMisdelivery = /\b(misdeliver|wrong house|wrong door|wrong address)\w*\b/.test(normalized);
+  const hasPickupScanFailure = /\bpickup\b/.test(normalized)
+    && /\b(scan|scanner|barcode|read)\w*\b/.test(normalized);
+  const hasZeroPickup = /\b(pickup\b.*\b(zero|none|nothing|no packages?)|\b(zero|none|nothing|no packages?)\b.*\bpickup)\b/.test(normalized);
+  const hasCallTagRefusal = /\bcall\s*tag\b/.test(normalized) && /\b(refuse|refused|wont take|will not take)\b/.test(normalized);
+
+  if ((hasMisdelivery && hasPickupScanFailure) || (hasZeroPickup && hasCallTagRefusal)) {
+    return {
+      response_mode: 'CLARIFY',
+      confidence: 0,
+      candidates: [],
+      selected_records: [],
+      clarification_prompt: 'I found two separate operational issues. Which one do you need help with first?',
+      clarification_options: []
+    };
+  }
+  return null;
 }
 
 function normalizeKnowledgeRecord(row) {
@@ -186,10 +221,29 @@ function getPatternRuntimeMode(pattern) {
   return 'ESCALATE';
 }
 
+function selectCanonicalRecordVersions(records) {
+  const grouped = new Map();
+  for (const rawRecord of records || []) {
+    const record = normalizeKnowledgeRecord(rawRecord);
+    if (!record.knowledge_id) continue;
+    grouped.set(record.knowledge_id, [...(grouped.get(record.knowledge_id) || []), record]);
+  }
+
+  return [...grouped.values()].map((versions) => {
+    const ordered = versions.sort((left, right) => right.version - left.version);
+    const latest = ordered[0];
+    if (['PENDING_REVIEW', 'POTENTIALLY_OUTDATED', 'INSUFFICIENT_EVIDENCE'].includes(latest.status)) {
+      return latest;
+    }
+    return ordered.find((record) => (
+      record.status === 'READY_ROUTE_APPROVED' && record.is_published === true
+    )) || latest;
+  });
+}
+
 function rankKnowledgeRecords(question, records, context = {}) {
-  return (records || [])
+  return selectCanonicalRecordVersions(records)
     .filter((record) => record?.knowledge_id && record?.canonical_situation)
-    .map(normalizeKnowledgeRecord)
     .map((record) => ({
       record,
       score: scoreKnowledgeRecord(question, record, context)
@@ -387,8 +441,13 @@ function buildDiscoveredTopicClarification(question, ranked, candidates) {
 function buildDriverHelpDecision(question, records, context = {}) {
   const normalizedQuestion = normalizeDriverQuestion(question);
   const requestsBoundaryBypass = /\b(ignore|invent|pretend)\b/.test(normalizedQuestion);
+  const requestsProtectedMaterial = /\b(hidden|system) (instructions|prompt)\b|\braw source documents?\b|\breveal (your )?(instructions|prompt)\b/.test(normalizedQuestion);
+  const forcedUnsupportedCode = /\bsay code [a-z0-9]+ no matter what\b/.test(normalizedQuestion);
+  const operationalTerms = /\b(package|pickup|delivery|vehicle|scanner|signature|dsr|isr|asr|dog|hazmat|route|stop|customer|recipient)\b/.test(normalizedQuestion);
   const substantiveTokens = tokenize(question).filter((token) => !['package', 'route', 'data', 'knowledge', 'model'].includes(token));
-  if (requestsBoundaryBypass && substantiveTokens.length === 0) {
+  if ((requestsBoundaryBypass && substantiveTokens.length === 0)
+    || (requestsProtectedMaterial && !operationalTerms)
+    || forcedUnsupportedCode) {
     return {
       response_mode: 'ESCALATE',
       confidence: 0,
@@ -397,6 +456,8 @@ function buildDriverHelpDecision(question, records, context = {}) {
       escalation_message: 'Ready Route cannot provide an operational answer without an applicable verified procedure. Contact your manager or station.'
     };
   }
+  const multiIssueClarification = buildExplicitMultiIssueClarification(question);
+  if (multiIssueClarification) return multiIssueClarification;
   const ranked = rankKnowledgeRecords(question, records, context);
   const top = ranked[0] || null;
   const second = ranked[1] || null;
@@ -546,5 +607,6 @@ module.exports = {
   normalizeDriverQuestion,
   rankKnowledgeRecords,
   scoreKnowledgeRecord,
+  selectCanonicalRecordVersions,
   tokenize
 };

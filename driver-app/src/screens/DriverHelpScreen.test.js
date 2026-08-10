@@ -229,6 +229,45 @@ describe('DriverHelpScreen', () => {
     });
   });
 
+  it('states clearly that a network timeout produced no verified answer', async () => {
+    api.post.mockRejectedValueOnce(Object.assign(new Error('timeout of 15000ms exceeded'), {
+      code: 'ECONNABORTED'
+    }));
+    const screen = render(<DriverHelpScreen />);
+
+    fireEvent.changeText(screen.getByLabelText('Driver question'), 'Signature package nobody home');
+    fireEvent.press(screen.getByLabelText('Ask Ready Route'));
+
+    expect(await screen.findByText(
+      'Ready Route did not receive a verified answer. Check your connection and tap Ask Ready Route again. Contact your manager if you need an immediate answer.'
+    )).toBeTruthy();
+    expect(screen.queryByText('What to do now')).toBeNull();
+  });
+
+  it('prevents duplicate submissions while a verification request is pending', async () => {
+    let resolveRequest;
+    api.post.mockReturnValueOnce(new Promise((resolve) => {
+      resolveRequest = resolve;
+    }));
+    const screen = render(<DriverHelpScreen />);
+
+    fireEvent.changeText(screen.getByLabelText('Driver question'), 'Pickup barcode will not scan');
+    fireEvent.press(screen.getByLabelText('Ask Ready Route'));
+    fireEvent.press(screen.getByLabelText('Ask Ready Route'));
+
+    expect(api.post).toHaveBeenCalledTimes(1);
+    await act(async () => resolveRequest({
+      data: {
+        session_id: 'session-pending',
+        interaction_id: 'interaction-pending',
+        response_mode: 'ANSWER',
+        answer: 'Use the verified scanner procedure.',
+        trace: [{ knowledge_id: 'KNO-PUP-SCANNER-FAIL-001', version: 1 }]
+      }
+    }));
+    expect(await screen.findByText('Use the verified scanner procedure.')).toBeTruthy();
+  });
+
   it('starts a new situation without carrying over the previous session', async () => {
     api.post
       .mockResolvedValueOnce({

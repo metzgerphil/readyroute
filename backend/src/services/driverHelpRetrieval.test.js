@@ -4,7 +4,8 @@ const assert = require('node:assert/strict');
 const {
   buildDriverHelpDecision,
   normalizeDriverQuestion,
-  rankKnowledgeRecords
+  rankKnowledgeRecords,
+  selectCanonicalRecordVersions
 } = require('./driverHelpRetrieval');
 
 const records = [
@@ -91,6 +92,62 @@ test('returns a published READY_ROUTE_APPROVED adjudication as canonical', () =>
   assert.equal(decision.response_mode, 'ANSWER');
   assert.equal(decision.selected_records[0].status, 'READY_ROUTE_APPROVED');
   assert.equal(decision.selected_records[0].adjudication_id, 'ADJ-20260810-FORGE-VEHICLE-CHANGE-001');
+});
+
+test('active READY_ROUTE_APPROVED knowledge takes precedence over a newer raw verified version', () => {
+  const approved = {
+    ...records[0],
+    knowledge_id: 'KNO-PRECEDENCE-001',
+    version: 1,
+    status: 'READY_ROUTE_APPROVED',
+    adjudication_id: 'ADJ-PRECEDENCE-001',
+    canonical_situation: 'Adjudicated procedure',
+    normalized_description: 'same canonical precedence situation',
+    driver_question_variants: ['same canonical precedence situation'],
+    concise_answer: 'Use the active approved determination.'
+  };
+  const rawNewer = {
+    ...approved,
+    version: 2,
+    status: 'SOURCE_VERIFIED',
+    adjudication_id: null,
+    concise_answer: 'Use the unadjudicated raw interpretation.'
+  };
+
+  const selected = selectCanonicalRecordVersions([rawNewer, approved]);
+  const decision = buildDriverHelpDecision('same canonical precedence situation', [rawNewer, approved]);
+
+  assert.equal(selected.length, 1);
+  assert.equal(selected[0].status, 'READY_ROUTE_APPROVED');
+  assert.equal(decision.response_mode, 'ANSWER');
+  assert.equal(decision.selected_records[0].status, 'READY_ROUTE_APPROVED');
+  assert.equal(decision.answer, approved.concise_answer);
+});
+
+test('an explicit newer review status reopens the canonical record and blocks the older approval', () => {
+  const approved = {
+    ...records[0],
+    knowledge_id: 'KNO-REOPENED-001',
+    version: 1,
+    status: 'READY_ROUTE_APPROVED',
+    canonical_situation: 'Reopened procedure',
+    normalized_description: 'reopened canonical procedure',
+    driver_question_variants: ['reopened canonical procedure'],
+    concise_answer: 'Old approved determination.'
+  };
+  const reopened = {
+    ...approved,
+    version: 2,
+    status: 'PENDING_REVIEW',
+    is_published: false,
+    concise_answer: 'Do not return while reopened.'
+  };
+
+  const decision = buildDriverHelpDecision('reopened canonical procedure', [approved, reopened]);
+
+  assert.equal(decision.response_mode, 'ESCALATE');
+  assert.deepEqual(decision.selected_records, []);
+  assert.equal(decision.candidates[0].version, 2);
 });
 
 test('prompt injection cannot enable general-knowledge fallback or a noneligible record', () => {
@@ -216,4 +273,31 @@ test('uses a validated language pattern to ask for required clarification', () =
   const decision = buildDriverHelpDecision('signature package nobody home', patternedRecords);
   assert.equal(decision.response_mode, 'CLARIFY');
   assert.match(decision.clarification_prompt, /whether FORGE identifies the package as DSR/i);
+});
+
+test('an explicit pickup scanner topic switch is not contaminated by prior delivery context', () => {
+  const pickupScanner = {
+    ...records[0],
+    knowledge_id: 'KNO-PUP-SCANNER-FAIL-001',
+    canonical_situation: 'Pickup package cannot be scanned because the scanner fails',
+    normalized_description: 'Pickup scanner cannot scan the package barcode',
+    driver_question_variants: ['pickup scanner wont scan package'],
+    concise_answer: 'Use the verified pickup scanner-failure procedure.'
+  };
+  const deliveryBarcode = {
+    ...records[0],
+    knowledge_id: 'KNO-DEL-BARCODE-001',
+    canonical_situation: 'Delivery package has no usable barcode',
+    normalized_description: 'Delivery barcode will not scan',
+    driver_question_variants: ['scanner wont scan package'],
+    concise_answer: 'Use the verified delivery-barcode procedure.'
+  };
+  const decision = buildDriverHelpDecision(
+    'Also my scanner won’t scan another pickup package.',
+    [deliveryBarcode, pickupScanner],
+    { knowledge_ids: ['KNO-DEL-SIG-ISR-001', 'KNO-DEL-ATTEMPT-LIMIT-001'] }
+  );
+
+  assert.equal(decision.response_mode, 'ANSWER');
+  assert.equal(decision.selected_records[0].knowledge_id, 'KNO-PUP-SCANNER-FAIL-001');
 });
