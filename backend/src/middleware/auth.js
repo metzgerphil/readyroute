@@ -159,7 +159,10 @@ function createAuthMiddleware(options = {}) {
         driver_id: payload.driver_id,
         account_id: payload.account_id,
         name: payload.name,
-        role: payload.role
+        role: payload.role,
+        driver_mode_source: payload.driver_mode_source || 'driver',
+        auth_subject_id: payload.auth_subject_id || payload.driver_id,
+        auth_subject_type: payload.auth_subject_type || 'driver'
       };
       return next();
     } catch (error) {

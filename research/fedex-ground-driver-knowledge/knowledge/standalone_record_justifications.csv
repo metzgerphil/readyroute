@@ -1,0 +1,4 @@
+knowledge_id,justification_type,reason
+KNO-COMMS-MEDIA-001,NARROW_STANDALONE_POLICY,"Recording, media, and brand-publication restrictions do not currently require another operational procedure to answer the source-defined situation."
+KNO-DEL-FAD-GROUND-001,TIME_SENSITIVE_SOURCE_LIMIT,"The current Ground record exists only to withhold an unconfirmed future FAD workflow; linking it to an Express or signature procedure could imply unsupported Ground availability."
+KNO-DEL-TOBACCO-001,CONTENT_RESTRICTION_WITHHELD_BRANCH,"The content restriction and unresolved commercial exception are self-contained; no supplied companion record establishes a safe alternate delivery procedure."

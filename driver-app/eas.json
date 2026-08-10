@@ -9,7 +9,27 @@
       "distribution": "internal"
     },
     "preview": {
-      "distribution": "internal"
+      "distribution": "internal",
+      "environment": "preview",
+      "env": {
+        "EXPO_PUBLIC_APP_VARIANT": "staging",
+        "EXPO_PUBLIC_API_URL": "https://readyroute-api-staging-201632321692.us-west1.run.app",
+        "EXPO_PUBLIC_USE_LOCAL_API": "false"
+      }
+    },
+    "testflight": {
+      "distribution": "store",
+      "environment": "preview",
+      "autoIncrement": true,
+      "ios": {
+        "image": "macos-sequoia-15.6-xcode-26.0"
+      },
+      "env": {
+        "EXPO_PUBLIC_APP_VARIANT": "production",
+        "EXPO_PUBLIC_API_URL": "https://readyroute-api-staging-201632321692.us-west1.run.app",
+        "EXPO_PUBLIC_DRIVER_HELP_ONLY": "true",
+        "EXPO_PUBLIC_USE_LOCAL_API": "false"
+      }
     },
     "production": {
       "ios": {
@@ -19,6 +39,11 @@
     }
   },
   "submit": {
+    "testflight": {
+      "ios": {
+        "ascAppId": "6762488881"
+      }
+    },
     "production": {
       "ios": {
         "ascAppId": "6762488881"

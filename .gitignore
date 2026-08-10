@@ -16,6 +16,9 @@ backend/google-service-account.json
 
 # dependencies
 node_modules/
+**/node_modules
+**/__pycache__/
+*.py[cod]
 .npm-cache/
 .playwright-browsers/
 .tools/
@@ -27,6 +30,18 @@ dist/
 dist-*/
 coverage/
 exports/
+
+# private operational source archive (keep on encrypted/local or approved storage)
+research/fedex-ground-driver-knowledge/sources/
+research/fedex-ground-driver-knowledge/captures/
+research/fedex-ground-driver-knowledge/tmp/
+research/fedex-ground-driver-knowledge/reviews/video_visual/
+output/
+
+# native build and dependency artifacts
+**/Pods/
+**/build/
+*.xcarchive/
 
 # logs
 npm-debug.log*

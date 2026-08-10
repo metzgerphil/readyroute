@@ -1,0 +1,17 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://readyroute.example/schema/source.schema.json",
+  "title": "Ready Route source registry record",
+  "type": "object",
+  "additionalProperties": true,
+  "required": ["schema_version", "source_id", "title", "source_type", "original_location", "authority_level", "review_status"],
+  "properties": {
+    "schema_version": { "const": "1.0.0" },
+    "source_id": { "type": "string", "minLength": 1 },
+    "title": { "type": "string", "minLength": 1 },
+    "source_type": { "type": ["string", "null"] },
+    "original_location": { "type": ["string", "null"] },
+    "authority_level": { "type": "string" },
+    "review_status": { "type": ["string", "null"] }
+  }
+}

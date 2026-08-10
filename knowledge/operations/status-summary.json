@@ -1,0 +1,18 @@
+{
+  "schema_version": "1.0.0",
+  "generated_at": "2026-08-10T02:37:04.520Z",
+  "total_records": 144,
+  "by_status": {
+    "SOURCE_VERIFIED": 89,
+    "READY_ROUTE_APPROVED": 0,
+    "PENDING_REVIEW": 34,
+    "POTENTIALLY_OUTDATED": 21,
+    "INSUFFICIENT_EVIDENCE": 0
+  },
+  "status_eligible_records": 89,
+  "publication_ready_records": 80,
+  "status_eligible_but_evidence_gated": 9,
+  "source_records": 108,
+  "driver_language_cases": 192,
+  "active_adjudications": 0
+}

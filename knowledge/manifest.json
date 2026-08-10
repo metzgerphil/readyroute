@@ -1,0 +1,39 @@
+{
+  "schema_version": "1.0.0",
+  "generated_at": "2026-08-10T02:37:04.520Z",
+  "generator": "scripts/build-ready-route-knowledge.js",
+  "authoring_corpus": "research/fedex-ground-driver-knowledge/knowledge/records.jsonl",
+  "adjudication_input": "knowledge/adjudications/records.json",
+  "counts": {
+    "schema_version": "1.0.0",
+    "generated_at": "2026-08-10T02:37:04.520Z",
+    "total_records": 144,
+    "by_status": {
+      "SOURCE_VERIFIED": 89,
+      "READY_ROUTE_APPROVED": 0,
+      "PENDING_REVIEW": 34,
+      "POTENTIALLY_OUTDATED": 21,
+      "INSUFFICIENT_EVIDENCE": 0
+    },
+    "status_eligible_records": 89,
+    "publication_ready_records": 80,
+    "status_eligible_but_evidence_gated": 9,
+    "source_records": 108,
+    "driver_language_cases": 192,
+    "active_adjudications": 0
+  },
+  "checksums": {
+    "operations/records.jsonl": "721587a727e19d59d60c9547beb4ecfc6d44f625e2824564d58d8c49cd4c074d",
+    "operations/publication-ready.jsonl": "9e1722173feec3e86e7c6ca20157a44a23880cd5c5a1be1fd60b9a7527eb658b",
+    "operations/publication-gaps.jsonl": "8ca66ae9a70b08deab8492873542b17c7ecd44b4b84101afc8454dc15cfc0923",
+    "operations/status-summary.json": "e22a440e3abec734a3e9e148dbc681c1eeece8a404320358d80422f1844468c9",
+    "pending-review/records.jsonl": "a51ab5ccc04e5bf05ae43a329ff635c208a620d88bd673136ffa3b382553e43e",
+    "pending-review/review-items.jsonl": "e8fb1ba745afba26901e077a772e03aebdd1079435ee7339d03dd21d74fe05c1",
+    "outdated/records.jsonl": "83085610e48373e0718a48faece97cb52d073dd5b7c27a00459f8a27f25d2f5e",
+    "insufficient-evidence/records.jsonl": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "sources/registry.jsonl": "2cbefdde2aee4298508db22fdeebac0c0542147d3b262d413f668c51ecc5ef6a",
+    "evaluations/driver-language-cases.jsonl": "f1b32e202eb3b71bc2a572bee4ed2facbbc536d16bc0d0c7e2a6cc92f35ef915",
+    "history/change-log.jsonl": "029c26686601b1e2af492102173ef0a3f291eeb050998858b0f4fd8e2cc8a0ac",
+    "reference/taxonomy.json": "21c5cc3257dae62fe88401249c27690fd138eb454e82283eea2ef27382b37758"
+  }
+}

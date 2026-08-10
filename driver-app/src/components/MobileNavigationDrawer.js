@@ -51,6 +51,7 @@ export default function MobileNavigationDrawer({
   activeMode,
   currentRouteName,
   currentManagerCsaId,
+  driverHelpOnly = false,
   identity,
   isLoadingManagerCsas,
   isOpen,
@@ -65,7 +66,7 @@ export default function MobileNavigationDrawer({
   onSwitchMode,
   showModeSwitch
 }) {
-  const menuItems = getDrawerMenuItems(activeMode);
+  const menuItems = getDrawerMenuItems(activeMode, { driverHelpOnly });
   const insets = useSafeAreaInsets();
   const { height, width } = useWindowDimensions();
   const { sheetFrameStyle } = getMobileMenuLayout({ height, insets, width });

@@ -81,6 +81,11 @@ jest.mock('../screens/HomeScreen', () => function MockHomeScreen() {
   return <MockText>HomeScreen</MockText>;
 });
 
+jest.mock('../screens/DriverHelpScreen', () => function MockDriverHelpScreen() {
+  const { Text: MockText } = require('react-native');
+  return <MockText>DriverHelpScreen</MockText>;
+});
+
 jest.mock('../screens/LoginScreen', () => function MockLoginScreen() {
   const { Text: MockText } = require('react-native');
   return <MockText>LoginScreen</MockText>;
@@ -243,6 +248,7 @@ describe('AppNavigator', () => {
     });
 
     const screenLabels = tree.root.findAllByType(Text).map((node) => node.props.children);
+    expect(screenLabels).toContain('DriverHelpScreen');
     expect(screenLabels).toContain('HomeScreen');
     expect(screenLabels).toContain('NotificationsScreen');
     expect(screenLabels).toContain('MyDriveScreen');

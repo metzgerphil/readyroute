@@ -62,6 +62,9 @@ test('credential session accepts the current active driver PIN version', async (
 
   assert.equal(response.status, 200);
   assert.equal(response.body.driver_id, 'driver-1');
+  assert.equal(response.body.driver_mode_source, 'driver');
+  assert.equal(response.body.auth_subject_id, 'driver-1');
+  assert.equal(response.body.auth_subject_type, SESSION_SUBJECT_TYPES.DRIVER);
 });
 
 test('credential session ends immediately after the driver PIN hash changes', async () => {

@@ -43,6 +43,10 @@ const api = axios.create({
 });
 
 api.interceptors.request.use(async (config) => {
+  if (config.skipAuth === true) {
+    return config;
+  }
+
   const authContext = await resolveAuthContext();
   const authMode = config.authMode || authContext.activeMode || 'driver';
   const token = config.authToken || (authMode === 'manager' ? authContext.managerToken : authContext.driverToken);

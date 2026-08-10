@@ -17,6 +17,7 @@ const DebugGoogleMapPage = lazy(() => import('./pages/DebugGoogleMapPage'));
 const DriversPage = lazy(() => import('./pages/DriversPage'));
 const FleetMapPage = lazy(() => import('./pages/FleetMapPage'));
 const LoginPage = lazy(() => import('./pages/LoginPage'));
+const KnowledgeActivityPage = lazy(() => import('./pages/KnowledgeActivityPage'));
 const ManifestPage = lazy(() => import('./pages/ManifestPage'));
 const NotificationsPage = lazy(() => import('./pages/NotificationsPage'));
 const RecordsPage = lazy(() => import('./pages/RecordsPage'));
@@ -83,6 +84,7 @@ function ProtectedApp() {
               <Route element={<NotificationsPage />} path="/notifications" />
               <Route element={<RecordsPage />} path="/records" />
               <Route element={<DriversPage />} path="/drivers" />
+              <Route element={<KnowledgeActivityPage />} path="/knowledge-activity" />
               <Route element={<VehiclesPage />} path="/vehicles" />
               <Route element={<AccessCodesPage />} path="/access-codes" />
               <Route element={<BillingPage />} path="/billing" />

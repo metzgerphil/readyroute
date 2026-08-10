@@ -1,0 +1,34 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://readyroute.example/schema/canonical-record.schema.json",
+  "title": "Ready Route canonical operational record",
+  "type": "object",
+  "additionalProperties": true,
+  "required": [
+    "schema_version",
+    "knowledge_id",
+    "record_version",
+    "canonical_situation",
+    "knowledge_status",
+    "authoritative_rule",
+    "required_procedure",
+    "concise_driver_answer",
+    "source_evidence",
+    "production_eligibility"
+  ],
+  "properties": {
+    "schema_version": { "const": "1.0.0" },
+    "knowledge_id": { "type": "string", "minLength": 1 },
+    "record_version": { "type": "integer", "minimum": 1 },
+    "knowledge_status": {
+      "enum": ["SOURCE_VERIFIED", "READY_ROUTE_APPROVED", "PENDING_REVIEW", "POTENTIALLY_OUTDATED", "INSUFFICIENT_EVIDENCE"]
+    },
+    "required_procedure": { "type": "array" },
+    "source_ids": { "type": "array", "items": { "type": "string" } },
+    "source_evidence": { "type": "array" },
+    "production_eligibility": {
+      "type": "object",
+      "required": ["status_eligible", "publication_ready", "blockers"]
+    }
+  }
+}

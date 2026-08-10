@@ -1,0 +1,41 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://readyroute.example/schema/adjudication.schema.json",
+  "title": "Ready Route knowledge adjudication",
+  "type": "object",
+  "additionalProperties": true,
+  "required": [
+    "adjudication_id",
+    "knowledge_id",
+    "status",
+    "issue_reviewed",
+    "canonical_determination",
+    "previous_interpretations",
+    "supporting_source_ids",
+    "reasoning",
+    "approved_by",
+    "approval_date",
+    "reopen_conditions"
+  ],
+  "properties": {
+    "adjudication_id": { "type": "string", "minLength": 1 },
+    "knowledge_id": { "type": "string", "minLength": 1 },
+    "status": { "enum": ["APPROVED", "SUPERSEDED", "REOPENED"] },
+    "issue_reviewed": { "type": "string", "minLength": 1 },
+    "canonical_determination": { "type": "string", "minLength": 1 },
+    "previous_interpretations": { "type": "array", "minItems": 1 },
+    "supporting_source_ids": { "type": "array", "minItems": 1, "items": { "type": "string" } },
+    "conflicting_or_superseded_source_ids": { "type": "array", "items": { "type": "string" } },
+    "reasoning": { "type": "string", "minLength": 1 },
+    "approved_by": { "type": "string", "minLength": 1 },
+    "approval_date": { "type": "string", "format": "date" },
+    "effective_date": { "type": ["string", "null"], "format": "date" },
+    "review_notes": { "type": ["string", "null"] },
+    "supersedes": { "type": "array", "items": { "type": "string" } },
+    "reopen_conditions": { "type": "array", "minItems": 1, "items": { "type": "string" } }
+    ,"canonical_overrides": {
+      "type": "object",
+      "description": "Complete canonical fields approved for production; required by the release builder for active approvals."
+    }
+  }
+}

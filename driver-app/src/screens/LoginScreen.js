@@ -46,6 +46,8 @@ export default function LoginScreen({ onAuthenticated }) {
       const mobileResponse = await api.post('/auth/mobile/login', {
         email: email.trim(),
         secret: secret.trim()
+      }, {
+        skipAuth: true
       });
 
       const driverToken = mobileResponse.data?.driver_token || null;
@@ -62,6 +64,8 @@ export default function LoginScreen({ onAuthenticated }) {
         const response = await api.post('/auth/driver/login', {
           email: email.trim(),
           pin: secret.trim()
+        }, {
+          skipAuth: true
         });
         const legacyDriverToken = response.data?.token;
 
@@ -71,8 +75,11 @@ export default function LoginScreen({ onAuthenticated }) {
 
         await saveSessionTokens({ driverToken: legacyDriverToken });
         onAuthenticated({ driverToken: legacyDriverToken, managerToken: null });
-      } catch (_legacyError) {
-        setErrorMessage('Incorrect email or password. Try again.');
+      } catch (legacyError) {
+        const networkUnavailable = !(_mobileError?.response || legacyError?.response);
+        setErrorMessage(networkUnavailable
+          ? 'Could not reach ReadyRoute. Check your connection and try again.'
+          : 'Incorrect email or password. Try again.');
       }
     } finally {
       setLoading(false);
@@ -102,6 +109,8 @@ export default function LoginScreen({ onAuthenticated }) {
     try {
       const response = await api.post('/auth/manager/request-password-reset', {
         email: requestedEmail
+      }, {
+        skipAuth: true
       });
       setResetEmail(requestedEmail);
       setResetMessage(response.data?.message || 'Check your email for reset instructions.');

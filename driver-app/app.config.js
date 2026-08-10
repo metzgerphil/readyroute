@@ -1,5 +1,11 @@
 const googleMapsApiKey = process.env.EXPO_PUBLIC_GOOGLE_MAPS_API_KEY || undefined;
-const bundleIdentifier = 'com.readyroute.driverapp';
+const appVariant = String(process.env.EXPO_PUBLIC_APP_VARIANT || '').trim().toLowerCase();
+const isStagingBuild = appVariant
+  ? appVariant === 'staging'
+  : process.env.EAS_BUILD_PROFILE === 'preview';
+const bundleIdentifier = isStagingBuild
+  ? 'com.readyroute.driverapp.staging'
+  : 'com.readyroute.driverapp';
 
 if (process.env.EAS_BUILD === 'true' && !googleMapsApiKey) {
   throw new Error('Missing EXPO_PUBLIC_GOOGLE_MAPS_API_KEY for EAS build. Add it to the EAS build environment before creating Android builds.');
@@ -7,7 +13,7 @@ if (process.env.EAS_BUILD === 'true' && !googleMapsApiKey) {
 
 module.exports = {
   expo: {
-    name: 'ReadyRoute',
+    name: isStagingBuild ? 'ReadyRoute Solutions' : 'ReadyRoute',
     slug: 'driver-app',
     version: '1.0.3',
     orientation: 'portrait',
@@ -67,6 +73,13 @@ module.exports = {
     },
     plugins: [
       'expo-secure-store',
+      [
+        'expo-speech-recognition',
+        {
+          microphonePermission: 'Allow ReadyRoute to hear your spoken driver question.',
+          speechRecognitionPermission: 'Allow ReadyRoute to convert your spoken driver question into text.'
+        }
+      ],
       [
         'expo-location',
         {

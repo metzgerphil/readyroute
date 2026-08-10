@@ -10,6 +10,7 @@ import { usePortalSession } from '../context/PortalSessionContext';
 import api from '../services/api';
 import { saveLastPortalMode, saveSessionTokens } from '../services/auth';
 import HomeScreen from '../screens/HomeScreen';
+import DriverHelpScreen from '../screens/DriverHelpScreen';
 import LoginScreen from '../screens/LoginScreen';
 import ManagerAccessCodesScreen from '../screens/ManagerAccessCodesScreen';
 import ManagerDashboardScreen from '../screens/ManagerDashboardScreen';
@@ -28,8 +29,10 @@ import StopDetailScreen from '../screens/StopDetailScreen';
 import appTheme from '../theme/appTheme';
 
 const Stack = createStackNavigator();
+const DRIVER_HELP_ONLY = String(process.env.EXPO_PUBLIC_DRIVER_HELP_ONLY || '').trim().toLowerCase() === 'true';
 const SHELL_NAVIGATION_SCREENS = new Set([
   'Home',
+  'RouteTools',
   'Manifest',
   'ManagerDashboard',
   'ManagerAccessCodes',
@@ -461,6 +464,17 @@ export default function AppNavigator() {
               {(props) => {
                 return (
                   <TrackedScreen navigation={props.navigation} onFocus={attachNavigation} screenName="Home">
+                    <DriverHelpScreen {...props} />
+                  </TrackedScreen>
+                );
+              }}
+            </Stack.Screen>
+            {!DRIVER_HELP_ONLY ? (
+              <>
+            <Stack.Screen name="RouteTools" options={{ headerShown: false }}>
+              {(props) => {
+                return (
+                  <TrackedScreen navigation={props.navigation} onFocus={attachNavigation} screenName="RouteTools">
                     <HomeScreen {...props} onLogout={logout} />
                   </TrackedScreen>
                 );
@@ -522,13 +536,15 @@ export default function AppNavigator() {
                 );
               }}
             </Stack.Screen>
+              </>
+            ) : null}
           </>
         )}
       </Stack.Navigator>
 
       {hasAnyAccess && !needsModeSelection ? (
         <>
-          {currentRouteName === 'Home' || currentRouteName == null || String(currentRouteName || '').startsWith('Manager') ? (
+          {currentRouteName === 'Home' || currentRouteName === 'RouteTools' || currentRouteName == null || String(currentRouteName || '').startsWith('Manager') ? (
             <View pointerEvents="box-none" style={[styles.topLeftControlsWrap, { top: insets.top + 10 }]}>
               <DrawerMenuButton onPress={openDrawer} />
               {activeMode === 'manager' && currentRouteName === 'ManagerMap' ? (
@@ -544,6 +560,7 @@ export default function AppNavigator() {
             activeMode={activeMode}
             currentRouteName={currentRouteName}
             currentManagerCsaId={currentManagerCsaId}
+            driverHelpOnly={DRIVER_HELP_ONLY}
             identity={identity}
             hasNotificationAttention={activeMode === 'manager' ? hasManagerNotificationAttention : false}
             isLoadingManagerCsas={isLoadingManagerCsas}
@@ -557,7 +574,7 @@ export default function AppNavigator() {
             onNavigate={handleNavigate}
             onSupportPress={openSupport}
             onSwitchMode={() => handleSelectMode(activeMode === 'manager' ? 'driver' : 'manager')}
-            showModeSwitch={availableModes.length > 1 || (activeMode === 'manager' && Boolean(sessionTokens?.managerToken))}
+            showModeSwitch={!DRIVER_HELP_ONLY && (availableModes.length > 1 || (activeMode === 'manager' && Boolean(sessionTokens?.managerToken)))}
           />
           <SupportRequestModal
             activeMode={activeMode}

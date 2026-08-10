@@ -4,7 +4,9 @@ const helmet = require('helmet');
 
 const { createAuthRouter } = require('./routes/auth');
 const { createBillingRouter } = require('./routes/billing');
+const { createDriverHelpRouter } = require('./routes/driverHelp');
 const { createManagerRouter } = require('./routes/manager');
+const { createManagerDriverHelpRouter } = require('./routes/managerDriverHelp');
 const propertyIntelManagerRoutes = require('./routes/propertyIntelManager');
 const { createPropertyIntelManagerRouter } = require('./routes/propertyIntelManager');
 const { createAuthMiddleware } = require('./middleware/auth');
@@ -135,6 +137,14 @@ function createApp(options = {}) {
     billingService: options.billingService,
     requireManager
   });
+  const driverHelpRouter = createDriverHelpRouter({
+    supabase: options.supabase,
+    now: options.now,
+    service: options.driverHelpService
+  });
+  const managerDriverHelpRouter = createManagerDriverHelpRouter({
+    supabase: options.supabase
+  });
   const propertyIntelManagerRouter = options.supabase
     ? createPropertyIntelManagerRouter({ supabase: options.supabase })
     : propertyIntelManagerRoutes;
@@ -249,12 +259,14 @@ function createApp(options = {}) {
   app.use('/staff', staffRouter);
   app.use('/internal', internalSyncRouter);
   app.use('/manager/property-intel', requireManager, requireActiveSubscription, propertyIntelManagerRouter);
+  app.use('/manager/driver-help', requireManager, requireActiveSubscription, managerDriverHelpRouter);
   app.use('/manager', requireManager, requireActiveSubscription, managerRouter);
   app.use('/api/vedr', requireManager, requireActiveSubscription, vedrRouter);
   app.use('/routes', routesRouter);
   app.use('/timecards', timecardsRouter);
   app.use('/vehicles', requireManager, requireActiveSubscription, vehiclesRouter);
   app.use('/safety-focuses', requireDriver, safetyFocusesRouter);
+  app.use('/driver-help', requireDriver, driverHelpRouter);
 
   app.use((error, req, res, _next) => {
     if (res.headersSent) {

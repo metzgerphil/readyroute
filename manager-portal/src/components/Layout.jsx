@@ -28,6 +28,7 @@ const navGroups = [
       { to: '/routes', label: 'Routes', icon: 'routes', end: true },
       { to: '/time-commits', label: 'P&D Time Commits', icon: 'commits' },
       { to: '/drivers', label: 'Drivers', icon: 'drivers' },
+      { to: '/knowledge-activity', label: 'Knowledge Activity', icon: 'knowledge' },
       { to: '/vehicles', label: 'Vehicles', icon: 'vehicles' },
       { to: '/notifications', label: 'Notifications', icon: 'notifications' },
       { to: '/access-codes', label: 'Access Codes', icon: 'access' },
@@ -93,6 +94,12 @@ function SidebarIcon({ type }) {
         <svg aria-hidden="true" className="sidebar-link-icon-svg" viewBox="0 0 24 24">
           <path d="M6 4h9l3 3v13H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2zm8 1.5V8h2.5" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
           <path d="M8 11h8M8 15h8M8 19h5" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+        </svg>
+      );
+    case 'knowledge':
+      return (
+        <svg aria-hidden="true" className="sidebar-link-icon-svg" viewBox="0 0 24 24">
+          <path d="M5 5.5A3.5 3.5 0 0 1 8.5 2H19v17H8.5A3.5 3.5 0 0 0 5 22zm0 0V22M9 7h6M9 11h6" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
         </svg>
       );
     case 'billing':

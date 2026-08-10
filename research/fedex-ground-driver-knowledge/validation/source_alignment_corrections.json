@@ -1,0 +1,35 @@
+[
+  {
+    "change_id": "COR-20260809-HAZ-RADIOACTIVE-WET-001",
+    "knowledge_id": "KNO-HAZ-RADIOACTIVE-WET-001",
+    "expected_previous_checksum": "0f0e54b06f83951a74a40d1d3036505d063eead54da39a568f324d22acf53bee",
+    "reason": "Remove management notification and refusal-record instructions not established by OP-117 page 73 or the current MGB prohibited-pickup section; retain only label identification, ordinary-pickup prohibition, and CXPC special-pickup arrangement.",
+    "supporting_source_ids": ["SRC-GDRIVE-FILE-0014", "SRC-MGB-PAGE-0002"],
+    "reviewed_at": "2026-08-09",
+    "set_fields": {
+      "required_procedure": [
+        {"step": 1, "action": "Identify the Radioactive III or Dangerous When Wet label."},
+        {"step": 2, "action": "Do not load or transport the package through the normal pickup."},
+        {"step": 3, "action": "Contact CXPC to arrange a special pickup."}
+      ],
+      "required_documentation": ["Package/label identification", "CXPC special-pickup request"],
+      "escalation_requirements": ["CXPC special-pickup arrangement"],
+      "concise_ready_route_answer": "Do not pick it up through the normal route. Radioactive III and Dangerous When Wet packages require placarding. Contact CXPC to arrange a special pickup.",
+      "review_notes": "Narrow, explicit prohibition preserved separately from general acceptance. Unsupported management-notification and refusal-record instructions were removed after exact claim review."
+    }
+  },
+  {
+    "change_id": "COR-20260809-HAZ-MANIFEST-001",
+    "knowledge_id": "KNO-HAZ-MANIFEST-001",
+    "expected_previous_checksum": "0ea5447f71649291d9258a306f6938e450bfee4c88a37b69d5dfdbddd1ff490f",
+    "reason": "Remove an uncited relay-source condition and station-escalation wording not established by the record's exact page 76/80 and current MGB evidence; retain the complete manifest and package-paper contingency sequence.",
+    "supporting_source_ids": ["SRC-GDRIVE-FILE-0014", "SRC-MGB-PAGE-0002"],
+    "reviewed_at": "2026-08-09",
+    "set_fields": {
+      "conditions": ["Dangerous Goods package requires declaration copy", "Manifest-unavailable contingency uses package paperwork"],
+      "escalation_requirements": [],
+      "concise_ready_route_answer": "Before leaving, obtain and verify the hazmat manifest, scan it, and keep it with required declarations in the OP-901 envelope. Cross out each hazmat as it is delivered. If the manifest is unavailable or a package transfers, use the documented package-paper contingency and keep the paperwork accessible.",
+      "review_notes": "Complete before-departure, during-route, and contingency sequence preserved. Unsupported station-contact wording and a locator-mismatched relay condition were removed after exact claim review."
+    }
+  }
+]
