@@ -25,6 +25,11 @@ function createDriverHelpService({ supabase = defaultSupabase, now = () => new D
         'version',
         'status',
         'is_published',
+        'source_ids',
+        'adjudication_id',
+        'approved_by',
+        'approval_date',
+        'canonical_schema_version',
         'canonical_situation',
         'normalized_description',
         'taxonomy_paths',
@@ -116,7 +121,7 @@ function createDriverHelpService({ supabase = defaultSupabase, now = () => new D
     return newSessionId;
   }
 
-  async function recordInteraction({ sessionId, accountId, driverId, actorType, actorId, question, decision }) {
+  async function recordInteraction({ sessionId, accountId, driverId, actorType, actorId, question, decision, responseLatencyMs }) {
     const interactionId = randomId();
     const selectedRecords = decision.selected_records || [];
     const row = {
@@ -131,6 +136,17 @@ function createDriverHelpService({ supabase = defaultSupabase, now = () => new D
       response_mode: decision.response_mode,
       selected_knowledge_ids: selectedRecords.map((record) => record.knowledge_id),
       selected_knowledge_versions: selectedRecords.map((record) => record.version),
+      canonical_trace: selectedRecords.map((record) => ({
+        knowledge_id: record.knowledge_id,
+        knowledge_status: record.status,
+        canonical_version: record.version,
+        category_paths: record.taxonomy_paths || [],
+        source_ids: record.source_ids || [],
+        adjudication_id: record.adjudication_id || null,
+        approved_by: record.approved_by || null,
+        approval_date: record.approval_date || null,
+        canonical_schema_version: record.canonical_schema_version || null
+      })),
       retrieval_candidates: decision.candidates,
       confidence: decision.confidence,
       answer_snapshot: decision.answer || null,
@@ -138,6 +154,7 @@ function createDriverHelpService({ supabase = defaultSupabase, now = () => new D
       clarification_options: decision.clarification_options || [],
       escalation_message: decision.escalation_message || null,
       escalation_details: decision.escalation_details || [],
+      response_latency_ms: responseLatencyMs,
       created_at: now().toISOString()
     };
     const { error } = await supabase.from('driver_help_interactions').insert(row);
@@ -160,6 +177,7 @@ function createDriverHelpService({ supabase = defaultSupabase, now = () => new D
   }
 
   async function answerQuestion({ accountId, driverId, actorType = 'driver', actorId = driverId, question, sessionId = null }) {
+    const startedAt = Date.now();
     const [records, sessionState] = await Promise.all([
       loadKnowledgeRecords(),
       loadSessionContext(sessionId, accountId, actorType, actorId)
@@ -180,7 +198,8 @@ function createDriverHelpService({ supabase = defaultSupabase, now = () => new D
       actorType,
       actorId,
       question,
-      decision
+      decision,
+      responseLatencyMs: Math.max(0, Date.now() - startedAt)
     });
 
     return {
@@ -195,7 +214,11 @@ function createDriverHelpService({ supabase = defaultSupabase, now = () => new D
       escalation_message: decision.escalation_message || null,
       trace: decision.selected_records.map((record) => ({
         knowledge_id: record.knowledge_id,
-        version: record.version
+        knowledge_status: record.status,
+        canonical_version: record.version,
+        category_paths: record.taxonomy_paths || [],
+        source_ids: record.source_ids || [],
+        adjudication_id: record.adjudication_id || null
       }))
     };
   }

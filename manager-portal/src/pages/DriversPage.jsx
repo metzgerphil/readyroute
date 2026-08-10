@@ -1422,6 +1422,31 @@ export default function DriversPage() {
     });
   }
 
+  async function handleSendDriverInvite(driver) {
+    try {
+      const response = await api.post(`/manager/drivers/${driver.id}/invite`);
+      const inviteUrl = response.data?.invite_url;
+      if (inviteUrl) {
+        window.prompt('Email delivery is unavailable. Copy this secure, single-use invite link:', inviteUrl);
+      } else {
+        window.alert(response.data?.message || `Invite sent to ${driver.email}.`);
+      }
+    } catch (inviteError) {
+      window.alert(inviteError.response?.data?.error || 'Unable to send the driver invite.');
+    }
+  }
+
+  async function handleResetDriverAccess(driver) {
+    try {
+      const response = await api.post(`/manager/drivers/${driver.id}/password-reset`);
+      const resetUrl = response.data?.reset_url;
+      if (resetUrl) window.prompt('Copy this secure, single-use password reset link:', resetUrl);
+      else window.alert(response.data?.message || `Password reset sent to ${driver.email}.`);
+    } catch (resetError) {
+      window.alert(resetError.response?.data?.error || 'Unable to reset driver access.');
+    }
+  }
+
   function toggleWeeklyLaborDetail(driverId) {
     setExpandedWeeklyLaborDriverId((current) => (current === driverId ? null : driverId));
     setExpandedDailyLaborDriverId(null);
@@ -1699,6 +1724,12 @@ export default function DriversPage() {
                         {driver.is_active ? 'Active' : 'Inactive'}
                       </span>
                       <div className="drivers-table-actions">
+                        <button className="secondary-inline-button" onClick={() => handleSendDriverInvite(driver)} type="button">
+                          Send Invite
+                        </button>
+                        <button className="secondary-inline-button" onClick={() => handleResetDriverAccess(driver)} type="button">
+                          Reset Access
+                        </button>
                         <button className="secondary-inline-button" onClick={() => openEditModal(driver)} type="button">
                           Edit
                         </button>

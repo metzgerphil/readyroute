@@ -1,6 +1,6 @@
 # MyGroundBiz authenticated acquisition queue audit
 
-Status date: 2026-08-09
+Status date: 2026-08-10
 
 ## Purpose
 
@@ -10,27 +10,28 @@ Authenticated MyGroundBiz sessions have been short-lived. The source inventory p
 
 ## Exact coverage
 
-- 289 queued resources total.
-- 4 partially reviewed MyGroundBiz primary sources requiring completion.
-- 41 accessible MyGroundBiz primary resources requiring complete review: 35 still require acquisition and six FCC videos have durable hashed MP4 captures. A fifth partial source is the rejected version-ambiguous pickup sheet; current OP-321 is pursued instead.
-- 9 fully reviewed MyGroundBiz primary sources requiring original-byte or durable-page recapture: three documents and six pages. The Dog Bite Prevention document already has seven hashed viewer renders, but not original PDF bytes.
-- 73 unique unacquired Safety Topic documents.
+- 272 queued resources total.
+- Four partially reviewed MyGroundBiz primary sources: three require active completion and the rejected version-ambiguous pickup sheet is deferred in favor of current OP-321.
+- 31 accessible MyGroundBiz primary resources requiring complete review: 25 still require acquisition and six FCC videos have durable hashed MP4 captures.
+- Seven fully reviewed MyGroundBiz primary sources requiring original-byte or durable-page recapture. Two sources have complete hashed viewer renders, but not original PDF bytes.
+- 71 unique unacquired Safety Topic documents remain in the queue after current source rows were reconciled.
 - 100 exact monthly news-archive pages.
-- 61 unreviewed navigation destinations.
+- 59 unreviewed navigation destinations, with one version-ambiguous source separately deferred.
 - No current partial source, accessible unreviewed primary source, fully reviewed no-archive source, or backlog resource is missing or duplicated.
-- 4 rows are `PARTIAL_REVIEW_OPEN`; 36 are `UNREVIEWED_PRIMARY_OPEN`; six are `UNREVIEWED_PRIMARY_CAPTURED_REVIEW_OPEN`; nine are `REVIEWED_DURABLE_CAPTURE_OPEN`; 234 are `UNACQUIRED_OPEN`.
+- Four rows are `PARTIAL_REVIEW_OPEN`; 25 are `UNREVIEWED_PRIMARY_OPEN`; six are `UNREVIEWED_PRIMARY_CAPTURED_REVIEW_OPEN`; seven are `REVIEWED_DURABLE_CAPTURE_OPEN`; 230 are `UNACQUIRED_OPEN`.
 
 | Wave | Resources | Purpose |
 |---|---:|---|
-| `WAVE_0_PARTIAL_SOURCE_COMPLETION` | 4 | Finish three partially reviewed documents and one partially reviewed page before starting lower-completion resources |
-| `WAVE_0_UNREVIEWED_PRIMARY_ACQUISITION` | 36 | Acquire and review open primary documents/pages; compare explicitly linked document candidates without assuming identity |
-| `WAVE_0_DURABLE_RECAPTURE` | 9 | Preserve original bytes for three fully reviewed documents and durable copies of six fully reviewed pages; one document already has complete hashed viewer renders |
-| `WAVE_1_DIRECT_DOCUMENT_ACQUISITION` | 73 | Archive every known direct Safety Topic document URL first, while authentication is live |
+| `WAVE_0_PARTIAL_SOURCE_COMPLETION` | 3 | Finish the active current partial documents/pages before starting lower-completion resources |
+| `WAVE_0_UNREVIEWED_PRIMARY_ACQUISITION` | 25 | Acquire and review open primary documents/pages; compare explicitly linked document candidates without assuming identity |
+| `WAVE_0_DURABLE_RECAPTURE` | 7 | Preserve original bytes for fully reviewed documents/pages; two sources already have complete hashed viewer renders |
+| `WAVE_1_DIRECT_DOCUMENT_ACQUISITION` | 71 | Archive every remaining known direct Safety Topic document URL first, while authentication is live |
 | `WAVE_2_NEWS_ARCHIVE_DISCOVERY` | 100 | Capture each exact exposed monthly archive, inventory all articles and pagination, then assess relevance from content |
-| `WAVE_2_GAP_LINKED_DESTINATIONS` | 12 | Capture destinations whose title/path intersects a known source gap or signals current safety/compliance/maintenance material |
+| `WAVE_2_GAP_LINKED_DESTINATIONS` | 10 | Capture destinations whose title/path intersects a known source gap or signals current safety/compliance/maintenance material |
 | `WAVE_3_OPERATIONAL_FAMILY_DESTINATIONS` | 37 | Capture the remaining Safety, Operations, Vehicles/Fuel, and Agreement destinations |
 | `WAVE_4_REMAINING_DESTINATIONS` | 12 | Capture all remaining News, Recognition, and vendor destinations for exhaustive assessment |
 | `WAVE_5_DEFERRED_HISTORICAL_VIDEO_REVIEW` | 6 | Preserve the six captured 2017 FCC videos for eventual completeness, after current driver-facing operational sources; no title or partial visual observation supports guidance |
+| `WAVE_5_DEFERRED_NONCURRENT_REFERENCE` | 1 | Retain the version-ambiguous pickup sheet without further review unless current authority is established |
 
 ## Gap-linked page targets
 
@@ -75,37 +76,34 @@ The queue is an open-work view. Once a completion gate is actually satisfied, th
 
 The queue now derives `affected_nonverified_knowledge_ids` from `knowledge/nonverified_resolution_coverage.csv`:
 
-- 10 queued resources have a known record-review impact.
-- They contain 57 resource-to-record links covering 44 unique non-verified records.
-- FORGE Familiarization Guides affects 33 current exception records.
-- Compliance affects 10.
-- Customer Alerts affects eight.
-- Monthly Maintenance Record forms/User Guide affects four.
+- 8 queued resources have a known record-review impact.
+- They contain 20 resource-to-record links covering 13 unique non-verified records.
+- The remaining links target refusal, qualification, login-warning, vehicle, HOS, and security gaps through exact source/backlog relationships.
 
 The remaining impacts are distributed among SRS/SRI, Customer Service Case Automation, trailer safety, qualification/onboarding pages, Driving Standards, CARB, vehicle schematics/Alternative Vehicle Operations, and qualification conditions.
 
 The queue also derives two recapture-oriented fields without title inference:
 
-- 6 queued resources have 7 exact links to records that currently cite the resource in `evidence[].source_id`.
-- 16 queued resources have 74 taxonomy links derived from the exact union of their non-verified dependency records and current-evidence records.
+- 7 queued resources have 12 exact links to records that currently cite the resource in `evidence[].source_id`.
+- 15 queued resources have 49 taxonomy links covering 16 taxonomy IDs, derived from the exact union of their non-verified dependency records and current-evidence records.
 - A current-evidence link means the queued source currently supports the named record and its durable capture must be reconciled. It does not mean recapture changes the record's status.
 
 All 73 Safety Topic documents currently have blank affected-record, current-evidence, and taxonomy sets. That is intentional: their titles and URLs establish acquisition identity but do not establish which procedures they support. Impacts may be added only after complete content review creates source-backed relationships.
 
-The four partial-completion resources have blank non-verified dependency sets because no non-verified resolution row currently names those source IDs; one still has an exact current-evidence impact. Unreviewed primary resources may have blank operational-impact fields because their content is not yet reviewed; exact Drive IDs are comparison targets only. The nine recapture rows are independently required by missing original/durable capture even when every impact field is blank. A blank impact field never removes a source from the workload and does not establish irrelevance.
+Partial-completion resources may have blank non-verified dependency sets because no non-verified resolution row currently names those source IDs; this does not relax their completion gates. Unreviewed primary resources may have blank operational-impact fields because their content is not yet reviewed; exact Drive IDs are comparison targets only. The seven recapture rows are independently required by missing original/durable capture even when every impact field is blank. A blank impact field never removes a source from the workload and does not establish irrelevance.
 
 ## Safeguards
 
 - Every priority basis says explicitly that titles/navigation are discovery metadata only.
 - Wave 4 is an ordering choice, not an exclusion or low-relevance finding.
-- All 240 backlog resources remain open/not-created until the applicable completion gate is satisfied; the four partial-completion sources remain `PARTIALLY_REVIEWED`; all 42 unreviewed primary resources remain `NOT_YET_REVIEWED` regardless of capture or priority wave; and the nine recapture sources remain `FULLY_REVIEWED` while their original/durable-capture gap stays open.
+- All 230 backlog resources remain open/not-created until the applicable completion gate is satisfied; all four partial sources remain `PARTIALLY_REVIEWED`; all 31 unreviewed primary resources remain `NOT_YET_REVIEWED` regardless of capture or priority wave; and the seven recapture sources remain `FULLY_REVIEWED` while their original/durable-capture gap stays open.
 - Linked source-gap IDs must exist in the referenced-source backlog.
 - Newly acquired resources must still pass authority, exact-locator, status, version, and no-invention controls before supporting knowledge.
 
 ## Automated control
 
-`scripts/build_mygb_acquisition_queue.py` regenerates the 289 rows from the current MyGroundBiz partial-source set, accessible unreviewed-primary set, fully reviewed no-archive source set, and the three authoritative backlogs, then derives work state, state basis, comparison candidates, and affected-record sets from their controlling ledgers. It fails until its explicit session-priority order is reconciled whenever the partial-source set changes. `scripts/validate_corpus_integrity.py` rejects stale output, missing/extra/duplicate resources, noncontiguous ordering, invalid types, waves, states, or bases, missing capture/completion instructions, unknown gap IDs, any partial source outside its Wave 0 completion wave, any non-video accessible unreviewed primary source outside its Wave 0 acquisition wave, any FCC video outside its deferred wave, captured/unacquired state drift, invalid candidate comparison IDs, any reviewed no-archive source outside durable recapture, any direct Safety Topic document outside Wave 1, any monthly archive outside its discovery wave, or any queue/resolution impact mismatch in either direction.
+`scripts/build_mygb_acquisition_queue.py` regenerates the 272 rows from the current MyGroundBiz partial-source set, accessible unreviewed-primary set, fully reviewed no-archive source set, and the three authoritative backlogs, then derives work state, state basis, comparison candidates, and affected-record sets from their controlling ledgers. It fails until its explicit session-priority order is reconciled whenever the partial-source set changes. `scripts/validate_corpus_integrity.py` rejects stale output, missing/extra/duplicate resources, noncontiguous ordering, invalid types, waves, states, or bases, missing capture/completion instructions, unknown gap IDs, any partial source outside its Wave 0 completion wave, any non-video accessible unreviewed primary source outside its Wave 0 acquisition wave, any FCC video outside its deferred wave, captured/unacquired state drift, invalid candidate comparison IDs, any reviewed no-archive source outside durable recapture, any direct Safety Topic document outside Wave 1, any monthly archive outside its discovery wave, or any queue/resolution impact mismatch in either direction.
 
 ## Limitation
 
-This makes the remaining work efficient and auditable. Six queue resources are now acquired but not reviewed; the others remain acquisition or recapture work. Full goal completion still requires satisfying all 289 queue completion gates or explicitly documenting any item that remains inaccessible.
+This makes the remaining work efficient and auditable. Six queue resources are now acquired but not reviewed; the others remain acquisition or recapture work. Full goal completion still requires satisfying all 272 queue completion gates or explicitly documenting any item that remains inaccessible.

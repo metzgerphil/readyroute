@@ -1,12 +1,11 @@
 # SRC-MGB-DOC-0011 — Dog Bite Prevention safety topic
 
-- Review date: 2026-08-09
+- Review date: 2026-08-10
 - Source identity: official MyGroundBiz PDF viewer, `Dog-Bite-Prevention-VSM-04062026-EN.ashx`
 - Version/date: Safety 04/06/2026
-- Coverage: all seven pages visually reviewed
+- Coverage: 7/7 pages from archived original PDF
 - Status: fully reviewed
-- Capture method: page-addressed authenticated viewer renders at 1280×720, one PNG per page
-- Capture manifest: `captures/mygroundbiz/SRC-MGB-DOC-0011/manifest.sha256`
+- Archive: `sources/mygroundbiz/documents/Dog-Bite-Prevention-VSM-04062026-EN.pdf`
 
 ## Page map
 
@@ -24,7 +23,7 @@ Pages 3–6 support `KNO-SAF-DOG-ENCOUNTER-001`. The page-specific evidence obje
 
 ## Interpretation limits
 
-The original PDF bytes were not downloaded. The retained page-addressed screenshots are review artifacts, not a byte-identical source archive. The source does not establish:
+The source does not establish:
 
 - the delivery status code or package disposition for a dog-blocked stop;
 - whether or how the business must internally report a dog encounter or bite;

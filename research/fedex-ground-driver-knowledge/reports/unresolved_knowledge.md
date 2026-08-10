@@ -1,6 +1,6 @@
 # Unresolved knowledge report
 
-Status date: 2026-08-09
+Status date: 2026-08-10
 
 ## Record-status index: UNRESOLVED
 
@@ -21,7 +21,6 @@ Named and controlling source acquisitions are maintained one-for-one in `invento
 - Complete relay check-out/check-in procedure.
 - Current vehicle-security and anti-theft requirements.
 - Whether Drive copies of the five P&D landing-page guides are byte-identical to the current MyGroundBiz downloads.
-- Current Ground launch/effective status for FedEx Authenticated Delivery.
 - Controlling operational corroboration for COD, bulk, pharmacy, critical-healthcare, and certain alternate-signature workflows where the April 2025 application guide is presently the main evidence.
 - Criteria, approval authority, documentation, and physical-tag disposition for call-tag suspected-fraud code 106.
 - Driver acceptance/refusal authority for visible non-hazmat pickup packaging defects.

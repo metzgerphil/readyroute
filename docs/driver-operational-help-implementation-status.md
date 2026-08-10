@@ -1,90 +1,92 @@
-# Driver Operational Help implementation status
+# Driver Assistant implementation status
 
-Status date: 2026-08-09
+Status date: 2026-08-10
 
-## Implemented locally
+## Current state
 
-- Operational Help is the driver's primary screen; the existing routing product remains available as Route Tools.
-- Driver questions use an authenticated, account-scoped API with conversational session context.
-- Runtime retrieval indexes the full corpus and deterministically limits answers to published records.
-- Unverified, conflicting, outdated, review-required, or production-gated records act as blockers instead of falling through to an unrelated answer.
-- Answer, minimum-clarification, and management-escalation modes are implemented.
-- Every interaction stores the question, ranked candidates, selected knowledge IDs and versions, confidence, and the exact answer snapshot.
-- Thumbs-up/down feedback and unanswered-question logging are implemented.
-- Managers have a Knowledge Activity view for recent questions, result modes, record/version traces, unanswered questions, and negative feedback.
-- Manager mobile previews are audited as manager activity and never impersonate a driver account.
-- The importer retains real source titles, type, date/version, archive location, exact locator, and evidence note.
+Phase 2 is active under the owner's explicit authorization while deferred Phase 1 source acquisitions and human questions remain open. The overlap does not relax publication safety: unresolved, outdated, insufficient-evidence, or evidence-gated records remain unable to produce definitive driver instructions.
 
-## Corpus publication result
+The existing product already provides the core V1 experience:
 
-- 144 records are indexed for classification and safe blocking.
-- 89 records have operational status VERIFIED.
-- 74 records currently pass every automated production publication gate.
-- 15 VERIFIED records are withheld because evidence capture or exact claim-to-fragment allocation remains incomplete.
-- 32 records remain HUMAN_REVIEW_REQUIRED, 21 POTENTIALLY_OUTDATED, and 2 CONFLICT.
-- 351 record-to-source evidence links across 40 source IDs are prepared for import.
+- Operational Help is the driver's primary mobile screen; Route Tools remains available.
+- Voice uses native `expo-speech-recognition`, and voice/text share the same authenticated API.
+- Retrieval supports `ANSWER`, minimum `CLARIFY`, and `ESCALATE`, plus conversational session context.
+- Feedback, unanswered-question capture, manager activity, and account-scoped storage are implemented.
+- No external model is required for V1 and no general-knowledge operational fallback exists.
 
-The importer does not silently convert VERIFIED into published. It stores the capture gate, trace gate, and explicit publication blockers for each record.
+## Canonical production boundary completed locally
 
-## Verification completed
+- The importer now reads `knowledge/operations/records.jsonl`, `knowledge/evaluations/driver-language-cases.jsonl`, and `knowledge/sources/registry.jsonl` rather than treating the research workbench as production authority.
+- `SOURCE_VERIFIED` and `READY_ROUTE_APPROVED` are the only answer-eligible statuses. `PENDING_REVIEW`, `POTENTIALLY_OUTDATED`, and `INSUFFICIENT_EVIDENCE` remain indexed blockers.
+- Canonical `production_eligibility` controls publication independently of status.
+- Canonical record version, source IDs, adjudication ID, approver, approval date, schema version, answer snapshot, candidates, and response latency are preserved for audit.
+- Explicit tests prove prompt-injection wording cannot enable a noneligible record, general-knowledge fallback, or alteration of the selected canonical answer.
+- Release generation and runtime import now use separate gate evaluators: raw research records are checked against capture and claim-allocation evidence during generation, while runtime import accepts only the resulting canonical eligibility fields. A regression test protects this boundary.
 
-- Backend unit suite after publication-gate hardening: 389 passed, 7 skipped, 0 failed.
-- Driver app: 28 suites / 215 tests passed.
-- Manager portal: 23 tests passed, lint passed, and production build completed.
-- Production-gated language validation: 191/191 top-1 mappings, 191/191 response-mode matches, and 0 unsafe answer-gating failures.
-- Knowledge dry run: 144 indexed, 74 published, 15 verified-but-withheld, 40 sources, 351 evidence links.
-- Knowledge, reference-data, and full cross-file corpus-integrity validators pass.
-- `git diff --check` passes.
+Current canonical dry import:
 
-The 191 cases are a curated conformance suite, not an independent real-driver holdout. A separate pilot/holdout set is still required before launch.
+- 144 indexed records
+- 91 publication-ready records
+- 6 status-eligible but publication-withheld records
+- 40 source identities
+- 383 record-to-source evidence links
 
-## Staging environment
+Current production retrieval validation:
 
-- A separate free Supabase project named `Ready Route Solutions` was created in `us-east-1`.
-- Staging project reference: `xtzbjlmizmdfqelvhhwx`.
-- The complete Ready Route baseline and Operational Help migration were applied successfully.
-- The gated corpus import completed: 144 indexed, 74 published, 15 verified-but-withheld, 40 sources, and 351 evidence links.
-- An end-to-end disposable-account smoke test produced `ANSWER`, `CLARIFY`, and `ESCALATE` in the expected cases; record/version trace, feedback, interaction, and unanswered logging were verified, and the smoke account was removed.
-- The staging database password is stored in the local macOS login keychain under service `readyroute-supabase-staging-db`; no credential was committed to the repository.
-- The repository's Supabase CLI link remains the production project `pdhnfbrsbpxkmetjkknb`; staging operations use an isolated temporary CLI workspace.
+- 192/192 top-1 mappings
+- 192/192 top-5 mappings
+- 192/192 response-mode matches
+- 0 unsafe answer-gating failures
 
-## Local integration verification
+Independent Phase 2 holdout:
 
-- A persistent staging company, manager, and driver were created for UI testing. Login secrets are stored only in the local macOS keychain.
-- The backend was run locally against the staging Supabase project with Stripe disabled. Health/schema compatibility and both manager and driver authentication passed.
-- The authenticated driver API returned the expected three safety modes for the pilot account: `ANSWER` for "Direct signature nobody home," `CLARIFY` for "sig pkg nobody home," and `ESCALATE` for "lost badge can use helpers."
-- The answer trace selected `KNO-DEL-SIG-DSR-001 v1`; positive feedback, clarification, escalation, and unanswered-question events were persisted.
-- The local manager portal successfully signed in to the staging company and its Knowledge Activity page displayed the interaction totals, unanswered queue, feedback, and exact knowledge record/version trace.
-- The native Expo driver app compiled and loaded in the iOS simulator. Login fields were exercised using the real simulator keyboard. The app now distinguishes transport failures from invalid credentials instead of presenting both as "Incorrect email or password."
-- Login and password-reset requests now explicitly bypass stored-session token resolution because those endpoints are unauthenticated. The driver-app suite still passes: 28 suites / 215 tests.
-- Expo Web is not currently a substitute for this test because the existing route-tools screen imports `react-native-maps`, which does not have a web implementation in the current project.
+- 12 previously unused driver phrasings covering routine answers, clarification, unresolved knowledge, and a boundary-bypass prompt
+- Initial result: 5/12 passed, exposing synonym and intent-ranking failures
+- After normalization and intent-layer corrections: 12/12 passed
+- Maintained Phase 1 suite remained 192/192 with zero unsafe-answer failures after the corrections
+- The authenticated 2026-08-10 re-download of `FedEx_Driver_Bot_Scenarios.xlsx` matched the archived reviewed source byte-for-byte; its 78 rows remain a secondary adversarial/evaluation source and do not independently authorize procedures.
 
-## Hosted staging verification
+## Database and analytics changes prepared locally
 
-- A separate Cloud Run service named `readyroute-api-staging` was deployed in `us-west1` at `https://readyroute-api-staging-201632321692.us-west1.run.app`.
-- The service is isolated from production data and uses staging-only Supabase and JWT secrets stored in Google Secret Manager.
-- It scales from zero to a maximum of one instance, keeps route billing in shadow mode, and keeps FedEx/FCC automation paused.
-- Hosted health reports the required schema as compatible and launch readiness as true.
-- Hosted HTTPS smoke tests passed manager/driver authentication and the expected `ANSWER`, `CLARIFY`, and `ESCALATE` behavior; the approved answer retained its exact `KNO-DEL-SIG-DSR-001 v1` trace.
-- The native staging bundle was loaded through Expo Go with the hosted API URL. Simulator Safari independently reported that the Cloud Run hostname could not be resolved ("server can't be found"), and Cloud Run received no request. This isolates the remaining native blocker to the simulator's DNS/network environment, not ReadyRoute authentication, knowledge retrieval, or Cloud Run health. The complete native walkthrough should be repeated on a physical device or a simulator with working external DNS.
+- An additive migration converts old research statuses to canonical statuses and adds source/adjudication trace, canonical interaction trace, escalation detail, and latency fields.
+- Internal activity metrics now include canonical match rate, no-verified-answer rate, and average response latency in addition to answer, clarification, escalation, and feedback counts.
+- Internal activity now also separates retrieval failures and groups questions by the selected canonical operational category.
+- Internal activity reports active-driver count and questions per active driver for the selected interaction window.
+- A separate idempotent $5 driver/calendar-month ledger is prepared. Driver creation/activation accrues one row per month; same-month deactivation/reactivation cannot duplicate it; a monthly function accrues active drivers for a new month. It does not issue Stripe charges.
+- One-authorized-device control is prepared end to end. The official app creates a stable identifier in device-only secure storage; the backend stores only its SHA-256 hash, revokes the prior authorization after a successful replacement-device login, places the authorization in the signed driver token, and revalidates it on production requests. Manager-only mobile sessions are not incorrectly subjected to driver-device controls.
+- Secure driver invitations are prepared end to end at the API and acceptance-page layers. A manager can issue a seven-day invite; resending changes `invited_at` and invalidates the earlier link; acceptance is single-use and stores only a bcrypt password hash. Once established, the password becomes the driver's credential authority and invalidates earlier PIN-derived sessions. The public portal provides `/driver-invite` for optional username and private password establishment.
+- The legacy driver-login fallback now accepts the established password as well as a legacy four-digit PIN. This prevents the official app's fallback path from rejecting invited drivers.
+- Invite/reset issuance and acceptance have dedicated rate limits. Token and driver identifiers are hashed before use as limiter keys.
+- All Phase 2 tables explicitly grant backend service-role access without granting client reads or writes.
+
+UTC is the documented V1 billing-month boundary. A different contractual billing timezone would be a business-policy change and must be decided before commercial billing.
+
+## Verification in this worktree
+
+- Canonical importer/retrieval focused tests: passed.
+- Backend unit suite with inert local test configuration: 404 passed, 8 skipped, 0 failed (412 total). The applied-database integration test is intentionally skipped in the portable unit run.
+- Applied local Supabase migrations and SQL integration: passed. Checks cover two companies, RLS/anonymous denial, canonical publication constraints, monthly billing idempotency, username uniqueness, and device uniqueness.
+- Applied local Supabase authentication integration: passed. Checks cover invite resend/replay/expiry, cross-company substitution, reset replay, and immediate revocation of the previous device token.
+- Phase 1 production retrieval suite: passed all 192 cases with zero unsafe answers.
+- Knowledge import dry run: passed with the counts above.
+- Driver app: 29 suites / 223 tests passed; Expo configuration check passed. Existing VirtualizedList `act(...)` warnings remain non-failing test-harness cleanup.
+- The mobile dependency install reports 12 high-severity transitive audit findings; dependency triage is required before release rather than applying an unreviewed breaking `npm audit fix --force`.
+- Backend and manager-portal production dependency audits report zero vulnerabilities after non-breaking updates. Manager portal lint and production build pass.
+- Portable knowledge validation, release build, source-archive checksum/integrity validation, 192-case retrieval evaluation, and 12-case independent holdout all pass.
+- `git diff --check`: passed after the canonical-boundary changes.
 
 ## Deliberately not performed
 
-- No production database migration or knowledge import has been applied.
-- No production knowledge import has been run.
-- No production backend, manager portal, TestFlight, or App Store deployment has been started. Only the isolated Cloud Run staging backend has been deployed.
-- Existing Stripe route-count billing has not been changed.
+- No database migration or canonical import was applied to staging or production.
+- No backend, portal, mobile, TestFlight, or App Store deployment was performed.
+- No EAS build was created.
+- No live Stripe charge or invoice item was created.
+- No deferred Phase 1 record was upgraded merely to keep Phase 2 moving.
 
-## Remaining launch gates
+## Remaining Phase 2 work
 
-1. Resolve or explicitly accept the 15 verified-but-withheld evidence/trace blockers; continue resolving the 32 human-review records without publishing them prematurely.
-2. Create an independent, previously unseen driver-language holdout and run a controlled contractor pilot with daily unanswered/negative-feedback review.
-3. Choose and approve a speech path. The current large Speak control invokes the device keyboard's built-in dictation; native in-app audio capture/transcription requires a provider, retention policy, consent copy, and privacy review.
-4. Apply the database migration in a controlled environment, run the dry import, review its counts, then run the real import and smoke tests.
-5. Design and implement the separate $5-per-active-driver calendar-month activation ledger. Do not repurpose the existing route-count Stripe billing.
-6. Complete Terms of Service, liability, privacy, source-use, and third-party-processing review.
-7. Approve staged deployment: internal environment, limited pilot accounts, then commercial release.
-
-## Existing production capacity concern
-
-The read-only Supabase audit on 2026-08-09 showed the existing production project at 0.518 GB in the organization Usage view against the Free Plan's 0.5 GB per-project allowance. The Infrastructure view simultaneously reported 493.7 MB of database objects, plus 224 MB WAL and 814.6 MB system usage; those panels use different measurements and may refresh on different schedules. The dashboard still labeled the organization as exceeding usage limits. This predates the staging import and was not changed during staging setup. Production should remain untouched until its size is analyzed with valid read-only database credentials and a safe retention/archive plan is approved.
+1. Resolve mobile Expo/Metro dependency advisories through a reviewed SDK upgrade, then repeat the mobile suite and physical-device speech/noise/latency testing.
+2. Approve production proxy/crash redaction and retention periods; complete attorney privacy/terms/liability review.
+3. Complete payment-provider configuration and billing-policy review before connecting invoice preparation. Live charging remains intentionally disabled.
+4. Run a controlled authenticated pilot and measure real-device latency, speech accuracy, retrieval failures, and negative feedback.
+5. Continue Phase 1 acquisitions and human reconciliation without publishing unsupported answers.

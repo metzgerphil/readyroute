@@ -10,6 +10,10 @@ const { getEffectiveAccountStatus } = require('../services/accountLifecycle');
 const { updateRouteBillingSettings } = require('../services/routeBilling');
 const { sendManagerPasswordResetEmail: defaultSendManagerPasswordResetEmail } = require('../services/managerInviteEmail');
 const {
+  authorizeDriverDevice: defaultAuthorizeDriverDevice,
+  normalizeDeviceId
+} = require('../services/driverDeviceSession');
+const {
   SESSION_SUBJECT_TYPES,
   buildCredentialSessionClaims
 } = require('../services/credentialSession');
@@ -26,6 +30,8 @@ function createAuthRouter(options = {}) {
     trialDays: options.trialDays
   });
   const sendManagerPasswordResetEmail = options.sendManagerPasswordResetEmail || defaultSendManagerPasswordResetEmail;
+  const authorizeDriverDevice = options.authorizeDriverDevice || defaultAuthorizeDriverDevice;
+  const requireDriverDeviceId = options.requireDriverDeviceId ?? process.env.NODE_ENV === 'production';
 
   function signToken(payload, expiresIn) {
     if (!jwtSecret) {
@@ -73,6 +79,12 @@ function createAuthRouter(options = {}) {
 
   function normalizeEmail(email) {
     return String(email || '').trim().toLowerCase();
+  }
+
+  function timestampsMatch(left, right) {
+    const leftTime = Date.parse(String(left || ''));
+    const rightTime = Date.parse(String(right || ''));
+    return Number.isFinite(leftTime) && Number.isFinite(rightTime) && leftTime === rightTime;
   }
 
   function isValidEmail(email) {
@@ -233,7 +245,7 @@ function createAuthRouter(options = {}) {
     const normalizedEmail = String(email).trim().toLowerCase();
     const { data, error } = await supabase
       .from('drivers')
-      .select('id, account_id, name, email, pin, is_active')
+      .select('id, account_id, name, email, username, pin, password_hash, invited_at, invite_accepted_at, is_active')
       .eq('email', normalizedEmail)
       .maybeSingle();
 
@@ -266,7 +278,8 @@ function createAuthRouter(options = {}) {
     return getEffectiveAccountStatus(account || {}) !== 'retained';
   }
 
-  function buildDriverAuthPayload(driver, accountSummary = null) {
+  function buildDriverAuthPayload(driver, accountSummary = null, deviceSession = null) {
+    const credentialHash = driver.password_hash || driver.pin;
     return {
       driver_id: driver.id,
       account_id: driver.account_id,
@@ -277,10 +290,14 @@ function createAuthRouter(options = {}) {
       csa_name: accountSummary?.company_name || null,
       primary_role: 'driver',
       role: 'driver',
+      ...(deviceSession ? {
+        device_session_id: deviceSession.id,
+        device_hash: deviceSession.device_hash
+      } : {}),
       ...buildCredentialSessionClaims({
         subjectType: SESSION_SUBJECT_TYPES.DRIVER,
         subjectId: driver.id,
-        credentialHash: driver.pin
+        credentialHash
       })
     };
   }
@@ -583,27 +600,32 @@ function createAuthRouter(options = {}) {
   });
 
   router.post('/driver/login', async (req, res) => {
-    const { email, pin } = req.body || {};
+    const { email, password, pin, device_id: deviceId, device_name: deviceName } = req.body || {};
+    const credential = String(password ?? pin ?? '');
 
-    if (!email || !pin) {
-      return res.status(400).json({ error: 'Email and PIN are required' });
+    if (!email || !credential) {
+      return res.status(400).json({ error: 'Email and password or PIN are required' });
     }
 
-    if (!/^\d{4}$/.test(String(pin))) {
-      return res.status(400).json({ error: 'PIN must be a 4-digit code' });
+    if (credential.length > 200) {
+      return res.status(400).json({ error: 'Invalid credentials' });
+    }
+    if (requireDriverDeviceId && !normalizeDeviceId(deviceId)) {
+      return res.status(400).json({ error: 'A valid device identifier is required' });
     }
 
     try {
       const driver = await findDriverByEmail(email);
       const accountSummary = await getAccountSummary(driver?.account_id);
 
-      if (!driver || driver.is_active === false || !driver.pin) {
+      const credentialHash = driver?.password_hash || driver?.pin;
+      if (!driver || driver.is_active === false || !credentialHash) {
         return res.status(401).json({ error: 'Invalid credentials' });
       }
 
-      const isValidPin = await bcrypt.compare(String(pin), driver.pin);
+      const isValidCredential = await bcrypt.compare(credential, credentialHash);
 
-      if (!isValidPin) {
+      if (!isValidCredential) {
         return res.status(401).json({ error: 'Invalid credentials' });
       }
 
@@ -611,8 +633,14 @@ function createAuthRouter(options = {}) {
         return res.status(403).json({ error: 'This ReadyRoute workspace is in its data-retention period.' });
       }
 
+      const deviceSession = await authorizeDriverDevice(supabase, {
+        driverId: driver.id,
+        accountId: driver.account_id,
+        deviceId,
+        deviceName
+      });
       const token = signToken(
-        buildDriverAuthPayload(driver, accountSummary),
+        buildDriverAuthPayload(driver, accountSummary, deviceSession),
         '12h'
       );
 
@@ -630,6 +658,85 @@ function createAuthRouter(options = {}) {
     } catch (error) {
       console.error('Driver login failed:', error);
       return res.status(500).json({ error: 'Failed to log in driver' });
+    }
+  });
+
+  router.post('/driver/accept-invite', async (req, res) => {
+    const token = String(req.body?.token || '');
+    const password = String(req.body?.password || '');
+    const username = String(req.body?.username || '').trim() || null;
+
+    if (!token || !password) {
+      return res.status(400).json({ error: 'Invite token and password are required' });
+    }
+    if (!isStrongEnoughPassword(password)) {
+      return res.status(400).json({ error: 'Password must be at least 10 characters' });
+    }
+    if (username && !/^[A-Za-z0-9._-]{3,40}$/.test(username)) {
+      return res.status(400).json({ error: 'Username must be 3–40 letters, numbers, periods, underscores, or dashes' });
+    }
+
+    try {
+      let payload;
+      try {
+        payload = jwt.verify(token, jwtSecret);
+      } catch (_error) {
+        return res.status(400).json({ error: 'Password link is invalid or expired' });
+      }
+      if (!['driver_invite', 'driver_password_reset'].includes(payload?.purpose) || !payload.driver_id || !payload.account_id || !payload.email) {
+        return res.status(400).json({ error: 'Invite link is invalid or expired' });
+      }
+
+      const { data: driver, error: lookupError } = await supabase
+        .from('drivers')
+        .select('id, account_id, email, password_hash, invited_at, invite_accepted_at, is_active')
+        .eq('id', payload.driver_id)
+        .eq('account_id', payload.account_id)
+        .maybeSingle();
+      if (lookupError) throw lookupError;
+      if (
+        !driver ||
+        driver.is_active === false ||
+        normalizeEmail(driver.email) !== normalizeEmail(payload.email)
+      ) {
+        return res.status(400).json({ error: 'Invite link is invalid or expired' });
+      }
+      if (payload.purpose === 'driver_invite' && (
+        driver.invite_accepted_at || !timestampsMatch(driver.invited_at, payload.invited_at)
+      )) {
+        return res.status(400).json({ error: 'Invite link is invalid or expired' });
+      }
+      if (payload.purpose === 'driver_password_reset' && (
+        !driver.password_hash || getPasswordVersion(driver.password_hash) !== payload.pwdv
+      )) {
+        return res.status(400).json({ error: 'Reset link is invalid or expired' });
+      }
+
+      const passwordHash = await bcrypt.hash(password, 10);
+      const acceptedAt = new Date().toISOString();
+      const passwordUpdate = {
+        password_hash: passwordHash,
+        ...(username ? { username } : {}),
+        ...(payload.purpose === 'driver_invite' ? { invite_accepted_at: acceptedAt } : {})
+      };
+      const { error: updateError } = await supabase
+        .from('drivers')
+        .update(passwordUpdate)
+        .eq('id', driver.id)
+        .eq('account_id', driver.account_id);
+      if (updateError) throw updateError;
+
+      return res.status(200).json({
+        message: payload.purpose === 'driver_invite'
+          ? 'Driver password established. Sign in to authorize this device.'
+          : 'Driver password reset. Sign in again on the authorized device.'
+      });
+    } catch (error) {
+      if (error?.code === '23505') {
+        return res.status(409).json({ error: 'That username is already in use for this company' });
+      }
+      console.error('Driver invite acceptance failed:', error);
+      return res.status(500).json({ error: 'Failed to accept driver invite' });
     }
   });
 
@@ -678,11 +785,12 @@ function createAuthRouter(options = {}) {
   router.post('/mobile/login', async (req, res) => {
     const email = String(req.body?.email || '').trim().toLowerCase();
     const secret = String(req.body?.secret || '').trim();
+    const deviceId = req.body?.device_id;
+    const deviceName = req.body?.device_name;
 
     if (!email || !secret) {
       return res.status(400).json({ error: 'Email and PIN or password are required' });
     }
-
     try {
       const [driver, managerIdentities] = await Promise.all([
         findDriverByEmail(email),
@@ -697,8 +805,9 @@ function createAuthRouter(options = {}) {
       let hasDriverAccess = false;
       let managerIdentity = null;
 
-      if (driver?.pin && driver.is_active !== false) {
-        hasDriverAccess = await bcrypt.compare(secret, driver.pin);
+      const driverCredentialHash = driver?.password_hash || driver?.pin;
+      if (driverCredentialHash && driver.is_active !== false) {
+        hasDriverAccess = await bcrypt.compare(secret, driverCredentialHash);
       }
 
       const matchingManagerIdentities = [];
@@ -739,14 +848,26 @@ function createAuthRouter(options = {}) {
         managerIdentity.account_id &&
         driver &&
         driver.account_id === managerIdentity.account_id &&
-        driver.pin
+        driverCredentialHash
       );
 
       const grantDriverAccess = hasDriverAccess || (hasManagerAccess && linkedDriverAccess);
       const grantManagerAccess = hasManagerAccess || (hasDriverAccess && linkedManagerAccess);
 
+      if (grantDriverAccess && requireDriverDeviceId && !normalizeDeviceId(deviceId)) {
+        return res.status(400).json({ error: 'A valid device identifier is required for driver access' });
+      }
+
+      const deviceSession = grantDriverAccess && driver
+        ? await authorizeDriverDevice(supabase, {
+          driverId: driver.id,
+          accountId: driver.account_id,
+          deviceId,
+          deviceName
+        })
+        : null;
       const driverToken = grantDriverAccess && driver
-        ? signToken(buildDriverAuthPayload(driver, driverAccountSummary), '12h')
+        ? signToken(buildDriverAuthPayload(driver, driverAccountSummary, deviceSession), '12h')
         : null;
       const managerToken = grantManagerAccess && managerIdentity
         ? signToken(buildManagerAuthPayload(managerIdentity, managerAccountSummary), '24h')

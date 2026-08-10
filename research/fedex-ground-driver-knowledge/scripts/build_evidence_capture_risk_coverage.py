@@ -176,7 +176,7 @@ def build_rows() -> list[dict[str, str]]:
 def main() -> None:
     rows = build_rows()
     with OUTPUT_PATH.open("w", newline="", encoding="utf-8") as handle:
-        writer = csv.DictWriter(handle, fieldnames=FIELDS)
+        writer = csv.DictWriter(handle, fieldnames=FIELDS, lineterminator="\n")
         writer.writeheader()
         writer.writerows(rows)
     print(f"wrote {len(rows)} evidence-capture risk rows to {OUTPUT_PATH}")

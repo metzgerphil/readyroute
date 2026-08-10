@@ -1,6 +1,6 @@
 # Inventory and navigation consistency audit
 
-Status date: 2026-08-08
+Status date: 2026-08-09
 
 ## Purpose
 
@@ -18,17 +18,17 @@ Verify that source review work is represented consistently across the primary so
 - OP-135 is now `PARTIALLY_REVIEWED`, identified as a five-page PDF with revision 9/2025, and explicitly limits evidence to page 1.
 - All 17 matching navigation rows now mirror the source inventory's review and relevance status.
 - A follow-up semantic audit reclassified the fully examined Drive folder, 78-row secondary workbook, and complete announcement screenshot as `FULLY_REVIEWED`. Their secondary/time-sensitive evidence roles remain unchanged.
-- Current primary inventory totals are 52 fully reviewed, five partially reviewed, 41 not yet reviewed, and eight inaccessible. Six of the not-yet-reviewed sources have durable hashed video captures; acquisition does not change review status. One fully reviewed source has seven hashed page renders without original PDF bytes, and two partially reviewed sources have hashed partial-page renders without original PDF bytes.
+- Current primary inventory totals are 78 fully reviewed, four partially reviewed, 31 not yet reviewed, and eight inaccessible. Six of the not-yet-reviewed sources have durable hashed video captures; acquisition does not change review status. Two fully reviewed sources have complete hashed page renders without original PDF bytes, and two partially reviewed sources have hashed partial-page renders without original PDF bytes.
 - The corpus validator now fails when a MyGroundBiz navigation URL and source-inventory URL disagree on review or relevance status.
 
 ## Acquisition result for OP-135 and the sample agreement
 
 - Still-open direct tabs confirm their official document identities.
-- OP-135's page-assets inventory was empty; native viewer page selection, scrolling, and download did not expose later pages or a file.
+- OP-135's page-assets inventory was empty; fresh page-addressed viewer tabs exposed complete page 1 and upper regions of pages 2-5, but native download did not expose a file and the lower regions remain unreviewed.
 - The sample ISP Agreement tab confirms the official filename; screenshot/file extraction was not available.
 - Read-only requests to the exact URLs outside the authenticated browser returned not-found/no-access responses.
 
-Therefore, neither source was promoted beyond its reviewed coverage. OP-135 pages 2-5 and the sample agreement's remaining pages stay explicit acquisition targets.
+The earlier OP-135 mismatch was bounded until the complete original arrived. OP-135 is now fully reviewed and checksum-preserved; the sample agreement's remaining pages and the January 2026 Vehicle Appearance FAQ's unseen lower regions remain explicit acquisition targets.
 
 ## Reproducible check
 

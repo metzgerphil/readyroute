@@ -1,6 +1,6 @@
 # Human review queue
 
-Status date: 2026-08-09
+Status date: 2026-08-10
 
 ## Record-status index: HUMAN_REVIEW_REQUIRED
 
@@ -73,11 +73,10 @@ Status date: 2026-08-09
 1. Verify MyGroundBiz download identity for the five Drive-matched P&D guides.
 2. Establish versions for photographed hand-sheet examples.
 3. Confirm COD, bulk, pharmacy, critical-healthcare, and alternate-signature workflows against controlling operational material.
-4. Confirm Ground effective status for FedEx Authenticated Delivery.
-5. Confirm current wording and scope for the 2023 FORGE warning against device operation while on road.
-6. Resolve code 030 Retail Refusal/O.S.A., which appears in 2024 OP-119 but not the reviewed December 2025 OP-117 list.
-7. Verify current FORGE audio-setting behavior for Delivery Instructions and Pickup Closing alerts.
-8. Verify current Manifest Preview permission requirements and managed-device workflow.
-9. Verify current FORGE combine/split/revisit/merge UI behavior and address-change controls.
-10. Verify current package/stop comment and listing/manifest download/refresh UI behavior.
-11. Verify current queued-sync controls and delivery/pickup reminder timing.
+4. Confirm current wording and scope for the 2023 FORGE warning against device operation while on road.
+5. Resolve code 030 Retail Refusal/O.S.A., which appears in 2024 OP-119 but not the reviewed December 2025 OP-117 list.
+6. Verify current FORGE audio-setting behavior for Delivery Instructions and Pickup Closing alerts.
+7. Verify current Manifest Preview permission requirements and managed-device workflow.
+8. Verify current FORGE combine/split/revisit/merge UI behavior and address-change controls.
+9. Verify current package/stop comment and listing/manifest download/refresh UI behavior.
+10. Verify current queued-sync controls and delivery/pickup reminder timing.

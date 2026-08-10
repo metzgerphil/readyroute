@@ -1,10 +1,9 @@
 # Potentially outdated information report
 
-Status date: 2026-08-09
+Status date: 2026-08-10
 
 ## Record-status index: POTENTIALLY_OUTDATED
 
-- `KNO-DEL-FAD-GROUND-001` — Ground package appears to require FedEx Authenticated Delivery.
 - `KNO-FORGE-AUDIO-ALERTS-001` — Driver cannot disable delivery-instruction or pickup-closing audio in FORGE settings.
 - `KNO-FORGE-COMBINE-DELIVERY-001` — Scanning packages from separate delivery stops causes FORGE to verify or combine the address.
 - `KNO-FORGE-COMMENT-SCOPE-001` — Choosing a package comment or stop comment in FORGE.
@@ -33,7 +32,7 @@ Status date: 2026-08-09
 - Any application behavior in the April 2025 FORGE 2.8.0 guide that differs from later MyGroundBiz material.
 - Status/reason lists that cannot be reconciled to current OP-324/OP-321.
 - Filename-based version/date claims that conflict with internal document labels.
-- FedEx Authenticated Delivery Ground availability: the current 8/4/2026 portal announcement still says Ground availability is future, but this status is inherently time-sensitive and must be rechecked before deployment.
+- FedEx Authenticated Delivery version history remains time-sensitive: the 8/4/2026 portal announcement described Ground availability as future, while the later, fully reviewed FORGE 3.3 guide documents the current conditional Ground workflow. The guide now controls the active record; the older announcement remains historical evidence and cannot override it.
 - FORGE device-use warning: the 2023 FORGE 1.0.0 guide says never to operate the device while on road, but the phrase is undefined and no newer exact wording has been found.
 - Status code 030 Retail Refusal/O.S.A.: present in the 2024 OP-119 list, absent from the reviewed 2025-12-15 OP-117 list, and unsupported by current decision criteria.
 - FORGE Settings 2.0.0: Delivery Instructions and Pickup Closing audio are documented as non-disableable, but current installed-version behavior has not been corroborated.

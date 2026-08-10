@@ -6,11 +6,11 @@ Purpose: adversarially test whether natural driver phrasing could retrieve a mat
 
 ## Library quality
 
-- 138 records contain 665 embedded driver-question variants.
+- 144 records contain 699 embedded driver-question variants.
 - Every record has four to eight variants; no record falls below the current four-variant floor.
-- Twenty-five tagged supplemental variants close per-record surface gaps, producing 690 unique normalized variant utterances in `validation/driver_variant_index.jsonl`.
-- The validation library now contains 185 unique normalized utterances.
-- All 138 records remain covered by at least one validation case.
+- Twenty-five tagged supplemental variants close per-record surface gaps, producing 724 unique normalized variant utterances in `validation/driver_variant_index.jsonl`.
+- The validation library now contains 192 unique normalized utterances.
+- All 144 records remain covered by at least one validation case.
 
 ## Near-collision findings
 
@@ -32,7 +32,7 @@ A fifth semantic case, `AMB-005`, covers ordinary delivery refusal, ASR ID refus
 The corpus validator now enforces:
 
 - At least four embedded driver-question variants per record.
-- Exact one-to-one equality among 665 embedded variants, 25 supplemental variants, and the generated 690-row variant index.
+- Exact one-to-one equality among 699 embedded variants, 25 supplemental variants, and the generated 724-row variant index.
 - One short and one extended surface for every record across variants and formal cases.
 - Unique normalized validation utterances.
 - Full record coverage by validation cases.

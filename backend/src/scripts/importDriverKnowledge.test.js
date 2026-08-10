@@ -5,51 +5,80 @@ const {
   buildImport,
   buildPublicationGateIndex,
   parseCsv,
-  validateVerifiedRecord
+  validateProductionEligibleRecord
 } = require('./importDriverKnowledge');
+const {
+  buildResearchPublicationGateIndex
+} = require('../../../scripts/build-ready-route-knowledge');
 
-function verifiedRecord(overrides = {}) {
+function canonicalRecord(overrides = {}) {
   return {
+    schema_version: '1.0.0',
     knowledge_id: 'KNO-TEST-001',
-    knowledge_status: 'VERIFIED',
+    record_version: 3,
+    knowledge_status: 'SOURCE_VERIFIED',
+    source_research_status: 'VERIFIED',
     canonical_situation: 'Test situation',
-    normalized_description: 'A verified test situation',
-    authoritative_rule: 'Use only verified source material.',
-    concise_ready_route_answer: 'Follow the verified step.',
+    normalized_description: 'A source-verified test situation',
+    category_paths: ['TAX-TEST'],
+    authoritative_rule: 'Use only canonical source material.',
+    concise_driver_answer: 'Follow the canonical step.',
     more_info_answer: 'This is test detail.',
     driver_question_variants: ['what do i do'],
-    evidence: [{ source_id: 'SRC-1', locator: 'page 1', evidence_summary: 'Test evidence.' }],
+    source_ids: ['SRC-1'],
+    source_evidence: [{ source_id: 'SRC-1', locator: 'page 1', evidence_summary: 'Test evidence.' }],
+    production_eligibility: {
+      status_eligible: true,
+      publication_ready: true,
+      capture_gate: 'CAPTURE_COMPLETE_OTHER_STATUS_AND_AUTHORITY_GATES_APPLY',
+      trace_gate: 'CLAIM_FRAGMENT_TRACE_READY',
+      blockers: []
+    },
     ...overrides
   };
 }
 
-test('publication validation requires traceable evidence and a driver-language surface', () => {
-  assert.deepEqual(validateVerifiedRecord(verifiedRecord()), []);
+test('production validation requires canonical evidence and a driver-language surface', () => {
+  assert.deepEqual(validateProductionEligibleRecord(canonicalRecord()), []);
   assert.deepEqual(
-    validateVerifiedRecord(verifiedRecord({ evidence: [], driver_question_variants: [] })),
-    ['evidence', 'driver_question_variants']
+    validateProductionEligibleRecord(canonicalRecord({ source_evidence: [], driver_question_variants: [] })),
+    ['source_evidence', 'driver_question_variants']
   );
 });
 
-test('buildImport includes only verified records and preserves evidence mapping', () => {
+test('buildImport publishes both eligible statuses and preserves canonical trace fields', () => {
   const records = [
-    verifiedRecord(),
-    verifiedRecord({ knowledge_id: 'KNO-REVIEW-001', knowledge_status: 'HUMAN_REVIEW_REQUIRED' })
+    canonicalRecord(),
+    canonicalRecord({
+      knowledge_id: 'KNO-APPROVED-001',
+      knowledge_status: 'READY_ROUTE_APPROVED',
+      adjudication_id: 'ADJ-001',
+      approved_by: 'Ready Route reviewer',
+      approval_date: '2026-08-10'
+    }),
+    canonicalRecord({
+      knowledge_id: 'KNO-REVIEW-001',
+      knowledge_status: 'PENDING_REVIEW',
+      production_eligibility: {
+        status_eligible: false,
+        publication_ready: false,
+        capture_gate: 'CAPTURE_COMPLETE_OTHER_STATUS_AND_AUTHORITY_GATES_APPLY',
+        trace_gate: 'CLAIM_FRAGMENT_TRACE_READY',
+        blockers: ['KNOWLEDGE_STATUS_PENDING_REVIEW']
+      }
+    })
   ];
-  const gates = buildPublicationGateIndex(records, records.map((record) => ({
-    knowledge_id: record.knowledge_id,
-    production_capture_gate: 'CAPTURE_COMPLETE_OTHER_STATUS_AND_AUTHORITY_GATES_APPLY'
-  })), []);
-  const payload = buildImport(records, '2026-08-09T00:00:00.000Z', [], new Map(), gates);
+  const payload = buildImport(records, '2026-08-10T00:00:00.000Z');
 
-  assert.equal(payload.knowledgeRows.length, 2);
-  assert.equal(payload.knowledgeRows[0].is_published, true);
-  assert.equal(payload.knowledgeRows[0].status, 'VERIFIED');
-  assert.equal(payload.knowledgeRows[1].is_published, false);
+  assert.deepEqual(payload.knowledgeRows.map((row) => row.is_published), [true, true, false]);
+  assert.equal(payload.knowledgeRows[0].version, 3);
+  assert.deepEqual(payload.knowledgeRows[0].taxonomy_paths, ['TAX-TEST']);
+  assert.deepEqual(payload.knowledgeRows[0].source_ids, ['SRC-1']);
+  assert.equal(payload.knowledgeRows[1].adjudication_id, 'ADJ-001');
   assert.equal(payload.sourceRows.length, 1);
   assert.deepEqual(payload.evidenceRows[0], {
     knowledge_id: 'KNO-TEST-001',
-    knowledge_version: 1,
+    knowledge_version: 3,
     source_id: 'SRC-1',
     locator: 'page 1',
     evidence_note: 'Test evidence.'
@@ -66,12 +95,7 @@ test('buildImport enriches trace sources from quoted inventory metadata', () => 
     const item = Object.fromEntries(headers.map((header, index) => [header, values[index] || '']));
     return [item.source_id, item];
   }));
-  const records = [verifiedRecord()];
-  const gates = buildPublicationGateIndex(records, [{
-    knowledge_id: 'KNO-TEST-001',
-    production_capture_gate: 'CAPTURE_COMPLETE_OTHER_STATUS_AND_AUTHORITY_GATES_APPLY'
-  }], []);
-  const payload = buildImport(records, '2026-08-09T00:00:00.000Z', [], inventory, gates);
+  const payload = buildImport([canonicalRecord()], '2026-08-10T00:00:00.000Z', [], inventory);
 
   assert.equal(payload.sourceRows[0].title, 'Guide, Current');
   assert.equal(payload.sourceRows[0].source_type, 'PDF');
@@ -79,23 +103,60 @@ test('buildImport enriches trace sources from quoted inventory metadata', () => 
   assert.equal(payload.sourceRows[0].internal_location, 'archive/guide.pdf');
 });
 
-test('publication gates withhold verified records with capture or claim trace blockers', () => {
+test('canonical publication blockers and status eligibility cannot be bypassed', () => {
   const records = [
-    verifiedRecord({ knowledge_id: 'KNO-READY' }),
-    verifiedRecord({ knowledge_id: 'KNO-CAPTURE' }),
-    verifiedRecord({ knowledge_id: 'KNO-TRACE' })
+    canonicalRecord({ knowledge_id: 'KNO-READY' }),
+    canonicalRecord({
+      knowledge_id: 'KNO-CAPTURE',
+      production_eligibility: {
+        status_eligible: true,
+        publication_ready: false,
+        capture_gate: 'TRANSIENT_SOURCE_RECAPTURE_REQUIRED_FOR_COMPLETE_REPRODUCIBILITY',
+        trace_gate: 'CLAIM_FRAGMENT_TRACE_READY',
+        blockers: ['TRANSIENT_SOURCE_RECAPTURE_REQUIRED_FOR_COMPLETE_REPRODUCIBILITY']
+      }
+    }),
+    canonicalRecord({
+      knowledge_id: 'KNO-OUTDATED',
+      knowledge_status: 'POTENTIALLY_OUTDATED',
+      production_eligibility: {
+        status_eligible: false,
+        publication_ready: false,
+        capture_gate: 'CAPTURE_COMPLETE_OTHER_STATUS_AND_AUTHORITY_GATES_APPLY',
+        trace_gate: 'CLAIM_FRAGMENT_TRACE_READY',
+        blockers: []
+      }
+    })
   ];
-  const gates = buildPublicationGateIndex(records, [
-    { knowledge_id: 'KNO-READY', production_capture_gate: 'CAPTURE_COMPLETE_OTHER_STATUS_AND_AUTHORITY_GATES_APPLY' },
-    { knowledge_id: 'KNO-CAPTURE', production_capture_gate: 'TRANSIENT_SOURCE_RECAPTURE_REQUIRED_FOR_COMPLETE_REPRODUCIBILITY' },
-    { knowledge_id: 'KNO-TRACE', production_capture_gate: 'CAPTURE_COMPLETE_OTHER_STATUS_AND_AUTHORITY_GATES_APPLY' }
-  ], [{
-    knowledge_id: 'KNO-TRACE',
-    production_trace_gate: 'WITHHOLD_EXACT_CLAIM_FRAGMENT_ASSERTION_UNTIL_ALLOCATED'
-  }]);
+  const gates = buildPublicationGateIndex(records);
+  const payload = buildImport(records, '2026-08-10T00:00:00.000Z', [], new Map(), gates);
 
-  const payload = buildImport(records, '2026-08-09T00:00:00.000Z', [], new Map(), gates);
   assert.deepEqual(payload.knowledgeRows.map((row) => row.is_published), [true, false, false]);
   assert.match(payload.knowledgeRows[1].publication_blockers[0], /RECAPTURE/);
-  assert.match(payload.knowledgeRows[2].publication_blockers[0], /CLAIMS_REQUIRE/);
+  assert.equal(payload.knowledgeRows[2].publication_blockers[0], 'KNOWLEDGE_STATUS_POTENTIALLY_OUTDATED');
+});
+
+test('research release generation evaluates research capture and claim gates separately from canonical import', () => {
+  const researchRecords = [
+    { knowledge_id: 'KNO-READY', knowledge_status: 'VERIFIED' },
+    { knowledge_id: 'KNO-CAPTURE', knowledge_status: 'VERIFIED' },
+    { knowledge_id: 'KNO-REVIEW', knowledge_status: 'HUMAN_REVIEW_REQUIRED' }
+  ];
+  const captureRows = [
+    { knowledge_id: 'KNO-READY', production_capture_gate: 'CAPTURE_COMPLETE_OTHER_STATUS_AND_AUTHORITY_GATES_APPLY' },
+    { knowledge_id: 'KNO-CAPTURE', production_capture_gate: 'ORIGINAL_SOURCE_BYTES_REQUIRED_FOR_BYTE_IDENTITY' },
+    { knowledge_id: 'KNO-REVIEW', production_capture_gate: 'CAPTURE_COMPLETE_OTHER_STATUS_AND_AUTHORITY_GATES_APPLY' }
+  ];
+  const traceClaims = researchRecords.map((record) => ({
+    knowledge_id: record.knowledge_id,
+    production_trace_gate: 'CLAIM_FRAGMENT_TRACE_READY'
+  }));
+
+  const gates = buildResearchPublicationGateIndex(researchRecords, captureRows, traceClaims);
+
+  assert.equal(gates.get('KNO-READY').isPublished, true);
+  assert.equal(gates.get('KNO-CAPTURE').isPublished, false);
+  assert.deepEqual(gates.get('KNO-CAPTURE').blockers, ['ORIGINAL_SOURCE_BYTES_REQUIRED_FOR_BYTE_IDENTITY']);
+  assert.equal(gates.get('KNO-REVIEW').isPublished, false);
+  assert.deepEqual(gates.get('KNO-REVIEW').blockers, ['KNOWLEDGE_STATUS_HUMAN_REVIEW_REQUIRED']);
 });

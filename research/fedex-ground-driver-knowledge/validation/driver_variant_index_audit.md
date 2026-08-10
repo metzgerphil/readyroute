@@ -8,9 +8,9 @@ Every natural-language variant embedded in an operational record or added as a t
 
 ## Coverage
 
-- 690 indexed variants across 138 knowledge records.
-- 665/665 exact correspondence with embedded `driver_question_variants` fields plus 25/25 exact correspondence with `supplemental_driver_variants.jsonl`.
-- 690 unique lowercase/alphanumeric-normalized variant utterances.
+- 724 indexed variants across 144 knowledge records.
+- 699/699 exact correspondence with embedded `driver_question_variants` fields plus 25/25 exact correspondence with `supplemental_driver_variants.jsonl`.
+- 724 unique lowercase/alphanumeric-normalized variant utterances.
 - 101 `VERY_SHORT` variants (one to three tokens).
 - 408 `SHORT` variants (four to five tokens).
 - 181 `EXTENDED` variants (six or more tokens).
@@ -22,7 +22,7 @@ The separate 138-row record-language surface ledger proves that every record has
 
 ## Formal case coverage
 
-The separate hand-authored validation library now contains 185 cases covering 138/138 records. It includes:
+The separate hand-authored validation library now contains 192 cases covering 144/144 records. It includes:
 
 - ten cases with an explicit misspelling signal;
 - seventeen shorthand cases;
@@ -60,4 +60,4 @@ The utterance “customer refused package” had no ordinary-delivery operationa
 
 ## Result
 
-All 690 current variants are independently indexed and validator-accountable. All 138 records have status-aware formal cases plus short and extended language surfaces. Runtime retrieval accuracy remains untested because application/retrieval implementation is outside this phase.
+All 724 current variants are independently indexed and validator-accountable. All 144 records have status-aware formal cases plus short and extended language surfaces. Runtime retrieval accuracy remains untested because application/retrieval implementation is outside this phase.

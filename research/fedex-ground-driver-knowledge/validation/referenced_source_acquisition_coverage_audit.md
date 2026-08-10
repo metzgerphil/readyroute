@@ -13,7 +13,7 @@ Purpose: prove whether each missing-source obligation has an exact current link 
 - 6 have contextual record-resolution targets only.
 - 30 have no current queue link.
 
-Rows without a current queue link remain explicit acquisition obligations. This does not establish that they are unavailable in MyGroundBiz. It proves only that the present 289-resource queue does not yet contain an evidence-backed link to them.
+Rows without a current queue link remain explicit acquisition obligations. This does not establish that they are unavailable in MyGroundBiz. It proves only that the present 272-resource queue does not yet contain an evidence-backed link to them.
 
 ## Priority-zero gaps without a current queue link
 

@@ -15,6 +15,7 @@ const BillingPage = lazy(() => import('./pages/BillingPage'));
 const CsaPage = lazy(() => import('./pages/CsaPage'));
 const DebugGoogleMapPage = lazy(() => import('./pages/DebugGoogleMapPage'));
 const DriversPage = lazy(() => import('./pages/DriversPage'));
+const DriverInvitePage = lazy(() => import('./pages/DriverInvitePage'));
 const FleetMapPage = lazy(() => import('./pages/FleetMapPage'));
 const LoginPage = lazy(() => import('./pages/LoginPage'));
 const KnowledgeActivityPage = lazy(() => import('./pages/KnowledgeActivityPage'));
@@ -137,6 +138,7 @@ export default function App() {
           <Route element={<StartTrialPage />} path="/start-trial" />
           <Route element={<TrialActivatePage />} path="/trial/activate" />
           <Route element={<ResetPasswordPage />} path="/reset-password" />
+          <Route element={<DriverInvitePage />} path="/driver-invite" />
           <Route
             element={
               <RequireStaffAuth>

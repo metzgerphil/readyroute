@@ -28,7 +28,6 @@ SRC-GDRIVE-FILE-0002,"OP-119 page 8 — badge, business-name apparel, and Altern
 SRC-GDRIVE-FILE-0002,OP-119 page 9,KNO-PUP-SCAN-INTEGRITY-001,Scan-created tracking notifications and value of timely accurate updates,2026-08-09
 SRC-GDRIVE-FILE-0002,OP-119 pages 12-15,KNO-DEL-SIG-DSR-001,DSR in-person location requirement and no release,2026-08-08
 SRC-GDRIVE-FILE-0002,OP-119 pages 12-15,KNO-DEL-SIG-ISR-001,"Defines ISR authorization methods, service exclusions, unsuccessful signature delivery, and indirect-delivery documentation",2026-08-09
-SRC-GDRIVE-FILE-0002,OP-119 pages 4-5,KNO-PUP-PACKAGING-001,"Corroborates packaging condition, old-label coverage, sealing, and recurring-problem station escalation.",2026-08-09
 SRC-GDRIVE-FILE-0002,OP-119 pages 9-10,KNO-DEL-SCAN-INTEGRITY-001,Corroborates actual customer-location scanning and inaccurate scan/status practices.,2026-08-09
 SRC-GDRIVE-FILE-0004,Focus on Package Placement page 10,KNO-DEL-PLACEMENT-HAZARD-001,Location tracking and PPOD quality/privacy checks,2026-08-09
 SRC-GDRIVE-FILE-0004,Focus on Package Placement page 10,KNO-DEL-PPOD-001,"Corroborates PPOD secure-placement subject, surroundings, clear quality, and people/address/label/PII exclusions",2026-08-09
@@ -41,7 +40,7 @@ SRC-GDRIVE-FILE-0004,Focus on Package Placement page 8,KNO-DEL-PLACEMENT-HAZARD-
 SRC-GDRIVE-FILE-0004,Focus on Package Placement page 9,KNO-DEL-PLACEMENT-HAZARD-001,Large-package characteristics and handling equipment,2026-08-09
 SRC-GDRIVE-FILE-0005,FORGE Business Closure guide page 1 — detailed message workflow,KNO-FORGE-BUSINESS-CLOSURE-MSG-001,Detailed Business Closure message workflow and SEND confirmation,2026-08-09
 SRC-GDRIVE-FILE-0006,FORGE Call Tags 2.2.0 page 1 — call-tag action entry context,KNO-FORGE-CALLTAG-SCOPE-001,Older call-tag action-entry context only,2026-08-09
-SRC-GDRIVE-FILE-0006,FORGE Call Tags 2.2.0 page 2,KNO-PUP-CALLTAG-FRAUD-001,Code 106 interface option and unresolved decision criteria,2026-08-08
+SRC-GDRIVE-FILE-0006,FORGE Call Tags 2.2.0 page 2 — suspected-fraud all-call-tags action,KNO-PUP-CALLTAG-FRAUD-001,Stop-wide suspected-fraud cancellation action and code 106 effect,2026-08-09
 SRC-GDRIVE-FILE-0006,FORGE Call Tags 2.2.0 page 2 — all-call-tags actions,KNO-FORGE-CALLTAG-SCOPE-001,Detailed all-call-tags action scope,2026-08-09
 SRC-GDRIVE-FILE-0006,FORGE Call Tags 2.2.0 page 3 — individual current-tag action,KNO-FORGE-CALLTAG-SCOPE-001,Detailed individual current-tag scope,2026-08-09
 SRC-GDRIVE-FILE-0007,"FORGE Delayed Login guide, pages 1-5",KNO-FORGE-DELAYED-LOGIN-001,Delayed Login entry limits exit transmission and EOD,2026-08-08
@@ -55,8 +54,17 @@ SRC-GDRIVE-FILE-0008,FORGE 2.8.0 Application Guide pages 135-142,KNO-FORGE-BULK-
 SRC-GDRIVE-FILE-0008,FORGE 2.8.0 Application Guide pages 143-145,KNO-FORGE-COMBINE-DELIVERY-001,Delivery-stop address verification/combine UI,2026-08-08
 SRC-GDRIVE-FILE-0008,FORGE 2.8.0 Application Guide pages 146-150,KNO-FORGE-SPLIT-DELIVERY-001,Partial-package close and new open stop,2026-08-08
 SRC-GDRIVE-FILE-0008,FORGE 2.8.0 Application Guide pages 156-169,KNO-FORGE-MERGE-PICKUP-001,Zero-package revisit and unlisted pickup-ID assignment,2026-08-08
-SRC-GDRIVE-FILE-0008,FORGE 2.8.0 Application Guide pages 170-177,KNO-FORGE-COMMENT-SCOPE-001,Package versus stop comment scope,2026-08-08
-SRC-GDRIVE-FILE-0008,FORGE 2.8.0 Application Guide pages 182-184,KNO-FORGE-EDIT-ADDRESS-001,Edit Address UI capability,2026-08-08
+SRC-GDRIVE-FILE-0008,FORGE 2.8.0 Application Guide page 170,KNO-FORGE-COMMENT-SCOPE-001,Package Comment purpose and one-package scope,2026-08-09
+SRC-GDRIVE-FILE-0008,FORGE 2.8.0 Application Guide page 171,KNO-FORGE-COMMENT-SCOPE-001,Package selection and Add Comment navigation,2026-08-09
+SRC-GDRIVE-FILE-0008,FORGE 2.8.0 Application Guide page 172,KNO-FORGE-COMMENT-SCOPE-001,Preset and typed Package Comment entry,2026-08-09
+SRC-GDRIVE-FILE-0008,FORGE 2.8.0 Application Guide page 173,KNO-FORGE-COMMENT-SCOPE-001,Package Comment save icon and viewing,2026-08-09
+SRC-GDRIVE-FILE-0008,FORGE 2.8.0 Application Guide page 174,KNO-FORGE-COMMENT-SCOPE-001,Whole-stop scope and coexistence with package comments,2026-08-09
+SRC-GDRIVE-FILE-0008,FORGE 2.8.0 Application Guide page 175,KNO-FORGE-COMMENT-SCOPE-001,Add Stop Comment navigation,2026-08-09
+SRC-GDRIVE-FILE-0008,FORGE 2.8.0 Application Guide page 176,KNO-FORGE-COMMENT-SCOPE-001,Stop Comment entry save display and edit navigation,2026-08-09
+SRC-GDRIVE-FILE-0008,FORGE 2.8.0 Application Guide page 177,KNO-FORGE-COMMENT-SCOPE-001,Stop Comment edit update and removal,2026-08-09
+SRC-GDRIVE-FILE-0008,FORGE 2.8.0 Application Guide page 182,KNO-FORGE-EDIT-ADDRESS-001,Incorrect-label scenario and correct-address premise,2026-08-09
+SRC-GDRIVE-FILE-0008,FORGE 2.8.0 Application Guide page 183,KNO-FORGE-EDIT-ADDRESS-001,Stop Details and Edit Address navigation,2026-08-09
+SRC-GDRIVE-FILE-0008,FORGE 2.8.0 Application Guide page 184,KNO-FORGE-EDIT-ADDRESS-001,Address edit save verification and close-stop entry,2026-08-09
 SRC-GDRIVE-FILE-0008,FORGE 2.8.0 Application Guide pages 189-196,KNO-FORGE-EOD-001,"Vehicle closure, defects, times, summary, logout",2026-08-08
 SRC-GDRIVE-FILE-0008,FORGE 2.8.0 Application Guide pages 197-201,KNO-FORGE-DOWNLOAD-SYNC-001,Pickup/manifest download and refresh recovery,2026-08-08
 SRC-GDRIVE-FILE-0008,FORGE 2.8.0 Application Guide pages 224-228,KNO-FORGE-BULK-TRANSFER-001,"Unattempted-stop transfer, code 079, and sender/receiver confirmation",2026-08-08
@@ -76,6 +84,7 @@ SRC-GDRIVE-FILE-0008,FORGE P&D Application Guide 3.00 page 118,KNO-PUP-UNLISTED-
 SRC-GDRIVE-FILE-0008,FORGE P&D Application Guide 3.00 page 119,KNO-PUP-UNLISTED-001,Unlisted-hazmat assignment or address entry,2026-08-09
 SRC-GDRIVE-FILE-0008,FORGE P&D Application Guide 3.00 page 120,KNO-PUP-UNLISTED-001,"Hazmat acknowledgment, stop type, and close initiation",2026-08-09
 SRC-GDRIVE-FILE-0008,FORGE P&D Application Guide 3.00 page 121,KNO-PUP-UNLISTED-001,Hazmat package count and specialized close,2026-08-09
+SRC-GDRIVE-FILE-0008,FORGE P&D Application Guide 3.00 page 122 — current call-tag workflow context,KNO-FORGE-CALLTAG-SCOPE-001,Current call-tag purpose placement scenario and first-package scan context,2026-08-09
 SRC-GDRIVE-FILE-0008,FORGE P&D Application Guide 3.00 page 126 — current all-versus-individual action scope,KNO-FORGE-CALLTAG-SCOPE-001,Current all-versus-individual action scope,2026-08-09
 SRC-GDRIVE-FILE-0008,FORGE P&D Application Guide 3.00 page 127 — action confirmation and remaining scans,KNO-FORGE-CALLTAG-SCOPE-001,Current action confirmation and remaining scans,2026-08-09
 SRC-GDRIVE-FILE-0008,FORGE P&D Application Guide 3.00 page 151 — scan delivery packages,KNO-FORGE-COMBO-STOP-001,Combined-stop delivery-package scan,2026-08-09
@@ -115,7 +124,7 @@ SRC-GDRIVE-FILE-0008,FORGE P&D Application Guide 3.00 page 92,KNO-DEL-SIG-ASR-00
 SRC-GDRIVE-FILE-0008,FORGE P&D Application Guide 3.00 page 94,KNO-DEL-SIG-ASR-001,Requires valid ID or applicable non-delivery status and shows the ID-specification prompt,2026-08-09
 SRC-GDRIVE-FILE-0008,FORGE P&D Application Guide 3.00 page 95,KNO-DEL-SIG-ASR-001,Defines scan alignment and the unscannable/refused-scan manual-entry branch,2026-08-09
 SRC-GDRIVE-FILE-0008,FORGE P&D Application Guide 3.00 page 96,KNO-DEL-SIG-ASR-001,"Defines DOB entry, decline recording, visual-verification attestation, age confirmation, and signature continuation",2026-08-09
-SRC-GDRIVE-FILE-0008,FORGE P&D Application Guide 3.00 pages 122-130,KNO-PUP-CALLTAG-FRAUD-001,Shows the all-call-tags suspected-fraud cancellation option and code 106 UI effect without establishing authorization criteria.,2026-08-09
+SRC-GDRIVE-FILE-0008,FORGE 2.8.0 Application Guide page 126 — suspected-fraud all-call-tags action,KNO-PUP-CALLTAG-FRAUD-001,Stop-wide suspected-fraud cancellation scope and code 106 effect without decision criteria,2026-08-09
 SRC-GDRIVE-FILE-0008,FORGE P&D Application Guide 3.00 pages 131-134,KNO-PUP-SENSEAWARE-NOHEALTHY-001,SenseAware absent unhealthy and unresponsive tag branches,2026-08-08
 SRC-GDRIVE-FILE-0008,FORGE P&D Application Guide 3.00 pages 186-188,KNO-DEL-ALT-SIGNATURE-001,"Demonstrates ALT, signed OP-200 scanning/key entry, physical-record line selection, and recipient-name capture.",2026-08-09
 SRC-GDRIVE-FILE-0008,FORGE P&D Application Guide 3.00 pages 202-206,KNO-PUP-DROPBOX-CONNECTION-001,NFC workflow and third-failure BLE transition,2026-08-09
@@ -133,7 +142,9 @@ SRC-GDRIVE-FILE-0008,FORGE P&D Application Guide 3.00 pages 6-22,KNO-FORGE-LOGIN
 SRC-GDRIVE-FILE-0008,FORGE P&D Application Guide 3.00 pages 62-72,KNO-DEL-MISDELIVERY-RECOVERY-001,Misdelivery recovery and same-day redelivery sequence,2026-08-08
 SRC-GDRIVE-FILE-0008,FORGE P&D Application Guide 3.00 pages 73-76,KNO-DEL-SIG-ISR-001,"Demonstrates indirect-delivery selection, address entry, door-tag capture, and close prompts",2026-08-09
 SRC-GDRIVE-FILE-0008,FORGE P&D Application Guide 3.00 pages 8-10,KNO-FORGE-FIRST-LAUNCH-001,"Shows first-launch permission sequence, repeated prompts, and app unavailability until permissions are allowed.",2026-08-09
-SRC-GDRIVE-FILE-0008,FORGE P&D Application Guide 3.00 pages 83-85,KNO-DEL-BUS-OP201-001,Conflicting application path for business release without OP-201,2026-08-08
+SRC-GDRIVE-FILE-0008,FORGE 2.8.0 Application Guide page 83 — OP-201 requirement and no-OP-201 scenario,KNO-DEL-BUS-OP201-001,OP-201 requirement and introduction of the no-OP-201 scenario,2026-08-09
+SRC-GDRIVE-FILE-0008,FORGE 2.8.0 Application Guide page 84 — business driver-release selection,KNO-DEL-BUS-OP201-001,Alternate Delivery and OP201 Business selection,2026-08-09
+SRC-GDRIVE-FILE-0008,FORGE 2.8.0 Application Guide page 85 — no-OP-201 release path,KNO-DEL-BUS-OP201-001,Conflicting release path after the no-OP-201 warning,2026-08-09
 SRC-GDRIVE-FILE-0009,FORGE Quick Start Guide page 1,KNO-FORGE-DEVICE-ROAD-001,Older safety warning against on-road device operation,2026-08-08
 SRC-GDRIVE-FILE-0010,FORGE Settings 2.0.0 page 5 — older camera-scan corroboration,KNO-FORGE-CAMERA-SCAN-001,Older corroboration only; current FORGE 2.8.0 guide controls camera-scan workflow,2026-08-09
 SRC-GDRIVE-FILE-0010,FORGE Settings page 2,KNO-FORGE-AUDIO-ALERTS-001,Version-specific required audio notification behavior,2026-08-08
@@ -190,7 +201,9 @@ SRC-GDRIVE-FILE-0014,OP-117 page 46,KNO-DEL-PLACEMENT-HAZARD-001,Code 007 and st
 SRC-GDRIVE-FILE-0014,OP-117 page 46,KNO-DEL-SAFEPLACE-001,"Neighbor eligibility, signature, location, door tag, code 007, and return sequence",2026-08-09
 SRC-GDRIVE-FILE-0014,OP-117 page 46,KNO-DEL-SIG-ISR-001,"Defines neighbor-signature, indirect-location, door-tag, unsuccessful-status, and after-three-attempt QA branches",2026-08-09
 SRC-GDRIVE-FILE-0014,OP-117 page 46,KNO-FORGE-COMMENT-SCOPE-001,Current damage Package Comment path,2026-08-08
-SRC-GDRIVE-FILE-0014,OP-117 page 46,KNO-FORGE-EDIT-ADDRESS-001,Entered-ZIP correction through Edit Address ReEnter,2026-08-08
+SRC-GDRIVE-FILE-0014,OP-117 page 36,KNO-FORGE-EDIT-ADDRESS-001,Status Code 002 definition,2026-08-09
+SRC-GDRIVE-FILE-0014,OP-117 page 40,KNO-FORGE-EDIT-ADDRESS-001,Undelivered-package notation fields,2026-08-09
+SRC-GDRIVE-FILE-0014,OP-117 page 46,KNO-FORGE-EDIT-ADDRESS-001,Entered-ZIP correction and recipient-moved code-002 return,2026-08-09
 SRC-GDRIVE-FILE-0014,OP-117 page 49,KNO-PUP-UNLISTED-001,"Pickup selection, listed matching, assignment, and Not on List branch",2026-08-09
 SRC-GDRIVE-FILE-0014,OP-117 page 50,KNO-PUP-UNLISTED-001,"Address acceptance, premium prompt, stop type, and close initiation",2026-08-09
 SRC-GDRIVE-FILE-0014,OP-117 page 51,KNO-PUP-UNLISTED-001,"Stop type, package count, and close summary",2026-08-09
@@ -202,10 +215,11 @@ SRC-GDRIVE-FILE-0014,OP-117 page 82,KNO-SEC-FACILITY-VEHICLE-001,Personal-vehicl
 SRC-GDRIVE-FILE-0014,OP-117 page 84,KNO-COMMS-MEDIA-001,Current FedEx-premises recording prohibition,2026-08-08
 SRC-GDRIVE-FILE-0014,"OP-117 pages 12-13, 19, 34-35, and 46",KNO-DEL-SIG-DSR-001,DSR signature location and unsuccessful-attempt path,2026-08-08
 SRC-GDRIVE-FILE-0014,OP-117 pages 20-22 and 46,KNO-DEL-APT-001,Accessible apartment attempt followed by indirect delivery,2026-08-08
-SRC-GDRIVE-FILE-0014,OP-117 pages 36 and 40,KNO-FORGE-EDIT-ADDRESS-001,Incorrect-address status and notation alternative,2026-08-08
 SRC-GDRIVE-FILE-0014,OP-117 pages 40-41,KNO-DEL-DISPUTE-PREVENTION-001,"Disputed-delivery prevention, scanning integrity, indirect delivery, and door-tag requirements",2026-08-08
 SRC-GDRIVE-FILE-0014,OP-117 pages 44-45,KNO-DEL-HAL-UNABLE-001,Code 250 reasons and after-close OP-406 QA-return sequence,2026-08-08
-SRC-GDRIVE-FILE-0014,OP-117 pages 47-48 and 68-69,KNO-PUP-PACKAGING-001,"Packaging condition expectations, nonconforming-pickup caution, customer-service referral, and recurring-problem escalation",2026-08-08
+SRC-GDRIVE-FILE-0014,OP-117 page 47,KNO-PUP-PACKAGING-001,Shipper packaging responsibility marking and new-condition expectation,2026-08-09
+SRC-GDRIVE-FILE-0014,OP-117 page 48,KNO-PUP-PACKAGING-001,Defects old-label coverage sealing and recurring concern notification,2026-08-09
+SRC-GDRIVE-FILE-0014,OP-117 page 69,KNO-PUP-PACKAGING-001,Sturdy cardboard all-seam tape not-advisable caution and customer referral,2026-08-09
 SRC-GDRIVE-FILE-0014,OP-117 pages 52-54,KNO-PUP-CALLTAG-NOTREADY-001,Call tag not ready and no same-day return,2026-08-08
 SRC-GDRIVE-FILE-0014,OP-117 pages 65-66 and 69,KNO-PUP-WRONG-WA-001,Predispatch versus postdispatch pickup transfer,2026-08-08
 SRC-GDRIVE-FILE-0014,OP-117 pages 65-69,KNO-PUP-WINDOW-RISK-001,Pickup-window update and CXPC alert branch,2026-08-08
@@ -264,30 +278,36 @@ SRC-GDRIVE-FILE-0014,OP-117 v2 page 87 — Personal security / After a situation
 SRC-GDRIVE-FILE-0014,OP-117 v2 page 87 — Security awareness,KNO-SEC-ROUTE-001,"Working-lock, pre-trip, parking, awareness, blocked-vision, confrontation, and after-situation precautions",2026-08-09
 SRC-GDRIVE-FILE-0014,OP-117 v2 pages 23 and 47,KNO-DEL-OP206-001,Manual signature release card sequence,2026-08-08
 SRC-GDRIVE-FILE-0014,OP-117 v2 pages 23-25,KNO-DEL-SRA-001,Barcoded and non-barcoded SRA processing,2026-08-08
-SRC-GDRIVE-FILE-0014,OP-117 v2 pages 26-27,KNO-DEL-BUS-OP201-001,"Business release with OP-201, without OP-201, and separate shipper authorization",2026-08-08
+SRC-GDRIVE-FILE-0014,OP-117 v2 page 26 — recipient-authorized business release,KNO-DEL-BUS-OP201-001,Recipient OP-201 workflow and on-file confirmation,2026-08-09
+SRC-GDRIVE-FILE-0014,OP-117 v2 page 27 — no-OP-201 prohibition and shipper exception,KNO-DEL-BUS-OP201-001,No-release branch and separate enrolled-shipper exception,2026-08-09
 SRC-GDRIVE-FILE-0014,OP-117 v2 pages 29-30 — Driver releasing a package / Secure location,KNO-DEL-SHIPPER-RELEASE-001,Current secure-location and reasonable-delivery-instruction controls for driver release,2026-08-09
 SRC-GDRIVE-FILE-0014,OP-117 v2 pages 40-41,KNO-DEL-SCAN-INTEGRITY-001,Actual-location/time scanning and pre-scan prohibition,2026-08-08
 SRC-GDRIVE-FILE-0014,OP-117 v2 pages 53-54 and 81,KNO-PUP-CALLTAG-RESTRICTED-001,Restricted and hazardous-material call-tag refusal,2026-08-08
 SRC-GDRIVE-FILE-0014,OP-117 v2 pages 54-55,KNO-PUP-SENSEAWARE-NOHEALTHY-001,SenseAware pickup exception handling,2026-08-08
 SRC-GDRIVE-FILE-0014,OP-117 v2 pages 56-58,KNO-PUP-DROPBOX-CONNECTION-001,"Listed/unlisted scope, NFC primary workflow, device-capability display, positioning, and successful opening",2026-08-09
 SRC-GDRIVE-FILE-0014,OP-117 v2 pages 59-60,KNO-PUP-DROPBOX-CONNECTION-001,"NFC retries and BLE transition; BLE activation, positioning, timeout, retries, and assistance branch",2026-08-09
-SRC-GDRIVE-FILE-0014,OP-117 v2 pages 6-7,KNO-INC-ACCIDENT-REPORT-001,Accident response reporting OP-130 and evidence preservation,2026-08-08
+SRC-GDRIVE-FILE-0014,OP-117 v2 page 6,KNO-INC-ACCIDENT-REPORT-001,Accident response reporting OP-130 and evidence preservation,2026-08-08
 SRC-GDRIVE-FILE-0014,OP-117 v2 pages 61-63,KNO-PUP-DROPBOX-SETTINGS-001,"Complete setup/update sequence, serial, times, send, FINISH, and no-modification behavior",2026-08-09
 SRC-GDRIVE-FILE-0014,OP-117 v2 pages 61-64,KNO-PUP-DROPBOX-CONNECTION-001,"Connection sequence reused by setup, holiday-closing, and early-last-pickup workflows",2026-08-09
 SRC-GDRIVE-FILE-0014,OP-117 v2 pages 61-64,KNO-PUP-DROPBOX-SCHEDULE-001,Mechanical workflows present but role-based change authority not stated,2026-08-09
 SRC-GDRIVE-FILE-0014,OP-117 v2 pages 63-64,KNO-PUP-DROPBOX-HOLIDAY-001,"Holiday date selection/confirmation, connection update, and no-modification warning",2026-08-09
 SRC-GDRIVE-FILE-0014,OP-117 v2 pages 68-69,KNO-DEL-DAMAGE-INSPECTION-001,Separate pickup packaging acceptance and damage-risk branch,2026-08-09
 SRC-GDRIVE-FILE-0014,OP-117 v2 pages 71 and 81,KNO-HAZ-AKHI-001,Alaska and Hawaii hazmat prohibition,2026-08-08
-SRC-GDRIVE-FILE-0014,"OP-117 v2 pages 72-73, 75, and 77-78",KNO-HAZ-ACCEPTANCE-001,"Hazmat pickup acceptance, rejection, and accepted-paperwork station return",2026-08-08
-SRC-GDRIVE-FILE-0014,OP-117 v2 pages 73 and 79,KNO-HAZ-LOAD-PAPERS-001,Hazmat loading paperwork access and stated weight limits,2026-08-08
+SRC-GDRIVE-FILE-0014,OP-117 v2 page 72,KNO-HAZ-ACCEPTANCE-001,Hazmat pickup package and certification acceptance checks,2026-08-09
+SRC-GDRIVE-FILE-0014,OP-117 v2 page 73,KNO-HAZ-ACCEPTANCE-001,Hazmat rejection and shipper hotline branch plus repeated acceptance checks,2026-08-09
+SRC-GDRIVE-FILE-0014,OP-117 v2 page 75,KNO-HAZ-ACCEPTANCE-001,Fully regulated hazmat certification-copy custody and station return,2026-08-09
+SRC-GDRIVE-FILE-0014,OP-117 v2 page 77,KNO-HAZ-ACCEPTANCE-001,Hazmat package identification and end-of-day station return,2026-08-09
+SRC-GDRIVE-FILE-0014,OP-117 v2 page 78,KNO-HAZ-ACCEPTANCE-001,Hazmat paperwork exceptions rejection and certification content,2026-08-09
+SRC-GDRIVE-FILE-0014,OP-117 v2 page 73,KNO-HAZ-LOAD-PAPERS-001,Baseline loading paperwork access and SIG/CDL escalation,2026-08-09
+SRC-GDRIVE-FILE-0014,OP-117 v2 page 79,KNO-HAZ-LOAD-PAPERS-001,Paperwork relay loading weight and return details,2026-08-09
 SRC-GDRIVE-FILE-0014,OP-117 v2 pages 76 and 80,KNO-HAZ-MANIFEST-001,Hazmat manifest and outage-transfer contingency,2026-08-08
 SRC-GDRIVE-FILE-0014,OP-117 v2 pages 77 and 80,KNO-DEL-DAMAGE-INSPECTION-001,Separate leaking or damaged hazardous-material emergency and station-contact branch,2026-08-09
 SRC-GDRIVE-FILE-0014,OP-117 v2 pages 81-82,KNO-SEC-LOST-BADGE-001,Forgotten lost replaced and found badge branches,2026-08-08
 SRC-GDRIVE-FILE-0014,OP-117 v2 pages 85-86,KNO-SEC-ACTIVE-THREAT-001,Active-threat response sequence,2026-08-08
-SRC-GDRIVE-FILE-0014,OP-117 v2 pages 86-87,KNO-SEC-STOLEN-VEHICLE-001,Immediate law-enforcement/personal-safety and incident-reporting steps,2026-08-08
+SRC-GDRIVE-FILE-0014,OP-117 v2 page 86,KNO-SEC-STOLEN-VEHICLE-001,Safe emergency call timing and general security-reporting channels,2026-08-09
+SRC-GDRIVE-FILE-0014,OP-117 v2 page 87,KNO-SEC-STOLEN-VEHICLE-001,Personal-safety and post-confrontation witness/description actions,2026-08-09
 SRC-GDRIVE-FILE-0015,Package Placement Quick Reference page 2,KNO-DEL-PLACEMENT-HAZARD-001,Placement-hazard and failed-release summary,2026-08-09
 SRC-GDRIVE-FILE-0016,"Personnel Qualification Verification Flow, full page",KNO-QUAL-L10-ACTIVATION-001,L10 ISP driver qualification and activation stages,2026-08-08
-SRC-GDRIVE-FILE-0017,Authenticated Delivery announcement screenshot,KNO-DEL-FAD-GROUND-001,Future Ground status corroboration,2026-08-08
 SRC-MGB-DOC-0006,"OP-130 page 1, steps 1-8",KNO-INC-ACCIDENT-REPORT-001,Current detailed accident-scene sequence linked to the general reporting record,2026-08-08
 SRC-MGB-DOC-0006,"OP-130 page 1, steps 1-8",KNO-INC-ACCIDENT-SCENE-001,"Immediate accident scene sequence, contacts, evidence, protection, scene hold, and documentation",2026-08-08
 SRC-MGB-DOC-0007,"OP-132 single page, Rev 8/2025",KNO-INC-ACCIDENT-SCENE-001,"Passenger/other-driver/witness form roles, injury, contact, remarks, and signature fields",2026-08-08
@@ -298,13 +318,19 @@ SRC-MGB-DOC-0011,Dog Bite Prevention page 5,KNO-SAF-DOG-ENCOUNTER-001,"Knockdown
 SRC-MGB-DOC-0011,Dog Bite Prevention page 6,KNO-SAF-DOG-ENCOUNTER-001,"Post-wound vaccination, contact, cleaning, medical, veterinarian, and animal-control steps",2026-08-09
 SRC-MGB-DOC-0011,Dog Bite Prevention pages 1-7 — complete review boundary,KNO-SAF-DOG-ENCOUNTER-001,"Complete-review boundary confirming no delivery status, package disposition, or internal business-reporting procedure is stated",2026-08-09
 SRC-MGB-PAGE-0002,Leaking-package response and ERG sections,KNO-HAZ-LEAK-001,Current leaking-hazmat emergency corroboration,2026-08-08
-SRC-MGB-PAGE-0002,"OP-900 tag, shipping-paper/ERG, and loading sections",KNO-HAZ-LOAD-PAPERS-001,Current documentation and load-control corroboration,2026-08-08
+SRC-MGB-PAGE-0002,Required hazmat documentation section,KNO-HAZ-LOAD-PAPERS-001,Current certification ERG manifest outage and seat requirements,2026-08-09
+SRC-MGB-PAGE-0002,Placarding section,KNO-HAZ-LOAD-PAPERS-001,Current weight calculation and exceptions,2026-08-09
+SRC-MGB-PAGE-0002,"Blocking, bracing, loading section",KNO-HAZ-LOAD-PAPERS-001,Current floor rear separation and bracing requirements,2026-08-09
+SRC-MGB-PAGE-0002,"FedEx station/hub hazmat handling, check-in section",KNO-HAZ-LOAD-PAPERS-001,Current station-return certification handoff,2026-08-09
 SRC-MGB-PAGE-0002,"P&D manifest, outage, and facility check-in sections",KNO-HAZ-MANIFEST-001,Current manifest and outage corroboration,2026-08-08
 SRC-MGB-PAGE-0002,Pickup acceptance and certification sections,KNO-HAZ-ACCEPTANCE-001,Current acceptance-check corroboration,2026-08-08
 SRC-MGB-PAGE-0002,Prohibited pickup section,KNO-HAZ-RADIOACTIVE-WET-001,Current Division 4.3 and Radioactive Yellow III prohibition,2026-08-08
-SRC-MGB-PAGE-0004,Complete visible P&D qualification-certification page,KNO-QUAL-L10-ACTIVATION-001,Current scope and expiration corroboration,2026-08-08
+SRC-MGB-PAGE-0004,Qualification Certification (L10 and above) section,KNO-QUAL-L10-ACTIVATION-001,Vehicle-type scope and 24-month expiration,2026-08-09
 SRC-MGB-PAGE-0004,Complete visible P&D qualification-certification page — Qualification Certification (L10 and above) section,KNO-QUAL-RECERT-001,Twenty-four-month expiration rule and separate CDL-condition warning,2026-08-08
-SRC-MGB-PAGE-0005,Complete visible Qualification Certification page,KNO-QUAL-L10-ACTIVATION-001,Current certification and recertification corroboration,2026-08-08
+SRC-MGB-PAGE-0005,Newly onboarded drivers and Observed Hours ride(s) sections,KNO-QUAL-L10-ACTIVATION-001,Pre-road gate sequence and observed-hours requirements,2026-08-09
+SRC-MGB-PAGE-0005,Qualified Provider resources table,KNO-QUAL-L10-ACTIVATION-001,Road-test and qualification-completion record resources,2026-08-09
+SRC-MGB-PAGE-0005,Qualified Observer section,KNO-QUAL-L10-ACTIVATION-001,MBA observer-eligibility verification,2026-08-09
+SRC-MGB-PAGE-0005,"Re-Certification, Vehicle-based Qualifications, and Certified Trainer responsibilities sections",KNO-QUAL-L10-ACTIVATION-001,Recertification vehicle-size and recordkeeping requirements,2026-08-09
 SRC-MGB-PAGE-0005,Complete visible Qualification Certification page — Qualified Observer section,KNO-QUAL-OBSERVER-001,Exact MBA navigation and Yes-result eligibility gate for a Qualified Observer,2026-08-08
 SRC-MGB-PAGE-0005,Complete visible Qualification Certification page — Re-Certification and compliance-date paragraphs,KNO-QUAL-RECERT-001,Visible recertification stages and MBA compliance-date location,2026-08-08
 SRC-MGB-PAGE-0005,Complete visible Qualification Certification page — Vehicle-based Qualifications paragraph,KNO-QUAL-VEHICLE-UPGRADE-001,"Larger-weight/size road-test requirement, same-size vehicle condition, and permitted administrator roles",2026-08-08
@@ -324,7 +350,6 @@ SRC-MGB-PAGE-0014,"CSA BASICs, Vehicle Maintenance paragraph",KNO-VEH-PRETRIP-DE
 SRC-MGB-PAGE-0014,"Hours of Service section, HOS for rentals",KNO-HOS-RENTAL-ELD-001,"Eight-day threshold, manual RODS, rental agreement, annotation, and ELD requirement",2026-08-08
 SRC-MGB-PAGE-0014,"Hours of Service section, Unidentified Driving Events paragraphs",KNO-HOS-UDE-001,"UDE creation, inspection visibility, false-log significance, and reconciliation need",2026-08-08
 SRC-MGB-PAGE-0017,"Trailer and Dolly Coupling page, responsibility and pintle-hook paragraphs",KNO-LH-COUPLING-BASIC-001,"Fifth-wheel/kingpin lock, pintle latch, and both safety chains",2026-08-08
-SRC-MGB-PAGE-0018,"Complete announcement, published 2026-08-04",KNO-DEL-FAD-GROUND-001,"Express launch scope, future Ground status, and QR release condition",2026-08-08
 SRC-MGB-PAGE-0019,Dry ice safety section,KNO-HAZ-DRY-ICE-001,"Ventilation, staging, exposure response, PPE, and indicators",2026-08-08
 SRC-MGB-PAGE-0019,Heat illness section,KNO-SAFETY-HEAT-ILLNESS-001,"Symptoms, precautions, and 911 threshold",2026-08-08
 SRC-MGB-PAGE-0020,"Complete Rental Vehicle Information page, updated 2026-01-09",KNO-VEH-RENTAL-PREP-001,"Rental eligibility, VEDR, documents, classifications, markings, security, and prohibitions",2026-08-08
@@ -336,11 +361,18 @@ SRC-MGB-PAGE-0025,Locker PPOD image quality section; published 2024-05-09,KNO-DE
 SRC-MGB-PAGE-0034,"Complete visible Alternative Vehicle Operations page — definition, onboarding list, and Unit-number/placard readiness paragraph",KNO-VEH-ALT-ONBOARD-001,"Vehicle scope, conditional documents, required supporting materials, and minimum Unit-number/placard readiness gate",2026-08-09
 SRC-MGB-PAGE-0035,"Complete visible page — regulations and guidance paragraph, Responsibilities section, and customer/FedEx no-verification branch",KNO-LH-TRAILER-DOCK-PULL-001,"Cargo/load checks, immediate dock/trailer verification, alternative checks, customer/FedEx escalation, and mandatory leave/do-not-pull outcome",2026-08-09
 SRC-MGB-PAGE-0039,"Complete visible page — prerequisite paragraph, administrator-qualification paragraph, P&D road-test standards list, and Record of Road Test paragraph",KNO-QUAL-PD-ROADTEST-001,"Pre-assignment gate, prerequisites, administrator conditions, test components, ten-mile minimum, and Qualified Provider-supplied record requirement",2026-08-09
-SRC-MGB-DOC-0008,"OP-135 page 1 upper visible region, Rev 9/2025",KNO-INC-ACCIDENT-SCENE-001,"Driver, vehicle, VEDR custody, and exact accident-location fields",2026-08-09
-SRC-MGB-DOC-0008,"OP-135 page 2 upper visible region, Rev 9/2025",KNO-INC-ACCIDENT-SCENE-001,"Other-vehicle owner, vehicle, insurance, driver, and passenger fields in the reviewed region",2026-08-09
-SRC-MGB-DOC-0008,"OP-135 page 3 upper visible region, Rev 9/2025",KNO-INC-ACCIDENT-SCENE-001,"Third-vehicle owner, vehicle, insurance, driver, and passenger fields in the reviewed region",2026-08-09
-SRC-MGB-DOC-0008,"OP-135 page 4 upper visible region, Rev 9/2025",KNO-INC-ACCIDENT-SCENE-001,"Witness, police-investigation, speed-limit, and visible highway-description fields",2026-08-09
-SRC-MGB-DOC-0008,"OP-135 page 5 upper visible region, Rev 9/2025",KNO-INC-ACCIDENT-SCENE-001,Non-vehicle property-damage and accident-description or diagram fields,2026-08-09
+SRC-MGB-DOC-0008,"OP-135 page 1 upper visible region, Rev 9/2025",KNO-INC-ACCIDENT-SCENE-001,"Historical authenticated-render corroboration for driver, vehicle, VEDR, and accident-location fields",2026-08-09
+SRC-MGB-DOC-0008,"OP-135 page 2 upper visible region, Rev 9/2025",KNO-INC-ACCIDENT-SCENE-001,"Historical authenticated-render corroboration for other-vehicle, driver, and passenger fields",2026-08-09
+SRC-MGB-DOC-0008,"OP-135 page 3 upper visible region, Rev 9/2025",KNO-INC-ACCIDENT-SCENE-001,"Historical authenticated-render corroboration for third-vehicle and passenger fields",2026-08-09
+SRC-MGB-DOC-0008,"OP-135 page 4 upper visible region, Rev 9/2025",KNO-INC-ACCIDENT-SCENE-001,"Historical authenticated-render corroboration for witness, police, and beginning site-condition fields",2026-08-09
+SRC-MGB-DOC-0008,"OP-135 page 5 upper visible region, Rev 9/2025",KNO-INC-ACCIDENT-SCENE-001,"Historical authenticated-render corroboration for property-damage and narrative/diagram fields",2026-08-09
+SRC-MGB-DOC-0008,"OP-135 pages 1-5, Rev 9/2025",KNO-INC-ACCIDENT-SCENE-001,"Complete accident-report form fields and driver local-report responsibility",2026-08-10
+SRC-MGB-DOC-0047,"FORGE 3.3.0 Combined Application Support Guide pages 17-21",KNO-DEL-FAD-GROUND-001,"Current service-provider FAD QR validation, no-valid-QR, proof, validation failure, HAL, and Counter-user boundaries",2026-08-10
+SRC-MGB-DOC-0047,"FORGE 3.3.0 Combined Application Support Guide page 33",KNO-PUP-INTERNATIONAL-DOCS-001,"Current international-pickup ETD exception and per-package commercial-invoice prompt",2026-08-10
+SRC-MGB-DOC-0047,"FORGE 3.3.0 Combined Application Support Guide page 36",KNO-DEL-PHARMACY-001,"Pharmacy package direct-delivery and no-HAL-transfer restriction",2026-08-10
+SRC-MGB-DOC-0047,"FORGE 3.3.0 Combined Application Support Guide pages 79-81",KNO-FORGE-EOD-001,"Optional Delivery Reconciliation eligibility, status, bulk, save/loss, and completion behavior",2026-08-10
+SRC-MGB-DOC-0047,"FORGE 3.3.0 Combined Application Support Guide page 107",KNO-DEL-MISDELIVERY-RECOVERY-001,"Post-code-17 applicable-status behavior and code-16 prohibition",2026-08-10
+SRC-MGB-DOC-0042,"FORGE Download Pickup List 2.2.0 page 1",KNO-FORGE-DOWNLOAD-SYNC-001,"Current pickup-list menu visibility, logged-in work-area scope, cellular requirement, request results, and earlier-unlisted-pickup EOD reconciliation",2026-08-10
 SRC-MGB-DOC-0038,Sideswipe Collisions page 2,KNO-SAF-REDLIGHT-001,Stop-on-red safety requirement and explicit source boundary,2026-08-09
 SRC-MGB-DOC-0038,Sideswipe Collisions page 3,KNO-SAF-SIDESWIPE-001,Sideswipe definition and stated collision causes,2026-08-09
 SRC-MGB-DOC-0038,Sideswipe Collisions page 4,KNO-SAF-SIDESWIPE-001,Safe speed and ideal-condition following-distance timing,2026-08-09

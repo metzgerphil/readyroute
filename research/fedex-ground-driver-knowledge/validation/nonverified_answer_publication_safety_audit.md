@@ -8,9 +8,9 @@ Driver-facing text must not sound like an approved complete procedure when the u
 
 ## Scope
 
-- 55 non-verified operational records
+- 54 non-verified operational records
 - 32 `HUMAN_REVIEW_REQUIRED`
-- 21 `POTENTIALLY_OUTDATED`
+- 20 `POTENTIALLY_OUTDATED`
 - 2 `CONFLICT`
 - 0 literal `UNRESOLVED`
 
@@ -31,7 +31,7 @@ The contract is now enforced by `scripts/validate_corpus_integrity.py`.
 | Manifest Preview permission behavior lacked a concise version qualifier | `KNO-FORGE-MANIFEST-PERMISSIONS-001` described 4.5.0 behavior but exposed version sensitivity only in More Info | Old managed-device/UI behavior could appear current | Medium | High | Concise answer now identifies Manifest Preview 4.5.0 and requires confirmation against the current app and managed-device policy |
 | Conflict answers safely preserve dispute visibility | 2/2 concise answers explicitly state that current FedEx sources/guides conflict and direct escalation | No current silent conflict resolution | High if violated; no current violation | High | Validator rejects conflict answers that fail to say the sources conflict |
 | Remaining potentially-outdated answers expose currency limits | 21/21 contain a version, older-source, current-source, recheck, or time-sensitive qualifier plus a current-verification/escalation action | No current detached-version failure after correction | High if violated; no current violation | High | Validator enforces qualifier and verification-action presence |
-| Escalation coverage is complete | 55/55 non-verified records have one or more escalation requirements | No current unsupported terminal answer | High if violated; no current violation | High | Validator rejects missing escalation lists |
+| Escalation coverage is complete | 54/54 non-verified records have one or more escalation requirements | No current unsupported terminal answer | High if violated; no current violation | High | Validator rejects missing escalation lists |
 
 ## Interpretation
 

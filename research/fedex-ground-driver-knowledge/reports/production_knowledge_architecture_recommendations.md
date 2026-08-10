@@ -88,7 +88,7 @@ Represent decision logic explicitly rather than burying all conditions in prose:
 
 Each substantive rule, step, prohibition, or documentation item should link to one or more evidence fragments. Record-level evidence alone is insufficient when different steps come from different sources.
 
-The research corpus now includes `knowledge/claim_provenance.jsonl` as a deterministic migration/audit index for all current substantive claims. It resolves each claim to its exact record evidence set and supported scopes. The traceability control distinguishes 1,820 single-fragment claims from 1,338 multi-fragment claims entering allocation. `knowledge/claim_evidence_allocation_coverage.jsonl` currently makes 859 reviewed multi-fragment claims trace-ready and withholds exact assertions for 479. A production schema must preserve those reviewer-assigned fragment links and must not publish pending joint record-evidence sets as exact claim-level provenance.
+The research corpus now includes `knowledge/claim_provenance.jsonl` as a deterministic migration/audit index for all current substantive claims. It resolves each claim to its exact record evidence set and supported scopes. The traceability control distinguishes 1,774 single-fragment claims from 1,468 multi-fragment claims requiring review. `knowledge/claim_evidence_allocation_coverage.jsonl` makes all 1,468 reviewed multi-fragment claims trace-ready, with zero pending allocations. A production schema must preserve those reviewer-assigned fragment links and must fail closed if any future multi-fragment claim lacks a reviewed allocation.
 
 Evidence links must also expose capture readiness independently from knowledge status. A source-reviewed `VERIFIED` record is not production-evidence-ready when every underlying source exists only as a transient browser review artifact. The current `knowledge/evidence_capture_risk_coverage.csv` supplies the migration gate: require durable source bytes or a complete page capture and exact-locator revalidation before production evidence approval, while preserving the separate authority/currency/status decision.
 
@@ -250,7 +250,7 @@ These gates must run after retrieval and before answer presentation. Prompt word
 - No retrieval result may bypass a status gate.
 - Previously passing cases must remain passing unless a reviewed source change intentionally alters them.
 
-The current validators, 185-case library, 185-row clarification-strategy index, 33-row multi-record interaction ledger, 138-row record-language surface ledger, and 690-row variant retrieval oracle are a starting regression set, not a final production evaluation suite.
+The current validators, 192-case library, 192-row clarification-strategy index, 33-row multi-record interaction ledger, 144-row record-language surface ledger, and 724-row variant retrieval oracle are a starting regression set, not a final production evaluation suite.
 
 ## Feedback and unanswered-question loop
 

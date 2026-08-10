@@ -26,4 +26,4 @@ The corpus validator extracts only the explicit `Record-status index` section fr
 
 This audit verifies status/report synchronization, not resolution of the underlying conflicts, version risks, or human-review obligations.
 
-Resolution-path accountability is now provided separately by `knowledge/nonverified_resolution_coverage.csv`: all 55 non-verified record IDs are validator-reconciled to an evidence/decision requirement, authority class, dependency set, and status-consistent publication gate.
+Resolution-path accountability is now provided separately by `knowledge/nonverified_resolution_coverage.csv`: all 54 non-verified record IDs are validator-reconciled to an evidence/decision requirement, authority class, dependency set, and status-consistent publication gate.

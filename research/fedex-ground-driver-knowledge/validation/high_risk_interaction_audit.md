@@ -10,8 +10,8 @@ This audit makes every multi-record driver-language case independently accountab
 
 ## Coverage
 
-- 185 total realistic driver-language cases.
-- 138/138 operational knowledge records retain at least one case.
+- 192 total realistic driver-language cases.
+- 144/144 operational knowledge records retain at least one case.
 - 33 cases intentionally require two or more knowledge records.
 - Every multi-record case has a named interaction family, risk class, exact expected knowledge set, and explanation of the failure it prevents.
 

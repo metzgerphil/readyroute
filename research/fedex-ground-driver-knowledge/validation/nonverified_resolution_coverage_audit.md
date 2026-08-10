@@ -1,6 +1,6 @@
 # Non-verified record resolution coverage audit
 
-Status date: 2026-08-09
+Status date: 2026-08-10
 
 ## Purpose
 
@@ -8,11 +8,11 @@ A `CONFLICT`, `HUMAN_REVIEW_REQUIRED`, or `POTENTIALLY_OUTDATED` label safely ga
 
 ## Exact coverage
 
-`knowledge/nonverified_resolution_coverage.csv` contains exactly 55 rows:
+`knowledge/nonverified_resolution_coverage.csv` contains exactly 54 rows:
 
 - 2 `CONFLICT` records.
 - 32 `HUMAN_REVIEW_REQUIRED` records.
-- 21 `POTENTIALLY_OUTDATED` records.
+- 20 `POTENTIALLY_OUTDATED` records.
 
 Every row preserves the primary resolution type, structured source-gap IDs where available, authenticated acquisition-queue resource IDs, exact evidence or decision required, responsible human authority class, and status-consistent publication gate.
 
@@ -27,14 +27,14 @@ Every row preserves the primary resolution type, structured source-gap IDs where
 | `CURRENT_PROCEDURE_AND_AUTHORITY` | 6 |
 | `SOURCE_CONFLICT_ADJUDICATION` | 2 |
 | `FORM_ARTIFACT_ACQUISITION` | 2 |
-| `EFFECTIVE_DATE_RECHECK` | 1 |
+| `EFFECTIVE_DATE_RECHECK` | 0 |
 
 ## Dependency result
 
-- 46 records link to one or more structured `REFSRC-*` obligations.
-- 49 records link to one or more resources in the authenticated MyGroundBiz acquisition queue.
+- 50 records link to one or more structured `REFSRC-*` obligations.
+- 13 records link to one or more resources in the authenticated MyGroundBiz acquisition queue.
 - Many records link to both because acquiring a page/document is not the same as receiving the required policy-owner decision.
-- `KNO-DEL-FAD-GROUND-001` is the sole record without a source/queue dependency: its supplied source is a current future-effective announcement, so resolution is an explicit Ground effective-date and production-instruction recheck.
+- The prior FAD effective-date exception is resolved by the fully reviewed current FORGE 3.3 guide; the record has left this non-verified ledger. Every remaining row retains a concrete source, queue, decision, or compliance dependency.
 
 ## Publication gates
 
@@ -71,7 +71,7 @@ The affected-target lists were repaired. Dependencies are now symmetric in both 
 
 This means acquiring a source can deterministically identify every exception record requiring reconsideration, and a record reviewer can retrieve every missing-source obligation that blocks it.
 
-The authenticated acquisition queue now materializes the reverse resolution relationship in its `affected_nonverified_knowledge_ids` field. Sixteen resources carry 72 exact resource-to-record links covering the 49 queue-linked records; validator equality prevents either side from becoming stale.
+The authenticated acquisition queue now materializes the reverse resolution relationship in its `affected_nonverified_knowledge_ids` field. Eight resources carry 20 exact resource-to-record links covering all 13 queue-linked records; validator equality prevents either side from becoming stale.
 
 ## Automated control
 

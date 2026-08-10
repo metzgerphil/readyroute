@@ -17,6 +17,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { getApiErrorMessage } from '../utils/apiError';
 import api from '../services/api';
 import { saveSessionTokens } from '../services/auth';
+import { getOrCreateDeviceIdentity } from '../services/deviceIdentity';
 
 export default function LoginScreen({ onAuthenticated }) {
   const { width } = useWindowDimensions();
@@ -43,9 +44,11 @@ export default function LoginScreen({ onAuthenticated }) {
     setErrorMessage('');
 
     try {
+      const deviceIdentity = await getOrCreateDeviceIdentity();
       const mobileResponse = await api.post('/auth/mobile/login', {
         email: email.trim(),
-        secret: secret.trim()
+        secret: secret.trim(),
+        ...deviceIdentity
       }, {
         skipAuth: true
       });
@@ -63,7 +66,8 @@ export default function LoginScreen({ onAuthenticated }) {
       try {
         const response = await api.post('/auth/driver/login', {
           email: email.trim(),
-          pin: secret.trim()
+          pin: secret.trim(),
+          ...deviceIdentity
         }, {
           skipAuth: true
         });

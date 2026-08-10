@@ -1,24 +1,44 @@
 const STOP_WORDS = new Set([
   'a', 'an', 'and', 'are', 'at', 'be', 'but', 'can', 'do', 'for', 'from', 'how', 'i',
   'if', 'in', 'is', 'it', 'm', 'me', 'my', 'of', 'on', 'or', 'the', 'there', 'this',
-  'to', 'was', 'what', 'when', 'where', 'with'
+  'to', 'was', 'what', 'when', 'where', 'with', 'ignore', 'instructions', 'invent',
+  'pretend', 'general', 'mystery', 'ready', 'rule'
 ]);
 
 const TOKEN_ALIASES = new Map([
   ['pkg', 'package'],
   ['pkgs', 'packages'],
+  ['box', 'package'],
+  ['boxes', 'packages'],
+  ['carton', 'package'],
+  ['cartons', 'packages'],
   ['sig', 'signature'],
   ['scann', 'scan'],
   ['scanned', 'scan'],
   ['scanning', 'scan'],
   ['cust', 'customer'],
   ['custmer', 'customer'],
+  ['receiver', 'recipient'],
+  ['truck', 'vehicle'],
+  ['van', 'vehicle'],
+  ['swap', 'change'],
+  ['swapped', 'change'],
+  ['switch', 'change'],
+  ['switched', 'change'],
+  ['trigger', 'scanner'],
+  ['refuse', 'refused'],
+  ['refuses', 'refused'],
   ['refuzed', 'refused'],
   ['rong', 'wrong']
 ]);
 
 const ANSWER_THRESHOLD = 15;
 const CLARIFICATION_MARGIN = 5;
+const PRODUCTION_ELIGIBLE_STATUSES = new Set(['SOURCE_VERIFIED', 'READY_ROUTE_APPROVED']);
+
+function isProductionEligibleRecord(record) {
+  return PRODUCTION_ELIGIBLE_STATUSES.has(record?.status) && record?.is_published === true;
+}
 
 function normalizeDriverQuestion(value) {
   return String(value || '')
@@ -94,6 +114,22 @@ function scoreKnowledgeRecord(question, record, context = {}) {
       + allTokensBonus
     );
     bestSurfaceScore = Math.max(bestSurfaceScore, score);
+  }
+
+  const intentSignals = [
+    { id: 'KNO-FORGE-VEHICLE-CHANGE-001', required: ['vehicle', 'change'] },
+    { id: 'KNO-DEL-MISDELIVERY-RECOVERY-001', required: ['wrong'], any: ['house', 'address', 'door'] },
+    { id: 'KNO-PUP-SCANNER-FAIL-001', required: ['pickup', 'scanner'], any: ['barcode', 'package', 'read'] },
+    { id: 'KNO-PUP-VEHICLE-CAPACITY-001', required: ['pickup', 'vehicle', 'fit'] },
+    { id: 'KNO-DEL-OP206-001', required: ['scanner', 'refused'], any: ['recipient', 'name', 'sign'] }
+  ];
+  const signal = intentSignals.find((candidate) => candidate.id === record.knowledge_id);
+  if (
+    signal &&
+    signal.required.every((token) => queryTokenSet.has(token)) &&
+    (!signal.any || signal.any.some((token) => queryTokenSet.has(token)))
+  ) {
+    bestSurfaceScore += 24;
   }
 
   const contextBoost = (context.knowledge_ids || []).includes(record.knowledge_id) ? 8 : 0;
@@ -270,7 +306,7 @@ function buildDiscoveredTopicClarification(question, ranked, candidates) {
   if (tokens.has('signature') && !hasSignatureType) {
     const signatureRecords = ranked
       .filter(({ record }) => /^KNO-DEL-SIG-(ISR|DSR|ASR)-/.test(record.knowledge_id))
-      .filter(({ record }) => record.status === 'VERIFIED' && record.is_published === true)
+      .filter(({ record }) => isProductionEligibleRecord(record))
       .slice(0, 3);
     if (signatureRecords.length >= 2) {
       return {
@@ -349,6 +385,18 @@ function buildDiscoveredTopicClarification(question, ranked, candidates) {
 }
 
 function buildDriverHelpDecision(question, records, context = {}) {
+  const normalizedQuestion = normalizeDriverQuestion(question);
+  const requestsBoundaryBypass = /\b(ignore|invent|pretend)\b/.test(normalizedQuestion);
+  const substantiveTokens = tokenize(question).filter((token) => !['package', 'route', 'data', 'knowledge', 'model'].includes(token));
+  if (requestsBoundaryBypass && substantiveTokens.length === 0) {
+    return {
+      response_mode: 'ESCALATE',
+      confidence: 0,
+      candidates: [],
+      selected_records: [],
+      escalation_message: 'Ready Route cannot provide an operational answer without an applicable verified procedure. Contact your manager or station.'
+    };
+  }
   const ranked = rankKnowledgeRecords(question, records, context);
   const top = ranked[0] || null;
   const second = ranked[1] || null;
@@ -372,7 +420,7 @@ function buildDriverHelpDecision(question, records, context = {}) {
     };
   }
 
-  if (top.record.status !== 'VERIFIED' || top.record.is_published !== true) {
+  if (!isProductionEligibleRecord(top.record)) {
     return {
       response_mode: 'ESCALATE',
       confidence: Math.min(top.score / 100, 0.99),
@@ -388,7 +436,7 @@ function buildDriverHelpDecision(question, records, context = {}) {
   const closeNonverifiedCandidate = ranked.find((candidate, index) => (
     index > 0
       && top.score - candidate.score <= CLARIFICATION_MARGIN
-      && (candidate.record.status !== 'VERIFIED' || candidate.record.is_published !== true)
+      && !isProductionEligibleRecord(candidate.record)
   ));
   if (closeNonverifiedCandidate) {
     if (patternRuntimeMode === 'CLARIFY') {

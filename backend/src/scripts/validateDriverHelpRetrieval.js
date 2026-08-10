@@ -2,13 +2,11 @@ const fs = require('fs');
 const path = require('path');
 
 const { buildDriverHelpDecision } = require('../services/driverHelpRetrieval');
-const { buildPublicationGateIndex, parseCsv } = require('./importDriverKnowledge');
+const { buildPublicationGateIndex } = require('./importDriverKnowledge');
 
 const ROOT = path.resolve(__dirname, '../../..');
-const RECORDS_PATH = path.join(ROOT, 'research/fedex-ground-driver-knowledge/knowledge/records.jsonl');
-const CASES_PATH = path.join(ROOT, 'research/fedex-ground-driver-knowledge/validation/driver_language_cases.jsonl');
-const CAPTURE_GATES_PATH = path.join(ROOT, 'research/fedex-ground-driver-knowledge/knowledge/evidence_capture_risk_coverage.csv');
-const TRACE_GATES_PATH = path.join(ROOT, 'research/fedex-ground-driver-knowledge/knowledge/claim_evidence_allocation_coverage.jsonl');
+const RECORDS_PATH = path.join(ROOT, 'knowledge/operations/records.jsonl');
+const CASES_PATH = path.join(ROOT, 'knowledge/evaluations/driver-language-cases.jsonl');
 
 function readJsonLines(filePath) {
   return fs.readFileSync(filePath, 'utf8')
@@ -20,18 +18,20 @@ function readJsonLines(filePath) {
 function toPublishedRecord(record, extraVariants = [], patterns = [], isPublished = false) {
   return {
     knowledge_id: record.knowledge_id,
-    version: 1,
+    version: record.record_version,
     status: record.knowledge_status,
     is_published: isPublished,
     canonical_situation: record.canonical_situation,
     normalized_description: record.normalized_description,
-    taxonomy_paths: record.taxonomy_paths || [],
+    taxonomy_paths: record.category_paths || [],
     authoritative_rule: record.authoritative_rule,
     clarification_requirements: record.clarification_requirements || [],
     driver_question_variants: [...new Set([...(record.driver_question_variants || []), ...extraVariants])],
     driver_question_patterns: patterns,
-    concise_answer: record.concise_ready_route_answer,
-    more_info_answer: record.more_info_answer
+    concise_answer: record.concise_driver_answer,
+    more_info_answer: record.more_info_answer,
+    source_ids: record.source_ids || [],
+    adjudication_id: record.adjudication_id || null
   };
 }
 
@@ -51,12 +51,7 @@ function expectedRuntimeMode(validationMode) {
 function validate() {
   const cases = readJsonLines(CASES_PATH);
   const records = readJsonLines(RECORDS_PATH);
-  const captureCsv = parseCsv(fs.readFileSync(CAPTURE_GATES_PATH, 'utf8'));
-  const captureHeaders = captureCsv.shift() || [];
-  const captureRows = captureCsv.map((values) => Object.fromEntries(
-    captureHeaders.map((header, index) => [header, values[index] || ''])
-  ));
-  const publicationGates = buildPublicationGateIndex(records, captureRows, readJsonLines(TRACE_GATES_PATH));
+  const publicationGates = buildPublicationGateIndex(records);
   const caseVariants = new Map();
   const casePatterns = new Map();
   for (const testCase of cases) {

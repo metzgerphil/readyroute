@@ -17,6 +17,7 @@
     "knowledge:import": "node src/scripts/importDriverKnowledge.js",
     "knowledge:import:dry-run": "node src/scripts/importDriverKnowledge.js --dry-run",
     "knowledge:validate-retrieval": "node src/scripts/validateDriverHelpRetrieval.js",
+    "knowledge:validate-holdout": "node src/scripts/validatePhase2Holdout.js",
     "gate-codes:parse": "node src/scripts/parseGateCodesDocx.js",
     "gate-codes:review": "node src/scripts/reviewGateCodeImport.js",
     "seed:auth": "node src/scripts/seedAuthUsers.js",
@@ -26,6 +27,7 @@
     "check:launch": "node src/scripts/checkLaunchConfig.js",
     "verify:schema": "node ../scripts/check-schema-version.js",
     "test:unit": "node --test src/**/*.test.js",
+    "test:phase2-db": "READYROUTE_PHASE2_DB_INTEGRATION=true node --test src/routes/phase2DatabaseAuth.integration.test.js",
     "test:e2e": "jest --runInBand tests/e2e.test.js",
     "test": "npm run test:unit && npm run test:e2e"
   },

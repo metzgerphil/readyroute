@@ -6,7 +6,6 @@ const path = require('path');
 
 const {
   buildImport,
-  buildPublicationGateIndex,
   parseCsv,
   readJsonLines,
   readSourceInventory
@@ -30,6 +29,34 @@ const STATUS_MAP = {
   POTENTIALLY_OUTDATED: 'POTENTIALLY_OUTDATED',
   UNRESOLVED: 'INSUFFICIENT_EVIDENCE'
 };
+
+function buildResearchPublicationGateIndex(records, captureRows = [], traceClaims = []) {
+  const captureByKnowledgeId = new Map(captureRows.map((row) => [row.knowledge_id, row]));
+  const blockedClaimCounts = new Map();
+  for (const claim of traceClaims) {
+    if (claim.production_trace_gate !== 'CLAIM_FRAGMENT_TRACE_READY') {
+      blockedClaimCounts.set(claim.knowledge_id, (blockedClaimCounts.get(claim.knowledge_id) || 0) + 1);
+    }
+  }
+
+  return new Map(records.map((record) => {
+    const capture = captureByKnowledgeId.get(record.knowledge_id);
+    const captureGate = capture?.production_capture_gate || 'CAPTURE_GATE_MISSING';
+    const blockedClaims = blockedClaimCounts.get(record.knowledge_id) || 0;
+    const blockers = [];
+    if (record.knowledge_status !== 'VERIFIED') blockers.push(`KNOWLEDGE_STATUS_${record.knowledge_status}`);
+    if (!captureGate.startsWith('CAPTURE_COMPLETE')) blockers.push(captureGate);
+    if (blockedClaims) blockers.push(`${blockedClaims}_CLAIMS_REQUIRE_EXACT_EVIDENCE_ALLOCATION`);
+    return [record.knowledge_id, {
+      isPublished: record.knowledge_status === 'VERIFIED' && blockers.length === 0,
+      captureGate,
+      traceGate: blockedClaims
+        ? 'WITHHOLD_EXACT_CLAIM_FRAGMENT_ASSERTION_UNTIL_ALLOCATED'
+        : 'CLAIM_FRAGMENT_TRACE_READY',
+      blockers
+    }];
+  }));
+}
 
 function sha256(value) {
   return crypto.createHash('sha256').update(value).digest('hex');
@@ -106,7 +133,7 @@ function main() {
   const captureByKnowledgeId = new Map(captureRows.map((row) => [row.knowledge_id, row]));
   const traceClaims = readJsonLines(TRACE_PATH);
   const changeLog = fs.existsSync(CHANGE_LOG_PATH) ? readJsonLines(CHANGE_LOG_PATH) : [];
-  const publicationGateIndex = buildPublicationGateIndex(records, captureRows, traceClaims);
+  const publicationGateIndex = buildResearchPublicationGateIndex(records, captureRows, traceClaims);
   const importPayload = buildImport(records, generatedAt, cases, sourceInventory, publicationGateIndex);
   const importById = new Map(importPayload.knowledgeRows.map((row) => [row.knowledge_id, row]));
   const knownKnowledgeIds = new Set(records.map((record) => record.knowledge_id));
@@ -320,4 +347,6 @@ function main() {
   process.stdout.write(`${JSON.stringify(statusSummary, null, 2)}\n`);
 }
 
-main();
+if (require.main === module) main();
+
+module.exports = { buildResearchPublicationGateIndex };

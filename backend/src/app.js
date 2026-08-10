@@ -98,7 +98,9 @@ function createApp(options = {}) {
     stripePriceId: options.stripePriceId,
     trialDays: options.trialDays,
     requireManager,
-    sendManagerPasswordResetEmail: options.sendManagerPasswordResetEmail
+    sendManagerPasswordResetEmail: options.sendManagerPasswordResetEmail,
+    authorizeDriverDevice: options.authorizeDriverDevice,
+    requireDriverDeviceId: options.requireDriverDeviceId
   });
   const billingRouter = options.supabase && !options.stripeClient && !process.env.STRIPE_SECRET_KEY
       ? express.Router()
@@ -130,6 +132,8 @@ function createApp(options = {}) {
     now: options.now,
     jwtSecret: options.jwtSecret,
     sendManagerInviteEmail: options.sendManagerInviteEmail,
+    sendDriverInviteEmail: options.sendDriverInviteEmail,
+    sendDriverPasswordResetEmail: options.sendDriverPasswordResetEmail,
     sendManagerPasswordResetEmail: options.sendManagerPasswordResetEmail,
     stripeClient: options.stripeClient,
     stripePriceId: options.stripePriceId,
@@ -229,7 +233,11 @@ function createApp(options = {}) {
     '/staff/login'
   ], rateLimiters.login);
   app.use([
+    '/auth/driver/accept-invite',
     '/auth/manager/request-password-reset',
+    '/manager/drivers/:driver_id/invite',
+    '/manager/drivers/:driver_id/password-reset',
+    '/manager/manager-users/:managerUserId/password-reset',
     '/staff/request-password-reset'
   ], rateLimiters.passwordReset);
   app.use([

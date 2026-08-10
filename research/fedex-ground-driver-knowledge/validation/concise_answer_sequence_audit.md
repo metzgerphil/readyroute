@@ -28,7 +28,7 @@ The More Info answer may carry secondary context and later documentation, but it
 
 - Both `CONFLICT` records explicitly withhold the disputed step and direct escalation.
 - All 32 `HUMAN_REVIEW_REQUIRED` records limit the answer to the supported subset and state that management, station, safety, compliance, QA, CXPC, or another controlling reviewer must resolve the missing authority.
-- All 21 `POTENTIALLY_OUTDATED` records were reviewed for standalone version risk.
+- All 20 `POTENTIALLY_OUTDATED` records were reviewed for standalone version risk.
 
 ## Failure found and corrected
 

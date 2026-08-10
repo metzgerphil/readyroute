@@ -48,12 +48,12 @@ The following low counts are presently explainable because each source has a nar
 - `SRC-GDRIVE-FILE-0013` — Manifest Preview permissions and manifest/misload review.
 - `SRC-GDRIVE-FILE-0015` — package-placement quick reference, used as corroboration for the complete placement record.
 - `SRC-GDRIVE-FILE-0016` — personnel qualification flow, represented by one manager/eligibility record rather than an on-route procedure.
-- `SRC-GDRIVE-FILE-0017` — time-sensitive Authenticated Delivery screenshot, mapped only as corroboration that Ground availability was future at the captured date; it does not establish a current Ground procedure.
+- `SRC-GDRIVE-FILE-0017` — historical Authenticated Delivery screenshot, preserved with zero active mappings because the later current FORGE 3.3 guide controls the conditional Ground procedure.
 - `SRC-MGB-PAGE-0004` — the narrow P&D qualification overview now supports final-activation context plus the explicit 24-month certification-expiry branch. `SRC-MGB-PAGE-0005` has additional mappings for observed hours, observer eligibility, recertification, and vehicle-size qualification and is no longer a sparse source.
 - `SRC-MGB-PAGE-0006` and `SRC-MGB-DOC-0006` — accident-reporting landing page and OP-130 packet, mapped to immediate-scene and reporting sequences.
 - `SRC-MGB-PAGE-0010` and `SRC-MGB-PAGE-0011` — OP-201 request/confirmation notices, mapped to the commercial-release conflict and special-shipper branches.
 - `SRC-MGB-PAGE-0017` — coupling landing page, with the substantive coupling guide retained as a linked-source obligation.
-- `SRC-MGB-PAGE-0018` — time-sensitive FAD announcement, preserved as potentially outdated availability knowledge.
+- `SRC-MGB-PAGE-0018` — time-sensitive FAD announcement, preserved as historical launch context with zero active mappings after the current FORGE 3.3 guide resolved the operational branch.
 - `SRC-MGB-PAGE-0019` — heat and dry-ice article, split into two safety records.
 - `SRC-MGB-PAGE-0020`, `SRC-MGB-PAGE-0021`, and `SRC-MGB-PAGE-0022` — narrow rental/inspection pages represented by one complete conditional record each.
 

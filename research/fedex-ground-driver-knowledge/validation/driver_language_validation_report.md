@@ -20,16 +20,16 @@ The response modes prevent a successful knowledge-ID match from being mistaken f
 
 ## Results
 
-- 185 realistic driver-language cases plus a generated 690-variant retrieval-oracle index containing 665 embedded and 25 supplemental test surfaces.
+- 192 realistic driver-language cases plus a generated 724-variant retrieval-oracle index containing 699 embedded and 25 supplemental test surfaces.
 - 138 of 138 operational knowledge records have at least one formal case.
 - All 83 `VERIFIED` records are covered.
 - All 32 `HUMAN_REVIEW_REQUIRED` records are covered.
-- All 21 `POTENTIALLY_OUTDATED` records are covered.
+- All 20 `POTENTIALLY_OUTDATED` records are covered.
 - Both `CONFLICT` records are covered.
 - Every case has at least one explicit `must_not_do` guardrail.
 - Every expected record ID exists.
 - All expected sufficiency and response-mode classifications pass the status-aware validator.
-- All 185 cases have an exact generated clarification strategy and stop rule; twenty-one direct cases ask nothing, while all 164 non-direct cases preserve ordered decision or escalation facts.
+- All 192 cases have an exact generated clarification strategy and stop rule; twenty-seven direct cases ask nothing, while all 165 non-direct cases preserve ordered decision or escalation facts.
 
 ### Expected information sufficiency
 
@@ -49,7 +49,7 @@ The response modes prevent a successful knowledge-ID match from being mistaken f
 6. The FORGE page-completeness pass added eleven record-specific cases plus `FORGE-037`, which distinguishes a normally closed pickup from an unsent/sync-queued stop.
 7. A high-risk interaction pass added cases for specialized-service overrides, source-authority limits, safety priority, recovery/scan integrity, document custody, vehicle/EOD accountability, capacity/time-window interaction, qualification, and trailer-pull safety. All 30 multi-record cases are now reconciled in `validation/high_risk_interaction_coverage.csv`.
 8. A surface-language adversarial pass found weak explicit coverage for misspellings, incomplete phrases, and incorrect terminology. Fourteen source-bounded cases raised those dimensions to ten each without adding operational instructions; validator minimums now prevent regression.
-9. Twenty-five tagged paraphrases close the historical short/extended surface gaps without adding operational content; all 138 records now pass the deterministic short-plus-extended surface ledger.
+9. Twenty-five tagged paraphrases close the historical short/extended surface gaps without adding operational content; all 144 records now pass the deterministic short-plus-extended surface ledger.
 10. The MGB-119 reconciliation added `DLV-032` for shorthand around a missed first attempt on a PA+ package. It requires exact-label, attempt-state, safety, and signature clarification; it forbids expanding the undefined abbreviation or generalizing the same-day reattempt rule.
 11. The rendered page-2 security follow-up added `SEC-012`, which tests whether a driver may leave keys in a locked van. It requires the source's independent key control—remove the keys or secure them in a key lockbox—and separately checks the applicable bulkhead door and windows.
 12. Exact allocation review of the three-attempt record removed unsupported documentation, disposition, exception, and independent-authority claims. `DEL-032` now directly returns the sourced QA handoff after the third unsuccessful attempt while preserving the unresolved authorization boundary for a fourth attempt.

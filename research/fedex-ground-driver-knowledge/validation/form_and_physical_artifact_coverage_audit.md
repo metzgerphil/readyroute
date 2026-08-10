@@ -1,36 +1,33 @@
 # Form and physical-artifact coverage audit
 
-Status date: 2026-08-09
+Status date: 2026-08-10
 
 ## Result
 
 The reviewed corpus now has a deterministic, source-linked coverage ledger for 42 driver-used forms, cards, sheets, labels, manifests, credentials, guides, and vehicle/compliance records. The ledger connects 25 reviewed sources, 27 referenced-source gaps, and 30 operational knowledge records.
 
-This audit deliberately separates artifact possession from procedural knowledge. Seven workflows are complete enough to model from reviewed instructions even though a current physical specimen is not always archived. Twenty-three are only partially modeled, eleven are reference-only, and OP-135 remains a five-page form for which only page 1 is reviewed.
+This audit deliberately separates artifact possession from procedural knowledge. Eight workflows are complete enough to model from reviewed instructions even though a current physical specimen is not always archived. Twenty-three are only partially modeled and eleven are reference-only. OP-135 is now preserved and reviewed as a complete five-page original.
 
 ## Coverage summary
 
 ### Artifact access
 
-- 3 current artifacts fully reviewed: OP-130, OP-132, and OP-117's blank local Contact Information table.
-- 1 current artifact partially reviewed: OP-135 has all five upper page regions checksum-preserved, with cropped lower regions of pages 2-5 still unseen.
+- 4 current artifacts fully reviewed: OP-130, OP-132, OP-135, and OP-117's blank local Contact Information table.
 - 26 artifacts described but not acquired.
 - 11 generic document types described without an archived current specimen.
 - 1 photographed example family has unresolved identity and revision: the Delivery Record/hand-sheet images.
 
 ### Procedure coverage
 
-- 7 `COMPLETE_PROCEDURE_MODELED`.
+- 8 `COMPLETE_PROCEDURE_MODELED`.
 - 23 `PARTIAL_PROCEDURE_MODELED`.
 - 11 `REFERENCE_ONLY`.
-- 1 `FORM_FIELDS_PARTIALLY_REVIEWED`.
 
 ### Publication gates
 
-- 10 `VERIFIED_PROCEDURE_WITH_ARTIFACT_GAP`.
+- 11 `VERIFIED_PROCEDURE_WITH_ARTIFACT_GAP`.
 - 10 `HUMAN_REVIEW_REQUIRED`.
 - 20 `COMPLIANCE_REVIEW_REQUIRED`.
-- 1 `SOURCE_LIMIT_ONLY`.
 - 1 `LOCAL_CONFIGURATION_REQUIRED`.
 
 These publication labels apply to the artifact/form dimension. They do not override each linked operational record's `knowledge_status`.

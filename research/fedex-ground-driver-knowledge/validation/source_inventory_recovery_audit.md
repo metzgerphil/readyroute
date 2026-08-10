@@ -1,6 +1,6 @@
 # Source inventory recovery audit
 
-Status date: 2026-08-09
+Status date: 2026-08-10
 
 ## Event and containment
 
@@ -17,7 +17,7 @@ The 33 rows written before the mismatch retained their full prior metadata. The 
 
 The recovered baseline contained exactly 106 unique source IDs and passed reference, knowledge, and full corpus-integrity validation. Subsequent authenticated research added `SRC-MGB-DOC-0038` and `SRC-MGB-DOC-0039` from the fully reviewed August 2026 Sideswipe Collisions and July 2026 Summer Driving sources, bringing the current inventory to 108. Generated capture, source-knowledge, queue, and evidence-risk ledgers are rebuilt from the inventory rather than accepted from stale output.
 
-The inventory now carries `metadata_recovery_status` and `metadata_recovery_basis` on every row. The validator requires exactly 33 `ORIGINAL_ROW_RETAINED` rows, 73 `RECONSTRUCTED_FROM_CONTROLLED_LEDGERS` rows, and two `NEW_AUTHORITATIVE_ROW_AFTER_RECOVERY` rows, with a nonblank basis on each. This preserves the recovery boundary while allowing later authenticated additions to remain truthfully classified.
+The 121-row inventory now carries `metadata_recovery_status` and `metadata_recovery_basis` on every row. The validator requires exactly 26 `ORIGINAL_ROW_RETAINED` rows, 62 `RECONSTRUCTED_FROM_CONTROLLED_LEDGERS` rows, 11 `NEW_AUTHORITATIVE_ROW_AFTER_RECOVERY` rows, and 22 `ORIGINAL_BYTES_ACQUIRED_AND_FULLY_REVIEWED` rows, with a nonblank basis on each. The final category records the completed original-byte acquisitions and the four authenticated portal downloads proven byte-identical to fully reviewed supplied copies. Portal OP-117 is retained as a distinct-byte source with complete rendered-page identity. This preserves the recovery boundary without concealing later evidence improvement.
 
 ## Preserved and remaining limits
 

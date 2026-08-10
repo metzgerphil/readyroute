@@ -23,7 +23,7 @@ The field is not a synonym list, precedence graph, or authorization to merge ans
 Three records remain isolated and are justified one-for-one in `knowledge/standalone_record_justifications.csv`:
 
 - `KNO-COMMS-MEDIA-001` — narrow recording/media/brand policy.
-- `KNO-DEL-FAD-GROUND-001` — time-sensitive source limit that must not imply a Ground workflow.
+- `KNO-DEL-FAD-GROUND-001` — self-contained conditional FAD workflow whose package-identification and validation branches are fully expressed in the record.
 - `KNO-DEL-TOBACCO-001` — self-contained prohibition with an unresolved commercial branch.
 
 The later display/navigation-settings record now links the formerly isolated device-road record, so its earlier standalone justification was removed as stale. Every record added by the FORGE and complete Drive-PDF page passes has at least one evidence-supported companion link.

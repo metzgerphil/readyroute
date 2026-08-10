@@ -29,6 +29,9 @@ function getRequestIdentifier(req) {
     req.body?.phone ||
     req.body?.account_id ||
     req.body?.manager_email ||
+    req.params?.driver_id ||
+    req.params?.managerUserId ||
+    req.body?.token ||
     ''
   ).trim().toLowerCase();
 }

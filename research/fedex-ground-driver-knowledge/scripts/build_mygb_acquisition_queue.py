@@ -44,11 +44,10 @@ TITLE_SIGNAL_DESTINATIONS = {
 OPERATIONAL_FAMILY_SECTIONS = {"safety", "operations", "vehicles-fuel", "agreement"}
 
 PARTIAL_SOURCE_ORDER = {
-    "SRC-MGB-DOC-0008": 1,  # Current accident report form OP-135.
     "SRC-MGB-DOC-0015": 99,  # Rejected as non-current; pursue current OP-321 instead of further review.
-    "SRC-MGB-DOC-0010": 3,  # Current equipment terms.
     "SRC-MGB-DOC-0009": 4,  # Current sample agreement; sample limits remain.
     "SRC-MGB-ROOT-0001": 6,  # Dynamic home/news/search/global areas.
+    "SRC-MGB-DOC-0046": 12,  # Older 3.2 comparison source; subordinate to current 3.3.
 }
 
 FIELDS = [
@@ -433,7 +432,7 @@ def build_rows() -> list[dict[str, str]]:
 def main() -> int:
     rows = build_rows()
     with OUTPUT.open("w", encoding="utf-8", newline="") as handle:
-        writer = csv.DictWriter(handle, fieldnames=FIELDS)
+        writer = csv.DictWriter(handle, fieldnames=FIELDS, lineterminator="\n")
         writer.writeheader()
         writer.writerows(rows)
     print(f"wrote {len(rows)} MyGroundBiz acquisition queue rows to {OUTPUT}")

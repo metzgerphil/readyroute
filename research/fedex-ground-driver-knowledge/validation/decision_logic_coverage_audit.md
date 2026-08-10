@@ -8,7 +8,7 @@ Purpose: verify that the procedural decision map covers every current structured
 
 - 138 of 138 knowledge records are named in `knowledge/decision_logic.md`.
 - No decision-map identifier points to a missing knowledge record.
-- All 138 records contain at least one clarification requirement.
+- All 144 records contain at least one clarification requirement.
 - 134 records contain explicit conditions; four are unconditional within their stated applicability and retain clarification questions.
 - 40 records contain source-established exceptions.
 - 137 records contain an ordered procedure. The sole record without one is `KNO-DEL-BUS-OP201-001`, whose status is `CONFLICT`; withholding both disputed procedural branches is intentional.

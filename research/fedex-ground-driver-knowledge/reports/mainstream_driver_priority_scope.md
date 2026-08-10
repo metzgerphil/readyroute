@@ -1,6 +1,6 @@
 # Mainstream driver-operational priority scope
 
-Status date: 2026-08-09
+Status date: 2026-08-10
 
 ## Decision
 
@@ -21,17 +21,19 @@ The reviewed source set already provides substantial coverage of:
 - dogs, access hazards, locked gates, facility entry, vehicle/key security, accidents, and emergency escalation;
 - forms, labels, markings, SID information, manifests, and other driver-used artifacts where the source establishes their use.
 
-The current authoritative layer contains 138 general operational records. Eighty-three are `VERIFIED`; the remaining records are explicitly gated as `CONFLICT`, `HUMAN_REVIEW_REQUIRED`, or `POTENTIALLY_OUTDATED`. Driver-facing wording is separated from source truth, and unsupported workbook answers remain excluded.
+The current authoritative layer contains 144 general operational records. Eighty-nine are `VERIFIED`; the remaining records are explicitly gated as `CONFLICT`, `HUMAN_REVIEW_REQUIRED`, or `POTENTIALLY_OUTDATED`. Driver-facing wording is separated from source truth, and unsupported workbook answers remain excluded.
 
 ## Active acquisition/review lane
 
 ### Tier 1 — current, broadly applicable driver procedures
 
 1. Complete the current OP-135 accident-report form review (`SRC-MGB-DOC-0008`).
-2. Durably recapture the original bytes for the fully reviewed current Dog Bite Prevention source (`SRC-MGB-DOC-0011`); its seven-page safety guidance is already extracted and validated.
-3. Acquire/review the current pickup familiarization guide, notes, service-obligation guide, and unsuccessful-pickup reason-code guide (`SRC-MGB-DOC-0012` through `SRC-MGB-DOC-0015`).
-4. Acquire current controlling forms and instructions referenced by reviewed operational sources: OP-324, OP-321, OP-207/OP-207Res, HZ-035, SF-920P, relay check-in/out, current emergency-response guidance, and current vehicle/security standards.
-5. Acquire the cited 2025 Driver Safety Guidebook and Company Safety and Operation Handbook, then compare their mainstream procedures with the current authoritative layer.
+2. Complete the current FORGE 3.3 combined guide (`SRC-MGB-DOC-0047`), beginning with the new-feature and mainstream delivery/pickup workflow sections; compare older 3.2 content only at the section level and never let it override newer applicable guidance.
+3. Complete the current delayed-login, pickup-list, call-tag, settings/camera-scanning, and business-closure quick references (`SRC-MGB-DOC-0041` through `SRC-MGB-DOC-0045`).
+4. Durably recapture the original bytes for the fully reviewed current Dog Bite Prevention source (`SRC-MGB-DOC-0011`); its seven-page safety guidance is already extracted and validated.
+5. Acquire/review the current pickup familiarization guide, notes, service-obligation guide, and unsuccessful-pickup reason-code guide (`SRC-MGB-DOC-0012` through `SRC-MGB-DOC-0015`).
+6. Acquire current controlling forms and instructions referenced by reviewed operational sources: OP-324, OP-321, OP-207/OP-207Res, HZ-035, SF-920P, relay check-in/out, current emergency-response guidance, and current vehicle/security standards.
+7. Acquire the cited 2025 Driver Safety Guidebook and Company Safety and Operation Handbook, then compare their mainstream procedures with the current authoritative layer.
 
 ### Tier 2 — current contractor controls that can change driver action
 
@@ -64,3 +66,23 @@ The priority decision does not relax any safety or evidence control:
 ## Exit condition for the mainstream pass
 
 The focused pass is ready to hand off when Tier 1 sources are either fully reviewed or explicitly documented as inaccessible, Tier 2 identity/version checks are resolved to the extent the portal permits, every resulting rule is mapped to exact evidence, and the targeted decision-logic and driver-language validation suite passes. Deferred sources remain visible as later completeness work rather than being represented as reviewed or irrelevant.
+
+## 2026-08-09 authenticated current-source pass
+
+The live session was deliberately restricted to current mainstream sources after an initial archive capture was stopped. The pass:
+
+- revalidated the current Pickup Coordination, On Road, and Accident Reporting indexes;
+- durably captured and reviewed the current On Road index plus the June 2026 maintenance-resource notice and August 2026 Iowa ELP and Micron notices;
+- rechecked the current OP-135 viewer, preserving a complete page-1 render and page-addressed upper renders for pages 2-5;
+- confirmed that the viewer still does not expose original PDF bytes or the cropped lower portions of pages 2-5 through the available browser controls;
+- after authentication was restored, durably captured the current Equipment Terms landing page, confirmed the November 2025 English ISP and SRS/SRI terms, and preserved the January 2026 Vehicle Appearance and Brand Promotion FAQ as the newest linked companion;
+- captured the visible upper regions of both FAQ pages and documented their exact reviewed scope, while leaving the source partial because the lower regions and original PDF bytes remain unavailable.
+- captured upper visible regions of pages 2-5 of the November 2025 ISP Equipment Terms and all eight pages of the April 2026 English SRS/SRI FAQ; the latter is retained as business-level safety-performance context rather than a driver procedure.
+
+Newest applicable material is prioritized, but publication date alone does not override applicability, effective-date, geography, language, customer scope, or explicit supersession evidence. The June 2024 French equipment-terms translation, for example, is retained as older translation evidence and cannot override the November 2025 English terms. OP-130/132/135, FORGE 3.3, Equipment Terms, the January 2026 Vehicle Appearance FAQ, and the SRS/SRI FAQ are now complete original-byte reviews. Older pickup materials acquired on 2026-08-10 are retained only as historical/corroborative context where newer OP-117/FORGE guidance applies. Historical archive pages stay deferred behind current controlling material under this priority decision.
+
+## 2026-08-10 current FORGE pass
+
+The restored authenticated session was used first on current broadly applicable driver material. The pass durably captured and reviewed the July 2026 FORGE hub, inventoried five current mainstream quick references, captured bounded page-addressed portions of those guides, and preserved partial renders of the May 2026 FORGE 3.2 guide and the July 2026 FORGE 3.3 combined guide. The 3.3 source is now the highest-priority FORGE completion target. Its hub-added label (`7/13/2026`) and internal document date (`7/23/2026`) are both preserved rather than silently normalized.
+
+The 3.3 table of contents identifies changes involving driver release, time commitments, early pickup alerts, QR validation, signature/PPOD restrictions, HAL, and counter-user behavior. Those labels are discovery metadata only. Pages 11-13 expose bounded visible portions of the first three feature sections; the remaining procedures are not inferred. No canonical answer or status was changed from a title, table of contents, or cropped page.

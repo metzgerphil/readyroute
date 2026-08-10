@@ -10,7 +10,7 @@ The generated `clarification_strategy_index.jsonl` is a knowledge-validation art
 
 ## Exact coverage
 
-- 185 strategy rows for 185 driver-language cases.
+- 192 strategy rows for 192 driver-language cases.
 - Exact one-to-one case order, utterance, record set, sufficiency, response mode, and clarification-list equality.
 - 386 ordered clarification facts in total.
 - No normalized duplicate clarification inside any case.
@@ -49,7 +49,7 @@ Safety, conflict, source-limit, and version-limit preambles are actions or discl
 
 `scripts/build_clarification_strategy_index.py` regenerates the index from the formal cases. It rejects duplicate clarification facts, any direct-answer case that asks a question, and any non-direct case with no clarification context.
 
-`scripts/validate_corpus_integrity.py` requires byte-for-structure equality between the generated expectation and the committed 185-row index. Any changed case, ordering, sufficiency, mode, clarification, strategy, or stop rule therefore makes the corpus fail until the index is deliberately regenerated and reviewed.
+`scripts/validate_corpus_integrity.py` requires byte-for-structure equality between the generated expectation and the committed 192-row index. Any changed case, ordering, sufficiency, mode, clarification, strategy, or stop rule therefore makes the corpus fail until the index is deliberately regenerated and reviewed.
 
 ## Interpretation limit
 

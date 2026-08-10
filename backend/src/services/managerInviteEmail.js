@@ -109,7 +109,47 @@ async function sendManagerPasswordResetEmail({
   });
 }
 
+async function sendDriverInviteEmail({ to, fullName, inviteUrl, companyName }) {
+  const safeName = String(fullName || '').trim() || 'there';
+  const safeCompanyName = String(companyName || 'your company').trim();
+  const html = `
+    <div style="font-family:Arial,Helvetica,sans-serif;line-height:1.6;color:#173042;">
+      <h2>You're invited to ReadyRoute</h2>
+      <p>Hi ${safeName},</p>
+      <p>${safeCompanyName} created a ReadyRoute driver account for you.</p>
+      <p>Open the secure link below to establish your own password. Do not share the link.</p>
+      <p><a href="${inviteUrl}">Set your ReadyRoute driver password</a></p>
+      <p>This single-use link expires automatically.</p>
+    </div>
+  `;
+  return sendResendEmail({
+    to,
+    subject: `${safeCompanyName} invited you to ReadyRoute`,
+    html
+  });
+}
+
+async function sendDriverPasswordResetEmail({ to, fullName, resetUrl, companyName }) {
+  const safeName = String(fullName || '').trim() || 'there';
+  const safeCompanyName = String(companyName || 'your company').trim();
+  return sendResendEmail({
+    to,
+    subject: 'Reset your ReadyRoute driver password',
+    html: `
+      <div style="font-family:Arial,Helvetica,sans-serif;line-height:1.6;color:#173042;">
+        <h2>Reset your ReadyRoute driver password</h2>
+        <p>Hi ${safeName},</p>
+        <p>${safeCompanyName} prepared a secure password-reset link for your driver account.</p>
+        <p><a href="${resetUrl}">Choose a new ReadyRoute password</a></p>
+        <p>This single-use link expires in 30 minutes. Ignore it if you did not request the reset.</p>
+      </div>
+    `
+  });
+}
+
 module.exports = {
+  sendDriverInviteEmail,
+  sendDriverPasswordResetEmail,
   sendManagerInviteEmail,
   sendManagerPasswordResetEmail
 };
