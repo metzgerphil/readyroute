@@ -147,3 +147,11 @@ Each file above received complete content review using the appropriate text, wor
 - Bulk-transfer authorization and physical custody reconciliation beyond the application UI.
 - Login-warning legal/compliance resolution for medical card, CARB, HOS, qualification, agreement, and vehicle-record conditions.
 - Drop-box configuration authority for pickup times, holiday dates, and early-last-pickup status.
+
+## 2026-08-10 USB restoration and current recapture attempt
+
+- Located the source-bearing original workspace at `/Volumes/USB322FD/readyroute` and copied the excluded `sources`, `captures`, and `reviews/video_visual` trees into the clone with existing clone files preserved.
+- Post-copy comparison found no USB file missing from the clone. The clone is a strict superset and retains the later `SRC-MGB-DOC-0008` capture-manifest entry rather than replacing it with the older USB manifest.
+- All 69 registered source/capture checksums and the complete portable/full-corpus validator stack pass. See `validation/workspace_restoration_audit_2026-08-10.md`.
+- Attempted the exact current original-byte recapture URLs for `SRC-MGB-DOC-0038` and `SRC-MGB-DOC-0039`; MyGroundBiz returned `Access Denied` because the session had expired.
+- Listed all 31 direct files in the connected supplied Drive folder. Neither safety PDF is present there. The two source-level original-byte gaps and their six publication-gated verified records remain open without weakening capture or status controls.
