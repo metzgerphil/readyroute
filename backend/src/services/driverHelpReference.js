@@ -129,6 +129,34 @@ function buildDriverHelpReferenceDecision(question, allRecords) {
       'Ready Route cannot select or force a code without the canonical operational condition. Describe what happened, or contact management or station personnel.'
     );
   }
+  const deliveryCode = (code) => records.filter((record) => {
+    const parts = referenceParts(record);
+    return parts?.namespace === 'DELIVERY_STATUS' && sameNumericCode(parts.code, code);
+  });
+  const recipientMoved = /\b(?:customer|recipient|person) (?:has )?moved\b/.test(normalized)
+    || /\b(?:doesn t|doesnt|does not|no longer) live(?:s)? (?:here|there|at (?:this|the) address)\b/.test(normalized);
+  if (recipientMoved) {
+    const matchedRecords = deliveryCode('002');
+    return matchedRecords.length && matchedRecords.every(isEligibleReference)
+      ? answerDecision(matchedRecords)
+      : escalationDecision(
+        matchedRecords,
+        'Ready Route cannot verify delivery status 002 in the current canonical reference set. Contact management or station personnel rather than guessing.'
+      );
+  }
+  const cannotFindAddress = /\b(?:can t|cant|cannot|couldn t|couldnt|could not|unable to) (?:find|locate) (?:the |this )?(?:address|house|stop|location)\b/.test(normalized);
+  if (cannotFindAddress) {
+    const matchedRecords = [...deliveryCode('002'), ...deliveryCode('003')];
+    return clarificationDecision(
+      matchedRecords,
+      ['whether the labeled address cannot be physically located or the recipient no longer lives there'],
+      [
+        referenceFlowOption('address-not-found', 'The labeled address cannot be physically located', 'what is delivery code 003'),
+        referenceFlowOption('recipient-moved', 'I found the address, but the recipient moved', 'what is delivery code 002')
+      ],
+      'not sure whether the address is missing or the recipient moved'
+    );
+  }
   const matchedPattern = patternForQuestion(question, records);
 
   if (matchedPattern) {

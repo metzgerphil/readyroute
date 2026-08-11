@@ -78,6 +78,19 @@ test('screenshot regression: accepts unpadded delivery codes and compares bare s
   ]);
 });
 
+test('screenshot regression: routes moved recipients to 002 and clarifies an address that cannot be found', () => {
+  const moved = buildDriverHelpReferenceDecision("Customer moved and doesn't live here anymore", records);
+  const missing = buildDriverHelpReferenceDecision("I can't find the address", records);
+
+  assert.equal(moved.response_mode, 'ANSWER');
+  assert.deepEqual(moved.selected_records.map((record) => record.knowledge_id), ['DELIVERY_STATUS:002']);
+  assert.equal(missing.response_mode, 'CLARIFY');
+  assert.deepEqual(missing.clarification_options.map((option) => option.label), [
+    'The labeled address cannot be physically located',
+    'I found the address, but the recipient moved'
+  ]);
+});
+
 test('withholds unknown and status-limited definitions instead of guessing', () => {
   const partialUnknown = buildDriverHelpReferenceDecision('029 or 106', records);
   const outdated = buildDriverHelpReferenceDecision('what is delivery code 030', records);

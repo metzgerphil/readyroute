@@ -330,13 +330,9 @@ export default function DriverHelpScreen() {
   }
 
   const backSwipeResponder = PanResponder.create({
-    onMoveShouldSetPanResponder: (_event, gestureState) => shouldStartBackSwipe({
-      startX: gestureState.x0,
-      dx: gestureState.dx,
-      dy: gestureState.dy,
-      hasResult: Boolean(result),
-      isSubmitting
-    }),
+    onStartShouldSetPanResponder: () => Boolean(result) && !isSubmitting,
+    onMoveShouldSetPanResponder: () => Boolean(result) && !isSubmitting,
+    onPanResponderTerminationRequest: () => false,
     onPanResponderRelease: (_event, gestureState) => {
       if (shouldCompleteBackSwipe({ dx: gestureState.dx, vx: gestureState.vx })) {
         goBack();
@@ -388,7 +384,6 @@ export default function DriverHelpScreen() {
   return (
     <SafeAreaView style={styles.safeArea}>
       <KeyboardAvoidingView
-        {...backSwipeResponder.panHandlers}
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
         style={styles.keyboardView}
       >
@@ -713,6 +708,14 @@ export default function DriverHelpScreen() {
           ) : null}
         </ScrollView>
       </KeyboardAvoidingView>
+      {result ? (
+        <View
+          {...backSwipeResponder.panHandlers}
+          accessibilityHint="Swipe right to return to the previous Ready Route screen"
+          accessibilityLabel="Swipe back"
+          style={styles.backSwipeEdge}
+        />
+      ) : null}
     </SafeAreaView>
   );
 }
@@ -720,6 +723,7 @@ export default function DriverHelpScreen() {
 const styles = StyleSheet.create({
   safeArea: { backgroundColor: BRAND_BACKGROUND, flex: 1 },
   keyboardView: { flex: 1 },
+  backSwipeEdge: { bottom: 0, left: 0, position: 'absolute', top: 0, width: 28, zIndex: 20 },
   content: { alignItems: 'center', flexGrow: 1, paddingBottom: 48, paddingHorizontal: 20, paddingTop: 48 },
   brandRow: { alignItems: 'center', maxWidth: 680, minHeight: 46, width: '100%' },
   brandRowCompact: { minHeight: 38 },
