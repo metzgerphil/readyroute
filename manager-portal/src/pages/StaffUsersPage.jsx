@@ -68,6 +68,7 @@ export default function StaffUsersPage() {
   });
   const [successMessage, setSuccessMessage] = useState('');
   const [manualInviteUrl, setManualInviteUrl] = useState('');
+  const [resendStatus, setResendStatus] = useState({});
 
   const staffUsersQuery = useQuery({
     queryKey: ['staff-users'],
@@ -118,7 +119,7 @@ export default function StaffUsersPage() {
       const response = await api.post(`/staff/invites/${inviteId}/resend`);
       return response.data || {};
     },
-    onSuccess: (payload) => {
+    onSuccess: (payload, inviteId) => {
       if (payload.invite) {
         queryClient.setQueryData(['staff-invites'], (current = []) => (
           Array.isArray(current)
@@ -128,11 +129,24 @@ export default function StaffUsersPage() {
       }
 
       setManualInviteUrl(payload.invite_url || '');
-      setSuccessMessage(
-        payload.email_delivery?.delivered
-          ? 'Staff invite resent.'
-          : 'Staff invite refreshed. Share the invite link manually.'
-      );
+      setResendStatus((current) => ({
+        ...current,
+        [inviteId]: {
+          tone: payload.email_delivery?.delivered ? 'success' : 'warning',
+          message: payload.email_delivery?.delivered
+            ? `Invitation emailed again ${new Intl.DateTimeFormat(undefined, { hour: 'numeric', minute: '2-digit' }).format(new Date())}.`
+            : 'Email was not accepted by the delivery service. Use the refreshed invite link shown on this page.'
+        }
+      }));
+    },
+    onError: (error, inviteId) => {
+      setResendStatus((current) => ({
+        ...current,
+        [inviteId]: {
+          tone: 'error',
+          message: error.response?.data?.error || 'The invitation was not resent. Try again.'
+        }
+      }));
     }
   });
 
@@ -239,6 +253,12 @@ export default function StaffUsersPage() {
                     <strong>{invite.full_name || invite.email}</strong>
                     <span>{invite.email}</span>
                     <span>Expires {formatDateTime(invite.expires_at)}</span>
+                    {invite.email_provider_id ? <span>Email accepted by delivery service · {formatDateTime(invite.updated_at)}</span> : null}
+                    {resendStatus[invite.id] ? (
+                      <span className={`staff-invite-delivery-status ${resendStatus[invite.id].tone}`} role="status">
+                        {resendStatus[invite.id].message}
+                      </span>
+                    ) : null}
                   </div>
                   <div className="staff-user-row-badges">
                     <StatusBadge tone={getRoleTone(invite.role)}>
@@ -251,10 +271,13 @@ export default function StaffUsersPage() {
                       <button
                         className="secondary-inline-button"
                         disabled={resendInviteMutation.isPending}
-                        onClick={() => resendInviteMutation.mutate(invite.id)}
+                        onClick={() => {
+                          setResendStatus((current) => ({ ...current, [invite.id]: { tone: 'pending', message: 'Resending invitation…' } }));
+                          resendInviteMutation.mutate(invite.id);
+                        }}
                         type="button"
                       >
-                        Resend
+                        {resendInviteMutation.isPending && resendInviteMutation.variables === invite.id ? 'Resending…' : 'Resend'}
                       </button>
                     ) : null}
                   </div>

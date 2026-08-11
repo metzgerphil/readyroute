@@ -5,6 +5,7 @@ const jwt = require('jsonwebtoken');
 
 const defaultSupabase = require('../lib/supabase');
 const { createBillingService } = require('../services/billing');
+const { buildMetrics: buildDriverHelpMetrics } = require('../services/driverHelpMonthlyReport');
 const { sendManagerInviteEmail: defaultSendManagerInviteEmail } = require('../services/managerInviteEmail');
 const {
   sendReadyRouteStaffInviteEmail: defaultSendReadyRouteStaffInviteEmail,
@@ -77,6 +78,11 @@ function normalizeCents(value, fallback = 0) {
   }
 
   return Math.round(numeric);
+}
+
+function getUtcMonthStart(value = new Date()) {
+  const date = value instanceof Date ? value : new Date(value);
+  return new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), 1)).toISOString();
 }
 
 function normalizeBoolean(value, fallback = false) {
@@ -239,6 +245,8 @@ function presentAccountSummary(account, profile, counts = {}, latestTicket = nul
     retention_ends_at: account.retention_ends_at || null,
     canceled_at: account.canceled_at || null,
     cancellation_reason: account.cancellation_reason || null,
+    driver_help_monthly_report_enabled: account.driver_help_monthly_report_enabled !== false,
+    driver_help_minutes_per_answer_estimate: Number(account.driver_help_minutes_per_answer_estimate || 5),
     created_at: account.created_at || null,
     internal_profile: {
       lifecycle_status: profile?.lifecycle_status || 'lead',
@@ -1868,6 +1876,89 @@ function createReadyRouteStaffRouter(options = {}) {
     }
   });
 
+  router.post('/accounts/:accountId/managers/:managerId/invite', async (req, res) => {
+    try {
+      const staff = await getRequestStaff(req, jwtSecret, READYROUTE_STAFF_WRITE_ROLES, supabase);
+      const accountId = normalizeText(req.params.accountId, 120);
+      const managerId = normalizeText(req.params.managerId, 120);
+      const [{ data: account, error: accountError }, { data: manager, error: managerError }] = await Promise.all([
+        supabase
+          .from('accounts')
+          .select('id, company_name')
+          .eq('id', accountId)
+          .maybeSingle(),
+        supabase
+          .from('manager_users')
+          .select('id, account_id, email, full_name, password_hash, is_active, invited_at, accepted_at')
+          .eq('id', managerId)
+          .eq('account_id', accountId)
+          .maybeSingle()
+      ]);
+
+      if (accountError || managerError) throw accountError || managerError;
+      if (!account || !manager) return res.status(404).json({ error: 'Company manager invitation not found.' });
+      if (manager.is_active === false) return res.status(409).json({ error: 'Reactivate this manager before sending an invitation.' });
+      if (manager.password_hash || manager.accepted_at) {
+        return res.status(409).json({ error: 'This manager has already activated their account.' });
+      }
+
+      const invitedAt = now().toISOString();
+      const inviteToken = signToken({
+        account_id: account.id,
+        manager_user_id: manager.id,
+        email: manager.email,
+        purpose: 'manager_invite'
+      }, '7d');
+      const inviteUrl = buildManagerInviteUrl(inviteToken);
+      const { data: updatedManager, error: updateError } = await supabase
+        .from('manager_users')
+        .update({ invited_at: invitedAt, accepted_at: null })
+        .eq('id', manager.id)
+        .eq('account_id', account.id)
+        .select('id, account_id, email, full_name, is_active, invited_at, accepted_at')
+        .maybeSingle();
+      if (updateError) throw updateError;
+
+      let delivery = { delivered: false, skipped: true, reason: 'Email service is not configured' };
+      try {
+        delivery = await sendManagerInviteEmail({
+          to: manager.email,
+          fullName: manager.full_name,
+          inviteUrl,
+          companyName: account.company_name,
+          inviterName: staff.staff_name || staff.staff_email || 'Ready Route'
+        });
+      } catch (emailError) {
+        console.error('Staff manager invite resend delivery failed:', emailError);
+        delivery = { delivered: false, skipped: false, reason: 'Email delivery failed' };
+      }
+
+      await writeAuditLog({
+        staff,
+        action: 'company.manager_invite_resent',
+        targetType: 'manager_user',
+        targetId: manager.id,
+        accountId: account.id,
+        metadata: {
+          email: manager.email,
+          email_delivered: Boolean(delivery.delivered),
+          provider_message_id: delivery.provider_id || null
+        }
+      });
+
+      return res.status(200).json({
+        manager: { ...updatedManager, access_status: 'invited' },
+        email_delivery: delivery,
+        invite_url: delivery.delivered ? null : inviteUrl
+      });
+    } catch (error) {
+      const authResponse = sendAuthError(res, error);
+      if (authResponse) return authResponse;
+      console.error('ReadyRoute manager invite resend failed:', error);
+      return res.status(500).json({ error: 'Unable to resend the manager invitation.' });
+    }
+  });
+
   router.get('/accounts', async (req, res) => {
     try {
       await getRequestStaff(req, jwtSecret, READYROUTE_STAFF_ROLES, supabase);
@@ -2157,7 +2248,7 @@ function createReadyRouteStaffRouter(options = {}) {
 
       const accountResult = await supabase
         .from('accounts')
-        .select('id, company_name, manager_email, subscription_status, plan, vehicle_count, stripe_customer_id, stripe_subscription_id, account_status, cancellation_requested_at, service_ends_at, retention_ends_at, canceled_at, cancellation_reason, created_at')
+        .select('id, company_name, manager_email, subscription_status, plan, account_status, driver_help_monthly_report_enabled, driver_help_minutes_per_answer_estimate, created_at')
         .eq('id', accountId)
         .maybeSingle();
 
@@ -2177,12 +2268,16 @@ function createReadyRouteStaffRouter(options = {}) {
         billingSettingsResult,
         billingRoutesResult,
         routesResult,
-        auditLogsResult
+        auditLogsResult,
+        interactionsResult,
+        feedbackResult,
+        unansweredResult,
+        monthlyReportsResult
       ] = await Promise.all([
         loadAccountInternalProfile(accountId),
         supabase
           .from('manager_users')
-          .select('id, email, full_name, is_active, created_at, accepted_at')
+          .select('id, email, full_name, is_active, invited_at, accepted_at, created_at')
           .eq('account_id', accountId)
           .order('created_at', { ascending: false }),
         supabase
@@ -2218,7 +2313,33 @@ function createReadyRouteStaffRouter(options = {}) {
           .select('id, staff_user_id, staff_email, action, target_type, target_id, account_id, metadata, created_at')
           .eq('account_id', accountId)
           .order('created_at', { ascending: false })
-          .limit(25)
+          .limit(25),
+        supabase
+          .from('driver_help_interactions')
+          .select('id, driver_id, question, response_mode, selected_knowledge_ids, response_latency_ms, created_at')
+          .eq('account_id', accountId)
+          .gte('created_at', getUtcMonthStart(now()))
+          .order('created_at', { ascending: false })
+          .limit(1000),
+        supabase
+          .from('driver_help_feedback')
+          .select('id, interaction_id, driver_id, rating, comment, created_at')
+          .eq('account_id', accountId)
+          .gte('created_at', getUtcMonthStart(now()))
+          .order('created_at', { ascending: false })
+          .limit(1000),
+        supabase
+          .from('driver_help_unanswered_questions')
+          .select('id, interaction_id, driver_id, question, status, created_at, resolved_at')
+          .eq('account_id', accountId)
+          .order('created_at', { ascending: false })
+          .limit(100),
+        supabase
+          .from('driver_help_monthly_report_deliveries')
+          .select('id, report_month, recipient_email, metrics, delivery_status, delivered_at, created_at')
+          .eq('account_id', accountId)
+          .order('report_month', { ascending: false })
+          .limit(24)
       ]);
 
       const firstError = [
@@ -2228,7 +2349,11 @@ function createReadyRouteStaffRouter(options = {}) {
         billingSettingsResult,
         billingRoutesResult,
         routesResult,
-        auditLogsResult
+        auditLogsResult,
+        interactionsResult,
+        feedbackResult,
+        unansweredResult,
+        monthlyReportsResult
       ].find((result) => result.error)?.error;
 
       if (firstError) {
@@ -2237,6 +2362,10 @@ function createReadyRouteStaffRouter(options = {}) {
 
       const supportTickets = ticketsResult.data || [];
       const auditLogs = (auditLogsResult.data || []).map(presentAuditLog);
+      const interactions = interactionsResult.data || [];
+      const feedback = feedbackResult.data || [];
+      const minutesPerAnswer = Number(accountResult.data.driver_help_minutes_per_answer_estimate || 5);
+      const usageMetrics = buildDriverHelpMetrics(interactions, feedback, minutesPerAnswer);
       const account = presentAccountSummary(
         accountResult.data,
         profile,
@@ -2258,6 +2387,14 @@ function createReadyRouteStaffRouter(options = {}) {
         billing_routes: billingRoutesResult.data || [],
         routes: routesResult.data || [],
         audit_logs: auditLogs,
+        driver_help: {
+          month_start: getUtcMonthStart(now()).slice(0, 10),
+          metrics: usageMetrics,
+          recent_interactions: interactions.slice(0, 100),
+          recent_feedback: feedback.slice(0, 100),
+          unanswered_questions: unansweredResult.data || [],
+          monthly_reports: monthlyReportsResult.data || []
+        },
         timeline: buildAccountTimeline({
           account: accountResult.data,
           profile,

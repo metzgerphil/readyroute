@@ -56,6 +56,11 @@ class MockQueryBuilder {
     return this;
   }
 
+  gte(column, value) {
+    this.state.filters.push({ op: 'gte', column, value });
+    return this;
+  }
+
   order(column, options = {}) {
     this.state.order = { column, options };
     return this;
@@ -136,6 +141,7 @@ function signStaffToken(overrides = {}) {
 
 async function startTestServer({
   supabase,
+  sendManagerInviteEmail,
   sendReadyRouteStaffInviteEmail,
   sendReadyRouteStaffPasswordResetEmail,
   staffBillingService
@@ -146,6 +152,7 @@ async function startTestServer({
     now: () => new Date('2026-07-05T16:00:00.000Z'),
     enforceBilling: false,
     staffBillingService,
+    sendManagerInviteEmail,
     sendReadyRouteStaffInviteEmail,
     sendReadyRouteStaffPasswordResetEmail
   });
@@ -516,6 +523,59 @@ test('POST /staff/invites creates an invite and sends the invite email', async (
   }
 });
 
+test('POST /staff/invites/:inviteId/resend confirms email-provider acceptance', async () => {
+  const sentInvites = [];
+  const supabase = new MockSupabase((query) => {
+    if (query.table === 'readyroute_staff_invites' && query.operation === 'select') {
+      return { data: { id: 'invite-vlad', email: 'vlad@example.com', full_name: 'Vladyslav', role: 'support', status: 'pending' }, error: null };
+    }
+    if (query.table === 'readyroute_staff_invites' && query.operation === 'update') {
+      return {
+        data: {
+          id: 'invite-vlad',
+          email: 'vlad@example.com',
+          full_name: 'Vladyslav',
+          role: 'support',
+          status: 'pending',
+          email_provider_id: query.payload.email_provider_id,
+          expires_at: query.payload.expires_at,
+          updated_at: query.payload.updated_at
+        },
+        error: null
+      };
+    }
+    if (query.table === 'readyroute_staff_audit_log' && query.operation === 'insert') {
+      assert.equal(query.payload.action, 'staff.invite_resent');
+      assert.equal(query.payload.metadata.email_delivered, true);
+      return { data: null, error: null };
+    }
+    return { data: null, error: null };
+  });
+  const server = await startTestServer({
+    supabase,
+    sendReadyRouteStaffInviteEmail: async (payload) => {
+      sentInvites.push(payload);
+      return { delivered: true, skipped: false, provider_id: 'email-vlad-2' };
+    }
+  });
+
+  try {
+    const response = await fetch(`${server.baseUrl}/staff/invites/invite-vlad/resend`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${signStaffToken({ staff_role: 'owner' })}` }
+    });
+    const payload = await response.json();
+
+    assert.equal(response.status, 200);
+    assert.equal(payload.email_delivery.delivered, true);
+    assert.equal(payload.invite.email_provider_id, 'email-vlad-2');
+    assert.equal(sentInvites.length, 1);
+    assert.equal(sentInvites[0].to, 'vlad@example.com');
+  } finally {
+    await server.close();
+  }
+});
+
 test('POST /staff/invites/accept creates a staff user from an invite token', async () => {
   const inviteToken = 'opaque-invite-token';
   const tokenHash = crypto.createHash('sha256').update(inviteToken).digest('hex');
@@ -613,6 +673,72 @@ test('GET /staff/accounts rejects customer manager tokens', async () => {
     assert.equal(response.status, 403);
     assert.equal(payload.error, 'ReadyRoute staff access required');
     assert.equal(supabase.calls.length, 0);
+  } finally {
+    await server.close();
+  }
+});
+
+test('POST /staff/accounts/:accountId/managers/:managerId/invite resends a pending manager invitation', async () => {
+  const sentInvites = [];
+  const supabase = new MockSupabase((query) => {
+    if (query.table === 'accounts' && query.operation === 'select') {
+      return { data: { id: 'acct-1', company_name: 'Bridge Transportation' }, error: null };
+    }
+    if (query.table === 'manager_users' && query.operation === 'select') {
+      return {
+        data: {
+          id: 'manager-vlad',
+          account_id: 'acct-1',
+          email: 'vlad@example.com',
+          full_name: 'Vladyslav',
+          password_hash: null,
+          is_active: true,
+          accepted_at: null
+        },
+        error: null
+      };
+    }
+    if (query.table === 'manager_users' && query.operation === 'update') {
+      return {
+        data: {
+          id: 'manager-vlad',
+          account_id: 'acct-1',
+          email: 'vlad@example.com',
+          full_name: 'Vladyslav',
+          is_active: true,
+          invited_at: query.payload.invited_at,
+          accepted_at: null
+        },
+        error: null
+      };
+    }
+    if (query.table === 'readyroute_staff_audit_log' && query.operation === 'insert') {
+      assert.equal(query.payload.action, 'company.manager_invite_resent');
+      assert.equal(query.payload.metadata.email_delivered, true);
+      return { data: null, error: null };
+    }
+    return { data: null, error: null };
+  });
+  const server = await startTestServer({
+    supabase,
+    sendManagerInviteEmail: async (payload) => {
+      sentInvites.push(payload);
+      return { delivered: true, skipped: false, provider_id: 'manager-email-vlad-2' };
+    }
+  });
+
+  try {
+    const response = await fetch(`${server.baseUrl}/staff/accounts/acct-1/managers/manager-vlad/invite`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${signStaffToken({ staff_role: 'owner' })}` }
+    });
+    const payload = await response.json();
+
+    assert.equal(response.status, 200);
+    assert.equal(payload.email_delivery.delivered, true);
+    assert.equal(payload.manager.access_status, 'invited');
+    assert.equal(sentInvites[0].to, 'vlad@example.com');
+    assert.match(sentInvites[0].inviteUrl, /mode=invite/);
   } finally {
     await server.close();
   }
@@ -716,6 +842,8 @@ test('GET /staff/accounts/:accountId returns detail, usage, and timeline', async
           vehicle_count: 12,
           stripe_customer_id: 'cus_123',
           stripe_subscription_id: 'sub_123',
+          driver_help_monthly_report_enabled: true,
+          driver_help_minutes_per_answer_estimate: 5,
           created_at: '2026-07-01T12:00:00.000Z'
         },
         error: null
@@ -769,6 +897,29 @@ test('GET /staff/accounts/:accountId returns detail, usage, and timeline', async
       };
     }
 
+    if (query.table === 'driver_help_interactions') {
+      assert.equal(query.filters.some((filter) => filter.op === 'gte' && filter.column === 'created_at'), true);
+      return {
+        data: [
+          { id: 'interaction-1', driver_id: 'driver-1', question: 'sig pkg nobody home', response_mode: 'ANSWER', selected_knowledge_ids: ['KNO-1'], response_latency_ms: 900, created_at: '2026-07-05T15:00:00.000Z' },
+          { id: 'interaction-2', driver_id: 'driver-1', question: 'customer moved', response_mode: 'ESCALATE', selected_knowledge_ids: [], response_latency_ms: 800, created_at: '2026-07-05T14:00:00.000Z' }
+        ],
+        error: null
+      };
+    }
+
+    if (query.table === 'driver_help_feedback') {
+      return { data: [{ id: 'feedback-1', interaction_id: 'interaction-1', driver_id: 'driver-1', rating: 'up', created_at: '2026-07-05T15:01:00.000Z' }], error: null };
+    }
+
+    if (query.table === 'driver_help_unanswered_questions') {
+      return { data: [{ id: 'unanswered-1', interaction_id: 'interaction-2', driver_id: 'driver-1', question: 'customer moved', status: 'open', created_at: '2026-07-05T14:00:00.000Z' }], error: null };
+    }
+
+    if (query.table === 'driver_help_monthly_report_deliveries') {
+      return { data: [{ id: 'report-1', report_month: '2026-06-01', recipient_email: 'owner@example.com', delivery_status: 'sent', delivered_at: '2026-07-01T12:00:00.000Z' }], error: null };
+    }
+
     return { data: null, error: null };
   });
   const server = await startTestServer({ supabase });
@@ -786,6 +937,12 @@ test('GET /staff/accounts/:accountId returns detail, usage, and timeline', async
     assert.equal(payload.billing_settings.committed_route_count, 10);
     assert.equal(payload.routes[0].id, 'route-1');
     assert.equal(payload.timeline.length > 0, true);
+    assert.equal(payload.driver_help.metrics.total_questions, 2);
+    assert.equal(payload.driver_help.metrics.verified_answers, 1);
+    assert.equal(payload.driver_help.metrics.helpful_rate, 1);
+    assert.equal(payload.driver_help.metrics.estimated_manager_minutes_avoided, 5);
+    assert.equal(payload.driver_help.recent_interactions[0].question, 'sig pkg nobody home');
+    assert.equal(payload.driver_help.monthly_reports[0].delivery_status, 'sent');
   } finally {
     await server.close();
   }
