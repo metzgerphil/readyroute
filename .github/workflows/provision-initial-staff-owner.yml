@@ -34,13 +34,13 @@ jobs:
       SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
       SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
     steps:
+      - name: Check out release commit
+        uses: actions/checkout@v7
+
       - name: Confirm privileged operation
         env:
           CONFIRMATION: ${{ inputs.confirmation }}
         run: test "$CONFIRMATION" = "PROVISION STAFF OWNER"
-
-      - name: Check out release commit
-        uses: actions/checkout@v7
 
       - name: Set up Node.js
         uses: actions/setup-node@v6
