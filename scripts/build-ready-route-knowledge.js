@@ -16,6 +16,9 @@ const RESEARCH = path.join(ROOT, 'research/fedex-ground-driver-knowledge');
 const RELEASE = path.join(ROOT, 'knowledge');
 const RECORDS_PATH = path.join(RESEARCH, 'knowledge/records.jsonl');
 const CASES_PATH = path.join(RESEARCH, 'validation/driver_language_cases.jsonl');
+const REFERENCE_CASES_PATH = path.join(RESEARCH, 'validation/reference_language_cases.jsonl');
+const DELIVERY_STATUS_PATH = path.join(RESEARCH, 'knowledge/status_codes.jsonl');
+const PICKUP_REASON_PATH = path.join(RESEARCH, 'knowledge/pickup_reason_codes.jsonl');
 const INVENTORY_PATH = path.join(RESEARCH, 'inventory/source_inventory.csv');
 const CAPTURE_PATH = path.join(RESEARCH, 'knowledge/evidence_capture_risk_coverage.csv');
 const TRACE_PATH = path.join(RESEARCH, 'knowledge/claim_evidence_allocation_coverage.jsonl');
@@ -128,6 +131,9 @@ function main() {
   const generatedAt = new Date().toISOString();
   const records = readJsonLines(RECORDS_PATH);
   const cases = readJsonLines(CASES_PATH);
+  const referenceCases = readJsonLines(REFERENCE_CASES_PATH);
+  const deliveryStatuses = readJsonLines(DELIVERY_STATUS_PATH);
+  const pickupReasons = readJsonLines(PICKUP_REASON_PATH);
   const sourceInventory = readSourceInventory(INVENTORY_PATH);
   const captureRows = parseCsvObjects(CAPTURE_PATH);
   const captureByKnowledgeId = new Map(captureRows.map((row) => [row.knowledge_id, row]));
@@ -299,6 +305,9 @@ function main() {
     )).length,
     source_records: sources.length,
     driver_language_cases: cases.length,
+    reference_language_cases: referenceCases.length,
+    delivery_status_references: deliveryStatuses.length,
+    pickup_reason_references: pickupReasons.length,
     active_adjudications: activeApprovals.size
   };
 
@@ -311,10 +320,13 @@ function main() {
   writeJsonLines(path.join(RELEASE, 'insufficient-evidence/records.jsonl'), byStatus('INSUFFICIENT_EVIDENCE'));
   writeJsonLines(path.join(RELEASE, 'sources/registry.jsonl'), sources);
   writeJsonLines(path.join(RELEASE, 'evaluations/driver-language-cases.jsonl'), cases);
+  writeJsonLines(path.join(RELEASE, 'evaluations/reference-language-cases.jsonl'), referenceCases);
   writeJsonLines(path.join(RELEASE, 'history/change-log.jsonl'), changeLog);
   writeJson(path.join(RELEASE, 'operations/status-summary.json'), statusSummary);
   fs.mkdirSync(path.join(RELEASE, 'reference'), { recursive: true });
   fs.copyFileSync(path.join(RESEARCH, 'knowledge/taxonomy.json'), path.join(RELEASE, 'reference/taxonomy.json'));
+  writeJsonLines(path.join(RELEASE, 'reference/delivery-status-codes.jsonl'), deliveryStatuses);
+  writeJsonLines(path.join(RELEASE, 'reference/pickup-reason-codes.jsonl'), pickupReasons);
 
   const generatedFiles = [
     'operations/records.jsonl',
@@ -327,8 +339,11 @@ function main() {
     'insufficient-evidence/records.jsonl',
     'sources/registry.jsonl',
     'evaluations/driver-language-cases.jsonl',
+    'evaluations/reference-language-cases.jsonl',
     'history/change-log.jsonl',
-    'reference/taxonomy.json'
+    'reference/taxonomy.json',
+    'reference/delivery-status-codes.jsonl',
+    'reference/pickup-reason-codes.jsonl'
   ];
   const checksums = Object.fromEntries(generatedFiles.map((relativePath) => {
     const bytes = fs.readFileSync(path.join(RELEASE, relativePath));

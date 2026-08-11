@@ -248,6 +248,89 @@ def main() -> int:
             f"{invalid_pickup_translation_rows}"
         )
 
+    reference_case_path = ROOT / "validation/reference_language_cases.jsonl"
+    reference_cases = load_jsonl(reference_case_path)
+    reference_by_id = {
+        f"{namespace}:{row['code']}": row
+        for namespace, rows in rows_by_namespace.items()
+        for row in rows
+    }
+    allowed_case_fields = {
+        "case_id",
+        "utterance",
+        "source_candidate_case_ids",
+        "expected_reference_ids",
+        "unknown_reference_tokens",
+        "expected_knowledge_ids",
+        "must_clarify",
+        "must_not_do",
+        "case_type",
+        "information_sufficiency",
+        "response_mode",
+    }
+    allowed_case_modes = {
+        "ANSWER_REFERENCE_WITH_WORKFLOW_BOUNDARY",
+        "CLARIFY_BEFORE_REFERENCE_SELECTION",
+        "WITHHOLD_UNKNOWN_REFERENCE",
+    }
+    allowed_sufficiency = {
+        "SUFFICIENT_REFERENCE_DEFINITION",
+        "CONDITIONALLY_SUFFICIENT_REFERENCE_SELECTION",
+        "INSUFFICIENT_UNKNOWN_REFERENCE",
+    }
+    seen_case_ids: set[str] = set()
+    seen_utterances: set[str] = set()
+    seen_candidate_ids: set[str] = set()
+    invalid_reference_cases: list[tuple[str, str]] = []
+    for row in reference_cases:
+        case_id = row.get("case_id", "(missing)")
+        if set(row) != allowed_case_fields:
+            invalid_reference_cases.append((case_id, "unexpected field set"))
+        if case_id in seen_case_ids or not re.fullmatch(r"REF-CODE-\d{3}", case_id):
+            invalid_reference_cases.append((case_id, "invalid or duplicate case_id"))
+        seen_case_ids.add(case_id)
+        utterance = row.get("utterance", "").strip().lower()
+        if not utterance or utterance in seen_utterances:
+            invalid_reference_cases.append((case_id, "missing or duplicate utterance"))
+        seen_utterances.add(utterance)
+        for field in (
+            "source_candidate_case_ids",
+            "expected_reference_ids",
+            "unknown_reference_tokens",
+            "expected_knowledge_ids",
+            "must_clarify",
+            "must_not_do",
+        ):
+            if not isinstance(row.get(field), list):
+                invalid_reference_cases.append((case_id, f"{field} must be a list"))
+        candidate_ids = row.get("source_candidate_case_ids", [])
+        if not candidate_ids:
+            invalid_reference_cases.append((case_id, "candidate trace required"))
+        for candidate_id in candidate_ids:
+            if candidate_id in seen_candidate_ids:
+                invalid_reference_cases.append((case_id, "candidate mapped more than once"))
+            seen_candidate_ids.add(candidate_id)
+        unknown_refs = set(row.get("expected_reference_ids", [])) - set(reference_by_id)
+        if unknown_refs:
+            invalid_reference_cases.append((case_id, f"unknown references {sorted(unknown_refs)}"))
+        unknown_knowledge = set(row.get("expected_knowledge_ids", [])) - knowledge_ids
+        if unknown_knowledge:
+            invalid_reference_cases.append((case_id, f"unknown knowledge {sorted(unknown_knowledge)}"))
+        if row.get("response_mode") not in allowed_case_modes:
+            invalid_reference_cases.append((case_id, "invalid response mode"))
+        if row.get("information_sufficiency") not in allowed_sufficiency:
+            invalid_reference_cases.append((case_id, "invalid information sufficiency"))
+        if row.get("response_mode") == "CLARIFY_BEFORE_REFERENCE_SELECTION" and not row.get("must_clarify"):
+            invalid_reference_cases.append((case_id, "clarification mode lacks required question"))
+        if row.get("response_mode") == "WITHHOLD_UNKNOWN_REFERENCE" and not row.get("unknown_reference_tokens"):
+            invalid_reference_cases.append((case_id, "unknown-reference mode lacks unknown token"))
+        if not row.get("must_not_do"):
+            invalid_reference_cases.append((case_id, "must_not_do required"))
+    if invalid_reference_cases:
+        raise SystemExit(
+            f"reference-language evaluation failure: {invalid_reference_cases}"
+        )
+
     print(f"validated {total} total reference records")
     print(f"validated cross-namespace numeric collisions: {collision_numbers}")
     print(
@@ -257,6 +340,10 @@ def main() -> int:
     print(
         "validated pickup-reason translation coverage: "
         f"{dict(sorted(Counter(row['translation_status'] for row in pickup_translation_rows).items()))}"
+    )
+    print(
+        f"validated {len(reference_cases)} reference-language cases across "
+        f"{len(seen_candidate_ids)} candidate prompts"
     )
     return 0
 

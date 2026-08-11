@@ -46,6 +46,13 @@ An active adjudication creates `READY_ROUTE_APPROVED` canonical knowledge during
 
 The taxonomy is corpus-discovered rather than predetermined. Its generated release snapshot is [`reference/taxonomy.json`](reference/taxonomy.json); the maintained authoring taxonomy and readiness audit remain in the [research knowledge directory](../research/fedex-ground-driver-knowledge/knowledge/taxonomy.json).
 
+Canonical code references are released separately from operational procedures:
+
+- [`reference/delivery-status-codes.jsonl`](reference/delivery-status-codes.jsonl) — 50 three-digit delivery-status definitions with namespace, applicability, scope, status, and source trace.
+- [`reference/pickup-reason-codes.jsonl`](reference/pickup-reason-codes.jsonl) — seven two-digit pickup-reason definitions with namespace collision warnings and status limits.
+
+A reference definition does not automatically establish who may select the code or the complete operational workflow. Retrieval must preserve each reference's status and the linked translation-coverage boundary.
+
 Current major branches include delivery, pickup, signatures/releases, FORGE operation, documentation/forms, package handling, hazmat, safety, security, incidents, vehicles, DOT/HOS, qualifications, linehaul, customer contact, and reference-code namespaces. The taxonomy must expand when the corpus reveals new operational areas.
 
 ## Decision logic and procedures
@@ -72,7 +79,7 @@ Use the [source coverage report](../research/fedex-ground-driver-knowledge/repor
 
 ## Evaluations
 
-[`evaluations/README.md`](evaluations/README.md) describes the generated driver-language suite. The current release includes clear, shorthand, misspelled, incomplete, ambiguous, multi-procedure, conflict, version-sensitive, and safety cases. Retrieval may locate candidates, but status and evidence gates always run before answer presentation.
+[`evaluations/README.md`](evaluations/README.md) describes the generated operational and reference-language suites. The current release includes clear, shorthand, misspelled, incomplete, ambiguous, multi-procedure, conflict, version-sensitive, safety, code-comparison, namespace-collision, and definition-versus-workflow cases. Retrieval may locate candidates, but status and evidence gates always run before answer presentation.
 
 ## Updating the release
 

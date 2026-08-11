@@ -1,6 +1,6 @@
 {
   "schema_version": "1.0.0",
-  "generated_at": "2026-08-10T21:16:41.305Z",
+  "generated_at": "2026-08-11T00:35:37.150Z",
   "total_records": 144,
   "by_status": {
     "SOURCE_VERIFIED": 90,
@@ -14,5 +14,8 @@
   "status_eligible_but_evidence_gated": 6,
   "source_records": 121,
   "driver_language_cases": 192,
+  "reference_language_cases": 17,
+  "delivery_status_references": 50,
+  "pickup_reason_references": 7,
   "active_adjudications": 7
 }

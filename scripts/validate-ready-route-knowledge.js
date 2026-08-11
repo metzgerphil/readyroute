@@ -36,11 +36,18 @@ function main() {
   const publicationGaps = readJsonLines('operations/publication-gaps.jsonl');
   const sources = readJsonLines('sources/registry.jsonl');
   const cases = readJsonLines('evaluations/driver-language-cases.jsonl');
+  const referenceCases = readJsonLines('evaluations/reference-language-cases.jsonl');
+  const deliveryStatuses = readJsonLines('reference/delivery-status-codes.jsonl');
+  const pickupReasons = readJsonLines('reference/pickup-reason-codes.jsonl');
   const pendingReviewItems = readJsonLines('pending-review/review-items.jsonl');
   const changeLog = readJsonLines('history/change-log.jsonl');
   const manifest = JSON.parse(fs.readFileSync(path.join(RELEASE, 'manifest.json'), 'utf8'));
   const recordIds = new Set();
   const sourceIds = new Set(sources.map((source) => source.source_id));
+  const referenceIds = new Set([
+    ...deliveryStatuses.map((row) => `DELIVERY_STATUS:${row.code}`),
+    ...pickupReasons.map((row) => `PICKUP_REASON:${row.code}`)
+  ]);
 
   for (const record of records) {
     if (recordIds.has(record.knowledge_id)) errors.push(`Duplicate knowledge_id ${record.knowledge_id}`);
@@ -75,6 +82,19 @@ function main() {
   }
 
   for (const testCase of cases) {
+    for (const knowledgeId of testCase.expected_knowledge_ids || []) {
+      if (!recordIds.has(knowledgeId)) errors.push(`${testCase.case_id} references unknown knowledge ${knowledgeId}`);
+    }
+  }
+  const referenceCaseIds = new Set();
+  for (const testCase of referenceCases) {
+    if (!testCase.case_id || referenceCaseIds.has(testCase.case_id)) {
+      errors.push(`Invalid or duplicate reference case ${testCase.case_id || '(missing)'}`);
+    }
+    referenceCaseIds.add(testCase.case_id);
+    for (const referenceId of testCase.expected_reference_ids || []) {
+      if (!referenceIds.has(referenceId)) errors.push(`${testCase.case_id} references unknown reference ${referenceId}`);
+    }
     for (const knowledgeId of testCase.expected_knowledge_ids || []) {
       if (!recordIds.has(knowledgeId)) errors.push(`${testCase.case_id} references unknown knowledge ${knowledgeId}`);
     }
@@ -133,6 +153,9 @@ function main() {
     publication_ready: publicationReady.length,
     sources: sources.length,
     driver_language_cases: cases.length,
+    reference_language_cases: referenceCases.length,
+    delivery_status_references: deliveryStatuses.length,
+    pickup_reason_references: pickupReasons.length,
     change_log_entries: changeLog.length,
     manifest_files_verified: Object.keys(manifest.checksums || {}).length
   }, null, 2)}\n`);

@@ -33,6 +33,10 @@ const DEFAULT_QUEUE_OUTPUT = path.join(
   ROOT,
   'candidate-evaluations/2026-08-10-driver-bot-pack/candidate_canonical_mapping_queue.jsonl'
 );
+const REFERENCE_CASES_INPUT = path.join(
+  ROOT,
+  'validation/reference_language_cases.jsonl'
+);
 const REQUIRED_FIELDS = [
   'id',
   'driver_prompt',
@@ -129,6 +133,16 @@ function main() {
   const messyPrompts = extractMessyPrompts(
     fs.readFileSync(messyInputPath, 'utf8')
   );
+  const referenceCases = readJsonLines(REFERENCE_CASES_INPUT);
+  const referenceCaseByCandidateId = new Map();
+  for (const referenceCase of referenceCases) {
+    for (const candidateId of referenceCase.source_candidate_case_ids || []) {
+      if (referenceCaseByCandidateId.has(candidateId)) {
+        throw new Error(`candidate ${candidateId} maps to multiple reference cases`);
+      }
+      referenceCaseByCandidateId.set(candidateId, referenceCase);
+    }
+  }
   const formalByNormalizedUtterance = new Map(
     formalCases.map((testCase) => [
       normalizeDriverQuestion(testCase.utterance),
@@ -240,6 +254,7 @@ function main() {
   const mappingQueue = [...candidateUnion.values()]
     .sort((left, right) => left.normalizedPrompt.localeCompare(right.normalizedPrompt))
     .map((entry, index) => {
+      const candidateCaseId = `CAND-EVAL-${String(index + 1).padStart(4, '0')}`;
       const decision = buildDriverHelpDecision(entry.representativePrompt, runtimeRecords);
       const top = decision.candidates[0] || null;
       const topRecord = top ? recordsById.get(top.knowledge_id) : null;
@@ -252,8 +267,9 @@ function main() {
       } else if ((top?.score || 0) < 42) {
         reviewPriority = 'NEXT';
       }
+      const referenceMapping = referenceCaseByCandidateId.get(candidateCaseId) || null;
       return {
-        candidate_case_id: `CAND-EVAL-${String(index + 1).padStart(4, '0')}`,
+        candidate_case_id: candidateCaseId,
         representative_prompt: entry.representativePrompt,
         normalized_prompt: entry.normalizedPrompt,
         source_files: [
@@ -266,8 +282,10 @@ function main() {
         conflicting_candidate_expectations: entry.jsonRows.length > 1 && !entry.jsonRows.every(
           (row) => stableWithoutId(row) === stableWithoutId(entry.jsonRows[0])
         ),
-        canonical_mapping_status: 'NEEDS_CANONICAL_MAPPING',
-        review_priority: reviewPriority,
+        canonical_mapping_status: referenceMapping
+          ? 'MAPPED_TO_REFERENCE_EVALUATION'
+          : 'NEEDS_CANONICAL_MAPPING',
+        review_priority: referenceMapping ? 'COMPLETE' : reviewPriority,
         holdout_partition: stableBucket(entry.normalizedPrompt, 5) === 0
           ? 'INDEPENDENT_HOLDOUT'
           : 'DEVELOPMENT_REVIEW',
@@ -278,13 +296,18 @@ function main() {
           top_candidate_published: topPublished,
           top_candidate_score: top?.score || 0
         },
-        gold_expected_knowledge_ids: [],
-        gold_response_mode: null,
-        gold_information_sufficiency: null,
-        gold_must_clarify: [],
-        gold_must_not_do: [],
+        gold_reference_case_id: referenceMapping?.case_id || null,
+        gold_reference_ids: referenceMapping?.expected_reference_ids || [],
+        gold_unknown_reference_tokens: referenceMapping?.unknown_reference_tokens || [],
+        gold_expected_knowledge_ids: referenceMapping?.expected_knowledge_ids || [],
+        gold_response_mode: referenceMapping?.response_mode || null,
+        gold_information_sufficiency: referenceMapping?.information_sufficiency || null,
+        gold_must_clarify: referenceMapping?.must_clarify || [],
+        gold_must_not_do: referenceMapping?.must_not_do || [],
         adjudication_ids: [],
-        reviewer_notes: ''
+        reviewer_notes: referenceMapping
+          ? 'Human-reviewed against canonical reference and translation ledgers; candidate expected answer was not used as authority.'
+          : ''
       };
     });
 
@@ -342,6 +365,12 @@ function main() {
       ).length,
       development_review_count: mappingQueue.filter(
         (row) => row.holdout_partition === 'DEVELOPMENT_REVIEW'
+      ).length,
+      mapped_to_reference_evaluation_count: mappingQueue.filter(
+        (row) => row.canonical_mapping_status === 'MAPPED_TO_REFERENCE_EVALUATION'
+      ).length,
+      needs_canonical_mapping_count: mappingQueue.filter(
+        (row) => row.canonical_mapping_status === 'NEEDS_CANONICAL_MAPPING'
       ).length
     },
     current_retrieval_profile: {

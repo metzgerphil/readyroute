@@ -1631,6 +1631,69 @@ def main() -> int:
     if missing_case_records:
         raise SystemExit(f"driver-language cases reference unknown records: {missing_case_records}")
 
+    reference_cases = load_jsonl(ROOT / "validation/reference_language_cases.jsonl")
+    assert_unique(
+        [case["case_id"] for case in reference_cases],
+        "reference-language case_id",
+    )
+    assert_unique(
+        [normalize_driver_text(case["utterance"]) for case in reference_cases],
+        "normalized reference-language utterance",
+    )
+    reference_ids = {
+        f"DELIVERY_STATUS:{row['code']}"
+        for row in load_jsonl(ROOT / "knowledge/status_codes.jsonl")
+    } | {
+        f"PICKUP_REASON:{row['code']}"
+        for row in load_jsonl(ROOT / "knowledge/pickup_reason_codes.jsonl")
+    }
+    invalid_reference_case_links = sorted(
+        (case["case_id"], reference_id)
+        for case in reference_cases
+        for reference_id in case["expected_reference_ids"]
+        if reference_id not in reference_ids
+    )
+    candidate_mapping_queue = load_jsonl(
+        ROOT
+        / "candidate-evaluations/2026-08-10-driver-bot-pack/"
+        / "candidate_canonical_mapping_queue.jsonl"
+    )
+    candidate_mapping_by_id = {
+        row["candidate_case_id"]: row for row in candidate_mapping_queue
+    }
+    invalid_reference_candidate_links: list[tuple[str, str]] = []
+    for case in reference_cases:
+        for candidate_id in case["source_candidate_case_ids"]:
+            candidate = candidate_mapping_by_id.get(candidate_id)
+            if not candidate:
+                invalid_reference_candidate_links.append(
+                    (case["case_id"], f"unknown candidate {candidate_id}")
+                )
+                continue
+            if candidate["holdout_partition"] != "DEVELOPMENT_REVIEW":
+                invalid_reference_candidate_links.append(
+                    (case["case_id"], f"holdout contamination {candidate_id}")
+                )
+            if normalize_driver_text(candidate["representative_prompt"]) != normalize_driver_text(case["utterance"]):
+                invalid_reference_candidate_links.append(
+                    (case["case_id"], f"utterance mismatch {candidate_id}")
+                )
+            if (
+                candidate["canonical_mapping_status"]
+                != "MAPPED_TO_REFERENCE_EVALUATION"
+                or candidate["gold_reference_case_id"] != case["case_id"]
+                or candidate["gold_reference_ids"] != case["expected_reference_ids"]
+            ):
+                invalid_reference_candidate_links.append(
+                    (case["case_id"], f"queue mapping mismatch {candidate_id}")
+                )
+    if invalid_reference_case_links or invalid_reference_candidate_links:
+        raise SystemExit(
+            "reference-language corpus integration failure: "
+            f"reference_links={invalid_reference_case_links}, "
+            f"candidate_links={invalid_reference_candidate_links}"
+        )
+
     clarification_strategy_index = load_jsonl(
         ROOT / "validation/clarification_strategy_index.jsonl"
     )
@@ -2992,6 +3055,7 @@ def main() -> int:
         f"{len(taxonomy_ids)} taxonomy nodes, {len(variant_entries)} question variants, "
         f"{len(driver_variant_index)} variant-index rows, "
         f"{len(cases)} driver-language cases, "
+        f"{len(reference_cases)} reference-language cases, "
         f"{len(record_language_surface_coverage)} record-language surface rows, "
         f"{len(clarification_strategy_index)} clarification-strategy rows, "
         f"{len(interaction_coverage)} multi-record interaction cases"

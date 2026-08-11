@@ -10,7 +10,7 @@ This is a validated progress checkpoint, not the Phase 1 completion report. Phas
 - 144 general operational knowledge records: 90 `VERIFIED`, 32 `HUMAN_REVIEW_REQUIRED`, 20 `POTENTIALLY_OUTDATED`, and two `CONFLICT`.
 - 383 exact evidence objects and mapping rows across 226 unique knowledge/source pairs.
 - 3,242 substantive claims: 1,774 unambiguous single-fragment claims and 1,468 human-allocated multi-fragment claims across 65 records; zero allocation rows remain pending.
-- 192 formal driver-language cases and 724 indexed variants covering all 144 records.
+- 192 formal operational driver-language cases, 17 canonical reference-language cases, and 724 indexed operational variants covering all 144 records plus the code-reference boundary.
 - Canonical release: 90 `SOURCE_VERIFIED`, seven `READY_ROUTE_APPROVED`, 27 `PENDING_REVIEW`, and 20 `POTENTIALLY_OUTDATED`; 88 records are publication-ready and nine otherwise status-eligible records remain evidence-capture gated.
 
 ## Quality-control and adversarial result
@@ -65,3 +65,7 @@ The subsequent restored-corpus adversarial pass reviewed all 144 current records
 The remaining human-decision work is now consolidated into `knowledge/human_adjudication_queue.csv`: exactly 27 canonical pending records after the seven active approvals are excluded. Each row carries its current safe boundary, exact unresolved decision, responsible owner class, evidence-quality requirements, source/backlog dependencies, and publication gate. The human-readable `reports/human_adjudication_packet_2026-08-10.md` prioritizes 20 mainstream P&D questions before six compliance/qualification questions and one specialized linehaul question.
 
 The separate currency lane is now consolidated into `knowledge/version_confirmation_queue.csv`: exactly all 20 canonical `POTENTIALLY_OUTDATED` records. Each row preserves its older source/version and locator, exact controlling update needed, owner class, evidence-quality requirements, current safe boundary, dependency, and qualification gate. The human-readable `reports/version_confirmation_packet_2026-08-10.md` prioritizes safety and mainstream transaction/data-integrity behavior before device support and low-risk settings/reference behavior.
+
+## Candidate evaluation continuation
+
+The owner-supplied 155-row evaluation pack was preserved byte-for-byte and reduced to a 145-prompt union. Its proposed answers were not accepted as authority. Seventeen non-holdout mainstream code questions are now independently mapped to the canonical delivery-status and pickup-reason layers in `validation/reference_language_cases.jsonl`. The cases distinguish code definitions from complete procedures, preserve missing-workflow and human-review gates, require namespace/situation clarification where material, and withhold the unknown code token `106` rather than importing the candidate definition. The other 128 prompts remain unmapped, and all 32 deterministic holdout prompts remain untouched.

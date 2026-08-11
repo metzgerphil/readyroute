@@ -32,6 +32,7 @@ This workspace contains the source inventory, research ledger, extracted operati
 - `knowledge/source_to_knowledge.csv`: reviewed source/locator-to-record scopes used by the claim-provenance index.
 - `knowledge/status_code_translation_coverage.csv`: one-row-per-delivery-code classification separating operationally modeled codes from auto-applied references, workflow gaps, outside-Ground entries, and status-limited references.
 - `knowledge/pickup_reason_translation_coverage.csv`: one-row-per-pickup-reason classification preserving operational links, OP-321 limitations, Express scope, and required follow-up.
+- `validation/reference_language_cases.jsonl`: status-aware canonical reference evaluation cases for code comparisons, namespace ambiguity, definition-only workflow gaps, unknown tokens, and selection-authority boundaries.
 - `knowledge/form_artifact_coverage.csv`: deterministic inventory of driver-used forms, cards, hand sheets, labels, manifests, credentials, and related physical documentation, including artifact access, procedural completeness, publication gates, and exact source/backlog/knowledge links.
 - `knowledge/op117_page_coverage.csv`: deterministic reconciliation of every OP-117 v2 page to operational knowledge, normalized reference data, a tracked artifact, or an explicit non-operational disposition.
 - `knowledge/forge_page_coverage.csv`: deterministic reconciliation of every page in the 246-page FORGE 2.8.0 application guide to operational knowledge or an explicit front-matter/UI/reference/demo disposition.
