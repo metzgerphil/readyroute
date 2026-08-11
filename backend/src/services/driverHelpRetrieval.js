@@ -1125,7 +1125,9 @@ function buildDriverHelpDecision(question, records, context = {}) {
   }
 
   const tokens = new Set(tokenize(question));
-  const ordinaryRecipientRefusal = tokens.has('refused')
+  const refusalWording = tokens.has('refused')
+    || /\b(?:won t|wont|will not|doesn t|doesnt|does not) (?:take|accept|want)\b/.test(normalizedQuestion);
+  const ordinaryRecipientRefusal = refusalWording
     && (tokens.has('customer') || tokens.has('recipient'))
     && (tokens.has('package') || tokens.has('delivery'))
     && !(tokens.has('call') && tokens.has('tag'))

@@ -391,6 +391,7 @@ describe('DriverHelpScreen', () => {
     fireEvent.press(screen.getByLabelText('Ask Ready Route'));
     await screen.findByText('Complete the verified procedure.');
 
+    expect(screen.getByLabelText('Swipe back')).toBeTruthy();
     fireEvent.press(screen.getByLabelText('Go back'));
 
     expect(screen.getByText('What do you need help with?')).toBeTruthy();

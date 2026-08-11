@@ -541,6 +541,31 @@ test('speech filler and self-correction do not displace the operational intent',
   );
 });
 
+test('screenshot regression: wont-take wording stays inside the ordinary refusal boundary', () => {
+  const refusal = {
+    ...records[0],
+    knowledge_id: 'KNO-DEL-REFUSED-001',
+    status: 'PENDING_REVIEW',
+    is_published: false,
+    canonical_situation: 'Recipient refuses an ordinary package',
+    normalized_description: 'Customer refuses an ordinary delivery',
+    driver_question_variants: ['customer refuses package']
+  };
+  const cod = {
+    ...records[0],
+    knowledge_id: 'KNO-DEL-COD-MULTI-001',
+    canonical_situation: 'Delivering multiple Collect on Delivery packages at one stop',
+    normalized_description: 'Customer payment and COD delivery procedure',
+    driver_question_variants: ['customer wont take delivery']
+  };
+
+  const decision = buildDriverHelpDecision("Customer won't take delivery", [refusal, cod]);
+
+  assert.equal(decision.response_mode, 'ESCALATE');
+  assert.match(decision.escalation_message, /ordinary delivery refusal/i);
+  assert.match(decision.escalation_message, /code 006/i);
+});
+
 test('specific pharmacy, hazmat-delivery, and leaking-call-tag intents outrank generic signature or package records', () => {
   const pharmacy = {
     ...records[0],
