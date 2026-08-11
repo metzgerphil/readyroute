@@ -148,6 +148,7 @@ async function sendDriverPasswordResetEmail({ to, fullName, resetUrl, companyNam
 }
 
 module.exports = {
+  sendResendEmail,
   sendDriverInviteEmail,
   sendDriverPasswordResetEmail,
   sendManagerInviteEmail,

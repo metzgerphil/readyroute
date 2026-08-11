@@ -5,6 +5,7 @@ const jwt = require('jsonwebtoken');
 
 const defaultSupabase = require('../lib/supabase');
 const { createBillingService } = require('../services/billing');
+const { sendManagerInviteEmail: defaultSendManagerInviteEmail } = require('../services/managerInviteEmail');
 const {
   sendReadyRouteStaffInviteEmail: defaultSendReadyRouteStaffInviteEmail,
   sendReadyRouteStaffPasswordResetEmail: defaultSendReadyRouteStaffPasswordResetEmail
@@ -431,6 +432,7 @@ function createReadyRouteStaffRouter(options = {}) {
     options.sendReadyRouteStaffInviteEmail || defaultSendReadyRouteStaffInviteEmail;
   const sendReadyRouteStaffPasswordResetEmail =
     options.sendReadyRouteStaffPasswordResetEmail || defaultSendReadyRouteStaffPasswordResetEmail;
+  const sendManagerInviteEmail = options.sendManagerInviteEmail || defaultSendManagerInviteEmail;
   const billingService = options.billingService || createBillingService({
     supabase,
     stripeClient: options.stripeClient
@@ -464,6 +466,11 @@ function createReadyRouteStaffRouter(options = {}) {
   function buildStaffInviteUrl(token) {
     const baseUrl = getManagerPortalBaseUrl().replace(/\/$/, '');
     return `${baseUrl}/readyroute/accept-invite?token=${encodeURIComponent(token)}`;
+  }
+
+  function buildManagerInviteUrl(token) {
+    const baseUrl = getManagerPortalBaseUrl().replace(/\/$/, '');
+    return `${baseUrl}/reset-password?token=${encodeURIComponent(token)}&mode=invite`;
   }
 
   async function writeAuditLog({
@@ -1745,6 +1752,119 @@ function createReadyRouteStaffRouter(options = {}) {
       if (error.status === 400) return res.status(400).json({ error: error.message });
       console.error('ReadyRoute operating costs CSV import failed:', error);
       return res.status(500).json({ error: 'Unable to import operating costs.' });
+    }
+  });
+
+  router.post('/accounts', async (req, res) => {
+    let createdAccountId = null;
+    try {
+      const staff = await getRequestStaff(req, jwtSecret, READYROUTE_STAFF_WRITE_ROLES, supabase);
+      const companyName = normalizeText(req.body?.company_name, 180);
+      const managerName = normalizeText(req.body?.manager_name, 180);
+      const managerEmail = normalizeEmail(req.body?.manager_email);
+
+      if (!companyName || !managerName || !isValidEmail(managerEmail)) {
+        return res.status(400).json({ error: 'Company name, manager name, and a valid manager email are required.' });
+      }
+
+      const existing = await supabase
+        .from('manager_users')
+        .select('id, password_hash, full_name')
+        .eq('email', managerEmail)
+        .eq('is_active', true)
+        .limit(1)
+        .maybeSingle();
+      if (existing.error) throw existing.error;
+
+      const inaccessiblePasswordHash = await bcrypt.hash(crypto.randomBytes(32).toString('hex'), 10);
+      const { data: account, error: accountError } = await supabase
+        .from('accounts')
+        .insert({
+          company_name: companyName,
+          manager_email: managerEmail,
+          manager_password_hash: inaccessiblePasswordHash,
+          vehicle_count: 0,
+          plan: 'starter',
+          subscription_status: 'incomplete'
+        })
+        .select('id, company_name, manager_email, subscription_status, plan, created_at')
+        .single();
+      if (accountError || !account) throw accountError || new Error('Account was not created');
+      createdAccountId = account.id;
+
+      const invitedAt = now().toISOString();
+      const linkedExistingManager = Boolean(existing.data?.password_hash);
+      const { data: manager, error: managerError } = await supabase
+        .from('manager_users')
+        .insert({
+          account_id: account.id,
+          email: managerEmail,
+          full_name: managerName,
+          password_hash: linkedExistingManager ? existing.data.password_hash : null,
+          is_active: true,
+          invited_at: invitedAt,
+          accepted_at: linkedExistingManager ? invitedAt : null
+        })
+        .select('id, account_id, email, full_name, invited_at')
+        .single();
+      if (managerError || !manager) throw managerError || new Error('Manager was not created');
+
+      await supabase.from('account_internal_profiles').upsert({
+        account_id: account.id,
+        lifecycle_status: 'onboarding',
+        onboarding_stage: 'manager_invited',
+        updated_at: invitedAt
+      }, { onConflict: 'account_id' });
+
+      let inviteUrl = null;
+      let delivery = { delivered: false, skipped: true };
+      if (!linkedExistingManager) {
+        const inviteToken = signToken({
+          account_id: account.id,
+          manager_user_id: manager.id,
+          email: manager.email,
+          purpose: 'manager_invite'
+        }, '7d');
+        inviteUrl = buildManagerInviteUrl(inviteToken);
+        try {
+          delivery = await sendManagerInviteEmail({
+            to: manager.email,
+            fullName: manager.full_name,
+            inviteUrl,
+            companyName: account.company_name,
+            inviterName: staff.full_name || staff.email || 'Ready Route'
+          });
+        } catch (emailError) {
+          console.error('Staff company manager invite delivery failed:', emailError);
+          delivery = { delivered: false, skipped: false };
+        }
+      }
+
+      await writeAuditLog({
+        staff,
+        action: 'company.created',
+        targetType: 'account',
+        targetId: account.id,
+        accountId: account.id,
+        metadata: { manager_email: manager.email }
+      });
+
+      return res.status(201).json({
+        account,
+        manager: { ...manager, access_status: linkedExistingManager ? 'active' : 'invited' },
+        invitation: {
+          email_delivery: linkedExistingManager ? 'not_required' : delivery.delivered ? 'sent' : delivery.skipped ? 'not_configured' : 'failed',
+          invite_url: delivery.delivered ? null : inviteUrl
+        }
+      });
+    } catch (error) {
+      if (createdAccountId) {
+        await supabase.from('accounts').delete().eq('id', createdAccountId);
+      }
+      const authResponse = sendAuthError(res, error);
+      if (authResponse) return authResponse;
+      console.error('ReadyRoute company creation failed:', error);
+      return res.status(500).json({ error: 'Unable to create the company and manager invitation.' });
     }
   });
 

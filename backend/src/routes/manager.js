@@ -2522,7 +2522,7 @@ function createManagerRouter(options = {}) {
     try {
       let driversQuery = await supabase
         .from('drivers')
-        .select('id, account_id, name, email, fedex_driver_id, phone, date_of_birth, hourly_rate, daily_flat_rate, is_active, is_test, test_data')
+        .select('id, account_id, name, email, username, fedex_driver_id, phone, is_active, invited_at, invite_accepted_at, password_hash, is_test, test_data')
         .eq('account_id', req.account.account_id)
         .order('name');
 
@@ -2543,12 +2543,24 @@ function createManagerRouter(options = {}) {
       const driverIds = productionDrivers.map((driver) => driver.id);
       const documentsByDriverId = await loadDriverDocumentsForAccount(supabase, req.account.account_id, driverIds);
 
+      const inviteExpiryMs = 7 * 24 * 60 * 60 * 1000;
+      const nowMs = nowProvider().getTime();
       return res.status(200).json({
         drivers: productionDrivers.map((driver) => ({
           fedex_driver_id: null,
           date_of_birth: null,
           daily_flat_rate: 0,
           ...driver,
+          password_hash: undefined,
+          access_status: driver.is_active === false
+            ? 'deactivated'
+            : driver.invite_accepted_at || driver.password_hash
+              ? 'active'
+              : driver.invited_at
+                ? nowMs - new Date(driver.invited_at).getTime() >= inviteExpiryMs
+                  ? 'invite_expired'
+                  : 'invited'
+                : 'not_invited',
           documents: documentsByDriverId.get(driver.id) || [],
           document_summary: buildDriverDocumentSummary(documentsByDriverId.get(driver.id) || [])
         }))
@@ -4368,13 +4380,18 @@ function createManagerRouter(options = {}) {
       date_of_birth: dateOfBirth,
       hourly_rate: hourlyRate,
       daily_flat_rate: dailyFlatRate,
-      pin
+      pin,
+      username,
+      send_invite: sendInvite = false
     } = req.body || {};
     const parsedHourlyRate = hourlyRate == null || hourlyRate === '' ? 0 : Number(hourlyRate);
     const parsedDailyFlatRate = dailyFlatRate == null || dailyFlatRate === '' ? 0 : Number(dailyFlatRate);
 
     if (!name || !email || !Number.isFinite(parsedHourlyRate) || !Number.isFinite(parsedDailyFlatRate)) {
       return res.status(400).json({ error: 'name and email are required' });
+    }
+    if (sendInvite && !jwtSecret) {
+      return res.status(503).json({ error: 'Driver invitations are not configured.' });
     }
 
     try {
@@ -4384,10 +4401,14 @@ function createManagerRouter(options = {}) {
         return res.status(404).json({ error: 'Account not found' });
       }
 
-      const resolvedPin = String(pin || DEFAULT_DRIVER_STARTER_PIN).trim();
+      const resolvedPin = pin ? String(pin).trim() : null;
 
-      if (!/^\d{4}$/.test(resolvedPin)) {
+      if (resolvedPin && !/^\d{4}$/.test(resolvedPin)) {
         return res.status(400).json({ error: 'PIN must be a 4-digit code' });
+      }
+      const normalizedUsername = String(username || '').trim() || null;
+      if (normalizedUsername && !/^[A-Za-z0-9._-]{3,40}$/.test(normalizedUsername)) {
+        return res.status(400).json({ error: 'Username must be 3–40 letters, numbers, periods, underscores, or dashes' });
       }
 
       const normalizedEmail = String(email).trim().toLowerCase();
@@ -4407,12 +4428,14 @@ function createManagerRouter(options = {}) {
         return res.status(409).json({ error: 'A driver with that email already exists' });
       }
 
-      const pinHash = await bcrypt.hash(resolvedPin, 10);
+      const legacyCredential = resolvedPin || crypto.randomBytes(32).toString('hex');
+      const pinHash = await bcrypt.hash(legacyCredential, 10);
 
       const driverPayload = {
         account_id: req.account.account_id,
         name: String(name).trim(),
         email: normalizedEmail,
+        username: normalizedUsername,
         fedex_driver_id: String(fedexDriverId || '').trim() || null,
         phone: String(phone || '').trim() || null,
         date_of_birth: String(dateOfBirth || '').trim() || null,
@@ -4442,7 +4465,47 @@ function createManagerRouter(options = {}) {
         return res.status(500).json({ error: 'Failed to create driver' });
       }
 
-      return res.status(201).json({ driver_id: insertQuery.data.id, starter_pin_applied: !pin });
+      let invitation = null;
+      if (sendInvite) {
+        const invitedAt = nowProvider().toISOString();
+        const { error: inviteUpdateError } = await supabase
+          .from('drivers')
+          .update({ invited_at: invitedAt, invite_accepted_at: null })
+          .eq('id', insertQuery.data.id)
+          .eq('account_id', req.account.account_id);
+        if (inviteUpdateError) throw inviteUpdateError;
+        const token = jwt.sign({
+          purpose: 'driver_invite',
+          driver_id: insertQuery.data.id,
+          account_id: req.account.account_id,
+          email: normalizedEmail,
+          invited_at: invitedAt
+        }, jwtSecret, { expiresIn: '7d' });
+        const inviteUrl = buildDriverInviteUrl(token);
+        let delivery;
+        try {
+          delivery = await sendDriverInviteEmail({
+            to: normalizedEmail,
+            fullName: String(name).trim(),
+            inviteUrl,
+            companyName: account.company_name
+          });
+        } catch (emailError) {
+          console.error('Driver create-and-invite email delivery failed:', emailError);
+          delivery = { delivered: false, skipped: false };
+        }
+        invitation = {
+          email_delivery: delivery.delivered ? 'sent' : delivery.skipped ? 'not_configured' : 'failed',
+          invite_url: delivery.delivered ? null : inviteUrl
+        };
+      }
+
+      return res.status(201).json({
+        driver_id: insertQuery.data.id,
+        access_status: sendInvite ? 'invited' : 'not_invited',
+        starter_pin_applied: Boolean(resolvedPin),
+        invitation
+      });
     } catch (error) {
       console.error('Manager create driver endpoint failed:', error);
       return res.status(500).json({ error: 'Failed to create driver' });
