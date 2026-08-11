@@ -21,6 +21,32 @@ function assertResetAuthorized(mode, confirmation) {
   }
 }
 
+function buildAccountDeleteQuery(accountIds) {
+  const ids = accountIds.map((value) => {
+    const id = String(value || '').trim();
+    if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(id)) {
+      throw new Error('Refusing to construct a company reset query with an invalid account ID.');
+    }
+    return `'${id}'::uuid`;
+  });
+  if (!ids.length) return null;
+  return `set statement_timeout = '120s'; delete from public.accounts where id in (${ids.join(', ')});`;
+}
+
+async function deleteAccountRows({ accessToken, projectRef, accountIds }) {
+  const query = buildAccountDeleteQuery(accountIds);
+  if (!query) return;
+  const response = await fetch(`https://api.supabase.com/v1/projects/${projectRef}/database/query`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({ query })
+  });
+  if (!response.ok) throw new Error(`Production database reset failed (${response.status}): ${await response.text()}`);
+}
+
 async function countRows(supabase, table) {
   const { count, error } = await supabase.from(table).select('id', { count: 'exact', head: true });
   if (error) throw error;
@@ -81,16 +107,13 @@ async function getSnapshot(supabase) {
   };
 }
 
-async function resetProductionCompanies({ supabase, mode, confirmation }) {
+async function resetProductionCompanies({ supabase, mode, confirmation, accessToken, projectRef }) {
   assertResetAuthorized(mode, confirmation);
   const before = await getSnapshot(supabase);
   if (mode !== 'reset') return { mode: 'audit', before };
 
   const accountIds = before.companies.map((account) => account.id);
-  for (const accountId of accountIds) {
-    const { error } = await supabase.from('accounts').delete().eq('id', accountId);
-    if (error) throw error;
-  }
+  await deleteAccountRows({ accessToken, projectRef, accountIds });
   const removedStorageObjects = await removeAccountStorage(supabase, accountIds);
   const after = await getSnapshot(supabase);
   if (after.company_count || after.manager_count || after.driver_count || after.question_count) {
@@ -110,7 +133,9 @@ async function main() {
   const result = await resetProductionCompanies({
     supabase,
     mode,
-    confirmation: String(process.env.RESET_COMPANIES_CONFIRM || '').trim()
+    confirmation: String(process.env.RESET_COMPANIES_CONFIRM || '').trim(),
+    accessToken: mode === 'reset' ? requireEnvironment('SUPABASE_ACCESS_TOKEN') : null,
+    projectRef: mode === 'reset' ? requireEnvironment('SUPABASE_PROJECT_REF') : null
   });
   console.log(JSON.stringify(result, null, 2));
 }
@@ -126,6 +151,8 @@ module.exports = {
   ACCOUNT_STORAGE_BUCKETS,
   REQUIRED_CONFIRMATION,
   assertResetAuthorized,
+  buildAccountDeleteQuery,
+  deleteAccountRows,
   listStorageFiles,
   resetProductionCompanies
 };
