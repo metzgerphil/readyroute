@@ -330,7 +330,8 @@ async function main() {
     });
 
     assert(created?.driver_id, 'Driver create did not return a driver_id');
-    assert(created?.starter_pin_applied === true, 'Driver create did not apply the starter PIN');
+    assert(created?.starter_pin_applied === false, 'Driver create unexpectedly applied a shared starter PIN');
+    assert(created?.access_status === 'not_invited', 'Driver create returned an unexpected access state');
     console.log(`ok driver create ${created.driver_id}`);
 
     const drivers = await requestJson(`${backendUrl}/manager/drivers`, {
