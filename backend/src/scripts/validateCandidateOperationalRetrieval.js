@@ -59,7 +59,9 @@ function main() {
     const operationalExpectedMode = expectedRuntimeMode(testCase.response_mode);
     const productionExpectedMode = allExpectedPublished
       ? operationalExpectedMode
-      : ['ESCALATE'];
+      : (testCase.must_clarify || []).length
+        ? ['CLARIFY', 'ESCALATE']
+        : ['ESCALATE'];
     return {
       case_id: testCase.case_id,
       source_candidate_case_ids: testCase.source_candidate_case_ids,

@@ -36,7 +36,7 @@ test('forced-code prompt injection cannot bypass the canonical condition boundar
   assert.match(decision.escalation_message, /cannot select or force a code/i);
 });
 
-test('answers verified definitions with an explicit workflow boundary and trace records', () => {
+test('answers verified definitions concisely while retaining the workflow boundary in more info', () => {
   const decision = buildDriverHelpReferenceDecision('002 or 003', records);
 
   assert.equal(decision.response_mode, 'ANSWER');
@@ -45,7 +45,8 @@ test('answers verified definitions with an explicit workflow boundary and trace 
     'DELIVERY_STATUS:002',
     'DELIVERY_STATUS:003'
   ]);
-  assert.match(decision.answer, /reference definitions only/i);
+  assert.doesNotMatch(decision.answer, /reference definitions only/i);
+  assert.match(decision.more_info, /reference definitions only/i);
   assert.match(decision.answer, /Incorrect Recipient Address/);
   assert.match(decision.answer, /Unable to Locate/);
 });
@@ -85,7 +86,7 @@ test('all canonical reference-language cases produce their required runtime disp
     assert.ok(decision, `${testCase.case_id} did not enter the reference path`);
     assert.equal(decision.response_mode, runtimeMode[testCase.response_mode], testCase.case_id);
     if (decision.response_mode === 'ANSWER') {
-      assert.match(decision.answer, /reference definitions only/i, testCase.case_id);
+      assert.match(decision.more_info, /reference definitions only/i, testCase.case_id);
       assert.ok(decision.selected_records.every((record) => record.is_published), testCase.case_id);
     } else {
       assert.deepEqual(decision.selected_records, [], testCase.case_id);

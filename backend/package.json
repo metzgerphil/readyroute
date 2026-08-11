@@ -18,6 +18,7 @@
     "knowledge:import:dry-run": "node src/scripts/importDriverKnowledge.js --dry-run",
     "knowledge:validate-retrieval": "node src/scripts/validateDriverHelpRetrieval.js",
     "knowledge:validate-candidate-retrieval": "node src/scripts/validateCandidateOperationalRetrieval.js",
+    "knowledge:validate-driver-bot-contract": "node src/scripts/validateDriverBotInteractionContract.js",
     "knowledge:validate-holdout": "node src/scripts/validatePhase2Holdout.js",
     "knowledge:validate-phase3": "node src/scripts/validatePhase3Adversarial.js",
     "knowledge:validate-traceability": "node src/scripts/validatePhase3Traceability.js",

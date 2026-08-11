@@ -12,7 +12,7 @@
     "top_1_hits": 69,
     "top_5_hits": 69,
     "mode_matches": 69,
-    "publication_withheld_escalations": 11,
+    "publication_withheld_escalations": 9,
     "unsafe_answer_gating_failures": 0
   },
   "retrieval_failures": [],
@@ -592,6 +592,7 @@
         "KNO-DEL-TOBACCO-001"
       ],
       "expected_mode": [
+        "CLARIFY",
         "ESCALATE"
       ],
       "publication_withheld": true,
@@ -613,6 +614,7 @@
         "KNO-DEL-TOBACCO-001"
       ],
       "expected_mode": [
+        "CLARIFY",
         "ESCALATE"
       ],
       "publication_withheld": true,
@@ -634,6 +636,7 @@
         "KNO-SEC-STOLEN-VEHICLE-001"
       ],
       "expected_mode": [
+        "CLARIFY",
         "ESCALATE"
       ],
       "publication_withheld": true,
@@ -741,6 +744,7 @@
         "KNO-FORGE-BUSINESS-CLOSURE-MSG-001"
       ],
       "expected_mode": [
+        "CLARIFY",
         "ESCALATE"
       ],
       "publication_withheld": true,
@@ -786,6 +790,7 @@
         "KNO-PUP-CALLTAG-FRAUD-001"
       ],
       "expected_mode": [
+        "CLARIFY",
         "ESCALATE"
       ],
       "publication_withheld": true,
@@ -900,6 +905,7 @@
         "KNO-FORGE-DOWNLOAD-SYNC-001"
       ],
       "expected_mode": [
+        "CLARIFY",
         "ESCALATE"
       ],
       "publication_withheld": true,
@@ -967,6 +973,7 @@
         "KNO-FORGE-EDIT-ADDRESS-001"
       ],
       "expected_mode": [
+        "CLARIFY",
         "ESCALATE"
       ],
       "publication_withheld": true,
@@ -1057,10 +1064,11 @@
         "KNO-FORGE-LOGIN-WARNING-001"
       ],
       "expected_mode": [
+        "CLARIFY",
         "ESCALATE"
       ],
       "publication_withheld": true,
-      "actual_mode": "ESCALATE",
+      "actual_mode": "CLARIFY",
       "top_candidate_knowledge_id": "KNO-FORGE-DELAYED-LOGIN-001",
       "top_candidate_score": 120.93333,
       "top_1_hit": true,
@@ -1233,6 +1241,7 @@
         "KNO-FORGE-DOWNLOAD-SYNC-001"
       ],
       "expected_mode": [
+        "CLARIFY",
         "ESCALATE"
       ],
       "publication_withheld": true,
@@ -1319,6 +1328,7 @@
         "KNO-FORGE-SYNC-QUEUE-001"
       ],
       "expected_mode": [
+        "CLARIFY",
         "ESCALATE"
       ],
       "publication_withheld": true,
@@ -1340,10 +1350,11 @@
         "KNO-FORGE-UNMANIFESTED-DELIVERY-001"
       ],
       "expected_mode": [
+        "CLARIFY",
         "ESCALATE"
       ],
       "publication_withheld": true,
-      "actual_mode": "ESCALATE",
+      "actual_mode": "CLARIFY",
       "top_candidate_knowledge_id": "KNO-FORGE-UNMANIFESTED-DELIVERY-001",
       "top_candidate_score": 166,
       "top_1_hit": true,

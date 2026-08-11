@@ -1,6 +1,10 @@
 const path = require('path');
 
-const { buildAnswerStructure, buildDriverHelpDecision } = require('../services/driverHelpRetrieval');
+const {
+  buildAnswerStructure,
+  buildDriverHelpDecision,
+  buildPresentedAnswer
+} = require('../services/driverHelpRetrieval');
 const {
   buildImport,
   buildPublicationGateIndex,
@@ -53,7 +57,8 @@ function validate() {
       continue;
     }
     const selected = decision.selected_records[0];
-    if (decision.answer !== selected.concise_answer || decision.more_info !== (selected.more_info_answer || null)) {
+    if (decision.answer !== buildPresentedAnswer(selected, testCase.utterance)
+      || decision.more_info !== (selected.more_info_answer || null)) {
       failures.push({ case_id: testCase.case_id, failure: 'answer or More Info differs from selected canonical snapshot' });
       continue;
     }

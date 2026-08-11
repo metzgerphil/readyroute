@@ -20,6 +20,21 @@ function randomId() {
   return crypto.randomUUID();
 }
 
+function resolveClarificationFollowUp(question, context = {}) {
+  const normalized = normalizeDriverQuestion(question);
+  const options = Array.isArray(context.pending_clarification_options)
+    ? context.pending_clarification_options
+    : [];
+  const selected = options.find((option) => (
+    normalizeDriverQuestion(option?.label) === normalized
+  ));
+  if (selected?.query) return selected.query;
+  if (/^(?:i m |im )?not sure$/.test(normalized) && context.pending_clarification_not_sure_query) {
+    return context.pending_clarification_not_sure_query;
+  }
+  return question;
+}
+
 function createDriverHelpService({ supabase = defaultSupabase, now = () => new Date() } = {}) {
   async function loadKnowledgeRecords() {
     const { data, error } = await supabase
@@ -87,7 +102,7 @@ function createDriverHelpService({ supabase = defaultSupabase, now = () => new D
     };
   }
 
-  async function createOrUpdateSession({ sessionId, accountId, driverId, actorType, actorId, decision }) {
+  async function createOrUpdateSession({ sessionId, accountId, driverId, actorType, actorId, question, decision }) {
     const timestamp = now().toISOString();
     const contextualCandidates = decision.selected_records.length
       ? decision.selected_records.map((record) => ({ knowledge_id: record.knowledge_id, version: record.version }))
@@ -95,7 +110,20 @@ function createDriverHelpService({ supabase = defaultSupabase, now = () => new D
     const context = {
       knowledge_ids: contextualCandidates.map((record) => record.knowledge_id),
       knowledge_versions: contextualCandidates.map((record) => record.version),
-      last_response_mode: decision.response_mode
+      last_response_mode: decision.response_mode,
+      last_question: question,
+      pending_clarification_id: decision.response_mode === 'CLARIFY'
+        ? decision.clarification_id || null
+        : null,
+      pending_clarification_options: decision.response_mode === 'CLARIFY'
+        ? (decision.clarification_options || []).map((option) => ({
+            label: option.label,
+            query: option.query || null
+          }))
+        : [],
+      pending_clarification_not_sure_query: decision.response_mode === 'CLARIFY'
+        ? decision.clarification_not_sure_query || null
+        : null
     };
 
     if (sessionId) {
@@ -186,9 +214,10 @@ function createDriverHelpService({ supabase = defaultSupabase, now = () => new D
       loadKnowledgeRecords(),
       loadSessionContext(sessionId, accountId, actorType, actorId)
     ]);
-    const referenceDecision = buildDriverHelpReferenceDecision(question, records);
+    const resolvedQuestion = resolveClarificationFollowUp(question, sessionState.context);
+    const referenceDecision = buildDriverHelpReferenceDecision(resolvedQuestion, records);
     const decision = referenceDecision || buildDriverHelpDecision(
-      question,
+      resolvedQuestion,
       records.filter((record) => !isReferenceRecord(record)),
       sessionState.context
     );
@@ -198,6 +227,7 @@ function createDriverHelpService({ supabase = defaultSupabase, now = () => new D
       driverId,
       actorType,
       actorId,
+      question,
       decision
     });
     const interactionId = await recordInteraction({
@@ -269,5 +299,6 @@ function createDriverHelpService({ supabase = defaultSupabase, now = () => new D
 
 module.exports = {
   createDriverHelpService,
-  isMissingTableError
+  isMissingTableError,
+  resolveClarificationFollowUp
 };

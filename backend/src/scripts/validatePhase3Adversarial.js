@@ -1,7 +1,10 @@
 const fs = require('fs');
 const path = require('path');
 
-const { buildDriverHelpDecision } = require('../services/driverHelpRetrieval');
+const {
+  buildDriverHelpDecision,
+  buildPresentedAnswer
+} = require('../services/driverHelpRetrieval');
 const {
   buildImport,
   buildPublicationGateIndex,
@@ -57,7 +60,7 @@ function evaluateCase(testCase, mutation, indexed, publicationGates) {
   ));
   const answerIsCanonical = decision.response_mode !== 'ANSWER' || (
     decision.selected_records.length === 1
-    && decision.answer === decision.selected_records[0].concise_answer
+    && decision.answer === buildPresentedAnswer(decision.selected_records[0], mutation.utterance)
     && decision.more_info === (decision.selected_records[0].more_info_answer || null)
   );
   const passed = topMatch && modeMatch && selectedEligible && answerIsCanonical;

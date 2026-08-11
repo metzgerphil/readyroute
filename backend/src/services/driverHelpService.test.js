@@ -6,7 +6,7 @@ process.env.SUPABASE_URL = process.env.SUPABASE_URL || 'https://example.supabase
 process.env.SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_KEY || 'test-service-role-key';
 
 const { buildImport, readJsonLines } = require('../scripts/importDriverKnowledge');
-const { createDriverHelpService } = require('./driverHelp');
+const { createDriverHelpService, resolveClarificationFollowUp } = require('./driverHelp');
 
 const root = path.resolve(__dirname, '../../..');
 const references = readJsonLines(path.join(root, 'knowledge/reference/delivery-status-codes.jsonl'));
@@ -43,6 +43,24 @@ function fakeSupabase(records) {
   };
 }
 
+test('short replies resolve against the pending clarification choices', () => {
+  const context = {
+    pending_clarification_options: [
+      { label: 'Yes', query: 'package requires a signature' },
+      { label: 'No', query: 'package does not require a signature' }
+    ],
+    pending_clarification_not_sure_query: 'not sure whether package requires a signature'
+  };
+
+  assert.equal(resolveClarificationFollowUp('Yes', context), 'package requires a signature');
+  assert.equal(resolveClarificationFollowUp('no', context), 'package does not require a signature');
+  assert.equal(
+    resolveClarificationFollowUp("I'm not sure.", context),
+    'not sure whether package requires a signature'
+  );
+  assert.equal(resolveClarificationFollowUp('Actually it is ASR', context), 'Actually it is ASR');
+});
+
 test('production service routes reference questions separately and preserves canonical trace', async () => {
   const supabase = fakeSupabase(referenceRows);
   const service = createDriverHelpService({
@@ -63,7 +81,8 @@ test('production service routes reference questions separately and preserves can
     'DELIVERY_STATUS:003'
   ]);
   assert.ok(response.trace.every((item) => item.knowledge_status === 'SOURCE_VERIFIED'));
-  assert.match(response.answer, /do not by themselves authorize/i);
+  assert.doesNotMatch(response.answer, /do not by themselves authorize/i);
+  assert.match(response.more_info, /do not by themselves authorize/i);
 
   const interaction = supabase.writes.find((write) => write.table === 'driver_help_interactions');
   assert.deepEqual(interaction.row.selected_knowledge_ids, ['DELIVERY_STATUS:002', 'DELIVERY_STATUS:003']);

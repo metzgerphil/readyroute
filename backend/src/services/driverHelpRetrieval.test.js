@@ -289,7 +289,7 @@ test('asks for the signature type instead of guessing one signature procedure', 
   assert.match(frontDeskRanked[0].record.knowledge_id, /^KNO-DEL-SIG-/);
 });
 
-test('answers the neighbor ISR question directly and exposes each approved path separately', () => {
+test('asks for signature type before applying the neighbor ISR path', () => {
   const isrRecord = {
     ...records[0],
     knowledge_id: 'KNO-DEL-SIG-ISR-001',
@@ -300,12 +300,14 @@ test('answers the neighbor ISR question directly and exposes each approved path 
   };
   const decision = buildDriverHelpDecision('Can the neighbor sign for this signature package?', [isrRecord]);
 
-  assert.equal(decision.response_mode, 'ANSWER');
-  assert.match(decision.answer_structure.steps[0], /^Yes/i);
-  assert.equal(decision.answer_structure.options[0].id, 'isr-neighbor');
-  assert.match(decision.answer_structure.options[0].summary, /eligible ISR/i);
-  assert.ok(decision.answer_structure.options.some((option) => option.id === 'isr-signed-door-tag'));
-  assert.ok(decision.answer_structure.options.some((option) => option.id === 'isr-electronic-signature'));
+  assert.equal(decision.response_mode, 'CLARIFY');
+  assert.match(decision.clarification_prompt, /signature type/i);
+  assert.deepEqual(decision.clarification_options.map((option) => option.label), [
+    'ISR — Indirect Signature',
+    'DSR — Direct Signature',
+    'ASR — Adult Signature'
+  ]);
+  assert.ok(decision.clarification_options.every((option) => option.query));
 });
 
 test('clarifies delivery confirmation intent and never invents package damage', () => {
@@ -357,7 +359,8 @@ test('uses a validated language pattern to ask for required clarification', () =
     : record);
   const decision = buildDriverHelpDecision('signature package nobody home', patternedRecords);
   assert.equal(decision.response_mode, 'CLARIFY');
-  assert.match(decision.clarification_prompt, /whether FORGE identifies the package as DSR/i);
+  assert.match(decision.clarification_prompt, /signature type/i);
+  assert.equal(decision.clarification_options.length, 3);
 });
 
 test('an explicit pickup scanner topic switch is not contaminated by prior delivery context', () => {
@@ -416,7 +419,7 @@ test('an administrative closure message cannot authorize closed-business package
   assert.match(decision.escalation_message, /does not authorize leaving the package/i);
 });
 
-test('a generic FORGE login failure cannot bypass an unresolved compliance-warning branch', () => {
+test('a generic FORGE login failure separates outage from an unresolved compliance-warning branch', () => {
   const delayedLogin = {
     ...records[0],
     knowledge_id: 'KNO-FORGE-DELAYED-LOGIN-001',
@@ -437,9 +440,14 @@ test('a generic FORGE login failure cannot bypass an unresolved compliance-warni
 
   const decision = buildDriverHelpDecision('FORGE wont log in', [delayedLogin, unresolvedWarning]);
 
-  assert.equal(decision.response_mode, 'ESCALATE');
+  assert.equal(decision.response_mode, 'CLARIFY');
   assert.deepEqual(decision.selected_records, []);
-  assert.match(decision.escalation_message, /outage or an unresolved compliance warning/i);
+  assert.match(decision.clarification_prompt, /outage.*warning/i);
+  assert.deepEqual(decision.clarification_options.map((option) => option.label), [
+    'Outage / offline',
+    'Warning on screen',
+    'Regular sign-in problem'
+  ]);
 });
 
 test('generic release wording asks for service and location instead of guessing', () => {
@@ -455,7 +463,8 @@ test('generic release wording asks for service and location instead of guessing'
   const decision = buildDriverHelpDecision('customer says just leave it', [safePlace]);
 
   assert.equal(decision.response_mode, 'CLARIFY');
-  assert.match(decision.clarification_prompt, /service or signature requirement/i);
+  assert.equal(decision.clarification_prompt, 'Does it need a signature?');
+  assert.deepEqual(decision.clarification_options.map((option) => option.label), ['Yes', 'No']);
 });
 
 test('a supported canonical term definition answers without unnecessary clarification', () => {
@@ -472,6 +481,28 @@ test('a supported canonical term definition answers without unnecessary clarific
 
   assert.equal(decision.response_mode, 'ANSWER');
   assert.equal(decision.selected_records[0].knowledge_id, 'KNO-DEL-PPOD-001');
+  assert.equal(
+    decision.answer,
+    'PPOD means Picture Proof of Delivery—the photo record for an eligible completed delivery.'
+  );
+  assert.equal(decision.answer_structure.steps.length, 1);
+});
+
+test('a dog-bite answer leads with the immediate bite response', () => {
+  const dog = {
+    ...records[0],
+    knowledge_id: 'KNO-SAF-DOG-ENCOUNTER-001',
+    canonical_situation: 'Responding to an unfamiliar dog encounter or dog bite',
+    normalized_description: 'Dog bite wound response and reporting',
+    driver_question_variants: ['dog bit me'],
+    concise_answer: 'Avoid an unfamiliar dog. If bitten, clean the wound and seek medical care.'
+  };
+
+  const decision = buildDriverHelpDecision('dog bit me', [dog]);
+
+  assert.equal(decision.response_mode, 'ANSWER');
+  assert.match(decision.answer, /^Clean the wound/);
+  assert.doesNotMatch(decision.answer, /^Avoid an unfamiliar dog/);
 });
 
 test('speech filler and self-correction do not displace the operational intent', () => {
@@ -588,7 +619,13 @@ test('a context-free nobody-home question clarifies instead of choosing a specif
 
   assert.equal(decision.response_mode, 'CLARIFY');
   assert.deepEqual(decision.selected_records, []);
-  assert.match(decision.clarification_prompt, /signature-required delivery/i);
+  assert.equal(decision.clarification_prompt, 'What kind of stop or package is it?');
+  assert.deepEqual(decision.clarification_options.map((option) => option.label), [
+    'Signature-required',
+    'Normal residential',
+    'Commercial',
+    'Alcohol'
+  ]);
 });
 
 test('an explicit signature type outranks a conflicting neighbor cue', () => {

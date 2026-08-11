@@ -340,13 +340,23 @@ function buildExplicitMultiIssueClarification(question) {
   const hasCallTagRefusal = /\bcall\s*tag\b/.test(normalized) && /\b(refuse|refused|wont take|will not take)\b/.test(normalized);
 
   if ((hasMisdelivery && hasPickupScanFailure) || (hasZeroPickup && hasCallTagRefusal)) {
+    const options = hasMisdelivery
+      ? [
+          flowOption('multi-issue', 'misdelivery', 'Misdelivery first', 'I made a misdelivery what do I do'),
+          flowOption('multi-issue', 'pickup-scan', 'Pickup scan first', 'pickup package barcode will not scan')
+        ]
+      : [
+          flowOption('multi-issue', 'zero-pickup', 'Zero-package pickup first', 'scheduled pickup customer has zero packages'),
+          flowOption('multi-issue', 'call-tag-refusal', 'Call-tag refusal first', 'customer refused call tag')
+        ];
     return {
       response_mode: 'CLARIFY',
       confidence: 0,
       candidates: [],
       selected_records: [],
       clarification_prompt: 'I found two separate operational issues. Which one do you need help with first?',
-      clarification_options: []
+      clarification_options: options,
+      clarification_id: 'multi-issue'
     };
   }
   return null;
@@ -495,8 +505,25 @@ function buildIsrPresentation(question) {
   };
 }
 
+function buildPresentedAnswer(record, question = '') {
+  const normalized = normalizeDriverQuestion(question);
+  if (record.knowledge_id === 'KNO-DEL-PPOD-001') {
+    if (normalized === 'what is ppod') {
+      return 'PPOD means Picture Proof of Delivery—the photo record for an eligible completed delivery.';
+    }
+    if (normalized === 'what is ppoda') {
+      return 'PPODA means Picture Proof of Delivery Attempt—the prompted photo record for an unsuccessful delivery attempt.';
+    }
+  }
+  if (record.knowledge_id === 'KNO-SAF-DOG-ENCOUNTER-001'
+    && /\b(?:bit|bite|bitten)\b/.test(normalized)) {
+    return 'Clean the wound, seek immediate medical care, obtain the owner, veterinarian, and vaccination information when available, and report the bite to local animal control.';
+  }
+  return record.concise_answer;
+}
+
 function buildAnswerStructure(record, question = '') {
-  const conciseSteps = (String(record.concise_answer || '').match(/[^.!?]+[.!?]+|[^.!?]+$/g) || [])
+  const conciseSteps = (String(buildPresentedAnswer(record, question) || '').match(/[^.!?]+[.!?]+|[^.!?]+$/g) || [])
     .map((sentence) => sentence.trim())
     .filter(Boolean);
   const isrPresentation = record.knowledge_id === 'KNO-DEL-SIG-ISR-001'
@@ -528,9 +555,181 @@ function buildClarificationDecision(ranked, candidates, topScore, prompt = 'Whic
     clarification_options: clarificationCandidates.map(({ record }) => ({
       knowledge_id: record.knowledge_id,
       version: record.version,
-      label: record.canonical_situation
+      label: record.canonical_situation,
+      query: record.canonical_situation
     }))
   };
+}
+
+function clarificationOptionsFromRanked(ranked, limit = 4) {
+  return ranked.slice(0, limit).map(({ record }) => ({
+    knowledge_id: record.knowledge_id,
+    version: record.version,
+    label: record.canonical_situation,
+    query: record.canonical_situation
+  }));
+}
+
+function flowOption(flowId, optionId, label, query) {
+  return {
+    knowledge_id: `FLOW:${flowId}:${optionId}`,
+    version: 1,
+    label,
+    query
+  };
+}
+
+function buildFlowClarification(flowId, prompt, options, notSureQuery, candidates = []) {
+  return {
+    response_mode: 'CLARIFY',
+    confidence: 0,
+    candidates,
+    selected_records: [],
+    clarification_id: flowId,
+    clarification_prompt: prompt,
+    clarification_options: options,
+    clarification_not_sure_query: notSureQuery
+  };
+}
+
+function buildDriverFirstClarification(question, candidates = []) {
+  const normalized = normalizeDriverQuestion(question);
+  const tokens = new Set(tokenize(question));
+  const clarify = (flowId, prompt, options, notSureQuery) => (
+    buildFlowClarification(flowId, prompt, options, notSureQuery, candidates)
+  );
+  const hasSignatureType = ['asr', 'dsr', 'isr', 'adult', 'direct', 'indirect']
+    .some((token) => tokens.has(token));
+
+  if (/\b(?:not sure what this is|dont know what (?:this is|im looking at)|not sure what im looking at)\b/.test(normalized)) {
+    return clarify('identify-package', 'What do you see?', [
+      flowOption('identify-package', 'signature', 'ISR / DSR / ASR', 'not sure which signature type the package shows'),
+      flowOption('identify-package', 'alcohol', 'Alcohol', 'alcohol package what do I do'),
+      flowOption('identify-package', 'hazmat', 'Hazmat / dangerous goods', 'not sure if this package is hazmat'),
+      flowOption('identify-package', 'hal', 'HAL / hold at location', 'what is HAL and what do I do'),
+      flowOption('identify-package', 'call-tag', 'Call tag', 'what do I do with this call tag')
+    ], 'I cannot identify the label or screen prompt');
+  }
+
+  if (/\b(?:not sure|dont know) (?:if )?(?:it|this|package) (?:needs?|requires?) (?:a )?signature\b/.test(normalized)) {
+    return clarify('identify-signature', 'What do you see on the label or in FORGE?', [
+      flowOption('identify-signature', 'isr', 'ISR', 'ISR package what do I do'),
+      flowOption('identify-signature', 'dsr', 'DSR', 'DSR package what do I do'),
+      flowOption('identify-signature', 'asr', 'ASR', 'ASR package what do I do'),
+      flowOption('identify-signature', 'alcohol', 'Alcohol label', 'alcohol package what do I do'),
+      flowOption('identify-signature', 'prompt', 'Signature prompt in FORGE', 'FORGE shows a signature prompt but I cannot see the type')
+    ], 'I do not see a signature label or prompt');
+  }
+
+  const genericLeave = /\b(?:can i leave (?:this|it|this one)|customer says just leave it|dont know if i can leave it)\b/.test(normalized)
+    && !hasSignatureType
+    && !/\b(?:alcohol|hazmat|mailbox|locker|neighbor|neighbour|lobby|office|front desk|back door|op ?201)\b/.test(normalized);
+  if (genericLeave) {
+    return clarify('release-signature-check', 'Does it need a signature?', [
+      flowOption('release-signature-check', 'yes', 'Yes', 'signature required package what signature type'),
+      flowOption('release-signature-check', 'no', 'No', 'package has no signature service is the stop residential or commercial')
+    ], 'not sure if this package needs a signature');
+  }
+
+  if (/\bno signature\b/.test(normalized) && /\b(?:residential|commercial)\b/.test(normalized)) {
+    return clarify('release-stop-type', 'What kind of stop is it?', [
+      flowOption('release-stop-type', 'residential', 'Residential', 'residential package no signature can I driver release it'),
+      flowOption('release-stop-type', 'commercial', 'Commercial', 'commercial package no signature can I leave it')
+    ], 'not sure if this stop is residential or commercial');
+  }
+
+  const nobodyHome = /\b(?:nobody|no one)\b.*\b(?:home|there|answer|answered|available)\b|\bnobody home\b/.test(normalized);
+  const hasNobodyContext = /\b(?:signature|isr|dsr|asr|alcohol|hazmat|business|commercial|residential|pickup|call tag)\b/.test(normalized);
+  if (nobodyHome && !hasNobodyContext) {
+    return clarify('nobody-home-type', "What kind of stop or package is it?", [
+      flowOption('nobody-home-type', 'signature', 'Signature-required', 'signature required package nobody home'),
+      flowOption('nobody-home-type', 'residential', 'Normal residential', 'normal residential package nobody home can I leave it'),
+      flowOption('nobody-home-type', 'commercial', 'Commercial', 'commercial delivery nobody available'),
+      flowOption('nobody-home-type', 'alcohol', 'Alcohol', 'alcohol package nobody home')
+    ], 'not sure if this package needs a signature');
+  }
+
+  if (tokens.has('signature')
+    && !hasSignatureType
+    && !(tokens.has('recipient') && tokens.has('device'))
+    && !tokens.has('pharmacy')) {
+    const nobodySuffix = nobodyHome ? ' nobody home' : '';
+    return clarify('signature-type', 'What signature type does FORGE show?', [
+      flowOption('signature-type', 'isr', 'ISR — Indirect Signature', `ISR package${nobodySuffix}`),
+      flowOption('signature-type', 'dsr', 'DSR — Direct Signature', `DSR package${nobodySuffix}`),
+      flowOption('signature-type', 'asr', 'ASR — Adult Signature', `ASR package${nobodySuffix}`)
+    ], 'not sure which signature type FORGE shows');
+  }
+
+  if (/\bdog\b/.test(normalized) && !/\b(?:bit|bite|bitten|knocked|running|coming|loose|blocks?|approach|approaching|aggressive|charging|chasing|growling)\b/.test(normalized)) {
+    return clarify('dog-behavior', 'What is the dog doing?', [
+      flowOption('dog-behavior', 'present', 'Just present', 'dog is present at the stop'),
+      flowOption('dog-behavior', 'approaching', 'Approaching', 'dog is approaching me at the stop'),
+      flowOption('dog-behavior', 'aggressive', 'Aggressive', 'aggressive dog is blocking the stop'),
+      flowOption('dog-behavior', 'bit', 'Bit me', 'dog bit me')
+    ], 'dog situation is unclear but I do not feel safe');
+  }
+
+  if (/^(?:what about )?hazmat$|^hazmat question$/.test(normalized)) {
+    return clarify('hazmat-topic', 'What kind of hazmat issue is it?', [
+      flowOption('hazmat-topic', 'pickup', 'Pickup acceptance', 'hazmat pickup acceptance requirements'),
+      flowOption('hazmat-topic', 'paperwork', 'Paperwork', 'hazmat paperwork missing or incomplete'),
+      flowOption('hazmat-topic', 'transport', 'Loading or transport', 'hazmat loading and paperwork while driving'),
+      flowOption('hazmat-topic', 'leak', 'Leaking or damaged', 'hazmat package is leaking or damaged'),
+      flowOption('hazmat-topic', 'ak-hi', 'Alaska or Hawaii', 'hazmat package going to Alaska or Hawaii')
+    ], 'not sure if this package is hazmat');
+  }
+
+  if (/\b(?:scanner not working|scanner wont work|scanner doesnt work)\b/.test(normalized)) {
+    return clarify('scanner-problem', 'Is the whole scanner failing, or is one barcode not scanning?', [
+      flowOption('scanner-problem', 'device', 'Whole scanner', 'FORGE scanner device is not working'),
+      flowOption('scanner-problem', 'delivery', 'Delivery barcode', 'delivery package barcode will not scan'),
+      flowOption('scanner-problem', 'pickup', 'Pickup barcode', 'pickup package barcode will not scan'),
+      flowOption('scanner-problem', 'camera', 'Use camera scanning', 'how do I turn on camera scanning in FORGE')
+    ], 'scanner problem type is unclear');
+  }
+
+  if (/\bforge (?:is )?(?:stuck|frozen)\b/.test(normalized)) {
+    return clarify('forge-problem', 'What part of FORGE is stuck?', [
+      flowOption('forge-problem', 'login', 'Login', 'FORGE login problem exact screen message'),
+      flowOption('forge-problem', 'sync', 'Sync', 'FORGE is not syncing'),
+      flowOption('forge-problem', 'scan', 'Scanning', 'FORGE barcode scanning problem'),
+      flowOption('forge-problem', 'stop', 'Stop workflow', 'FORGE stop workflow is stuck')
+    ], 'FORGE problem type is unclear');
+  }
+
+  if (/\b(?:this one needs id|scanner wants id|id prompt)\b/.test(normalized)
+    && !/\b(?:asr|adult|alcohol)\b/.test(normalized)) {
+    return clarify('id-prompt', 'What does FORGE or the label show?', [
+      flowOption('id-prompt', 'asr', 'ASR', 'ASR package ID verification'),
+      flowOption('id-prompt', 'alcohol', 'Alcohol', 'alcohol package ID verification'),
+      flowOption('id-prompt', 'other', 'Another ID prompt', 'FORGE shows another ID controlled service')
+    ], 'cannot identify the ID prompt');
+  }
+
+  if (/\bpackage not on manifest\b/.test(normalized)) {
+    return clarify('manifest-problem', 'Is this a delivery package or a pickup situation?', [
+      flowOption('manifest-problem', 'delivery', 'Delivery package', 'delivery package is not on my manifest'),
+      flowOption('manifest-problem', 'pickup', 'Pickup situation', 'pickup is not on my list')
+    ], 'not sure whether this is delivery or pickup');
+  }
+
+  if (/\bcustomer (?:wants|asked for) (?:it )?held\b/.test(normalized)) {
+    return clarify('hold-request', 'What kind of hold did the customer request?', [
+      flowOption('hold-request', 'future', 'Future delivery date', 'customer requested future delivery date'),
+      flowOption('hold-request', 'hal', 'Hold at Location', 'customer requested hold at location'),
+      flowOption('hold-request', 'no-attempt', 'No attempt today', 'customer requested no attempt today')
+    ], 'hold request type is unclear');
+  }
+
+  if (/^(?:minor )?accident$|\bi got hit\b/.test(normalized)) {
+    return clarify('accident-severity', 'First, move to safety if you can. Are there injuries or an immediate traffic hazard?', [
+      flowOption('accident-severity', 'yes', 'Yes', 'accident with injuries or immediate traffic hazard'),
+      flowOption('accident-severity', 'no', 'No', 'accident no injuries and no immediate traffic hazard')
+    ], 'accident severity is unclear');
+  }
+
+  return null;
 }
 
 function buildDiscoveredTopicClarification(question, ranked, candidates) {
@@ -553,7 +752,7 @@ function buildDiscoveredTopicClarification(question, ranked, candidates) {
       candidates,
       selected_records: [],
       clarification_prompt: 'Is this a signature-required delivery, a normal residential delivery, a business delivery, or a pickup?',
-      clarification_options: []
+      clarification_options: clarificationOptionsFromRanked(ranked)
     };
   }
 
@@ -567,7 +766,7 @@ function buildDiscoveredTopicClarification(question, ranked, candidates) {
       candidates,
       selected_records: [],
       clarification_prompt: 'Is this a scheduled pickup where the customer has zero packages, or a delivery/package-location issue?',
-      clarification_options: []
+      clarification_options: clarificationOptionsFromRanked(ranked)
     };
   }
 
@@ -583,7 +782,7 @@ function buildDiscoveredTopicClarification(question, ranked, candidates) {
       candidates,
       selected_records: [],
       clarification_prompt: 'Is this about identifying a package before pickup acceptance, paperwork for hazmat already onboard, or a hazmat delivery?',
-      clarification_options: []
+      clarification_options: clarificationOptionsFromRanked(ranked)
     };
   }
 
@@ -613,8 +812,15 @@ function buildDiscoveredTopicClarification(question, ranked, candidates) {
             ? 'ISR — Indirect Signature'
             : record.knowledge_id.includes('-DSR-')
               ? 'DSR — Direct Signature'
-              : 'ASR — Adult Signature'
-        }))
+              : 'ASR — Adult Signature',
+          query: record.knowledge_id.includes('-ISR-')
+            ? 'ISR package what do I do'
+            : record.knowledge_id.includes('-DSR-')
+              ? 'DSR package what do I do'
+              : 'ASR package what do I do'
+        })),
+        clarification_id: 'signature-type',
+        clarification_not_sure_query: 'not sure which signature type FORGE shows'
       };
     }
   }
@@ -630,7 +836,7 @@ function buildDiscoveredTopicClarification(question, ranked, candidates) {
       candidates,
       selected_records: [],
       clarification_prompt: 'Is this a delivery package, a pickup/call tag, or a leaking or hazardous-material package?',
-      clarification_options: []
+      clarification_options: clarificationOptionsFromRanked(ranked)
     };
   }
 
@@ -682,7 +888,7 @@ function buildDiscoveredTopicClarification(question, ranked, candidates) {
       candidates,
       selected_records: [],
       clarification_prompt: 'What happened with the call tag: successful pickup, not ready, refused, or restricted/prohibited contents?',
-      clarification_options: []
+      clarification_options: clarificationOptionsFromRanked(ranked)
     };
   }
 
@@ -696,7 +902,7 @@ function buildDiscoveredTopicClarification(question, ranked, candidates) {
       candidates,
       selected_records: [],
       clarification_prompt: 'Is this a delivered-package photo, an attempted-delivery photo, or another photo prompt?',
-      clarification_options: []
+      clarification_options: clarificationOptionsFromRanked(ranked)
     };
   }
 
@@ -708,7 +914,7 @@ function buildDiscoveredTopicClarification(question, ranked, candidates) {
       candidates,
       selected_records: [],
       clarification_prompt: 'Is the whole device failing, or is one delivery or pickup barcode not scanning?',
-      clarification_options: []
+      clarification_options: clarificationOptionsFromRanked(ranked)
     };
   }
 
@@ -722,7 +928,7 @@ function buildDiscoveredTopicClarification(question, ranked, candidates) {
       candidates,
       selected_records: [],
       clarification_prompt: 'Is this about pickup acceptance paperwork, onboard manifest/transfer paperwork, or a delivery prompt?',
-      clarification_options: []
+      clarification_options: clarificationOptionsFromRanked(ranked)
     };
   }
 
@@ -733,7 +939,7 @@ function buildDiscoveredTopicClarification(question, ranked, candidates) {
       candidates,
       selected_records: [],
       clarification_prompt: 'Does FORGE show Adult Signature Required, alcohol, or another ID-controlled service?',
-      clarification_options: []
+      clarification_options: clarificationOptionsFromRanked(ranked)
     };
   }
 
@@ -746,7 +952,7 @@ function buildDiscoveredTopicClarification(question, ranked, candidates) {
       candidates,
       selected_records: [],
       clarification_prompt: 'Is the closure for one date, a date range, or a recurring weekday, and does it apply to delivery, pickup, or both?',
-      clarification_options: []
+      clarification_options: clarificationOptionsFromRanked(ranked)
     };
   }
 
@@ -763,7 +969,7 @@ function buildDiscoveredTopicClarification(question, ranked, candidates) {
       candidates,
       selected_records: [],
       clarification_prompt: 'What service or signature requirement does the package show, and where are you considering leaving it?',
-      clarification_options: []
+      clarification_options: clarificationOptionsFromRanked(ranked)
     };
   }
 
@@ -846,7 +1052,9 @@ function buildDriverHelpDecision(question, records, context = {}) {
     const warningRecord = selectCanonicalRecordVersions(records).find(
       (record) => record.knowledge_id === 'KNO-FORGE-LOGIN-WARNING-001'
     );
-    if (!isProductionEligibleRecord(warningRecord)) {
+    const explicitlyDescribesWarning = /\b(warning|license|medical|qualification|agreement|carb|hours of service|hos)\b/.test(normalizedQuestion);
+    const explicitlyDescribesOutage = /\b(outage|offline|authentication|network|delayed)\b/.test(normalizedQuestion);
+    if (!isProductionEligibleRecord(warningRecord) && explicitlyDescribesWarning) {
       return {
         response_mode: 'ESCALATE',
         confidence: top ? Math.min(top.score / 100, 0.99) : 0,
@@ -855,7 +1063,17 @@ function buildDriverHelpDecision(question, records, context = {}) {
         escalation_message: 'A FORGE login failure may be an outage or an unresolved compliance warning. Ready Route cannot establish which from this description; report the exact screen message to your manager or station.'
       };
     }
+    if (!isProductionEligibleRecord(warningRecord) && !explicitlyDescribesOutage) {
+      return buildFlowClarification('forge-login-type', 'Is this an outage, or does FORGE show a warning?', [
+        flowOption('forge-login-type', 'outage', 'Outage / offline', 'FORGE authentication outage need delayed login'),
+        flowOption('forge-login-type', 'warning', 'Warning on screen', 'FORGE login warning exact message'),
+        flowOption('forge-login-type', 'credentials', 'Regular sign-in problem', 'FORGE regular login problem no warning')
+      ], 'cannot identify why FORGE will not log in', candidates);
+    }
   }
+
+  const driverFirstClarification = buildDriverFirstClarification(question, candidates);
+  if (driverFirstClarification) return driverFirstClarification;
 
   const topicClarification = buildDiscoveredTopicClarification(question, ranked, candidates);
   if (topicClarification) return topicClarification;
@@ -927,7 +1145,7 @@ function buildDriverHelpDecision(question, records, context = {}) {
       confidence: Math.min(top.score / 100, 0.99),
       candidates,
       selected_records: [top.record],
-      answer: top.record.concise_answer,
+      answer: buildPresentedAnswer(top.record, question),
       more_info: top.record.more_info_answer || null,
       answer_structure: buildAnswerStructure(top.record, question)
     };
@@ -948,7 +1166,7 @@ function buildDriverHelpDecision(question, records, context = {}) {
         candidates,
         selected_records: [],
         clarification_prompt: `Ready Route needs one detail before answering: ${clarification}.`,
-        clarification_options: []
+        clarification_options: clarificationOptionsFromRanked(ranked)
       };
     }
     if (patternRuntimeMode) {
@@ -987,7 +1205,7 @@ function buildDriverHelpDecision(question, records, context = {}) {
       candidates,
       selected_records: [],
       clarification_prompt: `Ready Route needs one detail before answering: ${clarification}.`,
-      clarification_options: []
+      clarification_options: clarificationOptionsFromRanked(ranked)
     };
   }
   if (patternRuntimeMode === 'ANSWER') {
@@ -996,7 +1214,7 @@ function buildDriverHelpDecision(question, records, context = {}) {
       confidence: Math.min(top.score / 100, 0.99),
       candidates,
       selected_records: [top.record],
-      answer: top.record.concise_answer,
+      answer: buildPresentedAnswer(top.record, question),
       more_info: top.record.more_info_answer || null,
       answer_structure: buildAnswerStructure(top.record, question)
     };
@@ -1011,7 +1229,7 @@ function buildDriverHelpDecision(question, records, context = {}) {
       candidates,
       selected_records: [],
       clarification_prompt: `I found the topic, but need one more detail: ${clarification}`,
-      clarification_options: []
+      clarification_options: clarificationOptionsFromRanked(ranked)
     };
   }
 
@@ -1029,7 +1247,7 @@ function buildDriverHelpDecision(question, records, context = {}) {
     confidence: Math.min(top.score / 100, 0.99),
     candidates,
     selected_records: [top.record],
-    answer: top.record.concise_answer,
+    answer: buildPresentedAnswer(top.record, question),
     more_info: top.record.more_info_answer || null,
     answer_structure: buildAnswerStructure(top.record, question)
   };
@@ -1040,6 +1258,7 @@ module.exports = {
   CLARIFICATION_MARGIN,
   buildAnswerStructure,
   buildDriverHelpDecision,
+  buildPresentedAnswer,
   getMatchingQuestionPattern,
   getPatternRuntimeMode,
   normalizeDriverQuestion,

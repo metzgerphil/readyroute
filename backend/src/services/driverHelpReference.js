@@ -24,7 +24,16 @@ function referenceCandidate(record, score = 1) {
   };
 }
 
-function clarificationDecision(records, mustClarify = []) {
+function referenceFlowOption(optionId, label, query) {
+  return {
+    knowledge_id: `FLOW:code-selection:${optionId}`,
+    version: 1,
+    label,
+    query
+  };
+}
+
+function clarificationDecision(records, mustClarify = [], options = [], notSureQuery = null) {
   const detail = mustClarify.length
     ? mustClarify.join('; ')
     : 'whether this is a delivery status or pickup reason, and what actually happened';
@@ -34,7 +43,9 @@ function clarificationDecision(records, mustClarify = []) {
     candidates: records.map((record) => referenceCandidate(record)),
     selected_records: [],
     clarification_prompt: `Before selecting a code, confirm ${detail}.`,
-    clarification_options: []
+    clarification_id: 'code-selection',
+    clarification_options: options,
+    clarification_not_sure_query: notSureQuery
   };
 }
 
@@ -58,14 +69,14 @@ function answerDecision(records) {
     confidence: 0.99,
     candidates: records.map((record) => referenceCandidate(record, 100)),
     selected_records: records,
-    answer: [...definitions, boundary].join('\n'),
-    more_info: records.map((record) => record.more_info_answer).filter(Boolean).join('\n') || boundary,
+    answer: definitions.join('\n'),
+    more_info: boundary,
     answer_structure: {
       heading: 'CODE REFERENCE',
       steps: definitions,
       procedure_steps: [],
       required_documentation: [],
-      prohibited_actions: [boundary],
+      prohibited_actions: [],
       escalation_requirements: [],
       options: []
     }
@@ -162,7 +173,10 @@ function buildDriverHelpReferenceDecision(question, allRecords) {
     if (!hint && matchedRecords.length > codes.length) {
       return clarificationDecision(matchedRecords, [
         'whether each number is a delivery status or pickup reason'
-      ]);
+      ], [
+        referenceFlowOption('delivery', 'Delivery status', `what is delivery code ${codes.join(' or ')}`),
+        referenceFlowOption('pickup', 'Pickup reason', `what is pickup code ${codes.join(' or ')}`)
+      ], 'not sure whether this is a delivery or pickup code');
     }
     if (!matchedRecords.every(isEligibleReference)) {
       return escalationDecision(
@@ -174,7 +188,12 @@ function buildDriverHelpReferenceDecision(question, allRecords) {
   }
 
   if (/\b(?:what|which) code\b|\bcode (?:do|should|would|for)\b|\bstatus code\b|\bpickup (?:code|reason)\b|\bnot sure what code\b/.test(normalized)) {
-    return clarificationDecision([], []);
+    return clarificationDecision([], [], [
+      referenceFlowOption('completed', 'Delivered / completed', 'what delivery code for a completed stop'),
+      referenceFlowOption('attempted', 'Tried but could not complete', 'what delivery code for an attempted but not completed stop'),
+      referenceFlowOption('no-attempt', 'No attempt', 'what delivery code for no attempt'),
+      referenceFlowOption('pickup', 'Pickup problem', 'what pickup reason code should I use')
+    ], 'not sure what happened at the stop');
   }
   return null;
 }
