@@ -89,4 +89,4 @@ Use the [source coverage report](../research/fedex-ground-driver-knowledge/repor
 4. Run `node scripts/validate-ready-route-knowledge.js` plus the research corpus validators.
 5. Review the manifest and status changes before publication.
 
-Current scope, blockers, and completion limits are summarized in [`release-status.md`](release-status.md).
+Current scope, blockers, and completion limits are summarized in [`release-status.md`](release-status.md). The owner-confirmed Phase 1 mainstream daily-driver milestone is recorded in the [`completion report`](../research/fedex-ground-driver-knowledge/reports/phase_1_mainstream_daily_driver_completion_2026-08-10.md); deferred specialist work remains status-gated.

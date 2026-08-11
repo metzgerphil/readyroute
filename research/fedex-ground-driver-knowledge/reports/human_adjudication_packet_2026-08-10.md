@@ -54,8 +54,8 @@ These 20 questions come first because they affect ordinary delivery, pickup, FOR
 
 | Priority | Knowledge ID | Decision needed |
 | ---: | --- | --- |
-| 21 | `KNO-DOT-ROADSIDE-REPORT-001` | Current delivery deadline/recipient, retention, repair/citation follow-up, and jurisdiction obligations. |
-| 22 | `KNO-HOS-RENTAL-ELD-001` | ELD applicability and rental exception criteria, documents, time-entry workflow, and jurisdiction differences. |
+| 21 | `KNO-DOT-ROADSIDE-REPORT-001` | Federal timing, out-of-service, correction, and retention baseline preserved; confirm FedEx's internal recipient/workflow and additional state obligations. |
+| 22 | `KNO-HOS-RENTAL-ELD-001` | Federal exemption scope and documents preserved through 2027-10-12; confirm FedEx/Motive implementation, intrastate applicability, and renewal monitoring. |
 | 23 | `KNO-VEH-RENTAL-PREP-001` | Rental-vehicle preparation, identification, inspection, documentation, equipment, and service-readiness requirements. |
 | 24 | `KNO-VEH-ANNUAL-INSPECTION-001` | Inspection form, defect correction, record custody, removal from service, and return-to-service authority. |
 | 25 | `KNO-VEH-CA-90DAY-INSPECTION-001` | California 90-day form, defect correction, custody, expiration, and return-to-service requirements. |

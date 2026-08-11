@@ -32,7 +32,7 @@ From the workspace root, `sha256sum -c research/fedex-ground-driver-knowledge/in
 
 - `python3 scripts/validate_knowledge.py`: 144 records valid.
 - `python3 scripts/validate_reference_data.py`: 57 reference records valid; documented numeric-namespace collisions and translation classifications intact.
-- `npm run knowledge:release`: build and release validation passed with 144 records, 121 sources, 192 formal cases, 91 publication-ready records, six evidence-gated eligible records, seven active adjudications, and 12 manifest files verified.
+- `npm run knowledge:release`: build and release validation passed with 144 records, 123 sources, 192 formal cases, 97 publication-ready records, zero evidence-gated eligible records, seven active adjudications, and 17 manifest files verified.
 - `npm --prefix backend run knowledge:validate-retrieval`: 192/192 top-1, 192/192 top-5, 192/192 response-mode matches, and zero unsafe-answer gating failures.
 - `python3 scripts/validate_corpus_integrity.py`: passed across all source, inventory, evidence, taxonomy, claim, allocation, language, interaction, archive, and backlog ledgers.
 

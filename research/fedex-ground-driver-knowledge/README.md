@@ -23,7 +23,7 @@ This workspace contains the source inventory, research ledger, extracted operati
 - `inventory/referenced_source_acquisition_coverage.csv`: deterministic one-row-per-gap projection of direct MyGroundBiz acquisition links, contextual resolution links, affected records/taxonomy, and gaps with no current queue route.
 - `inventory/mygroundbiz_safety_topic_library.csv`: fully expanded inventory of the 77 dated safety-library documents visible in the latest authenticated pass.
 - `inventory/mygroundbiz_news_archive_backlog.csv`: validator-exact inventory of all 100 monthly news-archive links exposed by the durable Recent Customer Alerts link capture, including month, URL, discovery locator, and review/acquisition gates.
-- `inventory/mygroundbiz_authenticated_acquisition_queue.csv`: deterministic 266-resource work queue covering four partially reviewed primary sources, 25 accessible uncaptured unreviewed primary resources, seven fully reviewed sources lacking original-source capture, and 230 remaining Safety Topic, news-archive, and navigation resources, including exact candidate-comparison, non-verified dependency, current-evidence, and derived taxonomy links plus authoritative work-state bases without treating titles as evidence. Six locally preserved FCC videos have completed audio-visual review and are retained as historical context without canonical mappings.
+- `inventory/mygroundbiz_authenticated_acquisition_queue.csv`: deterministic 264-resource work queue covering four partially reviewed primary sources, 25 accessible uncaptured unreviewed primary resources, five fully reviewed sources lacking original-source capture, and 230 remaining Safety Topic, news-archive, and navigation resources, including exact candidate-comparison, non-verified dependency, current-evidence, and derived taxonomy links plus authoritative work-state bases without treating titles as evidence. Six locally preserved FCC videos have completed audio-visual review and are retained as historical context without canonical mappings.
 - `inventory/access_ledger.md`: areas examined, pending, partial, or inaccessible.
 - `knowledge/records.jsonl`: authoritative operational knowledge records.
 - `knowledge/change_log.jsonl`: immutable before/after snapshots and checksums for reviewed source-alignment corrections to canonical records.
@@ -51,7 +51,8 @@ This workspace contains the source inventory, research ledger, extracted operati
 - `reports/`: source coverage, conflicts, outdated material, unresolved items, and human-review reports.
 - `reports/production_knowledge_architecture_recommendations.md`: future source-of-truth storage, retrieval status gates, versioning, publication, update, and audit recommendations.
 - `reports/mainstream_driver_priority_scope.md`: user-directed current/mainstream acquisition lane, deferred-source boundary, and publication safeguards.
-- `reports/goal_completion_matrix.md`: requirement-by-requirement evidence, remaining work, and the explicit basis for not claiming completion.
+- `reports/phase_1_mainstream_daily_driver_completion_2026-08-10.md`: owner-confirmed mainstream Phase 1 completion boundary, completed controls, and preserved deferred lane.
+- `reports/goal_completion_matrix.md`: requirement-by-requirement evidence for the completed mainstream milestone and deferred exhaustive-corpus work.
 - `validation/`: quality-control, adversarial-completeness, and driver-language validation artifacts.
 - `validation/driver_variant_index.jsonl`: generated one-to-one retrieval-oracle index for every embedded and supplemental driver-language variant.
 - `validation/supplemental_driver_variants.jsonl`: tagged short and context-rich validation paraphrases that close per-record surface gaps without changing source truth.

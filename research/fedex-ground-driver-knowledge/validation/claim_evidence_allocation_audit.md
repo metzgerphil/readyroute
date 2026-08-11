@@ -8,15 +8,15 @@ Convert record-level evidence retrieval into exact claim-to-fragment traceabilit
 
 ## Current result
 
-`knowledge/claim_evidence_allocation_coverage.jsonl` contains exactly one row for all 3,242 substantive claims:
+`knowledge/claim_evidence_allocation_coverage.jsonl` contains exactly one row for all 3,254 substantive claims:
 
-- 1,774 are `AUTO_ALLOCATED_SINGLE_FRAGMENT`.
-- 1,468 are `HUMAN_ALLOCATED_MULTI_FRAGMENT`.
+- 1,734 are `AUTO_ALLOCATED_SINGLE_FRAGMENT`.
+- 1,520 are `HUMAN_ALLOCATED_MULTI_FRAGMENT`.
 - 0 remain `PENDING_MULTI_FRAGMENT_REVIEW`.
-- All 3,242 claims are currently `CLAIM_FRAGMENT_TRACE_READY`.
+- All 3,254 claims are currently `CLAIM_FRAGMENT_TRACE_READY`.
 - 0 retain `WITHHOLD_EXACT_CLAIM_FRAGMENT_ASSERTION_UNTIL_ALLOCATED`.
 
-Reviewed overrides now cover every substantive claim in 64 multi-fragment records. The generated allocation ledger is the authoritative record-by-record inventory; this narrative records the material repairs found during those reviews.
+Reviewed overrides now cover every substantive claim in 67 multi-fragment records. The generated allocation ledger is the authoritative record-by-record inventory; this narrative records the material repairs found during those reviews.
 
 ## Evidence repair discovered during allocation
 

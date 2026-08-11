@@ -132,8 +132,9 @@ def main() -> int:
     expected_recovery_counts = {
         "ORIGINAL_ROW_RETAINED": 26,
         "RECONSTRUCTED_FROM_CONTROLLED_LEDGERS": 62,
-        "NEW_AUTHORITATIVE_ROW_AFTER_RECOVERY": 11,
-        "ORIGINAL_BYTES_ACQUIRED_AND_FULLY_REVIEWED": 22,
+        "NEW_AUTHORITATIVE_ROW_AFTER_RECOVERY": 9,
+        "ORIGINAL_BYTES_ACQUIRED_AND_FULLY_REVIEWED": 24,
+        "OFFICIAL_PUBLIC_SOURCE_ACQUIRED": 2,
     }
     invalid_recovery_basis = [
         row["source_id"]
@@ -304,10 +305,10 @@ def main() -> int:
                 )
     drive_root = inventory_by_id.get("SRC-GDRIVE-ROOT-0001", {})
     if (
-        len(google_drive_connector_snapshot) != 35
-        or len(snapshot_file_ids) != 35
-        or len(snapshot_hash_counts) != 31
-        or Counter(snapshot_hash_counts.values()) != Counter({1: 27, 2: 4})
+        len(google_drive_connector_snapshot) != 37
+        or len(snapshot_file_ids) != 37
+        or len(snapshot_hash_counts) != 33
+        or Counter(snapshot_hash_counts.values()) != Counter({1: 29, 2: 4})
         or drive_root.get("access_status") != "ACCESSIBLE"
         or drive_root.get("review_status") != "FULLY_REVIEWED"
         or drive_root.get("title") != "Chat Bot"

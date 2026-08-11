@@ -1,14 +1,14 @@
 # SRC-MGB-DOC-0039 — Summer Driving
 
-Review date: 2026-08-09  
-Source date displayed in document: 07/27/2026  
-Safety Topic Library posted date: 07/28/2026  
-Review status: FULLY_REVIEWED  
-Capture: seven complete page-addressed authenticated viewer renders with SHA-256 manifest; original PDF bytes not acquired
+Review date: 2026-08-10
+Source date displayed in document: 07/27/2026
+Safety Topic Library posted date: 07/28/2026
+Review status: FULLY_REVIEWED
+Capture: original seven-page PDF archived with SHA-256 `db297412a83c5b532312a12a733f1b7fe27b57ef0815764d4ba8987dfc7658e6`; prior authenticated viewer renders retained as review evidence
 
 ## Source identity and viewer anomaly
 
-The Safety Topic Library, URL, and document body identify this source as **Summer Driving**. The authenticated PDF viewer chrome displays **Preventing HOS Violations**, a recurring viewer-title anomaly. The body identity and exact URL control. All seven pages were visually reviewed.
+The Safety Topic Library, filename, authenticated URL, source date, and document body identify this source as **Summer Driving**. The original PDF's embedded title and authenticated viewer chrome both say **Preventing HOS Violations**, a recurring metadata anomaly. The body identity and exact URL control. The owner-uploaded original bytes were acquired on 2026-08-10, and every original page was visually reconciled to the prior complete rendered-page review.
 
 ## Page coverage
 
@@ -29,4 +29,4 @@ Four distinct records preserve hydration, summer-traffic operation, sun-exposure
 - The module does not provide individualized medical hydration requirements.
 - It does not define a vehicle-defect response, repair, or out-of-service procedure.
 - It does not replace HOS/rest rules, traffic laws, or a complete distracted-driving policy.
-- Original PDF bytes remain unavailable; the complete rendered capture supports page-level re-review but not byte identity.
+- The original bytes now support byte identity and change detection. The prior page captures remain preserved as historical review evidence but are no longer the controlling capture.

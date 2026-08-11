@@ -10,13 +10,13 @@ Source review status and knowledge extraction are different claims. A source can
 
 ## Current reconciliation
 
-All 121 primary source rows are represented exactly once.
+All 123 primary source rows are represented exactly once.
 
-- 40 fully reviewed sources contribute operational evidence mappings through `MAPPED_OPERATIONAL_EVIDENCE`.
+- 42 fully reviewed sources contribute operational evidence mappings through `MAPPED_OPERATIONAL_EVIDENCE`.
 - 81 sources currently have zero mappings, exactly classified by the generated ledger:
   - 25 are `NOT_YET_REVIEWED`.
   - 7 are `INACCESSIBLE` broken MyGroundBiz resources.
-  - 2 reviewed Drive containers delegate substantive evidence to reviewed child files; the connector container's 35 children reconcile to 31 registered archive hashes.
+  - 2 reviewed Drive containers delegate substantive evidence to reviewed child files; the connector container's 37 children reconcile to 33 registered archive hashes.
   - 1 reviewed scenario workbook is a `SECONDARY_REFERENCE_NO_AUTHORITY`.
   - 1 partially reviewed MyGroundBiz navigation container remains open.
   - 6 fully reviewed landing pages and 5 fully reviewed indexes have substantive child sources pending.
@@ -25,7 +25,7 @@ All 121 primary source rows are represented exactly once.
   - 3 partially reviewed documents require remaining-page review.
   - 8 exact duplicate candidates, 1 render-identical copy, 8 historical sources (including six fully reviewed 2017 FCC videos), 1 corroborative source, and 1 version-sensitive source retain evidence history while deferring active operational mappings to the applicable reviewed source or current-version gate.
 
-The ledger reconciles exactly to all 383 source-to-knowledge mapping rows. No unreviewed, inaccessible, container-only, or secondary source is silently counted as mapped operational authority.
+The ledger reconciles exactly to all 385 source-to-knowledge mapping rows. No unreviewed, inaccessible, container-only, or secondary source is silently counted as mapped operational authority.
 
 ## Zero-mapping sources that require continued follow-up
 

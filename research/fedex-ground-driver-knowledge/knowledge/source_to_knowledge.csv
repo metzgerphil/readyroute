@@ -348,6 +348,8 @@ SRC-MGB-PAGE-0011,"Nov. 17 OP-201 page, published 2022-11-15",KNO-DEL-BUS-OP201-
 SRC-MGB-PAGE-0011,"Shipper instructions to deliver on first attempt section, published 2022-11-15",KNO-DEL-SHIPPER-RELEASE-001,"Dated STAR special-shipper scope, signature exclusions, mixed-shipper limit, and non-current SRA-entry detail",2026-08-09
 SRC-MGB-PAGE-0014,"CSA BASICs, Vehicle Maintenance paragraph",KNO-VEH-PRETRIP-DEFECT-001,Observable-defect correction before service,2026-08-08
 SRC-MGB-PAGE-0014,"Hours of Service section, HOS for rentals",KNO-HOS-RENTAL-ELD-001,"Eight-day threshold, manual RODS, rental agreement, annotation, and ELD requirement",2026-08-08
+SRC-FMCSA-DOC-0001,"Federal Register 87 FR 55889, sections V.A-F",KNO-HOS-RENTAL-ELD-001,"Federal exemption period, qualifying scope, anti-cycling rule, required carried notice/agreement/RODS, and interstate/intrastate boundary",2026-08-10
+SRC-ECFR-DOC-0001,"49 CFR 396.9(c)-(d), eCFR snapshot 2026-08-07",KNO-DOT-ROADSIDE-REPORT-001,"Federal roadside-report delivery and 24-hour transmission branches, out-of-service restriction, carrier correction/certification, and retention baseline",2026-08-10
 SRC-MGB-PAGE-0014,"Hours of Service section, Unidentified Driving Events paragraphs",KNO-HOS-UDE-001,"UDE creation, inspection visibility, false-log significance, and reconciliation need",2026-08-08
 SRC-MGB-PAGE-0017,"Trailer and Dolly Coupling page, responsibility and pintle-hook paragraphs",KNO-LH-COUPLING-BASIC-001,"Fifth-wheel/kingpin lock, pintle latch, and both safety chains",2026-08-08
 SRC-MGB-PAGE-0019,Dry ice safety section,KNO-HAZ-DRY-ICE-001,"Ventilation, staging, exposure response, PPE, and indicators",2026-08-08

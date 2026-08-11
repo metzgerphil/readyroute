@@ -8,6 +8,12 @@ The active research lane prioritizes current operational information that is bro
 
 This is an ordering decision, not an evidence decision. Deferred sources remain inventoried and cannot support guidance until reviewed. No unresolved procedure is treated as approved merely because the lower-priority corpus is deferred.
 
+## Owner-confirmed milestone boundary
+
+On 2026-08-10, the project owner confirmed that the remaining specialist and administrative source requests are not part of the normal daily-driver question scope and may be deferred. The two requested current safety originals were then supplied, archived, and fully reconciled. This converts the earlier priority ordering into the formal completion boundary for the mainstream daily P&D Phase 1 milestone.
+
+The deferred lane remains part of the governed research backlog. It does not block the mainstream milestone, but it also does not become verified, approved, or safe for definitive driver instructions. Pending and outdated records retain their status gates and human escalation behavior.
+
 ## Core foundation already available
 
 The reviewed source set already provides substantial coverage of:
@@ -21,7 +27,7 @@ The reviewed source set already provides substantial coverage of:
 - dogs, access hazards, locked gates, facility entry, vehicle/key security, accidents, and emergency escalation;
 - forms, labels, markings, SID information, manifests, and other driver-used artifacts where the source establishes their use.
 
-The current authoritative layer contains 144 general operational records. Eighty-nine are `VERIFIED`; the remaining records are explicitly gated as `CONFLICT`, `HUMAN_REVIEW_REQUIRED`, or `POTENTIALLY_OUTDATED`. Driver-facing wording is separated from source truth, and unsupported workbook answers remain excluded.
+The current research layer contains 144 general operational records: 90 are `VERIFIED`; the remaining records are explicitly gated as `CONFLICT`, `HUMAN_REVIEW_REQUIRED`, or `POTENTIALLY_OUTDATED`. The canonical release contains 97 publication-ready records after applying seven active Ready Route approvals. Driver-facing wording is separated from source truth, and unsupported workbook answers remain excluded.
 
 ## Active acquisition/review lane
 
@@ -65,7 +71,9 @@ The priority decision does not relax any safety or evidence control:
 
 ## Exit condition for the mainstream pass
 
-The focused pass is ready to hand off when Tier 1 sources are either fully reviewed or explicitly documented as inaccessible, Tier 2 identity/version checks are resolved to the extent the portal permits, every resulting rule is mapped to exact evidence, and the targeted decision-logic and driver-language validation suite passes. Deferred sources remain visible as later completeness work rather than being represented as reviewed or irrelevant.
+The focused pass is complete when current broadly applicable P&D evidence is reviewed to the accessible-corpus boundary, every eligible rule is durably mapped to exact evidence, all unresolved or outdated branches remain gated, the targeted decision-logic and driver-language suites pass, and all remaining non-mainstream work is preserved in an explicit deferred lane. That condition is satisfied in `phase_1_mainstream_daily_driver_completion_2026-08-10.md`.
+
+Deferred sources remain visible as later completeness work rather than being represented as reviewed or irrelevant.
 
 ## 2026-08-09 authenticated current-source pass
 

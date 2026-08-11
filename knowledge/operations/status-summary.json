@@ -1,6 +1,6 @@
 {
   "schema_version": "1.0.0",
-  "generated_at": "2026-08-11T02:06:23.983Z",
+  "generated_at": "2026-08-11T03:00:09.576Z",
   "total_records": 144,
   "by_status": {
     "SOURCE_VERIFIED": 90,
@@ -10,9 +10,9 @@
     "INSUFFICIENT_EVIDENCE": 0
   },
   "status_eligible_records": 97,
-  "publication_ready_records": 91,
-  "status_eligible_but_evidence_gated": 6,
-  "source_records": 121,
+  "publication_ready_records": 97,
+  "status_eligible_but_evidence_gated": 0,
+  "source_records": 123,
   "driver_language_cases": 192,
   "reference_language_cases": 23,
   "candidate_operational_language_cases": 69,

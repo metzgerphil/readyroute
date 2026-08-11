@@ -140,7 +140,7 @@ def build_rows() -> list[dict[str, str]]:
 def main() -> int:
     rows = build_rows()
     with OUTPUT.open("w", encoding="utf-8", newline="") as handle:
-        writer = csv.DictWriter(handle, fieldnames=FIELDNAMES)
+        writer = csv.DictWriter(handle, fieldnames=FIELDNAMES, lineterminator="\n")
         writer.writeheader()
         writer.writerows(rows)
     print(f"wrote {len(rows)} human-adjudication questions to {OUTPUT}")

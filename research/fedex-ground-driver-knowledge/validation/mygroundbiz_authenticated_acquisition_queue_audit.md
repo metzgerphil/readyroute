@@ -10,21 +10,21 @@ Authenticated MyGroundBiz sessions have been short-lived. The source inventory p
 
 ## Exact coverage
 
-- 266 queued resources total.
+- 264 queued resources total.
 - Four partially reviewed MyGroundBiz primary sources: three require active completion and the rejected version-ambiguous pickup sheet is deferred in favor of current OP-321.
 - 25 accessible MyGroundBiz primary resources requiring acquisition and complete review.
-- Seven fully reviewed MyGroundBiz primary sources requiring original-byte or durable-page recapture. Two sources have complete hashed viewer renders, but not original PDF bytes.
+- Five fully reviewed MyGroundBiz primary sources requiring original-byte or durable-page recapture.
 - 71 unique unacquired Safety Topic documents remain in the queue after current source rows were reconciled.
 - 100 exact monthly news-archive pages.
 - 59 unreviewed navigation destinations, with one version-ambiguous source separately deferred.
 - No current partial source, accessible unreviewed primary source, fully reviewed no-archive source, or backlog resource is missing or duplicated.
-- Four rows are `PARTIAL_REVIEW_OPEN`; 25 are `UNREVIEWED_PRIMARY_OPEN`; seven are `REVIEWED_DURABLE_CAPTURE_OPEN`; 230 are `UNACQUIRED_OPEN`.
+- Four rows are `PARTIAL_REVIEW_OPEN`; 25 are `UNREVIEWED_PRIMARY_OPEN`; five are `REVIEWED_DURABLE_CAPTURE_OPEN`; 230 are `UNACQUIRED_OPEN`.
 
 | Wave | Resources | Purpose |
 |---|---:|---|
 | `WAVE_0_PARTIAL_SOURCE_COMPLETION` | 3 | Finish the active current partial documents/pages before starting lower-completion resources |
 | `WAVE_0_UNREVIEWED_PRIMARY_ACQUISITION` | 25 | Acquire and review open primary documents/pages; compare explicitly linked document candidates without assuming identity |
-| `WAVE_0_DURABLE_RECAPTURE` | 7 | Preserve original bytes for fully reviewed documents/pages; two sources already have complete hashed viewer renders |
+| `WAVE_0_DURABLE_RECAPTURE` | 5 | Preserve original bytes or complete durable page captures for fully reviewed documents/pages |
 | `WAVE_1_DIRECT_DOCUMENT_ACQUISITION` | 71 | Archive every remaining known direct Safety Topic document URL first, while authentication is live |
 | `WAVE_2_NEWS_ARCHIVE_DISCOVERY` | 100 | Capture each exact exposed monthly archive, inventory all articles and pagination, then assess relevance from content |
 | `WAVE_2_GAP_LINKED_DESTINATIONS` | 10 | Capture destinations whose title/path intersects a known source gap or signals current safety/compliance/maintenance material |
@@ -95,14 +95,14 @@ Partial-completion resources may have blank non-verified dependency sets because
 
 - Every priority basis says explicitly that titles/navigation are discovery metadata only.
 - Wave 4 is an ordering choice, not an exclusion or low-relevance finding.
-- All 230 backlog resources remain open/not-created until the applicable completion gate is satisfied; all four partial sources remain `PARTIALLY_REVIEWED`; all 25 unreviewed primary resources remain `NOT_YET_REVIEWED`; and the seven recapture sources remain `FULLY_REVIEWED` while their original/durable-capture gap stays open.
+- All 230 backlog resources remain open/not-created until the applicable completion gate is satisfied; all four partial sources remain `PARTIALLY_REVIEWED`; all 25 unreviewed primary resources remain `NOT_YET_REVIEWED`; and the five recapture sources remain `FULLY_REVIEWED` while their original/durable-capture gap stays open.
 - Linked source-gap IDs must exist in the referenced-source backlog.
 - Newly acquired resources must still pass authority, exact-locator, status, version, and no-invention controls before supporting knowledge.
 
 ## Automated control
 
-`scripts/build_mygb_acquisition_queue.py` regenerates the 266 rows from the current MyGroundBiz partial-source set, accessible unreviewed-primary set, fully reviewed no-archive source set, and the three authoritative backlogs, then derives work state, state basis, comparison candidates, and affected-record sets from their controlling ledgers. It fails until its explicit session-priority order is reconciled whenever the partial-source set changes. `scripts/validate_corpus_integrity.py` rejects stale output, missing/extra/duplicate resources, noncontiguous ordering, invalid types, waves, states, or bases, missing capture/completion instructions, unknown gap IDs, any partial source outside its Wave 0 completion wave, any accessible unreviewed primary source outside its Wave 0 acquisition wave, captured/unacquired state drift, invalid candidate comparison IDs, any reviewed no-archive source outside durable recapture, any direct Safety Topic document outside Wave 1, any monthly archive outside its discovery wave, or any queue/resolution impact mismatch in either direction.
+`scripts/build_mygb_acquisition_queue.py` regenerates the 264 rows from the current MyGroundBiz partial-source set, accessible unreviewed-primary set, fully reviewed no-archive source set, and the three authoritative backlogs, then derives work state, state basis, comparison candidates, and affected-record sets from their controlling ledgers. It fails until its explicit session-priority order is reconciled whenever the partial-source set changes. `scripts/validate_corpus_integrity.py` rejects stale output, missing/extra/duplicate resources, noncontiguous ordering, invalid types, waves, states, or bases, missing capture/completion instructions, unknown gap IDs, any partial source outside its Wave 0 completion wave, any accessible unreviewed primary source outside its Wave 0 acquisition wave, captured/unacquired state drift, invalid candidate comparison IDs, any reviewed no-archive source outside durable recapture, any direct Safety Topic document outside Wave 1, any monthly archive outside its discovery wave, or any queue/resolution impact mismatch in either direction.
 
 ## Limitation
 
-This makes the remaining work efficient and auditable. All remaining rows are acquisition, partial-review completion, or recapture work. Full goal completion still requires satisfying all 266 queue completion gates or explicitly documenting any item that remains inaccessible.
+This makes the remaining work efficient and auditable. All remaining rows are acquisition, partial-review completion, or recapture work. Under the owner-confirmed mainstream daily-driver scope these rows are preserved as deferred work; satisfying all 264 queue gates remains necessary only for a later exhaustive-corpus completion claim.

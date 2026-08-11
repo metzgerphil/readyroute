@@ -10,12 +10,12 @@ This audit does not treat the unacquired MyGroundBiz, referenced-source, Safety 
 
 ## Scope
 
-- 121 primary source records.
+- 123 primary source records.
 - 144 operational records: 90 `VERIFIED`, 32 `HUMAN_REVIEW_REQUIRED`, 20 `POTENTIALLY_OUTDATED`, and two `CONFLICT`.
-- 383 exact source-to-knowledge mappings across 226 unique record/source pairs.
-- 3,242 substantive claims with 3,242 exact claim-evidence allocations and zero pending allocations.
+- 385 exact source-to-knowledge mappings across 228 unique record/source pairs.
+- 3,254 substantive claims with 3,254 exact claim-evidence allocations and zero pending allocations.
 - 192 formal driver-language cases, 724 indexed variants, 192 clarification strategies, and 33 multi-record interaction cases.
-- 91 canonical publication-ready records and six additional status-eligible records correctly held behind original-byte evidence gates.
+- 97 canonical publication-ready records and zero status-eligible records held behind evidence gates.
 
 ## Adversarial checks
 
@@ -25,7 +25,7 @@ This audit does not treat the unacquired MyGroundBiz, referenced-source, Safety 
 4. Rechecked every non-verified answer for a visible source-limit/conflict/version warning and a nonempty escalation path.
 5. Recomputed procedure-length distribution and reviewed every short/atomic record rather than enforcing an artificial minimum step count.
 6. Rechecked all 59 records with at least five ordered steps for a truncated or misleading primary answer.
-7. Rechecked the six publication-gated verified safety records to ensure complete rendered evidence was not represented as original-byte capture.
+7. Rechecked the six formerly publication-gated verified safety records against the two owner-uploaded originals and confirmed all fourteen pages without changing operational instructions.
 8. Reconciled all open nonverified records to their resolution rows and all missing-source obligations to the acquisition/backlog controls.
 9. Rechecked the current/mainstream priority boundary so older FCC, historical, linehaul-only, customer-specific, and superseded UI material cannot displace newer applicable OP-117/FORGE evidence.
 
@@ -39,4 +39,4 @@ One quality-control documentation defect was found: `concise_answer_sequence_aud
 
 This pass reached diminishing yield for the currently restored, accessible, reviewed mainstream corpus: it produced zero substantive operational additions or corrections after the prior source-alignment pass.
 
-This is not proof of full Phase 1 completeness. The authenticated acquisition queue still contains 266 resources, the referenced-source ledger still contains 42 obligations, two conflicts and 52 other non-verified records remain gated, and six verified records still require original bytes before publication. A new meaningful source batch or human adjudication must trigger the same QC/adversarial pass again.
+This supports completion of the owner-confirmed mainstream daily-driver Phase 1 milestone. It is not proof of exhaustive possible-corpus completion: the 264-resource acquisition queue, 42 referenced-source obligations, two conflicts, and 52 other non-verified research records remain preserved and gated. A new meaningful source batch or human adjudication must trigger the same QC/adversarial pass again.

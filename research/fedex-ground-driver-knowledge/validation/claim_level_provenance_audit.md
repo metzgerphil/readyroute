@@ -13,17 +13,17 @@ The record evidence list and `source_to_knowledge.csv` can answer which sources 
 | Field | Claims |
 |---|---:|
 | Authoritative rule | 144 |
-| Applicability | 296 |
-| Conditions | 335 |
-| Exceptions | 66 |
-| Required procedure steps | 641 |
-| Required documentation | 411 |
-| Prohibited actions | 395 |
+| Applicability | 297 |
+| Conditions | 337 |
+| Exceptions | 67 |
+| Required procedure steps | 644 |
+| Required documentation | 412 |
+| Prohibited actions | 397 |
 | Escalation requirements | 165 |
-| Clarification requirements | 501 |
+| Clarification requirements | 503 |
 | Concise answers | 144 |
 | More Info answers | 144 |
-| **Total** | **3,242** |
+| **Total** | **3,254** |
 
 Every claim row preserves the exact current claim text, record/status identity, support mode, and one or more record-level evidence references containing source ID, precise locator, review date, and the narrower `supported_scope` text from the source-to-knowledge ledger.
 
@@ -33,14 +33,14 @@ The audit now separates record-evidence retrieval from exact claim-to-fragment a
 
 | Traceability class | Claims | Gate |
 |---|---:|---|
-| `SINGLE_EVIDENCE_FRAGMENT` | 1,774 | Traceable to the record's single exact evidence fragment |
+| `SINGLE_EVIDENCE_FRAGMENT` | 1,734 | Traceable to the record's single exact evidence fragment |
 | `MULTI_FRAGMENT_SINGLE_SOURCE` | 156 | Human claim-to-fragment allocation completed |
-| `MULTI_SOURCE_EVIDENCE_SET` | 1,285 | Human claim-to-fragment allocation completed |
-| **Total** | **3,242** | |
+| `MULTI_SOURCE_EVIDENCE_SET` | 1,364 | Human claim-to-fragment allocation completed |
+| **Total** | **3,254** | |
 
-The 1,468 multi-fragment claims entered the finer allocation workflow because record-level provenance alone does not establish that every listed fragment supports every word. The base index marks them as requiring allocation; the companion allocation ledger supplies the production trace after applying reviewed overrides.
+The 1,520 multi-fragment claims entered the finer allocation workflow because record-level provenance alone does not establish that every listed fragment supports every word. The base index marks them as requiring allocation; the companion allocation ledger supplies the production trace after applying reviewed overrides.
 
-The companion `knowledge/claim_evidence_allocation_coverage.jsonl` now performs that finer allocation. Reviewed batches allocate all 1,468 multi-fragment claims across 65 records, leaving zero pending allocation rows. See `validation/claim_evidence_allocation_audit.md` for the allocation rules and source repairs discovered during review.
+The companion `knowledge/claim_evidence_allocation_coverage.jsonl` now performs that finer allocation. Reviewed batches allocate all 1,520 multi-fragment claims across 67 records, leaving zero pending allocation rows. See `validation/claim_evidence_allocation_audit.md` for the allocation rules and source repairs discovered during review.
 
 ## Locator normalization finding
 
@@ -51,7 +51,7 @@ The stronger exact-locator join exposed four record/source pairs whose evidence 
 - Falsification split OP-117 pages 6 and 81 in evidence while the ledger combined them.
 - Stolen-vehicle evidence combined OP-117 page 84 and pages 86-87 while the conflict mapping separately identified the page 84 branch.
 
-These were normalized before the later refusal, status-translation, form-artifact, FORGE page-completeness, complete Drive-PDF page-accountability, and subsequent current-page reconciliations. The current corpus contains 383 exact evidence objects and 383 exact mapping rows across 226 knowledge/source pairs. The validator requires equality at `knowledge_id + source_id + locator`, replacing the weaker source-pair-only check.
+These were normalized before the later refusal, status-translation, form-artifact, FORGE page-completeness, complete Drive-PDF page-accountability, and subsequent current-page reconciliations. The current corpus contains 385 exact evidence objects and 385 exact mapping rows across 228 knowledge/source pairs. The validator requires equality at `knowledge_id + source_id + locator`, replacing the weaker source-pair-only check.
 
 ## Integrity controls
 
@@ -74,4 +74,4 @@ A future normalized production schema should allocate stable evidence-fragment I
 
 ## Result
 
-All 3,242 current substantive claims are deterministically connected to exact reviewed evidence locators and supported-scope metadata. Of those, 1,774 have one unambiguous evidence fragment and all 1,468 multi-fragment claims have completed human allocation across 65 records, leaving zero pending allocation rows. This closes the current-corpus claim-allocation gate; it does not prove that unacquired sources, unresolved versions, conflicts, human-review decisions, or durable source capture are complete.
+All 3,254 current substantive claims are deterministically connected to exact reviewed evidence locators and supported-scope metadata. Of those, 1,734 have one unambiguous evidence fragment and all 1,520 multi-fragment claims have completed human allocation across 67 records, leaving zero pending allocation rows. This closes the current-corpus claim-allocation gate; it does not prove that unacquired sources, unresolved versions, conflicts, human-review decisions, or durable source capture are complete.
