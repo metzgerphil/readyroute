@@ -3,6 +3,7 @@
 ## Config
 - `npm run check`
 - `npm run check:release`
+- For the help-only TestFlight profile, run `npm run check:testflight`
 - Confirm `EXPO_PUBLIC_API_URL` points to production, not localhost
 - Confirm `EXPO_PUBLIC_USE_LOCAL_API=false` unless you intentionally want the simulator/dev app hitting your local backend
 - Confirm `EXPO_PUBLIC_GOOGLE_MAPS_API_KEY` is present and active
@@ -30,6 +31,7 @@
 
 ## Publish
 - Run `npm run release:prep`
-- Build with EAS production profile
+- For the help-only beta, run `npm run release:prep:testflight` and confirm the compiled API-target check passes
+- Build with the intended EAS profile (`testflight` for the help-only beta; `production` only for a production release)
 - Verify app icon, splash, and app name in the generated binary
 - Record release date, build number, and API target used for the release

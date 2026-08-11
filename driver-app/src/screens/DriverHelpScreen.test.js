@@ -116,6 +116,9 @@ describe('DriverHelpScreen', () => {
       expect(api.post).toHaveBeenCalledWith('/driver-help/query', {
         question: 'Signature package nobody home'
       });
+      expect(screen.getByLabelText('Current question: Signature package nobody home')).toBeTruthy();
+      expect(screen.getAllByText('Verified procedure')).toHaveLength(2);
+      expect(screen.getByText('What to do')).toBeTruthy();
       expect(screen.getByText('Do not leave the package without the required signature.')).toBeTruthy();
       expect(screen.getByText('KNO-DEL-SIG-DSR-001 v2')).toBeTruthy();
     });
@@ -234,6 +237,41 @@ describe('DriverHelpScreen', () => {
     });
   });
 
+  it('lets a driver say they are not sure without inventing a clarification answer', async () => {
+    api.post
+      .mockResolvedValueOnce({
+        data: {
+          session_id: 'session-unsure',
+          interaction_id: 'interaction-unsure',
+          response_mode: 'CLARIFY',
+          clarification_prompt: 'What signature type does FORGE show?',
+          clarification_options: []
+        }
+      })
+      .mockResolvedValueOnce({
+        data: {
+          session_id: 'session-unsure',
+          interaction_id: 'interaction-escalate',
+          response_mode: 'ESCALATE',
+          escalation_message: 'Contact your manager or station for the current procedure.'
+        }
+      });
+    const screen = render(<DriverHelpScreen />);
+
+    fireEvent.changeText(screen.getByLabelText('Driver question'), 'Signature package nobody home');
+    fireEvent.press(screen.getByLabelText('Ask Ready Route'));
+    await screen.findByText('What signature type does FORGE show?');
+    fireEvent.press(screen.getByLabelText('Not sure'));
+
+    await waitFor(() => {
+      expect(api.post).toHaveBeenLastCalledWith('/driver-help/query', {
+        question: "I'm not sure.",
+        session_id: 'session-unsure'
+      });
+      expect(screen.getByLabelText('Current question: Signature package nobody home')).toBeTruthy();
+    });
+  });
+
   it('renders escalation instead of an unsupported operational answer', async () => {
     api.post.mockResolvedValueOnce({
       data: {
@@ -249,8 +287,12 @@ describe('DriverHelpScreen', () => {
     fireEvent.press(screen.getByLabelText('Ask Ready Route'));
 
     await waitFor(() => {
-      expect(screen.getByText('Approved answer unavailable')).toBeTruthy();
+      expect(screen.getByText('Verified answer unavailable')).toBeTruthy();
+      expect(screen.getByText(
+        'Ready Route does not have enough verified information to give a definitive answer for this situation.'
+      )).toBeTruthy();
       expect(screen.getByText('Ready Route cannot establish an approved answer. Contact your manager.')).toBeTruthy();
+      expect(screen.getByText('Ready Route will not guess.')).toBeTruthy();
     });
   });
 

@@ -22,9 +22,10 @@ Production help-only builds continue to use `EXPO_PUBLIC_DRIVER_HELP_ONLY=true`,
 
 ## Result states
 
-- `ANSWER`: immediate verified steps first, followed by optional details, prohibitions, trace state, feedback, typed follow-up, and “Ask another question.”
-- `CLARIFY`: one material question with compact choices when available, plus a text response path.
-- `ESCALATE`: a clear statement that an approved answer is unavailable and the appropriate human escalation boundary.
+- Every result begins with the driver's original situation wording so the driver can immediately see what Ready Route evaluated.
+- `ANSWER`: a “Verified procedure” card presents numbered immediate steps first, followed by optional details, prohibitions, internal trace state, Helpful/Not Helpful feedback, typed follow-up, and “Ask another question.”
+- `CLARIFY`: a “One detail first” card asks one material question with large choices when available, an explicit “Not sure” path, and a text response path. Choosing “Not sure” is sent back through retrieval; the interface never fabricates the missing condition.
+- `ESCALATE`: a calm “Verified answer unavailable” card explains that verified information is insufficient, presents the canonical human-escalation message as the next step, and states that Ready Route will not guess.
 
 No result state creates an operational answer from general model knowledge.
 
@@ -38,3 +39,5 @@ No result state creates an operational answer from general model knowledge.
 - Large touch targets and sunlight-readable type
 
 The orange microphone is the dominant home-screen action. Orange is not used as a danger color.
+
+The help-only account control is a circular control at the upper-right. Result cards use white surfaces, navy headings, orange action accents, and no bottom navigation.

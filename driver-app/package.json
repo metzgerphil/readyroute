@@ -9,11 +9,13 @@
     "web": "expo start --web",
     "check": "HOME=/tmp/readyroute-expo-home expo config --json > /dev/null",
     "check:release": "node ./scripts/check-release-env.js --production",
+    "check:testflight": "node ./scripts/check-release-env.js --production --profile testflight",
     "build:native": "HOME=/tmp/readyroute-expo-home expo export --platform ios --output-dir dist-native",
     "build:native:production": "NODE_ENV=production HOME=/tmp/readyroute-expo-home expo export --platform ios --output-dir dist-native-production",
     "build:web": "npm run build:native",
     "test": "jest --runInBand --forceExit",
-    "release:prep": "npm run check && npm run test && npm run build:native:production && npm run check:release"
+    "release:prep": "npm run check && npm run test && npm run build:native:production && npm run check:release",
+    "release:prep:testflight": "npm run check:testflight && node ./scripts/export-testflight.js && npm run test"
   },
   "dependencies": {
     "@react-native-async-storage/async-storage": "2.2.0",

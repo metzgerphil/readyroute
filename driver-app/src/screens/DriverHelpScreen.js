@@ -64,6 +64,35 @@ function SendIcon() {
   );
 }
 
+function StatusShieldIcon({ unavailable = false }) {
+  return (
+    <Svg height={unavailable ? 76 : 34} viewBox="0 0 48 56" width={unavailable ? 66 : 40}>
+      <Path
+        d="M24 2 43 10v15c0 13-7.7 23.2-19 29C12.7 48.2 5 38 5 25V10L24 2Z"
+        fill={unavailable ? 'none' : BRAND_ORANGE}
+        stroke={unavailable ? BRAND_NAVY : BRAND_ORANGE}
+        strokeLinejoin="round"
+        strokeWidth="3"
+      />
+      {unavailable ? (
+        <>
+          <Line stroke={BRAND_NAVY} strokeLinecap="round" strokeWidth="3" x1="24" x2="24" y1="19" y2="32" />
+          <Line stroke={BRAND_NAVY} strokeLinecap="round" strokeWidth="3" x1="24" x2="24" y1="39" y2="39" />
+        </>
+      ) : (
+        <Path
+          d="m14 27 7 7 14-17"
+          fill="none"
+          stroke="#ffffff"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          strokeWidth="4"
+        />
+      )}
+    </Svg>
+  );
+}
+
 function splitAnswerIntoSteps(answer) {
   return (String(answer || '').match(/[^.!?]+[.!?]+|[^.!?]+$/g) || [])
     .map((sentence) => sentence.trim())
@@ -90,6 +119,7 @@ function getAnswerStructure(result) {
 export default function DriverHelpScreen() {
   const inputRef = useRef(null);
   const [question, setQuestion] = useState('');
+  const [situationQuestion, setSituationQuestion] = useState('');
   const [sessionId, setSessionId] = useState(null);
   const [result, setResult] = useState(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -138,13 +168,16 @@ export default function DriverHelpScreen() {
     setDictationError(message);
   });
 
-  async function submitQuestion(nextQuestion = question) {
+  async function submitQuestion(nextQuestion = question, { preserveSituation = false } = {}) {
     const trimmedQuestion = String(nextQuestion || '').trim();
     if (trimmedQuestion.length < 2 || isSubmitting) {
       return;
     }
 
     setQuestion(trimmedQuestion);
+    if (!preserveSituation || !situationQuestion) {
+      setSituationQuestion(trimmedQuestion);
+    }
     setIsSubmitting(true);
     setError('');
     setShowMore(false);
@@ -223,13 +256,18 @@ export default function DriverHelpScreen() {
   function chooseClarification(option) {
     const followUp = option?.query || option?.label || '';
     if (followUp) {
-      submitQuestion(followUp);
+      submitQuestion(followUp, { preserveSituation: true });
     }
+  }
+
+  function chooseNotSure() {
+    submitQuestion("I'm not sure.", { preserveSituation: true });
   }
 
   function startNewSituation() {
     setSessionId(null);
     setResult(null);
+    setSituationQuestion('');
     setQuestion('');
     setShowMore(false);
     setExpandedOptionId(null);
@@ -347,9 +385,23 @@ export default function DriverHelpScreen() {
             </View>
           ) : null}
 
+          {result && situationQuestion ? (
+            <View accessibilityLabel={`Current question: ${situationQuestion}`} style={styles.querySummary}>
+              <View style={styles.queryAccent} />
+              <Text maxFontSizeMultiplier={1.25} numberOfLines={3} style={styles.querySummaryText}>
+                {situationQuestion}
+              </Text>
+            </View>
+          ) : null}
+
           {result?.response_mode === 'ANSWER' ? (
             <View style={styles.answerCard}>
-              <Text maxFontSizeMultiplier={1.25} style={styles.answerEyebrow}>What to do now</Text>
+              <View style={styles.statusHeadingRow}>
+                <StatusShieldIcon />
+                <Text maxFontSizeMultiplier={1.25} style={styles.verifiedHeading}>Verified procedure</Text>
+              </View>
+              <View style={styles.cardDivider} />
+              <Text maxFontSizeMultiplier={1.25} style={styles.answerEyebrow}>What to do</Text>
 
               <View style={styles.stepList}>
                 {answerStructure.steps.map((step, index) => (
@@ -418,7 +470,7 @@ export default function DriverHelpScreen() {
 
               {result.more_info || answerStructure.procedureSteps.length || answerStructure.documentation.length || answerStructure.escalationRequirements.length ? (
                 <>
-                  <Pressable onPress={() => setShowMore((current) => !current)} style={styles.moreButton}>
+                  <Pressable accessibilityRole="button" onPress={() => setShowMore((current) => !current)} style={styles.moreButton}>
                     <Text style={styles.moreButtonText}>{showMore ? 'Hide More Info' : 'More Info'}</Text>
                   </Pressable>
                   {showMore ? (
@@ -473,19 +525,21 @@ export default function DriverHelpScreen() {
 
               <View style={styles.feedbackRow}>
                 <Text style={styles.feedbackLabel}>Was this helpful?</Text>
+              </View>
+              <View style={styles.feedbackButtons}>
                 <Pressable
                   accessibilityLabel="Helpful answer"
                   onPress={() => submitFeedback('up')}
                   style={[styles.feedbackButton, feedback === 'up' ? styles.feedbackSelected : null]}
                 >
-                  <Text style={styles.feedbackText}>👍</Text>
+                  <Text style={styles.feedbackText}>Helpful</Text>
                 </Pressable>
                 <Pressable
                   accessibilityLabel="Unhelpful answer"
                   onPress={() => submitFeedback('down')}
                   style={[styles.feedbackButton, feedback === 'down' ? styles.feedbackSelected : null]}
                 >
-                  <Text style={styles.feedbackText}>👎</Text>
+                  <Text style={styles.feedbackText}>Not Helpful</Text>
                 </Pressable>
               </View>
             </View>
@@ -493,8 +547,11 @@ export default function DriverHelpScreen() {
 
           {result?.response_mode === 'CLARIFY' ? (
             <View style={styles.clarifyCard}>
-              <Text style={styles.answerEyebrow}>One detail first</Text>
-              <Text style={styles.answerText}>{result.clarification_prompt}</Text>
+              <View style={styles.clarifyHeadingRow}>
+                <View style={styles.questionMark}><Text style={styles.questionMarkText}>?</Text></View>
+                <Text style={styles.clarifyEyebrow}>One detail first</Text>
+              </View>
+              <Text style={styles.clarificationPrompt}>{result.clarification_prompt}</Text>
               <View style={styles.optionList}>
                 {(result.clarification_options || []).map((option) => (
                   <Pressable
@@ -505,6 +562,14 @@ export default function DriverHelpScreen() {
                     <Text style={styles.optionText}>{option.label}</Text>
                   </Pressable>
                 ))}
+                <Pressable
+                  accessibilityLabel="Not sure"
+                  disabled={isSubmitting}
+                  onPress={chooseNotSure}
+                  style={({ pressed }) => [styles.optionButton, styles.notSureButton, pressed ? styles.pressed : null]}
+                >
+                  <Text style={styles.notSureText}>Not sure</Text>
+                </Pressable>
               </View>
               {!(result.clarification_options || []).length ? (
                 <Text style={styles.clarificationHelp}>Answer this detail in your own words below.</Text>
@@ -514,8 +579,17 @@ export default function DriverHelpScreen() {
 
           {result?.response_mode === 'ESCALATE' ? (
             <View style={styles.escalationCard}>
-              <Text style={styles.escalationEyebrow}>Approved answer unavailable</Text>
-              <Text maxFontSizeMultiplier={1.35} style={styles.escalationText}>{result.escalation_message}</Text>
+              <View style={styles.unavailableIcon}><StatusShieldIcon unavailable /></View>
+              <Text style={styles.escalationEyebrow}>Verified answer unavailable</Text>
+              <Text maxFontSizeMultiplier={1.35} style={styles.escalationText}>
+                Ready Route does not have enough verified information to give a definitive answer for this situation.
+              </Text>
+              <View style={styles.nextStepPanel}>
+                <Text style={styles.nextStepTitle}>Next step</Text>
+                <Text maxFontSizeMultiplier={1.35} style={styles.nextStepText}>{result.escalation_message}</Text>
+                <View style={styles.nextStepDivider} />
+                <Text style={styles.noGuessText}>Ready Route will not guess.</Text>
+              </View>
               {(result.escalation_details || []).length ? (
                 <View style={styles.escalationChecklist}>
                   <Text style={styles.detailTitle}>Be ready to confirm</Text>
@@ -527,9 +601,6 @@ export default function DriverHelpScreen() {
                   ))}
                 </View>
               ) : null}
-              <Text style={styles.escalationNote}>
-                This question has been logged so the knowledge gap can be reviewed.
-              </Text>
             </View>
           ) : null}
 
@@ -583,18 +654,34 @@ const styles = StyleSheet.create({
   sendButton: { alignItems: 'center', backgroundColor: BRAND_ORANGE, borderRadius: 24, height: 48, justifyContent: 'center', width: 48 },
   disabled: { opacity: 0.45 },
   pressed: { opacity: 0.78 },
-  answerCard: { backgroundColor: appTheme.colors.surface, borderColor: appTheme.colors.green, borderRadius: 22, borderWidth: 1.5, marginTop: 22, maxWidth: 680, padding: 20, width: '100%', ...appTheme.shadows.card },
-  clarifyCard: { backgroundColor: appTheme.colors.surface, borderColor: BRAND_NAVY, borderRadius: 22, borderWidth: 1.5, marginTop: 22, maxWidth: 680, padding: 20, width: '100%' },
-  escalationCard: { backgroundColor: appTheme.colors.warningSoft, borderColor: appTheme.colors.warning, borderRadius: 22, borderWidth: 1.5, marginTop: 22, maxWidth: 680, padding: 20, width: '100%' },
-  answerEyebrow: { color: appTheme.colors.greenText, fontSize: 12, fontWeight: '900', letterSpacing: 0.8, textTransform: 'uppercase' },
-  escalationEyebrow: { color: appTheme.colors.warningText, fontSize: 12, fontWeight: '900', letterSpacing: 0.8, textTransform: 'uppercase' },
-  answerText: { color: appTheme.colors.textPrimary, fontSize: 18, fontWeight: '600', lineHeight: 27, marginTop: 10 },
-  escalationText: { color: appTheme.colors.textPrimary, fontSize: 16, fontWeight: '600', lineHeight: 23, marginTop: 10 },
+  querySummary: { alignItems: 'center', backgroundColor: appTheme.colors.surface, borderColor: '#dde5eb', borderRadius: 16, borderWidth: 1, flexDirection: 'row', gap: 14, marginTop: 20, maxWidth: 680, minHeight: 72, paddingHorizontal: 16, paddingVertical: 14, width: '100%', ...appTheme.shadows.card },
+  queryAccent: { backgroundColor: BRAND_ORANGE, borderRadius: 3, height: 30, width: 6 },
+  querySummaryText: { color: BRAND_NAVY, flex: 1, fontSize: 17, fontWeight: '700', lineHeight: 23 },
+  answerCard: { backgroundColor: appTheme.colors.surface, borderColor: '#dde5eb', borderRadius: 22, borderWidth: 1, marginTop: 16, maxWidth: 680, padding: 20, width: '100%', ...appTheme.shadows.card },
+  clarifyCard: { backgroundColor: appTheme.colors.surface, borderColor: '#dde5eb', borderRadius: 22, borderWidth: 1, marginTop: 16, maxWidth: 680, padding: 20, width: '100%', ...appTheme.shadows.card },
+  escalationCard: { alignItems: 'stretch', backgroundColor: appTheme.colors.surface, borderColor: '#dde5eb', borderRadius: 22, borderWidth: 1, marginTop: 16, maxWidth: 680, padding: 20, width: '100%', ...appTheme.shadows.card },
+  statusHeadingRow: { alignItems: 'center', flexDirection: 'row', gap: 11 },
+  verifiedHeading: { color: BRAND_NAVY, fontSize: 17, fontWeight: '900', letterSpacing: 0.3, textTransform: 'uppercase' },
+  cardDivider: { backgroundColor: appTheme.colors.divider, height: 1, marginVertical: 17 },
+  answerEyebrow: { color: BRAND_NAVY, fontSize: 16, fontWeight: '900', letterSpacing: 0.7, textTransform: 'uppercase' },
+  clarifyHeadingRow: { alignItems: 'center', flexDirection: 'row', gap: 10 },
+  questionMark: { alignItems: 'center', backgroundColor: BRAND_ORANGE, borderRadius: 15, height: 30, justifyContent: 'center', width: 30 },
+  questionMarkText: { color: '#ffffff', fontSize: 18, fontWeight: '900' },
+  clarifyEyebrow: { color: BRAND_ORANGE, fontSize: 14, fontWeight: '900', letterSpacing: 0.6, textTransform: 'uppercase' },
+  clarificationPrompt: { color: BRAND_NAVY, fontSize: 22, fontWeight: '900', lineHeight: 29, marginTop: 17 },
+  unavailableIcon: { alignItems: 'center', marginBottom: 10 },
+  escalationEyebrow: { color: BRAND_NAVY, fontSize: 18, fontWeight: '900', letterSpacing: 0.4, textAlign: 'center', textTransform: 'uppercase' },
+  escalationText: { color: appTheme.colors.textSecondary, fontSize: 16, fontWeight: '600', lineHeight: 24, marginTop: 12, textAlign: 'center' },
+  nextStepPanel: { backgroundColor: BRAND_NAVY, borderRadius: 16, marginTop: 20, padding: 18 },
+  nextStepTitle: { color: '#ffffff', fontSize: 12, fontWeight: '900', letterSpacing: 0.8, textTransform: 'uppercase' },
+  nextStepText: { color: '#ffffff', fontSize: 16, fontWeight: '700', lineHeight: 24, marginTop: 10 },
+  nextStepDivider: { backgroundColor: 'rgba(255,255,255,0.24)', height: 1, marginVertical: 16 },
+  noGuessText: { color: '#ffffff', fontSize: 14, fontWeight: '700' },
   escalationChecklist: { borderTopColor: appTheme.colors.divider, borderTopWidth: 1, marginTop: 14, paddingTop: 12 },
   stepList: { gap: 12, marginTop: 16 },
   stepRow: { alignItems: 'flex-start', flexDirection: 'row', gap: 12 },
-  stepNumber: { alignItems: 'center', backgroundColor: appTheme.colors.greenSoft, borderRadius: 14, height: 28, justifyContent: 'center', marginTop: 1, width: 28 },
-  stepNumberText: { color: appTheme.colors.greenText, fontSize: 14, fontWeight: '900' },
+  stepNumber: { alignItems: 'center', backgroundColor: BRAND_ORANGE, borderRadius: 14, height: 28, justifyContent: 'center', marginTop: 1, width: 28 },
+  stepNumberText: { color: '#ffffff', fontSize: 14, fontWeight: '900' },
   stepText: { color: appTheme.colors.textPrimary, flex: 1, fontSize: 16, fontWeight: '600', lineHeight: 23 },
   answerOptions: { gap: 10, marginTop: 20 },
   optionSectionTitle: { color: appTheme.colors.textSecondary, fontSize: 12, fontWeight: '900', letterSpacing: 0.7, textTransform: 'uppercase' },
@@ -611,8 +698,8 @@ const styles = StyleSheet.create({
   bulletRow: { alignItems: 'flex-start', flexDirection: 'row', gap: 8, marginTop: 6 },
   warningBullet: { color: appTheme.colors.warningText, fontSize: 16, fontWeight: '900', lineHeight: 22 },
   warningText: { color: appTheme.colors.warningText, flex: 1, fontSize: 14, fontWeight: '700', lineHeight: 21 },
-  moreButton: { alignSelf: 'flex-start', backgroundColor: appTheme.colors.infoSoft, borderRadius: 14, marginTop: 16, paddingHorizontal: 14, paddingVertical: 10 },
-  moreButtonText: { color: appTheme.colors.textPrimary, fontSize: 14, fontWeight: '800' },
+  moreButton: { alignItems: 'center', borderColor: BRAND_ORANGE, borderRadius: 14, borderWidth: 1.5, marginTop: 18, paddingHorizontal: 14, paddingVertical: 13, width: '100%' },
+  moreButtonText: { color: BRAND_ORANGE, fontSize: 14, fontWeight: '900', textTransform: 'uppercase' },
   moreContent: { gap: 14, marginTop: 14 },
   moreText: { color: appTheme.colors.textSecondary, fontSize: 15, lineHeight: 23 },
   detailSection: { borderTopColor: appTheme.colors.divider, borderTopWidth: 1, paddingTop: 12 },
@@ -622,16 +709,18 @@ const styles = StyleSheet.create({
   traceRow: { alignItems: 'center', borderTopColor: appTheme.colors.divider, borderTopWidth: 1, flexDirection: 'row', justifyContent: 'space-between', marginTop: 18, paddingTop: 14 },
   traceText: { color: appTheme.colors.greenText, fontSize: 12, fontWeight: '800' },
   traceId: { color: appTheme.colors.textTertiary, fontSize: 10, marginLeft: 10 },
-  feedbackRow: { alignItems: 'center', flexDirection: 'row', gap: 9, marginTop: 16 },
-  feedbackLabel: { color: appTheme.colors.textSecondary, flex: 1, fontSize: 13, fontWeight: '700' },
-  feedbackButton: { alignItems: 'center', backgroundColor: appTheme.colors.surfaceMuted, borderColor: appTheme.colors.border, borderRadius: 14, borderWidth: 1, height: 42, justifyContent: 'center', width: 48 },
+  feedbackRow: { marginTop: 18 },
+  feedbackLabel: { color: BRAND_NAVY, fontSize: 14, fontWeight: '700' },
+  feedbackButtons: { flexDirection: 'row', gap: 10, marginTop: 10 },
+  feedbackButton: { alignItems: 'center', backgroundColor: appTheme.colors.surfaceMuted, borderColor: appTheme.colors.border, borderRadius: 14, borderWidth: 1, flex: 1, minHeight: 48, justifyContent: 'center', paddingHorizontal: 10 },
   feedbackSelected: { backgroundColor: appTheme.colors.orangeSoft, borderColor: appTheme.colors.orange },
-  feedbackText: { fontSize: 19 },
+  feedbackText: { color: appTheme.colors.textSecondary, fontSize: 14, fontWeight: '800' },
   optionList: { gap: 9, marginTop: 16 },
-  optionButton: { backgroundColor: appTheme.colors.surface, borderColor: appTheme.colors.borderStrong, borderRadius: 15, borderWidth: 1, padding: 14 },
-  optionText: { color: appTheme.colors.textPrimary, fontSize: 14, fontWeight: '700' },
+  optionButton: { alignItems: 'center', backgroundColor: appTheme.colors.surface, borderColor: appTheme.colors.borderStrong, borderRadius: 15, borderWidth: 1, minHeight: 58, justifyContent: 'center', padding: 14 },
+  optionText: { color: appTheme.colors.textPrimary, fontSize: 15, fontWeight: '800', textAlign: 'center' },
+  notSureButton: { borderStyle: 'dashed' },
+  notSureText: { color: appTheme.colors.textTertiary, fontSize: 15, fontWeight: '800' },
   clarificationHelp: { color: appTheme.colors.textSecondary, fontSize: 13, lineHeight: 19, marginTop: 12 },
-  escalationNote: { color: appTheme.colors.warningText, fontSize: 13, lineHeight: 19, marginTop: 14 },
   followUpHeader: { alignItems: 'center', flexDirection: 'row', gap: 12, justifyContent: 'space-between', marginTop: 18, maxWidth: 680, width: '100%' },
   followUpHint: { color: appTheme.colors.textSecondary, flex: 1, fontSize: 13, lineHeight: 18 },
   newSituationButton: { backgroundColor: BRAND_ORANGE, borderColor: BRAND_ORANGE, borderRadius: 14, borderWidth: 1, paddingHorizontal: 14, paddingVertical: 10 },
