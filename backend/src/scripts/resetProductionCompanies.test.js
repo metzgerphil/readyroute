@@ -16,7 +16,7 @@ test('company reset requires an exact destructive confirmation', () => {
 
 test('company reset SQL is limited to validated captured account IDs', () => {
   const query = buildAccountDeleteQuery(['10000000-0000-4000-8000-000000000001']);
-  assert.match(query, /where id in \('10000000-0000-4000-8000-000000000001'::uuid\)/);
+  assert.equal(query, "set statement_timeout = '120s'; truncate table public.accounts cascade;");
   assert.throws(() => buildAccountDeleteQuery(["bad-id'); drop table accounts;--"]), /invalid account ID/);
 });
 

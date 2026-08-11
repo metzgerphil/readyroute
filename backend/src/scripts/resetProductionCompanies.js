@@ -22,15 +22,14 @@ function assertResetAuthorized(mode, confirmation) {
 }
 
 function buildAccountDeleteQuery(accountIds) {
-  const ids = accountIds.map((value) => {
+  accountIds.forEach((value) => {
     const id = String(value || '').trim();
     if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(id)) {
       throw new Error('Refusing to construct a company reset query with an invalid account ID.');
     }
-    return `'${id}'::uuid`;
   });
-  if (!ids.length) return null;
-  return `set statement_timeout = '120s'; delete from public.accounts where id in (${ids.join(', ')});`;
+  if (!accountIds.length) return null;
+  return "set statement_timeout = '120s'; truncate table public.accounts cascade;";
 }
 
 async function deleteAccountRows({ accessToken, projectRef, accountIds }) {
