@@ -35,6 +35,10 @@ from build_drive_pdf_page_coverage import build_rows as build_drive_pdf_page_row
 from build_google_drive_zip_member_inventory import (
     build_rows as build_google_drive_zip_member_rows,
 )
+from build_human_adjudication_queue import (
+    FIELDNAMES as human_adjudication_fieldnames,
+    build_rows as build_human_adjudication_rows,
+)
 from build_mygb_acquisition_queue import build_rows as build_mygb_acquisition_rows
 from build_mygb_news_archive_backlog import (
     build_rows as build_mygb_news_archive_rows,
@@ -2555,6 +2559,9 @@ def main() -> int:
     nonverified_resolution_coverage = load_csv(
         ROOT / "knowledge/nonverified_resolution_coverage.csv"
     )
+    resolutions_by_id = {
+        row["knowledge_id"]: row for row in nonverified_resolution_coverage
+    }
     resolution_knowledge_ids = assert_unique(
         [row["knowledge_id"] for row in nonverified_resolution_coverage],
         "nonverified resolution knowledge_id",
@@ -2659,6 +2666,63 @@ def main() -> int:
             f"missing={sorted(expected_resolution_knowledge_ids - resolution_knowledge_ids)}, "
             f"extra={sorted(resolution_knowledge_ids - expected_resolution_knowledge_ids)}, "
             f"invalid={invalid_resolution_rows}"
+        )
+
+    human_adjudication_queue = load_csv(
+        ROOT / "knowledge/human_adjudication_queue.csv"
+    )
+    expected_human_adjudication_queue = build_human_adjudication_rows()
+    human_adjudication_ids = assert_unique(
+        [row["knowledge_id"] for row in human_adjudication_queue],
+        "human adjudication knowledge_id",
+    )
+    active_adjudication_rows = json.loads(
+        (WORKSPACE_ROOT / "knowledge/adjudications/records.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    active_adjudicated_ids = {
+        row["knowledge_id"]
+        for row in active_adjudication_rows
+        if row["status"] == "APPROVED"
+    }
+    expected_human_adjudication_ids = {
+        record["knowledge_id"]
+        for record in records
+        if record["knowledge_status"] in {"CONFLICT", "HUMAN_REVIEW_REQUIRED"}
+        and record["knowledge_id"] not in active_adjudicated_ids
+    }
+    invalid_human_adjudication_rows: list[tuple[str, str]] = []
+    for index, row in enumerate(human_adjudication_queue, 1):
+        if set(row) != set(human_adjudication_fieldnames):
+            invalid_human_adjudication_rows.append(
+                (row.get("knowledge_id", "<missing>"), "invalid columns")
+            )
+        if row.get("priority") != str(index):
+            invalid_human_adjudication_rows.append(
+                (row.get("knowledge_id", "<missing>"), "noncontiguous priority")
+            )
+        if not row.get("exact_question", "").endswith(
+            resolutions_by_id[row["knowledge_id"]]["required_evidence_or_decision"]
+        ):
+            invalid_human_adjudication_rows.append(
+                (row["knowledge_id"], "question does not preserve exact resolution requirement")
+            )
+        if "recollection" not in row.get("required_answer_elements", ""):
+            invalid_human_adjudication_rows.append(
+                (row["knowledge_id"], "missing evidence-quality boundary")
+            )
+    if (
+        human_adjudication_queue != expected_human_adjudication_queue
+        or human_adjudication_ids != expected_human_adjudication_ids
+        or invalid_human_adjudication_rows
+    ):
+        raise SystemExit(
+            "human adjudication queue failure: "
+            f"stale={human_adjudication_queue != expected_human_adjudication_queue}, "
+            f"missing={sorted(expected_human_adjudication_ids - human_adjudication_ids)}, "
+            f"extra={sorted(human_adjudication_ids - expected_human_adjudication_ids)}, "
+            f"invalid={invalid_human_adjudication_rows}"
         )
 
     referenced_source_acquisition_coverage = load_csv(
@@ -2839,6 +2903,7 @@ def main() -> int:
         f"{len(customer_alert_operational_rows)} customer-alert operational records, "
         f"{len(customer_alert_mapping_rows)} customer-alert source mappings, "
         f"{len(nonverified_resolution_coverage)} nonverified-resolution rows, "
+        f"{len(human_adjudication_queue)} human-adjudication questions, "
         f"{len(referenced_source_backlog)} referenced-source gaps, "
         f"{len(referenced_source_occurrences)} referenced-source occurrences, "
         f"{len(referenced_source_acquisition_coverage)} referenced-source acquisition rows, "

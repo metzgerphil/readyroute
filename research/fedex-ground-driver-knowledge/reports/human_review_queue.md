@@ -2,6 +2,8 @@
 
 Status date: 2026-08-10
 
+The exact post-adjudication queue is now maintained in `knowledge/human_adjudication_queue.csv` and explained in `reports/human_adjudication_packet_2026-08-10.md`. It contains the 27 current canonical `PENDING_REVIEW` records after excluding the seven active approvals. The research-status index below intentionally retains those source-layer records because adjudication does not erase their original status or evidence history.
+
 ## Record-status index: HUMAN_REVIEW_REQUIRED
 
 - `KNO-DEL-COD-MULTI-001` — Delivering multiple Collect on Delivery packages at one stop.
