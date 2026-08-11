@@ -2,6 +2,7 @@ import { useRef, useState } from 'react';
 import {
   ActivityIndicator,
   KeyboardAvoidingView,
+  PanResponder,
   Platform,
   Pressable,
   ScrollView,
@@ -24,6 +25,20 @@ import { getApiErrorMessage } from '../utils/apiError';
 const BRAND_ORANGE = '#ff6200';
 const BRAND_NAVY = '#173042';
 const BRAND_BACKGROUND = '#f7f5f1';
+
+export function shouldStartBackSwipe({ startX, dx, dy, hasResult, isSubmitting }) {
+  return Boolean(
+    hasResult
+    && !isSubmitting
+    && startX <= 40
+    && dx > 18
+    && Math.abs(dx) > Math.abs(dy) * 1.35
+  );
+}
+
+export function shouldCompleteBackSwipe({ dx, vx }) {
+  return dx >= 110 || (dx >= 70 && vx >= 0.25);
+}
 
 function MicrophoneIcon({ size = 50 }) {
   return (
@@ -118,6 +133,7 @@ function getAnswerStructure(result) {
 
 export default function DriverHelpScreen() {
   const inputRef = useRef(null);
+  const historyRef = useRef([]);
   const [question, setQuestion] = useState('');
   const [situationQuestion, setSituationQuestion] = useState('');
   const [sessionId, setSessionId] = useState(null);
@@ -174,6 +190,16 @@ export default function DriverHelpScreen() {
       return;
     }
 
+    const previousState = {
+      expandedOptionId,
+      feedback,
+      question,
+      result,
+      sessionId,
+      showMore,
+      situationQuestion
+    };
+
     setQuestion(trimmedQuestion);
     if (!preserveSituation || !situationQuestion) {
       setSituationQuestion(trimmedQuestion);
@@ -189,6 +215,7 @@ export default function DriverHelpScreen() {
         question: trimmedQuestion,
         ...(sessionId ? { session_id: sessionId } : {})
       });
+      historyRef.current = [...historyRef.current, previousState];
       setSessionId(response.data?.session_id || sessionId);
       setResult(response.data || null);
       setQuestion('');
@@ -265,6 +292,7 @@ export default function DriverHelpScreen() {
   }
 
   function startNewSituation() {
+    historyRef.current = [];
     setSessionId(null);
     setResult(null);
     setSituationQuestion('');
@@ -276,6 +304,45 @@ export default function DriverHelpScreen() {
     setDictationError('');
     setDictationHint(false);
   }
+
+  function goBack() {
+    if (isSubmitting) {
+      return;
+    }
+
+    const previousState = historyRef.current.at(-1);
+    if (!previousState) {
+      startNewSituation();
+      return;
+    }
+
+    historyRef.current = historyRef.current.slice(0, -1);
+    setExpandedOptionId(previousState.expandedOptionId);
+    setFeedback(previousState.feedback);
+    setQuestion(previousState.question);
+    setResult(previousState.result);
+    setSessionId(previousState.sessionId);
+    setShowMore(previousState.showMore);
+    setSituationQuestion(previousState.situationQuestion);
+    setError('');
+    setDictationError('');
+    setDictationHint(false);
+  }
+
+  const backSwipeResponder = PanResponder.create({
+    onMoveShouldSetPanResponder: (_event, gestureState) => shouldStartBackSwipe({
+      startX: gestureState.x0,
+      dx: gestureState.dx,
+      dy: gestureState.dy,
+      hasResult: Boolean(result),
+      isSubmitting
+    }),
+    onPanResponderRelease: (_event, gestureState) => {
+      if (shouldCompleteBackSwipe({ dx: gestureState.dx, vx: gestureState.vx })) {
+        goBack();
+      }
+    }
+  });
 
   function renderQuestionComposer(placeholder = 'Type your question') {
     return (
@@ -321,6 +388,7 @@ export default function DriverHelpScreen() {
   return (
     <SafeAreaView style={styles.safeArea}>
       <KeyboardAvoidingView
+        {...backSwipeResponder.panHandlers}
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
         style={styles.keyboardView}
       >
@@ -330,6 +398,23 @@ export default function DriverHelpScreen() {
           showsVerticalScrollIndicator={false}
         >
           <View style={[styles.brandRow, result ? styles.brandRowCompact : null]}>
+            {result ? (
+              <Pressable
+                accessibilityHint="Returns to the previous Ready Route screen"
+                accessibilityLabel="Go back"
+                accessibilityRole="button"
+                disabled={isSubmitting}
+                hitSlop={10}
+                onPress={goBack}
+                style={({ pressed }) => [
+                  styles.backButton,
+                  isSubmitting ? styles.disabled : null,
+                  pressed ? styles.pressed : null
+                ]}
+              >
+                <Text style={styles.backButtonText}>‹ Back</Text>
+              </Pressable>
+            ) : null}
             <Text accessibilityRole="header" style={styles.wordmark}>
               ready<Text style={styles.wordmarkAccent}>Route</Text>
             </Text>
@@ -638,6 +723,8 @@ const styles = StyleSheet.create({
   content: { alignItems: 'center', flexGrow: 1, paddingBottom: 48, paddingHorizontal: 20, paddingTop: 48 },
   brandRow: { alignItems: 'center', maxWidth: 680, minHeight: 46, width: '100%' },
   brandRowCompact: { minHeight: 38 },
+  backButton: { alignItems: 'center', flexDirection: 'row', justifyContent: 'center', left: 0, minHeight: 44, minWidth: 66, position: 'absolute', top: -3, zIndex: 2 },
+  backButtonText: { color: BRAND_NAVY, fontSize: 17, fontWeight: '800' },
   wordmark: { color: BRAND_NAVY, fontSize: 28, fontWeight: '900', letterSpacing: -1 },
   wordmarkAccent: { color: BRAND_ORANGE, fontWeight: '500' },
   homeHero: { alignItems: 'center', maxWidth: 620, paddingTop: 42, width: '100%' },
