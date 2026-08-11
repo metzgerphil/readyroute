@@ -39,7 +39,7 @@ async function auditInvitationDelivery({ supabase, search }) {
       .select('id, email, full_name, is_active, invited_at, accepted_at, created_at, updated_at, password_hash')
       .or(`full_name.ilike.${pattern},email.ilike.${pattern}`),
     supabase.from('drivers')
-      .select('id, email, name, is_active, invited_at, invite_accepted_at, created_at, updated_at, password_hash')
+      .select('id, email, name, is_active, invited_at, invite_accepted_at, created_at, password_hash')
       .or(`name.ilike.${pattern},email.ilike.${pattern}`)
   ]);
   const firstError = [staffResult, managerResult, driverResult].find((result) => result.error)?.error;
