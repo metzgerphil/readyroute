@@ -680,7 +680,7 @@ function buildDriverFirstClarification(question, candidates = []) {
     ], 'I do not see a signature label or prompt');
   }
 
-  const genericLeave = /\b(?:can i leave (?:this|it|this one)|customer says just leave it|dont know if i can leave it)\b/.test(normalized)
+  const genericLeave = /\b(?:can i leave (?:(?:a|the|this|that) package|this|that|it|this one)|customer says just leave it|dont know if i can leave it)\b/.test(normalized)
     && !hasSignatureType
     && !/\b(?:alcohol|hazmat|mailbox|locker|neighbor|neighbour|lobby|office|front desk|back door|op ?201)\b/.test(normalized);
   if (genericLeave) {

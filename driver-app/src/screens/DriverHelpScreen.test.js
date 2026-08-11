@@ -1,7 +1,7 @@
 import React from 'react';
 import { act, fireEvent, render, waitFor } from '@testing-library/react-native';
 
-import DriverHelpScreen from './DriverHelpScreen';
+import DriverHelpScreen, { shouldCompleteBackSwipe, shouldStartBackSwipe } from './DriverHelpScreen';
 import api from '../services/api';
 import { ExpoSpeechRecognitionModule } from 'expo-speech-recognition';
 
@@ -373,6 +373,71 @@ describe('DriverHelpScreen', () => {
       });
       expect(screen.getByText('Use the procedure for the new situation.')).toBeTruthy();
     });
+  });
+
+  it('returns from an answer to the previous ask screen', async () => {
+    api.post.mockResolvedValueOnce({
+      data: {
+        session_id: 'session-back',
+        interaction_id: 'interaction-back',
+        response_mode: 'ANSWER',
+        answer: 'Complete the verified procedure.',
+        trace: [{ knowledge_id: 'KNO-BACK', version: 1 }]
+      }
+    });
+    const screen = render(<DriverHelpScreen />);
+
+    fireEvent.changeText(screen.getByLabelText('Driver question'), 'A driver question');
+    fireEvent.press(screen.getByLabelText('Ask Ready Route'));
+    await screen.findByText('Complete the verified procedure.');
+
+    fireEvent.press(screen.getByLabelText('Go back'));
+
+    expect(screen.getByText('What do you need help with?')).toBeTruthy();
+    expect(screen.queryByText('Complete the verified procedure.')).toBeNull();
+  });
+
+  it('returns from a clarification answer to the prior clarification step', async () => {
+    api.post
+      .mockResolvedValueOnce({
+        data: {
+          session_id: 'session-history',
+          interaction_id: 'interaction-question',
+          response_mode: 'CLARIFY',
+          clarification_prompt: 'What signature type does FORGE show?',
+          clarification_options: [{ label: 'ISR — Indirect Signature', query: 'ISR package' }]
+        }
+      })
+      .mockResolvedValueOnce({
+        data: {
+          session_id: 'session-history',
+          interaction_id: 'interaction-answer',
+          response_mode: 'ANSWER',
+          answer: 'Use the verified ISR procedure.',
+          trace: [{ knowledge_id: 'KNO-ISR', version: 1 }]
+        }
+      });
+    const screen = render(<DriverHelpScreen />);
+
+    fireEvent.changeText(screen.getByLabelText('Driver question'), 'Signature package nobody home');
+    fireEvent.press(screen.getByLabelText('Ask Ready Route'));
+    await screen.findByText('What signature type does FORGE show?');
+    fireEvent.press(screen.getByText('ISR — Indirect Signature'));
+    await screen.findByText('Use the verified ISR procedure.');
+
+    fireEvent.press(screen.getByLabelText('Go back'));
+
+    expect(screen.getByText('What signature type does FORGE show?')).toBeTruthy();
+    expect(screen.queryByText('Use the verified ISR procedure.')).toBeNull();
+  });
+
+  it('recognizes only deliberate right swipes that begin at the left edge', () => {
+    expect(shouldStartBackSwipe({ startX: 20, dx: 30, dy: 4, hasResult: true, isSubmitting: false })).toBe(true);
+    expect(shouldStartBackSwipe({ startX: 80, dx: 100, dy: 4, hasResult: true, isSubmitting: false })).toBe(false);
+    expect(shouldStartBackSwipe({ startX: 20, dx: 30, dy: 40, hasResult: true, isSubmitting: false })).toBe(false);
+    expect(shouldCompleteBackSwipe({ dx: 120, vx: 0.1 })).toBe(true);
+    expect(shouldCompleteBackSwipe({ dx: 75, vx: 0.3 })).toBe(true);
+    expect(shouldCompleteBackSwipe({ dx: 60, vx: 0.5 })).toBe(false);
   });
 
   it('sends answer feedback against the interaction', async () => {

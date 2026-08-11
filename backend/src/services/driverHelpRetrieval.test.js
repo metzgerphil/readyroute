@@ -666,7 +666,7 @@ test('an explicit pickup barcode failure outranks unrelated delivery records', (
   );
 });
 
-test('screenshot regression: generic leave asks the controlling signature question', () => {
+test('screenshot regression: generic leave wording asks the controlling signature question', () => {
   const safePlace = {
     ...records[0],
     knowledge_id: 'KNO-DEL-SAFEPLACE-001',
@@ -674,10 +674,12 @@ test('screenshot regression: generic leave asks the controlling signature questi
     normalized_description: 'Package release location',
     driver_question_variants: ['can i leave package']
   };
-  const decision = buildDriverHelpDecision('Can I leave this package here?', [safePlace, ...records]);
+  for (const question of ['Can I leave this package here?', 'Can I leave a package here?']) {
+    const decision = buildDriverHelpDecision(question, [safePlace, ...records]);
 
-  assert.equal(decision.response_mode, 'CLARIFY');
-  assert.equal(decision.clarification_prompt, 'Does it need a signature?');
+    assert.equal(decision.response_mode, 'CLARIFY');
+    assert.equal(decision.clarification_prompt, 'Does it need a signature?');
+  }
 });
 
 test('screenshot regression: typed ISR is answered as ISR and generic signature shorthand asks its type', () => {
