@@ -1,6 +1,6 @@
 # Non-verified answer publication-safety audit
 
-Audit date: 2026-08-09
+Audit date: 2026-08-10
 
 ## Purpose
 
@@ -30,7 +30,7 @@ The contract is now enforced by `scripts/validate_corpus_integrity.py`.
 | Human-review limits were not uniformly visible at the start of concise answers | Several of the original 27 records began with source-backed steps and placed incompleteness only later in the answer or More Info | A detached answer could be mistaken for a complete approved procedure | High | High | All 32 current human-review answers, including the later refusal, hand-sheet, login/dispatch, unmanifested-delivery, and Alternate Signature records, begin with the same explicit complete-procedure source-limit sentence |
 | Manifest Preview permission behavior lacked a concise version qualifier | `KNO-FORGE-MANIFEST-PERMISSIONS-001` described 4.5.0 behavior but exposed version sensitivity only in More Info | Old managed-device/UI behavior could appear current | Medium | High | Concise answer now identifies Manifest Preview 4.5.0 and requires confirmation against the current app and managed-device policy |
 | Conflict answers safely preserve dispute visibility | 2/2 concise answers explicitly state that current FedEx sources/guides conflict and direct escalation | No current silent conflict resolution | High if violated; no current violation | High | Validator rejects conflict answers that fail to say the sources conflict |
-| Remaining potentially-outdated answers expose currency limits | 21/21 contain a version, older-source, current-source, recheck, or time-sensitive qualifier plus a current-verification/escalation action | No current detached-version failure after correction | High if violated; no current violation | High | Validator enforces qualifier and verification-action presence |
+| Remaining potentially-outdated answers expose currency limits | 20/20 contain a version, older-source, current-source, recheck, or time-sensitive qualifier plus a current-verification/escalation action | No current detached-version failure after correction | High if violated; no current violation | High | Validator enforces qualifier and verification-action presence |
 | Escalation coverage is complete | 54/54 non-verified records have one or more escalation requirements | No current unsupported terminal answer | High if violated; no current violation | High | Validator rejects missing escalation lists |
 
 ## Interpretation
@@ -39,6 +39,6 @@ The standardized warning does not erase source-established immediate actions. Fo
 
 ## Result
 
-All 55 current non-verified records satisfy the publication-safety contract. This is a presentation-layer control, not a resolution of the underlying 2 conflicts, 32 human-review items, 21 potentially outdated items, or missing source obligations.
+All 54 current non-verified records satisfy the publication-safety contract. This is a presentation-layer control, not a resolution of the underlying 2 conflicts, 32 human-review items, 20 potentially outdated items, or missing source obligations.
 
-Each of these 55 records now also has a distinct resolution row in `knowledge/nonverified_resolution_coverage.csv`. Publication safety and resolution planning remain separate controls: the former prevents an unsafe answer now, while the latter states what evidence or decision is required to reconsider the status.
+Each of these 54 records now also has a distinct resolution row in `knowledge/nonverified_resolution_coverage.csv`. Publication safety and resolution planning remain separate controls: the former prevents an unsafe answer now, while the latter states what evidence or decision is required to reconsider the status.
