@@ -169,5 +169,79 @@
       "concise_driver_answer": "Do not use an HOS exception from one fact alone. Short-haul requires the applicable 150-air-mile, reporting-location, time, and recordkeeping conditions, and you cannot change the reporting location mid-day. The 16-hour exception requires the return-history and frequency rules. Adverse conditions must be unexpected and unknown at dispatch; even then, do not exceed 11 driving hours or drive past the 16th consecutive hour.",
       "more_info_answer": "CDL drivers may use the 16-hour exception once in seven consecutive days unless a new 34-hour restart applies; non-CDL drivers may use it twice in seven days."
     }
+  },
+  {
+    "adjudication_id": "ADJ-20260811-DSR-NOBODY-HOME-001",
+    "knowledge_id": "KNO-DEL-SIG-DSR-001",
+    "status": "APPROVED",
+    "issue_reviewed": "Which delivery status code and attempt steps apply when nobody is available to sign for a DSR package.",
+    "canonical_determination": "Do not leave a DSR package without the required in-person signature. Use code 007 for the residential recipient-not-in branch or code 004 for the non-residential recipient-not-in branch, then complete the unsuccessful-attempt documentation and retain the package.",
+    "previous_interpretations": ["The DSR answer said to apply the applicable attempt status but did not identify the residential and non-residential codes."],
+    "supporting_source_ids": ["SRC-GDRIVE-FILE-0014", "SRC-GDRIVE-FILE-0001", "SRC-GDRIVE-FILE-0002"],
+    "conflicting_or_superseded_source_ids": [],
+    "reasoning": "Human operational review identified the missing code guidance. OP-117 independently defines code 007 for residential recipient not in when release is unavailable and code 004 for the equivalent non-residential condition. The location type is therefore a material decision variable.",
+    "approved_by": "Ready Route human review relayed by project owner",
+    "approval_date": "2026-08-11",
+    "effective_date": "2026-08-11",
+    "supersedes": [],
+    "reopen_conditions": ["A newer OP-117 or current status-code source changes code 004 or 007.", "A package has an additional service or exception that changes the unsuccessful-attempt branch."],
+    "canonical_overrides": {
+      "authoritative_rule": "DSR requires an in-person signature from someone at the labeled address and cannot be driver released or indirectly delivered. If nobody can sign, use Status Code 007 at a residential stop or Status Code 004 at a non-residential stop, complete the attempt documentation, and do not leave the package.",
+      "required_procedure": [{"step": 1, "action": "Confirm FORGE identifies the package as DSR and no eligible signer is available at the labeled address."}, {"step": 2, "action": "Identify whether the stop is residential or non-residential."}, {"step": 3, "action": "Apply code 007 for a residential recipient-not-in attempt or code 004 for a non-residential recipient-not-in attempt."}, {"step": 4, "action": "Complete and scan the door tag, capture PPODA when prompted, and leave the door tag as the attempt notice."}, {"step": 5, "action": "Do not leave the package; retain it for the applicable station return or reattempt process."}],
+      "required_documentation": ["Code 007 for the residential branch or code 004 for the non-residential branch", "Completed and scanned OP-200/OP-200SP", "PPODA when prompted"],
+      "clarification_requirements": ["Does FORGE show DSR?", "Is the stop residential or non-residential?", "Is anyone at the labeled address available to sign?", "How many unsuccessful attempts have occurred?"],
+      "concise_driver_answer": "Do not leave a DSR package without an in-person signature at the labeled address. If nobody can sign, use code 007 for a residential stop or code 004 for a non-residential stop. Complete and scan the door tag, capture the prompted attempt photo, leave the tag, and retain the package for return or reattempt.",
+      "more_info_answer": "The stop type controls the code: 007 is residential recipient not in when release is unavailable; 004 is non-residential recipient not in. After three unsuccessful attempts, give the package to QA under the current OP-117 process."
+    }
+  },
+  {
+    "adjudication_id": "ADJ-20260811-BUSINESS-CLOSED-001",
+    "knowledge_id": "KNO-DEL-BUS-CLOSED-001",
+    "status": "APPROVED",
+    "issue_reviewed": "The assigned-package disposition when a delivery business is closed.",
+    "canonical_determination": "When a non-residential business is closed and the package cannot be released, use code 004, complete/scan/leave the door tag, cross the package with work area, code, and date, remove the SID sticker, and retain the package for return or reattempt.",
+    "previous_interpretations": ["Ready Route incorrectly answered with the administrative Business Closure messaging workflow and did not provide the assigned-package status or physical handling steps."],
+    "supporting_source_ids": ["SRC-GDRIVE-FILE-0014", "SRC-GDRIVE-FILE-0005", "SRC-GDRIVE-FILE-0008"],
+    "conflicting_or_superseded_source_ids": [],
+    "reasoning": "Human operational review confirmed the current assigned-stop procedure. The determination separates package disposition from the optional administrative closure-message workflow.",
+    "approved_by": "Ready Route human review relayed by project owner",
+    "approval_date": "2026-08-11",
+    "effective_date": "2026-08-11",
+    "supersedes": [],
+    "reopen_conditions": ["A newer current source changes code 004, package crossing, SID handling, or door-tag requirements.", "The package has an explicit signature, shipper-release, or OP-201 exception that changes disposition."],
+    "canonical_overrides": {
+      "authoritative_rule": "For an assigned non-residential delivery where the business is closed and release is not authorized, use code 004, complete the attempt notice and package crossing, remove the SID sticker, and retain the package.",
+      "required_procedure": [{"step": 1, "action": "Confirm the stop is non-residential and no verified signature or authorized-release path permits delivery."}, {"step": 2, "action": "Apply Status Code 004."}, {"step": 3, "action": "Complete, scan, and leave the Shipment Status Door Tag at the business entrance."}, {"step": 4, "action": "Cross the package with your work-area number, code 004, and the date."}, {"step": 5, "action": "Remove the SID sticker and retain the package for station return or the applicable reattempt."}],
+      "required_documentation": ["Status Code 004", "Completed and scanned Shipment Status Door Tag", "Package crossing with work-area number, code 004, and date"],
+      "prohibited_actions": ["Do not leave the package when release is not authorized.", "Do not substitute the Business Closure message for the assigned-package disposition.", "Do not use residential code 007 for this non-residential condition."],
+      "escalation_requirements": ["Contact the BC or station if the stop classification or release eligibility is unclear."],
+      "concise_driver_answer": "Use code 004. Complete, scan, and leave the door tag. Cross the package with your work-area number, code 004, and the date, remove the SID sticker, and retain the package for return or the applicable reattempt.",
+      "more_info_answer": "The Business Closure message is separate administrative notice for closure dates. It does not replace code 004 and the physical package-handling steps for an assigned delivery attempt."
+    }
+  },
+  {
+    "adjudication_id": "ADJ-20260811-DAMAGE-CODE010-001",
+    "knowledge_id": "KNO-DEL-DAMAGE-INSPECTION-001",
+    "status": "APPROVED",
+    "issue_reviewed": "The package crossing, SID removal, and BC photo-verification steps for a possibly damaged ordinary delivery package.",
+    "canonical_determination": "If an ordinary delivery package is being returned for possible-damage inspection, use code 010, cross it with work area/code/date, remove the SID sticker, and return it for inspection. If the package may be okay despite visible box damage, send the BC a photo and verify disposition before completing delivery or the code-010 return.",
+    "previous_interpretations": ["The answer identified code 010 and station return but omitted crossing, SID removal, and the BC photo-verification branch."],
+    "supporting_source_ids": ["SRC-GDRIVE-FILE-0014"],
+    "conflicting_or_superseded_source_ids": [],
+    "reasoning": "Human operational review confirmed the current physical package handling and the limited BC verification step. The separate leaking/damaged hazmat emergency remains controlling when applicable.",
+    "approved_by": "Ready Route human review relayed by project owner",
+    "approval_date": "2026-08-11",
+    "effective_date": "2026-08-11",
+    "supersedes": [],
+    "reopen_conditions": ["A newer current source changes code 010, package crossing, SID handling, or BC verification.", "The package is leaking, hazardous, or otherwise unsafe and requires the hazmat emergency branch."],
+    "canonical_overrides": {
+      "authoritative_rule": "For an ordinary delivery package being returned for possible-damage inspection, apply code 010, cross the package with work area/code/date, remove the SID sticker, and return it to the station. If the package appears to remain in okay condition despite box damage, send the BC a photo and verify the disposition before proceeding.",
+      "required_procedure": [{"step": 1, "action": "Check whether the package is leaking, hazardous, or otherwise unsafe; if so, stop and use the separate hazmat emergency procedure."}, {"step": 2, "action": "If the package may still be in okay condition despite visible box damage, send the BC a clear photo of the damaged box and verify whether to deliver it or return it for inspection."}, {"step": 3, "action": "If it is being returned for inspection, apply Status Code 010."}, {"step": 4, "action": "Cross the package with your work-area number, code 010, and the date."}, {"step": 5, "action": "Remove the SID sticker and return the package to the station for inspection."}],
+      "required_documentation": ["BC photo verification when the package may still be okay", "Status Code 010 when returned for inspection", "Package crossing with work-area number, code 010, and date"],
+      "prohibited_actions": ["Do not deliver after uncertain damage without the BC verification described in this branch.", "Do not treat leaking or damaged hazardous material as an ordinary code-010 package."],
+      "escalation_requirements": ["Send the BC a clear photo when the damaged box may still be acceptable for delivery.", "Immediately contact the station for leaking or damaged hazardous material and follow the hazmat emergency procedure."],
+      "concise_driver_answer": "If the package may still be okay despite box damage, send your BC a clear photo and verify what to do. If it is returning for inspection, use code 010, cross the package with your work-area number, code 010, and the date, remove the SID sticker, and return it to the station. Use the hazmat emergency procedure for any leaking or hazardous package.",
+      "more_info_answer": "Code 010 is the ordinary possible-damage inspection return. The BC photo step is for deciding whether a visibly damaged box is still okay to deliver; do not use it to bypass hazmat or unsafe-package procedures."
+    }
   }
 ]

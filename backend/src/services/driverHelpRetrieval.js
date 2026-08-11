@@ -192,6 +192,13 @@ function scoreKnowledgeRecord(question, record, context = {}) {
 
   const intentSignals = [
     { id: 'KNO-DEL-SIG-DSR-001', anySets: [['dsr'], ['direct', 'signature']], boost: 180 },
+    { id: 'KNO-DEL-BUS-CLOSED-001', required: ['business', 'closed'], any: ['delivery', 'package'], boost: 240 },
+    {
+      id: 'KNO-FORGE-BUSINESS-CLOSURE-MSG-001',
+      required: ['business', 'closed'],
+      any: ['report', 'message', 'recurring', 'monday', 'month', 'date'],
+      boost: 280
+    },
     { id: 'KNO-DEL-SIG-ISR-001', anySets: [['isr'], ['indirect', 'signature']], boost: 180 },
     { id: 'KNO-DEL-SIG-ASR-001', anySets: [['asr'], ['adult', 'signature']], boost: 180 },
     { id: 'KNO-SAF-DOG-ENCOUNTER-001', required: ['dog'], any: ['loose', 'porch', 'approach', 'bite', 'blocks', 'door', 'unsafe'], boost: 280 },
@@ -809,6 +816,7 @@ function buildDriverFirstClarification(question, candidates = []) {
 }
 
 function buildDiscoveredTopicClarification(question, ranked, candidates) {
+  const normalizedQuestion = normalizeDriverQuestion(question);
   const tokens = new Set(tokenize(question));
   const hasSignatureType = ['asr', 'dsr', 'isr', 'adult', 'direct', 'indirect']
     .some((token) => tokens.has(token));
@@ -906,7 +914,8 @@ function buildDiscoveredTopicClarification(question, ranked, candidates) {
   const damageTerms = ['damage', 'damaged', 'crushed'];
   const hasDamage = damageTerms.some((token) => tokens.has(token));
   const hasDamageContext = ['delivery', 'pickup', 'calltag', 'hazmat', 'hazardous', 'leak', 'leaking']
-    .some((token) => tokens.has(token));
+    .some((token) => tokens.has(token))
+    || (/\b(?:okay|ok|fine|good)\b/.test(normalizedQuestion) && tokens.has('package'));
   if (hasDamage && !hasDamageContext) {
     return {
       response_mode: 'CLARIFY',
@@ -1091,8 +1100,23 @@ function buildDriverHelpDecision(question, records, context = {}) {
   // is unresolved or not production eligible.
   const asksAboutClosedBusinessDisposition = /\bbusiness\b/.test(normalizedQuestion)
     && /\b(closed|closure)\b/.test(normalizedQuestion)
-    && /\b(leave|deliver|release|package)\b/.test(normalizedQuestion);
+    && /\b(leave|deliver|release|package)\b/.test(normalizedQuestion)
+    && !/\bop\s*201\b/.test(normalizedQuestion);
   if (asksAboutClosedBusinessDisposition) {
+    const closedBusinessRecord = selectCanonicalRecordVersions(records).find(
+      (record) => record.knowledge_id === 'KNO-DEL-BUS-CLOSED-001'
+    );
+    if (isProductionEligibleRecord(closedBusinessRecord)) {
+      return {
+        response_mode: 'ANSWER',
+        confidence: 0.99,
+        candidates,
+        selected_records: [closedBusinessRecord],
+        answer: buildPresentedAnswer(closedBusinessRecord, question),
+        more_info: closedBusinessRecord.more_info_answer || null,
+        answer_structure: buildAnswerStructure(closedBusinessRecord, question)
+      };
+    }
     const releaseRecord = selectCanonicalRecordVersions(records).find(
       (record) => record.knowledge_id === 'KNO-DEL-BUS-OP201-001'
     );

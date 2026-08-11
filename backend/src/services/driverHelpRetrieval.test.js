@@ -59,6 +59,107 @@ test('normalizes shorthand punctuation and casing', () => {
   assert.equal(normalizeDriverQuestion("I'm at Pickup—Nothing HERE!"), 'i m at pickup nothing here');
 });
 
+test('closed assigned business delivery uses the approved package disposition instead of closure messaging', () => {
+  const closedBusiness = {
+    ...records[0],
+    knowledge_id: 'KNO-DEL-BUS-CLOSED-001',
+    status: 'READY_ROUTE_APPROVED',
+    canonical_situation: 'Business is closed when the driver attempts an assigned delivery',
+    normalized_description: 'Assigned delivery to a closed non-residential business',
+    driver_question_variants: ['I have a delivery to the business but business closed'],
+    concise_answer: 'Use code 004, leave the door tag, cross the package, and remove the SID sticker.',
+    required_procedure: [{ step: 1, action: 'Apply code 004.' }]
+  };
+  const closureMessage = {
+    ...records[0],
+    knowledge_id: 'KNO-FORGE-BUSINESS-CLOSURE-MSG-001',
+    canonical_situation: 'Reporting a business closure through FORGE',
+    normalized_description: 'Send a planned closure message',
+    driver_question_variants: ['business closure message'],
+    concise_answer: 'Send a closure message.'
+  };
+  const decision = buildDriverHelpDecision(
+    'I have a delivery to the business, but business closed',
+    [...records, closedBusiness, closureMessage]
+  );
+  assert.equal(decision.response_mode, 'ANSWER');
+  assert.equal(decision.selected_records[0].knowledge_id, 'KNO-DEL-BUS-CLOSED-001');
+  assert.match(decision.answer, /code 004/i);
+});
+
+test('planned recurring business closures still retrieve the administrative closure-message workflow', () => {
+  const closedBusiness = {
+    ...records[0],
+    knowledge_id: 'KNO-DEL-BUS-CLOSED-001',
+    status: 'READY_ROUTE_APPROVED',
+    canonical_situation: 'Business is closed when the driver attempts an assigned delivery',
+    normalized_description: 'Assigned delivery to a closed non-residential business',
+    driver_question_variants: ['business closed package'],
+    concise_answer: 'Use code 004.'
+  };
+  const closureMessage = {
+    ...records[0],
+    knowledge_id: 'KNO-FORGE-BUSINESS-CLOSURE-MSG-001',
+    canonical_situation: 'Reporting a business closure through FORGE',
+    normalized_description: 'Send a planned recurring closure message',
+    driver_question_variants: ['report a recurring business closure'],
+    concise_answer: 'Send a closure message.'
+  };
+  const decision = buildDriverHelpDecision(
+    'business will be closed every monday for the next month how do I report that',
+    [...records, closedBusiness, closureMessage]
+  );
+  assert.equal(decision.response_mode, 'CLARIFY');
+  assert.equal(decision.candidates[0].knowledge_id, 'KNO-FORGE-BUSINESS-CLOSURE-MSG-001');
+});
+
+test('an explicit OP201 warning stays in the unresolved release-authority branch', () => {
+  const closedBusiness = {
+    ...records[0],
+    knowledge_id: 'KNO-DEL-BUS-CLOSED-001',
+    status: 'READY_ROUTE_APPROVED',
+    canonical_situation: 'Business is closed when the driver attempts an assigned delivery',
+    normalized_description: 'Assigned delivery to a closed non-residential business',
+    driver_question_variants: ['business closed package'],
+    concise_answer: 'Use code 004.'
+  };
+  const unresolvedOp201 = {
+    ...records[0],
+    knowledge_id: 'KNO-DEL-BUS-OP201-001',
+    status: 'PENDING_REVIEW',
+    is_published: false,
+    canonical_situation: 'Closed business release requires OP201',
+    normalized_description: 'FORGE shows a release button without OP201',
+    driver_question_variants: ['closed business no OP201 release button'],
+    concise_answer: 'Do not return this unresolved answer.'
+  };
+  const decision = buildDriverHelpDecision(
+    'closed business has no OP201 but the app still shows a release button',
+    [...records, closedBusiness, unresolvedOp201]
+  );
+  assert.equal(decision.response_mode, 'ESCALATE');
+  assert.deepEqual(decision.selected_records, []);
+});
+
+test('a damaged box that might be okay uses the approved BC photo-verification branch', () => {
+  const damageRecord = {
+    ...records[0],
+    knowledge_id: 'KNO-DEL-DAMAGE-INSPECTION-001',
+    status: 'READY_ROUTE_APPROVED',
+    canonical_situation: 'Delivery package has possible damage and must return for inspection',
+    normalized_description: 'Box looks damaged but package might still be okay',
+    driver_question_variants: ['box looks damaged but package might be okay'],
+    concise_answer: 'Send the BC a photo. If it returns, use code 010, cross it, and remove the SID sticker.'
+  };
+  const decision = buildDriverHelpDecision(
+    'box looks damaged but package might be okay',
+    [...records, damageRecord]
+  );
+  assert.equal(decision.response_mode, 'ANSWER');
+  assert.equal(decision.selected_records[0].knowledge_id, 'KNO-DEL-DAMAGE-INSPECTION-001');
+  assert.match(decision.answer, /BC a photo/i);
+});
+
 test('ranks an exact driver-language variant above unrelated records', () => {
   const ranked = rankKnowledgeRecords("I'm at the pickup but there's nothing here", records);
   assert.equal(ranked[0].record.knowledge_id, 'KNO-PUP-ZERO-001');
