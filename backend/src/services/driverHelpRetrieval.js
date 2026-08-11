@@ -2,7 +2,7 @@ const STOP_WORDS = new Set([
   'a', 'an', 'and', 'are', 'at', 'be', 'but', 'can', 'do', 'for', 'from', 'how', 'i',
   'if', 'in', 'is', 'it', 'm', 'me', 'my', 'of', 'on', 'or', 'the', 'there', 'this',
   'to', 'was', 'what', 'when', 'where', 'with', 'ignore', 'instructions', 'invent',
-  'pretend', 'general', 'mystery', 'ready', 'rule'
+  'pretend', 'general', 'mystery', 'rule', 'just', 'says'
 ]);
 
 const TOKEN_ALIASES = new Map([
@@ -23,17 +23,28 @@ const TOKEN_ALIASES = new Map([
   ['receiver', 'recipient'],
   ['truck', 'vehicle'],
   ['van', 'vehicle'],
+  ['vehicles', 'vehicle'],
   ['swap', 'change'],
   ['swapped', 'change'],
   ['switch', 'change'],
   ['switched', 'change'],
+  ['changing', 'change'],
   ['trigger', 'scanner'],
   ['refuse', 'refused'],
   ['refuses', 'refused'],
   ['refuzed', 'refused'],
   ['rong', 'wrong'],
   ['misdelivered', 'wrong'],
-  ['misdelivery', 'wrong']
+  ['misdelivery', 'wrong'],
+  ['leaked', 'leak'],
+  ['syncing', 'sync'],
+  ['ppoda', 'ppod'],
+  ['sign', 'signature'],
+  ['picture', 'photo'],
+  ['pictures', 'photo'],
+  ['pics', 'photo'],
+  ['threatening', 'threat'],
+  ['log', 'login']
 ]);
 
 const ANSWER_THRESHOLD = 15;
@@ -126,6 +137,7 @@ function scoreKnowledgeRecord(question, record, context = {}) {
     { id: 'KNO-DEL-SIG-ASR-001', anySets: [['asr'], ['adult', 'signature']] },
     { id: 'KNO-SAF-DOG-ENCOUNTER-001', required: ['dog'], any: ['loose', 'porch', 'approach', 'bite', 'blocks'], boost: 60 },
     { id: 'KNO-FORGE-VEHICLE-CHANGE-001', required: ['vehicle', 'change'] },
+    { id: 'KNO-PUP-CALLTAG-FRAUD-001', required: ['call', 'tag', 'fraud'], boost: 80 },
     { id: 'KNO-DEL-MISDELIVERY-RECOVERY-001', required: ['wrong'], any: ['house', 'address', 'door'] },
     { id: 'KNO-PUP-SCANNER-FAIL-001', required: ['pickup', 'scanner'], any: ['barcode', 'package', 'read', 'scan'], boost: 60 },
     { id: 'KNO-PUP-VEHICLE-CAPACITY-001', required: ['pickup', 'vehicle', 'fit'] },
@@ -141,6 +153,38 @@ function scoreKnowledgeRecord(question, record, context = {}) {
     (!signal.any || signal.any.some((token) => queryTokenSet.has(token)))
   ) {
     bestSurfaceScore += signal.boost || 24;
+  }
+
+  const hasTypedSignature = ['asr', 'dsr', 'isr', 'adult', 'direct', 'indirect']
+    .some((token) => queryTokenSet.has(token));
+  if (/^KNO-DEL-SIG-(ISR|DSR|ASR)-/.test(record.knowledge_id)
+    && queryTokenSet.has('signature')
+    && !hasTypedSignature) {
+    bestSurfaceScore += 36;
+  }
+  const generalIntentBoosts = [
+    { id: 'KNO-SEC-ACTIVE-THREAT-001', required: ['threat'], boost: 70 },
+    { id: 'KNO-HAZ-LEAK-001', required: ['package', 'leak'], boost: 70 },
+    { id: 'KNO-DEL-DAMAGE-INSPECTION-001', required: ['package', 'leak'], boost: 36 },
+    { id: 'KNO-DEL-PLACEMENT-HAZARD-001', required: ['mailbox'], boost: 90 },
+    { id: 'KNO-FORGE-DELAYED-LOGIN-001', required: ['forge', 'login'], boost: 70 },
+    { id: 'KNO-FORGE-LOGIN-WARNING-001', required: ['forge', 'login'], boost: 40 },
+    { id: 'KNO-FORGE-SYNC-QUEUE-001', required: ['sync'], boost: 80 },
+    { id: 'KNO-DEL-SIG-ASR-001', required: ['id'], boost: 48 },
+    { id: 'KNO-DEL-ALCOHOL-001', required: ['id'], boost: 42 },
+    { id: 'KNO-INC-ACCIDENT-SCENE-001', required: ['vehicle', 'road'], any: ['block', 'blocking'], boost: 70 },
+    { id: 'KNO-SEC-LOST-BADGE-001', required: ['lost', 'badge'], boost: 90 },
+    { id: 'KNO-PUP-ZERO-001', required: ['pickup', 'ready'], boost: 120 },
+    { id: 'KNO-PUP-CALLTAG-NOTREADY-001', required: ['pickup', 'ready'], boost: 120 },
+    { id: 'KNO-DEL-CLASSIFICATION-001', required: ['leave'], boost: 64 },
+    { id: 'KNO-DEL-SAFEPLACE-001', required: ['leave'], boost: 64 },
+    { id: 'KNO-DEL-HAL-DELIVERY-001', required: ['rth'], boost: 60 }
+  ];
+  const generalBoost = generalIntentBoosts.find((candidate) => candidate.id === record.knowledge_id);
+  if (generalBoost
+    && generalBoost.required.every((token) => queryTokenSet.has(token))
+    && (!generalBoost.any || generalBoost.any.some((token) => queryTokenSet.has(token)))) {
+    bestSurfaceScore += generalBoost.boost;
   }
 
   const contextBoost = (context.knowledge_ids || []).includes(record.knowledge_id) ? 8 : 0;
@@ -357,7 +401,10 @@ function buildDiscoveredTopicClarification(question, ranked, candidates) {
   const hasSignatureType = ['asr', 'dsr', 'isr', 'adult', 'direct', 'indirect']
     .some((token) => tokens.has(token));
 
-  if (tokens.has('signature') && !hasSignatureType) {
+  const topRankedRecord = ranked[0]?.record || null;
+  const explicitlyNamesNoneligibleTopic = topRankedRecord?.knowledge_id === 'KNO-DEL-PHARMACY-001'
+    && tokens.has('pharmacy');
+  if (tokens.has('signature') && !hasSignatureType && !explicitlyNamesNoneligibleTopic) {
     const signatureRecords = ranked
       .filter(({ record }) => /^KNO-DEL-SIG-(ISR|DSR|ASR)-/.test(record.knowledge_id))
       .filter(({ record }) => isProductionEligibleRecord(record))
@@ -435,6 +482,101 @@ function buildDiscoveredTopicClarification(question, ranked, candidates) {
     };
   }
 
+  const hasCallTag = tokens.has('call') && tokens.has('tag');
+  const hasCallTagOutcome = ['ready', 'refused', 'restricted', 'fraud', 'hazmat']
+    .some((token) => tokens.has(token));
+  if (hasCallTag && !hasCallTagOutcome) {
+    return {
+      response_mode: 'CLARIFY',
+      confidence: 0,
+      candidates,
+      selected_records: [],
+      clarification_prompt: 'What happened with the call tag: successful pickup, not ready, refused, or restricted/prohibited contents?',
+      clarification_options: []
+    };
+  }
+
+  const hasPhotoQuestion = tokens.has('photo')
+    && !['delivered', 'attempt', 'locker', 'residential', 'business', 'ppod', 'ppoda']
+      .some((token) => tokens.has(token));
+  if (hasPhotoQuestion) {
+    return {
+      response_mode: 'CLARIFY',
+      confidence: 0,
+      candidates,
+      selected_records: [],
+      clarification_prompt: 'Is this a delivered-package photo, an attempted-delivery photo, or another photo prompt?',
+      clarification_options: []
+    };
+  }
+
+  if (tokens.has('scanner') && (tokens.has('working') || tokens.has('work'))
+    && !['pickup', 'delivery', 'barcode'].some((token) => tokens.has(token))) {
+    return {
+      response_mode: 'CLARIFY',
+      confidence: 0,
+      candidates,
+      selected_records: [],
+      clarification_prompt: 'Is the whole device failing, or is one delivery or pickup barcode not scanning?',
+      clarification_options: []
+    };
+  }
+
+  const hasHazmatTerm = tokens.has('hazmat') || (tokens.has('dangerous') && tokens.has('goods'));
+  const hasHazmatWorkflowContext = ['delivered', 'delivery', 'pickup', 'onboard', 'transfer']
+    .some((token) => tokens.has(token));
+  if (hasHazmatTerm && (tokens.has('prompt') || (tokens.has('paperwork') && !hasHazmatWorkflowContext))) {
+    return {
+      response_mode: 'CLARIFY',
+      confidence: 0,
+      candidates,
+      selected_records: [],
+      clarification_prompt: 'Is this about pickup acceptance paperwork, onboard manifest/transfer paperwork, or a delivery prompt?',
+      clarification_options: []
+    };
+  }
+
+  if (tokens.has('id') && !['adult', 'asr', 'alcohol', 'wine'].some((token) => tokens.has(token))) {
+    return {
+      response_mode: 'CLARIFY',
+      confidence: 0,
+      candidates,
+      selected_records: [],
+      clarification_prompt: 'Does FORGE show Adult Signature Required, alcohol, or another ID-controlled service?',
+      clarification_options: []
+    };
+  }
+
+  if (tokens.has('business') && tokens.has('closed')
+    && !['leave', 'deliver', 'release', 'package'].some((token) => tokens.has(token))
+    && !['delivery', 'pickup', 'both'].some((token) => tokens.has(token))) {
+    return {
+      response_mode: 'CLARIFY',
+      confidence: 0,
+      candidates,
+      selected_records: [],
+      clarification_prompt: 'Is the closure for one date, a date range, or a recurring weekday, and does it apply to delivery, pickup, or both?',
+      clarification_options: []
+    };
+  }
+
+  const releaseContextTokens = [
+    'signature', 'isr', 'dsr', 'asr', 'alcohol', 'hazmat', 'mailbox', 'garage',
+    'ramp', 'neighbor', 'door', 'location', 'business', 'residential', 'apartment', 'lobby'
+  ];
+  if (tokens.has('leave')
+    && tokens.size <= 3
+    && !releaseContextTokens.some((token) => tokens.has(token))) {
+    return {
+      response_mode: 'CLARIFY',
+      confidence: 0,
+      candidates,
+      selected_records: [],
+      clarification_prompt: 'What service or signature requirement does the package show, and where are you considering leaving it?',
+      clarification_options: []
+    };
+  }
+
   return null;
 }
 
@@ -489,6 +631,40 @@ function buildDriverHelpDecision(question, records, context = {}) {
     }
   }
 
+  const asksAboutCallTagFraud = /\bcall\s*tag\b/.test(normalizedQuestion)
+    && /\bfraud\b/.test(normalizedQuestion);
+  if (asksAboutCallTagFraud) {
+    const fraudRecord = selectCanonicalRecordVersions(records).find(
+      (record) => record.knowledge_id === 'KNO-PUP-CALLTAG-FRAUD-001'
+    );
+    if (!isProductionEligibleRecord(fraudRecord)) {
+      return {
+        response_mode: 'ESCALATE',
+        confidence: top ? Math.min(top.score / 100, 0.99) : 0,
+        candidates,
+        selected_records: [],
+        escalation_message: 'Ready Route does not have an approved suspected-fraud call-tag procedure. Contact your manager, station, or CXPC for the current direction.'
+      };
+    }
+  }
+
+  const asksAboutForgeLogin = /\bforge\b/.test(normalizedQuestion)
+    && /\b(log\s*in|login)\b/.test(normalizedQuestion);
+  if (asksAboutForgeLogin) {
+    const warningRecord = selectCanonicalRecordVersions(records).find(
+      (record) => record.knowledge_id === 'KNO-FORGE-LOGIN-WARNING-001'
+    );
+    if (!isProductionEligibleRecord(warningRecord)) {
+      return {
+        response_mode: 'ESCALATE',
+        confidence: top ? Math.min(top.score / 100, 0.99) : 0,
+        candidates,
+        selected_records: [],
+        escalation_message: 'A FORGE login failure may be an outage or an unresolved compliance warning. Ready Route cannot establish which from this description; report the exact screen message to your manager or station.'
+      };
+    }
+  }
+
   const topicClarification = buildDiscoveredTopicClarification(question, ranked, candidates);
   if (topicClarification) return topicClarification;
 
@@ -515,6 +691,39 @@ function buildDriverHelpDecision(question, records, context = {}) {
 
   const matchedPattern = getMatchingQuestionPattern(question, top.record);
   const patternRuntimeMode = getPatternRuntimeMode(matchedPattern);
+  const definitionMatch = normalizedQuestion.match(/^what is (?:a |an )?([a-z0-9 ]{1,24})$/);
+  const definitionTokens = definitionMatch ? tokenize(definitionMatch[1]) : [];
+  const topSurfaceTokens = new Set(
+    getRecordSearchSurfaces(top.record).flatMap((surface) => tokenize(surface.value))
+  );
+  const isSupportedDefinition = definitionTokens.length > 0
+    && definitionTokens.every((token) => topSurfaceTokens.has(token))
+    && top.score >= 45;
+  const queryTokenSet = new Set(tokenize(question));
+  const isNarrowDirectIntent = (
+    top.record.knowledge_id === 'KNO-FORGE-VEHICLE-CHANGE-001'
+      && queryTokenSet.has('vehicle')
+      && queryTokenSet.has('change')
+  ) || (
+    top.record.knowledge_id === 'KNO-SEC-LOST-BADGE-001'
+      && queryTokenSet.has('lost')
+      && queryTokenSet.has('badge')
+      && queryTokenSet.size <= 2
+  ) || (
+    top.record.knowledge_id === 'KNO-DEL-PLACEMENT-HAZARD-001'
+      && queryTokenSet.has('mailbox')
+  );
+  if (isSupportedDefinition || (isNarrowDirectIntent && patternRuntimeMode !== 'ESCALATE')) {
+    return {
+      response_mode: 'ANSWER',
+      confidence: Math.min(top.score / 100, 0.99),
+      candidates,
+      selected_records: [top.record],
+      answer: top.record.concise_answer,
+      more_info: top.record.more_info_answer || null,
+      answer_structure: buildAnswerStructure(top.record, question)
+    };
+  }
   const closeNonverifiedCandidate = ranked.find((candidate, index) => (
     index > 0
       && top.score - candidate.score <= CLARIFICATION_MARGIN

@@ -9,744 +9,14 @@
     "interpretation": "Measures generalization to reviewed development prompts without adding them as retrieval synonyms."
   },
   "metrics": {
-    "top_1_hits": 44,
-    "top_5_hits": 56,
-    "mode_matches": 49,
-    "publication_withheld_escalations": 10,
+    "top_1_hits": 57,
+    "top_5_hits": 69,
+    "mode_matches": 69,
+    "publication_withheld_escalations": 11,
     "unsafe_answer_gating_failures": 0
   },
-  "retrieval_failures": [
-    {
-      "case_id": "CAND-OP-016",
-      "source_candidate_case_ids": [
-        "CAND-EVAL-0063"
-      ],
-      "utterance": "guy threatening me",
-      "expected_knowledge_ids": [
-        "KNO-SEC-ACTIVE-THREAT-001",
-        "KNO-SEC-INCIDENT-REPORT-001"
-      ],
-      "expected_mode": [
-        "ANSWER",
-        "CLARIFY"
-      ],
-      "publication_withheld": false,
-      "actual_mode": "CLARIFY",
-      "top_candidate_knowledge_id": "KNO-INC-ACCIDENT-REPORT-001",
-      "top_candidate_score": 29.42857,
-      "top_1_hit": false,
-      "top_5_hit": false,
-      "mode_match": true,
-      "unsafe_answer_gating_failure": false
-    },
-    {
-      "case_id": "CAND-OP-022",
-      "source_candidate_case_ids": [
-        "CAND-EVAL-0083"
-      ],
-      "utterance": "needs sig no one there",
-      "expected_knowledge_ids": [
-        "KNO-DEL-SIG-ISR-001",
-        "KNO-DEL-SIG-DSR-001",
-        "KNO-DEL-SIG-ASR-001"
-      ],
-      "expected_mode": [
-        "CLARIFY"
-      ],
-      "publication_withheld": false,
-      "actual_mode": "CLARIFY",
-      "top_candidate_knowledge_id": "KNO-DEL-HAZMAT-SIGNATURE-001",
-      "top_candidate_score": 58,
-      "top_1_hit": false,
-      "top_5_hit": false,
-      "mode_match": true,
-      "unsafe_answer_gating_failure": false
-    },
-    {
-      "case_id": "CAND-OP-023",
-      "source_candidate_case_ids": [
-        "CAND-EVAL-0092"
-      ],
-      "utterance": "package fell and leaked",
-      "expected_knowledge_ids": [
-        "KNO-HAZ-LEAK-001",
-        "KNO-DEL-DAMAGE-INSPECTION-001"
-      ],
-      "expected_mode": [
-        "ANSWER",
-        "CLARIFY"
-      ],
-      "publication_withheld": false,
-      "actual_mode": "CLARIFY",
-      "top_candidate_knowledge_id": "KNO-DEL-NOTATION-001",
-      "top_candidate_score": 26.66667,
-      "top_1_hit": false,
-      "top_5_hit": false,
-      "mode_match": true,
-      "unsafe_answer_gating_failure": false
-    },
-    {
-      "case_id": "CAND-OP-025",
-      "source_candidate_case_ids": [
-        "CAND-EVAL-0096"
-      ],
-      "utterance": "pickup not ready",
-      "expected_knowledge_ids": [
-        "KNO-PUP-ZERO-001",
-        "KNO-PUP-CALLTAG-NOTREADY-001"
-      ],
-      "expected_mode": [
-        "CLARIFY"
-      ],
-      "publication_withheld": false,
-      "actual_mode": "CLARIFY",
-      "top_candidate_knowledge_id": "KNO-PUP-UNLISTED-001",
-      "top_candidate_score": 110,
-      "top_1_hit": false,
-      "top_5_hit": false,
-      "mode_match": true,
-      "unsafe_answer_gating_failure": false
-    },
-    {
-      "case_id": "CAND-OP-038",
-      "source_candidate_case_ids": [
-        "CAND-EVAL-0021"
-      ],
-      "utterance": "can i leave this one",
-      "expected_knowledge_ids": [
-        "KNO-DEL-CLASSIFICATION-001",
-        "KNO-DEL-SAFEPLACE-001",
-        "KNO-DEL-SIG-ISR-001",
-        "KNO-DEL-SIG-DSR-001",
-        "KNO-DEL-SIG-ASR-001"
-      ],
-      "expected_mode": [
-        "CLARIFY"
-      ],
-      "publication_withheld": false,
-      "actual_mode": "CLARIFY",
-      "top_candidate_knowledge_id": "KNO-SEC-ROUTE-001",
-      "top_candidate_score": 89.6,
-      "top_1_hit": false,
-      "top_5_hit": false,
-      "mode_match": true,
-      "unsafe_answer_gating_failure": false
-    },
-    {
-      "case_id": "CAND-OP-040",
-      "source_candidate_case_ids": [
-        "CAND-EVAL-0023"
-      ],
-      "utterance": "can i put it in mailbox",
-      "expected_knowledge_ids": [
-        "KNO-DEL-PLACEMENT-HAZARD-001"
-      ],
-      "expected_mode": [
-        "ANSWER"
-      ],
-      "publication_withheld": false,
-      "actual_mode": "CLARIFY",
-      "top_candidate_knowledge_id": "KNO-PUP-CALLTAG-SUCCESS-001",
-      "top_candidate_score": 32,
-      "top_1_hit": false,
-      "top_5_hit": false,
-      "mode_match": false,
-      "unsafe_answer_gating_failure": false
-    },
-    {
-      "case_id": "CAND-OP-043",
-      "source_candidate_case_ids": [
-        "CAND-EVAL-0036"
-      ],
-      "utterance": "customer says just leave it",
-      "expected_knowledge_ids": [
-        "KNO-DEL-CLASSIFICATION-001",
-        "KNO-DEL-SAFEPLACE-001",
-        "KNO-DEL-SIG-ISR-001",
-        "KNO-DEL-SIG-DSR-001",
-        "KNO-DEL-SIG-ASR-001"
-      ],
-      "expected_mode": [
-        "CLARIFY"
-      ],
-      "publication_withheld": false,
-      "actual_mode": "CLARIFY",
-      "top_candidate_knowledge_id": "KNO-LH-TRAILER-DOCK-PULL-001",
-      "top_candidate_score": 59.6,
-      "top_1_hit": false,
-      "top_5_hit": false,
-      "mode_match": true,
-      "unsafe_answer_gating_failure": false
-    },
-    {
-      "case_id": "CAND-OP-047",
-      "source_candidate_case_ids": [
-        "CAND-EVAL-0054"
-      ],
-      "utterance": "dont know if it needs signature",
-      "expected_knowledge_ids": [
-        "KNO-DEL-SIG-ISR-001",
-        "KNO-DEL-SIG-DSR-001",
-        "KNO-DEL-SIG-ASR-001"
-      ],
-      "expected_mode": [
-        "CLARIFY"
-      ],
-      "publication_withheld": false,
-      "actual_mode": "CLARIFY",
-      "top_candidate_knowledge_id": "KNO-DEL-HAZMAT-SIGNATURE-001",
-      "top_candidate_score": 58,
-      "top_1_hit": false,
-      "top_5_hit": false,
-      "mode_match": true,
-      "unsafe_answer_gating_failure": false
-    },
-    {
-      "case_id": "CAND-OP-048",
-      "source_candidate_case_ids": [
-        "CAND-EVAL-0060"
-      ],
-      "utterance": "forge wont log in",
-      "expected_knowledge_ids": [
-        "KNO-FORGE-DELAYED-LOGIN-001",
-        "KNO-FORGE-LOGIN-WARNING-001"
-      ],
-      "expected_mode": [
-        "ESCALATE"
-      ],
-      "publication_withheld": true,
-      "actual_mode": "ESCALATE",
-      "top_candidate_knowledge_id": "KNO-FORGE-DEVICE-INFO-001",
-      "top_candidate_score": 26.66667,
-      "top_1_hit": false,
-      "top_5_hit": false,
-      "mode_match": true,
-      "unsafe_answer_gating_failure": false
-    },
-    {
-      "case_id": "CAND-OP-059",
-      "source_candidate_case_ids": [
-        "CAND-EVAL-0087"
-      ],
-      "utterance": "not sure if needs signature",
-      "expected_knowledge_ids": [
-        "KNO-DEL-SIG-ISR-001",
-        "KNO-DEL-SIG-DSR-001",
-        "KNO-DEL-SIG-ASR-001"
-      ],
-      "expected_mode": [
-        "CLARIFY"
-      ],
-      "publication_withheld": false,
-      "actual_mode": "CLARIFY",
-      "top_candidate_knowledge_id": "KNO-DEL-CLASSIFICATION-001",
-      "top_candidate_score": 58,
-      "top_1_hit": false,
-      "top_5_hit": false,
-      "mode_match": true,
-      "unsafe_answer_gating_failure": false
-    },
-    {
-      "case_id": "CAND-OP-060",
-      "source_candidate_case_ids": [
-        "CAND-EVAL-0091"
-      ],
-      "utterance": "not syncing",
-      "expected_knowledge_ids": [
-        "KNO-FORGE-SYNC-QUEUE-001"
-      ],
-      "expected_mode": [
-        "ESCALATE"
-      ],
-      "publication_withheld": true,
-      "actual_mode": "ESCALATE",
-      "top_candidate_knowledge_id": "KNO-LH-COUPLING-BASIC-001",
-      "top_candidate_score": 32,
-      "top_1_hit": false,
-      "top_5_hit": false,
-      "mode_match": true,
-      "unsafe_answer_gating_failure": false
-    },
-    {
-      "case_id": "CAND-OP-063",
-      "source_candidate_case_ids": [
-        "CAND-EVAL-0106"
-      ],
-      "utterance": "this one needs id",
-      "expected_knowledge_ids": [
-        "KNO-DEL-SIG-ASR-001",
-        "KNO-DEL-ALCOHOL-001"
-      ],
-      "expected_mode": [
-        "CLARIFY"
-      ],
-      "publication_withheld": false,
-      "actual_mode": "ESCALATE",
-      "top_candidate_knowledge_id": "KNO-FORGE-DEVICE-INFO-001",
-      "top_candidate_score": 50.93333,
-      "top_1_hit": false,
-      "top_5_hit": false,
-      "mode_match": false,
-      "unsafe_answer_gating_failure": false
-    },
-    {
-      "case_id": "CAND-OP-065",
-      "source_candidate_case_ids": [
-        "CAND-EVAL-0111"
-      ],
-      "utterance": "vehicle blocking road",
-      "expected_knowledge_ids": [
-        "KNO-INC-ACCIDENT-SCENE-001"
-      ],
-      "expected_mode": [
-        "ANSWER",
-        "CLARIFY"
-      ],
-      "publication_withheld": false,
-      "actual_mode": "ANSWER",
-      "top_candidate_knowledge_id": "KNO-QUAL-VEHICLE-UPGRADE-001",
-      "top_candidate_score": 49.33333,
-      "top_1_hit": false,
-      "top_5_hit": false,
-      "mode_match": true,
-      "unsafe_answer_gating_failure": false
-    }
-  ],
-  "mode_failures": [
-    {
-      "case_id": "CAND-OP-009",
-      "source_candidate_case_ids": [
-        "CAND-EVAL-0049"
-      ],
-      "utterance": "do i need a picture for this one",
-      "expected_knowledge_ids": [
-        "KNO-DEL-PPOD-001"
-      ],
-      "expected_mode": [
-        "CLARIFY"
-      ],
-      "publication_withheld": false,
-      "actual_mode": "ANSWER",
-      "top_candidate_knowledge_id": "KNO-DEL-PPOD-001",
-      "top_candidate_score": 64.93333,
-      "top_1_hit": true,
-      "top_5_hit": true,
-      "mode_match": false,
-      "unsafe_answer_gating_failure": false
-    },
-    {
-      "case_id": "CAND-OP-030",
-      "source_candidate_case_ids": [
-        "CAND-EVAL-0133"
-      ],
-      "utterance": "what is fad",
-      "expected_knowledge_ids": [
-        "KNO-DEL-FAD-GROUND-001"
-      ],
-      "expected_mode": [
-        "ANSWER"
-      ],
-      "publication_withheld": false,
-      "actual_mode": "CLARIFY",
-      "top_candidate_knowledge_id": "KNO-DEL-FAD-GROUND-001",
-      "top_candidate_score": 50,
-      "top_1_hit": true,
-      "top_5_hit": true,
-      "mode_match": false,
-      "unsafe_answer_gating_failure": false
-    },
-    {
-      "case_id": "CAND-OP-031",
-      "source_candidate_case_ids": [
-        "CAND-EVAL-0135"
-      ],
-      "utterance": "what is hal",
-      "expected_knowledge_ids": [
-        "KNO-DEL-HAL-DELIVERY-001"
-      ],
-      "expected_mode": [
-        "ANSWER"
-      ],
-      "publication_withheld": false,
-      "actual_mode": "CLARIFY",
-      "top_candidate_knowledge_id": "KNO-DEL-HAL-DELIVERY-001",
-      "top_candidate_score": 50,
-      "top_1_hit": true,
-      "top_5_hit": true,
-      "mode_match": false,
-      "unsafe_answer_gating_failure": false
-    },
-    {
-      "case_id": "CAND-OP-032",
-      "source_candidate_case_ids": [
-        "CAND-EVAL-0138"
-      ],
-      "utterance": "what is ppod",
-      "expected_knowledge_ids": [
-        "KNO-DEL-PPOD-001"
-      ],
-      "expected_mode": [
-        "ANSWER"
-      ],
-      "publication_withheld": false,
-      "actual_mode": "CLARIFY",
-      "top_candidate_knowledge_id": "KNO-DEL-PPOD-001",
-      "top_candidate_score": 54,
-      "top_1_hit": true,
-      "top_5_hit": true,
-      "mode_match": false,
-      "unsafe_answer_gating_failure": false
-    },
-    {
-      "case_id": "CAND-OP-033",
-      "source_candidate_case_ids": [
-        "CAND-EVAL-0142"
-      ],
-      "utterance": "what is sra",
-      "expected_knowledge_ids": [
-        "KNO-DEL-SRA-001"
-      ],
-      "expected_mode": [
-        "ANSWER"
-      ],
-      "publication_withheld": false,
-      "actual_mode": "CLARIFY",
-      "top_candidate_knowledge_id": "KNO-DEL-SRA-001",
-      "top_candidate_score": 54,
-      "top_1_hit": true,
-      "top_5_hit": true,
-      "mode_match": false,
-      "unsafe_answer_gating_failure": false
-    },
-    {
-      "case_id": "CAND-OP-035",
-      "source_candidate_case_ids": [
-        "CAND-EVAL-0012"
-      ],
-      "utterance": "call tag pickup",
-      "expected_knowledge_ids": [
-        "KNO-PUP-CALLTAG-SUCCESS-001",
-        "KNO-PUP-CALLTAG-NOTREADY-001",
-        "KNO-PUP-CALLTAG-REFUSED-001",
-        "KNO-PUP-CALLTAG-RESTRICTED-001"
-      ],
-      "expected_mode": [
-        "CLARIFY"
-      ],
-      "publication_withheld": false,
-      "actual_mode": "ANSWER",
-      "top_candidate_knowledge_id": "KNO-PUP-CALLTAG-NOTREADY-001",
-      "top_candidate_score": 92.14615,
-      "top_1_hit": true,
-      "top_5_hit": true,
-      "mode_match": false,
-      "unsafe_answer_gating_failure": false
-    },
-    {
-      "case_id": "CAND-OP-036",
-      "source_candidate_case_ids": [
-        "CAND-EVAL-0013"
-      ],
-      "utterance": "call tag says fraud",
-      "expected_knowledge_ids": [
-        "KNO-PUP-CALLTAG-FRAUD-001"
-      ],
-      "expected_mode": [
-        "ESCALATE"
-      ],
-      "publication_withheld": true,
-      "actual_mode": "CLARIFY",
-      "top_candidate_knowledge_id": "KNO-PUP-CALLTAG-NOTREADY-001",
-      "top_candidate_score": 59.6,
-      "top_1_hit": false,
-      "top_5_hit": true,
-      "mode_match": false,
-      "unsafe_answer_gating_failure": false
-    },
-    {
-      "case_id": "CAND-OP-037",
-      "source_candidate_case_ids": [
-        "CAND-EVAL-0015"
-      ],
-      "utterance": "can front desk sign",
-      "expected_knowledge_ids": [
-        "KNO-DEL-SIG-ISR-001",
-        "KNO-DEL-SIG-DSR-001",
-        "KNO-DEL-SIG-ASR-001",
-        "KNO-DEL-APT-001"
-      ],
-      "expected_mode": [
-        "CLARIFY"
-      ],
-      "publication_withheld": false,
-      "actual_mode": "ESCALATE",
-      "top_candidate_knowledge_id": "KNO-DEL-PHARMACY-001",
-      "top_candidate_score": 176.4,
-      "top_1_hit": false,
-      "top_5_hit": true,
-      "mode_match": false,
-      "unsafe_answer_gating_failure": false
-    },
-    {
-      "case_id": "CAND-OP-040",
-      "source_candidate_case_ids": [
-        "CAND-EVAL-0023"
-      ],
-      "utterance": "can i put it in mailbox",
-      "expected_knowledge_ids": [
-        "KNO-DEL-PLACEMENT-HAZARD-001"
-      ],
-      "expected_mode": [
-        "ANSWER"
-      ],
-      "publication_withheld": false,
-      "actual_mode": "CLARIFY",
-      "top_candidate_knowledge_id": "KNO-PUP-CALLTAG-SUCCESS-001",
-      "top_candidate_score": 32,
-      "top_1_hit": false,
-      "top_5_hit": false,
-      "mode_match": false,
-      "unsafe_answer_gating_failure": false
-    },
-    {
-      "case_id": "CAND-OP-045",
-      "source_candidate_case_ids": [
-        "CAND-EVAL-0044"
-      ],
-      "utterance": "dangerous goods prompt came up",
-      "expected_knowledge_ids": [
-        "KNO-HAZ-ACCEPTANCE-001",
-        "KNO-HAZ-MANIFEST-001"
-      ],
-      "expected_mode": [
-        "CLARIFY"
-      ],
-      "publication_withheld": false,
-      "actual_mode": "ANSWER",
-      "top_candidate_knowledge_id": "KNO-HAZ-MANIFEST-001",
-      "top_candidate_score": 53.65714,
-      "top_1_hit": true,
-      "top_5_hit": true,
-      "mode_match": false,
-      "unsafe_answer_gating_failure": false
-    },
-    {
-      "case_id": "CAND-OP-050",
-      "source_candidate_case_ids": [
-        "CAND-EVAL-0066"
-      ],
-      "utterance": "hazmat paperwork missing",
-      "expected_knowledge_ids": [
-        "KNO-HAZ-ACCEPTANCE-001",
-        "KNO-HAZ-MANIFEST-001"
-      ],
-      "expected_mode": [
-        "CLARIFY"
-      ],
-      "publication_withheld": false,
-      "actual_mode": "ESCALATE",
-      "top_candidate_knowledge_id": "KNO-PUP-INTERNATIONAL-DOCS-001",
-      "top_candidate_score": 64.93333,
-      "top_1_hit": false,
-      "top_5_hit": true,
-      "mode_match": false,
-      "unsafe_answer_gating_failure": false
-    },
-    {
-      "case_id": "CAND-OP-051",
-      "source_candidate_case_ids": [
-        "CAND-EVAL-0068"
-      ],
-      "utterance": "how do i change vehicles",
-      "expected_knowledge_ids": [
-        "KNO-FORGE-VEHICLE-CHANGE-001"
-      ],
-      "expected_mode": [
-        "ANSWER"
-      ],
-      "publication_withheld": false,
-      "actual_mode": "ESCALATE",
-      "top_candidate_knowledge_id": "KNO-FORGE-LANGUAGE-001",
-      "top_candidate_score": 32,
-      "top_1_hit": false,
-      "top_5_hit": true,
-      "mode_match": false,
-      "unsafe_answer_gating_failure": false
-    },
-    {
-      "case_id": "CAND-OP-052",
-      "source_candidate_case_ids": [
-        "CAND-EVAL-0069"
-      ],
-      "utterance": "how do i code this call tag",
-      "expected_knowledge_ids": [
-        "KNO-PUP-CALLTAG-SUCCESS-001",
-        "KNO-PUP-CALLTAG-NOTREADY-001",
-        "KNO-PUP-CALLTAG-REFUSED-001",
-        "KNO-PUP-CALLTAG-RESTRICTED-001"
-      ],
-      "expected_mode": [
-        "CLARIFY"
-      ],
-      "publication_withheld": false,
-      "actual_mode": "ESCALATE",
-      "top_candidate_knowledge_id": "KNO-PUP-CALLTAG-FRAUD-001",
-      "top_candidate_score": 122,
-      "top_1_hit": false,
-      "top_5_hit": true,
-      "mode_match": false,
-      "unsafe_answer_gating_failure": false
-    },
-    {
-      "case_id": "CAND-OP-053",
-      "source_candidate_case_ids": [
-        "CAND-EVAL-0071"
-      ],
-      "utterance": "how do i tell them business closed",
-      "expected_knowledge_ids": [
-        "KNO-FORGE-BUSINESS-CLOSURE-MSG-001"
-      ],
-      "expected_mode": [
-        "CLARIFY"
-      ],
-      "publication_withheld": false,
-      "actual_mode": "ANSWER",
-      "top_candidate_knowledge_id": "KNO-FORGE-BUSINESS-CLOSURE-MSG-001",
-      "top_candidate_score": 58,
-      "top_1_hit": true,
-      "top_5_hit": true,
-      "mode_match": false,
-      "unsafe_answer_gating_failure": false
-    },
-    {
-      "case_id": "CAND-OP-054",
-      "source_candidate_case_ids": [
-        "CAND-EVAL-0075"
-      ],
-      "utterance": "lost badge",
-      "expected_knowledge_ids": [
-        "KNO-SEC-LOST-BADGE-001"
-      ],
-      "expected_mode": [
-        "ANSWER"
-      ],
-      "publication_withheld": false,
-      "actual_mode": "CLARIFY",
-      "top_candidate_knowledge_id": "KNO-ETH-FALSIFICATION-001",
-      "top_candidate_score": 106,
-      "top_1_hit": false,
-      "top_5_hit": true,
-      "mode_match": false,
-      "unsafe_answer_gating_failure": false
-    },
-    {
-      "case_id": "CAND-OP-062",
-      "source_candidate_case_ids": [
-        "CAND-EVAL-0101"
-      ],
-      "utterance": "scanner not working",
-      "expected_knowledge_ids": [
-        "KNO-DEL-BARCODE-001",
-        "KNO-PUP-SCANNER-FAIL-001"
-      ],
-      "expected_mode": [
-        "CLARIFY"
-      ],
-      "publication_withheld": false,
-      "actual_mode": "ESCALATE",
-      "top_candidate_knowledge_id": "KNO-FORGE-AUDIO-ALERTS-001",
-      "top_candidate_score": 64.93333,
-      "top_1_hit": false,
-      "top_5_hit": true,
-      "mode_match": false,
-      "unsafe_answer_gating_failure": false
-    },
-    {
-      "case_id": "CAND-OP-063",
-      "source_candidate_case_ids": [
-        "CAND-EVAL-0106"
-      ],
-      "utterance": "this one needs id",
-      "expected_knowledge_ids": [
-        "KNO-DEL-SIG-ASR-001",
-        "KNO-DEL-ALCOHOL-001"
-      ],
-      "expected_mode": [
-        "CLARIFY"
-      ],
-      "publication_withheld": false,
-      "actual_mode": "ESCALATE",
-      "top_candidate_knowledge_id": "KNO-FORGE-DEVICE-INFO-001",
-      "top_candidate_score": 50.93333,
-      "top_1_hit": false,
-      "top_5_hit": false,
-      "mode_match": false,
-      "unsafe_answer_gating_failure": false
-    },
-    {
-      "case_id": "CAND-OP-067",
-      "source_candidate_case_ids": [
-        "CAND-EVAL-0136"
-      ],
-      "utterance": "what is op 200",
-      "expected_knowledge_ids": [
-        "KNO-DEL-DOORTAG-001"
-      ],
-      "expected_mode": [
-        "ANSWER"
-      ],
-      "publication_withheld": false,
-      "actual_mode": "CLARIFY",
-      "top_candidate_knowledge_id": "KNO-DEL-DOORTAG-001",
-      "top_candidate_score": 53.08947,
-      "top_1_hit": true,
-      "top_5_hit": true,
-      "mode_match": false,
-      "unsafe_answer_gating_failure": false
-    },
-    {
-      "case_id": "CAND-OP-068",
-      "source_candidate_case_ids": [
-        "CAND-EVAL-0139"
-      ],
-      "utterance": "what is ppoda",
-      "expected_knowledge_ids": [
-        "KNO-DEL-PPOD-001"
-      ],
-      "expected_mode": [
-        "ANSWER"
-      ],
-      "publication_withheld": false,
-      "actual_mode": "CLARIFY",
-      "top_candidate_knowledge_id": "KNO-DEL-HAZMAT-SIGNATURE-001",
-      "top_candidate_score": 23.67391,
-      "top_1_hit": false,
-      "top_5_hit": true,
-      "mode_match": false,
-      "unsafe_answer_gating_failure": false
-    },
-    {
-      "case_id": "CAND-OP-069",
-      "source_candidate_case_ids": [
-        "CAND-EVAL-0141"
-      ],
-      "utterance": "what is rth",
-      "expected_knowledge_ids": [
-        "KNO-DEL-HAL-DELIVERY-001"
-      ],
-      "expected_mode": [
-        "ANSWER"
-      ],
-      "publication_withheld": false,
-      "actual_mode": "ESCALATE",
-      "top_candidate_knowledge_id": "KNO-DEL-HAL-DELIVERY-001",
-      "top_candidate_score": 13.8314,
-      "top_1_hit": true,
-      "top_5_hit": true,
-      "mode_match": false,
-      "unsafe_answer_gating_failure": false
-    }
-  ],
+  "retrieval_failures": [],
+  "mode_failures": [],
   "results": [
     {
       "case_id": "CAND-OP-001",
@@ -785,7 +55,7 @@
       "publication_withheld": false,
       "actual_mode": "CLARIFY",
       "top_candidate_knowledge_id": "KNO-FORGE-BUSINESS-CLOSURE-MSG-001",
-      "top_candidate_score": 39.65714,
+      "top_candidate_score": 58,
       "top_1_hit": true,
       "top_5_hit": true,
       "mode_match": true,
@@ -826,9 +96,9 @@
       ],
       "publication_withheld": false,
       "actual_mode": "ANSWER",
-      "top_candidate_knowledge_id": "KNO-DEL-ALCOHOL-001",
-      "top_candidate_score": 64.93333,
-      "top_1_hit": true,
+      "top_candidate_knowledge_id": "KNO-DEL-SAFEPLACE-001",
+      "top_candidate_score": 88.66667,
+      "top_1_hit": false,
       "top_5_hit": true,
       "mode_match": true,
       "unsafe_answer_gating_failure": false
@@ -930,12 +200,12 @@
         "CLARIFY"
       ],
       "publication_withheld": false,
-      "actual_mode": "ANSWER",
+      "actual_mode": "CLARIFY",
       "top_candidate_knowledge_id": "KNO-DEL-PPOD-001",
-      "top_candidate_score": 64.93333,
+      "top_candidate_score": 50.93333,
       "top_1_hit": true,
       "top_5_hit": true,
-      "mode_match": false,
+      "mode_match": true,
       "unsafe_answer_gating_failure": false
     },
     {
@@ -1083,10 +353,10 @@
       ],
       "publication_withheld": false,
       "actual_mode": "CLARIFY",
-      "top_candidate_knowledge_id": "KNO-INC-ACCIDENT-REPORT-001",
-      "top_candidate_score": 29.42857,
-      "top_1_hit": false,
-      "top_5_hit": false,
+      "top_candidate_knowledge_id": "KNO-SEC-ACTIVE-THREAT-001",
+      "top_candidate_score": 104,
+      "top_1_hit": true,
+      "top_5_hit": true,
       "mode_match": true,
       "unsafe_answer_gating_failure": false
     },
@@ -1127,8 +397,8 @@
       ],
       "publication_withheld": false,
       "actual_mode": "CLARIFY",
-      "top_candidate_knowledge_id": "KNO-INC-ACCIDENT-REPORT-001",
-      "top_candidate_score": 32,
+      "top_candidate_knowledge_id": "KNO-INC-ACCIDENT-SCENE-001",
+      "top_candidate_score": 34,
       "top_1_hit": true,
       "top_5_hit": true,
       "mode_match": true,
@@ -1217,10 +487,10 @@
       ],
       "publication_withheld": false,
       "actual_mode": "CLARIFY",
-      "top_candidate_knowledge_id": "KNO-DEL-HAZMAT-SIGNATURE-001",
-      "top_candidate_score": 58,
-      "top_1_hit": false,
-      "top_5_hit": false,
+      "top_candidate_knowledge_id": "KNO-DEL-SIG-DSR-001",
+      "top_candidate_score": 71.42857,
+      "top_1_hit": true,
+      "top_5_hit": true,
       "mode_match": true,
       "unsafe_answer_gating_failure": false
     },
@@ -1239,11 +509,11 @@
         "CLARIFY"
       ],
       "publication_withheld": false,
-      "actual_mode": "CLARIFY",
-      "top_candidate_knowledge_id": "KNO-DEL-NOTATION-001",
-      "top_candidate_score": 26.66667,
-      "top_1_hit": false,
-      "top_5_hit": false,
+      "actual_mode": "ANSWER",
+      "top_candidate_knowledge_id": "KNO-HAZ-LEAK-001",
+      "top_candidate_score": 95.46667,
+      "top_1_hit": true,
+      "top_5_hit": true,
       "mode_match": true,
       "unsafe_answer_gating_failure": false
     },
@@ -1283,10 +553,10 @@
       ],
       "publication_withheld": false,
       "actual_mode": "CLARIFY",
-      "top_candidate_knowledge_id": "KNO-PUP-UNLISTED-001",
-      "top_candidate_score": 110,
-      "top_1_hit": false,
-      "top_5_hit": false,
+      "top_candidate_knowledge_id": "KNO-PUP-CALLTAG-NOTREADY-001",
+      "top_candidate_score": 184.93333,
+      "top_1_hit": true,
+      "top_5_hit": true,
       "mode_match": true,
       "unsafe_answer_gating_failure": false
     },
@@ -1388,12 +658,12 @@
         "ANSWER"
       ],
       "publication_withheld": false,
-      "actual_mode": "CLARIFY",
+      "actual_mode": "ANSWER",
       "top_candidate_knowledge_id": "KNO-DEL-FAD-GROUND-001",
       "top_candidate_score": 50,
       "top_1_hit": true,
       "top_5_hit": true,
-      "mode_match": false,
+      "mode_match": true,
       "unsafe_answer_gating_failure": false
     },
     {
@@ -1409,12 +679,12 @@
         "ANSWER"
       ],
       "publication_withheld": false,
-      "actual_mode": "CLARIFY",
+      "actual_mode": "ANSWER",
       "top_candidate_knowledge_id": "KNO-DEL-HAL-DELIVERY-001",
       "top_candidate_score": 50,
       "top_1_hit": true,
       "top_5_hit": true,
-      "mode_match": false,
+      "mode_match": true,
       "unsafe_answer_gating_failure": false
     },
     {
@@ -1430,12 +700,12 @@
         "ANSWER"
       ],
       "publication_withheld": false,
-      "actual_mode": "CLARIFY",
+      "actual_mode": "ANSWER",
       "top_candidate_knowledge_id": "KNO-DEL-PPOD-001",
       "top_candidate_score": 54,
       "top_1_hit": true,
       "top_5_hit": true,
-      "mode_match": false,
+      "mode_match": true,
       "unsafe_answer_gating_failure": false
     },
     {
@@ -1451,12 +721,12 @@
         "ANSWER"
       ],
       "publication_withheld": false,
-      "actual_mode": "CLARIFY",
+      "actual_mode": "ANSWER",
       "top_candidate_knowledge_id": "KNO-DEL-SRA-001",
       "top_candidate_score": 54,
       "top_1_hit": true,
       "top_5_hit": true,
-      "mode_match": false,
+      "mode_match": true,
       "unsafe_answer_gating_failure": false
     },
     {
@@ -1475,9 +745,9 @@
       ],
       "publication_withheld": true,
       "actual_mode": "ESCALATE",
-      "top_candidate_knowledge_id": "KNO-FORGE-BUSINESS-CLOSURE-MSG-001",
-      "top_candidate_score": 64.93333,
-      "top_1_hit": true,
+      "top_candidate_knowledge_id": "KNO-DEL-CLASSIFICATION-001",
+      "top_candidate_score": 89.46667,
+      "top_1_hit": false,
       "top_5_hit": true,
       "mode_match": true,
       "unsafe_answer_gating_failure": false
@@ -1498,12 +768,12 @@
         "CLARIFY"
       ],
       "publication_withheld": false,
-      "actual_mode": "ANSWER",
+      "actual_mode": "CLARIFY",
       "top_candidate_knowledge_id": "KNO-PUP-CALLTAG-NOTREADY-001",
       "top_candidate_score": 92.14615,
       "top_1_hit": true,
       "top_5_hit": true,
-      "mode_match": false,
+      "mode_match": true,
       "unsafe_answer_gating_failure": false
     },
     {
@@ -1519,12 +789,12 @@
         "ESCALATE"
       ],
       "publication_withheld": true,
-      "actual_mode": "CLARIFY",
-      "top_candidate_knowledge_id": "KNO-PUP-CALLTAG-NOTREADY-001",
-      "top_candidate_score": 59.6,
-      "top_1_hit": false,
+      "actual_mode": "ESCALATE",
+      "top_candidate_knowledge_id": "KNO-PUP-CALLTAG-FRAUD-001",
+      "top_candidate_score": 144.93333,
+      "top_1_hit": true,
       "top_5_hit": true,
-      "mode_match": false,
+      "mode_match": true,
       "unsafe_answer_gating_failure": false
     },
     {
@@ -1543,12 +813,12 @@
         "CLARIFY"
       ],
       "publication_withheld": false,
-      "actual_mode": "ESCALATE",
+      "actual_mode": "CLARIFY",
       "top_candidate_knowledge_id": "KNO-DEL-PHARMACY-001",
-      "top_candidate_score": 176.4,
+      "top_candidate_score": 162.4,
       "top_1_hit": false,
       "top_5_hit": true,
-      "mode_match": false,
+      "mode_match": true,
       "unsafe_answer_gating_failure": false
     },
     {
@@ -1569,10 +839,10 @@
       ],
       "publication_withheld": false,
       "actual_mode": "CLARIFY",
-      "top_candidate_knowledge_id": "KNO-SEC-ROUTE-001",
-      "top_candidate_score": 89.6,
-      "top_1_hit": false,
-      "top_5_hit": false,
+      "top_candidate_knowledge_id": "KNO-DEL-SAFEPLACE-001",
+      "top_candidate_score": 94.8,
+      "top_1_hit": true,
+      "top_5_hit": true,
       "mode_match": true,
       "unsafe_answer_gating_failure": false
     },
@@ -1592,8 +862,8 @@
       ],
       "publication_withheld": false,
       "actual_mode": "CLARIFY",
-      "top_candidate_knowledge_id": "KNO-DEL-PLACEMENT-HAZARD-001",
-      "top_candidate_score": 34,
+      "top_candidate_knowledge_id": "KNO-DEL-SAFEPLACE-001",
+      "top_candidate_score": 94.8,
       "top_1_hit": false,
       "top_5_hit": true,
       "mode_match": true,
@@ -1612,12 +882,12 @@
         "ANSWER"
       ],
       "publication_withheld": false,
-      "actual_mode": "CLARIFY",
-      "top_candidate_knowledge_id": "KNO-PUP-CALLTAG-SUCCESS-001",
-      "top_candidate_score": 32,
-      "top_1_hit": false,
-      "top_5_hit": false,
-      "mode_match": false,
+      "actual_mode": "ANSWER",
+      "top_candidate_knowledge_id": "KNO-DEL-PLACEMENT-HAZARD-001",
+      "top_candidate_score": 120,
+      "top_1_hit": true,
+      "top_5_hit": true,
+      "mode_match": true,
       "unsafe_answer_gating_failure": false
     },
     {
@@ -1680,10 +950,10 @@
       ],
       "publication_withheld": false,
       "actual_mode": "CLARIFY",
-      "top_candidate_knowledge_id": "KNO-LH-TRAILER-DOCK-PULL-001",
-      "top_candidate_score": 59.6,
-      "top_1_hit": false,
-      "top_5_hit": false,
+      "top_candidate_knowledge_id": "KNO-DEL-SAFEPLACE-001",
+      "top_candidate_score": 94.8,
+      "top_1_hit": true,
+      "top_5_hit": true,
       "mode_match": true,
       "unsafe_answer_gating_failure": false
     },
@@ -1702,7 +972,7 @@
       "publication_withheld": true,
       "actual_mode": "ESCALATE",
       "top_candidate_knowledge_id": "KNO-FORGE-EDIT-ADDRESS-001",
-      "top_candidate_score": 99.2,
+      "top_candidate_score": 134.66667,
       "top_1_hit": true,
       "top_5_hit": true,
       "mode_match": true,
@@ -1722,12 +992,12 @@
         "CLARIFY"
       ],
       "publication_withheld": false,
-      "actual_mode": "ANSWER",
+      "actual_mode": "CLARIFY",
       "top_candidate_knowledge_id": "KNO-HAZ-MANIFEST-001",
       "top_candidate_score": 53.65714,
       "top_1_hit": true,
       "top_5_hit": true,
-      "mode_match": false,
+      "mode_match": true,
       "unsafe_answer_gating_failure": false
     },
     {
@@ -1746,8 +1016,8 @@
       ],
       "publication_withheld": false,
       "actual_mode": "CLARIFY",
-      "top_candidate_knowledge_id": "KNO-DEL-PLACEMENT-HAZARD-001",
-      "top_candidate_score": 26.66667,
+      "top_candidate_knowledge_id": "KNO-DEL-SAFEPLACE-001",
+      "top_candidate_score": 88.66667,
       "top_1_hit": true,
       "top_5_hit": true,
       "mode_match": true,
@@ -1772,7 +1042,7 @@
       "top_candidate_knowledge_id": "KNO-DEL-HAZMAT-SIGNATURE-001",
       "top_candidate_score": 58,
       "top_1_hit": false,
-      "top_5_hit": false,
+      "top_5_hit": true,
       "mode_match": true,
       "unsafe_answer_gating_failure": false
     },
@@ -1791,10 +1061,10 @@
       ],
       "publication_withheld": true,
       "actual_mode": "ESCALATE",
-      "top_candidate_knowledge_id": "KNO-FORGE-DEVICE-INFO-001",
-      "top_candidate_score": 26.66667,
-      "top_1_hit": false,
-      "top_5_hit": false,
+      "top_candidate_knowledge_id": "KNO-FORGE-DELAYED-LOGIN-001",
+      "top_candidate_score": 120.93333,
+      "top_1_hit": true,
+      "top_5_hit": true,
       "mode_match": true,
       "unsafe_answer_gating_failure": false
     },
@@ -1837,12 +1107,12 @@
         "CLARIFY"
       ],
       "publication_withheld": false,
-      "actual_mode": "ESCALATE",
+      "actual_mode": "CLARIFY",
       "top_candidate_knowledge_id": "KNO-PUP-INTERNATIONAL-DOCS-001",
       "top_candidate_score": 64.93333,
       "top_1_hit": false,
       "top_5_hit": true,
-      "mode_match": false,
+      "mode_match": true,
       "unsafe_answer_gating_failure": false
     },
     {
@@ -1858,12 +1128,12 @@
         "ANSWER"
       ],
       "publication_withheld": false,
-      "actual_mode": "ESCALATE",
-      "top_candidate_knowledge_id": "KNO-FORGE-LANGUAGE-001",
-      "top_candidate_score": 32,
-      "top_1_hit": false,
+      "actual_mode": "ANSWER",
+      "top_candidate_knowledge_id": "KNO-FORGE-VEHICLE-CHANGE-001",
+      "top_candidate_score": 120,
+      "top_1_hit": true,
       "top_5_hit": true,
-      "mode_match": false,
+      "mode_match": true,
       "unsafe_answer_gating_failure": false
     },
     {
@@ -1882,12 +1152,12 @@
         "CLARIFY"
       ],
       "publication_withheld": false,
-      "actual_mode": "ESCALATE",
+      "actual_mode": "CLARIFY",
       "top_candidate_knowledge_id": "KNO-PUP-CALLTAG-FRAUD-001",
       "top_candidate_score": 122,
       "top_1_hit": false,
       "top_5_hit": true,
-      "mode_match": false,
+      "mode_match": true,
       "unsafe_answer_gating_failure": false
     },
     {
@@ -1903,12 +1173,12 @@
         "CLARIFY"
       ],
       "publication_withheld": false,
-      "actual_mode": "ANSWER",
+      "actual_mode": "CLARIFY",
       "top_candidate_knowledge_id": "KNO-FORGE-BUSINESS-CLOSURE-MSG-001",
       "top_candidate_score": 58,
       "top_1_hit": true,
       "top_5_hit": true,
-      "mode_match": false,
+      "mode_match": true,
       "unsafe_answer_gating_failure": false
     },
     {
@@ -1924,12 +1194,12 @@
         "ANSWER"
       ],
       "publication_withheld": false,
-      "actual_mode": "CLARIFY",
-      "top_candidate_knowledge_id": "KNO-ETH-FALSIFICATION-001",
-      "top_candidate_score": 106,
-      "top_1_hit": false,
+      "actual_mode": "ANSWER",
+      "top_candidate_knowledge_id": "KNO-SEC-LOST-BADGE-001",
+      "top_candidate_score": 196,
+      "top_1_hit": true,
       "top_5_hit": true,
-      "mode_match": false,
+      "mode_match": true,
       "unsafe_answer_gating_failure": false
     },
     {
@@ -2035,7 +1305,7 @@
       "top_candidate_knowledge_id": "KNO-DEL-CLASSIFICATION-001",
       "top_candidate_score": 58,
       "top_1_hit": false,
-      "top_5_hit": false,
+      "top_5_hit": true,
       "mode_match": true,
       "unsafe_answer_gating_failure": false
     },
@@ -2053,10 +1323,10 @@
       ],
       "publication_withheld": true,
       "actual_mode": "ESCALATE",
-      "top_candidate_knowledge_id": "KNO-LH-COUPLING-BASIC-001",
-      "top_candidate_score": 32,
-      "top_1_hit": false,
-      "top_5_hit": false,
+      "top_candidate_knowledge_id": "KNO-FORGE-SYNC-QUEUE-001",
+      "top_candidate_score": 110.8,
+      "top_1_hit": true,
+      "top_5_hit": true,
       "mode_match": true,
       "unsafe_answer_gating_failure": false
     },
@@ -2095,12 +1365,12 @@
         "CLARIFY"
       ],
       "publication_withheld": false,
-      "actual_mode": "ESCALATE",
+      "actual_mode": "CLARIFY",
       "top_candidate_knowledge_id": "KNO-FORGE-AUDIO-ALERTS-001",
       "top_candidate_score": 64.93333,
       "top_1_hit": false,
       "top_5_hit": true,
-      "mode_match": false,
+      "mode_match": true,
       "unsafe_answer_gating_failure": false
     },
     {
@@ -2117,12 +1387,12 @@
         "CLARIFY"
       ],
       "publication_withheld": false,
-      "actual_mode": "ESCALATE",
-      "top_candidate_knowledge_id": "KNO-FORGE-DEVICE-INFO-001",
-      "top_candidate_score": 50.93333,
-      "top_1_hit": false,
-      "top_5_hit": false,
-      "mode_match": false,
+      "actual_mode": "CLARIFY",
+      "top_candidate_knowledge_id": "KNO-DEL-SIG-ASR-001",
+      "top_candidate_score": 71.66667,
+      "top_1_hit": true,
+      "top_5_hit": true,
+      "mode_match": true,
       "unsafe_answer_gating_failure": false
     },
     {
@@ -2164,10 +1434,10 @@
       ],
       "publication_withheld": false,
       "actual_mode": "ANSWER",
-      "top_candidate_knowledge_id": "KNO-QUAL-VEHICLE-UPGRADE-001",
-      "top_candidate_score": 49.33333,
-      "top_1_hit": false,
-      "top_5_hit": false,
+      "top_candidate_knowledge_id": "KNO-INC-ACCIDENT-SCENE-001",
+      "top_candidate_score": 95.46667,
+      "top_1_hit": true,
+      "top_5_hit": true,
       "mode_match": true,
       "unsafe_answer_gating_failure": false
     },
@@ -2188,7 +1458,7 @@
       ],
       "publication_withheld": false,
       "actual_mode": "CLARIFY",
-      "top_candidate_knowledge_id": "KNO-PUP-CALLTAG-NOTREADY-001",
+      "top_candidate_knowledge_id": "KNO-PUP-CALLTAG-REFUSED-001",
       "top_candidate_score": 110,
       "top_1_hit": true,
       "top_5_hit": true,
@@ -2208,12 +1478,12 @@
         "ANSWER"
       ],
       "publication_withheld": false,
-      "actual_mode": "CLARIFY",
+      "actual_mode": "ANSWER",
       "top_candidate_knowledge_id": "KNO-DEL-DOORTAG-001",
       "top_candidate_score": 53.08947,
       "top_1_hit": true,
       "top_5_hit": true,
-      "mode_match": false,
+      "mode_match": true,
       "unsafe_answer_gating_failure": false
     },
     {
@@ -2229,12 +1499,12 @@
         "ANSWER"
       ],
       "publication_withheld": false,
-      "actual_mode": "CLARIFY",
-      "top_candidate_knowledge_id": "KNO-DEL-HAZMAT-SIGNATURE-001",
-      "top_candidate_score": 23.67391,
-      "top_1_hit": false,
+      "actual_mode": "ANSWER",
+      "top_candidate_knowledge_id": "KNO-DEL-PPOD-001",
+      "top_candidate_score": 54,
+      "top_1_hit": true,
       "top_5_hit": true,
-      "mode_match": false,
+      "mode_match": true,
       "unsafe_answer_gating_failure": false
     },
     {
@@ -2250,12 +1520,12 @@
         "ANSWER"
       ],
       "publication_withheld": false,
-      "actual_mode": "ESCALATE",
+      "actual_mode": "ANSWER",
       "top_candidate_knowledge_id": "KNO-DEL-HAL-DELIVERY-001",
-      "top_candidate_score": 13.8314,
+      "top_candidate_score": 73.8314,
       "top_1_hit": true,
       "top_5_hit": true,
-      "mode_match": false,
+      "mode_match": true,
       "unsafe_answer_gating_failure": false
     }
   ]

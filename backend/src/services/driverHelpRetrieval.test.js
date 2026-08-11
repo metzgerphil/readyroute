@@ -301,3 +301,90 @@ test('an explicit pickup scanner topic switch is not contaminated by prior deliv
   assert.equal(decision.response_mode, 'ANSWER');
   assert.equal(decision.selected_records[0].knowledge_id, 'KNO-PUP-SCANNER-FAIL-001');
 });
+
+test('an administrative closure message cannot authorize closed-business package disposition', () => {
+  const closureMessage = {
+    ...records[0],
+    knowledge_id: 'KNO-FORGE-BUSINESS-CLOSURE-MSG-001',
+    canonical_situation: 'Sending a business closure message in FORGE',
+    normalized_description: 'Notify FedEx about a closed business date or recurring closure',
+    driver_question_variants: ['business closed message'],
+    concise_answer: 'Send the applicable closure message.'
+  };
+  const unresolvedRelease = {
+    ...closureMessage,
+    knowledge_id: 'KNO-DEL-BUS-OP201-001',
+    status: 'PENDING_REVIEW',
+    is_published: false,
+    canonical_situation: 'Leaving a package at a closed business',
+    normalized_description: 'Closed business package release authority is unresolved',
+    concise_answer: 'Do not return this unresolved answer.'
+  };
+
+  const decision = buildDriverHelpDecision(
+    'business closed can i leave the package',
+    [closureMessage, unresolvedRelease]
+  );
+
+  assert.equal(decision.response_mode, 'ESCALATE');
+  assert.deepEqual(decision.selected_records, []);
+  assert.match(decision.escalation_message, /does not authorize leaving the package/i);
+});
+
+test('a generic FORGE login failure cannot bypass an unresolved compliance-warning branch', () => {
+  const delayedLogin = {
+    ...records[0],
+    knowledge_id: 'KNO-FORGE-DELAYED-LOGIN-001',
+    canonical_situation: 'FORGE outage requires delayed login',
+    normalized_description: 'Network authentication outage prevents normal FORGE login',
+    driver_question_variants: ['forge offline login'],
+    concise_answer: 'Use delayed login only for the verified outage branch.'
+  };
+  const unresolvedWarning = {
+    ...delayedLogin,
+    knowledge_id: 'KNO-FORGE-LOGIN-WARNING-001',
+    status: 'PENDING_REVIEW',
+    is_published: false,
+    canonical_situation: 'FORGE displays a compliance warning during login',
+    normalized_description: 'Qualification or compliance warning blocks or changes login',
+    concise_answer: 'Do not return this unresolved answer.'
+  };
+
+  const decision = buildDriverHelpDecision('FORGE wont log in', [delayedLogin, unresolvedWarning]);
+
+  assert.equal(decision.response_mode, 'ESCALATE');
+  assert.deepEqual(decision.selected_records, []);
+  assert.match(decision.escalation_message, /outage or an unresolved compliance warning/i);
+});
+
+test('generic release wording asks for service and location instead of guessing', () => {
+  const safePlace = {
+    ...records[0],
+    knowledge_id: 'KNO-DEL-SAFEPLACE-001',
+    canonical_situation: 'No safe place for residential driver release',
+    normalized_description: 'A releasable package needs a secure approved placement',
+    driver_question_variants: ['safe place to leave package'],
+    concise_answer: 'Use only a qualifying safe release location.'
+  };
+
+  const decision = buildDriverHelpDecision('customer says just leave it', [safePlace]);
+
+  assert.equal(decision.response_mode, 'CLARIFY');
+  assert.match(decision.clarification_prompt, /service or signature requirement/i);
+});
+
+test('a supported canonical term definition answers without unnecessary clarification', () => {
+  const ppod = {
+    ...records[0],
+    knowledge_id: 'KNO-DEL-PPOD-001',
+    canonical_situation: 'Capturing proof of delivery photo (PPOD)',
+    normalized_description: 'PPOD is the delivered-package proof-of-delivery photo',
+    driver_question_variants: ['PPOD proof of delivery photo'],
+    concise_answer: 'PPOD is the required delivered-package placement photo.'
+  };
+
+  const decision = buildDriverHelpDecision('what is ppod', [ppod]);
+
+  assert.equal(decision.response_mode, 'ANSWER');
+  assert.equal(decision.selected_records[0].knowledge_id, 'KNO-DEL-PPOD-001');
+});
