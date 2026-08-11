@@ -103,16 +103,17 @@ function recordsForPattern(question, records) {
 function namespaceHint(normalizedQuestion) {
   if (/\bpickup\b|\bpup\b/.test(normalizedQuestion)) return 'PICKUP_REASON';
   if (/\bdelivery\b/.test(normalizedQuestion)) return 'DELIVERY_STATUS';
+  if (/\bcode\b|\bstatus\b/.test(normalizedQuestion)) return 'DELIVERY_STATUS';
   return null;
 }
 
 function explicitCodeTokens(question) {
   const normalized = normalizeDriverQuestion(question);
   const looksLikeReference = /\b(code|status|reason)\b/.test(normalized)
-    || /^what is \d{2,3}$/.test(normalized)
-    || /^\d{2,3}(?: or \d{2,3})*$/.test(normalized);
+    || /^what is \d{1,3}$/.test(normalized)
+    || /^\d{1,3}(?: or \d{1,3})*$/.test(normalized);
   if (!looksLikeReference) return [];
-  return [...new Set(normalized.match(/\b\d{2,3}\b/g) || [])];
+  return [...new Set(normalized.match(/\b\d{1,3}\b/g) || [])];
 }
 
 function sameNumericCode(left, right) {

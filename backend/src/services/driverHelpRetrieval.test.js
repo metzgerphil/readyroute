@@ -665,3 +665,109 @@ test('an explicit pickup barcode failure outranks unrelated delivery records', (
     pickupScanner.knowledge_id
   );
 });
+
+test('screenshot regression: generic leave asks the controlling signature question', () => {
+  const safePlace = {
+    ...records[0],
+    knowledge_id: 'KNO-DEL-SAFEPLACE-001',
+    canonical_situation: 'Leaving an eligible package in a safe place',
+    normalized_description: 'Package release location',
+    driver_question_variants: ['can i leave package']
+  };
+  const decision = buildDriverHelpDecision('Can I leave this package here?', [safePlace, ...records]);
+
+  assert.equal(decision.response_mode, 'CLARIFY');
+  assert.equal(decision.clarification_prompt, 'Does it need a signature?');
+});
+
+test('screenshot regression: typed ISR is answered as ISR and generic signature shorthand asks its type', () => {
+  const isr = {
+    ...records[0],
+    knowledge_id: 'KNO-DEL-SIG-ISR-001',
+    canonical_situation: 'Delivering an Indirect Signature Required package',
+    normalized_description: 'ISR package nobody home',
+    driver_question_variants: ['indirect signature package nobody home', 'sig package nobody home'],
+    driver_question_patterns: [{
+      utterance: 'sig package nobody home',
+      response_mode: 'ASK_MINIMUM_CLARIFICATION',
+      must_clarify: ['signature type']
+    }]
+  };
+  const asr = { ...isr, knowledge_id: 'KNO-DEL-SIG-ASR-001', canonical_situation: 'Adult signature package' };
+
+  const typed = buildDriverHelpDecision('Indirect signature package nobody home.', [isr, asr, records[0]]);
+  assert.equal(typed.response_mode, 'ANSWER');
+  assert.equal(typed.selected_records[0].knowledge_id, isr.knowledge_id);
+
+  const generic = buildDriverHelpDecision('Sig package nobody home', [isr, asr, records[0]]);
+  assert.equal(generic.response_mode, 'CLARIFY');
+  assert.equal(generic.clarification_prompt, 'What signature type does FORGE show?');
+});
+
+test('screenshot regression: multiple packages with one scan never selects a HAL procedure', () => {
+  const hal = {
+    ...records[0],
+    knowledge_id: 'KNO-DEL-HAL-NONHAL-TRANSFER-001',
+    canonical_situation: 'A non-HAL package appears at a HAL transfer stop',
+    normalized_description: 'Two packages at one stop',
+    driver_question_variants: ['same stop has one HAL and one regular']
+  };
+  const decision = buildDriverHelpDecision('Two boxes at the same stop but only one scans', [hal, ...records]);
+
+  assert.equal(decision.response_mode, 'CLARIFY');
+  assert.equal(decision.clarification_prompt, 'What is happening with the second package?');
+  assert.ok(decision.clarification_options.some((option) => /barcode will not scan/i.test(option.label)));
+});
+
+test('screenshot regression: a reported wrong-house delivery asks about recovery, not an unrelated scan procedure', () => {
+  const misdelivery = {
+    ...records[0],
+    knowledge_id: 'KNO-DEL-MISDELIVERY-RECOVERY-001',
+    canonical_situation: 'Recovering and redelivering a misdelivered package on the same day',
+    normalized_description: 'Delivered package to the wrong house',
+    driver_question_variants: ['I delivered a package to the wrong house']
+  };
+  const scan = {
+    ...records[0],
+    knowledge_id: 'KNO-DEL-SCAN-INTEGRITY-001',
+    canonical_situation: 'Choosing when and where to scan a delivery or attempt',
+    normalized_description: 'Delivery scan location',
+    driver_question_variants: ['delivery scan']
+  };
+  const decision = buildDriverHelpDecision(
+    'I delivered a package to the wrong house. What do I do?',
+    [misdelivery, scan]
+  );
+
+  assert.equal(decision.response_mode, 'CLARIFY');
+  assert.equal(decision.clarification_prompt, 'Have you safely recovered the package?');
+  assert.deepEqual(decision.clarification_options.map((option) => option.label), ['Yes', 'No']);
+});
+
+test('screenshot regression: unsafe dog wording selects the dog record without guessing another procedure', () => {
+  const dog = {
+    ...records[0],
+    knowledge_id: 'KNO-SAF-DOG-ENCOUNTER-001',
+    canonical_situation: 'An unfamiliar dog is present or approaches',
+    normalized_description: 'Dog blocks safe access to a stop',
+    driver_question_variants: ['front door dog cant get close']
+  };
+  const decision = buildDriverHelpDecision('Dog at front door and I cant get there safely.', [dog, ...records]);
+
+  assert.equal(decision.response_mode, 'ANSWER');
+  assert.equal(decision.selected_records[0].knowledge_id, dog.knowledge_id);
+});
+
+test('one-character driver misspellings normalize to the intended operational concepts', () => {
+  const isr = {
+    ...records[0],
+    knowledge_id: 'KNO-DEL-SIG-ISR-001',
+    canonical_situation: 'Delivering an Indirect Signature Required package',
+    normalized_description: 'Indirect signature package nobody home',
+    driver_question_variants: ['indirect signature package nobody home']
+  };
+  const decision = buildDriverHelpDecision('indiretc signiture pakage nobdy home', [isr, ...records]);
+
+  assert.equal(decision.response_mode, 'ANSWER');
+  assert.equal(decision.selected_records[0].knowledge_id, isr.knowledge_id);
+});
