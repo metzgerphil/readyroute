@@ -171,7 +171,12 @@ function createApp(options = {}) {
     fccProgressSyncService: options.fccProgressSyncService,
     fedexFccAdapter: options.fedexFccAdapter,
     workerSecret: options.fedexSyncWorkerSecret,
-    accountLifecycleWorkerSecret: options.accountLifecycleWorkerSecret
+    accountLifecycleWorkerSecret: options.accountLifecycleWorkerSecret,
+    driverHelpMonthlyReportService: options.driverHelpMonthlyReportService,
+    sendMonthlyReportEmail: options.sendMonthlyReportEmail,
+    driverMonthBillingService: options.driverMonthBillingService,
+    driverMonthBillingMode: options.driverMonthBillingMode,
+    stripeClient: options.stripeClient
   });
   const waitlistRouter = options.supabase
     ? createWaitlistRouter({ supabase: options.supabase, sendFeedbackEmail: options.sendFeedbackEmail })
@@ -194,7 +199,8 @@ function createApp(options = {}) {
         stripeClient: options.stripeClient,
         billingService: options.staffBillingService,
         sendReadyRouteStaffInviteEmail: options.sendReadyRouteStaffInviteEmail,
-        sendReadyRouteStaffPasswordResetEmail: options.sendReadyRouteStaffPasswordResetEmail
+        sendReadyRouteStaffPasswordResetEmail: options.sendReadyRouteStaffPasswordResetEmail,
+        sendManagerInviteEmail: options.sendManagerInviteEmail
       })
     : staffRoutes;
   app.use(helmet({

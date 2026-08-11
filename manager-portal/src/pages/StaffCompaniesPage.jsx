@@ -113,6 +113,9 @@ export default function StaffCompaniesPage() {
   const [supportViewReason, setSupportViewReason] = useState('');
   const [supportViewTicketId, setSupportViewTicketId] = useState('');
   const [isSupportViewPromptOpen, setIsSupportViewPromptOpen] = useState(false);
+  const [isCreateCompanyOpen, setIsCreateCompanyOpen] = useState(false);
+  const [companyDraft, setCompanyDraft] = useState({ company_name: '', manager_name: '', manager_email: '' });
+  const [companyCreateMessage, setCompanyCreateMessage] = useState('');
 
   const accountsQuery = useQuery({
     queryKey: ['staff-accounts'],
@@ -126,6 +129,27 @@ export default function StaffCompaniesPage() {
     () => (Array.isArray(accountsQuery.data) ? accountsQuery.data : []),
     [accountsQuery.data]
   );
+
+  const createCompanyMutation = useMutation({
+    mutationFn: async () => {
+      const response = await api.post('/staff/accounts', companyDraft);
+      return response.data;
+    },
+    onSuccess: async (result) => {
+      setCompanyDraft({ company_name: '', manager_name: '', manager_email: '' });
+      setIsCreateCompanyOpen(false);
+      setCompanyCreateMessage(
+        result?.invitation?.email_delivery === 'sent'
+          ? 'Company created and the manager invitation was sent.'
+          : result?.invitation?.email_delivery === 'not_required'
+            ? 'Company created and linked to the manager’s existing secure account.'
+          : 'Company created. Email delivery needs attention; the secure invite is available in the response.'
+      );
+      await queryClient.invalidateQueries({ queryKey: ['staff-accounts'] });
+      if (result?.account?.id) setSelectedAccountId(result.account.id);
+    },
+    onError: (error) => setCompanyCreateMessage(error.response?.data?.error || 'Unable to create this company.')
+  });
 
   const stateOptions = useMemo(
     () => Array.from(new Set(accounts.map(getAccountState).filter(Boolean))).sort(),
@@ -293,11 +317,37 @@ export default function StaffCompaniesPage() {
         title="Companies"
         description="Monitor accounts, onboarding, support activity, usage, and billing health."
         actions={(
-          <button className="secondary-inline-button" onClick={() => accountsQuery.refetch()} type="button">
-            Refresh
-          </button>
+          <div className="staff-inline-actions">
+            <button className="primary-button" onClick={() => { setCompanyCreateMessage(''); setIsCreateCompanyOpen(true); }} type="button">
+              Add company
+            </button>
+            <button className="secondary-inline-button" onClick={() => accountsQuery.refetch()} type="button">
+              Refresh
+            </button>
+          </div>
         )}
       />
+
+      {companyCreateMessage ? <p className="form-success-message">{companyCreateMessage}</p> : null}
+      {isCreateCompanyOpen ? (
+        <section className="staff-account-detail" aria-label="Create company">
+          <header className="staff-account-detail-header">
+            <h2>Create company and invite manager</h2>
+            <p>The manager receives a secure single-use link and establishes their own password.</p>
+          </header>
+          <div className="staff-company-finder-grid">
+            <label>Company name<input value={companyDraft.company_name} onChange={(event) => setCompanyDraft((current) => ({ ...current, company_name: event.target.value }))} /></label>
+            <label>Manager full name<input value={companyDraft.manager_name} onChange={(event) => setCompanyDraft((current) => ({ ...current, manager_name: event.target.value }))} /></label>
+            <label>Manager email<input type="email" value={companyDraft.manager_email} onChange={(event) => setCompanyDraft((current) => ({ ...current, manager_email: event.target.value }))} /></label>
+          </div>
+          <div className="staff-inline-actions">
+            <button className="primary-button" disabled={createCompanyMutation.isPending} onClick={() => createCompanyMutation.mutate()} type="button">
+              {createCompanyMutation.isPending ? 'Creating…' : 'Create and send invite'}
+            </button>
+            <button className="secondary-inline-button" onClick={() => setIsCreateCompanyOpen(false)} type="button">Cancel</button>
+          </div>
+        </section>
+      ) : null}
 
       <div className="staff-stat-grid">
         <StatCard label="Companies" value={accounts.length} />

@@ -14,7 +14,9 @@ import DriverHelpScreen from '../screens/DriverHelpScreen';
 import LoginScreen from '../screens/LoginScreen';
 import ManagerAccessCodesScreen from '../screens/ManagerAccessCodesScreen';
 import ManagerDashboardScreen from '../screens/ManagerDashboardScreen';
+import ManagerHelpDashboardScreen from '../screens/ManagerHelpDashboardScreen';
 import ManagerDriversScreen from '../screens/ManagerDriversScreen';
+import ManagerHelpDriversScreen from '../screens/ManagerHelpDriversScreen';
 import ManagerManifestScreen from '../screens/ManagerManifestScreen';
 import ManagerMapScreen from '../screens/ManagerMapScreen';
 import ManagerRoutesScreen from '../screens/ManagerRoutesScreen';
@@ -348,11 +350,15 @@ export default function AppNavigator() {
             <Stack.Screen name="ManagerDashboard" options={{ headerShown: false }}>
               {(props) => (
                 <TrackedScreen navigation={props.navigation} onFocus={attachNavigation} screenName="ManagerDashboard">
-                  <ManagerDashboardScreen
+                  {DRIVER_HELP_ONLY ? <ManagerHelpDashboardScreen
                     {...props}
                     csaWorkspaceVersion={managerWorkspaceVersion + managerDataVersion}
                     identity={identity}
-                  />
+                  /> : <ManagerDashboardScreen
+                    {...props}
+                    csaWorkspaceVersion={managerWorkspaceVersion + managerDataVersion}
+                    identity={identity}
+                  />}
                 </TrackedScreen>
               )}
             </Stack.Screen>
@@ -383,11 +389,15 @@ export default function AppNavigator() {
             <Stack.Screen name="ManagerDrivers" options={{ headerShown: false }}>
               {(props) => (
                 <TrackedScreen navigation={props.navigation} onFocus={attachNavigation} screenName="ManagerDrivers">
-                  <ManagerDriversScreen
+                  {DRIVER_HELP_ONLY ? <ManagerHelpDriversScreen
                     {...props}
                     csaWorkspaceVersion={managerWorkspaceVersion + managerDataVersion}
                     identity={identity}
-                  />
+                  /> : <ManagerDriversScreen
+                    {...props}
+                    csaWorkspaceVersion={managerWorkspaceVersion + managerDataVersion}
+                    identity={identity}
+                  />}
                 </TrackedScreen>
               )}
             </Stack.Screen>

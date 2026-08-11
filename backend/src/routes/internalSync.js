@@ -5,6 +5,8 @@ const { createCliFedexFccAdapter } = require('../services/fccDownloader');
 const { createFccProgressSyncService } = require('../services/fccProgressSync');
 const { createFedexSyncService } = require('../services/fedexSync');
 const { createManifestIngestService } = require('../services/manifestIngest');
+const { createDriverHelpMonthlyReportService } = require('../services/driverHelpMonthlyReport');
+const { createDriverMonthBillingService } = require('../services/driverMonthBilling');
 
 function getWorkerSecret(options = {}) {
   return String(options.workerSecret || process.env.FEDEX_SYNC_WORKER_SECRET || '').trim();
@@ -72,6 +74,17 @@ function createInternalSyncRouter(options = {}) {
       fccProgressSyncService,
       adapter: options.fedexFccAdapter || createCliFedexFccAdapter()
     });
+  const driverHelpMonthlyReportService = options.driverHelpMonthlyReportService || createDriverHelpMonthlyReportService({
+    supabase,
+    now,
+    sendEmail: options.sendMonthlyReportEmail
+  });
+  const driverMonthBillingService = options.driverMonthBillingService || createDriverMonthBillingService({
+    supabase,
+    now,
+    stripeClient: options.stripeClient,
+    billingMode: options.driverMonthBillingMode
+  });
 
   async function runSync(req, res) {
     const workerSecret = getWorkerSecret(options);
@@ -199,6 +212,31 @@ function createInternalSyncRouter(options = {}) {
     } catch (error) {
       console.error('Account retention sweep failed:', error);
       return res.status(500).json({ error: 'Account retention sweep failed.' });
+    }
+  });
+
+  router.post('/driver-help-monthly-reports', async (req, res) => {
+    const workerSecret = getLifecycleWorkerSecret(options);
+    if (!workerSecret) return res.status(503).json({ error: 'Monthly report worker endpoint is not configured.' });
+    if (getProvidedSecret(req) !== workerSecret) return res.status(403).json({ error: 'Invalid monthly report worker secret.' });
+    try {
+      const result = await driverHelpMonthlyReportService.run({ force: req.body?.force === true });
+      return res.status(200).json(result);
+    } catch (error) {
+      console.error('Driver-help monthly reports failed:', error);
+      return res.status(500).json({ error: 'Driver-help monthly reports failed.' });
+    }
+  });
+
+  router.post('/driver-month-billing', async (req, res) => {
+    const workerSecret = getLifecycleWorkerSecret(options);
+    if (!workerSecret) return res.status(503).json({ error: 'Driver billing worker endpoint is not configured.' });
+    if (getProvidedSecret(req) !== workerSecret) return res.status(403).json({ error: 'Invalid driver billing worker secret.' });
+    try {
+      return res.status(200).json(await driverMonthBillingService.run());
+    } catch (error) {
+      console.error('Driver-month billing failed:', error);
+      return res.status(500).json({ error: 'Driver-month billing failed.' });
     }
   });
 

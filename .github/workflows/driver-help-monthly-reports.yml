@@ -1,0 +1,21 @@
+name: Driver help monthly reports
+
+on:
+  schedule:
+    - cron: '15 16 1 * *'
+  workflow_dispatch:
+
+jobs:
+  send:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Send previous-month reports
+        env:
+          READYROUTE_API_URL: ${{ secrets.READYROUTE_PRODUCTION_API_URL }}
+          READYROUTE_WORKER_SECRET: ${{ secrets.READYROUTE_INTERNAL_WORKER_SECRET }}
+        run: |
+          curl --fail-with-body --retry 2 \
+            -X POST "$READYROUTE_API_URL/internal/driver-help-monthly-reports" \
+            -H "Authorization: Bearer $READYROUTE_WORKER_SECRET" \
+            -H "Content-Type: application/json" \
+            --data '{}'

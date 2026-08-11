@@ -663,7 +663,12 @@ test('POST /manager/drivers creates a driver with a hashed PIN', async () => {
     });
 
     assert.equal(response.status, 201);
-    assert.deepEqual(await response.json(), { driver_id: 'driver-99', starter_pin_applied: false });
+    assert.deepEqual(await response.json(), {
+      driver_id: 'driver-99',
+      access_status: 'not_invited',
+      starter_pin_applied: true,
+      invitation: null
+    });
 
     const insertCall = supabase.calls.find((call) => call.table === 'drivers' && call.operation === 'insert');
     assert.ok(insertCall);
@@ -738,7 +743,12 @@ test('POST /manager/drivers creates a driver without phone and falls back when F
     });
 
     assert.equal(response.status, 201);
-    assert.deepEqual(await response.json(), { driver_id: 'driver-100', starter_pin_applied: true });
+    assert.deepEqual(await response.json(), {
+      driver_id: 'driver-100',
+      access_status: 'not_invited',
+      starter_pin_applied: false,
+      invitation: null
+    });
     assert.equal(insertAttempts, 2);
   } finally {
     await server.close();
@@ -2407,7 +2417,7 @@ test('POST /manager/fedex-accounts/:id/default promotes the selected account', a
   }
 });
 
-test('POST /manager/drivers uses the default 1234 PIN when no driver PIN is provided', async () => {
+test('POST /manager/drivers uses an unguessable legacy credential when no driver PIN is provided', async () => {
   const supabase = new MockSupabase((query) => {
     if (query.table === 'accounts' && query.operation === 'select') {
       return {
@@ -2456,17 +2466,22 @@ test('POST /manager/drivers uses the default 1234 PIN when no driver PIN is prov
     });
 
     assert.equal(response.status, 201);
-    assert.deepEqual(await response.json(), { driver_id: 'driver-100', starter_pin_applied: true });
+    assert.deepEqual(await response.json(), {
+      driver_id: 'driver-100',
+      access_status: 'not_invited',
+      starter_pin_applied: false,
+      invitation: null
+    });
 
     const insertCall = supabase.calls.find((call) => call.table === 'drivers' && call.operation === 'insert');
     assert.ok(insertCall);
-    assert.equal(await bcrypt.compare('1234', insertCall.payload.pin), true);
+    assert.equal(await bcrypt.compare('1234', insertCall.payload.pin), false);
   } finally {
     await server.close();
   }
 });
 
-test('POST /manager/drivers falls back to 1234 when the CSA starter PIN is still blank', async () => {
+test('POST /manager/drivers never falls back to a shared PIN when the CSA starter PIN is blank', async () => {
   const supabase = new MockSupabase((query) => {
     if (query.table === 'accounts' && query.operation === 'select') {
       return {
@@ -2515,11 +2530,16 @@ test('POST /manager/drivers falls back to 1234 when the CSA starter PIN is still
     });
 
     assert.equal(response.status, 201);
-    assert.deepEqual(await response.json(), { driver_id: 'driver-101', starter_pin_applied: true });
+    assert.deepEqual(await response.json(), {
+      driver_id: 'driver-101',
+      access_status: 'not_invited',
+      starter_pin_applied: false,
+      invitation: null
+    });
 
     const insertCall = supabase.calls.find((call) => call.table === 'drivers' && call.operation === 'insert');
     assert.ok(insertCall);
-    assert.equal(await bcrypt.compare('1234', insertCall.payload.pin), true);
+    assert.equal(await bcrypt.compare('1234', insertCall.payload.pin), false);
   } finally {
     await server.close();
   }
