@@ -17,6 +17,7 @@ const RELEASE = path.join(ROOT, 'knowledge');
 const RECORDS_PATH = path.join(RESEARCH, 'knowledge/records.jsonl');
 const CASES_PATH = path.join(RESEARCH, 'validation/driver_language_cases.jsonl');
 const REFERENCE_CASES_PATH = path.join(RESEARCH, 'validation/reference_language_cases.jsonl');
+const CANDIDATE_OPERATIONAL_CASES_PATH = path.join(RESEARCH, 'validation/candidate_operational_language_cases.jsonl');
 const DELIVERY_STATUS_PATH = path.join(RESEARCH, 'knowledge/status_codes.jsonl');
 const PICKUP_REASON_PATH = path.join(RESEARCH, 'knowledge/pickup_reason_codes.jsonl');
 const INVENTORY_PATH = path.join(RESEARCH, 'inventory/source_inventory.csv');
@@ -132,6 +133,7 @@ function main() {
   const records = readJsonLines(RECORDS_PATH);
   const cases = readJsonLines(CASES_PATH);
   const referenceCases = readJsonLines(REFERENCE_CASES_PATH);
+  const candidateOperationalCases = readJsonLines(CANDIDATE_OPERATIONAL_CASES_PATH);
   const deliveryStatuses = readJsonLines(DELIVERY_STATUS_PATH);
   const pickupReasons = readJsonLines(PICKUP_REASON_PATH);
   const sourceInventory = readSourceInventory(INVENTORY_PATH);
@@ -306,6 +308,7 @@ function main() {
     source_records: sources.length,
     driver_language_cases: cases.length,
     reference_language_cases: referenceCases.length,
+    candidate_operational_language_cases: candidateOperationalCases.length,
     delivery_status_references: deliveryStatuses.length,
     pickup_reason_references: pickupReasons.length,
     active_adjudications: activeApprovals.size
@@ -321,6 +324,7 @@ function main() {
   writeJsonLines(path.join(RELEASE, 'sources/registry.jsonl'), sources);
   writeJsonLines(path.join(RELEASE, 'evaluations/driver-language-cases.jsonl'), cases);
   writeJsonLines(path.join(RELEASE, 'evaluations/reference-language-cases.jsonl'), referenceCases);
+  writeJsonLines(path.join(RELEASE, 'evaluations/candidate-operational-language-cases.jsonl'), candidateOperationalCases);
   writeJsonLines(path.join(RELEASE, 'history/change-log.jsonl'), changeLog);
   writeJson(path.join(RELEASE, 'operations/status-summary.json'), statusSummary);
   fs.mkdirSync(path.join(RELEASE, 'reference'), { recursive: true });
@@ -340,6 +344,7 @@ function main() {
     'sources/registry.jsonl',
     'evaluations/driver-language-cases.jsonl',
     'evaluations/reference-language-cases.jsonl',
+    'evaluations/candidate-operational-language-cases.jsonl',
     'history/change-log.jsonl',
     'reference/taxonomy.json',
     'reference/delivery-status-codes.jsonl',

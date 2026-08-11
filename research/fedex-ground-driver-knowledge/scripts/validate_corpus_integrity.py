@@ -1694,6 +1694,85 @@ def main() -> int:
             f"candidate_links={invalid_reference_candidate_links}"
         )
 
+    candidate_operational_cases = load_jsonl(
+        ROOT / "validation/candidate_operational_language_cases.jsonl"
+    )
+    assert_unique(
+        [case["case_id"] for case in candidate_operational_cases],
+        "candidate operational case_id",
+    )
+    assert_unique(
+        [normalize_driver_text(case["utterance"]) for case in candidate_operational_cases],
+        "normalized candidate operational utterance",
+    )
+    invalid_candidate_operational_links: list[tuple[str, str]] = []
+    for case in candidate_operational_cases:
+        for knowledge_id in case["expected_knowledge_ids"]:
+            if knowledge_id not in knowledge_ids:
+                invalid_candidate_operational_links.append(
+                    (case["case_id"], f"unknown knowledge {knowledge_id}")
+                )
+        for candidate_id in case["source_candidate_case_ids"]:
+            candidate = candidate_mapping_by_id.get(candidate_id)
+            if not candidate:
+                invalid_candidate_operational_links.append(
+                    (case["case_id"], f"unknown candidate {candidate_id}")
+                )
+                continue
+            if candidate["holdout_partition"] != "DEVELOPMENT_REVIEW":
+                invalid_candidate_operational_links.append(
+                    (case["case_id"], f"holdout contamination {candidate_id}")
+                )
+            if normalize_driver_text(candidate["representative_prompt"]) != normalize_driver_text(case["utterance"]):
+                invalid_candidate_operational_links.append(
+                    (case["case_id"], f"utterance mismatch {candidate_id}")
+                )
+            if (
+                candidate["canonical_mapping_status"]
+                != "MAPPED_TO_OPERATIONAL_EVALUATION"
+                or candidate["gold_operational_case_id"] != case["case_id"]
+                or candidate["gold_expected_knowledge_ids"] != case["expected_knowledge_ids"]
+            ):
+                invalid_candidate_operational_links.append(
+                    (case["case_id"], f"queue mapping mismatch {candidate_id}")
+                )
+    candidate_retrieval_results = json.loads(
+        (ROOT / "validation/candidate_operational_retrieval_results.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    result_case_ids = [row["case_id"] for row in candidate_retrieval_results["results"]]
+    if set(result_case_ids) != {case["case_id"] for case in candidate_operational_cases}:
+        invalid_candidate_operational_links.append(("results", "case coverage mismatch"))
+    observed_candidate_metrics = {
+        "top_1_hits": sum(row["top_1_hit"] for row in candidate_retrieval_results["results"]),
+        "top_5_hits": sum(row["top_5_hit"] for row in candidate_retrieval_results["results"]),
+        "mode_matches": sum(row["mode_match"] for row in candidate_retrieval_results["results"]),
+        "publication_withheld_escalations": sum(
+            row["publication_withheld"] and row["actual_mode"] == "ESCALATE"
+            for row in candidate_retrieval_results["results"]
+        ),
+        "unsafe_answer_gating_failures": sum(
+            row["unsafe_answer_gating_failure"]
+            for row in candidate_retrieval_results["results"]
+        ),
+    }
+    if candidate_retrieval_results["metrics"] != observed_candidate_metrics:
+        invalid_candidate_operational_links.append(("results", "metric mismatch"))
+    if candidate_retrieval_results["evaluation_design"] != {
+        "indexed_case_count": len(cases),
+        "indexed_candidate_prompts": False,
+        "candidate_case_count": len(candidate_operational_cases),
+        "independent_holdout_used": False,
+        "interpretation": "Measures generalization to reviewed development prompts without adding them as retrieval synonyms.",
+    }:
+        invalid_candidate_operational_links.append(("results", "evaluation design mismatch"))
+    if invalid_candidate_operational_links:
+        raise SystemExit(
+            "candidate operational evaluation integration failure: "
+            f"{invalid_candidate_operational_links}"
+        )
+
     clarification_strategy_index = load_jsonl(
         ROOT / "validation/clarification_strategy_index.jsonl"
     )
@@ -3056,6 +3135,7 @@ def main() -> int:
         f"{len(driver_variant_index)} variant-index rows, "
         f"{len(cases)} driver-language cases, "
         f"{len(reference_cases)} reference-language cases, "
+        f"{len(candidate_operational_cases)} candidate operational cases, "
         f"{len(record_language_surface_coverage)} record-language surface rows, "
         f"{len(clarification_strategy_index)} clarification-strategy rows, "
         f"{len(interaction_coverage)} multi-record interaction cases"

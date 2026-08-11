@@ -37,6 +37,7 @@ function main() {
   const sources = readJsonLines('sources/registry.jsonl');
   const cases = readJsonLines('evaluations/driver-language-cases.jsonl');
   const referenceCases = readJsonLines('evaluations/reference-language-cases.jsonl');
+  const candidateOperationalCases = readJsonLines('evaluations/candidate-operational-language-cases.jsonl');
   const deliveryStatuses = readJsonLines('reference/delivery-status-codes.jsonl');
   const pickupReasons = readJsonLines('reference/pickup-reason-codes.jsonl');
   const pendingReviewItems = readJsonLines('pending-review/review-items.jsonl');
@@ -99,6 +100,16 @@ function main() {
       if (!recordIds.has(knowledgeId)) errors.push(`${testCase.case_id} references unknown knowledge ${knowledgeId}`);
     }
   }
+  const candidateOperationalCaseIds = new Set();
+  for (const testCase of candidateOperationalCases) {
+    if (!testCase.case_id || candidateOperationalCaseIds.has(testCase.case_id)) {
+      errors.push(`Invalid or duplicate candidate operational case ${testCase.case_id || '(missing)'}`);
+    }
+    candidateOperationalCaseIds.add(testCase.case_id);
+    for (const knowledgeId of testCase.expected_knowledge_ids || []) {
+      if (!recordIds.has(knowledgeId)) errors.push(`${testCase.case_id} references unknown knowledge ${knowledgeId}`);
+    }
+  }
 
   const changeIds = new Set();
   for (const change of changeLog) {
@@ -154,6 +165,7 @@ function main() {
     sources: sources.length,
     driver_language_cases: cases.length,
     reference_language_cases: referenceCases.length,
+    candidate_operational_language_cases: candidateOperationalCases.length,
     delivery_status_references: deliveryStatuses.length,
     pickup_reason_references: pickupReasons.length,
     change_log_entries: changeLog.length,

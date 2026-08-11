@@ -1,12 +1,12 @@
 {
   "schema_version": "1.0.0",
-  "generated_at": "2026-08-11T00:35:37.150Z",
+  "generated_at": "2026-08-11T00:42:21.267Z",
   "generator": "scripts/build-ready-route-knowledge.js",
   "authoring_corpus": "research/fedex-ground-driver-knowledge/knowledge/records.jsonl",
   "adjudication_input": "knowledge/adjudications/records.json",
   "counts": {
     "schema_version": "1.0.0",
-    "generated_at": "2026-08-11T00:35:37.150Z",
+    "generated_at": "2026-08-11T00:42:21.267Z",
     "total_records": 144,
     "by_status": {
       "SOURCE_VERIFIED": 90,
@@ -21,6 +21,7 @@
     "source_records": 121,
     "driver_language_cases": 192,
     "reference_language_cases": 17,
+    "candidate_operational_language_cases": 33,
     "delivery_status_references": 50,
     "pickup_reason_references": 7,
     "active_adjudications": 7
@@ -29,7 +30,7 @@
     "operations/records.jsonl": "1acae7c2efd237cca76366bab76e7124a2221e9f119befd1d781e9a8cadbcf9e",
     "operations/publication-ready.jsonl": "459f05343739bb34e781b39fe84f1b1ab449a24fb8caeb229e248286686357a4",
     "operations/publication-gaps.jsonl": "b36ea883f9aab5545ae515e645092ea80384cadd331a1f689b189bfbfa3f1ba9",
-    "operations/status-summary.json": "697a99522a88eae4b5801ac049b3fd0c06e2447127397c853cc9f0afe60e7c82",
+    "operations/status-summary.json": "9e3be09e734ac081c2877116b831a66ca9b9b17a4515471983d1fb6ae72733b5",
     "pending-review/records.jsonl": "9082373f1d8f7baef393ee95289c723c5947faf0db2ec4a111fd4f19a3db2a51",
     "pending-review/review-items.jsonl": "2a6f364d93a1c84a04d526d3090e6464ad5ab9d025d3454d8b2ae743fac95ece",
     "outdated/records.jsonl": "497a119e888d8d5ada47c92be2617989a9c24b4a1358002673f0a614ea4592fd",
@@ -37,6 +38,7 @@
     "sources/registry.jsonl": "295be3014b22f260a01bf7b6c3944d2c6c13aa8e4359e62f577140c6fb8114ef",
     "evaluations/driver-language-cases.jsonl": "00e7943cccf8d7ef97d237110c79fce6d5ee926c4f2c3e31bb1444639bff24ef",
     "evaluations/reference-language-cases.jsonl": "8c5416c9b2d0c731eb51cb5da52db298b917453a698887e482b39bc7cd693fc6",
+    "evaluations/candidate-operational-language-cases.jsonl": "3cdca9eae1bc5713fc929baa3f96c25998647c1705d8bbc29ce99f53914783b1",
     "history/change-log.jsonl": "583cf2b8119414707b363aa5ca5acbcc5d1c8ea391b005d64752809b0dd608ad",
     "reference/taxonomy.json": "21c5cc3257dae62fe88401249c27690fd138eb454e82283eea2ef27382b37758",
     "reference/delivery-status-codes.jsonl": "a40837b0a46ce9972d55cdde9afbbbee1861200ddd459bffda32f9342612eeff",

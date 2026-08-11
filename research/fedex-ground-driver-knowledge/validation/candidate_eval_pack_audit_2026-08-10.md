@@ -101,9 +101,9 @@ These figures are diagnostic only: the candidate pack lacks human-reviewed canon
 
 ## Required remediation and automated controls
 
-The intake checkpoint now includes `candidate_canonical_mapping_queue.jsonl`, a deterministic 145-row union. Seventeen development prompts have been independently mapped to canonical reference records and status-aware expectations in `validation/reference_language_cases.jsonl`. The other 128 rows remain `NEEDS_CANONICAL_MAPPING`; all 32 independent holdout rows remain untouched. No candidate expectation was accepted as authority.
+The intake checkpoint now includes `candidate_canonical_mapping_queue.jsonl`, a deterministic 145-row union. Seventeen development prompts are mapped to canonical reference records and 33 are mapped to canonical operational records with status-aware expectations. The other 95 rows remain `NEEDS_CANONICAL_MAPPING`; all 32 independent holdout rows remain untouched. No candidate expectation was accepted as authority.
 
-1. Continue review of the 128 unmapped prompts, including the untouched holdout only when the development evaluation design is frozen.
+1. Continue review of the 95 unmapped prompts, including the untouched holdout only when the development evaluation design is frozen.
 2. Map every prompt to one or more canonical `knowledge_id` values or explicitly mark it out of scope/no eligible knowledge.
 3. Derive expected mode from canonical status and publication readiness: answer/clarify only from eligible published knowledge; otherwise escalate or give only an independently eligible immediate safety boundary.
 4. Add `must_clarify`, `must_not_do`, information sufficiency, source/version trace, and adjudication precedence requirements.

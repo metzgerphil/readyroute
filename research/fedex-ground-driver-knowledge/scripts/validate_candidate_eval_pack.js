@@ -77,15 +77,19 @@ if (new Set(queue.map((row) => row.normalized_prompt)).size !== queue.length) {
   fail('duplicate normalized prompt');
 }
 for (const row of queue) {
-  if (!['NEEDS_CANONICAL_MAPPING', 'MAPPED_TO_REFERENCE_EVALUATION'].includes(row.canonical_mapping_status)) {
+  if (!['NEEDS_CANONICAL_MAPPING', 'MAPPED_TO_REFERENCE_EVALUATION', 'MAPPED_TO_OPERATIONAL_EVALUATION'].includes(row.canonical_mapping_status)) {
     fail(`${row.candidate_case_id} has invalid mapping status`);
   }
   if (row.canonical_mapping_status === 'NEEDS_CANONICAL_MAPPING') {
-    if (row.gold_reference_case_id !== null || row.gold_reference_ids.length || row.gold_expected_knowledge_ids.length || row.gold_response_mode !== null) {
+    if (row.gold_reference_case_id !== null || row.gold_operational_case_id !== null || row.gold_reference_ids.length || row.gold_expected_knowledge_ids.length || row.gold_response_mode !== null) {
       fail(`${row.candidate_case_id} contains unreviewed gold expectations`);
     }
-  } else if (!row.gold_reference_case_id || !row.gold_response_mode || !row.gold_information_sufficiency || !row.gold_must_not_do.length) {
-    fail(`${row.candidate_case_id} has an incomplete reviewed reference mapping`);
+  } else if (!row.gold_response_mode || !row.gold_information_sufficiency || !row.gold_must_not_do.length) {
+    fail(`${row.candidate_case_id} has an incomplete reviewed mapping`);
+  } else if (row.canonical_mapping_status === 'MAPPED_TO_REFERENCE_EVALUATION' && (!row.gold_reference_case_id || row.gold_operational_case_id !== null)) {
+    fail(`${row.candidate_case_id} has inconsistent reference mapping fields`);
+  } else if (row.canonical_mapping_status === 'MAPPED_TO_OPERATIONAL_EVALUATION' && (!row.gold_operational_case_id || row.gold_reference_case_id !== null || !row.gold_expected_knowledge_ids.length)) {
+    fail(`${row.candidate_case_id} has inconsistent operational mapping fields`);
   }
   if (!['INDEPENDENT_HOLDOUT', 'DEVELOPMENT_REVIEW'].includes(row.holdout_partition)) {
     fail(`${row.candidate_case_id} has invalid holdout partition`);
@@ -96,18 +100,26 @@ const mappedRows = queue.filter(
   (row) => row.canonical_mapping_status === 'MAPPED_TO_REFERENCE_EVALUATION'
 );
 if (mappedRows.length !== 17) fail(`expected 17 reviewed reference mappings, found ${mappedRows.length}`);
-if (mappedRows.some((row) => row.holdout_partition !== 'DEVELOPMENT_REVIEW')) {
-  fail('reference mapping contaminated the independent holdout');
+const mappedOperationalRows = queue.filter(
+  (row) => row.canonical_mapping_status === 'MAPPED_TO_OPERATIONAL_EVALUATION'
+);
+if (mappedOperationalRows.length !== 33) fail(`expected 33 reviewed operational mappings, found ${mappedOperationalRows.length}`);
+if ([...mappedRows, ...mappedOperationalRows].some((row) => row.holdout_partition !== 'DEVELOPMENT_REVIEW')) {
+  fail('reviewed mapping contaminated the independent holdout');
 }
 if (profile.candidate_union_profile.mapped_to_reference_evaluation_count !== mappedRows.length) {
   fail('profile reference mapping count differs from queue');
 }
-if (profile.candidate_union_profile.needs_canonical_mapping_count !== queue.length - mappedRows.length) {
-  fail('profile unmapped count differs from queue');
+if (profile.candidate_union_profile.mapped_to_operational_evaluation_count !== mappedOperationalRows.length) {
+  fail('profile operational mapping count differs from queue');
+}
+if (profile.candidate_union_profile.needs_canonical_mapping_count !== queue.length - mappedRows.length - mappedOperationalRows.length) {
+  fail('profile unmapped count differs from all reviewed mappings');
 }
 
 process.stdout.write(
   `candidate eval pack valid: 4 preserved files, ${queue.length} mapping rows, ` +
   `${mappedRows.length} reference-mapped rows, ` +
+  `${mappedOperationalRows.length} operational-mapped rows, ` +
   `${profile.candidate_union_profile.independent_holdout_count} untouched holdout rows\n`
 );

@@ -37,6 +37,10 @@ const REFERENCE_CASES_INPUT = path.join(
   ROOT,
   'validation/reference_language_cases.jsonl'
 );
+const OPERATIONAL_CASES_INPUT = path.join(
+  ROOT,
+  'validation/candidate_operational_language_cases.jsonl'
+);
 const REQUIRED_FIELDS = [
   'id',
   'driver_prompt',
@@ -134,6 +138,7 @@ function main() {
     fs.readFileSync(messyInputPath, 'utf8')
   );
   const referenceCases = readJsonLines(REFERENCE_CASES_INPUT);
+  const operationalCases = readJsonLines(OPERATIONAL_CASES_INPUT);
   const referenceCaseByCandidateId = new Map();
   for (const referenceCase of referenceCases) {
     for (const candidateId of referenceCase.source_candidate_case_ids || []) {
@@ -141,6 +146,18 @@ function main() {
         throw new Error(`candidate ${candidateId} maps to multiple reference cases`);
       }
       referenceCaseByCandidateId.set(candidateId, referenceCase);
+    }
+  }
+  const operationalCaseByCandidateId = new Map();
+  for (const operationalCase of operationalCases) {
+    for (const candidateId of operationalCase.source_candidate_case_ids || []) {
+      if (operationalCaseByCandidateId.has(candidateId)) {
+        throw new Error(`candidate ${candidateId} maps to multiple operational cases`);
+      }
+      if (referenceCaseByCandidateId.has(candidateId)) {
+        throw new Error(`candidate ${candidateId} maps to both reference and operational cases`);
+      }
+      operationalCaseByCandidateId.set(candidateId, operationalCase);
     }
   }
   const formalByNormalizedUtterance = new Map(
@@ -268,6 +285,8 @@ function main() {
         reviewPriority = 'NEXT';
       }
       const referenceMapping = referenceCaseByCandidateId.get(candidateCaseId) || null;
+      const operationalMapping = operationalCaseByCandidateId.get(candidateCaseId) || null;
+      const reviewedMapping = referenceMapping || operationalMapping;
       return {
         candidate_case_id: candidateCaseId,
         representative_prompt: entry.representativePrompt,
@@ -284,8 +303,10 @@ function main() {
         ),
         canonical_mapping_status: referenceMapping
           ? 'MAPPED_TO_REFERENCE_EVALUATION'
-          : 'NEEDS_CANONICAL_MAPPING',
-        review_priority: referenceMapping ? 'COMPLETE' : reviewPriority,
+          : operationalMapping
+            ? 'MAPPED_TO_OPERATIONAL_EVALUATION'
+            : 'NEEDS_CANONICAL_MAPPING',
+        review_priority: reviewedMapping ? 'COMPLETE' : reviewPriority,
         holdout_partition: stableBucket(entry.normalizedPrompt, 5) === 0
           ? 'INDEPENDENT_HOLDOUT'
           : 'DEVELOPMENT_REVIEW',
@@ -297,17 +318,20 @@ function main() {
           top_candidate_score: top?.score || 0
         },
         gold_reference_case_id: referenceMapping?.case_id || null,
+        gold_operational_case_id: operationalMapping?.case_id || null,
         gold_reference_ids: referenceMapping?.expected_reference_ids || [],
         gold_unknown_reference_tokens: referenceMapping?.unknown_reference_tokens || [],
-        gold_expected_knowledge_ids: referenceMapping?.expected_knowledge_ids || [],
-        gold_response_mode: referenceMapping?.response_mode || null,
-        gold_information_sufficiency: referenceMapping?.information_sufficiency || null,
-        gold_must_clarify: referenceMapping?.must_clarify || [],
-        gold_must_not_do: referenceMapping?.must_not_do || [],
+        gold_expected_knowledge_ids: reviewedMapping?.expected_knowledge_ids || [],
+        gold_response_mode: reviewedMapping?.response_mode || null,
+        gold_information_sufficiency: reviewedMapping?.information_sufficiency || null,
+        gold_must_clarify: reviewedMapping?.must_clarify || [],
+        gold_must_not_do: reviewedMapping?.must_not_do || [],
         adjudication_ids: [],
         reviewer_notes: referenceMapping
           ? 'Human-reviewed against canonical reference and translation ledgers; candidate expected answer was not used as authority.'
-          : ''
+          : operationalMapping
+            ? 'Human-reviewed against canonical operational records and production status gates; candidate expected answer was not used as authority.'
+            : ''
       };
     });
 
@@ -368,6 +392,9 @@ function main() {
       ).length,
       mapped_to_reference_evaluation_count: mappingQueue.filter(
         (row) => row.canonical_mapping_status === 'MAPPED_TO_REFERENCE_EVALUATION'
+      ).length,
+      mapped_to_operational_evaluation_count: mappingQueue.filter(
+        (row) => row.canonical_mapping_status === 'MAPPED_TO_OPERATIONAL_EVALUATION'
       ).length,
       needs_canonical_mapping_count: mappingQueue.filter(
         (row) => row.canonical_mapping_status === 'NEEDS_CANONICAL_MAPPING'

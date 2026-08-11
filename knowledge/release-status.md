@@ -14,7 +14,7 @@ The current release is a validated foundation, not a claim that the entire possi
 - 91 records pass status, durable-capture, and exact claim-trace publication gates.
 - 6 additional status-eligible records remain evidence-gated; see [`operations/publication-gaps.jsonl`](operations/publication-gaps.jsonl).
 - 121 primary source-registry records and 3,242 claim-provenance/allocation records.
-- 192 formal operational driver-language cases, 17 canonical reference-language cases, and 724 indexed operational question variants.
+- 192 formal operational driver-language cases, 17 canonical reference-language cases, 33 non-indexed candidate operational cases, and 724 indexed operational question variants.
 
 ## Material remaining source work
 
@@ -30,7 +30,7 @@ The authenticated acquisition ledger currently contains 272 queued resources, an
 4. Reopen an approval when newer applicable evidence materially conflicts; add further adjudications only after explicit Ready Route approval.
 5. Repeat quality-control and adversarial-completeness passes after each meaningful source batch.
 
-The first safe intake pass over the owner-supplied candidate evaluation pack mapped 17 mainstream code questions to the canonical reference layer without importing candidate answers. It preserves definition-versus-workflow limits, namespace collisions, unknown code tokens, auto-applied results, and human-review boundaries. The remaining 128 candidate prompts are still unmapped, including all 32 deterministic holdout prompts.
+The safe intake pass over the owner-supplied candidate evaluation pack mapped 17 mainstream code questions to the canonical reference layer and 33 development prompts to canonical operational records without importing candidate answers. The non-indexed operational baseline achieved 28/33 top-1, 29/33 top-5, 28/33 response-mode matches, three correct publication-withheld escalations, and zero unsafe answer-gating failures. Four retrieval and five mode failures remain documented. The remaining 95 candidate prompts are still unmapped, including all 32 deterministic holdout prompts.
 
 The current human-decision lane is available as a 27-question validator-enforced packet at [`human_adjudication_packet_2026-08-10.md`](../research/fedex-ground-driver-knowledge/reports/human_adjudication_packet_2026-08-10.md), backed by the machine-readable `research/fedex-ground-driver-knowledge/knowledge/human_adjudication_queue.csv`. It excludes the seven active approvals and keeps version-confirmation work separate.
 

@@ -14,7 +14,7 @@ The maintained operational evaluation suite maps driver language to canonical pr
 - 16 delivery-status reference questions and one broad pickup-reason selection question.
 - 19 unique delivery-status references exercised.
 - 32 deterministic candidate holdout prompts remain untouched.
-- 128 candidate prompts remain `NEEDS_CANONICAL_MAPPING`.
+- 95 candidate prompts remain `NEEDS_CANONICAL_MAPPING` after the separate operational-mapping batch.
 
 The cases cover:
 
