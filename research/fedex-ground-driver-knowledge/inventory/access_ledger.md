@@ -172,3 +172,11 @@ Each file above received complete content review using the appropriate text, wor
 - Independent SHA-256 calculation found 31 unique byte objects. All 31 hashes already exist in `inventory/source_checksums.sha256`; four later `.ashx.pdf` uploads are exact duplicates of earlier MGB-119, OP-119, Focus on Package Placement, and Package Placement quick-reference files.
 - Preserved the exact provider IDs, titles, MIME types, sizes, timestamps, and hashes in `inventory/google_drive_connector_snapshot_2026-08-10.csv` and updated `SRC-GDRIVE-ROOT-0001` from inaccessible to fully reviewed/accessible.
 - No new source bytes or operational claims were admitted because every connector object is already present in the registered archive. The two open safety-PDF recapture targets remain absent from the current 35-file folder.
+
+## 2026-08-10 post-video local-source and access recheck
+
+- Reinspected the in-app MyGroundBiz browser state before attempting further Wave 0 acquisition. The visible tabs were at MyGroundBiz login and `Access Denied`; no authenticated session was available.
+- Retested the exact current `SRC-MGB-DOC-0038` Sideswipe original URL. The server redirected to `/sitecore/service/noaccess.aspx` and returned HTTP 403, so no response body was admitted as evidence.
+- Searched the restored USB workspace, local source archive, Downloads, Desktop, and indexed local files for the exact Wave 0 and two publication-gate originals. No overlooked current copy was found.
+- `/Users/phillipmetzger/Downloads/Sample ISP Agreement.pdf` was inspected as a possible candidate for `SRC-MGB-DOC-0009`. It is an 83-page Safari-produced PDF with 2023 creation/modification metadata and SHA-256 `9f3c274b67892fa877e3e2f111c6c8419c3be6dba5df666fb4b6923de374df5c`; it is not the current 89-page 2026 sample and was not copied, registered, or used as evidence.
+- With source acquisition still externally gated, the independent 69-case development retrieval suite was remediated at the concept and ambiguity layers without indexing its prompts. It now passes 69/69 top-one, top-five, and response-mode checks with zero unsafe gates; the maintained 192-case suite remains 192/192.

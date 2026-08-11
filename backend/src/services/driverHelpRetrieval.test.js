@@ -65,6 +65,76 @@ test('ranks an exact driver-language variant above unrelated records', () => {
   assert.ok(ranked[0].score > 0);
 });
 
+test('ranks short operational concepts ahead of records that only share generic wording', () => {
+  const conceptRecords = [
+    {
+      ...records[0],
+      knowledge_id: 'KNO-DEL-ALCOHOL-001',
+      canonical_situation: 'Delivering an alcohol package',
+      normalized_description: 'Alcohol delivery with adult and identification controls',
+      driver_question_variants: []
+    },
+    {
+      ...records[0],
+      knowledge_id: 'KNO-DEL-SAFEPLACE-001',
+      canonical_situation: 'Leaving an eligible package in a safe place',
+      normalized_description: 'Can the package be left at this location',
+      driver_question_variants: ['can i leave package']
+    },
+    {
+      ...records[0],
+      knowledge_id: 'KNO-HAZ-ACCEPTANCE-001',
+      canonical_situation: 'Determining whether a hazmat package may be accepted at pickup',
+      normalized_description: 'Hazmat pickup acceptance and shipping-paper review',
+      driver_question_variants: []
+    },
+    {
+      ...records[0],
+      knowledge_id: 'KNO-HAZ-AKHI-001',
+      canonical_situation: 'Hazmat destination is Alaska or Hawaii',
+      normalized_description: 'Hazmat destination restriction',
+      driver_question_variants: ['hazmat package']
+    }
+  ];
+
+  assert.equal(
+    rankKnowledgeRecords('can i leave alcohol package', conceptRecords)[0].record.knowledge_id,
+    'KNO-DEL-ALCOHOL-001'
+  );
+  assert.equal(
+    rankKnowledgeRecords('can i take this hazmat', conceptRecords)[0].record.knowledge_id,
+    'KNO-HAZ-ACCEPTANCE-001'
+  );
+});
+
+test('keeps ambiguous zero-package and uncertain-hazmat questions in clarification mode', () => {
+  const conceptRecords = [
+    {
+      ...records[1],
+      driver_question_patterns: [{
+        utterance: 'customer has no package',
+        response_mode: 'DIRECT_SOURCE_GROUNDED_ANSWER',
+        must_clarify: []
+      }]
+    },
+    {
+      ...records[0],
+      knowledge_id: 'KNO-HAZ-ACCEPTANCE-001',
+      canonical_situation: 'Determining whether a hazmat package may be accepted at pickup',
+      normalized_description: 'Hazmat pickup acceptance and shipping-paper review',
+      driver_question_variants: ['hazmat package'],
+      driver_question_patterns: [{
+        utterance: 'hazmat package',
+        response_mode: 'DIRECT_SOURCE_GROUNDED_ANSWER',
+        must_clarify: []
+      }]
+    }
+  ];
+
+  assert.equal(buildDriverHelpDecision('customer has no package', conceptRecords).response_mode, 'CLARIFY');
+  assert.equal(buildDriverHelpDecision('not sure if hazmat', conceptRecords).response_mode, 'CLARIFY');
+});
+
 test('returns only a published verified answer and preserves record version traceability', () => {
   const decision = buildDriverHelpDecision('DSR nobody there', records);
   assert.equal(decision.response_mode, 'ANSWER');
@@ -202,6 +272,21 @@ test('asks for the signature type instead of guessing one signature procedure', 
     'DSR — Direct Signature',
     'ISR — Indirect Signature'
   ].sort());
+
+  const pharmacyDistractor = {
+    ...records[0],
+    knowledge_id: 'KNO-DEL-PHARMACY-001',
+    status: 'PENDING_REVIEW',
+    is_published: false,
+    canonical_situation: 'Delivering packages designated for a pharmacy counter',
+    normalized_description: 'Take the package to a pharmacy front desk counter and obtain a signature',
+    driver_question_variants: ['front desk pharmacy signature']
+  };
+  const frontDeskRanked = rankKnowledgeRecords(
+    'can front desk sign',
+    [...signatureRecords, pharmacyDistractor]
+  );
+  assert.match(frontDeskRanked[0].record.knowledge_id, /^KNO-DEL-SIG-/);
 });
 
 test('answers the neighbor ISR question directly and exposes each approved path separately', () => {

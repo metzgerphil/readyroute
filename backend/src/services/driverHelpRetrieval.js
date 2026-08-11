@@ -160,7 +160,81 @@ function scoreKnowledgeRecord(question, record, context = {}) {
   if (/^KNO-DEL-SIG-(ISR|DSR|ASR)-/.test(record.knowledge_id)
     && queryTokenSet.has('signature')
     && !hasTypedSignature) {
-    bestSurfaceScore += 36;
+    // Generic signature questions should rank the three controlling signature
+    // branches ahead of records that merely mention a signer (for example a
+    // pharmacy or hazmat record). The decision layer will still ask for the
+    // signature type rather than selecting a branch.
+    bestSurfaceScore += 130;
+    if (queryTokenSet.has('front') && queryTokenSet.has('desk')) {
+      bestSurfaceScore += 24;
+    }
+  }
+  const conceptIntentBoosts = [
+    {
+      id: 'KNO-DEL-ALCOHOL-001',
+      required: ['alcohol'],
+      boost: 110
+    },
+    {
+      id: 'KNO-HAZ-ACCEPTANCE-001',
+      requiredAnySets: [['hazmat'], ['dangerous', 'goods']],
+      any: ['take', 'accept', 'pickup', 'sure', 'paperwork'],
+      boost: 110
+    },
+    {
+      id: 'KNO-HAZ-MANIFEST-001',
+      requiredAnySets: [['hazmat'], ['dangerous', 'goods']],
+      any: ['paperwork', 'manifest', 'onboard', 'transfer'],
+      boost: 105
+    },
+    {
+      id: 'KNO-DEL-BUS-OP201-001',
+      required: ['business', 'closed'],
+      any: ['leave', 'release', 'deliver', 'package'],
+      boost: 120
+    },
+    {
+      id: 'KNO-DEL-SIG-ISR-001',
+      required: ['neighbor'],
+      any: ['leave', 'signature'],
+      boost: 120
+    },
+    {
+      id: 'KNO-PUP-ZERO-001',
+      required: ['customer', 'package'],
+      any: ['no', 'none', 'nothing', 'zero'],
+      boost: 110
+    },
+    {
+      id: 'KNO-PUP-CALLTAG-SUCCESS-001',
+      required: ['call', 'tag'],
+      forbiddenAny: ['fraud', 'refused', 'restricted', 'ready', 'hazmat'],
+      boost: 100
+    },
+    {
+      id: 'KNO-DEL-BARCODE-001',
+      required: ['scanner'],
+      any: ['work', 'working', 'scan', 'read', 'barcode'],
+      boost: 100
+    },
+    {
+      id: 'KNO-PUP-SCANNER-FAIL-001',
+      required: ['scanner'],
+      any: ['work', 'working', 'scan', 'read', 'barcode'],
+      boost: 90
+    }
+  ];
+  const conceptBoost = conceptIntentBoosts.find((candidate) => candidate.id === record.knowledge_id);
+  if (conceptBoost
+    && (!conceptBoost.required || conceptBoost.required.every((token) => queryTokenSet.has(token)))
+    && (!conceptBoost.requiredAnySets || conceptBoost.requiredAnySets.some(
+      (set) => set.every((token) => queryTokenSet.has(token))
+    ))
+    && (!conceptBoost.forbiddenAny || !conceptBoost.forbiddenAny.some(
+      (token) => queryTokenSet.has(token)
+    ))
+    && (!conceptBoost.any || conceptBoost.any.some((token) => queryTokenSet.has(token)))) {
+    bestSurfaceScore += conceptBoost.boost;
   }
   const generalIntentBoosts = [
     { id: 'KNO-SEC-ACTIVE-THREAT-001', required: ['threat'], boost: 70 },
@@ -402,6 +476,37 @@ function buildDiscoveredTopicClarification(question, ranked, candidates) {
     .some((token) => tokens.has(token));
 
   const topRankedRecord = ranked[0]?.record || null;
+
+  if (tokens.has('customer')
+    && tokens.has('package')
+    && ['no', 'none', 'nothing', 'zero'].some((token) => tokens.has(token))
+    && !tokens.has('pickup')) {
+    return {
+      response_mode: 'CLARIFY',
+      confidence: 0,
+      candidates,
+      selected_records: [],
+      clarification_prompt: 'Is this a scheduled pickup where the customer has zero packages, or a delivery/package-location issue?',
+      clarification_options: []
+    };
+  }
+
+  const hasUncertainHazmatClassification = (tokens.has('hazmat')
+    || (tokens.has('dangerous') && tokens.has('goods')))
+    && (tokens.has('sure') || tokens.has('unsure'))
+    && !['pickup', 'delivery', 'onboard', 'transfer', 'manifest', 'paperwork']
+      .some((token) => tokens.has(token));
+  if (hasUncertainHazmatClassification) {
+    return {
+      response_mode: 'CLARIFY',
+      confidence: 0,
+      candidates,
+      selected_records: [],
+      clarification_prompt: 'Is this about identifying a package before pickup acceptance, paperwork for hazmat already onboard, or a hazmat delivery?',
+      clarification_options: []
+    };
+  }
+
   const explicitlyNamesNoneligibleTopic = topRankedRecord?.knowledge_id === 'KNO-DEL-PHARMACY-001'
     && tokens.has('pharmacy');
   if (tokens.has('signature') && !hasSignatureType && !explicitlyNamesNoneligibleTopic) {
