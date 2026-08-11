@@ -29,7 +29,7 @@ The JSON is syntactically valid, IDs are unique and contiguous, every row has th
 ## Why the questions are useful
 
 - The 145-prompt union adds genuinely different driver phrasing rather than copying the maintained suite verbatim.
-- Current retrieval produces a score below 42 for 49 rows and no candidate for four rows: `014 or 019`, `what is 016`, `what is 027`, and `what is prc`. These are high-value independent retrieval tests.
+- Current retrieval produces a score below 42 for 37 rows and no candidate for four rows: `014 or 019`, `what is 016`, `what is 027`, and `what is prc`. These are high-value independent retrieval tests.
 - The prompts cover 11 practical categories, led by delivery/signature (21 rows), status codes (18), FORGE (17), safety (16), FedEx terms (14), pickup (13), and hazmat (13).
 - The interaction principles—short answers, smallest material clarification, selectable options, and safety-first framing—generally align with Ready Route's canonical answer contract.
 
@@ -55,7 +55,7 @@ The supplied `eval_audit_report.md` calls the pack “Strong” and recommends u
 
 ### High — several definitive expectations target pending or outdated knowledge
 
-Diagnostic retrieval points 36 candidate rows first to a non-published record, and another four rows retrieve no record. A retrieval candidate is not a gold mapping, but the pattern exposes where the supplied expectations need manual gating.
+Diagnostic retrieval points 38 candidate rows first to a non-published record, and another four rows retrieve no record. A retrieval candidate is not a gold mapping, but the pattern exposes where the supplied expectations need manual gating.
 
 Confirmed examples include:
 
@@ -78,12 +78,12 @@ The 155 JSON rows contain 25 repeated normalized prompts. Twenty-one duplicate g
 
 Against the current production-gated retrieval stack:
 
-- 85 rows currently request clarification.
-- 28 currently answer.
-- 42 currently escalate.
-- 49 score below the normal answer threshold.
+- 79 rows currently request clarification.
+- 35 currently answer.
+- 41 currently escalate.
+- 37 score below the normal answer threshold.
 - Four retrieve no candidate.
-- Top candidates span 112 `SOURCE_VERIFIED`, 24 `PENDING_REVIEW`, 12 `POTENTIALLY_OUTDATED`, three `READY_ROUTE_APPROVED`, and four with no candidate.
+- Top candidates span 110 `SOURCE_VERIFIED`, 25 `PENDING_REVIEW`, 13 `POTENTIALLY_OUTDATED`, three `READY_ROUTE_APPROVED`, and four with no candidate.
 
 These figures are diagnostic only: the candidate pack lacks human-reviewed canonical mappings, so they do not measure accuracy yet. They identify the best rows to map first.
 
@@ -101,10 +101,10 @@ These figures are diagnostic only: the candidate pack lacks human-reviewed canon
 
 ## Required remediation and automated controls
 
-The intake checkpoint now includes `candidate_canonical_mapping_queue.jsonl`, a deterministic 145-row union. Seventeen development prompts are mapped to canonical reference records and 33 are mapped to canonical operational records with status-aware expectations. The other 95 rows remain `NEEDS_CANONICAL_MAPPING`; all 32 independent holdout rows remain untouched. No candidate expectation was accepted as authority.
+The intake checkpoint now includes `candidate_canonical_mapping_queue.jsonl`, a deterministic 145-row union. All 113 development prompts are human-reviewed: 23 map to canonical reference evaluations, 69 map to canonical operational evaluations with status-aware expectations, and 21 map to explicit knowledge-gap or insufficient-context evaluations. All 32 independent holdout rows remain `NEEDS_CANONICAL_MAPPING` and untouched. No candidate expectation was accepted as authority.
 
-1. Continue review of the 95 unmapped prompts, including the untouched holdout only when the development evaluation design is frozen.
-2. Map every prompt to one or more canonical `knowledge_id` values or explicitly mark it out of scope/no eligible knowledge.
+1. Preserve the 32 untouched holdout prompts until the evaluation design is frozen and the project reaches the authorized holdout-measurement stage.
+2. When the holdout is formally activated, map each released prompt to one or more canonical `knowledge_id` values or explicitly mark it out of scope/no eligible knowledge without adding the holdout wording to retrieval surfaces first.
 3. Derive expected mode from canonical status and publication readiness: answer/clarify only from eligible published knowledge; otherwise escalate or give only an independently eligible immediate safety boundary.
 4. Add `must_clarify`, `must_not_do`, information sufficiency, source/version trace, and adjudication precedence requirements.
 5. Rewrite the confirmed conflict cases before any test execution can count as a pass/fail result.

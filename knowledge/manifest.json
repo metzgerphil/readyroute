@@ -1,12 +1,12 @@
 {
   "schema_version": "1.0.0",
-  "generated_at": "2026-08-11T01:30:06.703Z",
+  "generated_at": "2026-08-11T01:44:22.858Z",
   "generator": "scripts/build-ready-route-knowledge.js",
   "authoring_corpus": "research/fedex-ground-driver-knowledge/knowledge/records.jsonl",
   "adjudication_input": "knowledge/adjudications/records.json",
   "counts": {
     "schema_version": "1.0.0",
-    "generated_at": "2026-08-11T01:30:06.703Z",
+    "generated_at": "2026-08-11T01:44:22.858Z",
     "total_records": 144,
     "by_status": {
       "SOURCE_VERIFIED": 90,
@@ -31,7 +31,7 @@
     "operations/records.jsonl": "1acae7c2efd237cca76366bab76e7124a2221e9f119befd1d781e9a8cadbcf9e",
     "operations/publication-ready.jsonl": "459f05343739bb34e781b39fe84f1b1ab449a24fb8caeb229e248286686357a4",
     "operations/publication-gaps.jsonl": "b36ea883f9aab5545ae515e645092ea80384cadd331a1f689b189bfbfa3f1ba9",
-    "operations/status-summary.json": "ec1b066760fd69f199892a70255417b3b7b4b3e42480ffc24b0344ba05e954f8",
+    "operations/status-summary.json": "5e4583eb75952b69e66919d8d21081ccb47bd8285d37c70df394944707de9b77",
     "pending-review/records.jsonl": "9082373f1d8f7baef393ee95289c723c5947faf0db2ec4a111fd4f19a3db2a51",
     "pending-review/review-items.jsonl": "2a6f364d93a1c84a04d526d3090e6464ad5ab9d025d3454d8b2ae743fac95ece",
     "outdated/records.jsonl": "497a119e888d8d5ada47c92be2617989a9c24b4a1358002673f0a614ea4592fd",

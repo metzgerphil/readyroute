@@ -71,24 +71,24 @@
   },
   "current_retrieval_profile": {
     "response_mode_counts": {
-      "CLARIFY": 85,
-      "ANSWER": 28,
-      "ESCALATE": 42
+      "CLARIFY": 79,
+      "ANSWER": 35,
+      "ESCALATE": 41
     },
     "top_candidate_status_counts": {
-      "SOURCE_VERIFIED": 112,
-      "PENDING_REVIEW": 24,
-      "POTENTIALLY_OUTDATED": 12,
+      "SOURCE_VERIFIED": 110,
+      "PENDING_REVIEW": 25,
       "null": 4,
+      "POTENTIALLY_OUTDATED": 13,
       "READY_ROUTE_APPROVED": 3
     },
     "top_candidate_publication_counts": {
-      "true": 115,
-      "false": 40
+      "true": 113,
+      "false": 42
     },
     "no_candidate_count": 4,
-    "score_below_42_count": 49,
-    "nonpublished_top_candidate_count": 36
+    "score_below_42_count": 37,
+    "nonpublished_top_candidate_count": 38
   },
   "duplicate_prompt_groups": [
     {
@@ -375,10 +375,10 @@
       "priority": "high",
       "exact_formal_case_id": null,
       "current_response_mode": "CLARIFY",
-      "top_candidate_knowledge_id": "KNO-SEC-ROUTE-001",
+      "top_candidate_knowledge_id": "KNO-DEL-SAFEPLACE-001",
       "top_candidate_status": "SOURCE_VERIFIED",
       "top_candidate_published": true,
-      "top_candidate_score": 89.6,
+      "top_candidate_score": 94.8,
       "expected_first_response": "Maybe. First: does it need a signature?"
     },
     {
@@ -401,10 +401,10 @@
       "priority": "high",
       "exact_formal_case_id": null,
       "current_response_mode": "CLARIFY",
-      "top_candidate_knowledge_id": "KNO-DEL-HAZMAT-SIGNATURE-001",
+      "top_candidate_knowledge_id": "KNO-DEL-SIG-DSR-001",
       "top_candidate_status": "SOURCE_VERIFIED",
       "top_candidate_published": true,
-      "top_candidate_score": 58,
+      "top_candidate_score": 71.42857,
       "expected_first_response": "Do not leave the package. To give the exact path, choose one: ISR / DSR / ASR."
     },
     {
@@ -413,11 +413,11 @@
       "category": "delivery_signature",
       "priority": "high",
       "exact_formal_case_id": null,
-      "current_response_mode": "ESCALATE",
+      "current_response_mode": "CLARIFY",
       "top_candidate_knowledge_id": "KNO-DEL-PHARMACY-001",
       "top_candidate_status": "PENDING_REVIEW",
       "top_candidate_published": false,
-      "top_candidate_score": 176.4,
+      "top_candidate_score": 162.4,
       "expected_first_response": "Is it signature-required?"
     },
     {
@@ -427,10 +427,10 @@
       "priority": "high",
       "exact_formal_case_id": null,
       "current_response_mode": "CLARIFY",
-      "top_candidate_knowledge_id": "KNO-DEL-PLACEMENT-HAZARD-001",
+      "top_candidate_knowledge_id": "KNO-DEL-SAFEPLACE-001",
       "top_candidate_status": "SOURCE_VERIFIED",
       "top_candidate_published": true,
-      "top_candidate_score": 34,
+      "top_candidate_score": 94.8,
       "expected_first_response": "Only if the package allows indirect delivery. Is it ISR, DSR, ASR, or not sure?"
     },
     {
@@ -440,10 +440,10 @@
       "priority": "high",
       "exact_formal_case_id": null,
       "current_response_mode": "CLARIFY",
-      "top_candidate_knowledge_id": "KNO-LH-TRAILER-DOCK-PULL-001",
+      "top_candidate_knowledge_id": "KNO-DEL-SAFEPLACE-001",
       "top_candidate_status": "SOURCE_VERIFIED",
       "top_candidate_published": true,
-      "top_candidate_score": 59.6,
+      "top_candidate_score": 94.8,
       "expected_first_response": "Maybe, but first I need to know whether it needs a signature."
     },
     {
@@ -452,11 +452,11 @@
       "category": "delivery_signature",
       "priority": "high",
       "exact_formal_case_id": null,
-      "current_response_mode": "ESCALATE",
-      "top_candidate_knowledge_id": "KNO-FORGE-DEVICE-INFO-001",
-      "top_candidate_status": "POTENTIALLY_OUTDATED",
-      "top_candidate_published": false,
-      "top_candidate_score": 50.93333,
+      "current_response_mode": "CLARIFY",
+      "top_candidate_knowledge_id": "KNO-DEL-SIG-ASR-001",
+      "top_candidate_status": "SOURCE_VERIFIED",
+      "top_candidate_published": true,
+      "top_candidate_score": 71.66667,
       "expected_first_response": "Is it an ASR package or another ID-check prompt?"
     },
     {
@@ -466,10 +466,10 @@
       "priority": "high",
       "exact_formal_case_id": null,
       "current_response_mode": "ANSWER",
-      "top_candidate_knowledge_id": "KNO-DEL-ALCOHOL-001",
+      "top_candidate_knowledge_id": "KNO-DEL-SAFEPLACE-001",
       "top_candidate_status": "SOURCE_VERIFIED",
       "top_candidate_published": true,
-      "top_candidate_score": 64.93333,
+      "top_candidate_score": 88.66667,
       "expected_first_response": "No. Adult Signature Required applies. No driver release, no indirect delivery, and verify ID."
     },
     {
@@ -609,10 +609,10 @@
       "priority": "high",
       "exact_formal_case_id": null,
       "current_response_mode": "CLARIFY",
-      "top_candidate_knowledge_id": "KNO-PUP-UNLISTED-001",
+      "top_candidate_knowledge_id": "KNO-PUP-CALLTAG-NOTREADY-001",
       "top_candidate_status": "SOURCE_VERIFIED",
       "top_candidate_published": true,
-      "top_candidate_score": 110,
+      "top_candidate_score": 184.93333,
       "expected_first_response": "Use pickup exception code 10: Pickup Not Ready - Dispatch Again."
     },
     {
@@ -651,7 +651,7 @@
       "top_candidate_knowledge_id": "KNO-FORGE-BUSINESS-CLOSURE-MSG-001",
       "top_candidate_status": "SOURCE_VERIFIED",
       "top_candidate_published": true,
-      "top_candidate_score": 39.65714,
+      "top_candidate_score": 58,
       "expected_first_response": "Send a Business Closure message in FORGE. Choose one: Recurring day / Single date / Date range."
     },
     {
@@ -661,7 +661,7 @@
       "priority": "high",
       "exact_formal_case_id": null,
       "current_response_mode": "CLARIFY",
-      "top_candidate_knowledge_id": "KNO-PUP-CALLTAG-NOTREADY-001",
+      "top_candidate_knowledge_id": "KNO-PUP-CALLTAG-REFUSED-001",
       "top_candidate_status": "SOURCE_VERIFIED",
       "top_candidate_published": true,
       "top_candidate_score": 110,
@@ -673,11 +673,11 @@
       "category": "call_tag",
       "priority": "high",
       "exact_formal_case_id": null,
-      "current_response_mode": "CLARIFY",
-      "top_candidate_knowledge_id": "KNO-PUP-CALLTAG-NOTREADY-001",
-      "top_candidate_status": "SOURCE_VERIFIED",
-      "top_candidate_published": true,
-      "top_candidate_score": 59.6,
+      "current_response_mode": "ESCALATE",
+      "top_candidate_knowledge_id": "KNO-PUP-CALLTAG-FRAUD-001",
+      "top_candidate_status": "PENDING_REVIEW",
+      "top_candidate_published": false,
+      "top_candidate_score": 144.93333,
       "expected_first_response": "If the workflow is cancelling all call tags for suspected fraud, that is code 106."
     },
     {
@@ -687,10 +687,10 @@
       "priority": "high",
       "exact_formal_case_id": null,
       "current_response_mode": "ESCALATE",
-      "top_candidate_knowledge_id": "KNO-FORGE-DEVICE-INFO-001",
-      "top_candidate_status": "POTENTIALLY_OUTDATED",
-      "top_candidate_published": false,
-      "top_candidate_score": 26.66667,
+      "top_candidate_knowledge_id": "KNO-FORGE-DELAYED-LOGIN-001",
+      "top_candidate_status": "SOURCE_VERIFIED",
+      "top_candidate_published": true,
+      "top_candidate_score": 120.93333,
       "expected_first_response": "Do you need to keep working during an outage, or is this a regular login issue?"
     },
     {
@@ -713,10 +713,10 @@
       "priority": "high",
       "exact_formal_case_id": null,
       "current_response_mode": "ESCALATE",
-      "top_candidate_knowledge_id": "KNO-LH-COUPLING-BASIC-001",
-      "top_candidate_status": "PENDING_REVIEW",
+      "top_candidate_knowledge_id": "KNO-FORGE-SYNC-QUEUE-001",
+      "top_candidate_status": "POTENTIALLY_OUTDATED",
       "top_candidate_published": false,
-      "top_candidate_score": 32,
+      "top_candidate_score": 110.8,
       "expected_first_response": "This sounds like a sync-status problem. Do you need to retry failed transmissions or re-upload completed ones?"
     },
     {
@@ -842,7 +842,7 @@
       "category": "hazmat",
       "priority": "high",
       "exact_formal_case_id": null,
-      "current_response_mode": "ESCALATE",
+      "current_response_mode": "CLARIFY",
       "top_candidate_knowledge_id": "KNO-PUP-INTERNATIONAL-DOCS-001",
       "top_candidate_status": "PENDING_REVIEW",
       "top_candidate_published": false,
@@ -894,7 +894,7 @@
       "category": "fedex_terms",
       "priority": "medium",
       "exact_formal_case_id": null,
-      "current_response_mode": "CLARIFY",
+      "current_response_mode": "ANSWER",
       "top_candidate_knowledge_id": "KNO-DEL-HAL-DELIVERY-001",
       "top_candidate_status": "SOURCE_VERIFIED",
       "top_candidate_published": true,
@@ -911,7 +911,7 @@
       "top_candidate_knowledge_id": "KNO-DEL-BUS-OP201-001",
       "top_candidate_status": "PENDING_REVIEW",
       "top_candidate_published": false,
-      "top_candidate_score": 103.6,
+      "top_candidate_score": 106,
       "expected_first_response": "OP-201 is the business release waiver on file at the station."
     },
     {
@@ -985,11 +985,11 @@
       "category": "delivery_signature",
       "priority": "high",
       "exact_formal_case_id": null,
-      "current_response_mode": "CLARIFY",
-      "top_candidate_knowledge_id": "KNO-PUP-CALLTAG-SUCCESS-001",
+      "current_response_mode": "ANSWER",
+      "top_candidate_knowledge_id": "KNO-DEL-PLACEMENT-HAZARD-001",
       "top_candidate_status": "SOURCE_VERIFIED",
       "top_candidate_published": true,
-      "top_candidate_score": 32,
+      "top_candidate_score": 120,
       "expected_first_response": "No. Never leave a package in a U.S. mailbox."
     },
     {
@@ -998,7 +998,7 @@
       "category": "status_codes",
       "priority": "high",
       "exact_formal_case_id": null,
-      "current_response_mode": "CLARIFY",
+      "current_response_mode": "ANSWER",
       "top_candidate_knowledge_id": "KNO-DEL-NOTATION-001",
       "top_candidate_status": "SOURCE_VERIFIED",
       "top_candidate_published": true,
@@ -1050,10 +1050,10 @@
       "category": "pickup",
       "priority": "high",
       "exact_formal_case_id": null,
-      "current_response_mode": "CLARIFY",
-      "top_candidate_knowledge_id": "KNO-PUP-CALLTAG-NOTREADY-001",
-      "top_candidate_status": "SOURCE_VERIFIED",
-      "top_candidate_published": true,
+      "current_response_mode": "ESCALATE",
+      "top_candidate_knowledge_id": "KNO-PUP-SERVICE-TYPES-001",
+      "top_candidate_status": "POTENTIALLY_OUTDATED",
+      "top_candidate_published": false,
       "top_candidate_score": 34,
       "expected_first_response": "Was there any attempt, or was it cancelled before any attempt was made?"
     },
@@ -1080,7 +1080,7 @@
       "top_candidate_knowledge_id": "KNO-FORGE-BUSINESS-CLOSURE-MSG-001",
       "top_candidate_status": "SOURCE_VERIFIED",
       "top_candidate_published": true,
-      "top_candidate_score": 39.65714,
+      "top_candidate_score": 58,
       "expected_first_response": "Send a Business Closure message in FORGE. Choose one: Recurring day / Single date / Date range."
     },
     {
@@ -1102,10 +1102,10 @@
       "category": "pickup",
       "priority": "medium",
       "exact_formal_case_id": null,
-      "current_response_mode": "CLARIFY",
-      "top_candidate_knowledge_id": "KNO-PUP-CALLTAG-NOTREADY-001",
-      "top_candidate_status": "SOURCE_VERIFIED",
-      "top_candidate_published": true,
+      "current_response_mode": "ESCALATE",
+      "top_candidate_knowledge_id": "KNO-PUP-SERVICE-TYPES-001",
+      "top_candidate_status": "POTENTIALLY_OUTDATED",
+      "top_candidate_published": false,
       "top_candidate_score": 26.66667,
       "expected_first_response": "Use pickup exception code 14: Weather."
     },
@@ -1115,10 +1115,10 @@
       "category": "pickup",
       "priority": "medium",
       "exact_formal_case_id": null,
-      "current_response_mode": "CLARIFY",
-      "top_candidate_knowledge_id": "KNO-PUP-CALLTAG-NOTREADY-001",
-      "top_candidate_status": "SOURCE_VERIFIED",
-      "top_candidate_published": true,
+      "current_response_mode": "ESCALATE",
+      "top_candidate_knowledge_id": "KNO-PUP-SERVICE-TYPES-001",
+      "top_candidate_status": "POTENTIALLY_OUTDATED",
+      "top_candidate_published": false,
       "top_candidate_score": 26.66667,
       "expected_first_response": "Use code 21 if this is the Express pickup cancellation workflow."
     },
@@ -1129,7 +1129,7 @@
       "priority": "high",
       "exact_formal_case_id": null,
       "current_response_mode": "CLARIFY",
-      "top_candidate_knowledge_id": "KNO-PUP-CALLTAG-NOTREADY-001",
+      "top_candidate_knowledge_id": "KNO-PUP-CALLTAG-REFUSED-001",
       "top_candidate_status": "SOURCE_VERIFIED",
       "top_candidate_published": true,
       "top_candidate_score": 110,
@@ -1141,11 +1141,11 @@
       "category": "call_tag",
       "priority": "high",
       "exact_formal_case_id": null,
-      "current_response_mode": "CLARIFY",
-      "top_candidate_knowledge_id": "KNO-PUP-CALLTAG-NOTREADY-001",
-      "top_candidate_status": "SOURCE_VERIFIED",
-      "top_candidate_published": true,
-      "top_candidate_score": 59.6,
+      "current_response_mode": "ESCALATE",
+      "top_candidate_knowledge_id": "KNO-PUP-CALLTAG-FRAUD-001",
+      "top_candidate_status": "PENDING_REVIEW",
+      "top_candidate_published": false,
+      "top_candidate_score": 144.93333,
       "expected_first_response": "If the workflow is cancelling all call tags for suspected fraud, that is code 106."
     },
     {
@@ -1155,10 +1155,10 @@
       "priority": "high",
       "exact_formal_case_id": null,
       "current_response_mode": "ESCALATE",
-      "top_candidate_knowledge_id": "KNO-FORGE-DEVICE-INFO-001",
-      "top_candidate_status": "POTENTIALLY_OUTDATED",
-      "top_candidate_published": false,
-      "top_candidate_score": 26.66667,
+      "top_candidate_knowledge_id": "KNO-FORGE-DELAYED-LOGIN-001",
+      "top_candidate_status": "SOURCE_VERIFIED",
+      "top_candidate_published": true,
+      "top_candidate_score": 120.93333,
       "expected_first_response": "Do you need to keep working during an outage, or is this a regular login issue?"
     },
     {
@@ -1181,10 +1181,10 @@
       "priority": "medium",
       "exact_formal_case_id": null,
       "current_response_mode": "ESCALATE",
-      "top_candidate_knowledge_id": "KNO-LH-COUPLING-BASIC-001",
-      "top_candidate_status": "PENDING_REVIEW",
+      "top_candidate_knowledge_id": "KNO-FORGE-SYNC-QUEUE-001",
+      "top_candidate_status": "POTENTIALLY_OUTDATED",
       "top_candidate_published": false,
-      "top_candidate_score": 32,
+      "top_candidate_score": 110.8,
       "expected_first_response": "This sounds like a sync-status problem. Do you need to retry failed transmissions or re-upload completed ones?"
     },
     {
@@ -1284,7 +1284,7 @@
       "category": "hazmat",
       "priority": "high",
       "exact_formal_case_id": null,
-      "current_response_mode": "ESCALATE",
+      "current_response_mode": "CLARIFY",
       "top_candidate_knowledge_id": "KNO-PUP-INTERNATIONAL-DOCS-001",
       "top_candidate_status": "PENDING_REVIEW",
       "top_candidate_published": false,
@@ -1336,7 +1336,7 @@
       "category": "fedex_terms",
       "priority": "medium",
       "exact_formal_case_id": null,
-      "current_response_mode": "CLARIFY",
+      "current_response_mode": "ANSWER",
       "top_candidate_knowledge_id": "KNO-DEL-HAL-DELIVERY-001",
       "top_candidate_status": "SOURCE_VERIFIED",
       "top_candidate_published": true,
@@ -1353,7 +1353,7 @@
       "top_candidate_knowledge_id": "KNO-DEL-BUS-OP201-001",
       "top_candidate_status": "PENDING_REVIEW",
       "top_candidate_published": false,
-      "top_candidate_score": 103.6,
+      "top_candidate_score": 106,
       "expected_first_response": "OP-201 is the business release waiver on file at the station."
     },
     {
@@ -1415,10 +1415,10 @@
       "priority": "high",
       "exact_formal_case_id": null,
       "current_response_mode": "CLARIFY",
-      "top_candidate_knowledge_id": "KNO-LH-TRAILER-DOCK-PULL-001",
+      "top_candidate_knowledge_id": "KNO-DEL-SAFEPLACE-001",
       "top_candidate_status": "SOURCE_VERIFIED",
       "top_candidate_published": true,
-      "top_candidate_score": 59.6,
+      "top_candidate_score": 94.8,
       "expected_first_response": "Customer instructions do not override signature, alcohol, hazmat, or release rules. First: does it need a signature?"
     },
     {
@@ -1428,10 +1428,10 @@
       "priority": "high",
       "exact_formal_case_id": null,
       "current_response_mode": "CLARIFY",
-      "top_candidate_knowledge_id": "KNO-DEL-OP206-001",
+      "top_candidate_knowledge_id": "KNO-DEL-SIG-DSR-001",
       "top_candidate_status": "SOURCE_VERIFIED",
       "top_candidate_published": true,
-      "top_candidate_score": 53.33333,
+      "top_candidate_score": 61.46667,
       "expected_first_response": "If FORGE is prompting for a signature, treat it as signature-controlled. Which type is it: ISR, DSR, ASR, or not sure?"
     },
     {
@@ -1492,11 +1492,11 @@
       "category": "delivery_signature",
       "priority": "medium",
       "exact_formal_case_id": null,
-      "current_response_mode": "ANSWER",
-      "top_candidate_knowledge_id": "KNO-FORGE-BUSINESS-CLOSURE-MSG-001",
+      "current_response_mode": "ESCALATE",
+      "top_candidate_knowledge_id": "KNO-DEL-CLASSIFICATION-001",
       "top_candidate_status": "SOURCE_VERIFIED",
       "top_candidate_published": true,
-      "top_candidate_score": 64.93333,
+      "top_candidate_score": 89.46667,
       "expected_first_response": "Usually not unless a valid business-release path applies. Is there a valid OP-201 release waiver, or is this signature-controlled?"
     },
     {
@@ -1509,7 +1509,7 @@
       "top_candidate_knowledge_id": "KNO-DEL-SAFEPLACE-001",
       "top_candidate_status": "SOURCE_VERIFIED",
       "top_candidate_published": true,
-      "top_candidate_score": 196,
+      "top_candidate_score": 260,
       "expected_first_response": "Do not leave it. Try indirect delivery if allowed; otherwise use the correct status code and door-tag workflow."
     },
     {
@@ -1545,10 +1545,10 @@
       "priority": "low",
       "exact_formal_case_id": null,
       "current_response_mode": "CLARIFY",
-      "top_candidate_knowledge_id": "KNO-DEL-LOCKER-FAIL-001",
+      "top_candidate_knowledge_id": "KNO-DEL-SAFEPLACE-001",
       "top_candidate_status": "SOURCE_VERIFIED",
       "top_candidate_published": true,
-      "top_candidate_score": 92,
+      "top_candidate_score": 94.8,
       "expected_first_response": "What kind of locker is it?"
     },
     {
@@ -1557,11 +1557,11 @@
       "category": "delivery_signature",
       "priority": "medium",
       "exact_formal_case_id": null,
-      "current_response_mode": "ANSWER",
+      "current_response_mode": "CLARIFY",
       "top_candidate_knowledge_id": "KNO-DEL-PPOD-001",
       "top_candidate_status": "SOURCE_VERIFIED",
       "top_candidate_published": true,
-      "top_candidate_score": 64.93333,
+      "top_candidate_score": 50.93333,
       "expected_first_response": "Is this a residential driver release, a signature-required stop, or an in-person handoff?"
     },
     {
@@ -1661,7 +1661,7 @@
       "category": "call_tag",
       "priority": "medium",
       "exact_formal_case_id": null,
-      "current_response_mode": "ESCALATE",
+      "current_response_mode": "CLARIFY",
       "top_candidate_knowledge_id": "KNO-PUP-CALLTAG-FRAUD-001",
       "top_candidate_status": "PENDING_REVIEW",
       "top_candidate_published": false,
@@ -1675,7 +1675,7 @@
       "priority": "medium",
       "exact_formal_case_id": null,
       "current_response_mode": "CLARIFY",
-      "top_candidate_knowledge_id": "KNO-PUP-CALLTAG-NOTREADY-001",
+      "top_candidate_knowledge_id": "KNO-PUP-CALLTAG-REFUSED-001",
       "top_candidate_status": "SOURCE_VERIFIED",
       "top_candidate_published": true,
       "top_candidate_score": 59.6,
@@ -1687,11 +1687,11 @@
       "category": "call_tag",
       "priority": "low",
       "exact_formal_case_id": null,
-      "current_response_mode": "ANSWER",
+      "current_response_mode": "CLARIFY",
       "top_candidate_knowledge_id": "KNO-PUP-CALLTAG-NOTREADY-001",
       "top_candidate_status": "SOURCE_VERIFIED",
       "top_candidate_published": true,
-      "top_candidate_score": 100,
+      "top_candidate_score": 96.4,
       "expected_first_response": "You can still scan the call tag and then choose Delivery or Pickup and edit stop details if needed."
     },
     {
@@ -1700,7 +1700,7 @@
       "category": "forge",
       "priority": "medium",
       "exact_formal_case_id": null,
-      "current_response_mode": "ESCALATE",
+      "current_response_mode": "CLARIFY",
       "top_candidate_knowledge_id": "KNO-FORGE-AUDIO-ALERTS-001",
       "top_candidate_status": "POTENTIALLY_OUTDATED",
       "top_candidate_published": false,
@@ -1765,11 +1765,11 @@
       "category": "forge",
       "priority": "medium",
       "exact_formal_case_id": null,
-      "current_response_mode": "ESCALATE",
-      "top_candidate_knowledge_id": "KNO-FORGE-LANGUAGE-001",
-      "top_candidate_status": "POTENTIALLY_OUTDATED",
-      "top_candidate_published": false,
-      "top_candidate_score": 32,
+      "current_response_mode": "ANSWER",
+      "top_candidate_knowledge_id": "KNO-FORGE-VEHICLE-CHANGE-001",
+      "top_candidate_status": "READY_ROUTE_APPROVED",
+      "top_candidate_published": true,
+      "top_candidate_score": 120,
       "expected_first_response": "Use Change Vehicle, enter the previous vehicle ending odometer, then validate the new vehicle information."
     },
     {
@@ -1818,10 +1818,10 @@
       "priority": "high",
       "exact_formal_case_id": null,
       "current_response_mode": "CLARIFY",
-      "top_candidate_knowledge_id": "KNO-INC-ACCIDENT-REPORT-001",
+      "top_candidate_knowledge_id": "KNO-INC-ACCIDENT-SCENE-001",
       "top_candidate_status": "SOURCE_VERIFIED",
       "top_candidate_published": true,
-      "top_candidate_score": 32,
+      "top_candidate_score": 34,
       "expected_first_response": "Any injuries or immediate traffic hazard?"
     },
     {
@@ -1831,7 +1831,7 @@
       "priority": "medium",
       "exact_formal_case_id": null,
       "current_response_mode": "CLARIFY",
-      "top_candidate_knowledge_id": "KNO-PUP-CALLTAG-NOTREADY-001",
+      "top_candidate_knowledge_id": "KNO-PUP-CALLTAG-REFUSED-001",
       "top_candidate_status": "SOURCE_VERIFIED",
       "top_candidate_published": true,
       "top_candidate_score": 32,
@@ -1844,10 +1844,10 @@
       "priority": "high",
       "exact_formal_case_id": null,
       "current_response_mode": "ANSWER",
-      "top_candidate_knowledge_id": "KNO-QUAL-VEHICLE-UPGRADE-001",
+      "top_candidate_knowledge_id": "KNO-INC-ACCIDENT-SCENE-001",
       "top_candidate_status": "SOURCE_VERIFIED",
       "top_candidate_published": true,
-      "top_candidate_score": 49.33333,
+      "top_candidate_score": 95.46667,
       "expected_first_response": "If there is immediate hazard, call 9-1-1, activate flashers, and set warning devices if safe and required."
     },
     {
@@ -1860,7 +1860,7 @@
       "top_candidate_knowledge_id": "KNO-INC-ACCIDENT-SCENE-001",
       "top_candidate_status": "SOURCE_VERIFIED",
       "top_candidate_published": true,
-      "top_candidate_score": 45.69697,
+      "top_candidate_score": 46.13333,
       "expected_first_response": "The accident packet includes OP-130, OP-132, and OP-135."
     },
     {
@@ -1886,7 +1886,7 @@
       "top_candidate_knowledge_id": "KNO-FORGE-LOGIN-WARNING-001",
       "top_candidate_status": "PENDING_REVIEW",
       "top_candidate_published": false,
-      "top_candidate_score": 38.8,
+      "top_candidate_score": 39.65714,
       "expected_first_response": "Turn the truck off, set the parking brake, and get out to visually assess clearance before proceeding."
     },
     {
@@ -1921,10 +1921,10 @@
       "category": "safety",
       "priority": "low",
       "exact_formal_case_id": null,
-      "current_response_mode": "CLARIFY",
-      "top_candidate_knowledge_id": "KNO-HOS-DUTY-LIMITS-001",
-      "top_candidate_status": "READY_ROUTE_APPROVED",
-      "top_candidate_published": true,
+      "current_response_mode": "ESCALATE",
+      "top_candidate_knowledge_id": "KNO-DEL-REFUSED-001",
+      "top_candidate_status": "PENDING_REVIEW",
+      "top_candidate_published": false,
       "top_candidate_score": 25.46667,
       "expected_first_response": "Avoid backing if possible. If it can't be avoided, use mirrors, backup camera, and horn."
     },
@@ -1961,10 +1961,10 @@
       "priority": "high",
       "exact_formal_case_id": null,
       "current_response_mode": "CLARIFY",
-      "top_candidate_knowledge_id": "KNO-INC-ACCIDENT-REPORT-001",
+      "top_candidate_knowledge_id": "KNO-SEC-ACTIVE-THREAT-001",
       "top_candidate_status": "SOURCE_VERIFIED",
       "top_candidate_published": true,
-      "top_candidate_score": 29.42857,
+      "top_candidate_score": 104,
       "expected_first_response": "Your safety comes first. Get away if you can and call 9-1-1 if there is immediate danger."
     },
     {
@@ -1999,11 +1999,11 @@
       "category": "security",
       "priority": "low",
       "exact_formal_case_id": null,
-      "current_response_mode": "CLARIFY",
-      "top_candidate_knowledge_id": "KNO-ETH-FALSIFICATION-001",
+      "current_response_mode": "ANSWER",
+      "top_candidate_knowledge_id": "KNO-SEC-LOST-BADGE-001",
       "top_candidate_status": "SOURCE_VERIFIED",
       "top_candidate_published": true,
-      "top_candidate_score": 106,
+      "top_candidate_score": 196,
       "expected_first_response": "A replacement badge must be issued. The old badge is deactivated after reissue."
     },
     {
@@ -2029,7 +2029,7 @@
       "top_candidate_knowledge_id": "KNO-SEC-ACTIVE-THREAT-001",
       "top_candidate_status": "SOURCE_VERIFIED",
       "top_candidate_published": true,
-      "top_candidate_score": 118,
+      "top_candidate_score": 188,
       "expected_first_response": "Get out if you can, hide if you cannot, take action only if your life is in imminent danger, and call 9-1-1 when safe."
     },
     {
@@ -2038,7 +2038,7 @@
       "category": "hazmat",
       "priority": "high",
       "exact_formal_case_id": null,
-      "current_response_mode": "ANSWER",
+      "current_response_mode": "CLARIFY",
       "top_candidate_knowledge_id": "KNO-HAZ-MANIFEST-001",
       "top_candidate_status": "SOURCE_VERIFIED",
       "top_candidate_published": true,
@@ -2107,7 +2107,7 @@
       "top_candidate_knowledge_id": "KNO-DEL-BARCODE-001",
       "top_candidate_status": "SOURCE_VERIFIED",
       "top_candidate_published": true,
-      "top_candidate_score": 22,
+      "top_candidate_score": 25.46667,
       "expected_first_response": "Is this an in-person customer question or a package research case message you received?"
     },
     {
@@ -2116,11 +2116,11 @@
       "category": "customer_communication",
       "priority": "medium",
       "exact_formal_case_id": null,
-      "current_response_mode": "ANSWER",
-      "top_candidate_knowledge_id": "KNO-DEL-DISPUTE-PREVENTION-001",
+      "current_response_mode": "CLARIFY",
+      "top_candidate_knowledge_id": "KNO-ETH-FALSIFICATION-001",
       "top_candidate_status": "SOURCE_VERIFIED",
       "top_candidate_published": true,
-      "top_candidate_score": 70.85714,
+      "top_candidate_score": 26.66667,
       "expected_first_response": "Is this a future-delivery request, a no-attempt-today request, or a hold-at-location request?"
     },
     {
@@ -2130,10 +2130,10 @@
       "priority": "medium",
       "exact_formal_case_id": null,
       "current_response_mode": "ANSWER",
-      "top_candidate_knowledge_id": "KNO-PUP-ZERO-001",
+      "top_candidate_knowledge_id": "KNO-DEL-SCAN-INTEGRITY-001",
       "top_candidate_status": "SOURCE_VERIFIED",
       "top_candidate_published": true,
-      "top_candidate_score": 89.2,
+      "top_candidate_score": 59.6,
       "expected_first_response": "If the customer requested that no attempt be made, that maps to code 100."
     },
     {
@@ -2143,10 +2143,10 @@
       "priority": "medium",
       "exact_formal_case_id": null,
       "current_response_mode": "CLARIFY",
-      "top_candidate_knowledge_id": "KNO-LH-TRAILER-DOCK-PULL-001",
+      "top_candidate_knowledge_id": "KNO-DEL-CLASSIFICATION-001",
       "top_candidate_status": "SOURCE_VERIFIED",
       "top_candidate_published": true,
-      "top_candidate_score": 59.6,
+      "top_candidate_score": 89.46667,
       "expected_first_response": "Is the package signature-required or not?"
     },
     {
@@ -2159,7 +2159,7 @@
       "top_candidate_knowledge_id": "KNO-FORGE-EDIT-ADDRESS-001",
       "top_candidate_status": "PENDING_REVIEW",
       "top_candidate_published": false,
-      "top_candidate_score": 99.2,
+      "top_candidate_score": 134.66667,
       "expected_first_response": "If the label address is wrong, that points to code 002 for delivery-address issue handling."
     },
     {
@@ -2168,11 +2168,11 @@
       "category": "customer_communication",
       "priority": "medium",
       "exact_formal_case_id": null,
-      "current_response_mode": "ANSWER",
-      "top_candidate_knowledge_id": "KNO-DEL-DISPUTE-PREVENTION-001",
+      "current_response_mode": "CLARIFY",
+      "top_candidate_knowledge_id": "KNO-PUP-UNLISTED-001",
       "top_candidate_status": "SOURCE_VERIFIED",
       "top_candidate_published": true,
-      "top_candidate_score": 69,
+      "top_candidate_score": 58.2,
       "expected_first_response": "Is this a direct customer complaint or a package research case/message?"
     },
     {
@@ -2194,7 +2194,7 @@
       "category": "customer_communication",
       "priority": "medium",
       "exact_formal_case_id": null,
-      "current_response_mode": "ANSWER",
+      "current_response_mode": "CLARIFY",
       "top_candidate_knowledge_id": "KNO-FORGE-BUSINESS-CLOSURE-MSG-001",
       "top_candidate_status": "SOURCE_VERIFIED",
       "top_candidate_published": true,
@@ -2207,11 +2207,11 @@
       "category": "fedex_terms",
       "priority": "low",
       "exact_formal_case_id": null,
-      "current_response_mode": "ESCALATE",
+      "current_response_mode": "ANSWER",
       "top_candidate_knowledge_id": "KNO-DEL-HAL-DELIVERY-001",
       "top_candidate_status": "SOURCE_VERIFIED",
       "top_candidate_published": true,
-      "top_candidate_score": 13.8314,
+      "top_candidate_score": 73.8314,
       "expected_first_response": "RTH means Redirect to Hold at Location."
     },
     {
@@ -2246,7 +2246,7 @@
       "category": "fedex_terms",
       "priority": "low",
       "exact_formal_case_id": null,
-      "current_response_mode": "CLARIFY",
+      "current_response_mode": "ANSWER",
       "top_candidate_knowledge_id": "KNO-PUP-WRONG-WA-001",
       "top_candidate_status": "SOURCE_VERIFIED",
       "top_candidate_published": true,
@@ -2259,7 +2259,7 @@
       "category": "fedex_terms",
       "priority": "low",
       "exact_formal_case_id": null,
-      "current_response_mode": "CLARIFY",
+      "current_response_mode": "ANSWER",
       "top_candidate_knowledge_id": "KNO-DEL-FAD-GROUND-001",
       "top_candidate_status": "SOURCE_VERIFIED",
       "top_candidate_published": true,
@@ -2272,7 +2272,7 @@
       "category": "fedex_terms",
       "priority": "low",
       "exact_formal_case_id": null,
-      "current_response_mode": "CLARIFY",
+      "current_response_mode": "ANSWER",
       "top_candidate_knowledge_id": "KNO-FORGE-VEHICLE-CHANGE-001",
       "top_candidate_status": "READY_ROUTE_APPROVED",
       "top_candidate_published": true,
@@ -2285,7 +2285,7 @@
       "category": "fedex_terms",
       "priority": "low",
       "exact_formal_case_id": null,
-      "current_response_mode": "CLARIFY",
+      "current_response_mode": "ANSWER",
       "top_candidate_knowledge_id": "KNO-DEL-SRA-001",
       "top_candidate_status": "SOURCE_VERIFIED",
       "top_candidate_published": true,
@@ -2298,7 +2298,7 @@
       "category": "fedex_terms",
       "priority": "low",
       "exact_formal_case_id": null,
-      "current_response_mode": "CLARIFY",
+      "current_response_mode": "ANSWER",
       "top_candidate_knowledge_id": "KNO-DEL-DOORTAG-001",
       "top_candidate_status": "SOURCE_VERIFIED",
       "top_candidate_published": true,
@@ -2311,7 +2311,7 @@
       "category": "fedex_terms",
       "priority": "low",
       "exact_formal_case_id": null,
-      "current_response_mode": "CLARIFY",
+      "current_response_mode": "ANSWER",
       "top_candidate_knowledge_id": "KNO-DEL-PPOD-001",
       "top_candidate_status": "SOURCE_VERIFIED",
       "top_candidate_published": true,
@@ -2324,11 +2324,11 @@
       "category": "fedex_terms",
       "priority": "low",
       "exact_formal_case_id": null,
-      "current_response_mode": "CLARIFY",
-      "top_candidate_knowledge_id": "KNO-DEL-HAZMAT-SIGNATURE-001",
+      "current_response_mode": "ANSWER",
+      "top_candidate_knowledge_id": "KNO-DEL-PPOD-001",
       "top_candidate_status": "SOURCE_VERIFIED",
       "top_candidate_published": true,
-      "top_candidate_score": 23.67391,
+      "top_candidate_score": 54,
       "expected_first_response": "PPODA means Picture Proof of Delivery Attempt."
     },
     {
@@ -2338,10 +2338,10 @@
       "priority": "high",
       "exact_formal_case_id": null,
       "current_response_mode": "CLARIFY",
-      "top_candidate_knowledge_id": "KNO-DEL-DISPUTE-PREVENTION-001",
+      "top_candidate_knowledge_id": "KNO-SEC-ROUTE-001",
       "top_candidate_status": "SOURCE_VERIFIED",
       "top_candidate_published": true,
-      "top_candidate_score": 20.66667,
+      "top_candidate_score": 21,
       "expected_first_response": "No problem. What do you see?"
     },
     {
@@ -2351,10 +2351,10 @@
       "priority": "high",
       "exact_formal_case_id": null,
       "current_response_mode": "CLARIFY",
-      "top_candidate_knowledge_id": "KNO-DEL-PLACEMENT-HAZARD-001",
+      "top_candidate_knowledge_id": "KNO-DEL-SAFEPLACE-001",
       "top_candidate_status": "SOURCE_VERIFIED",
       "top_candidate_published": true,
-      "top_candidate_score": 26.66667,
+      "top_candidate_score": 88.66667,
       "expected_first_response": "First: does it need a signature?"
     },
     {
