@@ -1,0 +1,50 @@
+name: Reset Production Companies
+
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: Audit lists counts; reset permanently deletes every company and company-scoped record
+        required: true
+        default: audit
+        type: choice
+        options:
+          - audit
+          - reset
+      confirmation:
+        description: For reset, enter DELETE_ALL_READY_ROUTE_COMPANIES exactly
+        required: false
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  reset:
+    name: ${{ inputs.mode == 'reset' && 'Delete All Companies' || 'Audit Companies' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: production
+    env:
+      RESET_COMPANIES_MODE: ${{ inputs.mode }}
+      RESET_COMPANIES_CONFIRM: ${{ inputs.confirmation }}
+      SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+      SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+    steps:
+      - name: Check out release commit
+        uses: actions/checkout@v7
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: backend/package-lock.json
+
+      - name: Install backend dependencies
+        working-directory: backend
+        run: npm ci
+
+      - name: Audit or reset production companies
+        working-directory: backend
+        run: node src/scripts/resetProductionCompanies.js
