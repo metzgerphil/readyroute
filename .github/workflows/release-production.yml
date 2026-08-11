@@ -203,6 +203,19 @@ jobs:
           echo "Production health did not report $EXPECTED_COMMIT with a compatible schema" >&2
           exit 1
 
+      - name: Install production smoke dependencies
+        working-directory: backend
+        run: npm ci --ignore-scripts --omit=dev
+
+      - name: Provision dedicated production smoke manager
+        env:
+          SMOKE_MANAGER_EMAIL: ${{ secrets.SMOKE_MANAGER_EMAIL }}
+          SMOKE_MANAGER_PASSWORD: ${{ secrets.SMOKE_MANAGER_PASSWORD }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+        working-directory: backend
+        run: npm run smoke:provision-manager
+
       - name: Run public production smoke
         env:
           SMOKE_BACKEND_URL: ${{ vars.SMOKE_BACKEND_URL || 'https://api.readyroute.org' }}
@@ -213,7 +226,7 @@ jobs:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
         working-directory: backend
-        run: npm ci --ignore-scripts --omit=dev && npm run smoke:production
+        run: npm run smoke:production
 
       - name: Release summary
         run: |

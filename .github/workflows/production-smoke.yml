@@ -34,6 +34,14 @@ jobs:
       - name: Install backend dependencies
         run: npm ci
 
+      - name: Provision dedicated production smoke manager
+        env:
+          SMOKE_MANAGER_EMAIL: ${{ secrets.SMOKE_MANAGER_EMAIL }}
+          SMOKE_MANAGER_PASSWORD: ${{ secrets.SMOKE_MANAGER_PASSWORD }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+        run: npm run smoke:provision-manager
+
       - name: Run production smoke
         env:
           SMOKE_BACKEND_URL: ${{ vars.SMOKE_BACKEND_URL || 'https://api.readyroute.org' }}
