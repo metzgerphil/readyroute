@@ -155,3 +155,10 @@ Each file above received complete content review using the appropriate text, wor
 - All 69 registered source/capture checksums and the complete portable/full-corpus validator stack pass. See `validation/workspace_restoration_audit_2026-08-10.md`.
 - Attempted the exact current original-byte recapture URLs for `SRC-MGB-DOC-0038` and `SRC-MGB-DOC-0039`; MyGroundBiz returned `Access Denied` because the session had expired.
 - Listed all 31 direct files in the connected supplied Drive folder. Neither safety PDF is present there. The two source-level original-byte gaps and their six publication-gated verified records remain open without weakening capture or status controls.
+
+## 2026-08-10 candidate-gap current-source attempt
+
+- Reconciled all 21 owner-supplied development knowledge-gap cases to existing acquisition/backlog targets, clarification-only handling, or an explicit new source/authority obligation in `validation/candidate_gap_queue_reconciliation.jsonl`.
+- Tested the newest inventoried direct MyGroundBiz targets for the mainstream backing and railroad-crossing gaps: `MGB-SAFETY-TOPIC-0016` (Backing, 2026-04-20) and `MGB-SAFETY-TOPIC-0027` (Railroad intersections, 2026-02-23).
+- Both exact URLs returned HTTP 403 with the same 3,313-byte access-denied body (SHA-256 `7e83b802e005a00ed298e93e5ae1595203888b43cd70660139db52320c0d25d4`). No response body was admitted as source evidence or copied into the corpus.
+- The backing gap remains linked to `REFSRC-041`, `REFSRC-042`, and `MGB-SAFETY-TOPIC-0016`; the railroad gap remains linked to `REFSRC-041` and `MGB-SAFETY-TOPIC-0027`.

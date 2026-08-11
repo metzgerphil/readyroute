@@ -19,3 +19,7 @@ Each case records its source candidate ID, gap type, related canonical knowledge
 These cases do not independently authorize operational instructions. `ESCALATE` cases preserve the absence of current controlling evidence; `CLARIFY` cases require the missing situation before record selection. Related canonical IDs are investigative links, not answer authority.
 
 The generated release includes `knowledge/evaluations/candidate-gap-language-cases.jsonl`. The release validator checks every related knowledge/reference foreign key and required boundary field. The full corpus validator additionally enforces the exact development candidate trace and rejects holdout contamination or queue drift.
+
+`candidate_gap_queue_reconciliation.jsonl` gives every one of the 21 cases an exact disposition: an existing acquisition target, a new source/authority obligation, a new-current-version obligation, clarification-only handling, or context required before queueing. The corpus validator enforces one row per case and verifies all referenced backlog, acquisition-resource, and knowledge IDs.
+
+The newest direct backing (`MGB-SAFETY-TOPIC-0016`, 2026-04-20) and railroad-intersections (`MGB-SAFETY-TOPIC-0027`, 2026-02-23) URLs were tested on 2026-08-10. Both returned the same HTTP 403 access-denied body, so no bytes were admitted as evidence. Their current acquisition targets remain open.

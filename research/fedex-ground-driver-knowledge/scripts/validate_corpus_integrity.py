@@ -1834,6 +1834,64 @@ def main() -> int:
             f"{invalid_candidate_gap_links}"
         )
 
+    candidate_gap_reconciliation = load_jsonl(
+        ROOT / "validation/candidate_gap_queue_reconciliation.jsonl"
+    )
+    assert_unique(
+        [row["case_id"] for row in candidate_gap_reconciliation],
+        "candidate knowledge-gap reconciliation case_id",
+    )
+    candidate_gap_by_id = {case["case_id"]: case for case in candidate_gap_cases}
+    referenced_backlog_ids = {row["backlog_id"] for row in referenced_source_backlog}
+    current_acquisition_resource_ids = {
+        row["resource_id"]
+        for row in load_csv(
+            ROOT / "inventory/mygroundbiz_authenticated_acquisition_queue.csv"
+        )
+    }
+    allowed_gap_dispositions = {
+        "EXISTING_ACQUISITION_TARGET",
+        "NEW_AUTHORITY_OR_SOURCE_REQUIRED",
+        "NEW_CURRENT_VERSION_SOURCE_REQUIRED",
+        "CLARIFICATION_ONLY",
+        "CONTEXT_REQUIRED_BEFORE_QUEUEING",
+    }
+    invalid_gap_reconciliation: list[tuple[str, str]] = []
+    if {row["case_id"] for row in candidate_gap_reconciliation} != set(candidate_gap_by_id):
+        invalid_gap_reconciliation.append(("coverage", "case set mismatch"))
+    for row in candidate_gap_reconciliation:
+        case_id = row["case_id"]
+        if case_id not in candidate_gap_by_id:
+            continue
+        if row.get("queue_disposition") not in allowed_gap_dispositions:
+            invalid_gap_reconciliation.append((case_id, "invalid disposition"))
+        if not row.get("next_action"):
+            invalid_gap_reconciliation.append((case_id, "missing next action"))
+        if not set(row.get("referenced_source_backlog_ids", [])).issubset(referenced_backlog_ids):
+            invalid_gap_reconciliation.append((case_id, "unknown referenced-source backlog ID"))
+        if not set(row.get("authenticated_acquisition_resource_ids", [])).issubset(current_acquisition_resource_ids):
+            invalid_gap_reconciliation.append((case_id, "unknown acquisition resource ID"))
+        if not set(row.get("existing_resolution_knowledge_ids", [])).issubset(knowledge_ids):
+            invalid_gap_reconciliation.append((case_id, "unknown resolution knowledge ID"))
+        if row["queue_disposition"] == "EXISTING_ACQUISITION_TARGET" and not (
+            row.get("referenced_source_backlog_ids")
+            or row.get("authenticated_acquisition_resource_ids")
+        ):
+            invalid_gap_reconciliation.append((case_id, "existing-target disposition has no target"))
+        if row["queue_disposition"] in {
+            "CLARIFICATION_ONLY",
+            "CONTEXT_REQUIRED_BEFORE_QUEUEING",
+        } and (
+            row.get("referenced_source_backlog_ids")
+            or row.get("authenticated_acquisition_resource_ids")
+        ):
+            invalid_gap_reconciliation.append((case_id, "context-only disposition prematurely selects a target"))
+    if invalid_gap_reconciliation:
+        raise SystemExit(
+            "candidate knowledge-gap queue reconciliation failure: "
+            f"{invalid_gap_reconciliation}"
+        )
+
     clarification_strategy_index = load_jsonl(
         ROOT / "validation/clarification_strategy_index.jsonl"
     )
@@ -3198,6 +3256,7 @@ def main() -> int:
         f"{len(reference_cases)} reference-language cases, "
         f"{len(candidate_operational_cases)} candidate operational cases, "
         f"{len(candidate_gap_cases)} candidate knowledge-gap cases, "
+        f"{len(candidate_gap_reconciliation)} candidate gap-reconciliation rows, "
         f"{len(record_language_surface_coverage)} record-language surface rows, "
         f"{len(clarification_strategy_index)} clarification-strategy rows, "
         f"{len(interaction_coverage)} multi-record interaction cases"

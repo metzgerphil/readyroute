@@ -52,7 +52,9 @@ The authoritative acquisition ledger is `inventory/referenced_source_backlog.csv
 
 Those obligations are now backed by 63 exact origin-source occurrences in `inventory/referenced_source_occurrences.csv`. Each occurrence identifies the reviewed source and page, section, or workbook row that established the gap; a reference title or identifier is never treated as evidence of the missing source's contents. The latest adversarial pass added the original 2025 Driver Safety Guidebook and Company Safety and Operation Handbook as explicit acquisition obligations because the secondary workbook cannot establish their railroad, flooded-road, winter, dog, backing, overhead, or route-help procedures.
 
-A deterministic 40-row acquisition-coverage projection now reconciles every obligation to the authenticated queue and preserves exact direct, contextual, and currently unlinked states. Contextual links identify record-resolution pages only and never assert that those pages contain the missing source.
+A deterministic 42-row acquisition-coverage projection now reconciles every obligation to the authenticated queue and preserves exact direct, contextual, and currently unlinked states. Contextual links identify record-resolution pages only and never assert that those pages contain the missing source.
+
+The 21 owner-supplied development knowledge-gap cases now have a separate validator-enforced queue reconciliation. Four map to existing acquisition/backlog targets, eight require a new current source or authoritative owner determination, four require exact context before an acquisition target can be selected, and five are clarification-only retrieval cases. The newest direct backing and railroad-intersections targets were tested on 2026-08-10; both returned the same HTTP 403 access-denied body, and neither response was admitted as evidence.
 
 The following are referenced by reviewed sources but absent from the supplied Drive snapshot:
 

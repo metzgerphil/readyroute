@@ -22,6 +22,8 @@ The research [goal completion matrix](../research/fedex-ground-driver-knowledge/
 
 The authenticated acquisition ledger currently contains 272 queued resources, and the referenced-source ledger contains 42 explicit missing-source obligations. These are not silently treated as reviewed or irrelevant. The latest source batches completed the current FORGE 3.3, OP-130/132/135, Download Pickup List, Dog Bite Prevention, current Equipment Terms, Vehicle Appearance FAQ, SRS/SRI FAQ, four byte-identical portal/Drive reconciliations, the 89-page OP-117 render comparison, and bounded older pickup-reference reviews. The seven approvals resolve only the narrow human-reviewed determinations; every stated gap, version-sensitive workflow, and partial branch remains preserved.
 
+All 21 candidate knowledge-gap cases are now reconciled to an existing acquisition target, a new source/authority obligation, clarification-only handling, or exact context required before queueing. Direct retrieval attempts for the newest inventoried Backing and Railroad intersections documents returned HTTP 403; no access-denied response was admitted as source evidence.
+
 ## Next priorities
 
 1. Resolve the 6 source-verified publication gaps without weakening evidence controls.
