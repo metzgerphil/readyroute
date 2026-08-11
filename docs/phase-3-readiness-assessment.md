@@ -8,14 +8,14 @@ The portable system is materially stronger, and every discovered critical softwa
 
 ## Evidence now green
 
-- Repository verification: 420 backend tests passed, 8 intentionally skipped, 0 failed; manager lint/build and 23/23 manager tests passed.
+- Repository verification: 423 backend tests passed, 8 intentionally skipped, 0 failed; manager lint/build and 23/23 manager tests passed.
 - Driver app: 29 suites and 225 tests passed; Expo configuration passed.
 - Maintained retrieval: 192/192 top-1, top-5, and mode; zero unsafe-answer gating failures.
 - Phase 2 holdout: 12/12.
-- Phase 3 adversarial/context/status suite: 1,184/1,184.
+- Phase 3 adversarial/context/status suite: 1,244/1,244, including 60 independently worded confusing-neighbor cases.
 - Traceability: 97/97 publication-ready records, 7/7 approved adjudications, and 27/27 direct answers passed.
 - Backend and manager production dependency audits: zero findings; tracked high-confidence secret scan: zero findings.
-- Fifteen defects were root-caused and fixed, including three critical retrieval/precedence failures.
+- Twenty defects were root-caused and fixed, including newly discovered wrong-procedure and noneligible-neighbor failures.
 
 ## Blockers before a limited pilot
 

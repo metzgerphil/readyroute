@@ -21,7 +21,7 @@ Status: local application review and automated checks, 2026-08-10. Not a penetra
 - API payload bounds, security headers, production CORS, login/invite/reset rate limits, and generic error responses have automated coverage.
 - Password/reset/invite replay, credential-version invalidation, one-device replacement, and cross-company token substitution pass applied-local-database tests.
 - Two-company RLS tests deny anonymous/authenticated direct reads of Phase 2 private tables and deny public billing-function execution.
-- Prompt injection, forced-code output, protected-material requests, fake policy, and noneligible-answer attempts are included in the 1,184-case Phase 3 suite.
+- Prompt injection, forced-code output, protected-material requests, fake policy, and noneligible-answer attempts are included in the 1,244-case Phase 3 suite.
 - Canonical answer traceability audit covers 97 publication-ready records, all 7 active approvals, and 27 direct-answer cases with zero failures.
 
 ## Configuration review still required

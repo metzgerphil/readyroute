@@ -124,8 +124,14 @@ function evaluateSyntheticBoundaries(indexed) {
   ];
 }
 
-function evaluateIndependentCases(indexed) {
-  const cases = readJsonLines(path.join(__dirname, 'phase3IndependentAdversarialCases.jsonl'));
+function readIndependentCases() {
+  return [
+    ...readJsonLines(path.join(__dirname, 'phase3IndependentAdversarialCases.jsonl')),
+    ...readJsonLines(path.join(__dirname, 'phase3ConfusingNeighborCases.jsonl'))
+  ];
+}
+
+function evaluateIndependentCases(indexed, cases = readIndependentCases()) {
   return cases.map((testCase) => {
     const decision = buildDriverHelpDecision(testCase.utterance, indexed);
     const expectedIds = new Set(testCase.expected_knowledge_ids || []);
@@ -216,13 +222,28 @@ function validate() {
     }
   }
   const synthetic = evaluateSyntheticBoundaries(indexed);
-  const independent = evaluateIndependentCases(indexed);
+  const independentCases = readIndependentCases();
+  const independent = evaluateIndependentCases(indexed, independentCases);
   const contextResults = evaluateContextSequence(indexed);
+  const expectedCoverageIds = new Set(
+    [...maintainedCases, ...independentCases].flatMap((testCase) => testCase.expected_knowledge_ids || [])
+  );
+  const publicationReadyIds = indexed
+    .filter((record) => record.is_published === true)
+    .map((record) => record.knowledge_id);
+  const missingPublicationReadyIds = publicationReadyIds.filter((id) => !expectedCoverageIds.has(id));
+  const coverageFailures = missingPublicationReadyIds.map((knowledgeId) => ({
+    case_id: `P3-COVERAGE-${knowledgeId}`,
+    knowledge_id: knowledgeId,
+    failure_category: 'EVALUATION_COVERAGE_FAILURE',
+    passed: false
+  }));
   const failures = [
     ...results.filter((row) => !row.passed),
     ...synthetic.filter((row) => !row.passed),
     ...independent.filter((row) => !row.passed),
-    ...contextResults.filter((row) => !row.passed)
+    ...contextResults.filter((row) => !row.passed),
+    ...coverageFailures
   ];
   const sortedTimings = timings.sort((a, b) => a - b);
   const summary = {
@@ -231,6 +252,11 @@ function validate() {
     synthetic_boundary_cases: synthetic.length,
     independent_adversarial_cases: independent.length,
     conversation_context_cases: contextResults.length,
+    publication_ready_record_coverage: {
+      covered: publicationReadyIds.length - missingPublicationReadyIds.length,
+      total: publicationReadyIds.length,
+      missing: missingPublicationReadyIds
+    },
     passed: results.filter((row) => row.passed).length
       + synthetic.filter((row) => row.passed).length
       + independent.filter((row) => row.passed).length

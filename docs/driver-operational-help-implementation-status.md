@@ -64,12 +64,12 @@ UTC is the documented V1 billing-month boundary. A different contractual billing
 ## Verification in this worktree
 
 - Canonical importer/retrieval focused tests: passed.
-- Backend unit suite with inert local test configuration: 420 passed, 8 skipped, 0 failed (428 total). The applied-database integration test is intentionally skipped in the portable unit run.
+- Backend unit suite with inert local test configuration: 423 passed, 8 skipped, 0 failed (431 total). The applied-database integration test is intentionally skipped in the portable unit run.
 - Applied local Supabase migrations and SQL integration: passed. Checks cover two companies, RLS/anonymous denial, canonical publication constraints, monthly billing idempotency, username uniqueness, and device uniqueness.
 - Applied local Supabase authentication integration: passed. Checks cover invite resend/replay/expiry, cross-company substitution, reset replay, and immediate revocation of the previous device token.
 - Phase 1 production retrieval suite: passed all 192 cases with zero unsafe answers.
 - Candidate operational retrieval suite: passed 69/69 with zero unsafe-answer failures.
-- Phase 3 adversarial/context/status suite: passed 1,184/1,184 after post-Phase-1 reconciliation defects were fixed and retained as regressions.
+- Phase 3 adversarial/context/status suite: passed 1,244/1,244, including 60 new independently worded confusing-neighbor cases, after discovered defects were fixed and retained as regressions.
 - Canonical traceability audit: 97/97 publication-ready records, 7/7 active approvals, and 27/27 direct-answer cases.
 - Knowledge import dry run: passed with the counts above.
 - Driver app: 29 suites / 225 tests passed; Expo configuration check passed. Existing VirtualizedList `act(...)` warnings remain non-failing test-harness cleanup.

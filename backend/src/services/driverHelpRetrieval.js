@@ -25,6 +25,7 @@ const TOKEN_ALIASES = new Map([
   ['receiver', 'recipient'],
   ['truck', 'vehicle'],
   ['van', 'vehicle'],
+  ['vans', 'vehicle'],
   ['vehicles', 'vehicle'],
   ['swap', 'change'],
   ['swapped', 'change'],
@@ -42,6 +43,9 @@ const TOKEN_ALIASES = new Map([
   ['syncing', 'sync'],
   ['ppoda', 'ppod'],
   ['sign', 'signature'],
+  ['handheld', 'scanner'],
+  ['identification', 'id'],
+  ['wine', 'alcohol'],
   ['picture', 'photo'],
   ['pictures', 'photo'],
   ['pics', 'photo'],
@@ -142,14 +146,20 @@ function scoreKnowledgeRecord(question, record, context = {}) {
   }
 
   const intentSignals = [
-    { id: 'KNO-DEL-SIG-DSR-001', anySets: [['dsr'], ['direct', 'signature']] },
-    { id: 'KNO-DEL-SIG-ISR-001', anySets: [['isr'], ['indirect', 'signature']] },
-    { id: 'KNO-DEL-SIG-ASR-001', anySets: [['asr'], ['adult', 'signature']] },
-    { id: 'KNO-SAF-DOG-ENCOUNTER-001', required: ['dog'], any: ['loose', 'porch', 'approach', 'bite', 'blocks'], boost: 60 },
+    { id: 'KNO-DEL-SIG-DSR-001', anySets: [['dsr'], ['direct', 'signature']], boost: 180 },
+    { id: 'KNO-DEL-SIG-ISR-001', anySets: [['isr'], ['indirect', 'signature']], boost: 180 },
+    { id: 'KNO-DEL-SIG-ASR-001', anySets: [['asr'], ['adult', 'signature']], boost: 180 },
+    { id: 'KNO-SAF-DOG-ENCOUNTER-001', required: ['dog'], any: ['loose', 'porch', 'approach', 'bite', 'blocks'], boost: 280 },
     { id: 'KNO-FORGE-VEHICLE-CHANGE-001', required: ['vehicle', 'change'] },
     { id: 'KNO-PUP-CALLTAG-FRAUD-001', required: ['call', 'tag', 'fraud'], boost: 80 },
     { id: 'KNO-DEL-MISDELIVERY-RECOVERY-001', required: ['wrong'], any: ['house', 'address', 'door'] },
-    { id: 'KNO-PUP-SCANNER-FAIL-001', required: ['pickup', 'scanner'], any: ['barcode', 'package', 'read', 'scan'], boost: 60 },
+    {
+      id: 'KNO-PUP-SCANNER-FAIL-001',
+      required: ['pickup'],
+      anySets: [['scanner'], ['barcode']],
+      any: ['barcode', 'package', 'read', 'scan', 'manual', 'entry'],
+      boost: 200
+    },
     { id: 'KNO-PUP-VEHICLE-CAPACITY-001', required: ['pickup', 'vehicle', 'fit'] },
     {
       id: 'KNO-DEL-OP206-001',
@@ -172,9 +182,23 @@ function scoreKnowledgeRecord(question, record, context = {}) {
     {
       id: 'KNO-PUP-CALLTAG-RESTRICTED-001',
       required: ['call', 'tag'],
-      any: ['leak', 'leaking', 'damage', 'damaged', 'restricted', 'hazmat'],
+      any: ['leak', 'leaking', 'liquid', 'damage', 'damaged', 'restricted', 'hazmat', 'boxed'],
       boost: 180
     },
+    { id: 'KNO-DEL-ATTEMPT-LIMIT-001', required: ['fourth', 'time'], any: ['package', 'address', 'back'], boost: 180 },
+    { id: 'KNO-PUP-UNLISTED-001', required: ['pickup', 'listed'], any: ['not', 'shipper', 'ready'], boost: 180 },
+    { id: 'KNO-PUP-WINDOW-RISK-001', required: ['pickup'], any: ['closing', 'window', 'late', 'finish'], boost: 180 },
+    { id: 'KNO-FORGE-CAMERA-SCAN-001', required: ['camera', 'scan'], any: ['hardware', 'trigger', 'barcode'], boost: 190 },
+    { id: 'KNO-FORGE-DELAYED-LOGIN-001', required: ['authentication'], any: ['down', 'outage', 'route', 'list'], boost: 190 },
+    { id: 'KNO-DEL-APT-001', required: ['apartment', 'office'], any: ['unit', 'answers', 'open'], boost: 180 },
+    { id: 'KNO-DEL-HAL-NONHAL-TRANSFER-001', required: ['hal', 'transfer'], any: ['normal', 'non', 'package'], boost: 190 },
+    { id: 'KNO-HAZ-LOAD-PAPERS-001', required: ['hazmat', 'papers'], any: ['loaded', 'stay', 'driving'], boost: 200 },
+    { id: 'KNO-HAZ-AKHI-001', required: ['hawaii'], any: ['hazmat', 'dangerous', 'goods', 'shipment'], boost: 190 },
+    { id: 'KNO-SEC-ACTIVE-THREAT-001', anySets: [['armed', 'attacking'], ['weapon', 'attacking'], ['gun', 'attacking']], boost: 220 },
+    { id: 'KNO-INC-ACCIDENT-SCENE-001', anySets: [['collision', 'blocking'], ['crash', 'blocking']], boost: 200 },
+    { id: 'KNO-INC-ACCIDENT-REPORT-001', required: ['crash'], any: ['report', 'notification', 'notify'], boost: 190 },
+    { id: 'KNO-HOS-DUTY-LIMITS-001', required: ['eleven', 'hours'], any: ['driving', 'stops', 'keep'], boost: 200 },
+    { id: 'KNO-VEH-RENTAL-PREP-001', required: ['rental', 'vehicle'], any: ['markings', 'unit', 'number', 'route'], boost: 200 },
     { id: 'KNO-PUP-INTERNATIONAL-DOCS-001', required: ['international', 'pickup'], any: ['document', 'documents', 'paper', 'papers'] },
     { id: 'KNO-FORGE-EDIT-ADDRESS-001', required: ['address'], any: ['edit', 'wrong', 'incorrect', 'label'] }
   ];
@@ -247,7 +271,7 @@ function scoreKnowledgeRecord(question, record, context = {}) {
     {
       id: 'KNO-PUP-CALLTAG-SUCCESS-001',
       required: ['call', 'tag'],
-      forbiddenAny: ['fraud', 'refused', 'restricted', 'ready', 'hazmat', 'leak', 'leaking', 'damage', 'damaged'],
+      forbiddenAny: ['fraud', 'refused', 'restricted', 'ready', 'hazmat', 'leak', 'leaking', 'liquid', 'damage', 'damaged', 'boxed'],
       boost: 100
     },
     {
@@ -515,6 +539,23 @@ function buildDiscoveredTopicClarification(question, ranked, candidates) {
     .some((token) => tokens.has(token));
 
   const topRankedRecord = ranked[0]?.record || null;
+
+  const hasNobodyAvailable = tokens.has('nobody')
+    || (tokens.has('no') && tokens.has('one'));
+  const hasNoAnswerContext = [
+    'signature', 'isr', 'dsr', 'asr', 'alcohol', 'hazmat', 'business',
+    'residential', 'apartment', 'pickup', 'call', 'tag'
+  ].some((token) => tokens.has(token));
+  if (hasNobodyAvailable && !hasNoAnswerContext) {
+    return {
+      response_mode: 'CLARIFY',
+      confidence: 0,
+      candidates,
+      selected_records: [],
+      clarification_prompt: 'Is this a signature-required delivery, a normal residential delivery, a business delivery, or a pickup?',
+      clarification_options: []
+    };
+  }
 
   if (tokens.has('customer')
     && tokens.has('package')
@@ -869,6 +910,16 @@ function buildDriverHelpDecision(question, records, context = {}) {
       && queryTokenSet.has('signature')
       && queryTokenSet.has('device')
       && ['not', 'refused'].some((token) => queryTokenSet.has(token))
+  ) || (
+    top.record.knowledge_id === 'KNO-PUP-CALLTAG-REFUSED-001'
+      && queryTokenSet.has('call')
+      && queryTokenSet.has('tag')
+      && queryTokenSet.has('refused')
+  ) || (
+    top.record.knowledge_id === 'KNO-DEL-BARCODE-001'
+      && queryTokenSet.has('delivery')
+      && queryTokenSet.has('barcode')
+      && ['missing', 'zero'].some((token) => queryTokenSet.has(token))
   );
   if (isSupportedDefinition || (isNarrowDirectIntent && patternRuntimeMode !== 'ESCALATE')) {
     return {

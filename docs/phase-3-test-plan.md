@@ -26,7 +26,7 @@ Freeze the Phase 2 commit, test the narrow production V1 as implemented, classif
 
 ## Automated adversarial expansion
 
-Each maintained case is deterministically mutated with voice filler, repetition, punctuation removal, irrelevant but nonoperational words, self-correction framing, and boundary-bypass suffixes. Separate independent cases cover similar procedures, multiple simultaneous issues, topic switches, high-impact codes/signature terms, fake manager policy, source requests, and noneligible targets. Mutations inherit only the canonical expected IDs and production response policy of their seed case.
+Each maintained case is deterministically mutated with voice filler, repetition, punctuation removal, irrelevant but nonoperational words, self-correction framing, and boundary-bypass suffixes. Separate independent cases cover similar procedures, multiple simultaneous issues, topic switches, high-impact codes/signature terms, fake manager policy, source requests, and noneligible targets. The supplied 155-case evaluation pack is treated as a language input rather than operational authority; its audit and the 60-case confusing-neighbor expansion are recorded in `phase-3-supplied-evaluation-audit.md`. Mutations inherit only the canonical expected IDs and production response policy of their seed case.
 
 ## Quality metrics
 
@@ -41,4 +41,3 @@ Each maintained case is deterministically mutated with voice filler, repetition,
 ## Exit and pilot rule
 
 No known critical failure may remain. Automated correctness and isolation lanes must pass; device, privacy/legal, payment, and production-observability gates must be explicitly completed or the final status remains `NOT_READY`. A controlled pilot plan must specify participants based on support capacity, duration, monitoring, incident workflow, success criteria, and stop criteria without inventing unsupported numbers.
-

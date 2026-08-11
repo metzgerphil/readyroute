@@ -572,3 +572,59 @@ test('a boundary-bypass request with only a mystery package refuses instead of g
   assert.equal(decision.response_mode, 'ESCALATE');
   assert.deepEqual(decision.selected_records, []);
 });
+
+test('a context-free nobody-home question clarifies instead of choosing a specific service', () => {
+  const alcohol = {
+    ...records[0],
+    knowledge_id: 'KNO-DEL-ALCOHOL-001',
+    canonical_situation: 'Delivering an alcohol package',
+    normalized_description: 'Alcohol delivery when nobody is home',
+    driver_question_variants: ['alcohol nobody home']
+  };
+  const decision = buildDriverHelpDecision(
+    'nobody answered the door what am I allowed to do',
+    [alcohol, ...records]
+  );
+
+  assert.equal(decision.response_mode, 'CLARIFY');
+  assert.deepEqual(decision.selected_records, []);
+  assert.match(decision.clarification_prompt, /signature-required delivery/i);
+});
+
+test('an explicit signature type outranks a conflicting neighbor cue', () => {
+  const isr = {
+    ...records[0],
+    knowledge_id: 'KNO-DEL-SIG-ISR-001',
+    canonical_situation: 'Delivering an Indirect Signature Required package',
+    normalized_description: 'Neighbor may accept an eligible ISR package',
+    driver_question_variants: ['neighbor signs indirect signature package']
+  };
+  const ranked = rankKnowledgeRecords(
+    'direct signature package and the neighbor offered to take it',
+    [records[0], isr]
+  );
+
+  assert.equal(ranked[0].record.knowledge_id, 'KNO-DEL-SIG-DSR-001');
+});
+
+test('an explicit pickup barcode failure outranks unrelated delivery records', () => {
+  const pickupScanner = {
+    ...records[0],
+    knowledge_id: 'KNO-PUP-SCANNER-FAIL-001',
+    canonical_situation: 'Pickup package barcode cannot be scanned',
+    normalized_description: 'Pickup barcode does not read after manual entry',
+    driver_question_variants: ['pickup scanner will not read barcode']
+  };
+  const unrelatedDelivery = {
+    ...records[0],
+    knowledge_id: 'KNO-DEL-SECURITY-NODELIVERY-001',
+    canonical_situation: 'Security prevents delivery',
+    normalized_description: 'Delivery cannot be completed',
+    driver_question_variants: ['delivery not completed']
+  };
+
+  assert.equal(
+    rankKnowledgeRecords('pickup barcode will not read even with manual entry', [pickupScanner, unrelatedDelivery])[0].record.knowledge_id,
+    pickupScanner.knowledge_id
+  );
+});

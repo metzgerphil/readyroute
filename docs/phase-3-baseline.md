@@ -35,7 +35,7 @@ Originally frozen: 2026-08-10 before Phase 3 hardening changes. Reconciled on 20
 
 - Maintained Phase 1 cases: 192/192 top-1, 192/192 top-5, 192/192 response-mode matches, 0 unsafe answer-gating failures.
 - Phase 2 independent holdout: 12/12.
-- Backend portable unit suite: 420 passed, 8 skipped, 0 failed.
+- Backend portable unit suite: 423 passed, 8 skipped, 0 failed.
 - Applied local database SQL and authentication integration: passed.
 - Driver app: 29 suites, 225 tests passed.
 - Manager portal: lint and build passed; 23 tests passed.

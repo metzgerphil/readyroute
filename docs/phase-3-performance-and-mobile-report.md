@@ -4,7 +4,7 @@ Run date: 2026-08-10.
 
 ## Measured component performance
 
-The 1,184-case local adversarial run measured deterministic retrieval against the in-memory canonical index at 14.205 ms median, 16.508 ms p90, 17.830 ms p95, and 24.041 ms p99. These figures do not include authentication, database, network, speech recognition, model processing, or rendering and therefore are not an end-to-end performance claim.
+The 1,244-case local adversarial run measured deterministic retrieval against the in-memory canonical index at 10.066 ms median, 10.828 ms p90, 11.107 ms p95, and 11.673 ms p99. These figures do not include authentication, database, network, speech recognition, model processing, or rendering and therefore are not an end-to-end performance claim.
 
 End-to-end percentile measurement remains blocked until an authorized production-like environment and physical test devices exist. Accuracy and eligibility checks must not be bypassed to reduce latency.
 
