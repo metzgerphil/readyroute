@@ -20,7 +20,7 @@ Database timeout, retrieval-service failure, model-provider failure, speech-uplo
 
 ## Mobile review
 
-The portable driver-app suite passes 29/29 suites and 225/225 tests, including the core Driver Help answer, clarification, escalation, feedback, traceability, timeout, pending-follow-up, and duplicate-submit flows. Expo configuration validation also passes.
+The portable driver-app suite passes 29/29 suites and 226/226 tests, including the simplified voice-or-text home state, automatic final-transcript submission, core Driver Help answer, clarification, escalation, feedback, traceability, timeout, pending-follow-up, and duplicate-submit flows. Expo configuration validation and native iOS export also pass.
 
 The manager portal passes lint, production build, and 23/23 portable tests.
 

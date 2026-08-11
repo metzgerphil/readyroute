@@ -56,10 +56,14 @@ function LoadingScreen() {
   );
 }
 
-function DrawerMenuButton({ onPress }) {
+function DrawerMenuButton({ label = 'Menu', onPress }) {
   return (
-    <Pressable onPress={onPress} style={({ pressed }) => [styles.menuButton, pressed ? styles.menuButtonPressed : null]}>
-      <Text style={styles.menuButtonText}>Menu</Text>
+    <Pressable
+      accessibilityLabel={`Open ${label.toLowerCase()}`}
+      onPress={onPress}
+      style={({ pressed }) => [styles.menuButton, pressed ? styles.menuButtonPressed : null]}
+    >
+      <Text style={styles.menuButtonText}>{label}</Text>
     </Pressable>
   );
 }
@@ -546,7 +550,10 @@ export default function AppNavigator() {
         <>
           {currentRouteName === 'Home' || currentRouteName === 'RouteTools' || currentRouteName == null || String(currentRouteName || '').startsWith('Manager') ? (
             <View pointerEvents="box-none" style={[styles.topLeftControlsWrap, { top: insets.top + 10 }]}>
-              <DrawerMenuButton onPress={openDrawer} />
+              <DrawerMenuButton
+                label={DRIVER_HELP_ONLY && activeMode === 'driver' ? 'Account' : 'Menu'}
+                onPress={openDrawer}
+              />
               {activeMode === 'manager' && currentRouteName === 'ManagerMap' ? (
                 <BackButton
                   onPress={handleManagerBack}

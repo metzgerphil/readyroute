@@ -8,8 +8,10 @@ Phase 2 has been reconciled to the completed owner-defined Phase 1 mainstream da
 
 The existing product already provides the core V1 experience:
 
-- Operational Help is the driver's primary mobile screen; Route Tools remains available.
+- Operational Help is the driver's primary mobile screen. Help-only production builds hide Route Tools.
+- The V1 home state is intentionally limited to the Ready Route wordmark, account access, one large “Tap to ask” microphone, and one text-question field. Categories, examples, recent cards, code browsing, and duplicate bottom navigation are absent.
 - Voice uses native `expo-speech-recognition`, and voice/text share the same authenticated API.
+- A final voice transcript submits automatically; the driver does not need to tap a second send button after speaking.
 - Retrieval supports `ANSWER`, minimum `CLARIFY`, and `ESCALATE`, plus conversational session context.
 - Feedback, unanswered-question capture, manager activity, and account-scoped storage are implemented.
 - No external model is required for V1 and no general-knowledge operational fallback exists.
@@ -75,7 +77,7 @@ UTC is the documented V1 billing-month boundary. A different contractual billing
 - Canonical reference-language runtime suite: passed 23/23, including namespace collisions, unknown codes, status-limited definitions, authorization ambiguity, and mandatory workflow boundaries.
 - Canonical traceability audit: 97/97 publication-ready records, 7/7 active approvals, and 27/27 direct-answer cases.
 - Knowledge import dry run: passed with the counts above.
-- Driver app: 29 suites / 225 tests passed; Expo configuration check passed. Existing VirtualizedList `act(...)` warnings remain non-failing test-harness cleanup.
+- Driver app: 29 suites / 226 tests passed; Expo configuration and native iOS export checks passed. Existing VirtualizedList `act(...)` warnings remain non-failing test-harness cleanup.
 - The mobile dependency install reports 12 high-severity transitive audit findings; dependency triage is required before release rather than applying an unreviewed breaking `npm audit fix --force`.
 - Backend and manager-portal production dependency audits report zero vulnerabilities after non-breaking updates. Manager portal lint and production build pass.
 - Portable knowledge validation, release build, source-archive checksum/integrity validation, 192-case retrieval evaluation, and 12-case independent holdout all pass.

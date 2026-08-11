@@ -31,8 +31,29 @@ describe('DriverHelpScreen', () => {
     Object.keys(mockSpeechHandlers).forEach((key) => delete mockSpeechHandlers[key]);
   });
 
-  it('starts native speech recognition and puts the transcript in the question field', async () => {
+  it('keeps the V1 home screen focused on one voice-or-text question', () => {
+    const screen = render(<DriverHelpScreen />);
+
+    expect(screen.getByText('What do you need help with?')).toBeTruthy();
+    expect(screen.getByText('Tap to ask')).toBeTruthy();
+    expect(screen.getByPlaceholderText('Type your question')).toBeTruthy();
+    expect(screen.queryByText('Route Tools')).toBeNull();
+    expect(screen.queryByText('Code Reference')).toBeNull();
+    expect(screen.queryByText('Try an example')).toBeNull();
+    expect(screen.queryByText('What happened?')).toBeNull();
+  });
+
+  it('starts native speech recognition and submits the final transcript automatically', async () => {
     ExpoSpeechRecognitionModule.requestPermissionsAsync.mockResolvedValueOnce({ granted: true });
+    api.post.mockResolvedValueOnce({
+      data: {
+        session_id: 'voice-session',
+        interaction_id: 'voice-interaction',
+        response_mode: 'ANSWER',
+        answer: 'Use the verified signature procedure.',
+        trace: [{ knowledge_id: 'KNO-DEL-SIG-DSR-001', version: 1 }]
+      }
+    });
     const screen = render(<DriverHelpScreen />);
 
     fireEvent.press(screen.getByLabelText('Speak a question'));
@@ -55,8 +76,12 @@ describe('DriverHelpScreen', () => {
       results: [{ transcript: 'Signature package nobody home' }]
     }));
     act(() => mockSpeechHandlers.end());
-    expect(screen.getByDisplayValue('Signature package nobody home')).toBeTruthy();
-    expect(screen.getByText('Voice captured. Review the question, then tap Ask Ready Route.')).toBeTruthy();
+    await waitFor(() => {
+      expect(api.post).toHaveBeenCalledWith('/driver-help/query', {
+        question: 'Signature package nobody home'
+      });
+      expect(screen.getByText('Use the verified signature procedure.')).toBeTruthy();
+    });
   });
 
   it('explains how to recover when speech permission is denied', async () => {

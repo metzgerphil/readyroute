@@ -11,6 +11,7 @@ import {
   View
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import Svg, { Line, Path } from 'react-native-svg';
 import {
   ExpoSpeechRecognitionModule,
   useSpeechRecognitionEvent
@@ -20,11 +21,48 @@ import api from '../services/api';
 import appTheme from '../theme/appTheme';
 import { getApiErrorMessage } from '../utils/apiError';
 
-const EXAMPLE_QUESTIONS = [
-  'Signature package, nobody home',
-  "I'm at a pickup but there is nothing here",
-  "The barcode won't scan"
-];
+const BRAND_ORANGE = '#ff6200';
+const BRAND_NAVY = '#173042';
+const BRAND_BACKGROUND = '#f7f5f1';
+
+function MicrophoneIcon({ size = 50 }) {
+  return (
+    <Svg height={size} viewBox="0 0 48 48" width={size}>
+      <Path
+        d="M24 29c4.42 0 8-3.58 8-8V10a8 8 0 0 0-16 0v11c0 4.42 3.58 8 8 8Z"
+        fill="none"
+        stroke="#ffffff"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth="4"
+      />
+      <Path
+        d="M10.5 21.5v1.5c0 7.46 6.04 13.5 13.5 13.5S37.5 30.46 37.5 23v-1.5"
+        fill="none"
+        stroke="#ffffff"
+        strokeLinecap="round"
+        strokeWidth="4"
+      />
+      <Line stroke="#ffffff" strokeLinecap="round" strokeWidth="4" x1="24" x2="24" y1="36.5" y2="43" />
+      <Line stroke="#ffffff" strokeLinecap="round" strokeWidth="4" x1="17.5" x2="30.5" y1="43" y2="43" />
+    </Svg>
+  );
+}
+
+function SendIcon() {
+  return (
+    <Svg height={23} viewBox="0 0 24 24" width={23}>
+      <Path
+        d="m4 4 17 8-17 8 3.5-8L4 4Zm3.5 8H21"
+        fill="none"
+        stroke="#ffffff"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth="2"
+      />
+    </Svg>
+  );
+}
 
 function splitAnswerIntoSteps(answer) {
   return (String(answer || '').match(/[^.!?]+[.!?]+|[^.!?]+$/g) || [])
@@ -78,7 +116,11 @@ export default function DriverHelpScreen() {
     if (transcript) {
       setQuestion(transcript);
       setError('');
-      setDictationHint(true);
+      const isFinalTranscript = event.isFinal === true || event.results?.[0]?.isFinal === true;
+      setDictationHint(!isFinalTranscript);
+      if (isFinalTranscript) {
+        submitQuestion(transcript);
+      }
     }
   });
 
@@ -197,9 +239,9 @@ export default function DriverHelpScreen() {
     setDictationHint(false);
   }
 
-  function renderQuestionComposer(placeholder = 'Type the situation here...') {
+  function renderQuestionComposer(placeholder = 'Type your question') {
     return (
-      <View style={styles.questionCard}>
+      <View style={styles.questionComposer}>
         <TextInput
           accessibilityLabel="Driver question"
           blurOnSubmit={false}
@@ -215,7 +257,7 @@ export default function DriverHelpScreen() {
           ref={inputRef}
           returnKeyType="send"
           style={styles.input}
-          textAlignVertical="top"
+          textAlignVertical="center"
           value={question}
         />
         <Pressable
@@ -223,7 +265,7 @@ export default function DriverHelpScreen() {
           disabled={question.trim().length < 2 || isSubmitting}
           onPress={() => submitQuestion()}
           style={({ pressed }) => [
-            styles.askButton,
+            styles.sendButton,
             (question.trim().length < 2 || isSubmitting) ? styles.disabled : null,
             pressed && question.trim().length >= 2 && !isSubmitting ? styles.pressed : null
           ]}
@@ -231,7 +273,7 @@ export default function DriverHelpScreen() {
           {isSubmitting ? (
             <ActivityIndicator color={appTheme.colors.white} />
           ) : (
-            <Text style={styles.askButtonText}>Ask Ready Route</Text>
+            <SendIcon />
           )}
         </Pressable>
       </View>
@@ -249,36 +291,39 @@ export default function DriverHelpScreen() {
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
         >
-          <View style={styles.hero}>
-            <Text style={styles.eyebrow}>Operational help</Text>
-            <Text style={styles.title}>What happened?</Text>
-            <Text style={styles.subtitle}>
-              Ask what to do. Ready Route will use only verified FedEx Ground material.
+          <View style={[styles.brandRow, result ? styles.brandRowCompact : null]}>
+            <Text accessibilityRole="header" style={styles.wordmark}>
+              ready<Text style={styles.wordmarkAccent}>Route</Text>
             </Text>
           </View>
 
-          <Pressable
-            accessibilityHint={isListening ? 'Stops speech recognition' : 'Starts speech recognition'}
-            accessibilityLabel={isListening ? 'Stop listening' : 'Speak a question'}
-            accessibilityRole="button"
-            disabled={isSubmitting}
-            onPress={toggleDictation}
-            style={({ pressed }) => [
-              styles.micButton,
-              isListening ? styles.micButtonListening : null,
-              isSubmitting ? styles.disabled : null,
-              pressed ? styles.pressed : null
-            ]}
-          >
-            <Text style={styles.micIcon}>{isListening ? '■' : '🎙'}</Text>
-            <Text style={styles.micLabel}>{isListening ? 'Stop' : 'Speak'}</Text>
-          </Pressable>
+          {!result ? (
+            <View style={styles.homeHero}>
+              <Text style={styles.title}>What do you need help with?</Text>
+              <Pressable
+                accessibilityHint={isListening ? 'Stops speech recognition' : 'Starts speech recognition'}
+                accessibilityLabel={isListening ? 'Stop listening' : 'Speak a question'}
+                accessibilityRole="button"
+                disabled={isSubmitting}
+                onPress={toggleDictation}
+                style={({ pressed }) => [
+                  styles.micButton,
+                  isListening ? styles.micButtonListening : null,
+                  isSubmitting ? styles.disabled : null,
+                  pressed ? styles.pressed : null
+                ]}
+              >
+                {isListening ? <View style={styles.stopIcon} /> : <MicrophoneIcon />}
+              </Pressable>
+              <Text style={styles.micLabel}>{isListening ? 'Tap to stop' : 'Tap to ask'}</Text>
+            </View>
+          ) : null}
 
           {isListening ? (
             <Text style={styles.listeningText}>Listening… Speak your question now.</Text>
           ) : dictationHint ? (
             <Text style={styles.dictationHint}>
-              Voice captured. Review the question, then tap Ask Ready Route.
+              Voice captured. Review it, then tap send.
             </Text>
           ) : null}
 
@@ -287,21 +332,6 @@ export default function DriverHelpScreen() {
           ) : null}
 
           {!result ? renderQuestionComposer() : null}
-
-          {!result ? (
-            <View style={styles.examples}>
-              <Text style={styles.sectionLabel}>Try an example</Text>
-              {EXAMPLE_QUESTIONS.map((example) => (
-                <Pressable
-                  key={example}
-                  onPress={() => setQuestion(example)}
-                  style={({ pressed }) => [styles.exampleChip, pressed ? styles.pressed : null]}
-                >
-                  <Text style={styles.exampleText}>{example}</Text>
-                </Pressable>
-              ))}
-            </View>
-          ) : null}
 
           {error ? (
             <View style={styles.errorCard}>
@@ -515,13 +545,13 @@ export default function DriverHelpScreen() {
                   onPress={startNewSituation}
                   style={({ pressed }) => [styles.newSituationButton, pressed ? styles.pressed : null]}
                 >
-                  <Text style={styles.newSituationText}>New situation</Text>
+                  <Text style={styles.newSituationText}>Ask another question</Text>
                 </Pressable>
               </View>
               {renderQuestionComposer(
                 result.response_mode === 'CLARIFY'
-                  ? 'Answer the requested detail...'
-                  : 'Ask a follow-up question...'
+                  ? 'Answer this detail'
+                  : 'Ask a follow-up question'
               )}
             </>
           ) : null}
@@ -532,32 +562,29 @@ export default function DriverHelpScreen() {
 }
 
 const styles = StyleSheet.create({
-  safeArea: { backgroundColor: appTheme.colors.background, flex: 1 },
+  safeArea: { backgroundColor: BRAND_BACKGROUND, flex: 1 },
   keyboardView: { flex: 1 },
-  content: { alignItems: 'center', paddingBottom: 48, paddingHorizontal: 18, paddingTop: 64 },
-  hero: { alignItems: 'center', maxWidth: 620 },
-  eyebrow: { color: appTheme.colors.orangeDeep, fontSize: 12, fontWeight: '800', letterSpacing: 1.1, textTransform: 'uppercase' },
-  title: { color: appTheme.colors.textPrimary, fontSize: 34, fontWeight: '900', marginTop: 8 },
-  subtitle: { color: appTheme.colors.textSecondary, fontSize: 16, lineHeight: 23, marginTop: 10, textAlign: 'center' },
-  micButton: { alignItems: 'center', backgroundColor: appTheme.colors.orange, borderRadius: 54, height: 108, justifyContent: 'center', marginTop: 28, shadowColor: appTheme.colors.orangeDeep, shadowOffset: { height: 8, width: 0 }, shadowOpacity: 0.22, shadowRadius: 18, width: 108 },
-  micButtonListening: { backgroundColor: appTheme.colors.charcoal },
-  micIcon: { color: appTheme.colors.white, fontSize: 28, lineHeight: 30 },
-  micLabel: { color: appTheme.colors.white, fontSize: 14, fontWeight: '900', marginTop: 5 },
+  content: { alignItems: 'center', flexGrow: 1, paddingBottom: 48, paddingHorizontal: 20, paddingTop: 48 },
+  brandRow: { alignItems: 'center', maxWidth: 680, minHeight: 46, width: '100%' },
+  brandRowCompact: { minHeight: 38 },
+  wordmark: { color: BRAND_NAVY, fontSize: 28, fontWeight: '900', letterSpacing: -1 },
+  wordmarkAccent: { color: BRAND_ORANGE, fontWeight: '500' },
+  homeHero: { alignItems: 'center', maxWidth: 620, paddingTop: 42, width: '100%' },
+  title: { color: BRAND_NAVY, fontSize: 34, fontWeight: '900', lineHeight: 41, maxWidth: 520, textAlign: 'center' },
+  micButton: { alignItems: 'center', backgroundColor: BRAND_ORANGE, borderColor: '#ffffff', borderRadius: 82, borderWidth: 5, height: 164, justifyContent: 'center', marginTop: 38, shadowColor: '#d45400', shadowOffset: { height: 10, width: 0 }, shadowOpacity: 0.24, shadowRadius: 22, width: 164 },
+  micButtonListening: { backgroundColor: BRAND_NAVY, shadowColor: BRAND_NAVY },
+  stopIcon: { backgroundColor: '#ffffff', borderRadius: 5, height: 38, width: 38 },
+  micLabel: { color: BRAND_NAVY, fontSize: 18, fontWeight: '800', marginTop: 18 },
   listeningText: { color: appTheme.colors.orangeDeep, fontSize: 14, fontWeight: '800', marginTop: 12, textAlign: 'center' },
   dictationHint: { color: appTheme.colors.textSecondary, fontSize: 13, marginTop: 10, textAlign: 'center' },
   dictationError: { color: appTheme.colors.danger, fontSize: 13, fontWeight: '700', marginTop: 10, maxWidth: 620, textAlign: 'center' },
-  questionCard: { backgroundColor: appTheme.colors.surface, borderColor: appTheme.colors.border, borderRadius: 22, borderWidth: 1, marginTop: 22, maxWidth: 680, padding: 14, width: '100%', ...appTheme.shadows.card },
-  input: { color: appTheme.colors.textPrimary, fontSize: 17, lineHeight: 24, minHeight: 82, padding: 8 },
-  askButton: { alignItems: 'center', backgroundColor: appTheme.colors.charcoal, borderRadius: 17, height: 50, justifyContent: 'center', marginTop: 8 },
-  askButtonText: { color: appTheme.colors.white, fontSize: 16, fontWeight: '800' },
+  questionComposer: { alignItems: 'center', backgroundColor: appTheme.colors.surface, borderColor: '#dde5eb', borderRadius: 18, borderWidth: 1, flexDirection: 'row', gap: 10, marginTop: 32, maxWidth: 680, minHeight: 64, paddingHorizontal: 8, paddingVertical: 7, width: '100%', ...appTheme.shadows.card },
+  input: { color: BRAND_NAVY, flex: 1, fontSize: 17, lineHeight: 23, maxHeight: 112, minHeight: 48, paddingHorizontal: 10, paddingVertical: 8 },
+  sendButton: { alignItems: 'center', backgroundColor: BRAND_ORANGE, borderRadius: 24, height: 48, justifyContent: 'center', width: 48 },
   disabled: { opacity: 0.45 },
   pressed: { opacity: 0.78 },
-  examples: { gap: 9, marginTop: 22, maxWidth: 680, width: '100%' },
-  sectionLabel: { color: appTheme.colors.textSecondary, fontSize: 12, fontWeight: '800', letterSpacing: 0.7, textTransform: 'uppercase' },
-  exampleChip: { backgroundColor: appTheme.colors.surface, borderColor: appTheme.colors.border, borderRadius: 16, borderWidth: 1, paddingHorizontal: 15, paddingVertical: 13 },
-  exampleText: { color: appTheme.colors.textPrimary, fontSize: 14, fontWeight: '600' },
   answerCard: { backgroundColor: appTheme.colors.surface, borderColor: appTheme.colors.green, borderRadius: 22, borderWidth: 1.5, marginTop: 22, maxWidth: 680, padding: 20, width: '100%', ...appTheme.shadows.card },
-  clarifyCard: { backgroundColor: appTheme.colors.surface, borderColor: appTheme.colors.purple, borderRadius: 22, borderWidth: 1.5, marginTop: 22, maxWidth: 680, padding: 20, width: '100%' },
+  clarifyCard: { backgroundColor: appTheme.colors.surface, borderColor: BRAND_NAVY, borderRadius: 22, borderWidth: 1.5, marginTop: 22, maxWidth: 680, padding: 20, width: '100%' },
   escalationCard: { backgroundColor: appTheme.colors.warningSoft, borderColor: appTheme.colors.warning, borderRadius: 22, borderWidth: 1.5, marginTop: 22, maxWidth: 680, padding: 20, width: '100%' },
   answerEyebrow: { color: appTheme.colors.greenText, fontSize: 12, fontWeight: '900', letterSpacing: 0.8, textTransform: 'uppercase' },
   escalationEyebrow: { color: appTheme.colors.warningText, fontSize: 12, fontWeight: '900', letterSpacing: 0.8, textTransform: 'uppercase' },
@@ -601,14 +628,14 @@ const styles = StyleSheet.create({
   feedbackSelected: { backgroundColor: appTheme.colors.orangeSoft, borderColor: appTheme.colors.orange },
   feedbackText: { fontSize: 19 },
   optionList: { gap: 9, marginTop: 16 },
-  optionButton: { backgroundColor: appTheme.colors.purpleSoft, borderColor: appTheme.colors.purple, borderRadius: 15, borderWidth: 1, padding: 14 },
+  optionButton: { backgroundColor: appTheme.colors.surface, borderColor: appTheme.colors.borderStrong, borderRadius: 15, borderWidth: 1, padding: 14 },
   optionText: { color: appTheme.colors.textPrimary, fontSize: 14, fontWeight: '700' },
   clarificationHelp: { color: appTheme.colors.textSecondary, fontSize: 13, lineHeight: 19, marginTop: 12 },
   escalationNote: { color: appTheme.colors.warningText, fontSize: 13, lineHeight: 19, marginTop: 14 },
   followUpHeader: { alignItems: 'center', flexDirection: 'row', gap: 12, justifyContent: 'space-between', marginTop: 18, maxWidth: 680, width: '100%' },
   followUpHint: { color: appTheme.colors.textSecondary, flex: 1, fontSize: 13, lineHeight: 18 },
-  newSituationButton: { backgroundColor: appTheme.colors.surface, borderColor: appTheme.colors.border, borderRadius: 14, borderWidth: 1, paddingHorizontal: 13, paddingVertical: 9 },
-  newSituationText: { color: appTheme.colors.textPrimary, fontSize: 13, fontWeight: '800' },
+  newSituationButton: { backgroundColor: BRAND_ORANGE, borderColor: BRAND_ORANGE, borderRadius: 14, borderWidth: 1, paddingHorizontal: 14, paddingVertical: 10 },
+  newSituationText: { color: appTheme.colors.white, fontSize: 13, fontWeight: '800' },
   errorCard: { backgroundColor: appTheme.colors.dangerSoft, borderColor: appTheme.colors.danger, borderRadius: 16, borderWidth: 1, marginTop: 16, maxWidth: 680, padding: 14, width: '100%' },
   errorText: { color: appTheme.colors.dangerText, fontSize: 14, lineHeight: 20 },
   verificationNotice: { backgroundColor: appTheme.colors.warningSoft, borderColor: appTheme.colors.warning, borderRadius: 16, borderWidth: 1, marginTop: 16, maxWidth: 680, padding: 14, width: '100%' },

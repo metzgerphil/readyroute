@@ -9,7 +9,7 @@ The portable system is materially stronger, and every discovered critical softwa
 ## Evidence now green
 
 - Repository verification: 433 backend tests passed, 8 intentionally skipped, 0 failed; manager lint/build and 23/23 manager tests passed.
-- Driver app: 29 suites and 225 tests passed; Expo configuration passed.
+- Driver app: 29 suites and 226 tests passed; Expo configuration and native iOS export passed.
 - Maintained retrieval: 192/192 top-1, top-5, and mode; zero unsafe-answer gating failures.
 - Phase 2 holdout: 12/12.
 - Phase 3 adversarial/context/status suite: 1,244/1,244, including 60 independently worded confusing-neighbor cases.
