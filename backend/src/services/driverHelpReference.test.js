@@ -23,6 +23,7 @@ const records = buildImport([], new Date(0).toISOString(), [], new Map(), new Ma
 test('recognizes only explicit numeric reference language as code tokens', () => {
   assert.deepEqual(explicitCodeTokens('002 or 003'), ['002', '003']);
   assert.deepEqual(explicitCodeTokens('what is delivery code 079'), ['079']);
+  assert.deepEqual(explicitCodeTokens('what does code 3 mean'), ['3']);
   assert.deepEqual(explicitCodeTokens('I have 100 packages'), []);
   assert.deepEqual(explicitCodeTokens('what is 100 packages'), []);
   assert.equal(isReferenceRecord(records[0]), true);
@@ -51,16 +52,30 @@ test('answers verified definitions concisely while retaining the workflow bounda
   assert.match(decision.answer, /Unable to Locate/);
 });
 
-test('keeps delivery and pickup namespaces separate when a number collides', () => {
-  const ambiguous = buildDriverHelpReferenceDecision('what is code 015', records);
+test('defaults ordinary code language to delivery while honoring an explicit pickup namespace', () => {
+  const ordinary = buildDriverHelpReferenceDecision('what is code 015', records);
   const delivery = buildDriverHelpReferenceDecision('what is delivery code 015', records);
   const pickup = buildDriverHelpReferenceDecision('what is pickup code 15', records);
 
-  assert.equal(ambiguous.response_mode, 'CLARIFY');
+  assert.equal(ordinary.response_mode, 'ANSWER');
+  assert.equal(ordinary.selected_records[0].knowledge_id, 'DELIVERY_STATUS:015');
   assert.equal(delivery.response_mode, 'ANSWER');
   assert.equal(delivery.selected_records[0].knowledge_id, 'DELIVERY_STATUS:015');
   assert.equal(pickup.response_mode, 'ESCALATE');
   assert.match(pickup.escalation_message, /not currently production eligible/i);
+});
+
+test('screenshot regression: accepts unpadded delivery codes and compares bare status codes', () => {
+  const single = buildDriverHelpReferenceDecision('What does code 3 mean?', records);
+  const comparison = buildDriverHelpReferenceDecision('What is code 02 vs 03?', records);
+
+  assert.equal(single.response_mode, 'ANSWER');
+  assert.equal(single.selected_records[0].knowledge_id, 'DELIVERY_STATUS:003');
+  assert.equal(comparison.response_mode, 'ANSWER');
+  assert.deepEqual(comparison.selected_records.map((record) => record.knowledge_id), [
+    'DELIVERY_STATUS:002',
+    'DELIVERY_STATUS:003'
+  ]);
 });
 
 test('withholds unknown and status-limited definitions instead of guessing', () => {

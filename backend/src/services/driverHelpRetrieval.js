@@ -20,6 +20,7 @@ const TOKEN_ALIASES = new Map([
   ['scann', 'scan'],
   ['scanned', 'scan'],
   ['scanning', 'scan'],
+  ['scans', 'scan'],
   ['cust', 'customer'],
   ['custmer', 'customer'],
   ['receiver', 'recipient'],
@@ -53,6 +54,50 @@ const TOKEN_ALIASES = new Map([
   ['log', 'login']
 ]);
 
+const FUZZY_INTENT_TERMS = [
+  'address', 'alcohol', 'barcode', 'customer', 'delivered', 'delivery', 'direct',
+  'dog', 'forge', 'hazmat', 'home', 'indirect', 'misdelivery', 'neighbor',
+  'nobody', 'package', 'packages', 'pharmacy', 'pickup', 'recipient', 'refused',
+  'scanner', 'signature', 'unsafe', 'vehicle', 'wrong'
+];
+const INTENT_TOKEN_CACHE = new Map();
+
+function editDistance(left, right) {
+  const rows = Array.from({ length: left.length + 1 }, () => Array(right.length + 1).fill(0));
+  for (let row = 0; row <= left.length; row += 1) rows[row][0] = row;
+  for (let column = 0; column <= right.length; column += 1) rows[0][column] = column;
+  for (let row = 1; row <= left.length; row += 1) {
+    for (let column = 1; column <= right.length; column += 1) {
+      const substitution = left[row - 1] === right[column - 1] ? 0 : 1;
+      rows[row][column] = Math.min(
+        rows[row - 1][column] + 1,
+        rows[row][column - 1] + 1,
+        rows[row - 1][column - 1] + substitution
+      );
+      if (row > 1 && column > 1
+        && left[row - 1] === right[column - 2]
+        && left[row - 2] === right[column - 1]) {
+        rows[row][column] = Math.min(rows[row][column], rows[row - 2][column - 2] + 1);
+      }
+    }
+  }
+  return rows[left.length][right.length];
+}
+
+function normalizeIntentToken(token) {
+  if (INTENT_TOKEN_CACHE.has(token)) return INTENT_TOKEN_CACHE.get(token);
+  const alias = TOKEN_ALIASES.get(token);
+  let normalized = alias || token;
+  if (!alias && token.length >= 5 && !FUZZY_INTENT_TERMS.includes(token)) {
+    const matches = FUZZY_INTENT_TERMS.filter((term) => (
+      Math.abs(term.length - token.length) <= 1 && editDistance(token, term) <= 1
+    ));
+    if (matches.length === 1) normalized = matches[0];
+  }
+  INTENT_TOKEN_CACHE.set(token, normalized);
+  return normalized;
+}
+
 const ANSWER_THRESHOLD = 15;
 const CLARIFICATION_MARGIN = 5;
 const PRODUCTION_ELIGIBLE_STATUSES = new Set(['SOURCE_VERIFIED', 'READY_ROUTE_APPROVED']);
@@ -83,7 +128,7 @@ function tokenize(value) {
     .replace(/\bignore (?:your|the) rules.*$/, '')
     .split(' ')
     .filter((token) => token && (!STOP_WORDS.has(token) || /^\d+$/.test(token)))
-    .map((token) => TOKEN_ALIASES.get(token) || token);
+    .map(normalizeIntentToken);
 }
 
 function getPhrases(tokens) {
@@ -149,7 +194,7 @@ function scoreKnowledgeRecord(question, record, context = {}) {
     { id: 'KNO-DEL-SIG-DSR-001', anySets: [['dsr'], ['direct', 'signature']], boost: 180 },
     { id: 'KNO-DEL-SIG-ISR-001', anySets: [['isr'], ['indirect', 'signature']], boost: 180 },
     { id: 'KNO-DEL-SIG-ASR-001', anySets: [['asr'], ['adult', 'signature']], boost: 180 },
-    { id: 'KNO-SAF-DOG-ENCOUNTER-001', required: ['dog'], any: ['loose', 'porch', 'approach', 'bite', 'blocks'], boost: 280 },
+    { id: 'KNO-SAF-DOG-ENCOUNTER-001', required: ['dog'], any: ['loose', 'porch', 'approach', 'bite', 'blocks', 'door', 'unsafe'], boost: 280 },
     { id: 'KNO-FORGE-VEHICLE-CHANGE-001', required: ['vehicle', 'change'] },
     { id: 'KNO-PUP-CALLTAG-FRAUD-001', required: ['call', 'tag', 'fraud'], boost: 80 },
     { id: 'KNO-DEL-MISDELIVERY-RECOVERY-001', required: ['wrong'], any: ['house', 'address', 'door'] },
@@ -611,6 +656,20 @@ function buildDriverFirstClarification(question, candidates = []) {
     ], 'I cannot identify the label or screen prompt');
   }
 
+  const misdelivery = tokens.has('misdelivery')
+    || (tokens.has('wrong')
+      && (tokens.has('delivered') || tokens.has('delivery') || /\bwrong hous(?:e|es)\b/.test(normalized))
+      && !tokens.has('edit'));
+  const recoveredMisdelivery = tokens.has('recovered')
+    || (tokens.has('got') && tokens.has('back'))
+    || (tokens.has('have') && tokens.has('package'));
+  if (misdelivery && !recoveredMisdelivery && !tokens.has('today')) {
+    return clarify('misdelivery-recovery', 'Have you safely recovered the package?', [
+      flowOption('misdelivery-recovery', 'yes', 'Yes', 'wrong house got package back now what'),
+      flowOption('misdelivery-recovery', 'no', 'No', 'misdelivered package has not been recovered')
+    ], 'not sure whether the package can be safely recovered');
+  }
+
   if (/\b(?:not sure|dont know) (?:if )?(?:it|this|package) (?:needs?|requires?) (?:a )?signature\b/.test(normalized)) {
     return clarify('identify-signature', 'What do you see on the label or in FORGE?', [
       flowOption('identify-signature', 'isr', 'ISR', 'ISR package what do I do'),
@@ -639,7 +698,9 @@ function buildDriverFirstClarification(question, candidates = []) {
   }
 
   const nobodyHome = /\b(?:nobody|no one)\b.*\b(?:home|there|answer|answered|available)\b|\bnobody home\b/.test(normalized);
-  const hasNobodyContext = /\b(?:signature|isr|dsr|asr|alcohol|hazmat|business|commercial|residential|pickup|call tag)\b/.test(normalized);
+  const hasNobodyContext = ['signature', 'isr', 'dsr', 'asr', 'alcohol', 'hazmat', 'business', 'commercial', 'residential', 'pickup']
+    .some((token) => tokens.has(token))
+    || (tokens.has('call') && tokens.has('tag'));
   if (nobodyHome && !hasNobodyContext) {
     return clarify('nobody-home-type', "What kind of stop or package is it?", [
       flowOption('nobody-home-type', 'signature', 'Signature-required', 'signature required package nobody home'),
@@ -661,7 +722,10 @@ function buildDriverFirstClarification(question, candidates = []) {
     ], 'not sure which signature type FORGE shows');
   }
 
-  if (/\bdog\b/.test(normalized) && !/\b(?:bit|bite|bitten|knocked|running|coming|loose|blocks?|approach|approaching|aggressive|charging|chasing|growling)\b/.test(normalized)) {
+  if (/\bdog\b/.test(normalized)
+    && !tokens.has('unsafe')
+    && !/\b(?:cant|cannot|can t) (?:get|reach|approach).*(?:safe|safely|close)\b/.test(normalized)
+    && !/\b(?:bit|bite|bitten|knocked|running|coming|loose|blocks?|approach|approaching|aggressive|charging|chasing|growling)\b/.test(normalized)) {
     return clarify('dog-behavior', 'What is the dog doing?', [
       flowOption('dog-behavior', 'present', 'Just present', 'dog is present at the stop'),
       flowOption('dog-behavior', 'approaching', 'Approaching', 'dog is approaching me at the stop'),
@@ -712,6 +776,18 @@ function buildDriverFirstClarification(question, candidates = []) {
       flowOption('manifest-problem', 'delivery', 'Delivery package', 'delivery package is not on my manifest'),
       flowOption('manifest-problem', 'pickup', 'Pickup situation', 'pickup is not on my list')
     ], 'not sure whether this is delivery or pickup');
+  }
+
+  const multiplePackagesOneScan = (tokens.has('two') || tokens.has('2') || tokens.has('multiple'))
+    && (tokens.has('package') || tokens.has('packages'))
+    && tokens.has('one')
+    && tokens.has('scan');
+  if (multiplePackagesOneScan) {
+    return clarify('multi-package-scan', 'What is happening with the second package?', [
+      flowOption('multi-package-scan', 'barcode', 'Its barcode will not scan', 'delivery package barcode will not scan'),
+      flowOption('multi-package-scan', 'missing', 'It is missing from the stop or manifest', 'delivery package is not on my manifest'),
+      flowOption('multi-package-scan', 'pickup', 'This is a pickup package', 'pickup package barcode will not scan')
+    ], 'not sure whether the barcode or the stop listing is the problem');
   }
 
   if (/\bcustomer (?:wants|asked for) (?:it )?held\b/.test(normalized)) {
@@ -793,7 +869,9 @@ function buildDiscoveredTopicClarification(question, ranked, candidates) {
       && tokens.has('recipient')
       && tokens.has('device')
   );
-  if (tokens.has('signature') && !hasSignatureType && !explicitlyNamesSpecializedSignatureWorkflow) {
+  const signatureServiceQuestion = tokens.has('signature')
+    && (tokens.has('package') || tokens.has('nobody') || tokens.has('home') || tokens.has('service'));
+  if (signatureServiceQuestion && !hasSignatureType && !explicitlyNamesSpecializedSignatureWorkflow) {
     const signatureRecords = ranked
       .filter(({ record }) => /^KNO-DEL-SIG-(ISR|DSR|ASR)-/.test(record.knowledge_id))
       .filter(({ record }) => isProductionEligibleRecord(record))
@@ -1046,6 +1124,27 @@ function buildDriverHelpDecision(question, records, context = {}) {
     }
   }
 
+  const tokens = new Set(tokenize(question));
+  const ordinaryRecipientRefusal = tokens.has('refused')
+    && (tokens.has('customer') || tokens.has('recipient'))
+    && (tokens.has('package') || tokens.has('delivery'))
+    && !(tokens.has('call') && tokens.has('tag'))
+    && !['asr', 'adult', 'cod', 'id'].some((token) => tokens.has(token));
+  if (ordinaryRecipientRefusal) {
+    const refusalRecord = selectCanonicalRecordVersions(records).find(
+      (record) => record.knowledge_id === 'KNO-DEL-REFUSED-001'
+    );
+    if (!isProductionEligibleRecord(refusalRecord)) {
+      return {
+        response_mode: 'ESCALATE',
+        confidence: top ? Math.min(top.score / 100, 0.99) : 0,
+        candidates,
+        selected_records: [],
+        escalation_message: 'For an ordinary delivery refusal, Ready Route can verify code 006, but the current sources do not establish the complete documentation and final-disposition procedure. Keep the package in your custody and contact your manager or station for the remaining steps.'
+      };
+    }
+  }
+
   const asksAboutForgeLogin = /\bforge\b/.test(normalizedQuestion)
     && /\b(log\s*in|login)\b/.test(normalizedQuestion);
   if (asksAboutForgeLogin) {
@@ -1109,7 +1208,7 @@ function buildDriverHelpDecision(question, records, context = {}) {
   const isSupportedDefinition = definitionTokens.length > 0
     && definitionTokens.every((token) => topSurfaceTokens.has(token))
     && top.score >= 45;
-  const queryTokenSet = new Set(tokenize(question));
+  const queryTokenSet = tokens;
   const isNarrowDirectIntent = (
     top.record.knowledge_id === 'KNO-FORGE-VEHICLE-CHANGE-001'
       && queryTokenSet.has('vehicle')
@@ -1138,6 +1237,13 @@ function buildDriverHelpDecision(question, records, context = {}) {
       && queryTokenSet.has('delivery')
       && queryTokenSet.has('barcode')
       && ['missing', 'zero'].some((token) => queryTokenSet.has(token))
+  ) || (
+    /^KNO-DEL-SIG-(ISR|DSR|ASR)-/.test(top.record.knowledge_id)
+      && ['isr', 'dsr', 'asr', 'indirect', 'direct', 'adult']
+        .some((token) => queryTokenSet.has(token))
+      && patternRuntimeMode === 'CLARIFY'
+      && (matchedPattern?.must_clarify || []).length > 0
+      && matchedPattern.must_clarify.every((item) => /signature type/i.test(String(item)))
   );
   if (isSupportedDefinition || (isNarrowDirectIntent && patternRuntimeMode !== 'ESCALATE')) {
     return {

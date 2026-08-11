@@ -1,0 +1,127 @@
+name: Release Staging Driver Help
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: readyroute-staging-driver-help
+  cancel-in-progress: false
+
+env:
+  STAGING_SUPABASE_PROJECT_REF: xtzbjlmizmdfqelvhhwx
+  STAGING_SUPABASE_URL: https://xtzbjlmizmdfqelvhhwx.supabase.co
+  STAGING_BACKEND_URL: https://readyroute-api-staging-201632321692.us-west1.run.app
+  STAGING_CLOUD_RUN_SERVICE: readyroute-api-staging
+
+jobs:
+  release:
+    name: Verify, migrate, import, and deploy staging
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - name: Check out release commit
+        uses: actions/checkout@v7
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: backend/package-lock.json
+
+      - name: Install and verify backend
+        working-directory: backend
+        env:
+          SUPABASE_URL: https://example.supabase.co
+          SUPABASE_SERVICE_KEY: test-service-role-key
+          JWT_SECRET: test-secret
+          GOOGLE_MAPS_API_KEY: test-google-maps-key
+          GOOGLE_CLOUD_PROJECT: ready-route-project
+        run: npm ci && npm run verify:schema && npm run check:launch && npm run test:unit
+
+      - name: Apply pending staging migrations
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$SUPABASE_ACCESS_TOKEN" || { echo "SUPABASE_ACCESS_TOKEN is not configured"; exit 1; }
+          query_url="https://api.supabase.com/v1/projects/${STAGING_SUPABASE_PROJECT_REF}/database/query"
+          headers=(-H "Authorization: Bearer $SUPABASE_ACCESS_TOKEN" -H "Content-Type: application/json")
+          state_payload='{"query":"select version from public.readyroute_schema_state where id = true"}'
+          state_response="$(curl --fail-with-body --silent --show-error --request POST "${headers[@]}" --data "$state_payload" "$query_url")"
+          current_version="$(jq -r '.[0].version // "0"' <<<"$state_response")"
+          echo "Staging schema starts at $current_version"
+
+          for migration in supabase/migrations/2026081018*.sql; do
+            version="$(basename "$migration" | cut -d_ -f1)"
+            if [[ "$version" > "$current_version" ]]; then
+              echo "Applying staging migration $version"
+              jq -Rs '{query: .}' < "$migration" > /tmp/staging-migration.json
+              curl --fail-with-body --silent --show-error --request POST "${headers[@]}" \
+                --data @/tmp/staging-migration.json "$query_url" >/dev/null
+              current_version="$version"
+            fi
+          done
+          test "$current_version" = "20260810184000"
+
+      - name: Import canonical knowledge into staging
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+        working-directory: backend
+        shell: bash
+        run: |
+          set -euo pipefail
+          keys_url="https://api.supabase.com/v1/projects/${STAGING_SUPABASE_PROJECT_REF}/api-keys"
+          keys_response="$(curl --fail-with-body --silent --show-error \
+            -H "Authorization: Bearer $SUPABASE_ACCESS_TOKEN" "$keys_url")"
+          service_key="$(jq -r '.[] | select(.name == "service_role") | (.api_key // .key)' <<<"$keys_response")"
+          test -n "$service_key" && test "$service_key" != "null"
+          echo "::add-mask::$service_key"
+          SUPABASE_URL="$STAGING_SUPABASE_URL" SUPABASE_SERVICE_KEY="$service_key" npm run knowledge:import
+
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v3
+        with:
+          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.GCP_DEPLOY_SERVICE_ACCOUNT }}
+
+      - name: Deploy staging Cloud Run service
+        id: deploy
+        uses: google-github-actions/deploy-cloudrun@v3
+        with:
+          project_id: ${{ vars.GCP_PROJECT_ID }}
+          region: ${{ vars.GCP_REGION }}
+          service: ${{ env.STAGING_CLOUD_RUN_SERVICE }}
+          source: backend
+          env_vars: |-
+            SOURCE_COMMIT=${{ github.sha }}
+            NODE_ENV=production
+          env_vars_update_strategy: merge
+
+      - name: Verify staging release identity
+        env:
+          EXPECTED_COMMIT: ${{ github.sha }}
+        shell: bash
+        run: |
+          for attempt in {1..30}; do
+            body="$(curl --fail --silent --show-error "$STAGING_BACKEND_URL/health" || true)"
+            if [[ "$body" == *"$EXPECTED_COMMIT"* && "$body" == *'"current":"20260810184000"'* && "$body" == *'"compatible":true'* ]]; then
+              echo "Staging is serving $EXPECTED_COMMIT with current canonical knowledge schema"
+              exit 0
+            fi
+            sleep 10
+          done
+          echo "Staging health did not report the expected release and schema" >&2
+          exit 1
+
+      - name: Release summary
+        run: |
+          echo "### ReadyRoute staging driver-help release" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Commit: \`${{ github.sha }}\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Cloud Run URL: ${{ steps.deploy.outputs.url }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Canonical knowledge imported after pending staging migrations" >> "$GITHUB_STEP_SUMMARY"
