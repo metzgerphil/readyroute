@@ -87,8 +87,8 @@ async function resetProductionCompanies({ supabase, mode, confirmation }) {
   if (mode !== 'reset') return { mode: 'audit', before };
 
   const accountIds = before.companies.map((account) => account.id);
-  if (accountIds.length) {
-    const { error } = await supabase.from('accounts').delete().in('id', accountIds);
+  for (const accountId of accountIds) {
+    const { error } = await supabase.from('accounts').delete().eq('id', accountId);
     if (error) throw error;
   }
   const removedStorageObjects = await removeAccountStorage(supabase, accountIds);
