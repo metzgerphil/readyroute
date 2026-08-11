@@ -83,6 +83,7 @@ This matrix distinguishes completed controls from full-corpus completion. A vali
 | Record-level evidence capture risk coverage | `knowledge/evidence_capture_risk_coverage.csv` and `validation/evidence_capture_risk_audit.md` |
 | Source coverage report | `reports/source_coverage.md` |
 | Current-corpus Phase 1 validation checkpoint | `reports/phase_1_current_corpus_checkpoint.md` |
+| Requirement-by-requirement Phase 1 completion audit | `reports/phase_1_completion_audit_2026-08-10.md` |
 | Source-by-source extraction reconciliation | `inventory/source_knowledge_coverage.csv` and `validation/source_knowledge_coverage_audit.md` |
 | Source-to-knowledge mapping | `knowledge/source_to_knowledge.csv` |
 | Referenced-source origin and exact-locator mapping | `inventory/referenced_source_occurrences.csv` |

@@ -4,6 +4,8 @@ Status date: 2026-08-10
 
 The current release is a validated foundation, not a claim that the entire possible FedEx corpus is complete.
 
+The requirement-by-requirement decision is recorded in the research [`Phase 1 completion audit`](../research/fedex-ground-driver-knowledge/reports/phase_1_completion_audit_2026-08-10.md). It confirms that restoration, checksums, current-corpus quality control, adversarial evaluation, and validation are complete while the remaining source, version, publication-evidence, and human-decision queues still prevent a truthful Phase 1 completion claim.
+
 ## Current release
 
 - 144 canonical operational records.
