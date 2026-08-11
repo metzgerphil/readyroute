@@ -2,6 +2,8 @@
 
 Status date: 2026-08-10
 
+The exact current-version work queue is maintained in `knowledge/version_confirmation_queue.csv` and explained in `reports/version_confirmation_packet_2026-08-10.md`. It contains all 20 canonical `POTENTIALLY_OUTDATED` records and preserves the existing source/version, exact update needed, evidence-quality requirements, source-gap routing, and qualification gate for each row.
+
 ## Record-status index: POTENTIALLY_OUTDATED
 
 - `KNO-FORGE-AUDIO-ALERTS-001` — Driver cannot disable delivery-instruction or pickup-closing audio in FORGE settings.

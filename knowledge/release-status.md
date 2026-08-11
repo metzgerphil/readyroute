@@ -32,6 +32,8 @@ The authenticated acquisition ledger currently contains 272 queued resources, an
 
 The current human-decision lane is available as a 27-question validator-enforced packet at [`human_adjudication_packet_2026-08-10.md`](../research/fedex-ground-driver-knowledge/reports/human_adjudication_packet_2026-08-10.md), backed by the machine-readable `research/fedex-ground-driver-knowledge/knowledge/human_adjudication_queue.csv`. It excludes the seven active approvals and keeps version-confirmation work separate.
 
+The current-version lane is separately available as a 20-question validator-enforced packet at [`version_confirmation_packet_2026-08-10.md`](../research/fedex-ground-driver-knowledge/reports/version_confirmation_packet_2026-08-10.md), backed by `research/fedex-ground-driver-knowledge/knowledge/version_confirmation_queue.csv`. It preserves the exact older source/version and locator, requested controlling update, owner class, current safe boundary, and publication gate for every canonical `POTENTIALLY_OUTDATED` record.
+
 ## Restored archive verification
 
 The original source-bearing USB workspace was rechecked at `/Volumes/USB322FD/readyroute` on 2026-08-10. The clone already contained every USB source, capture, and video-visual review file plus newer acquisitions. An ignore-existing copy left no USB file missing, all 69 registered archive checksums passed, and the portable and full-corpus validation stack passed. The detailed evidence is in [`workspace_restoration_audit_2026-08-10.md`](../research/fedex-ground-driver-knowledge/validation/workspace_restoration_audit_2026-08-10.md).

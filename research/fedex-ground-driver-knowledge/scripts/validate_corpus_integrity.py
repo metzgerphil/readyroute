@@ -39,6 +39,10 @@ from build_human_adjudication_queue import (
     FIELDNAMES as human_adjudication_fieldnames,
     build_rows as build_human_adjudication_rows,
 )
+from build_version_confirmation_queue import (
+    FIELDNAMES as version_confirmation_fieldnames,
+    build_rows as build_version_confirmation_rows,
+)
 from build_mygb_acquisition_queue import build_rows as build_mygb_acquisition_rows
 from build_mygb_news_archive_backlog import (
     build_rows as build_mygb_news_archive_rows,
@@ -2725,6 +2729,69 @@ def main() -> int:
             f"invalid={invalid_human_adjudication_rows}"
         )
 
+    version_confirmation_queue = load_csv(
+        ROOT / "knowledge/version_confirmation_queue.csv"
+    )
+    expected_version_confirmation_queue = build_version_confirmation_rows()
+    version_confirmation_ids = assert_unique(
+        [row["knowledge_id"] for row in version_confirmation_queue],
+        "version confirmation knowledge_id",
+    )
+    expected_version_confirmation_ids = {
+        record["knowledge_id"]
+        for record in records
+        if record["knowledge_status"] == "POTENTIALLY_OUTDATED"
+    }
+    invalid_version_confirmation_rows: list[tuple[str, str]] = []
+    for index, row in enumerate(version_confirmation_queue, 1):
+        knowledge_id = row.get("knowledge_id", "<missing>")
+        if set(row) != set(version_confirmation_fieldnames):
+            invalid_version_confirmation_rows.append(
+                (knowledge_id, "invalid columns")
+            )
+            continue
+        if row["priority"] != str(index):
+            invalid_version_confirmation_rows.append(
+                (knowledge_id, "noncontiguous priority")
+            )
+        resolution = resolutions_by_id.get(knowledge_id)
+        if not resolution or row["controlling_update_needed"] != resolution[
+            "required_evidence_or_decision"
+        ]:
+            invalid_version_confirmation_rows.append(
+                (knowledge_id, "confirmation does not preserve exact resolution requirement")
+            )
+        if not row["exact_confirmation_request"].endswith(
+            row["controlling_update_needed"]
+        ):
+            invalid_version_confirmation_rows.append(
+                (knowledge_id, "request does not preserve exact confirmation requirement")
+            )
+        required_evidence = row["required_evidence_elements"]
+        if not all(
+            phrase in required_evidence
+            for phrase in ("source bytes", "version/build", "effective date", "recollection")
+        ):
+            invalid_version_confirmation_rows.append(
+                (knowledge_id, "missing source identity/version quality boundary")
+            )
+        if row["publication_gate"] != "QUALIFY_UNTIL_CURRENT_VERSION_CONFIRMED":
+            invalid_version_confirmation_rows.append(
+                (knowledge_id, "invalid version-confirmation publication gate")
+            )
+    if (
+        version_confirmation_queue != expected_version_confirmation_queue
+        or version_confirmation_ids != expected_version_confirmation_ids
+        or invalid_version_confirmation_rows
+    ):
+        raise SystemExit(
+            "version confirmation queue failure: "
+            f"stale={version_confirmation_queue != expected_version_confirmation_queue}, "
+            f"missing={sorted(expected_version_confirmation_ids - version_confirmation_ids)}, "
+            f"extra={sorted(version_confirmation_ids - expected_version_confirmation_ids)}, "
+            f"invalid={invalid_version_confirmation_rows}"
+        )
+
     referenced_source_acquisition_coverage = load_csv(
         ROOT / "inventory/referenced_source_acquisition_coverage.csv"
     )
@@ -2904,6 +2971,7 @@ def main() -> int:
         f"{len(customer_alert_mapping_rows)} customer-alert source mappings, "
         f"{len(nonverified_resolution_coverage)} nonverified-resolution rows, "
         f"{len(human_adjudication_queue)} human-adjudication questions, "
+        f"{len(version_confirmation_queue)} version-confirmation questions, "
         f"{len(referenced_source_backlog)} referenced-source gaps, "
         f"{len(referenced_source_occurrences)} referenced-source occurrences, "
         f"{len(referenced_source_acquisition_coverage)} referenced-source acquisition rows, "
