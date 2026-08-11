@@ -49,7 +49,11 @@ function createManagerDriverHelpRouter(options = {}) {
               approved_answers: 0,
               clarifications: 0,
               escalations: 0,
+              feedback_count: 0,
+              helpful_feedback: 0,
               negative_feedback: 0,
+              feedback_response_rate: 0,
+              helpful_rate: null,
               canonical_match_rate: 0,
               no_verified_answer_rate: 0,
               average_response_latency_ms: null,
@@ -70,6 +74,8 @@ function createManagerDriverHelpRouter(options = {}) {
       const unansweredQuestions = unansweredResult.data || [];
       const feedback = feedbackResult.data || [];
       const activeDriverCount = (activeDriverResult.data || []).length;
+      const helpfulFeedbackCount = feedback.filter((row) => row.rating === 'up').length;
+      const negativeFeedbackCount = feedback.filter((row) => row.rating === 'down').length;
       const measuredLatencies = interactions
         .map((row) => Number(row.response_latency_ms))
         .filter((value) => Number.isFinite(value) && value >= 0);
@@ -88,7 +94,11 @@ function createManagerDriverHelpRouter(options = {}) {
           approved_answers: interactions.filter((row) => row.response_mode === 'ANSWER').length,
           clarifications: interactions.filter((row) => row.response_mode === 'CLARIFY').length,
           escalations: interactions.filter((row) => row.response_mode === 'ESCALATE').length,
-          negative_feedback: feedback.filter((row) => row.rating === 'down').length,
+          feedback_count: feedback.length,
+          helpful_feedback: helpfulFeedbackCount,
+          negative_feedback: negativeFeedbackCount,
+          feedback_response_rate: interactions.length ? feedback.length / interactions.length : 0,
+          helpful_rate: feedback.length ? helpfulFeedbackCount / feedback.length : null,
           canonical_match_rate: interactions.length
             ? interactions.filter((row) => (row.selected_knowledge_ids || []).length > 0).length / interactions.length
             : 0,

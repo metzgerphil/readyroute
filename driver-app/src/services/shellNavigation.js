@@ -1,5 +1,24 @@
 export function getDrawerMenuItems(activeMode, { driverHelpOnly = false } = {}) {
   if (activeMode === 'manager') {
+    if (driverHelpOnly) {
+      return [
+        {
+          key: 'manager-overview',
+          label: 'Company Overview',
+          screen: 'ManagerDashboard'
+        },
+        {
+          key: 'manager-drivers',
+          label: 'Drivers & Invites',
+          screen: 'ManagerDrivers'
+        },
+        {
+          key: 'manager-settings',
+          label: 'Account',
+          screen: 'ManagerSettings'
+        }
+      ];
+    }
     return [
       {
         key: 'manager-map',
