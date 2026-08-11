@@ -1,0 +1,68 @@
+name: Provision Initial Staff Owner
+
+on:
+  workflow_dispatch:
+    inputs:
+      email:
+        description: Staff owner email
+        required: true
+        type: string
+      full_name:
+        description: Staff owner full name
+        required: true
+        type: string
+      confirmation:
+        description: Type PROVISION STAFF OWNER
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  provision:
+    name: Provision Staff Owner
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment: production
+    defaults:
+      run:
+        working-directory: backend
+    env:
+      STAFF_OWNER_EMAIL: ${{ inputs.email }}
+      STAFF_OWNER_FULL_NAME: ${{ inputs.full_name }}
+      SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+      SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+    steps:
+      - name: Confirm privileged operation
+        env:
+          CONFIRMATION: ${{ inputs.confirmation }}
+        run: test "$CONFIRMATION" = "PROVISION STAFF OWNER"
+
+      - name: Check out release commit
+        uses: actions/checkout@v7
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: backend/package-lock.json
+
+      - name: Install backend dependencies
+        run: npm ci
+
+      - name: Provision owner record
+        run: node src/scripts/provisionInitialStaffOwner.js
+
+      - name: Send secure password setup email
+        env:
+          API_URL: https://api.readyroute.org
+        run: |
+          response_file="$(mktemp)"
+          status="$(curl --silent --show-error --output "$response_file" --write-out '%{http_code}' \
+            --request POST "$API_URL/staff/request-password-reset" \
+            --header 'Content-Type: application/json' \
+            --data "$(jq -cn --arg email "$STAFF_OWNER_EMAIL" '{email: $email}')")"
+          test "$status" = "200" || { cat "$response_file"; exit 1; }
+          jq -e '.message == "Password reset email sent. Check your inbox for the reset link."' "$response_file" >/dev/null
