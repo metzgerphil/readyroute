@@ -57,7 +57,7 @@ jobs:
           current_version="$(jq -r '.[0].version // "0"' <<<"$state_response")"
           echo "Staging schema starts at $current_version"
 
-          for migration in supabase/migrations/2026081018*.sql; do
+          for migration in supabase/migrations/202608*.sql; do
             version="$(basename "$migration" | cut -d_ -f1)"
             if [[ "$version" > "$current_version" ]]; then
               echo "Applying staging migration $version"
@@ -67,7 +67,7 @@ jobs:
               current_version="$version"
             fi
           done
-          test "$current_version" = "20260810184000"
+          test "$current_version" = "20260811120000"
 
       - name: Import canonical knowledge into staging
         env:
@@ -110,7 +110,7 @@ jobs:
         run: |
           for attempt in {1..30}; do
             body="$(curl --fail --silent --show-error "$STAGING_BACKEND_URL/health" || true)"
-            if [[ "$body" == *"$EXPECTED_COMMIT"* && "$body" == *'"current":"20260810184000"'* && "$body" == *'"compatible":true'* ]]; then
+            if [[ "$body" == *"$EXPECTED_COMMIT"* && "$body" == *'"current":"20260811120000"'* && "$body" == *'"compatible":true'* ]]; then
               echo "Staging is serving $EXPECTED_COMMIT with current canonical knowledge schema"
               exit 0
             fi
