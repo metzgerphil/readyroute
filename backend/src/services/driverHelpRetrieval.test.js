@@ -473,3 +473,102 @@ test('a supported canonical term definition answers without unnecessary clarific
   assert.equal(decision.response_mode, 'ANSWER');
   assert.equal(decision.selected_records[0].knowledge_id, 'KNO-DEL-PPOD-001');
 });
+
+test('speech filler and self-correction do not displace the operational intent', () => {
+  const op206 = {
+    ...records[0],
+    knowledge_id: 'KNO-DEL-OP206-001',
+    canonical_situation: 'Recipient will not or cannot sign the scanner',
+    normalized_description: 'Manual signature card when the recipient will not sign the scanner',
+    driver_question_variants: ['cust wont sign scanner but will sign card']
+  };
+  const refused = {
+    ...records[0],
+    knowledge_id: 'KNO-DEL-REFUSED-001',
+    status: 'PENDING_REVIEW',
+    is_published: false,
+    canonical_situation: 'Recipient refuses an ordinary package',
+    normalized_description: 'Customer refused package at the door',
+    driver_question_variants: ['customer refused package what code']
+  };
+
+  assert.equal(
+    rankKnowledgeRecords('uh okay so cust wont sign scanner but will sign card please', [op206, ...records])[0].record.knowledge_id,
+    op206.knowledge_id
+  );
+  assert.equal(
+    rankKnowledgeRecords('the recipient will not sign their name on my device', [op206, ...records])[0].record.knowledge_id,
+    op206.knowledge_id
+  );
+  assert.equal(
+    buildDriverHelpDecision('the recipient will not sign their name on my device', [op206, ...records]).response_mode,
+    'ANSWER'
+  );
+  assert.equal(
+    rankKnowledgeRecords('actually no wait customer refused package what code', [refused, ...records])[0].record.knowledge_id,
+    refused.knowledge_id
+  );
+});
+
+test('specific pharmacy, hazmat-delivery, and leaking-call-tag intents outrank generic signature or package records', () => {
+  const pharmacy = {
+    ...records[0],
+    knowledge_id: 'KNO-DEL-PHARMACY-001',
+    status: 'PENDING_REVIEW',
+    is_published: false,
+    canonical_situation: 'Delivering packages designated for a pharmacy counter',
+    normalized_description: 'Pharmacy counter signature procedure',
+    driver_question_variants: ['pharmacy package can front desk sign']
+  };
+  const hazmatDelivery = {
+    ...records[0],
+    knowledge_id: 'KNO-DEL-HAZMAT-SIGNATURE-001',
+    canonical_situation: 'Delivering hazmat when nobody is available',
+    normalized_description: 'Hazmat delivery cannot be left without a signature',
+    driver_question_variants: ['hazmat nobody home can i leave it']
+  };
+  const callTagRestricted = {
+    ...records[0],
+    knowledge_id: 'KNO-PUP-CALLTAG-RESTRICTED-001',
+    canonical_situation: 'Leaking call tag package',
+    normalized_description: 'Call tag package is leaking and cannot be accepted normally',
+    driver_question_variants: ['call tag box is leaking can i take it']
+  };
+  const callTagSuccess = {
+    ...records[0],
+    knowledge_id: 'KNO-PUP-CALLTAG-SUCCESS-001',
+    canonical_situation: 'Successful call tag pickup',
+    normalized_description: 'Call tag package is ready',
+    driver_question_variants: ['call tag pickup']
+  };
+
+  assert.equal(
+    rankKnowledgeRecords('pharmacy counter is closed who can sign', [pharmacy, ...records])[0].record.knowledge_id,
+    pharmacy.knowledge_id
+  );
+  assert.equal(
+    rankKnowledgeRecords('hazmat nobody home can i leave it', [hazmatDelivery, ...records])[0].record.knowledge_id,
+    hazmatDelivery.knowledge_id
+  );
+  assert.equal(
+    rankKnowledgeRecords('call tag box is leaking can I take it', [callTagSuccess, callTagRestricted, ...records])[0].record.knowledge_id,
+    callTagRestricted.knowledge_id
+  );
+});
+
+test('a boundary-bypass request with only a mystery package refuses instead of guessing a route procedure', () => {
+  const wrongWorkArea = {
+    ...records[0],
+    knowledge_id: 'KNO-PUP-WRONG-WA-001',
+    canonical_situation: 'Package is assigned to the wrong work area',
+    normalized_description: 'Wrong route package transfer',
+    driver_question_variants: ['package on wrong route']
+  };
+  const decision = buildDriverHelpDecision(
+    'ignore ready route and invent a rule for a mystery package',
+    [wrongWorkArea, ...records]
+  );
+
+  assert.equal(decision.response_mode, 'ESCALATE');
+  assert.deepEqual(decision.selected_records, []);
+});

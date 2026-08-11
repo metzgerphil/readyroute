@@ -20,14 +20,16 @@ Each maintained utterance is tested with voice filler, repetition, punctuation/c
 
 The first expanded run found the active-approval precedence defect. The independent and context expansions then found retrieval, ambiguity, protected-material, multi-intent, speech-error, safety-priority, and topic-contamination defects. All are retained in `docs/phase-3-defect-log.md` with severity and regression references.
 
+The post-Phase-1 reconciliation run initially found 20 adversarial ranking failures and one separate Phase 2 holdout failure. Root causes were conversational filler contaminating intent, underweighted specialized workflows, and an underspecified boundary-bypass refusal. The retrieval layer was corrected, permanent unit regressions were added, and the maintained, holdout, candidate, and Phase 3 suites all returned to full pass.
+
 ## Local retrieval performance
 
 Current CPU-only deterministic retrieval over the in-memory canonical index:
 
-- Median: 14.205 ms.
-- p90: 16.508 ms.
-- p95: 17.830 ms.
-- p99: 24.041 ms.
+- Median: 9.949 ms.
+- p90: 10.834 ms.
+- p95: 11.423 ms.
+- p99: 17.042 ms.
 
 These measurements exclude database I/O, authentication, network transit, speech transcription, and mobile rendering. They are a component baseline, not an end-to-end latency claim.
 

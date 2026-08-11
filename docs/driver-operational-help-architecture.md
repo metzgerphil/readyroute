@@ -2,7 +2,7 @@
 
 ## Scope and transition state
 
-Phase 2 may proceed while the explicitly deferred Phase 1 acquisitions and human answers remain open. That overlap does not relax the production knowledge gate: only canonical records whose status is `SOURCE_VERIFIED` or `READY_ROUTE_APPROVED` and whose `production_eligibility.publication_ready` value is true may produce a definitive instruction. `PENDING_REVIEW`, `POTENTIALLY_OUTDATED`, and `INSUFFICIENT_EVIDENCE` records remain indexed as blockers and must escalate instead of falling through to general knowledge.
+The owner-defined Phase 1 mainstream daily-driver milestone is complete. Specialist, administrative, historical, linehaul, and other non-mainstream acquisitions remain in a deferred governed lane. That disposition does not relax the production knowledge gate: only canonical records whose status is `SOURCE_VERIFIED` or `READY_ROUTE_APPROVED` and whose `production_eligibility.publication_ready` value is true may produce a definitive instruction. `PENDING_REVIEW`, `POTENTIALLY_OUTDATED`, and `INSUFFICIENT_EVIDENCE` records remain indexed as blockers and must escalate instead of falling through to general knowledge.
 
 This work does not deploy the application, create an EAS build, or build a production release.
 

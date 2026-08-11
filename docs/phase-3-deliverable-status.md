@@ -17,7 +17,7 @@ Status date: 2026-08-10. Current decision: `NOT_READY`.
 | Knowledge update/versioning | `docs/phase-3-knowledge-update-and-versioning-report.md` — runtime rules green, ingestion rehearsal open |
 | Prompt injection/adversarial report | Included in adversarial evaluation report and permanent suite |
 | Source traceability audit | `docs/phase-3-source-traceability-audit.md` — zero failures |
-| Defects found/fixed | `docs/phase-3-defect-log.md` — 12 found, 12 fixed in exercised lanes |
+| Defects found/fixed | `docs/phase-3-defect-log.md` — 15 found, 15 fixed in exercised lanes |
 | Remaining limitations/blockers | `docs/phase-3-readiness-assessment.md` — explicit pre-pilot blockers |
 | Regression additions | Retrieval, status/precedence, injection, context, network, duplicate-submit, and billing regressions added |
 | Pilot assessment and plan | Readiness assessment plus `docs/phase-3-pilot-plan.md` — `NOT_READY` |

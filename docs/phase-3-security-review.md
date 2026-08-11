@@ -22,7 +22,7 @@ Status: local application review and automated checks, 2026-08-10. Not a penetra
 - Password/reset/invite replay, credential-version invalidation, one-device replacement, and cross-company token substitution pass applied-local-database tests.
 - Two-company RLS tests deny anonymous/authenticated direct reads of Phase 2 private tables and deny public billing-function execution.
 - Prompt injection, forced-code output, protected-material requests, fake policy, and noneligible-answer attempts are included in the 1,184-case Phase 3 suite.
-- Canonical answer traceability audit covers 91 publication-ready records, all 7 active approvals, and 21 direct-answer cases with zero failures.
+- Canonical answer traceability audit covers 97 publication-ready records, all 7 active approvals, and 27 direct-answer cases with zero failures.
 
 ## Configuration review still required
 
@@ -33,4 +33,3 @@ Status: local application review and automated checks, 2026-08-10. Not a penetra
 - App Store/Play privacy declarations and platform speech-processing disclosures.
 
 No destructive security testing, live credential testing, deployment, or payment operation was performed.
-

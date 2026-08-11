@@ -2,7 +2,9 @@ const STOP_WORDS = new Set([
   'a', 'an', 'and', 'are', 'at', 'be', 'but', 'can', 'do', 'for', 'from', 'how', 'i',
   'if', 'in', 'is', 'it', 'm', 'me', 'my', 'of', 'on', 'or', 'the', 'there', 'this',
   'to', 'was', 'what', 'when', 'where', 'with', 'ignore', 'instructions', 'invent',
-  'pretend', 'general', 'mystery', 'rule', 'just', 'says'
+  'pretend', 'general', 'mystery', 'rule', 'rules', 'just', 'says', 'uh', 'okay',
+  'so', 'please', 'actually', 'wait', 'im', 'standing', 'by', 'right', 'now',
+  'knowledge', 'easier'
 ]);
 
 const TOKEN_ALIASES = new Map([
@@ -67,6 +69,14 @@ function normalizeDriverQuestion(value) {
 
 function tokenize(value) {
   return normalizeDriverQuestion(value)
+    // Remove common whole-clause speech filler before token scoring. In
+    // particular, "actually no wait" must not turn a self-correction into a
+    // false zero-package intent merely because the filler contains "no".
+    .replace(/^actually no wait\b/, '')
+    .replace(/^uh okay so\b/, '')
+    .replace(/^im standing by the vehicle and\b/, '')
+    .replace(/\bright now$/, '')
+    .replace(/\bignore (?:your|the) rules.*$/, '')
     .split(' ')
     .filter((token) => token && (!STOP_WORDS.has(token) || /^\d+$/.test(token)))
     .map((token) => TOKEN_ALIASES.get(token) || token);
@@ -141,7 +151,30 @@ function scoreKnowledgeRecord(question, record, context = {}) {
     { id: 'KNO-DEL-MISDELIVERY-RECOVERY-001', required: ['wrong'], any: ['house', 'address', 'door'] },
     { id: 'KNO-PUP-SCANNER-FAIL-001', required: ['pickup', 'scanner'], any: ['barcode', 'package', 'read', 'scan'], boost: 60 },
     { id: 'KNO-PUP-VEHICLE-CAPACITY-001', required: ['pickup', 'vehicle', 'fit'] },
-    { id: 'KNO-DEL-OP206-001', required: ['scanner', 'refused'], any: ['recipient', 'name', 'sign'] },
+    {
+      id: 'KNO-DEL-OP206-001',
+      required: ['scanner', 'refused'],
+      any: ['recipient', 'name', 'sign', 'signature', 'card', 'device'],
+      boost: 170
+    },
+    {
+      id: 'KNO-DEL-PHARMACY-001',
+      required: ['pharmacy'],
+      any: ['counter', 'front', 'desk', 'signature', 'closed', 'package'],
+      boost: 180
+    },
+    {
+      id: 'KNO-DEL-HAZMAT-SIGNATURE-001',
+      required: ['hazmat'],
+      any: ['nobody', 'home', 'leave', 'door', 'porch', 'signature'],
+      boost: 180
+    },
+    {
+      id: 'KNO-PUP-CALLTAG-RESTRICTED-001',
+      required: ['call', 'tag'],
+      any: ['leak', 'leaking', 'damage', 'damaged', 'restricted', 'hazmat'],
+      boost: 180
+    },
     { id: 'KNO-PUP-INTERNATIONAL-DOCS-001', required: ['international', 'pickup'], any: ['document', 'documents', 'paper', 'papers'] },
     { id: 'KNO-FORGE-EDIT-ADDRESS-001', required: ['address'], any: ['edit', 'wrong', 'incorrect', 'label'] }
   ];
@@ -170,6 +203,12 @@ function scoreKnowledgeRecord(question, record, context = {}) {
     }
   }
   const conceptIntentBoosts = [
+    {
+      id: 'KNO-DEL-OP206-001',
+      required: ['recipient', 'signature', 'device'],
+      any: ['name', 'refused', 'not', 'card'],
+      boost: 180
+    },
     {
       id: 'KNO-DEL-ALCOHOL-001',
       required: ['alcohol'],
@@ -208,7 +247,7 @@ function scoreKnowledgeRecord(question, record, context = {}) {
     {
       id: 'KNO-PUP-CALLTAG-SUCCESS-001',
       required: ['call', 'tag'],
-      forbiddenAny: ['fraud', 'refused', 'restricted', 'ready', 'hazmat'],
+      forbiddenAny: ['fraud', 'refused', 'restricted', 'ready', 'hazmat', 'leak', 'leaking', 'damage', 'damaged'],
       boost: 100
     },
     {
@@ -507,9 +546,14 @@ function buildDiscoveredTopicClarification(question, ranked, candidates) {
     };
   }
 
-  const explicitlyNamesNoneligibleTopic = topRankedRecord?.knowledge_id === 'KNO-DEL-PHARMACY-001'
-    && tokens.has('pharmacy');
-  if (tokens.has('signature') && !hasSignatureType && !explicitlyNamesNoneligibleTopic) {
+  const explicitlyNamesSpecializedSignatureWorkflow = (
+    topRankedRecord?.knowledge_id === 'KNO-DEL-PHARMACY-001' && tokens.has('pharmacy')
+  ) || (
+    topRankedRecord?.knowledge_id === 'KNO-DEL-OP206-001'
+      && tokens.has('recipient')
+      && tokens.has('device')
+  );
+  if (tokens.has('signature') && !hasSignatureType && !explicitlyNamesSpecializedSignatureWorkflow) {
     const signatureRecords = ranked
       .filter(({ record }) => /^KNO-DEL-SIG-(ISR|DSR|ASR)-/.test(record.knowledge_id))
       .filter(({ record }) => isProductionEligibleRecord(record))
@@ -691,7 +735,9 @@ function buildDriverHelpDecision(question, records, context = {}) {
   const requestsProtectedMaterial = /\b(hidden|system) (instructions|prompt)\b|\braw source documents?\b|\breveal (your )?(instructions|prompt)\b/.test(normalizedQuestion);
   const forcedUnsupportedCode = /\bsay code [a-z0-9]+ no matter what\b/.test(normalizedQuestion);
   const operationalTerms = /\b(package|pickup|delivery|vehicle|scanner|signature|dsr|isr|asr|dog|hazmat|route|stop|customer|recipient)\b/.test(normalizedQuestion);
-  const substantiveTokens = tokenize(question).filter((token) => !['package', 'route', 'data', 'knowledge', 'model'].includes(token));
+  const substantiveTokens = tokenize(question).filter((token) => (
+    !['package', 'route', 'ready', 'fedex', 'data', 'knowledge', 'model'].includes(token)
+  ));
   if ((requestsBoundaryBypass && substantiveTokens.length === 0)
     || (requestsProtectedMaterial && !operationalTerms)
     || forcedUnsupportedCode) {
@@ -817,6 +863,12 @@ function buildDriverHelpDecision(question, records, context = {}) {
   ) || (
     top.record.knowledge_id === 'KNO-DEL-PLACEMENT-HAZARD-001'
       && queryTokenSet.has('mailbox')
+  ) || (
+    top.record.knowledge_id === 'KNO-DEL-OP206-001'
+      && queryTokenSet.has('recipient')
+      && queryTokenSet.has('signature')
+      && queryTokenSet.has('device')
+      && ['not', 'refused'].some((token) => queryTokenSet.has(token))
   );
   if (isSupportedDefinition || (isNarrowDirectIntent && patternRuntimeMode !== 'ESCALATE')) {
     return {

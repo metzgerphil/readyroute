@@ -1,11 +1,12 @@
 # Phase 3 baseline
 
-Frozen: 2026-08-10 before Phase 3 hardening changes.
+Originally frozen: 2026-08-10 before Phase 3 hardening changes. Reconciled on 2026-08-10 after completion of the mainstream Phase 1 release.
 
 ## Version control
 
-- Baseline commit: `bfd9a580e28e11303bd32c147e071b9cfaee33d5`
-- Commit subject: `Complete knowledge checkpoint and driver assistant foundation`
+- Original Phase 3 baseline commit: `bfd9a580e28e11303bd32c147e071b9cfaee33d5`
+- Reconciliation base commit: `ae8b5a5` (`Close Phase 1 mainstream evidence gates`)
+- The retrieval fixes and refreshed evidence in this report are preserved in the same checkpoint as this reconciled baseline.
 - Branch: `codex/portable-knowledge-workspace`
 - Worktree at freeze: clean
 
@@ -21,22 +22,22 @@ Frozen: 2026-08-10 before Phase 3 hardening changes.
 ## Canonical knowledge
 
 - Schema version: `1.0.0`.
-- Manifest generation time: `2026-08-10T21:16:41.305Z`.
+- Manifest generation time: `2026-08-11T03:00:09.576Z`.
 - Canonical records: 144; every current record is version 1.
 - Statuses: 90 `SOURCE_VERIFIED`, 7 `READY_ROUTE_APPROVED`, 27 `PENDING_REVIEW`, 20 `POTENTIALLY_OUTDATED`, 0 `INSUFFICIENT_EVIDENCE`.
-- Publication-ready: 91; status-eligible but evidence-withheld: 6.
-- Registered sources: 121; record/source links: 383; claim traces: 3,242.
+- Publication-ready: 97; status-eligible but evidence-withheld: 0.
+- Registered sources: 123; record/source links: 385; claim traces: 3,254.
 - Active adjudications: 7.
-- Canonical records checksum: `1acae7c2efd237cca76366bab76e7124a2221e9f119befd1d781e9a8cadbcf9e`.
+- Canonical records checksum: `b4638b47a32cf8a2dbb4f16ef42448b55fa72b3119f08f1bb664a87d8b6b2932`.
 - Evaluation checksum: `00e7943cccf8d7ef97d237110c79fce6d5ee926c4f2c3e31bb1444639bff24ef`.
 
 ## Baseline evaluations
 
 - Maintained Phase 1 cases: 192/192 top-1, 192/192 top-5, 192/192 response-mode matches, 0 unsafe answer-gating failures.
 - Phase 2 independent holdout: 12/12.
-- Backend portable unit suite: 404 passed, 8 skipped, 0 failed.
+- Backend portable unit suite: 420 passed, 8 skipped, 0 failed.
 - Applied local database SQL and authentication integration: passed.
-- Driver app: 29 suites, 223 tests passed.
+- Driver app: 29 suites, 225 tests passed.
 - Manager portal: lint and build passed; 23 tests passed.
 - Portable and full source-archive knowledge validation: passed.
 - Backend and portal production dependency audits: zero findings.
@@ -44,10 +45,9 @@ Frozen: 2026-08-10 before Phase 3 hardening changes.
 
 ## Known limitations at freeze
 
-- Phase 1 source acquisition and diminishing-yield completion remain open; affected records fail closed.
+- The owner-defined Phase 1 mainstream daily-driver milestone is complete. Deferred specialist and non-mainstream work remains status-gated and cannot independently answer drivers.
 - Physical-device speech accuracy, noise behavior, microphone permissions, and end-to-end latency are unmeasured.
 - No staging/production migration, canonical import, deployment, EAS build, or live billing occurred.
 - Payment-provider behavior, billing timezone policy beyond the documented UTC V1 boundary, attorney review, production proxy/crash redaction, and retention approval remain external gates.
 - Existing mobile test output includes non-failing `VirtualizedList` `act(...)` warnings.
 - All canonical records currently use record version 1, so multi-version production behavior needs synthetic update testing.
-

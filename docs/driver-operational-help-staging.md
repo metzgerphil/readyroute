@@ -1,5 +1,7 @@
 # Driver Operational Help staging environment
 
+> Historical staging snapshot: the import counts below describe the last authorized staging import and were not changed during the 2026-08-10 local reconciliation. The current local canonical release contains 144 indexed and 97 publication-ready records. No staging deployment or import was performed in this pass.
+
 ## Identity
 
 - Supabase project name: `Ready Route Solutions`

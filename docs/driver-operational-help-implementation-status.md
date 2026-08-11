@@ -4,7 +4,7 @@ Status date: 2026-08-10
 
 ## Current state
 
-Phase 2 is active under the owner's explicit authorization while deferred Phase 1 source acquisitions and human questions remain open. The overlap does not relax publication safety: unresolved, outdated, insufficient-evidence, or evidence-gated records remain unable to produce definitive driver instructions.
+Phase 2 has been reconciled to the completed owner-defined Phase 1 mainstream daily-driver release. Deferred non-mainstream sources and human questions remain governed work and do not relax publication safety: unresolved, outdated, insufficient-evidence, or evidence-gated records remain unable to produce definitive driver instructions.
 
 The existing product already provides the core V1 experience:
 
@@ -26,10 +26,10 @@ The existing product already provides the core V1 experience:
 Current canonical dry import:
 
 - 144 indexed records
-- 91 publication-ready records
-- 6 status-eligible but publication-withheld records
-- 40 source identities
-- 383 record-to-source evidence links
+- 97 publication-ready records
+- 0 status-eligible but publication-withheld records
+- 42 source identities used by the runtime import
+- 385 record-to-source evidence links
 
 Current production retrieval validation:
 
@@ -64,12 +64,15 @@ UTC is the documented V1 billing-month boundary. A different contractual billing
 ## Verification in this worktree
 
 - Canonical importer/retrieval focused tests: passed.
-- Backend unit suite with inert local test configuration: 404 passed, 8 skipped, 0 failed (412 total). The applied-database integration test is intentionally skipped in the portable unit run.
+- Backend unit suite with inert local test configuration: 420 passed, 8 skipped, 0 failed (428 total). The applied-database integration test is intentionally skipped in the portable unit run.
 - Applied local Supabase migrations and SQL integration: passed. Checks cover two companies, RLS/anonymous denial, canonical publication constraints, monthly billing idempotency, username uniqueness, and device uniqueness.
 - Applied local Supabase authentication integration: passed. Checks cover invite resend/replay/expiry, cross-company substitution, reset replay, and immediate revocation of the previous device token.
 - Phase 1 production retrieval suite: passed all 192 cases with zero unsafe answers.
+- Candidate operational retrieval suite: passed 69/69 with zero unsafe-answer failures.
+- Phase 3 adversarial/context/status suite: passed 1,184/1,184 after post-Phase-1 reconciliation defects were fixed and retained as regressions.
+- Canonical traceability audit: 97/97 publication-ready records, 7/7 active approvals, and 27/27 direct-answer cases.
 - Knowledge import dry run: passed with the counts above.
-- Driver app: 29 suites / 223 tests passed; Expo configuration check passed. Existing VirtualizedList `act(...)` warnings remain non-failing test-harness cleanup.
+- Driver app: 29 suites / 225 tests passed; Expo configuration check passed. Existing VirtualizedList `act(...)` warnings remain non-failing test-harness cleanup.
 - The mobile dependency install reports 12 high-severity transitive audit findings; dependency triage is required before release rather than applying an unreviewed breaking `npm audit fix --force`.
 - Backend and manager-portal production dependency audits report zero vulnerabilities after non-breaking updates. Manager portal lint and production build pass.
 - Portable knowledge validation, release build, source-archive checksum/integrity validation, 192-case retrieval evaluation, and 12-case independent holdout all pass.
@@ -89,4 +92,4 @@ UTC is the documented V1 billing-month boundary. A different contractual billing
 2. Approve production proxy/crash redaction and retention periods; complete attorney privacy/terms/liability review.
 3. Complete payment-provider configuration and billing-policy review before connecting invoice preparation. Live charging remains intentionally disabled.
 4. Run a controlled authenticated pilot and measure real-device latency, speech accuracy, retrieval failures, and negative feedback.
-5. Continue Phase 1 acquisitions and human reconciliation without publishing unsupported answers.
+5. Preserve deferred non-mainstream acquisitions and human reconciliation without publishing unsupported answers.

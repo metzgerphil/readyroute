@@ -8,7 +8,7 @@ Run date: 2026-08-10.
 - An active published `READY_ROUTE_APPROVED` determination takes precedence over a newer raw `SOURCE_VERIFIED` row.
 - A newer explicit `PENDING_REVIEW`, `POTENTIALLY_OUTDATED`, or `INSUFFICIENT_EVIDENCE` version reopens the record and blocks the older approved answer.
 - Historical versions, source IDs, and adjudication IDs remain in the canonical archive and answer trace.
-- All 91 publication-ready records have complete identity, version, status, source, and schema trace; all 7 active approved records have adjudication trace.
+- All 97 publication-ready records have complete identity, version, status, source, and schema trace; all 7 active approved records have adjudication trace.
 - All 21 direct-answer evaluations return canonical concise and More Info text exactly; no general-model material is introduced.
 
 The precedence defect discovered by the first Phase 3 red-team run was critical and is fixed with unit and synthetic regression tests.
