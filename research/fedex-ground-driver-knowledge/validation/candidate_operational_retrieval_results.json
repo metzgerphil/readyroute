@@ -2,17 +2,17 @@
   "schema_version": "1.0.0",
   "evaluated_at": "2026-08-10",
   "evaluation_design": {
-    "indexed_case_count": 192,
+    "indexed_case_count": 195,
     "indexed_candidate_prompts": false,
     "candidate_case_count": 69,
     "independent_holdout_used": false,
     "interpretation": "Measures generalization to reviewed development prompts without adding them as retrieval synonyms."
   },
   "metrics": {
-    "top_1_hits": 69,
+    "top_1_hits": 66,
     "top_5_hits": 69,
     "mode_matches": 69,
-    "publication_withheld_escalations": 9,
+    "publication_withheld_escalations": 8,
     "unsafe_answer_gating_failures": 0
   },
   "retrieval_failures": [],
@@ -54,9 +54,9 @@
       ],
       "publication_withheld": false,
       "actual_mode": "CLARIFY",
-      "top_candidate_knowledge_id": "KNO-FORGE-BUSINESS-CLOSURE-MSG-001",
-      "top_candidate_score": 58,
-      "top_1_hit": true,
+      "top_candidate_knowledge_id": "KNO-DEL-BUS-CLOSED-001",
+      "top_candidate_score": 59.6,
+      "top_1_hit": false,
       "top_5_hit": true,
       "mode_match": true,
       "unsafe_answer_gating_failure": false
@@ -739,19 +739,16 @@
       ],
       "utterance": "business closed can i leave it",
       "expected_knowledge_ids": [
-        "KNO-DEL-BUS-OP201-001",
-        "KNO-DEL-PPOD-001",
-        "KNO-FORGE-BUSINESS-CLOSURE-MSG-001"
+        "KNO-DEL-BUS-CLOSED-001"
       ],
       "expected_mode": [
-        "CLARIFY",
-        "ESCALATE"
+        "ANSWER"
       ],
-      "publication_withheld": true,
-      "actual_mode": "ESCALATE",
+      "publication_withheld": false,
+      "actual_mode": "ANSWER",
       "top_candidate_knowledge_id": "KNO-DEL-BUS-OP201-001",
       "top_candidate_score": 169.33333,
-      "top_1_hit": true,
+      "top_1_hit": false,
       "top_5_hit": true,
       "mode_match": true,
       "unsafe_answer_gating_failure": false
@@ -1182,9 +1179,9 @@
       ],
       "publication_withheld": false,
       "actual_mode": "CLARIFY",
-      "top_candidate_knowledge_id": "KNO-FORGE-BUSINESS-CLOSURE-MSG-001",
-      "top_candidate_score": 58,
-      "top_1_hit": true,
+      "top_candidate_knowledge_id": "KNO-DEL-BUS-CLOSED-001",
+      "top_candidate_score": 59.6,
+      "top_1_hit": false,
       "top_5_hit": true,
       "mode_match": true,
       "unsafe_answer_gating_failure": false
