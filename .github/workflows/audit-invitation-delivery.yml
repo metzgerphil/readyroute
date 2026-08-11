@@ -1,0 +1,41 @@
+name: Audit Invitation Delivery
+
+on:
+  workflow_dispatch:
+    inputs:
+      search:
+        description: Invitee name or email fragment
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    name: Audit Invitation
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment: production
+    env:
+      INVITE_SEARCH: ${{ inputs.search }}
+      SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+      SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+    steps:
+      - name: Check out release commit
+        uses: actions/checkout@v7
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: backend/package-lock.json
+
+      - name: Install backend dependencies
+        working-directory: backend
+        run: npm ci
+
+      - name: Inspect invitation records
+        working-directory: backend
+        run: node src/scripts/auditInvitationDelivery.js

@@ -1959,6 +1959,212 @@ button {
   gap: 8px;
 }
 
+.staff-company-selector-card,
+.staff-simple-section {
+  display: grid;
+  gap: 14px;
+  padding: 18px;
+  border: 1px solid var(--rr-color-border);
+  border-radius: var(--rr-radius-md);
+  background: #ffffff;
+  box-shadow: var(--rr-shadow-card);
+}
+
+.staff-company-selector-card {
+  grid-template-columns: minmax(220px, 1fr) minmax(260px, 1.2fr);
+}
+
+.staff-company-selector-card label,
+.staff-create-company-card label {
+  display: grid;
+  gap: 7px;
+  color: var(--rr-color-text);
+  font-weight: 850;
+}
+
+.staff-company-selector-card input,
+.staff-company-selector-card select,
+.staff-create-company-card input,
+.staff-compact-list textarea {
+  width: 100%;
+  min-height: 46px;
+  padding: 10px 12px;
+  border: 1px solid var(--rr-color-border);
+  border-radius: 12px;
+  background: var(--rr-color-surface);
+  color: var(--rr-color-text);
+  font: inherit;
+  font-weight: 760;
+}
+
+.staff-company-create-grid {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.staff-company-usage-detail {
+  gap: 22px;
+}
+
+.staff-company-summary-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 18px;
+}
+
+.staff-company-summary-header > div {
+  display: grid;
+  gap: 7px;
+}
+
+.staff-usage-stat-grid {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.staff-usage-estimate-note {
+  margin: -10px 0 0;
+  color: var(--rr-color-text-muted);
+  font-size: 0.84rem;
+  font-weight: 720;
+  line-height: 1.45;
+}
+
+.staff-simple-section {
+  box-shadow: none;
+}
+
+.staff-simple-section h3,
+.staff-simple-section p {
+  margin: 0;
+}
+
+.staff-simple-section h3 {
+  color: var(--rr-color-text-strong);
+  font-size: 1.08rem;
+}
+
+.staff-simple-section p,
+.staff-simple-section-header > span {
+  color: var(--rr-color-text-muted);
+  font-size: 0.86rem;
+  font-weight: 720;
+}
+
+.staff-simple-section-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 18px;
+}
+
+.staff-simple-section-header > div {
+  display: grid;
+  gap: 4px;
+}
+
+.staff-simple-section .staff-compact-list article {
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: start;
+  gap: 12px;
+}
+
+.staff-simple-section .staff-compact-list article > div:first-child {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.staff-invite-delivery-status {
+  display: block;
+  margin-top: 4px;
+  font-weight: 850 !important;
+}
+
+.staff-invite-delivery-status.success {
+  color: var(--rr-color-green) !important;
+}
+
+.staff-invite-delivery-status.warning,
+.staff-invite-delivery-status.pending {
+  color: var(--rr-color-warning) !important;
+}
+
+.staff-invite-delivery-status.error {
+  color: var(--rr-color-red) !important;
+}
+
+.staff-question-list {
+  display: grid;
+  gap: 10px;
+}
+
+.staff-question-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 18px;
+  padding: 14px;
+  border: 1px solid var(--rr-color-border);
+  border-radius: var(--rr-radius-md);
+  background: var(--rr-color-surface-muted);
+}
+
+.staff-question-copy,
+.staff-question-result {
+  display: grid;
+  gap: 5px;
+}
+
+.staff-question-copy {
+  min-width: 0;
+}
+
+.staff-question-copy strong {
+  color: var(--rr-color-text-strong);
+  font-size: 0.98rem;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+
+.staff-question-copy span,
+.staff-question-result > span {
+  color: var(--rr-color-text-muted);
+  font-size: 0.82rem;
+  font-weight: 720;
+}
+
+.staff-question-result {
+  justify-items: end;
+  flex: 0 0 auto;
+}
+
+.staff-company-report-grid {
+  margin-top: 0;
+}
+
+@media (max-width: 760px) {
+  .staff-company-selector-card,
+  .staff-company-create-grid,
+  .staff-usage-stat-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .staff-company-summary-header,
+  .staff-simple-section-header,
+  .staff-question-row {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .staff-question-result {
+    justify-items: start;
+  }
+
+  .staff-simple-section .staff-compact-list article {
+    grid-template-columns: 1fr;
+  }
+}
+
 .vedr-page {
   max-width: 1280px;
 }
