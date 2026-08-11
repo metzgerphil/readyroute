@@ -40,7 +40,7 @@ These gates control evidence readiness, not driver procedure. They never authori
 
 ## Automated control
 
-`scripts/build_evidence_capture_risk_coverage.py` joins knowledge evidence, the 121-row source-capture ledger, and the 272-resource acquisition queue. It rejects unknown evidence sources, unreviewed/inaccessible evidence states, or any transient evidence source missing from the queue. `scripts/validate_corpus_integrity.py` requires exact 144-record coverage, exact deterministic content, valid classes, and nonblank gates/follow-up.
+`scripts/build_evidence_capture_risk_coverage.py` joins knowledge evidence, the 121-row source-capture ledger, and the 266-resource acquisition queue. It rejects unknown evidence sources, unreviewed/inaccessible evidence states, or any transient evidence source missing from the queue. `scripts/validate_corpus_integrity.py` requires exact 144-record coverage, exact deterministic content, valid classes, and nonblank gates/follow-up.
 
 ## Remaining limitation
 

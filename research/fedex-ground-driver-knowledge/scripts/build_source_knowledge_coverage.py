@@ -26,6 +26,21 @@ FIELDS = [
 
 
 ZERO_COVERAGE_OVERRIDES = {
+    **{
+        source_id: (
+            "REVIEWED_HISTORICAL_CONTEXT_NEWER_SOURCE_CONTROLS",
+            "The complete checksum-preserved 2017 FCC video was reviewed through its full audio track and time-addressed visual sequence. It demonstrates a historical business-management interface and does not establish a distinct current driver-facing procedure.",
+            "Retain the transcript, visual aids, and original MP4 for audit history; use newer applicable OP-117/FORGE material and preserve unresolved current authority or workflow gaps.",
+        )
+        for source_id in (
+            "SRC-MGB-VIDEO-0001",
+            "SRC-MGB-VIDEO-0002",
+            "SRC-MGB-VIDEO-0003",
+            "SRC-MGB-VIDEO-0004",
+            "SRC-MGB-VIDEO-0005",
+            "SRC-MGB-VIDEO-0006",
+        )
+    },
     "SRC-GDRIVE-ROOT-0001": (
         "REVIEWED_CONTAINER_CHILDREN_CARRY_EVIDENCE",
         "The restored connector resolves the exact Chat Bot folder and 35 direct files. Complete raw-byte hashing yields 31 unique byte objects, all already present in the registered archive; substantive evidence remains mapped on the reviewed child source records.",

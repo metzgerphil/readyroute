@@ -378,7 +378,35 @@ def main() -> int:
         not in {"PRESENT", "NONE_EXPOSED_BY_PLAYBACK_API"}
         or row["sha256"] != checksum_entries.get(row["local_archive_path"])
         or inventory_by_id[row["source_id"]]["review_status"]
-        != "NOT_YET_REVIEWED"
+        not in {"NOT_YET_REVIEWED", "FULLY_REVIEWED"}
+        or (
+            inventory_by_id[row["source_id"]]["review_status"]
+            == "FULLY_REVIEWED"
+            and (
+                not (ROOT / f"reviews/{row['source_id']}.md").is_file()
+                or not (
+                    ROOT / f"reviews/video_transcripts/{row['source_id']}.txt"
+                ).is_file()
+                or not (
+                    ROOT
+                    / f"reviews/video_visual/{row['source_id']}/visual_timeline.tsv"
+                ).is_file()
+                or len(
+                    list(
+                        (
+                            ROOT / f"reviews/video_visual/{row['source_id']}"
+                        ).glob("contact-sheet-*.png")
+                    )
+                )
+                != 3
+                or "complete" not in (
+                    ROOT / f"reviews/{row['source_id']}.md"
+                ).read_text(encoding="utf-8").lower()
+                or "not canonical knowledge" not in (
+                    ROOT / f"reviews/video_transcripts/{row['source_id']}.txt"
+                ).read_text(encoding="utf-8").lower()
+            )
+        )
     )
     if (
         brightcove_video_captures != expected_brightcove_video_captures

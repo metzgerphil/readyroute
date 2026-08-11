@@ -1,52 +1,41 @@
-# Brightcove FCC video capture audit
+# Brightcove FCC video capture and review audit
 
-Status date: 2026-08-09
+Status date: 2026-08-10
 
-## Scope
+## Scope and acquisition
 
-The fully reviewed MyGroundBiz Customer Experience and Pickup Coordination page exposes six exact Brightcove video URLs. These are authoritative linked resources, but the parent page, video titles, and catalog metadata do not establish their operational contents.
+The fully reviewed MyGroundBiz Customer Experience and Pickup Coordination page exposes six exact Brightcove video URLs. All six video IDs resolve to the preserved FedEx catalog metadata and checksum-protected MP4 files.
 
-## Acquisition result
+- Six MP4s total 94,138,756 bytes.
+- Catalog identity, creation/update timestamp, duration, rendition dimensions/bitrate, expected size, actual size, and SHA-256 are reconciled in `inventory/mygroundbiz_brightcove_video_capture.csv`.
+- Every hash is enforced by `inventory/source_checksums.sha256`.
+- The playback API exposes no publisher speech captions or subtitles.
 
-- All six source URLs resolve to the same FedEx Brightcove account recorded in the original links.
-- The exact video IDs in the source inventory match the playback-catalog IDs.
-- Six HTTPS MP4 renditions were durably downloaded, totaling 94,138,756 bytes.
-- Catalog metadata preserves each video's name, creation timestamp, update timestamp, duration, selected rendition dimensions/bitrate/expected size, and acquisition date.
-- Every downloaded byte count matches the catalog rendition size.
-- Every MP4 has a SHA-256 digest in `inventory/source_checksums.sha256`.
-- `inventory/mygroundbiz_brightcove_video_capture.csv` reconciles all six source IDs one-to-one with their MP4 and stable metadata capture.
-- The playback API exposes thumbnail tracks only. It exposes no `captions` or `subtitles` speech track for any of the six videos.
+## Complete review result
 
-## Review boundary
+All six videos are now `FULLY_REVIEWED`. Each source has:
 
-All six sources remain `NOT_YET_REVIEWED`. Durable capture changes reproducibility, not knowledge authority or review completion. No title, duration, thumbnail, catalog tag, or parent-page description is used as an operational instruction.
+- a source-specific review at `reviews/SRC-MGB-VIDEO-0001.md` through `0006.md`;
+- an unedited local machine-transcript review aid under `reviews/video_transcripts/`;
+- a complete time-addressed visual timeline and three contact sheets under `reviews/video_visual/<source_id>/`;
+- the original checksum-preserved MP4 and catalog metadata.
 
-Complete review requires both audio and visual examination. The configured transcription workflow cannot run because `OPENAI_API_KEY` is not currently set, and no publisher caption track is available. Until a complete transcript and visual pass are finished:
+The audio was transcribed locally with `mlx-whisper` 0.4.3 and `mlx-community/whisper-small-mlx`. The machine output is not evidence by itself. Known errors are preserved and called out in the source reviews, including repeated recognition of “pickup” as “pitch up” and a hallucinated repeated sentence after the substantive narration in the Messaging video. Audio findings were accepted only after comparison with the original MP4 and the complete visual sequence.
 
-- no source-to-knowledge mapping may be created;
-- no procedure, condition, exception, prohibition, or escalation may be inferred;
-- the sources remain `UNREVIEWED_PRIMARY_CAPTURED_REVIEW_OPEN` in the work queue.
+## Operational disposition
 
-## Mainstream-priority disposition
+The videos were created and last catalog-updated in 2017. They demonstrate the old FCC desktop interface for Authorized Officers and Business Contacts: overview/access, messaging, P&D manifests, service-area status, pickup alerts, and pickup planning. They are business-management and historical FCC/STAR context, not modern driver-at-stop instructions.
 
-On 2026-08-09 the user directed the active pass to focus on current, mainstream information affecting most contractors. All six videos were created and last catalog-updated in 2017 and concern the FCC system. They therefore remain inventoried but are deferred to `WAVE_5_DEFERRED_HISTORICAL_VIDEO_REVIEW`, after current driver-facing operational sources.
-
-A visual-only sampling pass was started for `SRC-MGB-VIDEO-0005` before that priority decision. Thirty-eight frames at approximately two-second intervals and three contact sheets are preserved under `reviews/video_visual/SRC-MGB-VIDEO-0005/`. The visible material is an FCC Pickup Alerts dashboard demonstration and includes an on-screen yellow/red pickup-alert timing legend. This observation is not promoted into operational guidance: the narration is untranscribed, the source is from 2017, and complete current applicability is not established.
-
-Time-addressed visual sampling artifacts have now been generated for all six preserved MP4s under `reviews/video_visual/`: approximately five-second intervals for `SRC-MGB-VIDEO-0001` through `0004` and `0006`, and the earlier approximately two-second interval for `0005`. These contact sheets are review aids, not completed source reviews. The other five videos have not received a complete visual-content adjudication, no video has a complete audio review, and all six source statuses remain `NOT_YET_REVIEWED`.
+No video creates a distinct current canonical knowledge mapping. They do not override current OP-117 or FORGE material, resolve current driver custody or authority gaps, or authorize a driver action from an old screen control. Historical observations remain available for audit and comparison.
 
 ## Automated controls
 
-`scripts/acquire_brightcove_videos.py` reacquires the exact video IDs from their inventoried player links and writes stable metadata plus MP4 files. `scripts/build_brightcove_video_capture_inventory.py` regenerates the local capture ledger without network access. `scripts/validate_corpus_integrity.py` rejects:
+`scripts/build_brightcove_video_capture_inventory.py` regenerates the capture ledger without network access. `scripts/validate_corpus_integrity.py` rejects:
 
-- a missing or duplicate video source/capture;
-- catalog/source ID drift;
-- a local-archive path mismatch;
-- an MP4 whose byte count or hash differs from preserved metadata;
-- a capture hash absent from the checksum manifest;
-- stale capture-ledger output;
-- any captured video incorrectly promoted beyond `NOT_YET_REVIEWED` before a complete review artifact exists.
+- missing or duplicate video source/capture rows;
+- catalog/source ID, archive-path, byte-count, metadata-hash, or checksum-manifest drift;
+- unsupported caption status;
+- a video marked fully reviewed without its source review, transcript aid, visual timeline, and exactly three contact sheets;
+- stale capture, source-capture, source-knowledge, or acquisition-queue output.
 
-## Remaining action
-
-Defer transcription and complete audio-visual review until a current source or unresolved mainstream procedure points to FCC material, or until the later exhaustive-completeness pass. At that time, configure the transcription workflow locally or supply authoritative captions/transcripts, transcribe all six videos, visually review each complete MP4, inventory every referenced artifact or procedure, then reconcile source review status and create only evidence-supported knowledge mappings.
+Review completion changes source coverage and removes six captured-review tasks from the authenticated acquisition queue. It does not change any canonical operational record or publication status.

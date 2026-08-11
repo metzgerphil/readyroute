@@ -26,7 +26,7 @@ Authenticated DOM captures exist for `MGB-ARCHIVE-0001` through `MGB-ARCHIVE-000
 3. CSCA, surveys, bidding, fuel discounts, competitions, Network 2.0, FRO reporting, and facility forums are administrative, system-management, promotional, or contractor-planning material at the result-title level. Their titles do not justify driver-procedure extraction.
 4. The Mother's Day perishables result is seasonal and event-dated; it cannot establish an enduring current procedure without article review and effective-period analysis.
 5. The QVABV/Equipment Terms result points back toward the already prioritized current Equipment Terms family; the result title cannot complete that document or establish its terms.
-6. The historical drop-box video may be useful only after current controlling pickup evidence is exhausted; it remains below the current OP-321 and pickup-document targets.
+6. The historical drop-box/FCC video set has completed audio-visual review and is retained only as 2017 manager-facing context; it does not create current canonical mappings or displace the current OP-321 and pickup-document targets.
 
 ## Priority decision
 

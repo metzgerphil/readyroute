@@ -14,7 +14,7 @@ All 121 primary source rows are represented exactly once.
 
 - 40 fully reviewed sources contribute operational evidence mappings through `MAPPED_OPERATIONAL_EVIDENCE`.
 - 81 sources currently have zero mappings, exactly classified by the generated ledger:
-  - 31 are `NOT_YET_REVIEWED`; six have durable video bytes but still lack complete review.
+  - 25 are `NOT_YET_REVIEWED`.
   - 7 are `INACCESSIBLE` broken MyGroundBiz resources.
   - 2 reviewed Drive containers delegate substantive evidence to reviewed child files; the connector container's 35 children reconcile to 31 registered archive hashes.
   - 1 reviewed scenario workbook is a `SECONDARY_REFERENCE_NO_AUTHORITY`.
@@ -23,7 +23,7 @@ All 121 primary source rows are represented exactly once.
   - 10 fully reviewed context-only sources contain no distinct active driver procedure, split between general and contractor/management context.
   - 1 fully reviewed Customer Alerts page delegates evidence to its dedicated 138-segment layer, and 1 reviewed redirect delegates to that target.
   - 3 partially reviewed documents require remaining-page review.
-  - 8 exact duplicate candidates, 1 render-identical copy, 2 historical sources, 1 corroborative source, and 1 version-sensitive source retain evidence history while deferring active operational mappings to the applicable reviewed source or current-version gate.
+  - 8 exact duplicate candidates, 1 render-identical copy, 8 historical sources (including six fully reviewed 2017 FCC videos), 1 corroborative source, and 1 version-sensitive source retain evidence history while deferring active operational mappings to the applicable reviewed source or current-version gate.
 
 The ledger reconciles exactly to all 383 source-to-knowledge mapping rows. No unreviewed, inaccessible, container-only, or secondary source is silently counted as mapped operational authority.
 
@@ -31,7 +31,7 @@ The ledger reconciles exactly to all 383 source-to-knowledge mapping rows. No un
 
 The earlier sparse-source pass flagged `SRC-MGB-PAGE-0008` and `SRC-MGB-PAGE-0015` for renewed scrutiny. Their complete durable captures have now been reinspected:
 
-- `SRC-MGB-PAGE-0008` is a fully reviewed pickup-resource index. Its 17 child resources remain independently queued; six videos are durably captured but unreviewed.
+- `SRC-MGB-PAGE-0008` is a fully reviewed pickup-resource index. Its eleven document children remain independently queued; its six videos are fully reviewed and retained as historical manager-facing FCC context without canonical mappings.
 - `SRC-MGB-PAGE-0015` is a high-level Unsafe Driving context page. It supplies no distinct driver procedure beyond the broader current CSA/DOT material, so zero mappings is the correct disposition.
 
 The current sample ISP Agreement and two FORGE comparison sources remain partial and unmapped. Equipment Terms, Vehicle Appearance, SRS/SRI, Dog Bite Prevention, OP-135, and FORGE 3.3 are fully reviewed from checksum-preserved originals; mapped records use exact locators, and no partially reviewed source contributes evidence.

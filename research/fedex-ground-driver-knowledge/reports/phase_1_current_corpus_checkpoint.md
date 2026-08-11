@@ -6,7 +6,7 @@ This is a validated progress checkpoint, not the Phase 1 completion report. Phas
 
 ## Current corpus
 
-- 121 primary source records: 79 fully reviewed, four partially reviewed, 31 not yet reviewed, and seven inaccessible. The exact supplied Drive connector folder is now accessible and its 35 current children reconcile to 31 unique registered archive hashes.
+- 121 primary source records: 85 fully reviewed, four partially reviewed, 25 not yet reviewed, and seven inaccessible. The exact supplied Drive connector folder is now accessible and its 35 current children reconcile to 31 unique registered archive hashes.
 - 144 general operational knowledge records: 90 `VERIFIED`, 32 `HUMAN_REVIEW_REQUIRED`, 20 `POTENTIALLY_OUTDATED`, and two `CONFLICT`.
 - 383 exact evidence objects and mapping rows across 226 unique knowledge/source pairs.
 - 3,242 substantive claims: 1,774 unambiguous single-fragment claims and 1,468 human-allocated multi-fragment claims across 65 records; zero allocation rows remain pending.
@@ -38,13 +38,13 @@ The transfer-defined portable and full-corpus validation stack passed after the 
 
 ## Remaining Phase 1 gate
 
-The deterministic authenticated-acquisition queue now contains 272 resources: four partial-source reviews, 25 uncaptured primary-source reviews, six captured but unreviewed videos, seven durable recaptures, and 230 other unacquired resources across the Safety Topic, news-archive, and navigation backlogs. Three active partial completions are in Wave 0 and the version-ambiguous pickup sheet remains deferred. Seventy-one unique Safety Topic documents, 100 exact monthly news-archive pages, and 42 referenced-source obligations remain open.
+The deterministic authenticated-acquisition queue now contains 266 resources: four partial-source reviews, 25 uncaptured primary-source reviews, seven durable recaptures, and 230 other unacquired resources across the Safety Topic, news-archive, and navigation backlogs. Three active partial completions are in Wave 0 and the version-ambiguous pickup sheet remains deferred. Seventy-one unique Safety Topic documents, 100 exact monthly news-archive pages, and 42 referenced-source obligations remain open.
 
 The 2026-08-09 live authenticated current-source pass revalidated the Pickup, On Road, and Accident Reporting indexes and added checksum-protected complete captures/reviews for the On Road index, the June 2026 maintenance-resource notice, the August 2026 Iowa ELP notice, and the August 2026 Micron reconciliation alert. The maintenance notice only points to unacquired MyBizAccount forms; the ELP article supplies qualification context but no route procedure; the Micron article is customer-specific; and the Authenticated Delivery announcement is retained as historical launch context. None was generalized beyond its exact scope.
 
 After the user restored authentication, the current-source continuation first captured partial views of the November 2025 Equipment Terms, January 2026 Vehicle Appearance FAQ, and English SRS/SRI FAQ. The uploaded originals then closed all three reviews: five, two, and eight pages respectively are archived and fully reviewed. Equipment/appearance material remains contractor-control context, and SRS/SRI remains a business safety-performance metric rather than an independent driver procedure. A separate focused review of eight preserved 2026 monthly archive result captures found 15 discovery entries, including cross-year results on 2026 filters, and no source-complete broadly applicable current driver procedure.
 
-The six checksum-preserved FCC videos were confirmed to contain H.264 video and AAC audio and to total approximately 17.7 minutes. A complete native-player review could not start because the Mac was locked and automatic unlock was unavailable. Their `NOT_YET_REVIEWED` status and no-extraction boundary remain unchanged.
+The six checksum-preserved FCC videos contain H.264 video and AAC audio and total approximately 17.7 minutes. Complete time-addressed visual review and full machine-transcript-assisted audio review are now documented in six source-specific reviews. The videos describe 2017 manager/AO/BC-facing FCC/STAR-era workflows; all six are `FULLY_REVIEWED`, retained as historical context, and create no current canonical knowledge mappings.
 
 Phase 1 cannot be declared complete—and Phase 2 cannot begin—until accessible authenticated sources are acquired and reviewed as completely as access permits, the ledgers are updated, and the final quality-control, adversarial-completeness, evaluation, and diminishing-yield passes are rerun.
 

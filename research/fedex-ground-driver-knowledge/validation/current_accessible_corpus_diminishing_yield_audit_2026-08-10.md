@@ -39,4 +39,4 @@ One quality-control documentation defect was found: `concise_answer_sequence_aud
 
 This pass reached diminishing yield for the currently restored, accessible, reviewed mainstream corpus: it produced zero substantive operational additions or corrections after the prior source-alignment pass.
 
-This is not proof of full Phase 1 completeness. The authenticated acquisition queue still contains 272 resources, the referenced-source ledger still contains 42 obligations, two conflicts and 52 other non-verified records remain gated, and six verified records still require original bytes before publication. A new meaningful source batch or human adjudication must trigger the same QC/adversarial pass again.
+This is not proof of full Phase 1 completeness. The authenticated acquisition queue still contains 266 resources, the referenced-source ledger still contains 42 obligations, two conflicts and 52 other non-verified records remain gated, and six verified records still require original bytes before publication. A new meaningful source batch or human adjudication must trigger the same QC/adversarial pass again.
