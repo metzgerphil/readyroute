@@ -38,6 +38,7 @@ function main() {
   const cases = readJsonLines('evaluations/driver-language-cases.jsonl');
   const referenceCases = readJsonLines('evaluations/reference-language-cases.jsonl');
   const candidateOperationalCases = readJsonLines('evaluations/candidate-operational-language-cases.jsonl');
+  const candidateGapCases = readJsonLines('evaluations/candidate-gap-language-cases.jsonl');
   const deliveryStatuses = readJsonLines('reference/delivery-status-codes.jsonl');
   const pickupReasons = readJsonLines('reference/pickup-reason-codes.jsonl');
   const pendingReviewItems = readJsonLines('pending-review/review-items.jsonl');
@@ -110,6 +111,22 @@ function main() {
       if (!recordIds.has(knowledgeId)) errors.push(`${testCase.case_id} references unknown knowledge ${knowledgeId}`);
     }
   }
+  const candidateGapCaseIds = new Set();
+  for (const testCase of candidateGapCases) {
+    if (!testCase.case_id || candidateGapCaseIds.has(testCase.case_id)) {
+      errors.push(`Invalid or duplicate candidate gap case ${testCase.case_id || '(missing)'}`);
+    }
+    candidateGapCaseIds.add(testCase.case_id);
+    if (!testCase.gap_type || !testCase.safe_boundary || !testCase.required_follow_up) {
+      errors.push(`${testCase.case_id} has an incomplete knowledge-gap boundary`);
+    }
+    for (const knowledgeId of testCase.related_knowledge_ids || []) {
+      if (!recordIds.has(knowledgeId)) errors.push(`${testCase.case_id} references unknown related knowledge ${knowledgeId}`);
+    }
+    for (const referenceId of testCase.related_reference_ids || []) {
+      if (!referenceIds.has(referenceId)) errors.push(`${testCase.case_id} references unknown related reference ${referenceId}`);
+    }
+  }
 
   const changeIds = new Set();
   for (const change of changeLog) {
@@ -166,6 +183,7 @@ function main() {
     driver_language_cases: cases.length,
     reference_language_cases: referenceCases.length,
     candidate_operational_language_cases: candidateOperationalCases.length,
+    candidate_gap_language_cases: candidateGapCases.length,
     delivery_status_references: deliveryStatuses.length,
     pickup_reason_references: pickupReasons.length,
     change_log_entries: changeLog.length,

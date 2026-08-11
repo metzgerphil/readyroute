@@ -64,9 +64,10 @@
     "mapping_queue_path": "research/fedex-ground-driver-knowledge/candidate-evaluations/2026-08-10-driver-bot-pack/candidate_canonical_mapping_queue.jsonl",
     "independent_holdout_count": 32,
     "development_review_count": 113,
-    "mapped_to_reference_evaluation_count": 17,
-    "mapped_to_operational_evaluation_count": 33,
-    "needs_canonical_mapping_count": 95
+    "mapped_to_reference_evaluation_count": 23,
+    "mapped_to_operational_evaluation_count": 69,
+    "mapped_to_knowledge_gap_count": 21,
+    "needs_canonical_mapping_count": 32
   },
   "current_retrieval_profile": {
     "response_mode_counts": {

@@ -1773,6 +1773,67 @@ def main() -> int:
             f"{invalid_candidate_operational_links}"
         )
 
+    candidate_gap_cases = load_jsonl(
+        ROOT / "validation/candidate_gap_language_cases.jsonl"
+    )
+    assert_unique(
+        [case["case_id"] for case in candidate_gap_cases],
+        "candidate knowledge-gap case_id",
+    )
+    assert_unique(
+        [normalize_driver_text(case["utterance"]) for case in candidate_gap_cases],
+        "normalized candidate knowledge-gap utterance",
+    )
+    invalid_candidate_gap_links: list[tuple[str, str]] = []
+    for case in candidate_gap_cases:
+        if not case.get("gap_type") or not case.get("safe_boundary") or not case.get("required_follow_up"):
+            invalid_candidate_gap_links.append(
+                (case.get("case_id", "(missing)"), "incomplete gap boundary")
+            )
+        for knowledge_id in case.get("related_knowledge_ids", []):
+            if knowledge_id not in knowledge_ids:
+                invalid_candidate_gap_links.append(
+                    (case["case_id"], f"unknown related knowledge {knowledge_id}")
+                )
+        for reference_id in case.get("related_reference_ids", []):
+            if reference_id not in reference_ids:
+                invalid_candidate_gap_links.append(
+                    (case["case_id"], f"unknown related reference {reference_id}")
+                )
+        for candidate_id in case["source_candidate_case_ids"]:
+            candidate = candidate_mapping_by_id.get(candidate_id)
+            if not candidate:
+                invalid_candidate_gap_links.append(
+                    (case["case_id"], f"unknown candidate {candidate_id}")
+                )
+                continue
+            if candidate["holdout_partition"] != "DEVELOPMENT_REVIEW":
+                invalid_candidate_gap_links.append(
+                    (case["case_id"], f"holdout contamination {candidate_id}")
+                )
+            if normalize_driver_text(candidate["representative_prompt"]) != normalize_driver_text(case["utterance"]):
+                invalid_candidate_gap_links.append(
+                    (case["case_id"], f"utterance mismatch {candidate_id}")
+                )
+            if (
+                candidate["canonical_mapping_status"] != "MAPPED_TO_KNOWLEDGE_GAP"
+                or candidate["gold_gap_case_id"] != case["case_id"]
+                or candidate["gold_gap_type"] != case["gap_type"]
+                or candidate["gold_expected_knowledge_ids"] != case.get("related_knowledge_ids", [])
+                or candidate["gold_reference_ids"] != case.get("related_reference_ids", [])
+                or candidate["gold_response_mode"] != case["expected_response_mode"]
+                or candidate["gold_safe_boundary"] != case["safe_boundary"]
+                or candidate["gold_required_follow_up"] != case["required_follow_up"]
+            ):
+                invalid_candidate_gap_links.append(
+                    (case["case_id"], f"queue mapping mismatch {candidate_id}")
+                )
+    if invalid_candidate_gap_links:
+        raise SystemExit(
+            "candidate knowledge-gap evaluation integration failure: "
+            f"{invalid_candidate_gap_links}"
+        )
+
     clarification_strategy_index = load_jsonl(
         ROOT / "validation/clarification_strategy_index.jsonl"
     )
@@ -3136,6 +3197,7 @@ def main() -> int:
         f"{len(cases)} driver-language cases, "
         f"{len(reference_cases)} reference-language cases, "
         f"{len(candidate_operational_cases)} candidate operational cases, "
+        f"{len(candidate_gap_cases)} candidate knowledge-gap cases, "
         f"{len(record_language_surface_coverage)} record-language surface rows, "
         f"{len(clarification_strategy_index)} clarification-strategy rows, "
         f"{len(interaction_coverage)} multi-record interaction cases"

@@ -41,6 +41,10 @@ const OPERATIONAL_CASES_INPUT = path.join(
   ROOT,
   'validation/candidate_operational_language_cases.jsonl'
 );
+const GAP_CASES_INPUT = path.join(
+  ROOT,
+  'validation/candidate_gap_language_cases.jsonl'
+);
 const REQUIRED_FIELDS = [
   'id',
   'driver_prompt',
@@ -139,6 +143,7 @@ function main() {
   );
   const referenceCases = readJsonLines(REFERENCE_CASES_INPUT);
   const operationalCases = readJsonLines(OPERATIONAL_CASES_INPUT);
+  const gapCases = readJsonLines(GAP_CASES_INPUT);
   const referenceCaseByCandidateId = new Map();
   for (const referenceCase of referenceCases) {
     for (const candidateId of referenceCase.source_candidate_case_ids || []) {
@@ -158,6 +163,18 @@ function main() {
         throw new Error(`candidate ${candidateId} maps to both reference and operational cases`);
       }
       operationalCaseByCandidateId.set(candidateId, operationalCase);
+    }
+  }
+  const gapCaseByCandidateId = new Map();
+  for (const gapCase of gapCases) {
+    for (const candidateId of gapCase.source_candidate_case_ids || []) {
+      if (gapCaseByCandidateId.has(candidateId)) {
+        throw new Error(`candidate ${candidateId} maps to multiple gap cases`);
+      }
+      if (referenceCaseByCandidateId.has(candidateId) || operationalCaseByCandidateId.has(candidateId)) {
+        throw new Error(`candidate ${candidateId} maps to both a gap and an answer evaluation`);
+      }
+      gapCaseByCandidateId.set(candidateId, gapCase);
     }
   }
   const formalByNormalizedUtterance = new Map(
@@ -286,7 +303,8 @@ function main() {
       }
       const referenceMapping = referenceCaseByCandidateId.get(candidateCaseId) || null;
       const operationalMapping = operationalCaseByCandidateId.get(candidateCaseId) || null;
-      const reviewedMapping = referenceMapping || operationalMapping;
+      const gapMapping = gapCaseByCandidateId.get(candidateCaseId) || null;
+      const reviewedMapping = referenceMapping || operationalMapping || gapMapping;
       return {
         candidate_case_id: candidateCaseId,
         representative_prompt: entry.representativePrompt,
@@ -305,7 +323,9 @@ function main() {
           ? 'MAPPED_TO_REFERENCE_EVALUATION'
           : operationalMapping
             ? 'MAPPED_TO_OPERATIONAL_EVALUATION'
-            : 'NEEDS_CANONICAL_MAPPING',
+            : gapMapping
+              ? 'MAPPED_TO_KNOWLEDGE_GAP'
+              : 'NEEDS_CANONICAL_MAPPING',
         review_priority: reviewedMapping ? 'COMPLETE' : reviewPriority,
         holdout_partition: stableBucket(entry.normalizedPrompt, 5) === 0
           ? 'INDEPENDENT_HOLDOUT'
@@ -319,19 +339,33 @@ function main() {
         },
         gold_reference_case_id: referenceMapping?.case_id || null,
         gold_operational_case_id: operationalMapping?.case_id || null,
-        gold_reference_ids: referenceMapping?.expected_reference_ids || [],
+        gold_gap_case_id: gapMapping?.case_id || null,
+        gold_gap_type: gapMapping?.gap_type || null,
+        gold_reference_ids: referenceMapping?.expected_reference_ids
+          || gapMapping?.related_reference_ids
+          || [],
         gold_unknown_reference_tokens: referenceMapping?.unknown_reference_tokens || [],
-        gold_expected_knowledge_ids: reviewedMapping?.expected_knowledge_ids || [],
-        gold_response_mode: reviewedMapping?.response_mode || null,
+        gold_expected_knowledge_ids: referenceMapping?.expected_knowledge_ids
+          || operationalMapping?.expected_knowledge_ids
+          || gapMapping?.related_knowledge_ids
+          || [],
+        gold_response_mode: referenceMapping?.response_mode
+          || operationalMapping?.response_mode
+          || gapMapping?.expected_response_mode
+          || null,
         gold_information_sufficiency: reviewedMapping?.information_sufficiency || null,
         gold_must_clarify: reviewedMapping?.must_clarify || [],
         gold_must_not_do: reviewedMapping?.must_not_do || [],
+        gold_safe_boundary: gapMapping?.safe_boundary || null,
+        gold_required_follow_up: gapMapping?.required_follow_up || null,
         adjudication_ids: [],
         reviewer_notes: referenceMapping
           ? 'Human-reviewed against canonical reference and translation ledgers; candidate expected answer was not used as authority.'
           : operationalMapping
             ? 'Human-reviewed against canonical operational records and production status gates; candidate expected answer was not used as authority.'
-            : ''
+            : gapMapping
+              ? 'Human-reviewed as a canonical knowledge gap or insufficient-context boundary; no definitive operational answer is authorized.'
+              : ''
       };
     });
 
@@ -395,6 +429,9 @@ function main() {
       ).length,
       mapped_to_operational_evaluation_count: mappingQueue.filter(
         (row) => row.canonical_mapping_status === 'MAPPED_TO_OPERATIONAL_EVALUATION'
+      ).length,
+      mapped_to_knowledge_gap_count: mappingQueue.filter(
+        (row) => row.canonical_mapping_status === 'MAPPED_TO_KNOWLEDGE_GAP'
       ).length,
       needs_canonical_mapping_count: mappingQueue.filter(
         (row) => row.canonical_mapping_status === 'NEEDS_CANONICAL_MAPPING'

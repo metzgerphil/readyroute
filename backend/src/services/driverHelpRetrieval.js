@@ -468,6 +468,27 @@ function buildDriverHelpDecision(question, records, context = {}) {
     score
   }));
 
+  // A business-closure message is administrative notice only. It must never be
+  // treated as authority to leave a package when the release procedure itself
+  // is unresolved or not production eligible.
+  const asksAboutClosedBusinessDisposition = /\bbusiness\b/.test(normalizedQuestion)
+    && /\b(closed|closure)\b/.test(normalizedQuestion)
+    && /\b(leave|deliver|release|package)\b/.test(normalizedQuestion);
+  if (asksAboutClosedBusinessDisposition) {
+    const releaseRecord = selectCanonicalRecordVersions(records).find(
+      (record) => record.knowledge_id === 'KNO-DEL-BUS-OP201-001'
+    );
+    if (!isProductionEligibleRecord(releaseRecord)) {
+      return {
+        response_mode: 'ESCALATE',
+        confidence: top ? Math.min(top.score / 100, 0.99) : 0,
+        candidates,
+        selected_records: [],
+        escalation_message: 'A business-closure message does not authorize leaving the package. Ready Route does not have a complete approved release procedure for this situation; contact your manager or station.'
+      };
+    }
+  }
+
   const topicClarification = buildDiscoveredTopicClarification(question, ranked, candidates);
   if (topicClarification) return topicClarification;
 

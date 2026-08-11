@@ -10,11 +10,11 @@ The maintained operational evaluation suite maps driver language to canonical pr
 
 ## Current coverage
 
-- 17 independently reviewed development prompts.
-- 16 delivery-status reference questions and one broad pickup-reason selection question.
-- 19 unique delivery-status references exercised.
+- 23 independently reviewed development prompts.
+- 18 delivery-status reference questions, two pickup-reason questions, and three questions that intentionally withhold reference selection until the situation or term is established.
+- 19 unique delivery-status references and two pickup-reason references exercised.
 - 32 deterministic candidate holdout prompts remain untouched.
-- 95 candidate prompts remain `NEEDS_CANONICAL_MAPPING` after the separate operational-mapping batch.
+- No development prompt remains `NEEDS_CANONICAL_MAPPING`; only the 32 holdout prompts retain that status.
 
 The cases cover:
 

@@ -34,6 +34,7 @@ This workspace contains the source inventory, research ledger, extracted operati
 - `knowledge/pickup_reason_translation_coverage.csv`: one-row-per-pickup-reason classification preserving operational links, OP-321 limitations, Express scope, and required follow-up.
 - `validation/reference_language_cases.jsonl`: status-aware canonical reference evaluation cases for code comparisons, namespace ambiguity, definition-only workflow gaps, unknown tokens, and selection-authority boundaries.
 - `validation/candidate_operational_language_cases.jsonl`: independently reviewed non-holdout operational prompts mapped to canonical IDs without becoming retrieval synonyms.
+- `validation/candidate_gap_language_cases.jsonl`: independently reviewed non-holdout prompts mapped to explicit knowledge gaps or insufficient-context boundaries, with required follow-up and safe withholding behavior.
 - `validation/candidate_operational_retrieval_results.json`: deterministic unseen-development baseline separating retrieval, response-mode, and unsafe status-gating results.
 - `knowledge/form_artifact_coverage.csv`: deterministic inventory of driver-used forms, cards, hand sheets, labels, manifests, credentials, and related physical documentation, including artifact access, procedural completeness, publication gates, and exact source/backlog/knowledge links.
 - `knowledge/op117_page_coverage.csv`: deterministic reconciliation of every OP-117 v2 page to operational knowledge, normalized reference data, a tracked artifact, or an explicit non-operational disposition.

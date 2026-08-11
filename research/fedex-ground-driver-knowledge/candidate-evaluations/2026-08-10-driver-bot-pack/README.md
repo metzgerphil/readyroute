@@ -13,7 +13,7 @@ They are **not canonical operational knowledge** and are not part of the product
 
 `candidate_eval_pack_profile.json` is deterministic diagnostic output from `scripts/audit_candidate_eval_pack.js`. Use the candidate prompts only after deduplication and record-level mapping to the canonical release. Preserve a separate holdout set so evaluation prompts are not silently added as retrieval synonyms before their generalization value is measured.
 
-`candidate_canonical_mapping_queue.jsonl` contains the deduplicated 145-prompt union. Seventeen development prompts are human-reviewed against the canonical reference layers and 33 are mapped to canonical operational records. The remaining 95 rows stay `NEEDS_CANONICAL_MAPPING`. Diagnostic retrieval is included only to prioritize review. The deterministic 32-prompt holdout remains untouched.
+`candidate_canonical_mapping_queue.jsonl` contains the deduplicated 145-prompt union. All 113 development prompts are now human-reviewed: 23 map to canonical reference evaluations, 69 map to canonical operational evaluations, and 21 map to explicit knowledge-gap or insufficient-context boundaries. Only the deterministic 32-prompt holdout remains `NEEDS_CANONICAL_MAPPING`; it remains untouched. Diagnostic retrieval is included only to prioritize review.
 
 Regenerate and validate this intake with:
 
