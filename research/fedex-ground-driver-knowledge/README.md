@@ -59,7 +59,7 @@ This workspace contains the source inventory, research ledger, extracted operati
 - `validation/clarification_strategy_index.jsonl`: generated one-to-one strategy, ordered-fact, and stop-rule index for every formal driver-language case.
 - `validation/high_risk_interaction_coverage.csv`: exact risk-family and expected-record accountability for every multi-record driver-language case.
 - `validation/inventory_consistency_audit.md`: cross-ledger review-state reconciliation and acquisition limits.
-- `validation/google_drive_connector_access_audit.md`: independent connector recheck and the boundary between inaccessible connector metadata and the reviewed browser snapshot.
+- `validation/google_drive_connector_access_audit.md`: independent connector identity, metadata, direct-child, and raw-byte reconciliation against the reviewed browser/archive snapshots.
 - `validation/brightcove_video_capture_audit.md`: six-video acquisition, metadata, checksum, caption-availability, and no-review/no-extraction boundary.
 - `validation/source_capture_coverage_audit.md`: review-versus-capture reconciliation across all primary sources and the durable-recapture workload it creates.
 - `validation/evidence_capture_risk_audit.md`: record-level audit of durable, mixed, transient-only, and partial-source evidence sets.

@@ -138,8 +138,12 @@ def build_rows() -> list[dict[str, str]]:
             capture_status = "TRANSIENT_REVIEW_ARTIFACT_ONLY"
             checksum = ""
             reproducibility = "REVIEW_ARTIFACT_AND_REMOTE_LOCATOR_ONLY"
-            use_gate = "REVIEWED_CONTENT_MAPPED_BUT_DURABLE_SOURCE_CAPTURE_UNAVAILABLE"
-            follow_up = "Durably recapture the exact page or file and reconcile it before any source-change or supersession claim."
+            if source_id == "SRC-GDRIVE-ROOT-0001":
+                use_gate = "CONTAINER_METADATA_SNAPSHOT_CHILD_BYTES_ARCHIVE_RECONCILED"
+                follow_up = "Repeat provider metadata and raw-byte child reconciliation when the folder modified time changes or new uploads are expected."
+            else:
+                use_gate = "REVIEWED_CONTENT_MAPPED_BUT_DURABLE_SOURCE_CAPTURE_UNAVAILABLE"
+                follow_up = "Durably recapture the exact page or file and reconcile it before any source-change or supersession claim."
         elif review_status == "PARTIALLY_REVIEWED":
             capture_status = "TRANSIENT_PARTIAL_REVIEW"
             checksum = ""

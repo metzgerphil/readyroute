@@ -250,6 +250,78 @@ def main() -> int:
             f"missing_files={missing_archive_files}, hash_mismatches={checksum_mismatches}"
         )
 
+    google_drive_connector_snapshot = load_csv(
+        ROOT / "inventory/google_drive_connector_snapshot_2026-08-10.csv"
+    )
+    expected_drive_snapshot_fields = {
+        "drive_file_id",
+        "title",
+        "mime_type",
+        "size_bytes",
+        "sha256",
+        "created_time",
+        "modified_time",
+        "folder_id",
+        "folder_url",
+    }
+    snapshot_file_ids = assert_unique(
+        [row["drive_file_id"] for row in google_drive_connector_snapshot],
+        "Google Drive connector file ID",
+    )
+    snapshot_hash_counts = Counter(
+        row["sha256"] for row in google_drive_connector_snapshot
+    )
+    snapshot_errors: list[tuple[str, str]] = []
+    for row_number, row in enumerate(google_drive_connector_snapshot, 2):
+        if set(row) != expected_drive_snapshot_fields:
+            snapshot_errors.append((str(row_number), "field mismatch"))
+            continue
+        if row["folder_id"] != "11gFp2-i80bhI0s0tLR66B8KMWS_3JBEb" or row[
+            "folder_url"
+        ] != "https://drive.google.com/drive/folders/11gFp2-i80bhI0s0tLR66B8KMWS_3JBEb":
+            snapshot_errors.append((row["drive_file_id"], "folder identity mismatch"))
+        if row["mime_type"] not in {
+            "application/pdf",
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            "image/png",
+        }:
+            snapshot_errors.append((row["drive_file_id"], "unexpected MIME type"))
+        try:
+            if int(row["size_bytes"]) <= 0:
+                raise ValueError
+        except ValueError:
+            snapshot_errors.append((row["drive_file_id"], "invalid size"))
+        if not re.fullmatch(r"[0-9a-f]{64}", row["sha256"]):
+            snapshot_errors.append((row["drive_file_id"], "invalid SHA-256"))
+        elif row["sha256"] not in set(checksum_entries.values()):
+            snapshot_errors.append((row["drive_file_id"], "hash absent from archive manifest"))
+        for field in ("created_time", "modified_time"):
+            try:
+                datetime.fromisoformat(row[field].replace("Z", "+00:00"))
+            except ValueError:
+                snapshot_errors.append(
+                    (row["drive_file_id"], f"invalid {field}")
+                )
+    drive_root = inventory_by_id.get("SRC-GDRIVE-ROOT-0001", {})
+    if (
+        len(google_drive_connector_snapshot) != 35
+        or len(snapshot_file_ids) != 35
+        or len(snapshot_hash_counts) != 31
+        or Counter(snapshot_hash_counts.values()) != Counter({1: 27, 2: 4})
+        or drive_root.get("access_status") != "ACCESSIBLE"
+        or drive_root.get("review_status") != "FULLY_REVIEWED"
+        or drive_root.get("title") != "Chat Bot"
+        or snapshot_errors
+    ):
+        raise SystemExit(
+            "Google Drive connector snapshot failure: "
+            f"rows={len(google_drive_connector_snapshot)}, "
+            f"file_ids={len(snapshot_file_ids)}, unique_hashes={len(snapshot_hash_counts)}, "
+            f"hash_multiplicities={dict(sorted(Counter(snapshot_hash_counts.values()).items()))}, "
+            f"drive_root_access={drive_root.get('access_status')}, "
+            f"drive_root_review={drive_root.get('review_status')}, errors={snapshot_errors}"
+        )
+
     google_drive_zip_members = load_csv(
         ROOT / "inventory/google_drive_zip_member_inventory.csv"
     )
@@ -3222,6 +3294,7 @@ def main() -> int:
     print(
         "validated corpus integrity: "
         f"{len(inventory)} primary sources, {len(navigation)} MyGroundBiz destinations, "
+        f"{len(google_drive_connector_snapshot)} Google Drive connector files, "
         f"{len(google_drive_zip_members)} Google Drive ZIP member rows, "
         f"{len(brightcove_video_captures)} Brightcove video capture rows, "
         f"{len(safety_library)} safety-library items, "

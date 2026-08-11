@@ -27,9 +27,9 @@ FIELDS = [
 
 ZERO_COVERAGE_OVERRIDES = {
     "SRC-GDRIVE-ROOT-0001": (
-        "INACCESSIBLE",
-        "The connected Drive account returns zero children for the exact folder URL and no folder result for a Chat Bot search; the browser-acquired ZIP/direct-file snapshot is inventoried separately.",
-        "Retry connector/API identity verification if access changes; do not infer missing folder contents.",
+        "REVIEWED_CONTAINER_CHILDREN_CARRY_EVIDENCE",
+        "The restored connector resolves the exact Chat Bot folder and 35 direct files. Complete raw-byte hashing yields 31 unique byte objects, all already present in the registered archive; substantive evidence remains mapped on the reviewed child source records.",
+        "Repeat provider metadata and raw-byte reconciliation when the folder modified time changes or new uploads are expected.",
     ),
     "SRC-GDRIVE-BROWSER-ROOT-0001": (
         "REVIEWED_CONTAINER_CHILDREN_CARRY_EVIDENCE",

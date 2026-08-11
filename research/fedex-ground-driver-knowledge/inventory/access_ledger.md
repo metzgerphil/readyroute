@@ -6,13 +6,14 @@ Last updated: 2026-08-10
 
 | Source system | Entry point | Access state | Mapping state | Notes |
 | --- | --- | --- | --- | --- |
-| Google Drive connector | Supplied shared folder | Inaccessible to connected connector account | Blocked at root | On 2026-08-09, exact-folder listing returned zero children and folder-only search returned no `Chat Bot` result. Browser access is tracked separately. |
+| Google Drive connector | Supplied shared folder | Accessible | Current direct-child inventory and byte reconciliation complete | On 2026-08-10, the exact folder resolved to `Chat Bot`; 35 direct files produced 31 unique hashes, all matching the registered archive. |
 | Google Drive browser | Supplied `Chat Bot` folder | Accessible | Direct-child inventory complete | Authenticated browser exposed 17 files and no visible subfolders. The complete ZIP plus all 17 extracted files have validator-verified SHA-256 checksums. |
 | MyGroundBiz | Authenticated in-app browser session | Authentication restored and used for the latest 2026-08-09 current-source pass | In progress | The session exposed the November 2025 ISP Equipment Terms, January 2026 Vehicle Appearance FAQ, and April 2026 English SRS/SRI FAQ. Page-addressed visible regions were hash-preserved; original PDF bytes and cropped lower regions remain unavailable. The session is short-lived, so current mainstream sources remain ahead of historical archives. |
 | Local Ready Route repository | Workspace | Accessible | Not yet formally inventoried as an evidence source | Application code is out of scope for this knowledge-acquisition phase unless it contains supplied operational evidence. |
 
 ## Fully reviewed
 
+- `SRC-GDRIVE-ROOT-0001` — exact connector folder metadata and all 35 current direct children reconciled; 31 unique raw-byte hashes all match the registered archive.
 - `SRC-GDRIVE-BROWSER-ROOT-0001` — all 17 direct children inventoried and archived; no visible subfolders.
 - `SRC-GDRIVE-FILE-0001` — Customer Experience Quick Reference, 2/2 pages.
 - `SRC-GDRIVE-FILE-0002` — OP-119 Customer Experience Guide, 16/16 pages.
@@ -41,27 +42,26 @@ Each file above received complete content review using the appropriate text, wor
 ## Partially reviewed
 
 - `SRC-MGB-ROOT-0001` — authenticated home page and 86 global-navigation destinations mapped; destination pages, search, news archive, videos, and cross-references remain.
-- `SRC-MGB-DOC-0008` — page 1 completely reviewed, all five page identities and upper visible regions reviewed, and six renders checksum-preserved; cropped lower regions of pages 2-5 and original PDF bytes remain.
 - `SRC-MGB-DOC-0009` — official 89-page sample ISP Agreement identity/first page reviewed; full review and executed-agreement comparison remain.
-- `SRC-MGB-DOC-0010` — ISP Equipment Terms page 1 of 5 reviewed; no unseen specification is inferred.
-- `SRC-MGB-DOC-0011` — all seven Dog Bite Prevention pages reviewed from the checksum-preserved original PDF; pages 3-6 support the animal-encounter safety record.
+- `SRC-MGB-DOC-0015` — version-ambiguous pickup-reason sheet retained only for identity/risk review; current OP-321 is the controlling acquisition target.
+- `SRC-MGB-DOC-0046` — FORGE 3.2 comparison source has only bounded rendered regions reviewed; current FORGE 3.3 controls applicable behavior.
 
 ## Not yet reviewed
 
-- Sixty-seven mapped MyGroundBiz destinations remain `NOT_YET_REVIEWED`/`PENDING_ASSESSMENT` in `inventory/mygroundbiz_destination_backlog.csv`; every page and its linked/downloadable resources require authenticated capture and assessment.
-- Twenty-two MyGroundBiz primary children remain `NOT_YET_REVIEWED`: five On the Road guide downloads, eleven pickup-coordination documents, and six embedded FCC videos. The six exact videos are now durably acquired and hashed, but their playback metadata exposes no speech-caption tracks and complete audio-visual review remains open. Titles, parent-page context, and durable acquisition do not establish their contents.
+- Fifty-nine mapped MyGroundBiz destinations remain represented in `inventory/mygroundbiz_destination_backlog.csv`; every page and its linked/downloadable resources require authenticated capture and assessment unless a reviewed primary source already resolves it.
+- Thirty-one primary sources remain `NOT_YET_REVIEWED`; six embedded FCC videos are durably acquired and hashed but still require complete audio-visual review. Titles, parent-page context, and durable acquisition do not establish their contents.
 - Seventy-three unique Safety Topic Library document URLs remain in `inventory/mygroundbiz_safety_topic_backlog.csv`; Dog Bite Prevention is the sole matched child primary source and is now fully reviewed.
 - The Safety Topic Library displayed `12/31/0` for `MGB-SAFETY-TOPIC-0077`; the raw value and unresolved status are preserved in `inventory/date_ambiguities.csv`, and no date is inferred from the filename.
 - Forty-two explicitly referenced or controlling source obligations remain in `inventory/referenced_source_backlog.csv`; 63 exact origin occurrences in `inventory/referenced_source_occurrences.csv` trace them to reviewed pages, sections, or workbook-row ranges that exposed the gap. They include named forms/cards and source families such as the executed Agreement, relay, current FORGE, coupling, dispute, COD, international guidance, ordinary-refusal disposition, status-specific workflows, the current ERG, decal 20159S, the unresolved SF-035 reminder-card identifier, the unidentified Alternate Signature physical record sheet, the cited 2025 Driver Safety Guidebook, and the cited Company Safety and Operation Handbook.
-- A 39-row referenced-source acquisition projection shows six gaps with both direct and contextual queue links, two with direct-only links, five with contextual-only links, and 26 with no current authenticated-queue link. Seventeen unlinked gaps are P0 blockers and require targeted authorized discovery; a contextual resolution page is not treated as proof that it contains the missing source.
+- A 42-row referenced-source acquisition projection shows three gaps with both direct and contextual queue links, two with direct-only links, four with contextual-only links, and 33 with no current authenticated-queue link. Twenty-nine total gaps are P0 blockers and require prioritized authorized discovery; a contextual resolution page is not treated as proof that it contains the missing source.
 - Reinspection with durable content capture for `SRC-MGB-PAGE-0015` (Unsafe Driving); the visible page was previously marked reviewed but produced no structured mappings and needs stronger extraction evidence.
-- The exact MyGroundBiz-download copies of `SRC-MGB-DOC-0001` through `0005`; Drive copies with matching titles/dates are reviewed, but portal checksum identity is not yet established.
+- The exact MyGroundBiz-download copies and current Drive objects have been reconciled: four portal/Drive pairs are byte-identical, while portal OP-117 retains distinct bytes but matches the reviewed Drive copy across all 89 rendered pages.
 - Operational artifacts referenced by OP-117 but absent from the Drive snapshot, including OP-324, OP-321, current OP-207/OP-207Res instructions, HZ-035, SF-920P, relay check-in/out, and vehicle-security standards.
 - OP-130, OP-132, and OP-135 are fully reviewed from checksum-preserved originals. OP-324, OP-321, current OP-207/OP-207Res, HZ-035, SF-920P, relay check-in/out, and linked vehicle-security standards remain open.
 
 ## Inaccessible
 
-- `SRC-GDRIVE-ROOT-0001` — the connected Drive account cannot enumerate the supplied folder: the exact URL returns zero children and folder search does not find `Chat Bot`. This does not block the browser-acquired snapshot, but it prevents connector metadata/identity verification.
+- Seven exact broken MyGroundBiz endpoints remain inaccessible and cannot support operational extraction. The formerly inaccessible Google Drive connector root is now fully reconciled under `SRC-GDRIVE-ROOT-0001`.
 - The MyGroundBiz session was restored and verified on 2026-08-09. Current page-addressed captures now cover all OP-135 pages (page 1 complete, pages 2-5 upper only), pages 2-5 upper regions of the November 2025 ISP Equipment Terms, both upper regions of the January 2026 Vehicle Appearance FAQ, and all eight upper regions of the April 2026 English SRS/SRI FAQ. Each remains partial where cropped regions or original bytes are missing. The current/mainstream overlay prioritizes controlling driver procedures and forms; the six 2017 FCC videos remain deferred.
 
 ## Knowledge extracted
@@ -163,3 +163,12 @@ Each file above received complete content review using the appropriate text, wor
 - Both exact URLs returned HTTP 403 with the same 3,313-byte access-denied body (SHA-256 `7e83b802e005a00ed298e93e5ae1595203888b43cd70660139db52320c0d25d4`). No response body was admitted as source evidence or copied into the corpus.
 - A separate direct navigation through the connected Chrome profile redirected the exact current Backing URL to `sitecore/service/noaccess.aspx` with title `Access Denied`; the in-app browser was already at MyGroundBiz login. This confirms an expired/absent authenticated session rather than an unverified URL correction.
 - The backing gap remains linked to `REFSRC-041`, `REFSRC-042`, and `MGB-SAFETY-TOPIC-0016`; the railroad gap remains linked to `REFSRC-041` and `MGB-SAFETY-TOPIC-0027`.
+
+## 2026-08-10 Google Drive connector restoration
+
+- Rechecked the exact supplied folder `11gFp2-i80bhI0s0tLR66B8KMWS_3JBEb` through the authenticated Google Drive connector after the earlier account returned an empty listing.
+- Folder metadata now resolves the title `Chat Bot`, MIME type `application/vnd.google-apps.folder`, creation time `2026-08-08T22:01:45.353Z`, and modified time `2026-08-10T21:45:41.014Z`.
+- The folder currently returns 35 direct files and no folder child in the returned set. Complete raw-byte connector fetches produced provider-size-matched bytes for every file.
+- Independent SHA-256 calculation found 31 unique byte objects. All 31 hashes already exist in `inventory/source_checksums.sha256`; four later `.ashx.pdf` uploads are exact duplicates of earlier MGB-119, OP-119, Focus on Package Placement, and Package Placement quick-reference files.
+- Preserved the exact provider IDs, titles, MIME types, sizes, timestamps, and hashes in `inventory/google_drive_connector_snapshot_2026-08-10.csv` and updated `SRC-GDRIVE-ROOT-0001` from inaccessible to fully reviewed/accessible.
+- No new source bytes or operational claims were admitted because every connector object is already present in the registered archive. The two open safety-PDF recapture targets remain absent from the current 35-file folder.

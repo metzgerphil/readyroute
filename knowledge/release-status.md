@@ -44,6 +44,6 @@ The current-version lane is separately available as a 20-question validator-enfo
 
 The original source-bearing USB workspace was rechecked at `/Volumes/USB322FD/readyroute` on 2026-08-10. The clone already contained every USB source, capture, and video-visual review file plus newer acquisitions. An ignore-existing copy left no USB file missing, all 69 registered archive checksums passed, and the portable and full-corpus validation stack passed. The detailed evidence is in [`workspace_restoration_audit_2026-08-10.md`](../research/fedex-ground-driver-knowledge/validation/workspace_restoration_audit_2026-08-10.md).
 
-The first six publication gaps remain unchanged because their two original safety PDFs are not present on the USB or in the supplied Drive folder. MyGroundBiz returned `Access Denied` during the current recapture attempt, so the complete hashed rendered captures remain evidence rather than being mislabeled as original bytes.
+The first six publication gaps remain unchanged because their two original safety PDFs are not present on the USB or in the supplied Drive folder. A restored connector listing and complete raw-byte hash reconciliation confirmed 35 current direct Drive files, representing 31 unique archive-matched objects, without either missing safety PDF. MyGroundBiz returned `Access Denied` during the current recapture attempt, so the complete hashed rendered captures remain evidence rather than being mislabeled as original bytes.
 
 No interface or deployment work is authorized by this release status.

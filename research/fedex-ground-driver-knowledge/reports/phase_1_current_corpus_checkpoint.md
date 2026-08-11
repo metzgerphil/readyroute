@@ -6,7 +6,7 @@ This is a validated progress checkpoint, not the Phase 1 completion report. Phas
 
 ## Current corpus
 
-- 121 primary source records: 78 fully reviewed, four partially reviewed, 31 not yet reviewed, and eight inaccessible.
+- 121 primary source records: 79 fully reviewed, four partially reviewed, 31 not yet reviewed, and seven inaccessible. The exact supplied Drive connector folder is now accessible and its 35 current children reconcile to 31 unique registered archive hashes.
 - 144 general operational knowledge records: 90 `VERIFIED`, 32 `HUMAN_REVIEW_REQUIRED`, 20 `POTENTIALLY_OUTDATED`, and two `CONFLICT`.
 - 383 exact evidence objects and mapping rows across 226 unique knowledge/source pairs.
 - 3,242 substantive claims: 1,774 unambiguous single-fragment claims and 1,468 human-allocated multi-fragment claims across 65 records; zero allocation rows remain pending.

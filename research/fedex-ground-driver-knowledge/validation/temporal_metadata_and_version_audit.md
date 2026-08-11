@@ -1,6 +1,6 @@
 # Temporal metadata and version audit
 
-Audit date: 2026-08-09
+Audit date: 2026-08-10
 
 ## Scope and intended use
 
@@ -24,7 +24,7 @@ These checks are enforced by `scripts/validate_corpus_integrity.py`.
 
 | Finding | Evidence | Risk | Severity | Confidence | Remediation |
 |---|---|---|---|---|---|
-| Reviewed-source audit-date coverage is complete; descriptive source-date recovery is partial | 75/75 fully or partially reviewed primary sources have `last_reviewed_at`; 57/75 currently retain at least one populated creation/modification/effective/version field after the controlled inventory recovery and current-source pass | Audit timing is intact, but 18 reviewed-source descriptive date/version cells require authoritative reconstruction | Medium | High | Keep automated review-date checks and reconcile the 18 descriptive metadata gaps under `validation/source_inventory_recovery_audit.md` |
+| Reviewed-source audit-date coverage is complete; descriptive source-date recovery is partial | 83/83 fully or partially reviewed primary sources have `last_reviewed_at`; 66/83 currently retain at least one populated creation/modification/effective/version field after the controlled inventory recovery and current-source pass | Audit timing is intact, but 17 reviewed-source descriptive date/version cells require authoritative reconstruction | Medium | High | Keep automated review-date checks and reconcile the 17 descriptive metadata gaps under `validation/source_inventory_recovery_audit.md` |
 | Record chronology is internally valid | 144/144 records have valid dates and `created_at <= updated_at <= 2026-08-10`; 34 were last updated 2026-08-08, 104 on 2026-08-09, and six on 2026-08-10 | No current chronology failure | Low | High | Retain chronology validation for every edit |
 | Evidence review timing is internally valid | 383/383 evidence objects have `reviewed_at` no later than their record update or the audit date; 95 are dated 2026-08-08, 281 are dated 2026-08-09, and seven are dated 2026-08-10 | No current time-travel condition | Low | High | Continue rejecting future or post-update evidence review dates |
 | Record source-version field is complete | 144/144 records have nonblank `source_date_or_version` | Reduces detachment of driver summaries from version context | Low | High | Require this field for all future records |
@@ -37,8 +37,8 @@ The validator deliberately does not impose a universal order among a source's cr
 
 ## Open temporal/version risks
 
-- Five MyGroundBiz/Drive document pairs still require authenticated download and byte comparison before identity can be established.
-- Eighteen reviewed-source rows require descriptive source date/version reconstruction after the controlled inventory recovery; operational record version fields and exact evidence locators remain intact.
+- The current Drive connector folder and all 35 direct children are metadata- and raw-byte-reconciled; future folder revisions still require deliberate comparison.
+- Seventeen reviewed-source rows require descriptive source date/version reconstruction after the controlled inventory recovery; operational record version fields and exact evidence locators remain intact.
 - Several filename/body version discrepancies remain preserved in the conflict and potentially-outdated reports.
 - Current controlling versions of OP-324, OP-321, OP-207/OP-207Res, HZ-035, SF-920P, and other referenced material remain unacquired.
 - The corrected posted date for `MGB-SAFETY-TOPIC-0077` is unresolved.

@@ -7,16 +7,16 @@ This is a live report, not a claim of completion.
 ## Current coverage
 
 - 121 primary source/source-location records inventoried.
-- 78 records fully reviewed.
+- 79 records fully reviewed.
 - 4 records partially reviewed.
 - 31 records not yet reviewed.
-- 8 records inaccessible: the connector-level Drive source and exact broken MyGroundBiz links.
+- 7 records inaccessible: exact broken MyGroundBiz links. The connector-level Drive source is now accessible and fully reconciled.
 - 77 additional dated Safety Topic Library documents are inventoried in a dedicated child-source inventory.
 - The complete supplied-folder ZIP and all 17 direct files were archived locally; all 18 inventory paths and SHA-256 digests are validator-verified.
 - A separate 17-row ZIP-member ledger proves that every member maps one-to-one to a distinct extracted Drive source by exact SHA-256 content identity, including the screenshot whose filename encoding differs between ZIP metadata and the extracted path.
 - All 17 direct Google Drive files have complete content review under their applicable evidence roles.
 - Every primary source marked fully or partially reviewed now has a dedicated review artifact; the corpus validator rejects future reviewed-source rows without one.
-- A 121-row source-capture ledger separately proves that 77 source records have durable checksum-protected bytes, two fully reviewed sources have complete hashed rendered-page capture, two partially reviewed sources have partial hashed rendered-page capture, five fully reviewed sources have only transient review artifacts, two sources have transient partial review, 25 sources are not acquired, and eight sources are inaccessible with no capture. Four byte-identical portal/Drive source pairs share controlled archive bytes; six durable sources are unreviewed FCC videos. Capture never substitutes for review.
+- A 121-row source-capture ledger separately proves that 77 source records have durable checksum-protected bytes, two fully reviewed sources have complete hashed rendered-page capture, two partially reviewed sources have partial hashed rendered-page capture, six fully reviewed sources have only transient review artifacts, two sources have transient partial review, 25 sources are not acquired, and seven sources are inaccessible with no capture. One transient reviewed row is the connector folder container whose 35 child byte identities are separately reconciled to the durable archive. Four byte-identical portal/Drive source pairs share controlled archive bytes; six durable sources are unreviewed FCC videos. Capture never substitutes for review.
 - The 78-row scenario workbook was inspected as a SECONDARY_REFERENCE and completed an adversarial coverage pass; it cannot independently establish procedures.
 - The announcement screenshot was visually reviewed and retained as historical launch context; the later fully reviewed FORGE 3.3 guide establishes the current conditional Ground procedure.
 
@@ -27,7 +27,7 @@ The visible Chat Bot folder had 17 direct files and no visible subfolders. All 1
 - SRC-GDRIVE-FILE-0003 is fully reviewed but remains a `SECONDARY_REFERENCE`; unsupported workbook answers are excluded.
 - SRC-GDRIVE-FILE-0017 is fully reviewed historical evidence and cannot override the later current FORGE 3.3 guide.
 
-The connected Drive account still cannot enumerate the supplied folder: on 2026-08-09 the exact-folder listing returned zero children and a folder-only `Chat Bot` search returned no result. Because the authenticated browser exposed and archived 17 children, the empty connector result is classified as an account/access limitation rather than evidence of an empty source folder; see `validation/google_drive_connector_access_audit.md`.
+The connected Drive account initially could not enumerate the supplied folder: on 2026-08-09 the exact-folder listing returned zero children and a folder-only `Chat Bot` search returned no result. Connector visibility was restored on 2026-08-10. The exact folder now resolves to `Chat Bot` and lists 35 direct files representing 31 unique byte objects. Complete authenticated raw-byte hashing shows that all 31 unique SHA-256 values already exist in the registered archive; four later uploads duplicate earlier files exactly. Provider IDs, timestamps, sizes, and hashes are preserved in `inventory/google_drive_connector_snapshot_2026-08-10.csv`; see `validation/google_drive_connector_access_audit.md`.
 
 ## MyGroundBiz status
 
