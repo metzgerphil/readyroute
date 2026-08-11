@@ -5,6 +5,10 @@ const {
   buildDriverHelpDecision,
   normalizeDriverQuestion
 } = require('./driverHelpRetrieval');
+const {
+  buildDriverHelpReferenceDecision,
+  isReferenceRecord
+} = require('./driverHelpReference');
 
 const MISSING_TABLE_CODES = new Set(['42P01', 'PGRST106', 'PGRST204', 'PGRST205']);
 
@@ -182,7 +186,12 @@ function createDriverHelpService({ supabase = defaultSupabase, now = () => new D
       loadKnowledgeRecords(),
       loadSessionContext(sessionId, accountId, actorType, actorId)
     ]);
-    const decision = buildDriverHelpDecision(question, records, sessionState.context);
+    const referenceDecision = buildDriverHelpReferenceDecision(question, records);
+    const decision = referenceDecision || buildDriverHelpDecision(
+      question,
+      records.filter((record) => !isReferenceRecord(record)),
+      sessionState.context
+    );
     const effectiveSessionId = await createOrUpdateSession({
       sessionId: sessionState.session_id,
       accountId,
@@ -206,6 +215,7 @@ function createDriverHelpService({ supabase = defaultSupabase, now = () => new D
       session_id: effectiveSessionId,
       interaction_id: interactionId,
       response_mode: decision.response_mode,
+      answer_type: decision.answer_type || 'OPERATIONAL',
       answer: decision.answer || null,
       more_info: decision.more_info || null,
       answer_structure: decision.answer_structure || null,

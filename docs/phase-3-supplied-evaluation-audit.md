@@ -26,8 +26,10 @@ The first run produced 23 failures: 18 retrieval, four classification, and one c
 
 After root-layer remediation, the complete Phase 3 automated lane passes 1,244/1,244 with zero unsafe-answer failures. The maintained 192-case suite, 12-case Phase 2 holdout, and 69-case candidate suite also remain fully green.
 
-## Remaining product gap exposed by the supplied pack
+## Product gap exposed by the supplied pack — resolved locally
 
-Canonical delivery-status and pickup-reason definitions exist under `knowledge/reference`, with their own 23-case reference-language suite. The current production Driver Help importer indexes operational records but does not yet expose those reference definitions as a dedicated, status-aware answer type. Consequently, a driver asking only “002 or 003” cannot yet receive the canonical reference comparison through the production query path.
+Canonical delivery-status and pickup-reason definitions under `knowledge/reference` now enter Driver Help through a dedicated reference decision path. The importer indexes all 57 definitions while publishing only the 49 `VERIFIED` definitions; six `HUMAN_REVIEW_REQUIRED` pickup reasons, delivery status 362, and potentially outdated delivery status 030 remain withheld. The operational retriever never receives reference rows.
 
-This is not permission to synthesize code instructions from general knowledge or from the supplied pack. A future implementation must import only canonical reference definitions, preserve namespace/status/source trace, state the workflow boundary, and avoid implying authority to select a code when the reference does not establish it.
+Reference answers preserve the delivery-status versus pickup-reason namespace, canonical status, version, source identity, and evidence link. Every answer explicitly states that a definition does not authorize selecting a code or establish the complete workflow. Namespace collisions require clarification, unknown codes and noneligible definitions escalate, and all 23 canonical reference-language cases pass their required runtime disposition.
+
+The resulting dry import contains 201 indexed rows: 144 operational records and 57 reference definitions. Of the 146 published rows, 97 are operational records and 49 are verified reference definitions. This change does not admit expected-answer text from the supplied pack as operational authority.

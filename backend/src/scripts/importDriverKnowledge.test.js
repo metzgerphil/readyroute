@@ -1,10 +1,15 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
+const path = require('node:path');
 
 const {
   buildImport,
   buildPublicationGateIndex,
+  mapReferenceStatus,
   parseCsv,
+  readJsonLines,
+  toCanonicalReferenceRecord,
+  validateReferenceRecord,
   validateProductionEligibleRecord
 } = require('./importDriverKnowledge');
 const {
@@ -43,6 +48,102 @@ test('production validation requires canonical evidence and a driver-language su
   assert.deepEqual(
     validateProductionEligibleRecord(canonicalRecord({ source_evidence: [], driver_question_variants: [] })),
     ['source_evidence', 'driver_question_variants']
+  );
+});
+
+test('canonical reference definitions import in a separate namespace with status-aware publication', () => {
+  const references = [
+    {
+      code: '002',
+      namespace: 'DELIVERY_STATUS',
+      label: 'Incorrect Recipient Address',
+      applies_when: 'The label address is incorrect.',
+      scope_notes: [],
+      source_id: 'SRC-1',
+      locator: 'page 36',
+      source_version: '2025-12-15',
+      knowledge_status: 'VERIFIED'
+    },
+    {
+      code: '15',
+      namespace: 'PICKUP_REASON',
+      label: 'Residential Pickup, Not Home',
+      applies_when: 'A listed residential pickup is attempted and the resident is not home.',
+      scope_notes: ['Current OP-321 is required for complete conditions.'],
+      source_id: 'SRC-1',
+      locator: 'page 52',
+      source_version: '2025-12-15',
+      knowledge_status: 'HUMAN_REVIEW_REQUIRED'
+    }
+  ];
+  const cases = [{
+    utterance: 'what is 002',
+    expected_reference_ids: ['DELIVERY_STATUS:002'],
+    response_mode: 'ANSWER_REFERENCE_WITH_WORKFLOW_BOUNDARY',
+    must_clarify: []
+  }];
+  const payload = buildImport([], '2026-08-10T00:00:00.000Z', [], new Map(), new Map(), references, cases);
+
+  assert.deepEqual(payload.knowledgeRows.map((row) => row.knowledge_id), [
+    'DELIVERY_STATUS:002',
+    'PICKUP_REASON:15'
+  ]);
+  assert.deepEqual(payload.knowledgeRows.map((row) => row.status), ['SOURCE_VERIFIED', 'PENDING_REVIEW']);
+  assert.deepEqual(payload.knowledgeRows.map((row) => row.is_published), [true, false]);
+  assert.equal(payload.knowledgeRows[0].taxonomy_paths[0], 'REFERENCE/DELIVERY_STATUS');
+  assert.match(payload.knowledgeRows[0].prohibited_actions[0], /does not by itself authorize/i);
+  assert.equal(payload.knowledgeRows[0].driver_question_patterns[0].utterance, 'what is 002');
+  assert.equal(payload.evidenceRows.length, 2);
+});
+
+test('the complete canonical reference corpus keeps only verified definitions eligible', () => {
+  const root = path.resolve(__dirname, '../../..');
+  const references = [
+    ...readJsonLines(path.join(root, 'knowledge/reference/delivery-status-codes.jsonl')),
+    ...readJsonLines(path.join(root, 'knowledge/reference/pickup-reason-codes.jsonl'))
+  ];
+  const cases = readJsonLines(path.join(root, 'knowledge/evaluations/reference-language-cases.jsonl'));
+  const payload = buildImport([], '2026-08-10T00:00:00.000Z', [], new Map(), new Map(), references, cases);
+
+  assert.equal(payload.knowledgeRows.length, 57);
+  assert.equal(payload.knowledgeRows.filter((row) => row.is_published).length, 49);
+  assert.equal(mapReferenceStatus('VERIFIED'), 'SOURCE_VERIFIED');
+  assert.equal(mapReferenceStatus('HUMAN_REVIEW_REQUIRED'), 'PENDING_REVIEW');
+  assert.equal(mapReferenceStatus('POTENTIALLY_OUTDATED'), 'POTENTIALLY_OUTDATED');
+  assert.equal(toCanonicalReferenceRecord(references[0]).knowledge_id, 'DELIVERY_STATUS:001');
+});
+
+test('malformed and duplicate canonical reference identities fail import closed', () => {
+  const malformed = {
+    namespace: 'UNKNOWN',
+    code: 'x',
+    knowledge_status: 'GUESSED'
+  };
+  assert.deepEqual(validateReferenceRecord(malformed), [
+    'namespace',
+    'code',
+    'label',
+    'applies_when',
+    'source_id',
+    'locator',
+    'knowledge_status'
+  ]);
+  assert.throws(
+    () => buildImport([], undefined, [], new Map(), new Map(), [malformed], []),
+    /failed validation/
+  );
+  const valid = {
+    code: '002',
+    namespace: 'DELIVERY_STATUS',
+    label: 'Incorrect Recipient Address',
+    applies_when: 'The label address is incorrect.',
+    source_id: 'SRC-1',
+    locator: 'page 36',
+    knowledge_status: 'VERIFIED'
+  };
+  assert.throws(
+    () => buildImport([], undefined, [], new Map(), new Map(), [valid, valid], []),
+    /duplicate namespace\/code/
   );
 });
 

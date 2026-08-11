@@ -17,6 +17,7 @@ The agreed mainstream daily-driver Phase 1 decision is recorded in the research 
 - 0 status-eligible records remain evidence-gated; [`operations/publication-gaps.jsonl`](operations/publication-gaps.jsonl) is empty.
 - 123 primary source-registry records and 3,254 claim-provenance/allocation records.
 - 192 formal operational driver-language cases, 23 canonical reference-language cases, 69 non-indexed candidate operational cases, 21 candidate knowledge-gap cases, and 724 indexed operational question variants.
+- The production import can additionally index all 57 canonical reference definitions through a separate reference path; only 49 `VERIFIED` definitions are answer eligible, and definitions never independently establish code-selection authority or a complete workflow.
 
 ## Material remaining source work
 
@@ -28,7 +29,7 @@ All 21 candidate knowledge-gap cases are now reconciled to an existing acquisiti
 
 ## Next priorities
 
-1. Continue product work only against the 97 publication-ready canonical records and preserve safe no-answer behavior for every other status.
+1. Continue product work only against the 97 publication-ready operational records and 49 verified reference definitions, preserving the reference/workflow boundary and safe no-answer behavior for every other status.
 2. Process future high-value mainstream pending-review or outdated records only through controlling evidence or explicit authorized adjudication.
 3. Keep specialist, administrative, linehaul, historical, and other non-daily-driver acquisition work in the deferred ledger until deliberately reprioritized.
 4. Reopen an approval when newer applicable evidence materially conflicts; add further adjudications only after explicit Ready Route approval.

@@ -7,7 +7,7 @@ Status date: 2026-08-10. Current decision: `NOT_READY`.
 | Test plan | `docs/phase-3-test-plan.md` — complete for current lanes |
 | Baseline report | `docs/phase-3-baseline.md` — frozen Phase 2 baseline |
 | Failure taxonomy | `docs/phase-3-failure-taxonomy.md` — complete |
-| Expanded evaluation suite and results | Phase 3 scripts/cases plus `docs/phase-3-adversarial-evaluation-report.md` and supplied-evaluation audit — 1,244/1,244 |
+| Expanded evaluation suite and results | Phase 3 scripts/cases plus `docs/phase-3-adversarial-evaluation-report.md` and supplied-evaluation audit — 1,244/1,244 operational adversarial cases and 23/23 reference-language runtime cases |
 | Retrieval, clarification, unsupported-instruction reports | Consolidated in adversarial evaluation report; zero current automated failures |
 | Speech reliability | `docs/phase-3-speech-to-text-reliability-report.md` — text boundary complete, physical matrix open |
 | Authentication and company isolation | `docs/phase-3-authentication-and-isolation-report.md` — local applied checks complete, device/staging checks open |
@@ -17,7 +17,7 @@ Status date: 2026-08-10. Current decision: `NOT_READY`.
 | Knowledge update/versioning | `docs/phase-3-knowledge-update-and-versioning-report.md` — runtime rules green, ingestion rehearsal open |
 | Prompt injection/adversarial report | Included in adversarial evaluation report and permanent suite |
 | Source traceability audit | `docs/phase-3-source-traceability-audit.md` — zero failures |
-| Defects found/fixed | `docs/phase-3-defect-log.md` — 20 found, 20 fixed in exercised lanes |
+| Defects found/fixed | `docs/phase-3-defect-log.md` — 21 found, 21 fixed in exercised lanes |
 | Remaining limitations/blockers | `docs/phase-3-readiness-assessment.md` — explicit pre-pilot blockers |
 | Regression additions | Retrieval, status/precedence, injection, context, network, duplicate-submit, and billing regressions added |
 | Pilot assessment and plan | Readiness assessment plus `docs/phase-3-pilot-plan.md` — `NOT_READY` |

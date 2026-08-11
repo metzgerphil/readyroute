@@ -17,6 +17,7 @@ The existing product already provides the core V1 experience:
 ## Canonical production boundary completed locally
 
 - The importer now reads `knowledge/operations/records.jsonl`, `knowledge/evaluations/driver-language-cases.jsonl`, and `knowledge/sources/registry.jsonl` rather than treating the research workbench as production authority.
+- The importer also reads the two canonical reference datasets and their 23-case reference-language suite. Reference rows use a separate decision path and cannot be mistaken for complete operational procedures.
 - `SOURCE_VERIFIED` and `READY_ROUTE_APPROVED` are the only answer-eligible statuses. `PENDING_REVIEW`, `POTENTIALLY_OUTDATED`, and `INSUFFICIENT_EVIDENCE` remain indexed blockers.
 - Canonical `production_eligibility` controls publication independently of status.
 - Canonical record version, source IDs, adjudication ID, approver, approval date, schema version, answer snapshot, candidates, and response latency are preserved for audit.
@@ -25,11 +26,12 @@ The existing product already provides the core V1 experience:
 
 Current canonical dry import:
 
-- 144 indexed records
-- 97 publication-ready records
+- 201 indexed rows: 144 operational records and 57 reference definitions
+- 146 published rows: 97 publication-ready operational records and 49 verified reference definitions
+- 8 reference definitions withheld by status
 - 0 status-eligible but publication-withheld records
 - 42 source identities used by the runtime import
-- 385 record-to-source evidence links
+- 442 record-to-source evidence links
 
 Current production retrieval validation:
 
@@ -64,12 +66,13 @@ UTC is the documented V1 billing-month boundary. A different contractual billing
 ## Verification in this worktree
 
 - Canonical importer/retrieval focused tests: passed.
-- Backend unit suite with inert local test configuration: 423 passed, 8 skipped, 0 failed (431 total). The applied-database integration test is intentionally skipped in the portable unit run.
+- Backend unit suite with inert local test configuration: 433 passed, 8 skipped, 0 failed (441 total). The applied-database integration test is intentionally skipped in the portable unit run.
 - Applied local Supabase migrations and SQL integration: passed. Checks cover two companies, RLS/anonymous denial, canonical publication constraints, monthly billing idempotency, username uniqueness, and device uniqueness.
 - Applied local Supabase authentication integration: passed. Checks cover invite resend/replay/expiry, cross-company substitution, reset replay, and immediate revocation of the previous device token.
 - Phase 1 production retrieval suite: passed all 192 cases with zero unsafe answers.
 - Candidate operational retrieval suite: passed 69/69 with zero unsafe-answer failures.
 - Phase 3 adversarial/context/status suite: passed 1,244/1,244, including 60 new independently worded confusing-neighbor cases, after discovered defects were fixed and retained as regressions.
+- Canonical reference-language runtime suite: passed 23/23, including namespace collisions, unknown codes, status-limited definitions, authorization ambiguity, and mandatory workflow boundaries.
 - Canonical traceability audit: 97/97 publication-ready records, 7/7 active approvals, and 27/27 direct-answer cases.
 - Knowledge import dry run: passed with the counts above.
 - Driver app: 29 suites / 225 tests passed; Expo configuration check passed. Existing VirtualizedList `act(...)` warnings remain non-failing test-harness cleanup.
