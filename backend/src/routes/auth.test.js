@@ -306,11 +306,26 @@ test('mobile login returns both portal tokens for a linked manager-driver identi
       is_active: true
     }
   });
-  const app = createApp({ supabase, jwtSecret: 'test-secret', enforceBilling: false });
+  const authorizeDriverDevice = async (_supabase, request) => ({
+    id: 'device-session-1',
+    device_hash: `hash:${request.deviceId}`
+  });
+  const app = createApp({
+    supabase,
+    jwtSecret: 'test-secret',
+    enforceBilling: false,
+    requireDriverDeviceId: true,
+    authorizeDriverDevice
+  });
 
   const response = await request(app)
     .post('/auth/mobile/login')
-    .send({ email: 'vlad@example.com', secret });
+    .send({
+      email: 'vlad@example.com',
+      secret,
+      device_id: '12345678-1234-1234-1234-123456789012',
+      device_name: 'ios ReadyRoute device'
+    });
 
   assert.equal(response.status, 200);
   assert.deepEqual(response.body.portals, ['driver', 'manager']);
@@ -321,8 +336,46 @@ test('mobile login returns both portal tokens for a linked manager-driver identi
   assert.equal(driverPayload.driver_id, 'driver-1');
   assert.equal(driverPayload.role, 'driver');
   assert.equal(driverPayload.email, 'vlad@example.com');
+  assert.equal(driverPayload.device_session_id, 'device-session-1');
   assert.equal(managerPayload.manager_user_id, 'manager-user-1');
   assert.equal(managerPayload.role, 'manager');
+});
+
+test('legacy driver login accepts an established password as well as a four-digit PIN', async () => {
+  const password = 'SecureDriverPassword!2026';
+  const passwordHash = await bcrypt.hash(password, 10);
+  const supabase = createSupabaseStub({
+    driver: {
+      id: 'driver-password-1',
+      account_id: 'account-1',
+      name: 'Password Driver',
+      email: 'password-driver@example.com',
+      password_hash: passwordHash,
+      is_active: true
+    }
+  });
+  const app = createApp({
+    supabase,
+    jwtSecret: 'test-secret',
+    enforceBilling: false,
+    requireDriverDeviceId: true,
+    authorizeDriverDevice: async () => ({
+      id: 'device-session-password-1',
+      device_hash: 'device-hash-password-1'
+    })
+  });
+
+  const response = await request(app)
+    .post('/auth/driver/login')
+    .send({
+      email: 'password-driver@example.com',
+      password,
+      device_id: '12345678-1234-1234-1234-123456789012'
+    });
+
+  assert.equal(response.status, 200);
+  assert.equal(response.body.user.driver_id, 'driver-password-1');
+  assert.equal(jwt.verify(response.body.token, 'test-secret').device_session_id, 'device-session-password-1');
 });
 
 test('public manager trial signup is disabled unless explicitly enabled', async () => {

@@ -4,7 +4,9 @@ const helmet = require('helmet');
 
 const { createAuthRouter } = require('./routes/auth');
 const { createBillingRouter } = require('./routes/billing');
+const { createDriverHelpRouter } = require('./routes/driverHelp');
 const { createManagerRouter } = require('./routes/manager');
+const { createManagerDriverHelpRouter } = require('./routes/managerDriverHelp');
 const propertyIntelManagerRoutes = require('./routes/propertyIntelManager');
 const { createPropertyIntelManagerRouter } = require('./routes/propertyIntelManager');
 const { createAuthMiddleware } = require('./middleware/auth');
@@ -96,7 +98,9 @@ function createApp(options = {}) {
     stripePriceId: options.stripePriceId,
     trialDays: options.trialDays,
     requireManager,
-    sendManagerPasswordResetEmail: options.sendManagerPasswordResetEmail
+    sendManagerPasswordResetEmail: options.sendManagerPasswordResetEmail,
+    authorizeDriverDevice: options.authorizeDriverDevice,
+    requireDriverDeviceId: options.requireDriverDeviceId
   });
   const billingRouter = options.supabase && !options.stripeClient && !process.env.STRIPE_SECRET_KEY
       ? express.Router()
@@ -128,12 +132,22 @@ function createApp(options = {}) {
     now: options.now,
     jwtSecret: options.jwtSecret,
     sendManagerInviteEmail: options.sendManagerInviteEmail,
+    sendDriverInviteEmail: options.sendDriverInviteEmail,
+    sendDriverPasswordResetEmail: options.sendDriverPasswordResetEmail,
     sendManagerPasswordResetEmail: options.sendManagerPasswordResetEmail,
     stripeClient: options.stripeClient,
     stripePriceId: options.stripePriceId,
     trialDays: options.trialDays,
     billingService: options.billingService,
     requireManager
+  });
+  const driverHelpRouter = createDriverHelpRouter({
+    supabase: options.supabase,
+    now: options.now,
+    service: options.driverHelpService
+  });
+  const managerDriverHelpRouter = createManagerDriverHelpRouter({
+    supabase: options.supabase
   });
   const propertyIntelManagerRouter = options.supabase
     ? createPropertyIntelManagerRouter({ supabase: options.supabase })
@@ -219,7 +233,11 @@ function createApp(options = {}) {
     '/staff/login'
   ], rateLimiters.login);
   app.use([
+    '/auth/driver/accept-invite',
     '/auth/manager/request-password-reset',
+    '/manager/drivers/:driver_id/invite',
+    '/manager/drivers/:driver_id/password-reset',
+    '/manager/manager-users/:managerUserId/password-reset',
     '/staff/request-password-reset'
   ], rateLimiters.passwordReset);
   app.use([
@@ -249,12 +267,14 @@ function createApp(options = {}) {
   app.use('/staff', staffRouter);
   app.use('/internal', internalSyncRouter);
   app.use('/manager/property-intel', requireManager, requireActiveSubscription, propertyIntelManagerRouter);
+  app.use('/manager/driver-help', requireManager, requireActiveSubscription, managerDriverHelpRouter);
   app.use('/manager', requireManager, requireActiveSubscription, managerRouter);
   app.use('/api/vedr', requireManager, requireActiveSubscription, vedrRouter);
   app.use('/routes', routesRouter);
   app.use('/timecards', timecardsRouter);
   app.use('/vehicles', requireManager, requireActiveSubscription, vehiclesRouter);
   app.use('/safety-focuses', requireDriver, safetyFocusesRouter);
+  app.use('/driver-help', requireDriver, driverHelpRouter);
 
   app.use((error, req, res, _next) => {
     if (res.headersSent) {

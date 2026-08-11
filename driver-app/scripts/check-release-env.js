@@ -36,6 +36,23 @@ function isLocalUrl(value) {
 function main() {
   const rootDir = path.resolve(__dirname, '..');
   const isProductionCheck = process.argv.includes('--production');
+  const profileIndex = process.argv.indexOf('--profile');
+  const profileName = profileIndex >= 0 ? process.argv[profileIndex + 1] : null;
+  const easJsonPath = path.join(rootDir, 'eas.json');
+
+  if (profileName && fs.existsSync(easJsonPath)) {
+    const easConfig = JSON.parse(fs.readFileSync(easJsonPath, 'utf8'));
+    const profile = easConfig?.build?.[profileName];
+    if (!profile) {
+      console.error(`Unknown EAS build profile: ${profileName}`);
+      process.exit(1);
+    }
+    for (const [key, value] of Object.entries(profile.env || {})) {
+      if (process.env[key] == null) {
+        process.env[key] = String(value);
+      }
+    }
+  }
   if (isProductionCheck) {
     loadDotEnv(path.join(rootDir, '.env.production'));
   }
@@ -46,8 +63,8 @@ function main() {
 
   const apiUrl = process.env.EXPO_PUBLIC_API_URL || '';
   const googleMapsKey = process.env.EXPO_PUBLIC_GOOGLE_MAPS_API_KEY || '';
+  const driverHelpOnly = String(process.env.EXPO_PUBLIC_DRIVER_HELP_ONLY || '').trim().toLowerCase() === 'true';
   const appConfigPath = path.join(rootDir, 'app.config.js');
-  const easJsonPath = path.join(rootDir, 'eas.json');
   const packageJsonPath = path.join(rootDir, 'package.json');
 
   if (!apiUrl) {
@@ -56,9 +73,9 @@ function main() {
     errors.push('EXPO_PUBLIC_API_URL still points at a local server. Set the production API URL before publishing.');
   }
 
-  if (!googleMapsKey) {
+  if (!driverHelpOnly && !googleMapsKey) {
     errors.push('Missing EXPO_PUBLIC_GOOGLE_MAPS_API_KEY.');
-  } else if (googleMapsKey === 'your_key_here') {
+  } else if (!driverHelpOnly && googleMapsKey === 'your_key_here') {
     errors.push('EXPO_PUBLIC_GOOGLE_MAPS_API_KEY is still a placeholder value.');
   }
 
@@ -73,22 +90,56 @@ function main() {
   if (fs.existsSync(appConfigPath) && fs.existsSync(packageJsonPath)) {
     const appConfig = require(appConfigPath).expo;
     const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, 'utf8'));
-    const backgroundModes = appConfig?.ios?.infoPlist?.UIBackgroundModes || [];
+    const infoPlist = appConfig?.ios?.infoPlist || {};
+    const backgroundModes = infoPlist.UIBackgroundModes || [];
     const locationPlugin = (appConfig?.plugins || []).find((plugin) => (
       Array.isArray(plugin) ? plugin[0] === 'expo-location' : plugin === 'expo-location'
     ));
 
-    if (!backgroundModes.includes('location')) {
-      errors.push('iOS background location mode is not enabled.');
+    if (driverHelpOnly) {
+      if (backgroundModes.includes('location') || infoPlist.NSLocationAlwaysAndWhenInUseUsageDescription || locationPlugin) {
+        errors.push('Help-only TestFlight configuration must not request route-location access.');
+      }
+      if (infoPlist.NSPhotoLibraryUsageDescription) {
+        errors.push('Help-only TestFlight configuration must not request photo-library access.');
+      }
+    } else {
+      if (!backgroundModes.includes('location')) {
+        errors.push('iOS background location mode is not enabled.');
+      }
+      if (!infoPlist.NSLocationAlwaysAndWhenInUseUsageDescription) {
+        errors.push('iOS Always location permission copy is missing.');
+      }
+      if (!locationPlugin || !Array.isArray(locationPlugin) || locationPlugin[1]?.isIosBackgroundLocationEnabled !== true) {
+        errors.push('Expo location background configuration is incomplete.');
+      }
+      if (!packageJson.dependencies?.['expo-task-manager']) {
+        errors.push('expo-task-manager is required for background location delivery.');
+      }
     }
-    if (!appConfig?.ios?.infoPlist?.NSLocationAlwaysAndWhenInUseUsageDescription) {
-      errors.push('iOS Always location permission copy is missing.');
-    }
-    if (!locationPlugin || !Array.isArray(locationPlugin) || locationPlugin[1]?.isIosBackgroundLocationEnabled !== true) {
-      errors.push('Expo location background configuration is incomplete.');
-    }
-    if (!packageJson.dependencies?.['expo-task-manager']) {
-      errors.push('expo-task-manager is required for background location delivery.');
+
+    if (profileName === 'testflight') {
+      const easConfig = JSON.parse(fs.readFileSync(easJsonPath, 'utf8'));
+      const profile = easConfig?.build?.testflight;
+      const submitProfile = easConfig?.submit?.testflight;
+      if (profile?.distribution !== 'store') {
+        errors.push('TestFlight profile must use store distribution.');
+      }
+      if (!profile?.autoIncrement) {
+        errors.push('TestFlight profile must auto-increment the build number.');
+      }
+      if (!submitProfile?.ios?.ascAppId) {
+        errors.push('TestFlight submit profile is missing ascAppId.');
+      }
+      if (!driverHelpOnly) {
+        errors.push('TestFlight profile must set EXPO_PUBLIC_DRIVER_HELP_ONLY=true.');
+      }
+      if (appConfig?.ios?.bundleIdentifier !== 'com.readyroute.driverapp') {
+        errors.push('TestFlight profile must use the production iOS bundle identifier.');
+      }
+      if (!appConfig?.extra?.eas?.projectId) {
+        errors.push('Expo projectId is missing.');
+      }
     }
   }
 
@@ -106,7 +157,11 @@ function main() {
 
   console.log('\nReadyRoute driver app release check passed.');
   console.log(`- API URL: ${apiUrl}`);
-  console.log(`- Google Maps key: ${googleMapsKey.slice(0, 8)}...`);
+  console.log(`- Driver help only: ${driverHelpOnly ? 'yes' : 'no'}`);
+  console.log(`- Google Maps key: ${driverHelpOnly ? 'not required' : `${googleMapsKey.slice(0, 8)}...`}`);
+  if (profileName) {
+    console.log(`- EAS profile: ${profileName}`);
+  }
   console.log(`- Expo config: ${path.basename(appConfigPath)}`);
   console.log(`- EAS config: ${path.basename(easJsonPath)}`);
 

@@ -17,6 +17,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { getApiErrorMessage } from '../utils/apiError';
 import api from '../services/api';
 import { saveSessionTokens } from '../services/auth';
+import { getOrCreateDeviceIdentity } from '../services/deviceIdentity';
 
 export default function LoginScreen({ onAuthenticated }) {
   const { width } = useWindowDimensions();
@@ -43,9 +44,13 @@ export default function LoginScreen({ onAuthenticated }) {
     setErrorMessage('');
 
     try {
+      const deviceIdentity = await getOrCreateDeviceIdentity();
       const mobileResponse = await api.post('/auth/mobile/login', {
         email: email.trim(),
-        secret: secret.trim()
+        secret: secret.trim(),
+        ...deviceIdentity
+      }, {
+        skipAuth: true
       });
 
       const driverToken = mobileResponse.data?.driver_token || null;
@@ -61,7 +66,10 @@ export default function LoginScreen({ onAuthenticated }) {
       try {
         const response = await api.post('/auth/driver/login', {
           email: email.trim(),
-          pin: secret.trim()
+          pin: secret.trim(),
+          ...deviceIdentity
+        }, {
+          skipAuth: true
         });
         const legacyDriverToken = response.data?.token;
 
@@ -71,8 +79,11 @@ export default function LoginScreen({ onAuthenticated }) {
 
         await saveSessionTokens({ driverToken: legacyDriverToken });
         onAuthenticated({ driverToken: legacyDriverToken, managerToken: null });
-      } catch (_legacyError) {
-        setErrorMessage('Incorrect email or password. Try again.');
+      } catch (legacyError) {
+        const networkUnavailable = !(_mobileError?.response || legacyError?.response);
+        setErrorMessage(networkUnavailable
+          ? 'Could not reach ReadyRoute. Check your connection and try again.'
+          : 'Incorrect email or password. Try again.');
       }
     } finally {
       setLoading(false);
@@ -102,6 +113,8 @@ export default function LoginScreen({ onAuthenticated }) {
     try {
       const response = await api.post('/auth/manager/request-password-reset', {
         email: requestedEmail
+      }, {
+        skipAuth: true
       });
       setResetEmail(requestedEmail);
       setResetMessage(response.data?.message || 'Check your email for reset instructions.');

@@ -1,0 +1,2 @@
+context_id,field_name,raw_value,status,reason
+MGB-SAFETY-TOPIC-0077,posted_date,12/31/0,UNRESOLVED_SOURCE_DISPLAY,"The authenticated Safety Topic Library displayed an incomplete year. The filename contains another date-like token, but it is not substituted without source verification."

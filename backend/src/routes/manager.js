@@ -19,6 +19,8 @@ const { attachApartmentIntelligenceToStops } = require('../services/apartmentInt
 const { isUsableCoordinate, summarizeCoordinateHealth } = require('../services/coordinates');
 const { attachPropertyIntelToStops, buildPropertyIntelKey, savePropertyIntel } = require('../services/propertyIntel');
 const {
+  sendDriverInviteEmail: defaultSendDriverInviteEmail,
+  sendDriverPasswordResetEmail: defaultSendDriverPasswordResetEmail,
   sendManagerInviteEmail: defaultSendManagerInviteEmail,
   sendManagerPasswordResetEmail: defaultSendManagerPasswordResetEmail
 } = require('../services/managerInviteEmail');
@@ -1032,6 +1034,16 @@ function buildManagerInviteUrl(token) {
 function buildManagerPasswordResetUrl(token) {
   const baseUrl = getManagerPortalBaseUrl().replace(/\/$/, '');
   return `${baseUrl}/reset-password?token=${encodeURIComponent(token)}`;
+}
+
+function buildDriverInviteUrl(token) {
+  const baseUrl = getManagerPortalBaseUrl().replace(/\/$/, '');
+  return `${baseUrl}/driver-invite?token=${encodeURIComponent(token)}`;
+}
+
+function buildDriverPasswordResetUrl(token) {
+  const baseUrl = getManagerPortalBaseUrl().replace(/\/$/, '');
+  return `${baseUrl}/driver-invite?token=${encodeURIComponent(token)}&mode=reset`;
 }
 
 function getPasswordVersion(hash) {
@@ -2172,6 +2184,8 @@ function createManagerRouter(options = {}) {
   const nowProvider = options.now || (() => new Date());
   const jwtSecret = options.jwtSecret || process.env.JWT_SECRET;
   const sendManagerInviteEmail = options.sendManagerInviteEmail || defaultSendManagerInviteEmail;
+  const sendDriverInviteEmail = options.sendDriverInviteEmail || defaultSendDriverInviteEmail;
+  const sendDriverPasswordResetEmail = options.sendDriverPasswordResetEmail || defaultSendDriverPasswordResetEmail;
   const sendManagerPasswordResetEmail = options.sendManagerPasswordResetEmail || defaultSendManagerPasswordResetEmail;
   const billingService = options.billingService || createBillingService({
     supabase,
@@ -4432,6 +4446,115 @@ function createManagerRouter(options = {}) {
     } catch (error) {
       console.error('Manager create driver endpoint failed:', error);
       return res.status(500).json({ error: 'Failed to create driver' });
+    }
+  });
+
+  router.post('/drivers/:driver_id/invite', requireManager, async (req, res) => {
+    if (!jwtSecret) {
+      return res.status(500).json({ error: 'Missing JWT_SECRET environment variable' });
+    }
+    try {
+      const [{ data: driver, error: driverError }, account] = await Promise.all([
+        supabase
+          .from('drivers')
+          .select('id, account_id, name, email, password_hash, is_active')
+          .eq('id', req.params.driver_id)
+          .eq('account_id', req.account.account_id)
+          .maybeSingle(),
+        getAccountManagerContext(supabase, req.account.account_id)
+      ]);
+      if (driverError) throw driverError;
+      if (!driver) return res.status(404).json({ error: 'Driver not found' });
+      if (driver.is_active === false) return res.status(409).json({ error: 'Reactivate this driver before sending an invite' });
+      if (driver.password_hash) return res.status(409).json({ error: 'This driver has already established a password' });
+
+      const invitedAt = nowProvider().toISOString();
+      const { error: updateError } = await supabase
+        .from('drivers')
+        .update({ invited_at: invitedAt, invite_accepted_at: null })
+        .eq('id', driver.id)
+        .eq('account_id', driver.account_id);
+      if (updateError) throw updateError;
+
+      const token = jwt.sign({
+        purpose: 'driver_invite',
+        driver_id: driver.id,
+        account_id: driver.account_id,
+        email: driver.email,
+        invited_at: invitedAt
+      }, jwtSecret, { expiresIn: '7d' });
+      const inviteUrl = buildDriverInviteUrl(token);
+      let emailResult;
+      try {
+        emailResult = await sendDriverInviteEmail({
+          to: driver.email,
+          fullName: driver.name,
+          inviteUrl,
+          companyName: account?.company_name
+        });
+      } catch (emailError) {
+        console.error('Driver invite email delivery failed:', emailError);
+        emailResult = { delivered: false, skipped: false, reason: 'Email delivery failed' };
+      }
+
+      return res.status(200).json({
+        message: emailResult.delivered
+          ? `Invite email sent to ${driver.email}.`
+          : 'Invite link ready. Share it securely with the driver.',
+        invite_url: emailResult.delivered ? null : inviteUrl,
+        email_delivery: emailResult.delivered ? 'sent' : emailResult.skipped ? 'not_configured' : 'failed'
+      });
+    } catch (error) {
+      console.error('Driver invite creation failed:', error);
+      return res.status(500).json({ error: 'Failed to prepare driver invite' });
+    }
+  });
+
+  router.post('/drivers/:driver_id/password-reset', requireManager, async (req, res) => {
+    if (!jwtSecret) return res.status(500).json({ error: 'Missing JWT_SECRET environment variable' });
+    try {
+      const [{ data: driver, error: driverError }, account] = await Promise.all([
+        supabase
+          .from('drivers')
+          .select('id, account_id, name, email, password_hash, is_active')
+          .eq('id', req.params.driver_id)
+          .eq('account_id', req.account.account_id)
+          .maybeSingle(),
+        getAccountManagerContext(supabase, req.account.account_id)
+      ]);
+      if (driverError) throw driverError;
+      if (!driver) return res.status(404).json({ error: 'Driver not found' });
+      if (driver.is_active === false) return res.status(409).json({ error: 'Reactivate this driver before resetting access' });
+      if (!driver.password_hash) return res.status(409).json({ error: 'This driver has not accepted an invite yet. Send an invite instead.' });
+
+      const token = jwt.sign({
+        purpose: 'driver_password_reset',
+        driver_id: driver.id,
+        account_id: driver.account_id,
+        email: driver.email,
+        pwdv: getPasswordVersion(driver.password_hash)
+      }, jwtSecret, { expiresIn: '30m' });
+      const resetUrl = buildDriverPasswordResetUrl(token);
+      let emailResult;
+      try {
+        emailResult = await sendDriverPasswordResetEmail({
+          to: driver.email,
+          fullName: driver.name,
+          resetUrl,
+          companyName: account?.company_name
+        });
+      } catch (emailError) {
+        console.error('Driver password reset email delivery failed:', emailError);
+        emailResult = { delivered: false, skipped: false, reason: 'Email delivery failed' };
+      }
+      return res.status(200).json({
+        message: emailResult.delivered ? `Password reset email sent to ${driver.email}.` : 'Password reset link ready. Share it securely with the driver.',
+        reset_url: emailResult.delivered ? null : resetUrl,
+        email_delivery: emailResult.delivered ? 'sent' : emailResult.skipped ? 'not_configured' : 'failed'
+      });
+    } catch (error) {
+      console.error('Driver password reset creation failed:', error);
+      return res.status(500).json({ error: 'Failed to prepare driver password reset' });
     }
   });
 

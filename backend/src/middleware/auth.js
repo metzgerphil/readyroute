@@ -34,14 +34,14 @@ async function loadCredentialSubject(supabase, payload) {
     case SESSION_SUBJECT_TYPES.DRIVER: {
       const { data, error } = await supabase
         .from('drivers')
-        .select('id, account_id, pin, is_active')
+        .select('id, account_id, pin, password_hash, is_active')
         .eq('id', payload.auth_subject_id)
         .maybeSingle();
       if (error) throw error;
       return data && {
         id: data.id,
         account_id: data.account_id,
-        credential_hash: data.pin,
+        credential_hash: data.password_hash || data.pin,
         is_active: data.is_active !== false
       };
     }
@@ -111,7 +111,29 @@ async function validateCredentialSession(supabase, payload) {
     return false;
   }
 
-  return getCredentialVersion(subject.credential_hash) === payload.auth_version;
+  if (getCredentialVersion(subject.credential_hash) !== payload.auth_version) {
+    return false;
+  }
+
+  if (payload.auth_subject_type === SESSION_SUBJECT_TYPES.DRIVER && payload.device_session_id) {
+    const { data: deviceSession, error } = await supabase
+      .from('driver_authorized_devices')
+      .select('id, account_id, driver_id, device_hash, revoked_at')
+      .eq('id', payload.device_session_id)
+      .maybeSingle();
+    if (error) throw error;
+    if (
+      !deviceSession ||
+      deviceSession.revoked_at ||
+      deviceSession.account_id !== payload.account_id ||
+      deviceSession.driver_id !== payload.driver_id ||
+      deviceSession.device_hash !== payload.device_hash
+    ) {
+      return false;
+    }
+  }
+
+  return true;
 }
 
 function createAuthMiddleware(options = {}) {
@@ -159,7 +181,10 @@ function createAuthMiddleware(options = {}) {
         driver_id: payload.driver_id,
         account_id: payload.account_id,
         name: payload.name,
-        role: payload.role
+        role: payload.role,
+        driver_mode_source: payload.driver_mode_source || 'driver',
+        auth_subject_id: payload.auth_subject_id || payload.driver_id,
+        auth_subject_type: payload.auth_subject_type || 'driver'
       };
       return next();
     } catch (error) {

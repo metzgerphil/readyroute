@@ -1,0 +1,2392 @@
+{
+  "schema_version": "1.0.0",
+  "generated_at": "2026-08-10",
+  "input": {
+    "path": "research/fedex-ground-driver-knowledge/candidate-evaluations/2026-08-10-driver-bot-pack/driver_bot_eval_pack.json",
+    "sha256": "f457a8f241dce7de40254dfe037c63336e17b6f6183ef825a737a176de9e03d5"
+  },
+  "baseline": {
+    "canonical_record_count": 144,
+    "formal_case_count": 192,
+    "publication_ready_record_count": 91
+  },
+  "structural_profile": {
+    "row_count": 155,
+    "unique_normalized_prompt_count": 130,
+    "duplicate_row_count": 25,
+    "duplicate_prompt_group_count": 25,
+    "contiguous_ids": true,
+    "unique_id_count": 155,
+    "invalid_rows": [],
+    "category_counts": {
+      "delivery_signature": 21,
+      "status_codes": 18,
+      "pickup": 13,
+      "call_tag": 7,
+      "forge": 17,
+      "safety": 16,
+      "security": 11,
+      "hazmat": 13,
+      "customer_communication": 12,
+      "fedex_terms": 14,
+      "not_sure": 13
+    },
+    "priority_counts": {
+      "high": 83,
+      "medium": 49,
+      "low": 23
+    },
+    "empty_follow_up_options_count": 74,
+    "empty_follow_up_options_by_category": {
+      "delivery_signature": 5,
+      "status_codes": 12,
+      "pickup": 5,
+      "call_tag": 4,
+      "forge": 6,
+      "safety": 10,
+      "security": 9,
+      "hazmat": 6,
+      "fedex_terms": 14,
+      "customer_communication": 3
+    }
+  },
+  "baseline_overlap": {
+    "exact_normalized_prompt_matches": 0,
+    "novel_rows": 155
+  },
+  "candidate_union_profile": {
+    "messy_prompt_count": 140,
+    "unique_messy_prompt_count": 140,
+    "unique_union_prompt_count": 145,
+    "shared_json_and_messy_prompt_count": 125,
+    "json_only_prompt_count": 5,
+    "messy_only_prompt_count": 15,
+    "mapping_queue_path": "research/fedex-ground-driver-knowledge/candidate-evaluations/2026-08-10-driver-bot-pack/candidate_canonical_mapping_queue.jsonl",
+    "independent_holdout_count": 32,
+    "development_review_count": 113,
+    "mapped_to_reference_evaluation_count": 23,
+    "mapped_to_operational_evaluation_count": 69,
+    "mapped_to_knowledge_gap_count": 21,
+    "needs_canonical_mapping_count": 32
+  },
+  "current_retrieval_profile": {
+    "response_mode_counts": {
+      "CLARIFY": 79,
+      "ANSWER": 35,
+      "ESCALATE": 41
+    },
+    "top_candidate_status_counts": {
+      "SOURCE_VERIFIED": 110,
+      "PENDING_REVIEW": 25,
+      "null": 4,
+      "POTENTIALLY_OUTDATED": 13,
+      "READY_ROUTE_APPROVED": 3
+    },
+    "top_candidate_publication_counts": {
+      "true": 113,
+      "false": 42
+    },
+    "no_candidate_count": 4,
+    "score_below_42_count": 37,
+    "nonpublished_top_candidate_count": 38
+  },
+  "duplicate_prompt_groups": [
+    {
+      "normalized_prompt": "customer says just leave it",
+      "ids": [
+        6,
+        81
+      ],
+      "categories": [
+        "delivery_signature"
+      ],
+      "identical_except_id": false
+    },
+    {
+      "normalized_prompt": "pickup not on my list",
+      "ids": [
+        21,
+        54
+      ],
+      "categories": [
+        "pickup"
+      ],
+      "identical_except_id": true
+    },
+    {
+      "normalized_prompt": "business says closed every friday",
+      "ids": [
+        22,
+        55
+      ],
+      "categories": [
+        "pickup"
+      ],
+      "identical_except_id": true
+    },
+    {
+      "normalized_prompt": "what do i do with this call tag",
+      "ids": [
+        23,
+        59
+      ],
+      "categories": [
+        "call_tag"
+      ],
+      "identical_except_id": true
+    },
+    {
+      "normalized_prompt": "call tag says fraud",
+      "ids": [
+        24,
+        60
+      ],
+      "categories": [
+        "call_tag"
+      ],
+      "identical_except_id": true
+    },
+    {
+      "normalized_prompt": "forge wont log in",
+      "ids": [
+        25,
+        61
+      ],
+      "categories": [
+        "forge"
+      ],
+      "identical_except_id": true
+    },
+    {
+      "normalized_prompt": "need delayed login",
+      "ids": [
+        26,
+        62
+      ],
+      "categories": [
+        "forge"
+      ],
+      "identical_except_id": true
+    },
+    {
+      "normalized_prompt": "not syncing",
+      "ids": [
+        27,
+        63
+      ],
+      "categories": [
+        "forge"
+      ],
+      "identical_except_id": false
+    },
+    {
+      "normalized_prompt": "package not on manifest",
+      "ids": [
+        28,
+        64
+      ],
+      "categories": [
+        "forge"
+      ],
+      "identical_except_id": true
+    },
+    {
+      "normalized_prompt": "accident",
+      "ids": [
+        29,
+        65
+      ],
+      "categories": [
+        "safety"
+      ],
+      "identical_except_id": true
+    },
+    {
+      "normalized_prompt": "dog here",
+      "ids": [
+        31,
+        66
+      ],
+      "categories": [
+        "safety"
+      ],
+      "identical_except_id": true
+    },
+    {
+      "normalized_prompt": "dog bit me",
+      "ids": [
+        32,
+        67
+      ],
+      "categories": [
+        "safety"
+      ],
+      "identical_except_id": true
+    },
+    {
+      "normalized_prompt": "vehicle stolen",
+      "ids": [
+        34,
+        68
+      ],
+      "categories": [
+        "security"
+      ],
+      "identical_except_id": true
+    },
+    {
+      "normalized_prompt": "hazmat",
+      "ids": [
+        35,
+        69
+      ],
+      "categories": [
+        "hazmat"
+      ],
+      "identical_except_id": true
+    },
+    {
+      "normalized_prompt": "can i take this hazmat",
+      "ids": [
+        36,
+        70
+      ],
+      "categories": [
+        "hazmat"
+      ],
+      "identical_except_id": true
+    },
+    {
+      "normalized_prompt": "hazmat paperwork missing",
+      "ids": [
+        37,
+        71
+      ],
+      "categories": [
+        "hazmat"
+      ],
+      "identical_except_id": false
+    },
+    {
+      "normalized_prompt": "leaking package",
+      "ids": [
+        38,
+        72
+      ],
+      "categories": [
+        "hazmat"
+      ],
+      "identical_except_id": true
+    },
+    {
+      "normalized_prompt": "customer asking where package is",
+      "ids": [
+        39,
+        73
+      ],
+      "categories": [
+        "customer_communication"
+      ],
+      "identical_except_id": true
+    },
+    {
+      "normalized_prompt": "customer wants it held",
+      "ids": [
+        40,
+        74
+      ],
+      "categories": [
+        "customer_communication"
+      ],
+      "identical_except_id": false
+    },
+    {
+      "normalized_prompt": "what is hal",
+      "ids": [
+        41,
+        75
+      ],
+      "categories": [
+        "fedex_terms"
+      ],
+      "identical_except_id": true
+    },
+    {
+      "normalized_prompt": "what is op 201",
+      "ids": [
+        42,
+        76
+      ],
+      "categories": [
+        "fedex_terms"
+      ],
+      "identical_except_id": true
+    },
+    {
+      "normalized_prompt": "not sure what this is",
+      "ids": [
+        43,
+        77
+      ],
+      "categories": [
+        "not_sure"
+      ],
+      "identical_except_id": true
+    },
+    {
+      "normalized_prompt": "dont know if it needs signature",
+      "ids": [
+        44,
+        78
+      ],
+      "categories": [
+        "not_sure"
+      ],
+      "identical_except_id": true
+    },
+    {
+      "normalized_prompt": "dont know if its business or house",
+      "ids": [
+        45,
+        79
+      ],
+      "categories": [
+        "not_sure"
+      ],
+      "identical_except_id": true
+    },
+    {
+      "normalized_prompt": "not sure what code this needs",
+      "ids": [
+        47,
+        80
+      ],
+      "categories": [
+        "not_sure"
+      ],
+      "identical_except_id": true
+    }
+  ],
+  "retrieval_rows": [
+    {
+      "id": 1,
+      "driver_prompt": "can i leave this one",
+      "category": "delivery_signature",
+      "priority": "high",
+      "exact_formal_case_id": null,
+      "current_response_mode": "CLARIFY",
+      "top_candidate_knowledge_id": "KNO-DEL-SAFEPLACE-001",
+      "top_candidate_status": "SOURCE_VERIFIED",
+      "top_candidate_published": true,
+      "top_candidate_score": 94.8,
+      "expected_first_response": "Maybe. First: does it need a signature?"
+    },
+    {
+      "id": 2,
+      "driver_prompt": "nobody home",
+      "category": "delivery_signature",
+      "priority": "high",
+      "exact_formal_case_id": null,
+      "current_response_mode": "ANSWER",
+      "top_candidate_knowledge_id": "KNO-DEL-HAZMAT-SIGNATURE-001",
+      "top_candidate_status": "SOURCE_VERIFIED",
+      "top_candidate_published": true,
+      "top_candidate_score": 110,
+      "expected_first_response": "Don't leave it yet. What kind of stop is it?"
+    },
+    {
+      "id": 3,
+      "driver_prompt": "needs sig no one there",
+      "category": "delivery_signature",
+      "priority": "high",
+      "exact_formal_case_id": null,
+      "current_response_mode": "CLARIFY",
+      "top_candidate_knowledge_id": "KNO-DEL-SIG-DSR-001",
+      "top_candidate_status": "SOURCE_VERIFIED",
+      "top_candidate_published": true,
+      "top_candidate_score": 71.42857,
+      "expected_first_response": "Do not leave the package. To give the exact path, choose one: ISR / DSR / ASR."
+    },
+    {
+      "id": 4,
+      "driver_prompt": "can front desk sign",
+      "category": "delivery_signature",
+      "priority": "high",
+      "exact_formal_case_id": null,
+      "current_response_mode": "CLARIFY",
+      "top_candidate_knowledge_id": "KNO-DEL-PHARMACY-001",
+      "top_candidate_status": "PENDING_REVIEW",
+      "top_candidate_published": false,
+      "top_candidate_score": 162.4,
+      "expected_first_response": "Is it signature-required?"
+    },
+    {
+      "id": 5,
+      "driver_prompt": "can i leave with neighbor",
+      "category": "delivery_signature",
+      "priority": "high",
+      "exact_formal_case_id": null,
+      "current_response_mode": "CLARIFY",
+      "top_candidate_knowledge_id": "KNO-DEL-SAFEPLACE-001",
+      "top_candidate_status": "SOURCE_VERIFIED",
+      "top_candidate_published": true,
+      "top_candidate_score": 94.8,
+      "expected_first_response": "Only if the package allows indirect delivery. Is it ISR, DSR, ASR, or not sure?"
+    },
+    {
+      "id": 6,
+      "driver_prompt": "customer says just leave it",
+      "category": "delivery_signature",
+      "priority": "high",
+      "exact_formal_case_id": null,
+      "current_response_mode": "CLARIFY",
+      "top_candidate_knowledge_id": "KNO-DEL-SAFEPLACE-001",
+      "top_candidate_status": "SOURCE_VERIFIED",
+      "top_candidate_published": true,
+      "top_candidate_score": 94.8,
+      "expected_first_response": "Maybe, but first I need to know whether it needs a signature."
+    },
+    {
+      "id": 7,
+      "driver_prompt": "this one needs id",
+      "category": "delivery_signature",
+      "priority": "high",
+      "exact_formal_case_id": null,
+      "current_response_mode": "CLARIFY",
+      "top_candidate_knowledge_id": "KNO-DEL-SIG-ASR-001",
+      "top_candidate_status": "SOURCE_VERIFIED",
+      "top_candidate_published": true,
+      "top_candidate_score": 71.66667,
+      "expected_first_response": "Is it an ASR package or another ID-check prompt?"
+    },
+    {
+      "id": 8,
+      "driver_prompt": "can i leave alcohol package",
+      "category": "delivery_signature",
+      "priority": "high",
+      "exact_formal_case_id": null,
+      "current_response_mode": "ANSWER",
+      "top_candidate_knowledge_id": "KNO-DEL-SAFEPLACE-001",
+      "top_candidate_status": "SOURCE_VERIFIED",
+      "top_candidate_published": true,
+      "top_candidate_score": 88.66667,
+      "expected_first_response": "No. Adult Signature Required applies. No driver release, no indirect delivery, and verify ID."
+    },
+    {
+      "id": 9,
+      "driver_prompt": "what code do i use",
+      "category": "status_codes",
+      "priority": "high",
+      "exact_formal_case_id": null,
+      "current_response_mode": "CLARIFY",
+      "top_candidate_knowledge_id": "KNO-DEL-LOCKER-FAIL-001",
+      "top_candidate_status": "SOURCE_VERIFIED",
+      "top_candidate_published": true,
+      "top_candidate_score": 32,
+      "expected_first_response": "Which happened?"
+    },
+    {
+      "id": 10,
+      "driver_prompt": "what code for nobody home",
+      "category": "status_codes",
+      "priority": "high",
+      "exact_formal_case_id": null,
+      "current_response_mode": "ANSWER",
+      "top_candidate_knowledge_id": "KNO-DEL-HAZMAT-SIGNATURE-001",
+      "top_candidate_status": "SOURCE_VERIFIED",
+      "top_candidate_published": true,
+      "top_candidate_score": 67.33333,
+      "expected_first_response": "Residential or commercial?"
+    },
+    {
+      "id": 11,
+      "driver_prompt": "wrong address code",
+      "category": "status_codes",
+      "priority": "high",
+      "exact_formal_case_id": null,
+      "current_response_mode": "CLARIFY",
+      "top_candidate_knowledge_id": "KNO-DEL-MISDELIVERY-RECOVERY-001",
+      "top_candidate_status": "SOURCE_VERIFIED",
+      "top_candidate_published": true,
+      "top_candidate_score": 88.93333,
+      "expected_first_response": "Do you mean the label is wrong, or you still can't find the place?"
+    },
+    {
+      "id": 12,
+      "driver_prompt": "002 or 003",
+      "category": "status_codes",
+      "priority": "high",
+      "exact_formal_case_id": null,
+      "current_response_mode": "ESCALATE",
+      "top_candidate_knowledge_id": "KNO-FORGE-EDIT-ADDRESS-001",
+      "top_candidate_status": "PENDING_REVIEW",
+      "top_candidate_published": false,
+      "top_candidate_score": 8.61957,
+      "expected_first_response": "002 means the label address is wrong. 003 means the address may be right, but you still can't locate the place."
+    },
+    {
+      "id": 13,
+      "driver_prompt": "004 or 007",
+      "category": "status_codes",
+      "priority": "high",
+      "exact_formal_case_id": null,
+      "current_response_mode": "CLARIFY",
+      "top_candidate_knowledge_id": "KNO-DEL-SHIPPER-RELEASE-001",
+      "top_candidate_status": "SOURCE_VERIFIED",
+      "top_candidate_published": true,
+      "top_candidate_score": 30.90455,
+      "expected_first_response": "004 is for non-residential recipient not in. 007 is for residential recipient not in when you can't indirect or driver release."
+    },
+    {
+      "id": 14,
+      "driver_prompt": "014 or 019",
+      "category": "status_codes",
+      "priority": "high",
+      "exact_formal_case_id": null,
+      "current_response_mode": "ESCALATE",
+      "top_candidate_knowledge_id": null,
+      "top_candidate_status": null,
+      "top_candidate_published": false,
+      "top_candidate_score": 0,
+      "expected_first_response": "014 is residential driver release at the delivery address. 019 is indirect delivery through an allowed alternate person or location path."
+    },
+    {
+      "id": 15,
+      "driver_prompt": "027 or 100",
+      "category": "status_codes",
+      "priority": "high",
+      "exact_formal_case_id": null,
+      "current_response_mode": "CLARIFY",
+      "top_candidate_knowledge_id": "KNO-DEL-NOTATION-001",
+      "top_candidate_status": "SOURCE_VERIFIED",
+      "top_candidate_published": true,
+      "top_candidate_score": 32,
+      "expected_first_response": "027 is no attempt for operational reasons. 100 is no attempt because the customer requested it."
+    },
+    {
+      "id": 16,
+      "driver_prompt": "029 or 106",
+      "category": "status_codes",
+      "priority": "high",
+      "exact_formal_case_id": null,
+      "current_response_mode": "ESCALATE",
+      "top_candidate_knowledge_id": "KNO-PUP-CALLTAG-FRAUD-001",
+      "top_candidate_status": "PENDING_REVIEW",
+      "top_candidate_published": false,
+      "top_candidate_score": 30.8,
+      "expected_first_response": "029 is a successful call tag pickup. 106 is all call tags cancelled for suspected fraud."
+    },
+    {
+      "id": 17,
+      "driver_prompt": "what is 016",
+      "category": "status_codes",
+      "priority": "high",
+      "exact_formal_case_id": null,
+      "current_response_mode": "ESCALATE",
+      "top_candidate_knowledge_id": null,
+      "top_candidate_status": null,
+      "top_candidate_published": false,
+      "top_candidate_score": 0,
+      "expected_first_response": "Code 016. Meaning: Package on manifest, not on van."
+    },
+    {
+      "id": 18,
+      "driver_prompt": "what is 079",
+      "category": "status_codes",
+      "priority": "high",
+      "exact_formal_case_id": null,
+      "current_response_mode": "ESCALATE",
+      "top_candidate_knowledge_id": "KNO-FORGE-BULK-TRANSFER-001",
+      "top_candidate_status": "PENDING_REVIEW",
+      "top_candidate_published": false,
+      "top_candidate_score": 23.76,
+      "expected_first_response": "Code 079. Meaning: Enroute package transfer."
+    },
+    {
+      "id": 19,
+      "driver_prompt": "pickup not ready",
+      "category": "pickup",
+      "priority": "high",
+      "exact_formal_case_id": null,
+      "current_response_mode": "CLARIFY",
+      "top_candidate_knowledge_id": "KNO-PUP-CALLTAG-NOTREADY-001",
+      "top_candidate_status": "SOURCE_VERIFIED",
+      "top_candidate_published": true,
+      "top_candidate_score": 184.93333,
+      "expected_first_response": "Use pickup exception code 10: Pickup Not Ready - Dispatch Again."
+    },
+    {
+      "id": 20,
+      "driver_prompt": "customer has no package",
+      "category": "pickup",
+      "priority": "high",
+      "exact_formal_case_id": null,
+      "current_response_mode": "CLARIFY",
+      "top_candidate_knowledge_id": "KNO-DEL-BARCODE-001",
+      "top_candidate_status": "SOURCE_VERIFIED",
+      "top_candidate_published": true,
+      "top_candidate_score": 82.4,
+      "expected_first_response": "Was the stop closed or attempted with no packages, or was the package simply not ready?"
+    },
+    {
+      "id": 21,
+      "driver_prompt": "pickup not on my list",
+      "category": "pickup",
+      "priority": "high",
+      "exact_formal_case_id": null,
+      "current_response_mode": "ANSWER",
+      "top_candidate_knowledge_id": "KNO-PUP-UNLISTED-001",
+      "top_candidate_status": "SOURCE_VERIFIED",
+      "top_candidate_published": true,
+      "top_candidate_score": 128,
+      "expected_first_response": "Do you already have a pickup list today?"
+    },
+    {
+      "id": 22,
+      "driver_prompt": "business says closed every friday",
+      "category": "pickup",
+      "priority": "high",
+      "exact_formal_case_id": null,
+      "current_response_mode": "CLARIFY",
+      "top_candidate_knowledge_id": "KNO-FORGE-BUSINESS-CLOSURE-MSG-001",
+      "top_candidate_status": "SOURCE_VERIFIED",
+      "top_candidate_published": true,
+      "top_candidate_score": 58,
+      "expected_first_response": "Send a Business Closure message in FORGE. Choose one: Recurring day / Single date / Date range."
+    },
+    {
+      "id": 23,
+      "driver_prompt": "what do i do with this call tag",
+      "category": "call_tag",
+      "priority": "high",
+      "exact_formal_case_id": null,
+      "current_response_mode": "CLARIFY",
+      "top_candidate_knowledge_id": "KNO-PUP-CALLTAG-REFUSED-001",
+      "top_candidate_status": "SOURCE_VERIFIED",
+      "top_candidate_published": true,
+      "top_candidate_score": 110,
+      "expected_first_response": "First choose what you are trying to do: Pick it up / Deliver it / Apply one action to all call tags / Handle each call tag separately."
+    },
+    {
+      "id": 24,
+      "driver_prompt": "call tag says fraud",
+      "category": "call_tag",
+      "priority": "high",
+      "exact_formal_case_id": null,
+      "current_response_mode": "ESCALATE",
+      "top_candidate_knowledge_id": "KNO-PUP-CALLTAG-FRAUD-001",
+      "top_candidate_status": "PENDING_REVIEW",
+      "top_candidate_published": false,
+      "top_candidate_score": 144.93333,
+      "expected_first_response": "If the workflow is cancelling all call tags for suspected fraud, that is code 106."
+    },
+    {
+      "id": 25,
+      "driver_prompt": "forge wont log in",
+      "category": "forge",
+      "priority": "high",
+      "exact_formal_case_id": null,
+      "current_response_mode": "ESCALATE",
+      "top_candidate_knowledge_id": "KNO-FORGE-DELAYED-LOGIN-001",
+      "top_candidate_status": "SOURCE_VERIFIED",
+      "top_candidate_published": true,
+      "top_candidate_score": 120.93333,
+      "expected_first_response": "Do you need to keep working during an outage, or is this a regular login issue?"
+    },
+    {
+      "id": 26,
+      "driver_prompt": "need delayed login",
+      "category": "forge",
+      "priority": "high",
+      "exact_formal_case_id": null,
+      "current_response_mode": "CLARIFY",
+      "top_candidate_knowledge_id": "KNO-FORGE-DELAYED-LOGIN-001",
+      "top_candidate_status": "SOURCE_VERIFIED",
+      "top_candidate_published": true,
+      "top_candidate_score": 64.93333,
+      "expected_first_response": "Delayed Login is for working through an outage when normal authentication is unavailable."
+    },
+    {
+      "id": 27,
+      "driver_prompt": "not syncing",
+      "category": "forge",
+      "priority": "high",
+      "exact_formal_case_id": null,
+      "current_response_mode": "ESCALATE",
+      "top_candidate_knowledge_id": "KNO-FORGE-SYNC-QUEUE-001",
+      "top_candidate_status": "POTENTIALLY_OUTDATED",
+      "top_candidate_published": false,
+      "top_candidate_score": 110.8,
+      "expected_first_response": "This sounds like a sync-status problem. Do you need to retry failed transmissions or re-upload completed ones?"
+    },
+    {
+      "id": 28,
+      "driver_prompt": "package not on manifest",
+      "category": "forge",
+      "priority": "high",
+      "exact_formal_case_id": null,
+      "current_response_mode": "ESCALATE",
+      "top_candidate_knowledge_id": "KNO-FORGE-UNMANIFESTED-DELIVERY-001",
+      "top_candidate_status": "PENDING_REVIEW",
+      "top_candidate_published": false,
+      "top_candidate_score": 166,
+      "expected_first_response": "Is this a delivery package or a pickup situation?"
+    },
+    {
+      "id": 29,
+      "driver_prompt": "accident",
+      "category": "safety",
+      "priority": "high",
+      "exact_formal_case_id": null,
+      "current_response_mode": "CLARIFY",
+      "top_candidate_knowledge_id": "KNO-INC-ACCIDENT-REPORT-001",
+      "top_candidate_status": "SOURCE_VERIFIED",
+      "top_candidate_published": true,
+      "top_candidate_score": 54,
+      "expected_first_response": "Any injuries or immediate traffic hazard?"
+    },
+    {
+      "id": 30,
+      "driver_prompt": "minor accident what now",
+      "category": "safety",
+      "priority": "high",
+      "exact_formal_case_id": null,
+      "current_response_mode": "CLARIFY",
+      "top_candidate_knowledge_id": "KNO-INC-ACCIDENT-REPORT-001",
+      "top_candidate_status": "SOURCE_VERIFIED",
+      "top_candidate_published": true,
+      "top_candidate_score": 26.66667,
+      "expected_first_response": "Are there any injuries or immediate traffic hazards?"
+    },
+    {
+      "id": 31,
+      "driver_prompt": "dog here",
+      "category": "safety",
+      "priority": "high",
+      "exact_formal_case_id": null,
+      "current_response_mode": "CLARIFY",
+      "top_candidate_knowledge_id": "KNO-SAF-DOG-ENCOUNTER-001",
+      "top_candidate_status": "SOURCE_VERIFIED",
+      "top_candidate_published": true,
+      "top_candidate_score": 34,
+      "expected_first_response": "What is the dog doing?"
+    },
+    {
+      "id": 32,
+      "driver_prompt": "dog bit me",
+      "category": "safety",
+      "priority": "high",
+      "exact_formal_case_id": null,
+      "current_response_mode": "ANSWER",
+      "top_candidate_knowledge_id": "KNO-SAF-DOG-ENCOUNTER-001",
+      "top_candidate_status": "SOURCE_VERIFIED",
+      "top_candidate_published": true,
+      "top_candidate_score": 118,
+      "expected_first_response": "Clean the wound, get owner and rabies info if possible, seek medical care, and report it."
+    },
+    {
+      "id": 33,
+      "driver_prompt": "something feels off here",
+      "category": "security",
+      "priority": "high",
+      "exact_formal_case_id": null,
+      "current_response_mode": "CLARIFY",
+      "top_candidate_knowledge_id": "KNO-DEL-SIG-ASR-001",
+      "top_candidate_status": "SOURCE_VERIFIED",
+      "top_candidate_published": true,
+      "top_candidate_score": 21.42857,
+      "expected_first_response": "What kind of security issue is it?"
+    },
+    {
+      "id": 34,
+      "driver_prompt": "vehicle stolen",
+      "category": "security",
+      "priority": "high",
+      "exact_formal_case_id": null,
+      "current_response_mode": "ESCALATE",
+      "top_candidate_knowledge_id": "KNO-SEC-STOLEN-VEHICLE-001",
+      "top_candidate_status": "PENDING_REVIEW",
+      "top_candidate_published": false,
+      "top_candidate_score": 104,
+      "expected_first_response": "Call local law enforcement immediately, then GSOC at 1-800-872-8025, then notify station management/security."
+    },
+    {
+      "id": 35,
+      "driver_prompt": "hazmat",
+      "category": "hazmat",
+      "priority": "high",
+      "exact_formal_case_id": null,
+      "current_response_mode": "CLARIFY",
+      "top_candidate_knowledge_id": "KNO-DEL-HAZMAT-SIGNATURE-001",
+      "top_candidate_status": "SOURCE_VERIFIED",
+      "top_candidate_published": true,
+      "top_candidate_score": 50,
+      "expected_first_response": "What kind of hazmat issue is it?"
+    },
+    {
+      "id": 36,
+      "driver_prompt": "can i take this hazmat",
+      "category": "hazmat",
+      "priority": "high",
+      "exact_formal_case_id": null,
+      "current_response_mode": "CLARIFY",
+      "top_candidate_knowledge_id": "KNO-HAZ-AKHI-001",
+      "top_candidate_status": "SOURCE_VERIFIED",
+      "top_candidate_published": true,
+      "top_candidate_score": 106,
+      "expected_first_response": "Is this a pickup or is it already in authorized transport?"
+    },
+    {
+      "id": 37,
+      "driver_prompt": "hazmat paperwork missing",
+      "category": "hazmat",
+      "priority": "high",
+      "exact_formal_case_id": null,
+      "current_response_mode": "CLARIFY",
+      "top_candidate_knowledge_id": "KNO-PUP-INTERNATIONAL-DOCS-001",
+      "top_candidate_status": "PENDING_REVIEW",
+      "top_candidate_published": false,
+      "top_candidate_score": 64.93333,
+      "expected_first_response": "Do you mean missing paperwork or incomplete paperwork?"
+    },
+    {
+      "id": 38,
+      "driver_prompt": "leaking package",
+      "category": "hazmat",
+      "priority": "high",
+      "exact_formal_case_id": null,
+      "current_response_mode": "CLARIFY",
+      "top_candidate_knowledge_id": "KNO-HAZ-LEAK-001",
+      "top_candidate_status": "SOURCE_VERIFIED",
+      "top_candidate_published": true,
+      "top_candidate_score": 106,
+      "expected_first_response": "Do not handle it if unsafe. Pull over when safe and contact a FedEx station representative immediately."
+    },
+    {
+      "id": 39,
+      "driver_prompt": "customer asking where package is",
+      "category": "customer_communication",
+      "priority": "high",
+      "exact_formal_case_id": null,
+      "current_response_mode": "ESCALATE",
+      "top_candidate_knowledge_id": "KNO-DEL-REFUSED-001",
+      "top_candidate_status": "PENDING_REVIEW",
+      "top_candidate_published": false,
+      "top_candidate_score": 53.33333,
+      "expected_first_response": "Is this a tracking question or a package research case message?"
+    },
+    {
+      "id": 40,
+      "driver_prompt": "customer wants it held",
+      "category": "customer_communication",
+      "priority": "high",
+      "exact_formal_case_id": null,
+      "current_response_mode": "ANSWER",
+      "top_candidate_knowledge_id": "KNO-COMMS-MEDIA-001",
+      "top_candidate_status": "SOURCE_VERIFIED",
+      "top_candidate_published": true,
+      "top_candidate_score": 64.93333,
+      "expected_first_response": "Do you mean hold for a future date, hold at location, or no attempt today?"
+    },
+    {
+      "id": 41,
+      "driver_prompt": "what is hal",
+      "category": "fedex_terms",
+      "priority": "medium",
+      "exact_formal_case_id": null,
+      "current_response_mode": "ANSWER",
+      "top_candidate_knowledge_id": "KNO-DEL-HAL-DELIVERY-001",
+      "top_candidate_status": "SOURCE_VERIFIED",
+      "top_candidate_published": true,
+      "top_candidate_score": 50,
+      "expected_first_response": "HAL means Hold at Location."
+    },
+    {
+      "id": 42,
+      "driver_prompt": "what is op 201",
+      "category": "fedex_terms",
+      "priority": "medium",
+      "exact_formal_case_id": null,
+      "current_response_mode": "ESCALATE",
+      "top_candidate_knowledge_id": "KNO-DEL-BUS-OP201-001",
+      "top_candidate_status": "PENDING_REVIEW",
+      "top_candidate_published": false,
+      "top_candidate_score": 106,
+      "expected_first_response": "OP-201 is the business release waiver on file at the station."
+    },
+    {
+      "id": 43,
+      "driver_prompt": "not sure what this is",
+      "category": "not_sure",
+      "priority": "high",
+      "exact_formal_case_id": null,
+      "current_response_mode": "CLARIFY",
+      "top_candidate_knowledge_id": "KNO-DEL-CLASSIFICATION-001",
+      "top_candidate_status": "SOURCE_VERIFIED",
+      "top_candidate_published": true,
+      "top_candidate_score": 106,
+      "expected_first_response": "No problem. What do you see?"
+    },
+    {
+      "id": 44,
+      "driver_prompt": "dont know if it needs signature",
+      "category": "not_sure",
+      "priority": "high",
+      "exact_formal_case_id": null,
+      "current_response_mode": "CLARIFY",
+      "top_candidate_knowledge_id": "KNO-DEL-HAZMAT-SIGNATURE-001",
+      "top_candidate_status": "SOURCE_VERIFIED",
+      "top_candidate_published": true,
+      "top_candidate_score": 58,
+      "expected_first_response": "What do you see?"
+    },
+    {
+      "id": 45,
+      "driver_prompt": "dont know if its business or house",
+      "category": "not_sure",
+      "priority": "high",
+      "exact_formal_case_id": null,
+      "current_response_mode": "CLARIFY",
+      "top_candidate_knowledge_id": "KNO-DEL-CLASSIFICATION-001",
+      "top_candidate_status": "SOURCE_VERIFIED",
+      "top_candidate_published": true,
+      "top_candidate_score": 40.8,
+      "expected_first_response": "Which sounds more like the stop?"
+    },
+    {
+      "id": 46,
+      "driver_prompt": "can i take this",
+      "category": "not_sure",
+      "priority": "high",
+      "exact_formal_case_id": null,
+      "current_response_mode": "CLARIFY",
+      "top_candidate_knowledge_id": "KNO-HAZ-RADIOACTIVE-WET-001",
+      "top_candidate_status": "SOURCE_VERIFIED",
+      "top_candidate_published": true,
+      "top_candidate_score": 50,
+      "expected_first_response": "What kind of package is it?"
+    },
+    {
+      "id": 47,
+      "driver_prompt": "not sure what code this needs",
+      "category": "not_sure",
+      "priority": "high",
+      "exact_formal_case_id": null,
+      "current_response_mode": "CLARIFY",
+      "top_candidate_knowledge_id": "KNO-DEL-CLASSIFICATION-001",
+      "top_candidate_status": "SOURCE_VERIFIED",
+      "top_candidate_published": true,
+      "top_candidate_score": 58,
+      "expected_first_response": "What happened?"
+    },
+    {
+      "id": 48,
+      "driver_prompt": "can i put it in mailbox",
+      "category": "delivery_signature",
+      "priority": "high",
+      "exact_formal_case_id": null,
+      "current_response_mode": "ANSWER",
+      "top_candidate_knowledge_id": "KNO-DEL-PLACEMENT-HAZARD-001",
+      "top_candidate_status": "SOURCE_VERIFIED",
+      "top_candidate_published": true,
+      "top_candidate_score": 120,
+      "expected_first_response": "No. Never leave a package in a U.S. mailbox."
+    },
+    {
+      "id": 49,
+      "driver_prompt": "what is 100",
+      "category": "status_codes",
+      "priority": "high",
+      "exact_formal_case_id": null,
+      "current_response_mode": "ANSWER",
+      "top_candidate_knowledge_id": "KNO-DEL-NOTATION-001",
+      "top_candidate_status": "SOURCE_VERIFIED",
+      "top_candidate_published": true,
+      "top_candidate_score": 50,
+      "expected_first_response": "Code 100. Meaning: Customer Request - No Attempt Made."
+    },
+    {
+      "id": 50,
+      "driver_prompt": "what is 027",
+      "category": "status_codes",
+      "priority": "high",
+      "exact_formal_case_id": null,
+      "current_response_mode": "ESCALATE",
+      "top_candidate_knowledge_id": null,
+      "top_candidate_status": null,
+      "top_candidate_published": false,
+      "top_candidate_score": 0,
+      "expected_first_response": "Code 027. Meaning: Package Not Delivered - No Attempt."
+    },
+    {
+      "id": 51,
+      "driver_prompt": "closed pickup",
+      "category": "pickup",
+      "priority": "high",
+      "exact_formal_case_id": null,
+      "current_response_mode": "ESCALATE",
+      "top_candidate_knowledge_id": "KNO-FORGE-STANDARD-PICKUP-001",
+      "top_candidate_status": "POTENTIALLY_OUTDATED",
+      "top_candidate_published": false,
+      "top_candidate_score": 88,
+      "expected_first_response": "Was the stop closed or were there no packages after the attempt?"
+    },
+    {
+      "id": 52,
+      "driver_prompt": "pickup wrong address",
+      "category": "pickup",
+      "priority": "high",
+      "exact_formal_case_id": null,
+      "current_response_mode": "CLARIFY",
+      "top_candidate_knowledge_id": "KNO-DEL-MISDELIVERY-RECOVERY-001",
+      "top_candidate_status": "SOURCE_VERIFIED",
+      "top_candidate_published": true,
+      "top_candidate_score": 88.93333,
+      "expected_first_response": "Use pickup exception code 25: Wrong Address - Pickup Not Made."
+    },
+    {
+      "id": 53,
+      "driver_prompt": "pickup cancelled",
+      "category": "pickup",
+      "priority": "high",
+      "exact_formal_case_id": null,
+      "current_response_mode": "ESCALATE",
+      "top_candidate_knowledge_id": "KNO-PUP-SERVICE-TYPES-001",
+      "top_candidate_status": "POTENTIALLY_OUTDATED",
+      "top_candidate_published": false,
+      "top_candidate_score": 34,
+      "expected_first_response": "Was there any attempt, or was it cancelled before any attempt was made?"
+    },
+    {
+      "id": 54,
+      "driver_prompt": "pickup not on my list",
+      "category": "pickup",
+      "priority": "high",
+      "exact_formal_case_id": null,
+      "current_response_mode": "ANSWER",
+      "top_candidate_knowledge_id": "KNO-PUP-UNLISTED-001",
+      "top_candidate_status": "SOURCE_VERIFIED",
+      "top_candidate_published": true,
+      "top_candidate_score": 128,
+      "expected_first_response": "Do you already have a pickup list today?"
+    },
+    {
+      "id": 55,
+      "driver_prompt": "business says closed every friday",
+      "category": "pickup",
+      "priority": "high",
+      "exact_formal_case_id": null,
+      "current_response_mode": "CLARIFY",
+      "top_candidate_knowledge_id": "KNO-FORGE-BUSINESS-CLOSURE-MSG-001",
+      "top_candidate_status": "SOURCE_VERIFIED",
+      "top_candidate_published": true,
+      "top_candidate_score": 58,
+      "expected_first_response": "Send a Business Closure message in FORGE. Choose one: Recurring day / Single date / Date range."
+    },
+    {
+      "id": 56,
+      "driver_prompt": "resi pickup no one home",
+      "category": "pickup",
+      "priority": "medium",
+      "exact_formal_case_id": null,
+      "current_response_mode": "CLARIFY",
+      "top_candidate_knowledge_id": "KNO-INC-ACCIDENT-REPORT-001",
+      "top_candidate_status": "SOURCE_VERIFIED",
+      "top_candidate_published": true,
+      "top_candidate_score": 52.8,
+      "expected_first_response": "Use pickup exception code 15: Residential Pickup, Not Home."
+    },
+    {
+      "id": 57,
+      "driver_prompt": "weather stopped pickup",
+      "category": "pickup",
+      "priority": "medium",
+      "exact_formal_case_id": null,
+      "current_response_mode": "ESCALATE",
+      "top_candidate_knowledge_id": "KNO-PUP-SERVICE-TYPES-001",
+      "top_candidate_status": "POTENTIALLY_OUTDATED",
+      "top_candidate_published": false,
+      "top_candidate_score": 26.66667,
+      "expected_first_response": "Use pickup exception code 14: Weather."
+    },
+    {
+      "id": 58,
+      "driver_prompt": "express pickup cancelled",
+      "category": "pickup",
+      "priority": "medium",
+      "exact_formal_case_id": null,
+      "current_response_mode": "ESCALATE",
+      "top_candidate_knowledge_id": "KNO-PUP-SERVICE-TYPES-001",
+      "top_candidate_status": "POTENTIALLY_OUTDATED",
+      "top_candidate_published": false,
+      "top_candidate_score": 26.66667,
+      "expected_first_response": "Use code 21 if this is the Express pickup cancellation workflow."
+    },
+    {
+      "id": 59,
+      "driver_prompt": "what do i do with this call tag",
+      "category": "call_tag",
+      "priority": "high",
+      "exact_formal_case_id": null,
+      "current_response_mode": "CLARIFY",
+      "top_candidate_knowledge_id": "KNO-PUP-CALLTAG-REFUSED-001",
+      "top_candidate_status": "SOURCE_VERIFIED",
+      "top_candidate_published": true,
+      "top_candidate_score": 110,
+      "expected_first_response": "First choose what you are trying to do: Pick it up / Deliver it / Apply one action to all call tags / Handle each call tag separately."
+    },
+    {
+      "id": 60,
+      "driver_prompt": "call tag says fraud",
+      "category": "call_tag",
+      "priority": "high",
+      "exact_formal_case_id": null,
+      "current_response_mode": "ESCALATE",
+      "top_candidate_knowledge_id": "KNO-PUP-CALLTAG-FRAUD-001",
+      "top_candidate_status": "PENDING_REVIEW",
+      "top_candidate_published": false,
+      "top_candidate_score": 144.93333,
+      "expected_first_response": "If the workflow is cancelling all call tags for suspected fraud, that is code 106."
+    },
+    {
+      "id": 61,
+      "driver_prompt": "forge wont log in",
+      "category": "forge",
+      "priority": "high",
+      "exact_formal_case_id": null,
+      "current_response_mode": "ESCALATE",
+      "top_candidate_knowledge_id": "KNO-FORGE-DELAYED-LOGIN-001",
+      "top_candidate_status": "SOURCE_VERIFIED",
+      "top_candidate_published": true,
+      "top_candidate_score": 120.93333,
+      "expected_first_response": "Do you need to keep working during an outage, or is this a regular login issue?"
+    },
+    {
+      "id": 62,
+      "driver_prompt": "need delayed login",
+      "category": "forge",
+      "priority": "high",
+      "exact_formal_case_id": null,
+      "current_response_mode": "CLARIFY",
+      "top_candidate_knowledge_id": "KNO-FORGE-DELAYED-LOGIN-001",
+      "top_candidate_status": "SOURCE_VERIFIED",
+      "top_candidate_published": true,
+      "top_candidate_score": 64.93333,
+      "expected_first_response": "Delayed Login is for working through an outage when normal authentication is unavailable."
+    },
+    {
+      "id": 63,
+      "driver_prompt": "not syncing",
+      "category": "forge",
+      "priority": "medium",
+      "exact_formal_case_id": null,
+      "current_response_mode": "ESCALATE",
+      "top_candidate_knowledge_id": "KNO-FORGE-SYNC-QUEUE-001",
+      "top_candidate_status": "POTENTIALLY_OUTDATED",
+      "top_candidate_published": false,
+      "top_candidate_score": 110.8,
+      "expected_first_response": "This sounds like a sync-status problem. Do you need to retry failed transmissions or re-upload completed ones?"
+    },
+    {
+      "id": 64,
+      "driver_prompt": "package not on manifest",
+      "category": "forge",
+      "priority": "high",
+      "exact_formal_case_id": null,
+      "current_response_mode": "ESCALATE",
+      "top_candidate_knowledge_id": "KNO-FORGE-UNMANIFESTED-DELIVERY-001",
+      "top_candidate_status": "PENDING_REVIEW",
+      "top_candidate_published": false,
+      "top_candidate_score": 166,
+      "expected_first_response": "Is this a delivery package or a pickup situation?"
+    },
+    {
+      "id": 65,
+      "driver_prompt": "accident",
+      "category": "safety",
+      "priority": "high",
+      "exact_formal_case_id": null,
+      "current_response_mode": "CLARIFY",
+      "top_candidate_knowledge_id": "KNO-INC-ACCIDENT-REPORT-001",
+      "top_candidate_status": "SOURCE_VERIFIED",
+      "top_candidate_published": true,
+      "top_candidate_score": 54,
+      "expected_first_response": "Any injuries or immediate traffic hazard?"
+    },
+    {
+      "id": 66,
+      "driver_prompt": "dog here",
+      "category": "safety",
+      "priority": "high",
+      "exact_formal_case_id": null,
+      "current_response_mode": "CLARIFY",
+      "top_candidate_knowledge_id": "KNO-SAF-DOG-ENCOUNTER-001",
+      "top_candidate_status": "SOURCE_VERIFIED",
+      "top_candidate_published": true,
+      "top_candidate_score": 34,
+      "expected_first_response": "What is the dog doing?"
+    },
+    {
+      "id": 67,
+      "driver_prompt": "dog bit me",
+      "category": "safety",
+      "priority": "high",
+      "exact_formal_case_id": null,
+      "current_response_mode": "ANSWER",
+      "top_candidate_knowledge_id": "KNO-SAF-DOG-ENCOUNTER-001",
+      "top_candidate_status": "SOURCE_VERIFIED",
+      "top_candidate_published": true,
+      "top_candidate_score": 118,
+      "expected_first_response": "Clean the wound, get owner and rabies info if possible, seek medical care, and report it."
+    },
+    {
+      "id": 68,
+      "driver_prompt": "vehicle stolen",
+      "category": "security",
+      "priority": "high",
+      "exact_formal_case_id": null,
+      "current_response_mode": "ESCALATE",
+      "top_candidate_knowledge_id": "KNO-SEC-STOLEN-VEHICLE-001",
+      "top_candidate_status": "PENDING_REVIEW",
+      "top_candidate_published": false,
+      "top_candidate_score": 104,
+      "expected_first_response": "Call local law enforcement immediately, then GSOC at 1-800-872-8025, then notify station management/security."
+    },
+    {
+      "id": 69,
+      "driver_prompt": "hazmat",
+      "category": "hazmat",
+      "priority": "high",
+      "exact_formal_case_id": null,
+      "current_response_mode": "CLARIFY",
+      "top_candidate_knowledge_id": "KNO-DEL-HAZMAT-SIGNATURE-001",
+      "top_candidate_status": "SOURCE_VERIFIED",
+      "top_candidate_published": true,
+      "top_candidate_score": 50,
+      "expected_first_response": "What kind of hazmat issue is it?"
+    },
+    {
+      "id": 70,
+      "driver_prompt": "can i take this hazmat",
+      "category": "hazmat",
+      "priority": "high",
+      "exact_formal_case_id": null,
+      "current_response_mode": "CLARIFY",
+      "top_candidate_knowledge_id": "KNO-HAZ-AKHI-001",
+      "top_candidate_status": "SOURCE_VERIFIED",
+      "top_candidate_published": true,
+      "top_candidate_score": 106,
+      "expected_first_response": "Is this a pickup or is it already in authorized transport?"
+    },
+    {
+      "id": 71,
+      "driver_prompt": "hazmat paperwork missing",
+      "category": "hazmat",
+      "priority": "high",
+      "exact_formal_case_id": null,
+      "current_response_mode": "CLARIFY",
+      "top_candidate_knowledge_id": "KNO-PUP-INTERNATIONAL-DOCS-001",
+      "top_candidate_status": "PENDING_REVIEW",
+      "top_candidate_published": false,
+      "top_candidate_score": 64.93333,
+      "expected_first_response": "Do you mean missing paperwork or incomplete paperwork?"
+    },
+    {
+      "id": 72,
+      "driver_prompt": "leaking package",
+      "category": "hazmat",
+      "priority": "high",
+      "exact_formal_case_id": null,
+      "current_response_mode": "CLARIFY",
+      "top_candidate_knowledge_id": "KNO-HAZ-LEAK-001",
+      "top_candidate_status": "SOURCE_VERIFIED",
+      "top_candidate_published": true,
+      "top_candidate_score": 106,
+      "expected_first_response": "Do not handle it if unsafe. Pull over when safe and contact a FedEx station representative immediately."
+    },
+    {
+      "id": 73,
+      "driver_prompt": "customer asking where package is",
+      "category": "customer_communication",
+      "priority": "high",
+      "exact_formal_case_id": null,
+      "current_response_mode": "ESCALATE",
+      "top_candidate_knowledge_id": "KNO-DEL-REFUSED-001",
+      "top_candidate_status": "PENDING_REVIEW",
+      "top_candidate_published": false,
+      "top_candidate_score": 53.33333,
+      "expected_first_response": "Is this a tracking question or a package research case message?"
+    },
+    {
+      "id": 74,
+      "driver_prompt": "customer wants it held",
+      "category": "customer_communication",
+      "priority": "high",
+      "exact_formal_case_id": null,
+      "current_response_mode": "ANSWER",
+      "top_candidate_knowledge_id": "KNO-COMMS-MEDIA-001",
+      "top_candidate_status": "SOURCE_VERIFIED",
+      "top_candidate_published": true,
+      "top_candidate_score": 64.93333,
+      "expected_first_response": "Do you mean hold for a future date, hold at location, or no attempt today?"
+    },
+    {
+      "id": 75,
+      "driver_prompt": "what is hal",
+      "category": "fedex_terms",
+      "priority": "medium",
+      "exact_formal_case_id": null,
+      "current_response_mode": "ANSWER",
+      "top_candidate_knowledge_id": "KNO-DEL-HAL-DELIVERY-001",
+      "top_candidate_status": "SOURCE_VERIFIED",
+      "top_candidate_published": true,
+      "top_candidate_score": 50,
+      "expected_first_response": "HAL means Hold at Location."
+    },
+    {
+      "id": 76,
+      "driver_prompt": "what is op 201",
+      "category": "fedex_terms",
+      "priority": "medium",
+      "exact_formal_case_id": null,
+      "current_response_mode": "ESCALATE",
+      "top_candidate_knowledge_id": "KNO-DEL-BUS-OP201-001",
+      "top_candidate_status": "PENDING_REVIEW",
+      "top_candidate_published": false,
+      "top_candidate_score": 106,
+      "expected_first_response": "OP-201 is the business release waiver on file at the station."
+    },
+    {
+      "id": 77,
+      "driver_prompt": "not sure what this is",
+      "category": "not_sure",
+      "priority": "high",
+      "exact_formal_case_id": null,
+      "current_response_mode": "CLARIFY",
+      "top_candidate_knowledge_id": "KNO-DEL-CLASSIFICATION-001",
+      "top_candidate_status": "SOURCE_VERIFIED",
+      "top_candidate_published": true,
+      "top_candidate_score": 106,
+      "expected_first_response": "No problem. What do you see?"
+    },
+    {
+      "id": 78,
+      "driver_prompt": "dont know if it needs signature",
+      "category": "not_sure",
+      "priority": "high",
+      "exact_formal_case_id": null,
+      "current_response_mode": "CLARIFY",
+      "top_candidate_knowledge_id": "KNO-DEL-HAZMAT-SIGNATURE-001",
+      "top_candidate_status": "SOURCE_VERIFIED",
+      "top_candidate_published": true,
+      "top_candidate_score": 58,
+      "expected_first_response": "What do you see?"
+    },
+    {
+      "id": 79,
+      "driver_prompt": "dont know if its business or house",
+      "category": "not_sure",
+      "priority": "high",
+      "exact_formal_case_id": null,
+      "current_response_mode": "CLARIFY",
+      "top_candidate_knowledge_id": "KNO-DEL-CLASSIFICATION-001",
+      "top_candidate_status": "SOURCE_VERIFIED",
+      "top_candidate_published": true,
+      "top_candidate_score": 40.8,
+      "expected_first_response": "Which sounds more like the stop?"
+    },
+    {
+      "id": 80,
+      "driver_prompt": "not sure what code this needs",
+      "category": "not_sure",
+      "priority": "high",
+      "exact_formal_case_id": null,
+      "current_response_mode": "CLARIFY",
+      "top_candidate_knowledge_id": "KNO-DEL-CLASSIFICATION-001",
+      "top_candidate_status": "SOURCE_VERIFIED",
+      "top_candidate_published": true,
+      "top_candidate_score": 58,
+      "expected_first_response": "What happened?"
+    },
+    {
+      "id": 81,
+      "driver_prompt": "customer says just leave it",
+      "category": "delivery_signature",
+      "priority": "high",
+      "exact_formal_case_id": null,
+      "current_response_mode": "CLARIFY",
+      "top_candidate_knowledge_id": "KNO-DEL-SAFEPLACE-001",
+      "top_candidate_status": "SOURCE_VERIFIED",
+      "top_candidate_published": true,
+      "top_candidate_score": 94.8,
+      "expected_first_response": "Customer instructions do not override signature, alcohol, hazmat, or release rules. First: does it need a signature?"
+    },
+    {
+      "id": 82,
+      "driver_prompt": "scanner wants signature",
+      "category": "delivery_signature",
+      "priority": "high",
+      "exact_formal_case_id": null,
+      "current_response_mode": "CLARIFY",
+      "top_candidate_knowledge_id": "KNO-DEL-SIG-DSR-001",
+      "top_candidate_status": "SOURCE_VERIFIED",
+      "top_candidate_published": true,
+      "top_candidate_score": 61.46667,
+      "expected_first_response": "If FORGE is prompting for a signature, treat it as signature-controlled. Which type is it: ISR, DSR, ASR, or not sure?"
+    },
+    {
+      "id": 83,
+      "driver_prompt": "is this direct sig or indirect",
+      "category": "delivery_signature",
+      "priority": "medium",
+      "exact_formal_case_id": null,
+      "current_response_mode": "CLARIFY",
+      "top_candidate_knowledge_id": "KNO-DEL-SIG-DSR-001",
+      "top_candidate_status": "SOURCE_VERIFIED",
+      "top_candidate_published": true,
+      "top_candidate_score": 88.93333,
+      "expected_first_response": "Direct signature means someone at the delivery address must sign. Indirect signature may allow a neighbor or approved alternate signature path."
+    },
+    {
+      "id": 84,
+      "driver_prompt": "do i have to tag this door",
+      "category": "delivery_signature",
+      "priority": "medium",
+      "exact_formal_case_id": null,
+      "current_response_mode": "CLARIFY",
+      "top_candidate_knowledge_id": "KNO-DEL-DOORTAG-001",
+      "top_candidate_status": "SOURCE_VERIFIED",
+      "top_candidate_published": true,
+      "top_candidate_score": 53.33333,
+      "expected_first_response": "If the delivery attempt could not be completed and the workflow requires a shipment status door tag, yes. Is this a signature-required or unsuccessful delivery-attempt situation?"
+    },
+    {
+      "id": 85,
+      "driver_prompt": "can i leave in apartment lobby",
+      "category": "delivery_signature",
+      "priority": "medium",
+      "exact_formal_case_id": null,
+      "current_response_mode": "ANSWER",
+      "top_candidate_knowledge_id": "KNO-DEL-APT-001",
+      "top_candidate_status": "SOURCE_VERIFIED",
+      "top_candidate_published": true,
+      "top_candidate_score": 122,
+      "expected_first_response": "Is the package signature-required or not?"
+    },
+    {
+      "id": 86,
+      "driver_prompt": "mailroom said they'll take it",
+      "category": "delivery_signature",
+      "priority": "medium",
+      "exact_formal_case_id": null,
+      "current_response_mode": "ESCALATE",
+      "top_candidate_knowledge_id": "KNO-DEL-REFUSED-001",
+      "top_candidate_status": "PENDING_REVIEW",
+      "top_candidate_published": false,
+      "top_candidate_score": 38.8,
+      "expected_first_response": "Is the package signature-required?"
+    },
+    {
+      "id": 87,
+      "driver_prompt": "business closed can i leave it",
+      "category": "delivery_signature",
+      "priority": "medium",
+      "exact_formal_case_id": null,
+      "current_response_mode": "ESCALATE",
+      "top_candidate_knowledge_id": "KNO-DEL-CLASSIFICATION-001",
+      "top_candidate_status": "SOURCE_VERIFIED",
+      "top_candidate_published": true,
+      "top_candidate_score": 89.46667,
+      "expected_first_response": "Usually not unless a valid business-release path applies. Is there a valid OP-201 release waiver, or is this signature-controlled?"
+    },
+    {
+      "id": 88,
+      "driver_prompt": "what if no safe place to leave it",
+      "category": "delivery_signature",
+      "priority": "medium",
+      "exact_formal_case_id": null,
+      "current_response_mode": "ANSWER",
+      "top_candidate_knowledge_id": "KNO-DEL-SAFEPLACE-001",
+      "top_candidate_status": "SOURCE_VERIFIED",
+      "top_candidate_published": true,
+      "top_candidate_score": 260,
+      "expected_first_response": "Do not leave it. Try indirect delivery if allowed; otherwise use the correct status code and door-tag workflow."
+    },
+    {
+      "id": 89,
+      "driver_prompt": "do i have to knock",
+      "category": "delivery_signature",
+      "priority": "low",
+      "exact_formal_case_id": null,
+      "current_response_mode": "CLARIFY",
+      "top_candidate_knowledge_id": "KNO-SEC-WEAPONS-SCREENING-001",
+      "top_candidate_status": "SOURCE_VERIFIED",
+      "top_candidate_published": true,
+      "top_candidate_score": 29,
+      "expected_first_response": "Yes, notify the customer by knock or doorbell unless the customer left contrary instructions."
+    },
+    {
+      "id": 90,
+      "driver_prompt": "customer wants back door",
+      "category": "delivery_signature",
+      "priority": "low",
+      "exact_formal_case_id": null,
+      "current_response_mode": "ANSWER",
+      "top_candidate_knowledge_id": "KNO-COMMS-MEDIA-001",
+      "top_candidate_status": "SOURCE_VERIFIED",
+      "top_candidate_published": true,
+      "top_candidate_score": 58,
+      "expected_first_response": "Follow reasonable customer delivery instructions only if the package can still be placed securely and the package type allows it."
+    },
+    {
+      "id": 91,
+      "driver_prompt": "can i leave in locker",
+      "category": "delivery_signature",
+      "priority": "low",
+      "exact_formal_case_id": null,
+      "current_response_mode": "CLARIFY",
+      "top_candidate_knowledge_id": "KNO-DEL-SAFEPLACE-001",
+      "top_candidate_status": "SOURCE_VERIFIED",
+      "top_candidate_published": true,
+      "top_candidate_score": 94.8,
+      "expected_first_response": "What kind of locker is it?"
+    },
+    {
+      "id": 92,
+      "driver_prompt": "do i need a picture for this one",
+      "category": "delivery_signature",
+      "priority": "medium",
+      "exact_formal_case_id": null,
+      "current_response_mode": "CLARIFY",
+      "top_candidate_knowledge_id": "KNO-DEL-PPOD-001",
+      "top_candidate_status": "SOURCE_VERIFIED",
+      "top_candidate_published": true,
+      "top_candidate_score": 50.93333,
+      "expected_first_response": "Is this a residential driver release, a signature-required stop, or an in-person handoff?"
+    },
+    {
+      "id": 93,
+      "driver_prompt": "what code for package not on van",
+      "category": "status_codes",
+      "priority": "medium",
+      "exact_formal_case_id": null,
+      "current_response_mode": "ANSWER",
+      "top_candidate_knowledge_id": "KNO-FORGE-STATUS-SCOPE-001",
+      "top_candidate_status": "SOURCE_VERIFIED",
+      "top_candidate_published": true,
+      "top_candidate_score": 78.28571,
+      "expected_first_response": "Use code 016: Package on Manifest, Not on Van."
+    },
+    {
+      "id": 94,
+      "driver_prompt": "what code for hold",
+      "category": "status_codes",
+      "priority": "medium",
+      "exact_formal_case_id": null,
+      "current_response_mode": "CLARIFY",
+      "top_candidate_knowledge_id": "KNO-DEL-HAL-DELIVERY-001",
+      "top_candidate_status": "SOURCE_VERIFIED",
+      "top_candidate_published": true,
+      "top_candidate_score": 92,
+      "expected_first_response": "Do you mean holding the package, unable to hold at location, or future-delivery request?"
+    },
+    {
+      "id": 95,
+      "driver_prompt": "what code for holiday",
+      "category": "status_codes",
+      "priority": "medium",
+      "exact_formal_case_id": null,
+      "current_response_mode": "CLARIFY",
+      "top_candidate_knowledge_id": "KNO-DEL-LOCKER-FAIL-001",
+      "top_candidate_status": "SOURCE_VERIFIED",
+      "top_candidate_published": true,
+      "top_candidate_score": 32,
+      "expected_first_response": "Is this a delivery holiday issue or a pickup holiday issue?"
+    },
+    {
+      "id": 96,
+      "driver_prompt": "what code for no attempt",
+      "category": "status_codes",
+      "priority": "medium",
+      "exact_formal_case_id": null,
+      "current_response_mode": "ANSWER",
+      "top_candidate_knowledge_id": "KNO-DEL-SCAN-INTEGRITY-001",
+      "top_candidate_status": "SOURCE_VERIFIED",
+      "top_candidate_published": true,
+      "top_candidate_score": 67.33333,
+      "expected_first_response": "Was there no attempt for operational reasons or because the customer requested no attempt?"
+    },
+    {
+      "id": 97,
+      "driver_prompt": "what code for security gate issue",
+      "category": "status_codes",
+      "priority": "medium",
+      "exact_formal_case_id": null,
+      "current_response_mode": "ANSWER",
+      "top_candidate_knowledge_id": "KNO-DEL-SECURITY-NODELIVERY-001",
+      "top_candidate_status": "SOURCE_VERIFIED",
+      "top_candidate_published": true,
+      "top_candidate_score": 44,
+      "expected_first_response": "Use code 001 when security restrictions or access controls prevent delivery."
+    },
+    {
+      "id": 98,
+      "driver_prompt": "what code for future delivery",
+      "category": "status_codes",
+      "priority": "medium",
+      "exact_formal_case_id": null,
+      "current_response_mode": "ESCALATE",
+      "top_candidate_knowledge_id": "KNO-DEL-REFUSED-001",
+      "top_candidate_status": "PENDING_REVIEW",
+      "top_candidate_published": false,
+      "top_candidate_score": 53.33333,
+      "expected_first_response": "Use code 034 for inventory or request future delivery in the delivery code set."
+    },
+    {
+      "id": 99,
+      "driver_prompt": "can i still take this pickup",
+      "category": "pickup",
+      "priority": "medium",
+      "exact_formal_case_id": null,
+      "current_response_mode": "ESCALATE",
+      "top_candidate_knowledge_id": "KNO-PUP-PACKAGING-001",
+      "top_candidate_status": "PENDING_REVIEW",
+      "top_candidate_published": false,
+      "top_candidate_score": 49.33333,
+      "expected_first_response": "What kind of pickup situation is it?"
+    },
+    {
+      "id": 100,
+      "driver_prompt": "how do i code this call tag",
+      "category": "call_tag",
+      "priority": "medium",
+      "exact_formal_case_id": null,
+      "current_response_mode": "CLARIFY",
+      "top_candidate_knowledge_id": "KNO-PUP-CALLTAG-FRAUD-001",
+      "top_candidate_status": "PENDING_REVIEW",
+      "top_candidate_published": false,
+      "top_candidate_score": 122,
+      "expected_first_response": "What happened with the call tag?"
+    },
+    {
+      "id": 101,
+      "driver_prompt": "do i deliver or pickup this call tag",
+      "category": "call_tag",
+      "priority": "medium",
+      "exact_formal_case_id": null,
+      "current_response_mode": "CLARIFY",
+      "top_candidate_knowledge_id": "KNO-PUP-CALLTAG-REFUSED-001",
+      "top_candidate_status": "SOURCE_VERIFIED",
+      "top_candidate_published": true,
+      "top_candidate_score": 59.6,
+      "expected_first_response": "When you scan the call tag, choose whether you are handling it as Delivery or Pickup at that stop."
+    },
+    {
+      "id": 102,
+      "driver_prompt": "call tag not on list",
+      "category": "call_tag",
+      "priority": "low",
+      "exact_formal_case_id": null,
+      "current_response_mode": "CLARIFY",
+      "top_candidate_knowledge_id": "KNO-PUP-CALLTAG-NOTREADY-001",
+      "top_candidate_status": "SOURCE_VERIFIED",
+      "top_candidate_published": true,
+      "top_candidate_score": 96.4,
+      "expected_first_response": "You can still scan the call tag and then choose Delivery or Pickup and edit stop details if needed."
+    },
+    {
+      "id": 103,
+      "driver_prompt": "scanner not working",
+      "category": "forge",
+      "priority": "medium",
+      "exact_formal_case_id": null,
+      "current_response_mode": "CLARIFY",
+      "top_candidate_knowledge_id": "KNO-FORGE-AUDIO-ALERTS-001",
+      "top_candidate_status": "POTENTIALLY_OUTDATED",
+      "top_candidate_published": false,
+      "top_candidate_score": 64.93333,
+      "expected_first_response": "Is this the hardware scanner or do you want to switch to camera scanning in FORGE?"
+    },
+    {
+      "id": 104,
+      "driver_prompt": "barcode wont scan",
+      "category": "forge",
+      "priority": "medium",
+      "exact_formal_case_id": null,
+      "current_response_mode": "CLARIFY",
+      "top_candidate_knowledge_id": "KNO-DEL-BARCODE-001",
+      "top_candidate_status": "SOURCE_VERIFIED",
+      "top_candidate_published": true,
+      "top_candidate_score": 122,
+      "expected_first_response": "Is this a bad barcode read or do you want to use manual entry or camera scan?"
+    },
+    {
+      "id": 105,
+      "driver_prompt": "forge stuck",
+      "category": "forge",
+      "priority": "medium",
+      "exact_formal_case_id": null,
+      "current_response_mode": "ESCALATE",
+      "top_candidate_knowledge_id": "KNO-FORGE-DEVICE-INFO-001",
+      "top_candidate_status": "POTENTIALLY_OUTDATED",
+      "top_candidate_published": false,
+      "top_candidate_score": 34,
+      "expected_first_response": "What part is stuck: login, sync, scanning, or stop workflow?"
+    },
+    {
+      "id": 106,
+      "driver_prompt": "how do i delayed login",
+      "category": "forge",
+      "priority": "medium",
+      "exact_formal_case_id": null,
+      "current_response_mode": "CLARIFY",
+      "top_candidate_knowledge_id": "KNO-FORGE-DELAYED-LOGIN-001",
+      "top_candidate_status": "SOURCE_VERIFIED",
+      "top_candidate_published": true,
+      "top_candidate_score": 106,
+      "expected_first_response": "Delayed Login is used during outages. Validate station number and station WAN password, then scan the FedEx ID badge and continue the login inputs."
+    },
+    {
+      "id": 107,
+      "driver_prompt": "cant get pickup list",
+      "category": "forge",
+      "priority": "medium",
+      "exact_formal_case_id": null,
+      "current_response_mode": "ESCALATE",
+      "top_candidate_knowledge_id": "KNO-FORGE-DOWNLOAD-SYNC-001",
+      "top_candidate_status": "POTENTIALLY_OUTDATED",
+      "top_candidate_published": false,
+      "top_candidate_score": 56.85714,
+      "expected_first_response": "Do you have cellular connectivity, and did you receive a pickup list during login?"
+    },
+    {
+      "id": 108,
+      "driver_prompt": "how do i change vehicles",
+      "category": "forge",
+      "priority": "medium",
+      "exact_formal_case_id": null,
+      "current_response_mode": "ANSWER",
+      "top_candidate_knowledge_id": "KNO-FORGE-VEHICLE-CHANGE-001",
+      "top_candidate_status": "READY_ROUTE_APPROVED",
+      "top_candidate_published": true,
+      "top_candidate_score": 120,
+      "expected_first_response": "Use Change Vehicle, enter the previous vehicle ending odometer, then validate the new vehicle information."
+    },
+    {
+      "id": 109,
+      "driver_prompt": "camera scan on",
+      "category": "forge",
+      "priority": "low",
+      "exact_formal_case_id": null,
+      "current_response_mode": "ANSWER",
+      "top_candidate_knowledge_id": "KNO-FORGE-CAMERA-SCAN-001",
+      "top_candidate_status": "SOURCE_VERIFIED",
+      "top_candidate_published": true,
+      "top_candidate_score": 100.85714,
+      "expected_first_response": "Open Settings and turn on Use Camera to Scan. That disables the hardware scanner."
+    },
+    {
+      "id": 110,
+      "driver_prompt": "what is this forge alert",
+      "category": "forge",
+      "priority": "low",
+      "exact_formal_case_id": null,
+      "current_response_mode": "ESCALATE",
+      "top_candidate_knowledge_id": "KNO-FORGE-DEVICE-INFO-001",
+      "top_candidate_status": "POTENTIALLY_OUTDATED",
+      "top_candidate_published": false,
+      "top_candidate_score": 34,
+      "expected_first_response": "What kind of alert is it?"
+    },
+    {
+      "id": 111,
+      "driver_prompt": "need next stop nav",
+      "category": "forge",
+      "priority": "low",
+      "exact_formal_case_id": null,
+      "current_response_mode": "ESCALATE",
+      "top_candidate_knowledge_id": "KNO-FORGE-DEVICE-ROAD-001",
+      "top_candidate_status": "POTENTIALLY_OUTDATED",
+      "top_candidate_published": false,
+      "top_candidate_score": 56,
+      "expected_first_response": "Use Navigate from Stop List or Stop Details. Automatic Navigation can also prompt the next stop if enabled."
+    },
+    {
+      "id": 112,
+      "driver_prompt": "i got hit",
+      "category": "safety",
+      "priority": "high",
+      "exact_formal_case_id": null,
+      "current_response_mode": "CLARIFY",
+      "top_candidate_knowledge_id": "KNO-INC-ACCIDENT-SCENE-001",
+      "top_candidate_status": "SOURCE_VERIFIED",
+      "top_candidate_published": true,
+      "top_candidate_score": 34,
+      "expected_first_response": "Any injuries or immediate traffic hazard?"
+    },
+    {
+      "id": 113,
+      "driver_prompt": "do i call police",
+      "category": "safety",
+      "priority": "medium",
+      "exact_formal_case_id": null,
+      "current_response_mode": "CLARIFY",
+      "top_candidate_knowledge_id": "KNO-PUP-CALLTAG-REFUSED-001",
+      "top_candidate_status": "SOURCE_VERIFIED",
+      "top_candidate_published": true,
+      "top_candidate_score": 32,
+      "expected_first_response": "Yes. After an accident, local police should be notified, and if there are injuries or immediate danger call 9-1-1 first."
+    },
+    {
+      "id": 114,
+      "driver_prompt": "vehicle blocking road",
+      "category": "safety",
+      "priority": "high",
+      "exact_formal_case_id": null,
+      "current_response_mode": "ANSWER",
+      "top_candidate_knowledge_id": "KNO-INC-ACCIDENT-SCENE-001",
+      "top_candidate_status": "SOURCE_VERIFIED",
+      "top_candidate_published": true,
+      "top_candidate_score": 95.46667,
+      "expected_first_response": "If there is immediate hazard, call 9-1-1, activate flashers, and set warning devices if safe and required."
+    },
+    {
+      "id": 115,
+      "driver_prompt": "what forms do i fill out",
+      "category": "safety",
+      "priority": "medium",
+      "exact_formal_case_id": null,
+      "current_response_mode": "ANSWER",
+      "top_candidate_knowledge_id": "KNO-INC-ACCIDENT-SCENE-001",
+      "top_candidate_status": "SOURCE_VERIFIED",
+      "top_candidate_published": true,
+      "top_candidate_score": 46.13333,
+      "expected_first_response": "The accident packet includes OP-130, OP-132, and OP-135."
+    },
+    {
+      "id": 116,
+      "driver_prompt": "road flooded",
+      "category": "safety",
+      "priority": "medium",
+      "exact_formal_case_id": null,
+      "current_response_mode": "CLARIFY",
+      "top_candidate_knowledge_id": "KNO-QUAL-PD-ROADTEST-001",
+      "top_candidate_status": "SOURCE_VERIFIED",
+      "top_candidate_published": true,
+      "top_candidate_score": 32,
+      "expected_first_response": "Do not drive through if depth is unknown, the roadbed may be damaged, or water is flowing. Take another route if safety is uncertain."
+    },
+    {
+      "id": 117,
+      "driver_prompt": "low bridge maybe too low",
+      "category": "safety",
+      "priority": "medium",
+      "exact_formal_case_id": null,
+      "current_response_mode": "ESCALATE",
+      "top_candidate_knowledge_id": "KNO-FORGE-LOGIN-WARNING-001",
+      "top_candidate_status": "PENDING_REVIEW",
+      "top_candidate_published": false,
+      "top_candidate_score": 39.65714,
+      "expected_first_response": "Turn the truck off, set the parking brake, and get out to visually assess clearance before proceeding."
+    },
+    {
+      "id": 118,
+      "driver_prompt": "railroad crossing rules",
+      "category": "safety",
+      "priority": "medium",
+      "exact_formal_case_id": null,
+      "current_response_mode": "ESCALATE",
+      "top_candidate_knowledge_id": "KNO-PUP-UNLISTED-001",
+      "top_candidate_status": "SOURCE_VERIFIED",
+      "top_candidate_published": true,
+      "top_candidate_score": 11.94058,
+      "expected_first_response": "Never ignore lights or gates, and never enter unless you can fully clear the tracks."
+    },
+    {
+      "id": 119,
+      "driver_prompt": "stuck in snow",
+      "category": "safety",
+      "priority": "low",
+      "exact_formal_case_id": null,
+      "current_response_mode": "CLARIFY",
+      "top_candidate_knowledge_id": "KNO-HOS-SHORT-ADVERSE-001",
+      "top_candidate_status": "READY_ROUTE_APPROVED",
+      "top_candidate_published": true,
+      "top_candidate_score": 30,
+      "expected_first_response": "You should have water, food, warm layers, extra gloves and hat, hand warmers, a shovel, emergency blanket, and traction aid."
+    },
+    {
+      "id": 120,
+      "driver_prompt": "can i back out here",
+      "category": "safety",
+      "priority": "low",
+      "exact_formal_case_id": null,
+      "current_response_mode": "ESCALATE",
+      "top_candidate_knowledge_id": "KNO-DEL-REFUSED-001",
+      "top_candidate_status": "PENDING_REVIEW",
+      "top_candidate_published": false,
+      "top_candidate_score": 25.46667,
+      "expected_first_response": "Avoid backing if possible. If it can't be avoided, use mirrors, backup camera, and horn."
+    },
+    {
+      "id": 121,
+      "driver_prompt": "somebody broke into truck",
+      "category": "security",
+      "priority": "high",
+      "exact_formal_case_id": null,
+      "current_response_mode": "CLARIFY",
+      "top_candidate_knowledge_id": "KNO-SEC-INCIDENT-REPORT-001",
+      "top_candidate_status": "SOURCE_VERIFIED",
+      "top_candidate_published": true,
+      "top_candidate_score": 42.85714,
+      "expected_first_response": "This is a security incident. Contact law enforcement if needed, then notify FedEx management/security right away."
+    },
+    {
+      "id": 122,
+      "driver_prompt": "unsafe stop",
+      "category": "security",
+      "priority": "medium",
+      "exact_formal_case_id": null,
+      "current_response_mode": "CLARIFY",
+      "top_candidate_knowledge_id": "KNO-SAF-DOG-ENCOUNTER-001",
+      "top_candidate_status": "SOURCE_VERIFIED",
+      "top_candidate_published": true,
+      "top_candidate_score": 34,
+      "expected_first_response": "What kind of unsafe situation is it?"
+    },
+    {
+      "id": 123,
+      "driver_prompt": "guy threatening me",
+      "category": "security",
+      "priority": "high",
+      "exact_formal_case_id": null,
+      "current_response_mode": "CLARIFY",
+      "top_candidate_knowledge_id": "KNO-SEC-ACTIVE-THREAT-001",
+      "top_candidate_status": "SOURCE_VERIFIED",
+      "top_candidate_published": true,
+      "top_candidate_score": 104,
+      "expected_first_response": "Your safety comes first. Get away if you can and call 9-1-1 if there is immediate danger."
+    },
+    {
+      "id": 124,
+      "driver_prompt": "can i record this on fedex property",
+      "category": "security",
+      "priority": "low",
+      "exact_formal_case_id": null,
+      "current_response_mode": "ANSWER",
+      "top_candidate_knowledge_id": "KNO-COMMS-MEDIA-001",
+      "top_candidate_status": "SOURCE_VERIFIED",
+      "top_candidate_published": true,
+      "top_candidate_score": 32.19333,
+      "expected_first_response": "Not unless you are authorized. Unauthorized photos, video, and audio recording on FedEx property are prohibited."
+    },
+    {
+      "id": 125,
+      "driver_prompt": "forgot badge",
+      "category": "security",
+      "priority": "low",
+      "exact_formal_case_id": null,
+      "current_response_mode": "CLARIFY",
+      "top_candidate_knowledge_id": "KNO-SEC-LOST-BADGE-001",
+      "top_candidate_status": "SOURCE_VERIFIED",
+      "top_candidate_published": true,
+      "top_candidate_score": 110,
+      "expected_first_response": "Use a temporary paper badge for the day if issued and display it until your permanent badge is recovered or replaced."
+    },
+    {
+      "id": 126,
+      "driver_prompt": "lost badge",
+      "category": "security",
+      "priority": "low",
+      "exact_formal_case_id": null,
+      "current_response_mode": "ANSWER",
+      "top_candidate_knowledge_id": "KNO-SEC-LOST-BADGE-001",
+      "top_candidate_status": "SOURCE_VERIFIED",
+      "top_candidate_published": true,
+      "top_candidate_score": 196,
+      "expected_first_response": "A replacement badge must be issued. The old badge is deactivated after reissue."
+    },
+    {
+      "id": 127,
+      "driver_prompt": "gun in parking lot",
+      "category": "security",
+      "priority": "medium",
+      "exact_formal_case_id": null,
+      "current_response_mode": "CLARIFY",
+      "top_candidate_knowledge_id": "KNO-SEC-ACTIVE-THREAT-001",
+      "top_candidate_status": "SOURCE_VERIFIED",
+      "top_candidate_published": true,
+      "top_candidate_score": 25.46667,
+      "expected_first_response": "Treat this as a security issue immediately and contact FedEx security or emergency services if there is an immediate threat."
+    },
+    {
+      "id": 128,
+      "driver_prompt": "what do i do in active threat",
+      "category": "security",
+      "priority": "high",
+      "exact_formal_case_id": null,
+      "current_response_mode": "CLARIFY",
+      "top_candidate_knowledge_id": "KNO-SEC-ACTIVE-THREAT-001",
+      "top_candidate_status": "SOURCE_VERIFIED",
+      "top_candidate_published": true,
+      "top_candidate_score": 188,
+      "expected_first_response": "Get out if you can, hide if you cannot, take action only if your life is in imminent danger, and call 9-1-1 when safe."
+    },
+    {
+      "id": 129,
+      "driver_prompt": "dangerous goods prompt came up",
+      "category": "hazmat",
+      "priority": "high",
+      "exact_formal_case_id": null,
+      "current_response_mode": "CLARIFY",
+      "top_candidate_knowledge_id": "KNO-HAZ-MANIFEST-001",
+      "top_candidate_status": "SOURCE_VERIFIED",
+      "top_candidate_published": true,
+      "top_candidate_score": 53.65714,
+      "expected_first_response": "If this is the dangerous-goods pickup block in the service-provider network, do not pick it up and contact CPC."
+    },
+    {
+      "id": 130,
+      "driver_prompt": "can i take this to hawaii",
+      "category": "hazmat",
+      "priority": "medium",
+      "exact_formal_case_id": null,
+      "current_response_mode": "CLARIFY",
+      "top_candidate_knowledge_id": "KNO-HAZ-AKHI-001",
+      "top_candidate_status": "SOURCE_VERIFIED",
+      "top_candidate_published": true,
+      "top_candidate_score": 92,
+      "expected_first_response": "If it is hazardous materials or limited quantity under the referenced restriction, no, it cannot be accepted for Alaska or Hawaii."
+    },
+    {
+      "id": 131,
+      "driver_prompt": "call tag hazmat",
+      "category": "hazmat",
+      "priority": "medium",
+      "exact_formal_case_id": null,
+      "current_response_mode": "ANSWER",
+      "top_candidate_knowledge_id": "KNO-PUP-CALLTAG-RESTRICTED-001",
+      "top_candidate_status": "SOURCE_VERIFIED",
+      "top_candidate_published": true,
+      "top_candidate_score": 122,
+      "expected_first_response": "No. A call tag package containing hazardous materials cannot be accepted under the referenced guidance."
+    },
+    {
+      "id": 132,
+      "driver_prompt": "tobacco package",
+      "category": "hazmat",
+      "priority": "medium",
+      "exact_formal_case_id": null,
+      "current_response_mode": "ESCALATE",
+      "top_candidate_knowledge_id": "KNO-DEL-TOBACCO-001",
+      "top_candidate_status": "PENDING_REVIEW",
+      "top_candidate_published": false,
+      "top_candidate_score": 110,
+      "expected_first_response": "Is it going to an individual consumer or an approved commercial location?"
+    },
+    {
+      "id": 133,
+      "driver_prompt": "vape package to house",
+      "category": "hazmat",
+      "priority": "high",
+      "exact_formal_case_id": null,
+      "current_response_mode": "ESCALATE",
+      "top_candidate_knowledge_id": "KNO-DEL-TOBACCO-001",
+      "top_candidate_status": "PENDING_REVIEW",
+      "top_candidate_published": false,
+      "top_candidate_score": 100.28571,
+      "expected_first_response": "No. Tobacco and e-cigarette products cannot be delivered to an individual consumer under the referenced rules."
+    },
+    {
+      "id": 134,
+      "driver_prompt": "tracking says something else",
+      "category": "customer_communication",
+      "priority": "medium",
+      "exact_formal_case_id": null,
+      "current_response_mode": "CLARIFY",
+      "top_candidate_knowledge_id": "KNO-DEL-BARCODE-001",
+      "top_candidate_status": "SOURCE_VERIFIED",
+      "top_candidate_published": true,
+      "top_candidate_score": 25.46667,
+      "expected_first_response": "Is this an in-person customer question or a package research case message you received?"
+    },
+    {
+      "id": 135,
+      "driver_prompt": "customer says deliver tomorrow",
+      "category": "customer_communication",
+      "priority": "medium",
+      "exact_formal_case_id": null,
+      "current_response_mode": "CLARIFY",
+      "top_candidate_knowledge_id": "KNO-ETH-FALSIFICATION-001",
+      "top_candidate_status": "SOURCE_VERIFIED",
+      "top_candidate_published": true,
+      "top_candidate_score": 26.66667,
+      "expected_first_response": "Is this a future-delivery request, a no-attempt-today request, or a hold-at-location request?"
+    },
+    {
+      "id": 136,
+      "driver_prompt": "customer says no attempt today",
+      "category": "customer_communication",
+      "priority": "medium",
+      "exact_formal_case_id": null,
+      "current_response_mode": "ANSWER",
+      "top_candidate_knowledge_id": "KNO-DEL-SCAN-INTEGRITY-001",
+      "top_candidate_status": "SOURCE_VERIFIED",
+      "top_candidate_published": true,
+      "top_candidate_score": 59.6,
+      "expected_first_response": "If the customer requested that no attempt be made, that maps to code 100."
+    },
+    {
+      "id": 137,
+      "driver_prompt": "customer says leave with office",
+      "category": "customer_communication",
+      "priority": "medium",
+      "exact_formal_case_id": null,
+      "current_response_mode": "CLARIFY",
+      "top_candidate_knowledge_id": "KNO-DEL-CLASSIFICATION-001",
+      "top_candidate_status": "SOURCE_VERIFIED",
+      "top_candidate_published": true,
+      "top_candidate_score": 89.46667,
+      "expected_first_response": "Is the package signature-required or not?"
+    },
+    {
+      "id": 138,
+      "driver_prompt": "customer says wrong address on label",
+      "category": "customer_communication",
+      "priority": "medium",
+      "exact_formal_case_id": null,
+      "current_response_mode": "ESCALATE",
+      "top_candidate_knowledge_id": "KNO-FORGE-EDIT-ADDRESS-001",
+      "top_candidate_status": "PENDING_REVIEW",
+      "top_candidate_published": false,
+      "top_candidate_score": 134.66667,
+      "expected_first_response": "If the label address is wrong, that points to code 002 for delivery-address issue handling."
+    },
+    {
+      "id": 139,
+      "driver_prompt": "customer says package was marked delivered but isnt there",
+      "category": "customer_communication",
+      "priority": "medium",
+      "exact_formal_case_id": null,
+      "current_response_mode": "CLARIFY",
+      "top_candidate_knowledge_id": "KNO-PUP-UNLISTED-001",
+      "top_candidate_status": "SOURCE_VERIFIED",
+      "top_candidate_published": true,
+      "top_candidate_score": 58.2,
+      "expected_first_response": "Is this a direct customer complaint or a package research case/message?"
+    },
+    {
+      "id": 140,
+      "driver_prompt": "need to message cpc",
+      "category": "customer_communication",
+      "priority": "low",
+      "exact_formal_case_id": null,
+      "current_response_mode": "ESCALATE",
+      "top_candidate_knowledge_id": "KNO-FORGE-MESSAGING-001",
+      "top_candidate_status": "POTENTIALLY_OUTDATED",
+      "top_candidate_published": false,
+      "top_candidate_score": 67.33333,
+      "expected_first_response": "Open Inbox in FORGE, start a New Message, add a stop reference if needed, then send it to CPC."
+    },
+    {
+      "id": 141,
+      "driver_prompt": "how do i tell them business closed",
+      "category": "customer_communication",
+      "priority": "medium",
+      "exact_formal_case_id": null,
+      "current_response_mode": "CLARIFY",
+      "top_candidate_knowledge_id": "KNO-FORGE-BUSINESS-CLOSURE-MSG-001",
+      "top_candidate_status": "SOURCE_VERIFIED",
+      "top_candidate_published": true,
+      "top_candidate_score": 58,
+      "expected_first_response": "Use the Business Closure message in FORGE."
+    },
+    {
+      "id": 142,
+      "driver_prompt": "what is rth",
+      "category": "fedex_terms",
+      "priority": "low",
+      "exact_formal_case_id": null,
+      "current_response_mode": "ANSWER",
+      "top_candidate_knowledge_id": "KNO-DEL-HAL-DELIVERY-001",
+      "top_candidate_status": "SOURCE_VERIFIED",
+      "top_candidate_published": true,
+      "top_candidate_score": 73.8314,
+      "expected_first_response": "RTH means Redirect to Hold at Location."
+    },
+    {
+      "id": 143,
+      "driver_prompt": "what is prc",
+      "category": "fedex_terms",
+      "priority": "low",
+      "exact_formal_case_id": null,
+      "current_response_mode": "ESCALATE",
+      "top_candidate_knowledge_id": null,
+      "top_candidate_status": null,
+      "top_candidate_published": false,
+      "top_candidate_score": 0,
+      "expected_first_response": "PRC means Package Research Case."
+    },
+    {
+      "id": 144,
+      "driver_prompt": "what is cpc",
+      "category": "fedex_terms",
+      "priority": "low",
+      "exact_formal_case_id": null,
+      "current_response_mode": "ESCALATE",
+      "top_candidate_knowledge_id": "KNO-FORGE-MESSAGING-001",
+      "top_candidate_status": "POTENTIALLY_OUTDATED",
+      "top_candidate_published": false,
+      "top_candidate_score": 50,
+      "expected_first_response": "CPC means Customer Pickup Coordination."
+    },
+    {
+      "id": 145,
+      "driver_prompt": "what is fcc",
+      "category": "fedex_terms",
+      "priority": "low",
+      "exact_formal_case_id": null,
+      "current_response_mode": "ANSWER",
+      "top_candidate_knowledge_id": "KNO-PUP-WRONG-WA-001",
+      "top_candidate_status": "SOURCE_VERIFIED",
+      "top_candidate_published": true,
+      "top_candidate_score": 50,
+      "expected_first_response": "FCC means FedEx Customer Connection."
+    },
+    {
+      "id": 146,
+      "driver_prompt": "what is fad",
+      "category": "fedex_terms",
+      "priority": "low",
+      "exact_formal_case_id": null,
+      "current_response_mode": "ANSWER",
+      "top_candidate_knowledge_id": "KNO-DEL-FAD-GROUND-001",
+      "top_candidate_status": "SOURCE_VERIFIED",
+      "top_candidate_published": true,
+      "top_candidate_score": 50,
+      "expected_first_response": "FAD means FedEx Authenticated Delivery."
+    },
+    {
+      "id": 147,
+      "driver_prompt": "what is dvir",
+      "category": "fedex_terms",
+      "priority": "low",
+      "exact_formal_case_id": null,
+      "current_response_mode": "ANSWER",
+      "top_candidate_knowledge_id": "KNO-FORGE-VEHICLE-CHANGE-001",
+      "top_candidate_status": "READY_ROUTE_APPROVED",
+      "top_candidate_published": true,
+      "top_candidate_score": 50,
+      "expected_first_response": "DVIR means Daily Vehicle Inspection Report."
+    },
+    {
+      "id": 148,
+      "driver_prompt": "what is sra",
+      "category": "fedex_terms",
+      "priority": "low",
+      "exact_formal_case_id": null,
+      "current_response_mode": "ANSWER",
+      "top_candidate_knowledge_id": "KNO-DEL-SRA-001",
+      "top_candidate_status": "SOURCE_VERIFIED",
+      "top_candidate_published": true,
+      "top_candidate_score": 54,
+      "expected_first_response": "SRA means Shipment Release Authorization."
+    },
+    {
+      "id": 149,
+      "driver_prompt": "what is op 200",
+      "category": "fedex_terms",
+      "priority": "low",
+      "exact_formal_case_id": null,
+      "current_response_mode": "ANSWER",
+      "top_candidate_knowledge_id": "KNO-DEL-DOORTAG-001",
+      "top_candidate_status": "SOURCE_VERIFIED",
+      "top_candidate_published": true,
+      "top_candidate_score": 53.08947,
+      "expected_first_response": "OP-200 is the Shipment Status Door Tag."
+    },
+    {
+      "id": 150,
+      "driver_prompt": "what is ppod",
+      "category": "fedex_terms",
+      "priority": "low",
+      "exact_formal_case_id": null,
+      "current_response_mode": "ANSWER",
+      "top_candidate_knowledge_id": "KNO-DEL-PPOD-001",
+      "top_candidate_status": "SOURCE_VERIFIED",
+      "top_candidate_published": true,
+      "top_candidate_score": 54,
+      "expected_first_response": "PPOD means Picture Proof of Delivery."
+    },
+    {
+      "id": 151,
+      "driver_prompt": "what is ppoda",
+      "category": "fedex_terms",
+      "priority": "low",
+      "exact_formal_case_id": null,
+      "current_response_mode": "ANSWER",
+      "top_candidate_knowledge_id": "KNO-DEL-PPOD-001",
+      "top_candidate_status": "SOURCE_VERIFIED",
+      "top_candidate_published": true,
+      "top_candidate_score": 54,
+      "expected_first_response": "PPODA means Picture Proof of Delivery Attempt."
+    },
+    {
+      "id": 152,
+      "driver_prompt": "dont know what im looking at",
+      "category": "not_sure",
+      "priority": "high",
+      "exact_formal_case_id": null,
+      "current_response_mode": "CLARIFY",
+      "top_candidate_knowledge_id": "KNO-SEC-ROUTE-001",
+      "top_candidate_status": "SOURCE_VERIFIED",
+      "top_candidate_published": true,
+      "top_candidate_score": 21,
+      "expected_first_response": "No problem. What do you see?"
+    },
+    {
+      "id": 153,
+      "driver_prompt": "dont know if i can leave it",
+      "category": "not_sure",
+      "priority": "high",
+      "exact_formal_case_id": null,
+      "current_response_mode": "CLARIFY",
+      "top_candidate_knowledge_id": "KNO-DEL-SAFEPLACE-001",
+      "top_candidate_status": "SOURCE_VERIFIED",
+      "top_candidate_published": true,
+      "top_candidate_score": 88.66667,
+      "expected_first_response": "First: does it need a signature?"
+    },
+    {
+      "id": 154,
+      "driver_prompt": "not sure if hazmat",
+      "category": "not_sure",
+      "priority": "medium",
+      "exact_formal_case_id": null,
+      "current_response_mode": "CLARIFY",
+      "top_candidate_knowledge_id": "KNO-DEL-CLASSIFICATION-001",
+      "top_candidate_status": "SOURCE_VERIFIED",
+      "top_candidate_published": true,
+      "top_candidate_score": 64.93333,
+      "expected_first_response": "What do you see on the label or screen?"
+    },
+    {
+      "id": 155,
+      "driver_prompt": "not sure what this forge message means",
+      "category": "not_sure",
+      "priority": "medium",
+      "exact_formal_case_id": null,
+      "current_response_mode": "CLARIFY",
+      "top_candidate_knowledge_id": "KNO-DEL-CLASSIFICATION-001",
+      "top_candidate_status": "SOURCE_VERIFIED",
+      "top_candidate_published": true,
+      "top_candidate_score": 53.65714,
+      "expected_first_response": "What kind of message is it?"
+    }
+  ],
+  "interpretation_limits": [
+    "A top retrieval candidate is diagnostic output, not a human-reviewed gold mapping.",
+    "Candidate expected responses have no canonical knowledge_id, status, source_id, version, or adjudication trace.",
+    "No candidate expected response may be promoted without record-level canonical review."
+  ]
+}

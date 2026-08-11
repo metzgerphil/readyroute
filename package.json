@@ -2,6 +2,9 @@
   "name": "readyroute",
   "private": true,
   "scripts": {
+    "knowledge:build": "node ./scripts/build-ready-route-knowledge.js",
+    "knowledge:validate": "node ./scripts/validate-ready-route-knowledge.js",
+    "knowledge:release": "npm run knowledge:build && npm run knowledge:validate",
     "verify": "bash ./scripts/verify.sh",
     "deploy:backend": "bash ./scripts/release-backend.sh",
     "deploy:landing": "bash ./scripts/release-landing.sh",

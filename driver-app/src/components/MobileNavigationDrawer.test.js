@@ -175,7 +175,8 @@ describe('MobileNavigationDrawer', () => {
     expect(screen.getByText('Driver Mode')).toBeTruthy();
     expect(screen.getByText('L')).toBeTruthy();
     expect(screen.getByText('Switch to Manager Mode')).toBeTruthy();
-    expect(screen.getByText('Driver Home')).toBeTruthy();
+    expect(screen.getByText('Operational Help')).toBeTruthy();
+    expect(screen.getByText('Route Tools')).toBeTruthy();
     expect(screen.getByText('Notifications')).toBeTruthy();
     expect(screen.getByText('My Drive')).toBeTruthy();
     expect(screen.getByText('Manifest')).toBeTruthy();

@@ -1,4 +1,4 @@
-export function getDrawerMenuItems(activeMode) {
+export function getDrawerMenuItems(activeMode, { driverHelpOnly = false } = {}) {
   if (activeMode === 'manager') {
     return [
       {
@@ -44,11 +44,26 @@ export function getDrawerMenuItems(activeMode) {
     ];
   }
 
+  if (driverHelpOnly) {
+    return [
+      {
+        key: 'driver-home',
+        label: 'Operational Help',
+        screen: 'Home'
+      }
+    ];
+  }
+
   return [
     {
       key: 'driver-home',
-      label: 'Driver Home',
+      label: 'Operational Help',
       screen: 'Home'
+    },
+    {
+      key: 'driver-route-tools',
+      label: 'Route Tools',
+      screen: 'RouteTools'
     },
     {
       key: 'driver-notifications',

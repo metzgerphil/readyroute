@@ -1,0 +1,3 @@
+identifier,exclusion_class,source_ids,reason
+OP-117,SOURCE_PUBLICATION_IDENTIFIER,SRC-GDRIVE-FILE-0014,Identifier for the reviewed On the Road Reference Guide rather than a driver-completed or driver-carried operational artifact.
+OP-119,SOURCE_PUBLICATION_IDENTIFIER,SRC-GDRIVE-FILE-0002,Identifier for the reviewed Customer Experience Guide rather than a driver-completed or driver-carried operational artifact.

@@ -10,6 +10,7 @@ import { usePortalSession } from '../context/PortalSessionContext';
 import api from '../services/api';
 import { saveLastPortalMode, saveSessionTokens } from '../services/auth';
 import HomeScreen from '../screens/HomeScreen';
+import DriverHelpScreen from '../screens/DriverHelpScreen';
 import LoginScreen from '../screens/LoginScreen';
 import ManagerAccessCodesScreen from '../screens/ManagerAccessCodesScreen';
 import ManagerDashboardScreen from '../screens/ManagerDashboardScreen';
@@ -28,8 +29,10 @@ import StopDetailScreen from '../screens/StopDetailScreen';
 import appTheme from '../theme/appTheme';
 
 const Stack = createStackNavigator();
+const DRIVER_HELP_ONLY = String(process.env.EXPO_PUBLIC_DRIVER_HELP_ONLY || '').trim().toLowerCase() === 'true';
 const SHELL_NAVIGATION_SCREENS = new Set([
   'Home',
+  'RouteTools',
   'Manifest',
   'ManagerDashboard',
   'ManagerAccessCodes',
@@ -53,10 +56,19 @@ function LoadingScreen() {
   );
 }
 
-function DrawerMenuButton({ onPress }) {
+function DrawerMenuButton({ account = false, label = 'Menu', onPress }) {
   return (
-    <Pressable onPress={onPress} style={({ pressed }) => [styles.menuButton, pressed ? styles.menuButtonPressed : null]}>
-      <Text style={styles.menuButtonText}>Menu</Text>
+    <Pressable
+      accessibilityLabel={`Open ${label.toLowerCase()}`}
+      onPress={onPress}
+      style={({ pressed }) => [account ? styles.accountButton : styles.menuButton, pressed ? styles.menuButtonPressed : null]}
+    >
+      {account ? (
+        <View style={styles.accountIcon}>
+          <View style={styles.accountIconHead} />
+          <View style={styles.accountIconBody} />
+        </View>
+      ) : <Text style={styles.menuButtonText}>{label}</Text>}
     </Pressable>
   );
 }
@@ -461,6 +473,17 @@ export default function AppNavigator() {
               {(props) => {
                 return (
                   <TrackedScreen navigation={props.navigation} onFocus={attachNavigation} screenName="Home">
+                    <DriverHelpScreen {...props} />
+                  </TrackedScreen>
+                );
+              }}
+            </Stack.Screen>
+            {!DRIVER_HELP_ONLY ? (
+              <>
+            <Stack.Screen name="RouteTools" options={{ headerShown: false }}>
+              {(props) => {
+                return (
+                  <TrackedScreen navigation={props.navigation} onFocus={attachNavigation} screenName="RouteTools">
                     <HomeScreen {...props} onLogout={logout} />
                   </TrackedScreen>
                 );
@@ -522,15 +545,28 @@ export default function AppNavigator() {
                 );
               }}
             </Stack.Screen>
+              </>
+            ) : null}
           </>
         )}
       </Stack.Navigator>
 
       {hasAnyAccess && !needsModeSelection ? (
         <>
-          {currentRouteName === 'Home' || currentRouteName == null || String(currentRouteName || '').startsWith('Manager') ? (
-            <View pointerEvents="box-none" style={[styles.topLeftControlsWrap, { top: insets.top + 10 }]}>
-              <DrawerMenuButton onPress={openDrawer} />
+          {currentRouteName === 'Home' || currentRouteName === 'RouteTools' || currentRouteName == null || String(currentRouteName || '').startsWith('Manager') ? (
+            <View
+              pointerEvents="box-none"
+              style={[
+                styles.topLeftControlsWrap,
+                DRIVER_HELP_ONLY && activeMode === 'driver' ? styles.topRightAccountWrap : null,
+                { top: insets.top + 10 }
+              ]}
+            >
+              <DrawerMenuButton
+                account={DRIVER_HELP_ONLY && activeMode === 'driver'}
+                label={DRIVER_HELP_ONLY && activeMode === 'driver' ? 'Account' : 'Menu'}
+                onPress={openDrawer}
+              />
               {activeMode === 'manager' && currentRouteName === 'ManagerMap' ? (
                 <BackButton
                   onPress={handleManagerBack}
@@ -544,6 +580,7 @@ export default function AppNavigator() {
             activeMode={activeMode}
             currentRouteName={currentRouteName}
             currentManagerCsaId={currentManagerCsaId}
+            driverHelpOnly={DRIVER_HELP_ONLY}
             identity={identity}
             hasNotificationAttention={activeMode === 'manager' ? hasManagerNotificationAttention : false}
             isLoadingManagerCsas={isLoadingManagerCsas}
@@ -557,7 +594,7 @@ export default function AppNavigator() {
             onNavigate={handleNavigate}
             onSupportPress={openSupport}
             onSwitchMode={() => handleSelectMode(activeMode === 'manager' ? 'driver' : 'manager')}
-            showModeSwitch={availableModes.length > 1 || (activeMode === 'manager' && Boolean(sessionTokens?.managerToken))}
+            showModeSwitch={!DRIVER_HELP_ONLY && (availableModes.length > 1 || (activeMode === 'manager' && Boolean(sessionTokens?.managerToken)))}
           />
           <SupportRequestModal
             activeMode={activeMode}
@@ -589,6 +626,10 @@ const styles = StyleSheet.create({
     left: 20,
     position: 'absolute'
   },
+  topRightAccountWrap: {
+    left: undefined,
+    right: 20
+  },
   menuButton: {
     alignItems: 'center',
     backgroundColor: appTheme.colors.surface,
@@ -600,6 +641,38 @@ const styles = StyleSheet.create({
     minWidth: 64,
     paddingHorizontal: 14,
     ...appTheme.shadows.card
+  },
+  accountButton: {
+    alignItems: 'center',
+    backgroundColor: appTheme.colors.surface,
+    borderColor: appTheme.colors.borderStrong,
+    borderRadius: 22,
+    borderWidth: 1,
+    height: 44,
+    justifyContent: 'center',
+    width: 44,
+    ...appTheme.shadows.card
+  },
+  accountIcon: {
+    alignItems: 'center',
+    height: 24,
+    justifyContent: 'center',
+    width: 24
+  },
+  accountIconHead: {
+    borderColor: appTheme.colors.textPrimary,
+    borderRadius: 5,
+    borderWidth: 2,
+    height: 9,
+    width: 9
+  },
+  accountIconBody: {
+    borderColor: appTheme.colors.textPrimary,
+    borderRadius: 8,
+    borderWidth: 2,
+    height: 9,
+    marginTop: 2,
+    width: 16
   },
   backButton: {
     alignItems: 'center',

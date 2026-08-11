@@ -1,0 +1,1543 @@
+{
+  "schema_version": "1.0.0",
+  "evaluated_at": "2026-08-10",
+  "evaluation_design": {
+    "indexed_case_count": 192,
+    "indexed_candidate_prompts": false,
+    "candidate_case_count": 69,
+    "independent_holdout_used": false,
+    "interpretation": "Measures generalization to reviewed development prompts without adding them as retrieval synonyms."
+  },
+  "metrics": {
+    "top_1_hits": 69,
+    "top_5_hits": 69,
+    "mode_matches": 69,
+    "publication_withheld_escalations": 9,
+    "unsafe_answer_gating_failures": 0
+  },
+  "retrieval_failures": [],
+  "mode_failures": [],
+  "results": [
+    {
+      "case_id": "CAND-OP-001",
+      "source_candidate_case_ids": [
+        "CAND-EVAL-0007"
+      ],
+      "utterance": "barcode wont scan",
+      "expected_knowledge_ids": [
+        "KNO-DEL-BARCODE-001",
+        "KNO-PUP-DROPBOX-SERIAL-001"
+      ],
+      "expected_mode": [
+        "CLARIFY"
+      ],
+      "publication_withheld": false,
+      "actual_mode": "CLARIFY",
+      "top_candidate_knowledge_id": "KNO-DEL-BARCODE-001",
+      "top_candidate_score": 122,
+      "top_1_hit": true,
+      "top_5_hit": true,
+      "mode_match": true,
+      "unsafe_answer_gating_failure": false
+    },
+    {
+      "case_id": "CAND-OP-002",
+      "source_candidate_case_ids": [
+        "CAND-EVAL-0009"
+      ],
+      "utterance": "business says closed every friday",
+      "expected_knowledge_ids": [
+        "KNO-FORGE-BUSINESS-CLOSURE-MSG-001"
+      ],
+      "expected_mode": [
+        "CLARIFY"
+      ],
+      "publication_withheld": false,
+      "actual_mode": "CLARIFY",
+      "top_candidate_knowledge_id": "KNO-FORGE-BUSINESS-CLOSURE-MSG-001",
+      "top_candidate_score": 58,
+      "top_1_hit": true,
+      "top_5_hit": true,
+      "mode_match": true,
+      "unsafe_answer_gating_failure": false
+    },
+    {
+      "case_id": "CAND-OP-003",
+      "source_candidate_case_ids": [
+        "CAND-EVAL-0017"
+      ],
+      "utterance": "can i keep working if login is down",
+      "expected_knowledge_ids": [
+        "KNO-FORGE-DELAYED-LOGIN-001"
+      ],
+      "expected_mode": [
+        "CLARIFY"
+      ],
+      "publication_withheld": false,
+      "actual_mode": "CLARIFY",
+      "top_candidate_knowledge_id": "KNO-FORGE-DELAYED-LOGIN-001",
+      "top_candidate_score": 22.8,
+      "top_1_hit": true,
+      "top_5_hit": true,
+      "mode_match": true,
+      "unsafe_answer_gating_failure": false
+    },
+    {
+      "case_id": "CAND-OP-004",
+      "source_candidate_case_ids": [
+        "CAND-EVAL-0018"
+      ],
+      "utterance": "can i leave alcohol package",
+      "expected_knowledge_ids": [
+        "KNO-DEL-ALCOHOL-001"
+      ],
+      "expected_mode": [
+        "ANSWER"
+      ],
+      "publication_withheld": false,
+      "actual_mode": "ANSWER",
+      "top_candidate_knowledge_id": "KNO-DEL-ALCOHOL-001",
+      "top_candidate_score": 210.28571,
+      "top_1_hit": true,
+      "top_5_hit": true,
+      "mode_match": true,
+      "unsafe_answer_gating_failure": false
+    },
+    {
+      "case_id": "CAND-OP-005",
+      "source_candidate_case_ids": [
+        "CAND-EVAL-0019"
+      ],
+      "utterance": "can i leave in apartment lobby",
+      "expected_knowledge_ids": [
+        "KNO-DEL-APT-001"
+      ],
+      "expected_mode": [
+        "ANSWER"
+      ],
+      "publication_withheld": false,
+      "actual_mode": "ANSWER",
+      "top_candidate_knowledge_id": "KNO-DEL-APT-001",
+      "top_candidate_score": 122,
+      "top_1_hit": true,
+      "top_5_hit": true,
+      "mode_match": true,
+      "unsafe_answer_gating_failure": false
+    },
+    {
+      "case_id": "CAND-OP-006",
+      "source_candidate_case_ids": [
+        "CAND-EVAL-0024"
+      ],
+      "utterance": "can i record this on fedex property",
+      "expected_knowledge_ids": [
+        "KNO-COMMS-MEDIA-001"
+      ],
+      "expected_mode": [
+        "ANSWER"
+      ],
+      "publication_withheld": false,
+      "actual_mode": "ANSWER",
+      "top_candidate_knowledge_id": "KNO-COMMS-MEDIA-001",
+      "top_candidate_score": 32.31905,
+      "top_1_hit": true,
+      "top_5_hit": true,
+      "mode_match": true,
+      "unsafe_answer_gating_failure": false
+    },
+    {
+      "case_id": "CAND-OP-007",
+      "source_candidate_case_ids": [
+        "CAND-EVAL-0027"
+      ],
+      "utterance": "can i take this hazmat",
+      "expected_knowledge_ids": [
+        "KNO-HAZ-ACCEPTANCE-001"
+      ],
+      "expected_mode": [
+        "CLARIFY"
+      ],
+      "publication_withheld": false,
+      "actual_mode": "CLARIFY",
+      "top_candidate_knowledge_id": "KNO-HAZ-ACCEPTANCE-001",
+      "top_candidate_score": 142,
+      "top_1_hit": true,
+      "top_5_hit": true,
+      "mode_match": true,
+      "unsafe_answer_gating_failure": false
+    },
+    {
+      "case_id": "CAND-OP-008",
+      "source_candidate_case_ids": [
+        "CAND-EVAL-0048"
+      ],
+      "utterance": "do i have to tag this door",
+      "expected_knowledge_ids": [
+        "KNO-DEL-DOORTAG-001"
+      ],
+      "expected_mode": [
+        "CLARIFY"
+      ],
+      "publication_withheld": false,
+      "actual_mode": "CLARIFY",
+      "top_candidate_knowledge_id": "KNO-DEL-DOORTAG-001",
+      "top_candidate_score": 53.33333,
+      "top_1_hit": true,
+      "top_5_hit": true,
+      "mode_match": true,
+      "unsafe_answer_gating_failure": false
+    },
+    {
+      "case_id": "CAND-OP-009",
+      "source_candidate_case_ids": [
+        "CAND-EVAL-0049"
+      ],
+      "utterance": "do i need a picture for this one",
+      "expected_knowledge_ids": [
+        "KNO-DEL-PPOD-001"
+      ],
+      "expected_mode": [
+        "CLARIFY"
+      ],
+      "publication_withheld": false,
+      "actual_mode": "CLARIFY",
+      "top_candidate_knowledge_id": "KNO-DEL-PPOD-001",
+      "top_candidate_score": 50.93333,
+      "top_1_hit": true,
+      "top_5_hit": true,
+      "mode_match": true,
+      "unsafe_answer_gating_failure": false
+    },
+    {
+      "case_id": "CAND-OP-010",
+      "source_candidate_case_ids": [
+        "CAND-EVAL-0050"
+      ],
+      "utterance": "dog bit me",
+      "expected_knowledge_ids": [
+        "KNO-SAF-DOG-ENCOUNTER-001"
+      ],
+      "expected_mode": [
+        "ANSWER"
+      ],
+      "publication_withheld": false,
+      "actual_mode": "ANSWER",
+      "top_candidate_knowledge_id": "KNO-SAF-DOG-ENCOUNTER-001",
+      "top_candidate_score": 118,
+      "top_1_hit": true,
+      "top_5_hit": true,
+      "mode_match": true,
+      "unsafe_answer_gating_failure": false
+    },
+    {
+      "case_id": "CAND-OP-011",
+      "source_candidate_case_ids": [
+        "CAND-EVAL-0051"
+      ],
+      "utterance": "dog coming at me",
+      "expected_knowledge_ids": [
+        "KNO-SAF-DOG-ENCOUNTER-001"
+      ],
+      "expected_mode": [
+        "ANSWER"
+      ],
+      "publication_withheld": false,
+      "actual_mode": "ANSWER",
+      "top_candidate_knowledge_id": "KNO-SAF-DOG-ENCOUNTER-001",
+      "top_candidate_score": 278,
+      "top_1_hit": true,
+      "top_5_hit": true,
+      "mode_match": true,
+      "unsafe_answer_gating_failure": false
+    },
+    {
+      "case_id": "CAND-OP-012",
+      "source_candidate_case_ids": [
+        "CAND-EVAL-0052"
+      ],
+      "utterance": "dog here",
+      "expected_knowledge_ids": [
+        "KNO-SAF-DOG-ENCOUNTER-001"
+      ],
+      "expected_mode": [
+        "ANSWER",
+        "CLARIFY"
+      ],
+      "publication_withheld": false,
+      "actual_mode": "CLARIFY",
+      "top_candidate_knowledge_id": "KNO-SAF-DOG-ENCOUNTER-001",
+      "top_candidate_score": 34,
+      "top_1_hit": true,
+      "top_5_hit": true,
+      "mode_match": true,
+      "unsafe_answer_gating_failure": false
+    },
+    {
+      "case_id": "CAND-OP-013",
+      "source_candidate_case_ids": [
+        "CAND-EVAL-0055"
+      ],
+      "utterance": "dont know if its business or house",
+      "expected_knowledge_ids": [
+        "KNO-DEL-CLASSIFICATION-001"
+      ],
+      "expected_mode": [
+        "CLARIFY"
+      ],
+      "publication_withheld": false,
+      "actual_mode": "CLARIFY",
+      "top_candidate_knowledge_id": "KNO-DEL-CLASSIFICATION-001",
+      "top_candidate_score": 40.8,
+      "top_1_hit": true,
+      "top_5_hit": true,
+      "mode_match": true,
+      "unsafe_answer_gating_failure": false
+    },
+    {
+      "case_id": "CAND-OP-014",
+      "source_candidate_case_ids": [
+        "CAND-EVAL-0057"
+      ],
+      "utterance": "dry ice package",
+      "expected_knowledge_ids": [
+        "KNO-HAZ-DRY-ICE-001"
+      ],
+      "expected_mode": [
+        "ANSWER",
+        "CLARIFY"
+      ],
+      "publication_withheld": false,
+      "actual_mode": "ANSWER",
+      "top_candidate_knowledge_id": "KNO-HAZ-DRY-ICE-001",
+      "top_candidate_score": 122.93333,
+      "top_1_hit": true,
+      "top_5_hit": true,
+      "mode_match": true,
+      "unsafe_answer_gating_failure": false
+    },
+    {
+      "case_id": "CAND-OP-015",
+      "source_candidate_case_ids": [
+        "CAND-EVAL-0062"
+      ],
+      "utterance": "gun in parking lot",
+      "expected_knowledge_ids": [
+        "KNO-SEC-ACTIVE-THREAT-001"
+      ],
+      "expected_mode": [
+        "ANSWER",
+        "CLARIFY"
+      ],
+      "publication_withheld": false,
+      "actual_mode": "CLARIFY",
+      "top_candidate_knowledge_id": "KNO-SEC-ACTIVE-THREAT-001",
+      "top_candidate_score": 25.46667,
+      "top_1_hit": true,
+      "top_5_hit": true,
+      "mode_match": true,
+      "unsafe_answer_gating_failure": false
+    },
+    {
+      "case_id": "CAND-OP-016",
+      "source_candidate_case_ids": [
+        "CAND-EVAL-0063"
+      ],
+      "utterance": "guy threatening me",
+      "expected_knowledge_ids": [
+        "KNO-SEC-ACTIVE-THREAT-001",
+        "KNO-SEC-INCIDENT-REPORT-001"
+      ],
+      "expected_mode": [
+        "ANSWER",
+        "CLARIFY"
+      ],
+      "publication_withheld": false,
+      "actual_mode": "CLARIFY",
+      "top_candidate_knowledge_id": "KNO-SEC-ACTIVE-THREAT-001",
+      "top_candidate_score": 104,
+      "top_1_hit": true,
+      "top_5_hit": true,
+      "mode_match": true,
+      "unsafe_answer_gating_failure": false
+    },
+    {
+      "case_id": "CAND-OP-017",
+      "source_candidate_case_ids": [
+        "CAND-EVAL-0070"
+      ],
+      "utterance": "how do i delayed login",
+      "expected_knowledge_ids": [
+        "KNO-FORGE-DELAYED-LOGIN-001"
+      ],
+      "expected_mode": [
+        "CLARIFY"
+      ],
+      "publication_withheld": false,
+      "actual_mode": "CLARIFY",
+      "top_candidate_knowledge_id": "KNO-FORGE-DELAYED-LOGIN-001",
+      "top_candidate_score": 106,
+      "top_1_hit": true,
+      "top_5_hit": true,
+      "mode_match": true,
+      "unsafe_answer_gating_failure": false
+    },
+    {
+      "case_id": "CAND-OP-018",
+      "source_candidate_case_ids": [
+        "CAND-EVAL-0072"
+      ],
+      "utterance": "i got hit",
+      "expected_knowledge_ids": [
+        "KNO-INC-ACCIDENT-SCENE-001",
+        "KNO-INC-ACCIDENT-REPORT-001"
+      ],
+      "expected_mode": [
+        "ANSWER",
+        "CLARIFY"
+      ],
+      "publication_withheld": false,
+      "actual_mode": "CLARIFY",
+      "top_candidate_knowledge_id": "KNO-INC-ACCIDENT-SCENE-001",
+      "top_candidate_score": 34,
+      "top_1_hit": true,
+      "top_5_hit": true,
+      "mode_match": true,
+      "unsafe_answer_gating_failure": false
+    },
+    {
+      "case_id": "CAND-OP-019",
+      "source_candidate_case_ids": [
+        "CAND-EVAL-0073"
+      ],
+      "utterance": "is this direct sig or indirect",
+      "expected_knowledge_ids": [
+        "KNO-DEL-SIG-DSR-001",
+        "KNO-DEL-SIG-ISR-001"
+      ],
+      "expected_mode": [
+        "CLARIFY"
+      ],
+      "publication_withheld": false,
+      "actual_mode": "CLARIFY",
+      "top_candidate_knowledge_id": "KNO-DEL-SIG-DSR-001",
+      "top_candidate_score": 244.93333,
+      "top_1_hit": true,
+      "top_5_hit": true,
+      "mode_match": true,
+      "unsafe_answer_gating_failure": false
+    },
+    {
+      "case_id": "CAND-OP-020",
+      "source_candidate_case_ids": [
+        "CAND-EVAL-0074"
+      ],
+      "utterance": "leaking package",
+      "expected_knowledge_ids": [
+        "KNO-HAZ-LEAK-001"
+      ],
+      "expected_mode": [
+        "ANSWER",
+        "CLARIFY"
+      ],
+      "publication_withheld": false,
+      "actual_mode": "CLARIFY",
+      "top_candidate_knowledge_id": "KNO-HAZ-LEAK-001",
+      "top_candidate_score": 106,
+      "top_1_hit": true,
+      "top_5_hit": true,
+      "mode_match": true,
+      "unsafe_answer_gating_failure": false
+    },
+    {
+      "case_id": "CAND-OP-021",
+      "source_candidate_case_ids": [
+        "CAND-EVAL-0078"
+      ],
+      "utterance": "minor accident what now",
+      "expected_knowledge_ids": [
+        "KNO-INC-ACCIDENT-SCENE-001",
+        "KNO-INC-ACCIDENT-REPORT-001"
+      ],
+      "expected_mode": [
+        "ANSWER",
+        "CLARIFY"
+      ],
+      "publication_withheld": false,
+      "actual_mode": "CLARIFY",
+      "top_candidate_knowledge_id": "KNO-INC-ACCIDENT-REPORT-001",
+      "top_candidate_score": 34,
+      "top_1_hit": true,
+      "top_5_hit": true,
+      "mode_match": true,
+      "unsafe_answer_gating_failure": false
+    },
+    {
+      "case_id": "CAND-OP-022",
+      "source_candidate_case_ids": [
+        "CAND-EVAL-0083"
+      ],
+      "utterance": "needs sig no one there",
+      "expected_knowledge_ids": [
+        "KNO-DEL-SIG-ISR-001",
+        "KNO-DEL-SIG-DSR-001",
+        "KNO-DEL-SIG-ASR-001"
+      ],
+      "expected_mode": [
+        "CLARIFY"
+      ],
+      "publication_withheld": false,
+      "actual_mode": "CLARIFY",
+      "top_candidate_knowledge_id": "KNO-DEL-SIG-DSR-001",
+      "top_candidate_score": 165.42857,
+      "top_1_hit": true,
+      "top_5_hit": true,
+      "mode_match": true,
+      "unsafe_answer_gating_failure": false
+    },
+    {
+      "case_id": "CAND-OP-023",
+      "source_candidate_case_ids": [
+        "CAND-EVAL-0092"
+      ],
+      "utterance": "package fell and leaked",
+      "expected_knowledge_ids": [
+        "KNO-HAZ-LEAK-001",
+        "KNO-DEL-DAMAGE-INSPECTION-001"
+      ],
+      "expected_mode": [
+        "ANSWER",
+        "CLARIFY"
+      ],
+      "publication_withheld": false,
+      "actual_mode": "ANSWER",
+      "top_candidate_knowledge_id": "KNO-HAZ-LEAK-001",
+      "top_candidate_score": 95.46667,
+      "top_1_hit": true,
+      "top_5_hit": true,
+      "mode_match": true,
+      "unsafe_answer_gating_failure": false
+    },
+    {
+      "case_id": "CAND-OP-024",
+      "source_candidate_case_ids": [
+        "CAND-EVAL-0095"
+      ],
+      "utterance": "pickup not on my list",
+      "expected_knowledge_ids": [
+        "KNO-PUP-UNLISTED-001"
+      ],
+      "expected_mode": [
+        "ANSWER"
+      ],
+      "publication_withheld": false,
+      "actual_mode": "ANSWER",
+      "top_candidate_knowledge_id": "KNO-PUP-UNLISTED-001",
+      "top_candidate_score": 128,
+      "top_1_hit": true,
+      "top_5_hit": true,
+      "mode_match": true,
+      "unsafe_answer_gating_failure": false
+    },
+    {
+      "case_id": "CAND-OP-025",
+      "source_candidate_case_ids": [
+        "CAND-EVAL-0096"
+      ],
+      "utterance": "pickup not ready",
+      "expected_knowledge_ids": [
+        "KNO-PUP-ZERO-001",
+        "KNO-PUP-CALLTAG-NOTREADY-001"
+      ],
+      "expected_mode": [
+        "CLARIFY"
+      ],
+      "publication_withheld": false,
+      "actual_mode": "CLARIFY",
+      "top_candidate_knowledge_id": "KNO-PUP-CALLTAG-NOTREADY-001",
+      "top_candidate_score": 184.93333,
+      "top_1_hit": true,
+      "top_5_hit": true,
+      "mode_match": true,
+      "unsafe_answer_gating_failure": false
+    },
+    {
+      "case_id": "CAND-OP-026",
+      "source_candidate_case_ids": [
+        "CAND-EVAL-0103"
+      ],
+      "utterance": "somebody broke into truck",
+      "expected_knowledge_ids": [
+        "KNO-SEC-INCIDENT-REPORT-001"
+      ],
+      "expected_mode": [
+        "ANSWER",
+        "CLARIFY"
+      ],
+      "publication_withheld": false,
+      "actual_mode": "CLARIFY",
+      "top_candidate_knowledge_id": "KNO-SEC-INCIDENT-REPORT-001",
+      "top_candidate_score": 42.85714,
+      "top_1_hit": true,
+      "top_5_hit": true,
+      "mode_match": true,
+      "unsafe_answer_gating_failure": false
+    },
+    {
+      "case_id": "CAND-OP-027",
+      "source_candidate_case_ids": [
+        "CAND-EVAL-0107"
+      ],
+      "utterance": "tobacco package",
+      "expected_knowledge_ids": [
+        "KNO-DEL-TOBACCO-001"
+      ],
+      "expected_mode": [
+        "CLARIFY",
+        "ESCALATE"
+      ],
+      "publication_withheld": true,
+      "actual_mode": "ESCALATE",
+      "top_candidate_knowledge_id": "KNO-DEL-TOBACCO-001",
+      "top_candidate_score": 110,
+      "top_1_hit": true,
+      "top_5_hit": true,
+      "mode_match": true,
+      "unsafe_answer_gating_failure": false
+    },
+    {
+      "case_id": "CAND-OP-028",
+      "source_candidate_case_ids": [
+        "CAND-EVAL-0110"
+      ],
+      "utterance": "vape package to house",
+      "expected_knowledge_ids": [
+        "KNO-DEL-TOBACCO-001"
+      ],
+      "expected_mode": [
+        "CLARIFY",
+        "ESCALATE"
+      ],
+      "publication_withheld": true,
+      "actual_mode": "ESCALATE",
+      "top_candidate_knowledge_id": "KNO-DEL-TOBACCO-001",
+      "top_candidate_score": 100.28571,
+      "top_1_hit": true,
+      "top_5_hit": true,
+      "mode_match": true,
+      "unsafe_answer_gating_failure": false
+    },
+    {
+      "case_id": "CAND-OP-029",
+      "source_candidate_case_ids": [
+        "CAND-EVAL-0112"
+      ],
+      "utterance": "vehicle stolen",
+      "expected_knowledge_ids": [
+        "KNO-SEC-STOLEN-VEHICLE-001"
+      ],
+      "expected_mode": [
+        "CLARIFY",
+        "ESCALATE"
+      ],
+      "publication_withheld": true,
+      "actual_mode": "ESCALATE",
+      "top_candidate_knowledge_id": "KNO-SEC-STOLEN-VEHICLE-001",
+      "top_candidate_score": 104,
+      "top_1_hit": true,
+      "top_5_hit": true,
+      "mode_match": true,
+      "unsafe_answer_gating_failure": false
+    },
+    {
+      "case_id": "CAND-OP-030",
+      "source_candidate_case_ids": [
+        "CAND-EVAL-0133"
+      ],
+      "utterance": "what is fad",
+      "expected_knowledge_ids": [
+        "KNO-DEL-FAD-GROUND-001"
+      ],
+      "expected_mode": [
+        "ANSWER"
+      ],
+      "publication_withheld": false,
+      "actual_mode": "ANSWER",
+      "top_candidate_knowledge_id": "KNO-DEL-FAD-GROUND-001",
+      "top_candidate_score": 50,
+      "top_1_hit": true,
+      "top_5_hit": true,
+      "mode_match": true,
+      "unsafe_answer_gating_failure": false
+    },
+    {
+      "case_id": "CAND-OP-031",
+      "source_candidate_case_ids": [
+        "CAND-EVAL-0135"
+      ],
+      "utterance": "what is hal",
+      "expected_knowledge_ids": [
+        "KNO-DEL-HAL-DELIVERY-001"
+      ],
+      "expected_mode": [
+        "ANSWER"
+      ],
+      "publication_withheld": false,
+      "actual_mode": "ANSWER",
+      "top_candidate_knowledge_id": "KNO-DEL-HAL-DELIVERY-001",
+      "top_candidate_score": 50,
+      "top_1_hit": true,
+      "top_5_hit": true,
+      "mode_match": true,
+      "unsafe_answer_gating_failure": false
+    },
+    {
+      "case_id": "CAND-OP-032",
+      "source_candidate_case_ids": [
+        "CAND-EVAL-0138"
+      ],
+      "utterance": "what is ppod",
+      "expected_knowledge_ids": [
+        "KNO-DEL-PPOD-001"
+      ],
+      "expected_mode": [
+        "ANSWER"
+      ],
+      "publication_withheld": false,
+      "actual_mode": "ANSWER",
+      "top_candidate_knowledge_id": "KNO-DEL-PPOD-001",
+      "top_candidate_score": 54,
+      "top_1_hit": true,
+      "top_5_hit": true,
+      "mode_match": true,
+      "unsafe_answer_gating_failure": false
+    },
+    {
+      "case_id": "CAND-OP-033",
+      "source_candidate_case_ids": [
+        "CAND-EVAL-0142"
+      ],
+      "utterance": "what is sra",
+      "expected_knowledge_ids": [
+        "KNO-DEL-SRA-001"
+      ],
+      "expected_mode": [
+        "ANSWER"
+      ],
+      "publication_withheld": false,
+      "actual_mode": "ANSWER",
+      "top_candidate_knowledge_id": "KNO-DEL-SRA-001",
+      "top_candidate_score": 54,
+      "top_1_hit": true,
+      "top_5_hit": true,
+      "mode_match": true,
+      "unsafe_answer_gating_failure": false
+    },
+    {
+      "case_id": "CAND-OP-034",
+      "source_candidate_case_ids": [
+        "CAND-EVAL-0008"
+      ],
+      "utterance": "business closed can i leave it",
+      "expected_knowledge_ids": [
+        "KNO-DEL-BUS-OP201-001",
+        "KNO-DEL-PPOD-001",
+        "KNO-FORGE-BUSINESS-CLOSURE-MSG-001"
+      ],
+      "expected_mode": [
+        "CLARIFY",
+        "ESCALATE"
+      ],
+      "publication_withheld": true,
+      "actual_mode": "ESCALATE",
+      "top_candidate_knowledge_id": "KNO-DEL-BUS-OP201-001",
+      "top_candidate_score": 169.33333,
+      "top_1_hit": true,
+      "top_5_hit": true,
+      "mode_match": true,
+      "unsafe_answer_gating_failure": false
+    },
+    {
+      "case_id": "CAND-OP-035",
+      "source_candidate_case_ids": [
+        "CAND-EVAL-0012"
+      ],
+      "utterance": "call tag pickup",
+      "expected_knowledge_ids": [
+        "KNO-PUP-CALLTAG-SUCCESS-001",
+        "KNO-PUP-CALLTAG-NOTREADY-001",
+        "KNO-PUP-CALLTAG-REFUSED-001",
+        "KNO-PUP-CALLTAG-RESTRICTED-001"
+      ],
+      "expected_mode": [
+        "CLARIFY"
+      ],
+      "publication_withheld": false,
+      "actual_mode": "CLARIFY",
+      "top_candidate_knowledge_id": "KNO-PUP-CALLTAG-SUCCESS-001",
+      "top_candidate_score": 164.93333,
+      "top_1_hit": true,
+      "top_5_hit": true,
+      "mode_match": true,
+      "unsafe_answer_gating_failure": false
+    },
+    {
+      "case_id": "CAND-OP-036",
+      "source_candidate_case_ids": [
+        "CAND-EVAL-0013"
+      ],
+      "utterance": "call tag says fraud",
+      "expected_knowledge_ids": [
+        "KNO-PUP-CALLTAG-FRAUD-001"
+      ],
+      "expected_mode": [
+        "CLARIFY",
+        "ESCALATE"
+      ],
+      "publication_withheld": true,
+      "actual_mode": "ESCALATE",
+      "top_candidate_knowledge_id": "KNO-PUP-CALLTAG-FRAUD-001",
+      "top_candidate_score": 144.93333,
+      "top_1_hit": true,
+      "top_5_hit": true,
+      "mode_match": true,
+      "unsafe_answer_gating_failure": false
+    },
+    {
+      "case_id": "CAND-OP-037",
+      "source_candidate_case_ids": [
+        "CAND-EVAL-0015"
+      ],
+      "utterance": "can front desk sign",
+      "expected_knowledge_ids": [
+        "KNO-DEL-SIG-ISR-001",
+        "KNO-DEL-SIG-DSR-001",
+        "KNO-DEL-SIG-ASR-001",
+        "KNO-DEL-APT-001"
+      ],
+      "expected_mode": [
+        "CLARIFY"
+      ],
+      "publication_withheld": false,
+      "actual_mode": "CLARIFY",
+      "top_candidate_knowledge_id": "KNO-DEL-SIG-DSR-001",
+      "top_candidate_score": 179.46667,
+      "top_1_hit": true,
+      "top_5_hit": true,
+      "mode_match": true,
+      "unsafe_answer_gating_failure": false
+    },
+    {
+      "case_id": "CAND-OP-038",
+      "source_candidate_case_ids": [
+        "CAND-EVAL-0021"
+      ],
+      "utterance": "can i leave this one",
+      "expected_knowledge_ids": [
+        "KNO-DEL-CLASSIFICATION-001",
+        "KNO-DEL-SAFEPLACE-001",
+        "KNO-DEL-SIG-ISR-001",
+        "KNO-DEL-SIG-DSR-001",
+        "KNO-DEL-SIG-ASR-001"
+      ],
+      "expected_mode": [
+        "CLARIFY"
+      ],
+      "publication_withheld": false,
+      "actual_mode": "CLARIFY",
+      "top_candidate_knowledge_id": "KNO-DEL-SAFEPLACE-001",
+      "top_candidate_score": 94.8,
+      "top_1_hit": true,
+      "top_5_hit": true,
+      "mode_match": true,
+      "unsafe_answer_gating_failure": false
+    },
+    {
+      "case_id": "CAND-OP-039",
+      "source_candidate_case_ids": [
+        "CAND-EVAL-0022"
+      ],
+      "utterance": "can i leave with neighbor",
+      "expected_knowledge_ids": [
+        "KNO-DEL-SIG-ISR-001",
+        "KNO-DEL-APT-001",
+        "KNO-DEL-DOORTAG-001"
+      ],
+      "expected_mode": [
+        "CLARIFY"
+      ],
+      "publication_withheld": false,
+      "actual_mode": "CLARIFY",
+      "top_candidate_knowledge_id": "KNO-DEL-SIG-ISR-001",
+      "top_candidate_score": 152,
+      "top_1_hit": true,
+      "top_5_hit": true,
+      "mode_match": true,
+      "unsafe_answer_gating_failure": false
+    },
+    {
+      "case_id": "CAND-OP-040",
+      "source_candidate_case_ids": [
+        "CAND-EVAL-0023"
+      ],
+      "utterance": "can i put it in mailbox",
+      "expected_knowledge_ids": [
+        "KNO-DEL-PLACEMENT-HAZARD-001"
+      ],
+      "expected_mode": [
+        "ANSWER"
+      ],
+      "publication_withheld": false,
+      "actual_mode": "ANSWER",
+      "top_candidate_knowledge_id": "KNO-DEL-PLACEMENT-HAZARD-001",
+      "top_candidate_score": 120,
+      "top_1_hit": true,
+      "top_5_hit": true,
+      "mode_match": true,
+      "unsafe_answer_gating_failure": false
+    },
+    {
+      "case_id": "CAND-OP-041",
+      "source_candidate_case_ids": [
+        "CAND-EVAL-0030"
+      ],
+      "utterance": "cant get pickup list",
+      "expected_knowledge_ids": [
+        "KNO-FORGE-DOWNLOAD-SYNC-001"
+      ],
+      "expected_mode": [
+        "CLARIFY",
+        "ESCALATE"
+      ],
+      "publication_withheld": true,
+      "actual_mode": "ESCALATE",
+      "top_candidate_knowledge_id": "KNO-FORGE-DOWNLOAD-SYNC-001",
+      "top_candidate_score": 56.85714,
+      "top_1_hit": true,
+      "top_5_hit": true,
+      "mode_match": true,
+      "unsafe_answer_gating_failure": false
+    },
+    {
+      "case_id": "CAND-OP-042",
+      "source_candidate_case_ids": [
+        "CAND-EVAL-0033"
+      ],
+      "utterance": "customer has no package",
+      "expected_knowledge_ids": [
+        "KNO-PUP-ZERO-001"
+      ],
+      "expected_mode": [
+        "CLARIFY"
+      ],
+      "publication_withheld": false,
+      "actual_mode": "CLARIFY",
+      "top_candidate_knowledge_id": "KNO-PUP-ZERO-001",
+      "top_candidate_score": 169.6,
+      "top_1_hit": true,
+      "top_5_hit": true,
+      "mode_match": true,
+      "unsafe_answer_gating_failure": false
+    },
+    {
+      "case_id": "CAND-OP-043",
+      "source_candidate_case_ids": [
+        "CAND-EVAL-0036"
+      ],
+      "utterance": "customer says just leave it",
+      "expected_knowledge_ids": [
+        "KNO-DEL-CLASSIFICATION-001",
+        "KNO-DEL-SAFEPLACE-001",
+        "KNO-DEL-SIG-ISR-001",
+        "KNO-DEL-SIG-DSR-001",
+        "KNO-DEL-SIG-ASR-001"
+      ],
+      "expected_mode": [
+        "CLARIFY"
+      ],
+      "publication_withheld": false,
+      "actual_mode": "CLARIFY",
+      "top_candidate_knowledge_id": "KNO-DEL-SAFEPLACE-001",
+      "top_candidate_score": 94.8,
+      "top_1_hit": true,
+      "top_5_hit": true,
+      "mode_match": true,
+      "unsafe_answer_gating_failure": false
+    },
+    {
+      "case_id": "CAND-OP-044",
+      "source_candidate_case_ids": [
+        "CAND-EVAL-0040"
+      ],
+      "utterance": "customer says wrong address on label",
+      "expected_knowledge_ids": [
+        "KNO-FORGE-EDIT-ADDRESS-001"
+      ],
+      "expected_mode": [
+        "CLARIFY",
+        "ESCALATE"
+      ],
+      "publication_withheld": true,
+      "actual_mode": "ESCALATE",
+      "top_candidate_knowledge_id": "KNO-FORGE-EDIT-ADDRESS-001",
+      "top_candidate_score": 134.66667,
+      "top_1_hit": true,
+      "top_5_hit": true,
+      "mode_match": true,
+      "unsafe_answer_gating_failure": false
+    },
+    {
+      "case_id": "CAND-OP-045",
+      "source_candidate_case_ids": [
+        "CAND-EVAL-0044"
+      ],
+      "utterance": "dangerous goods prompt came up",
+      "expected_knowledge_ids": [
+        "KNO-HAZ-ACCEPTANCE-001",
+        "KNO-HAZ-MANIFEST-001"
+      ],
+      "expected_mode": [
+        "CLARIFY"
+      ],
+      "publication_withheld": false,
+      "actual_mode": "CLARIFY",
+      "top_candidate_knowledge_id": "KNO-HAZ-MANIFEST-001",
+      "top_candidate_score": 53.65714,
+      "top_1_hit": true,
+      "top_5_hit": true,
+      "mode_match": true,
+      "unsafe_answer_gating_failure": false
+    },
+    {
+      "case_id": "CAND-OP-046",
+      "source_candidate_case_ids": [
+        "CAND-EVAL-0053"
+      ],
+      "utterance": "dont know if i can leave it",
+      "expected_knowledge_ids": [
+        "KNO-DEL-CLASSIFICATION-001",
+        "KNO-DEL-SAFEPLACE-001",
+        "KNO-DEL-PLACEMENT-HAZARD-001"
+      ],
+      "expected_mode": [
+        "CLARIFY"
+      ],
+      "publication_withheld": false,
+      "actual_mode": "CLARIFY",
+      "top_candidate_knowledge_id": "KNO-DEL-SAFEPLACE-001",
+      "top_candidate_score": 88.66667,
+      "top_1_hit": true,
+      "top_5_hit": true,
+      "mode_match": true,
+      "unsafe_answer_gating_failure": false
+    },
+    {
+      "case_id": "CAND-OP-047",
+      "source_candidate_case_ids": [
+        "CAND-EVAL-0054"
+      ],
+      "utterance": "dont know if it needs signature",
+      "expected_knowledge_ids": [
+        "KNO-DEL-SIG-ISR-001",
+        "KNO-DEL-SIG-DSR-001",
+        "KNO-DEL-SIG-ASR-001"
+      ],
+      "expected_mode": [
+        "CLARIFY"
+      ],
+      "publication_withheld": false,
+      "actual_mode": "CLARIFY",
+      "top_candidate_knowledge_id": "KNO-DEL-SIG-DSR-001",
+      "top_candidate_score": 152,
+      "top_1_hit": true,
+      "top_5_hit": true,
+      "mode_match": true,
+      "unsafe_answer_gating_failure": false
+    },
+    {
+      "case_id": "CAND-OP-048",
+      "source_candidate_case_ids": [
+        "CAND-EVAL-0060"
+      ],
+      "utterance": "forge wont log in",
+      "expected_knowledge_ids": [
+        "KNO-FORGE-DELAYED-LOGIN-001",
+        "KNO-FORGE-LOGIN-WARNING-001"
+      ],
+      "expected_mode": [
+        "CLARIFY",
+        "ESCALATE"
+      ],
+      "publication_withheld": true,
+      "actual_mode": "CLARIFY",
+      "top_candidate_knowledge_id": "KNO-FORGE-DELAYED-LOGIN-001",
+      "top_candidate_score": 120.93333,
+      "top_1_hit": true,
+      "top_5_hit": true,
+      "mode_match": true,
+      "unsafe_answer_gating_failure": false
+    },
+    {
+      "case_id": "CAND-OP-049",
+      "source_candidate_case_ids": [
+        "CAND-EVAL-0064"
+      ],
+      "utterance": "hazmat",
+      "expected_knowledge_ids": [
+        "KNO-HAZ-ACCEPTANCE-001",
+        "KNO-HAZ-LEAK-001",
+        "KNO-HAZ-MANIFEST-001",
+        "KNO-DEL-HAZMAT-SIGNATURE-001"
+      ],
+      "expected_mode": [
+        "ANSWER",
+        "CLARIFY"
+      ],
+      "publication_withheld": false,
+      "actual_mode": "CLARIFY",
+      "top_candidate_knowledge_id": "KNO-DEL-HAZMAT-SIGNATURE-001",
+      "top_candidate_score": 50,
+      "top_1_hit": true,
+      "top_5_hit": true,
+      "mode_match": true,
+      "unsafe_answer_gating_failure": false
+    },
+    {
+      "case_id": "CAND-OP-050",
+      "source_candidate_case_ids": [
+        "CAND-EVAL-0066"
+      ],
+      "utterance": "hazmat paperwork missing",
+      "expected_knowledge_ids": [
+        "KNO-HAZ-ACCEPTANCE-001",
+        "KNO-HAZ-MANIFEST-001"
+      ],
+      "expected_mode": [
+        "CLARIFY"
+      ],
+      "publication_withheld": false,
+      "actual_mode": "CLARIFY",
+      "top_candidate_knowledge_id": "KNO-HAZ-MANIFEST-001",
+      "top_candidate_score": 155.93333,
+      "top_1_hit": true,
+      "top_5_hit": true,
+      "mode_match": true,
+      "unsafe_answer_gating_failure": false
+    },
+    {
+      "case_id": "CAND-OP-051",
+      "source_candidate_case_ids": [
+        "CAND-EVAL-0068"
+      ],
+      "utterance": "how do i change vehicles",
+      "expected_knowledge_ids": [
+        "KNO-FORGE-VEHICLE-CHANGE-001"
+      ],
+      "expected_mode": [
+        "ANSWER"
+      ],
+      "publication_withheld": false,
+      "actual_mode": "ANSWER",
+      "top_candidate_knowledge_id": "KNO-FORGE-VEHICLE-CHANGE-001",
+      "top_candidate_score": 120,
+      "top_1_hit": true,
+      "top_5_hit": true,
+      "mode_match": true,
+      "unsafe_answer_gating_failure": false
+    },
+    {
+      "case_id": "CAND-OP-052",
+      "source_candidate_case_ids": [
+        "CAND-EVAL-0069"
+      ],
+      "utterance": "how do i code this call tag",
+      "expected_knowledge_ids": [
+        "KNO-PUP-CALLTAG-SUCCESS-001",
+        "KNO-PUP-CALLTAG-NOTREADY-001",
+        "KNO-PUP-CALLTAG-REFUSED-001",
+        "KNO-PUP-CALLTAG-RESTRICTED-001"
+      ],
+      "expected_mode": [
+        "CLARIFY"
+      ],
+      "publication_withheld": false,
+      "actual_mode": "CLARIFY",
+      "top_candidate_knowledge_id": "KNO-PUP-CALLTAG-SUCCESS-001",
+      "top_candidate_score": 164.93333,
+      "top_1_hit": true,
+      "top_5_hit": true,
+      "mode_match": true,
+      "unsafe_answer_gating_failure": false
+    },
+    {
+      "case_id": "CAND-OP-053",
+      "source_candidate_case_ids": [
+        "CAND-EVAL-0071"
+      ],
+      "utterance": "how do i tell them business closed",
+      "expected_knowledge_ids": [
+        "KNO-FORGE-BUSINESS-CLOSURE-MSG-001"
+      ],
+      "expected_mode": [
+        "CLARIFY"
+      ],
+      "publication_withheld": false,
+      "actual_mode": "CLARIFY",
+      "top_candidate_knowledge_id": "KNO-FORGE-BUSINESS-CLOSURE-MSG-001",
+      "top_candidate_score": 58,
+      "top_1_hit": true,
+      "top_5_hit": true,
+      "mode_match": true,
+      "unsafe_answer_gating_failure": false
+    },
+    {
+      "case_id": "CAND-OP-054",
+      "source_candidate_case_ids": [
+        "CAND-EVAL-0075"
+      ],
+      "utterance": "lost badge",
+      "expected_knowledge_ids": [
+        "KNO-SEC-LOST-BADGE-001"
+      ],
+      "expected_mode": [
+        "ANSWER"
+      ],
+      "publication_withheld": false,
+      "actual_mode": "ANSWER",
+      "top_candidate_knowledge_id": "KNO-SEC-LOST-BADGE-001",
+      "top_candidate_score": 196,
+      "top_1_hit": true,
+      "top_5_hit": true,
+      "mode_match": true,
+      "unsafe_answer_gating_failure": false
+    },
+    {
+      "case_id": "CAND-OP-055",
+      "source_candidate_case_ids": [
+        "CAND-EVAL-0079"
+      ],
+      "utterance": "need delayed login",
+      "expected_knowledge_ids": [
+        "KNO-FORGE-DELAYED-LOGIN-001"
+      ],
+      "expected_mode": [
+        "CLARIFY"
+      ],
+      "publication_withheld": false,
+      "actual_mode": "CLARIFY",
+      "top_candidate_knowledge_id": "KNO-FORGE-DELAYED-LOGIN-001",
+      "top_candidate_score": 64.93333,
+      "top_1_hit": true,
+      "top_5_hit": true,
+      "mode_match": true,
+      "unsafe_answer_gating_failure": false
+    },
+    {
+      "case_id": "CAND-OP-056",
+      "source_candidate_case_ids": [
+        "CAND-EVAL-0081"
+      ],
+      "utterance": "need pickup list",
+      "expected_knowledge_ids": [
+        "KNO-FORGE-DOWNLOAD-SYNC-001"
+      ],
+      "expected_mode": [
+        "CLARIFY",
+        "ESCALATE"
+      ],
+      "publication_withheld": true,
+      "actual_mode": "ESCALATE",
+      "top_candidate_knowledge_id": "KNO-FORGE-DOWNLOAD-SYNC-001",
+      "top_candidate_score": 63.33333,
+      "top_1_hit": true,
+      "top_5_hit": true,
+      "mode_match": true,
+      "unsafe_answer_gating_failure": false
+    },
+    {
+      "case_id": "CAND-OP-057",
+      "source_candidate_case_ids": [
+        "CAND-EVAL-0085"
+      ],
+      "utterance": "not sure if hazmat",
+      "expected_knowledge_ids": [
+        "KNO-HAZ-ACCEPTANCE-001"
+      ],
+      "expected_mode": [
+        "CLARIFY"
+      ],
+      "publication_withheld": false,
+      "actual_mode": "CLARIFY",
+      "top_candidate_knowledge_id": "KNO-HAZ-ACCEPTANCE-001",
+      "top_candidate_score": 135.46667,
+      "top_1_hit": true,
+      "top_5_hit": true,
+      "mode_match": true,
+      "unsafe_answer_gating_failure": false
+    },
+    {
+      "case_id": "CAND-OP-058",
+      "source_candidate_case_ids": [
+        "CAND-EVAL-0086"
+      ],
+      "utterance": "not sure if its business or house",
+      "expected_knowledge_ids": [
+        "KNO-DEL-CLASSIFICATION-001"
+      ],
+      "expected_mode": [
+        "CLARIFY"
+      ],
+      "publication_withheld": false,
+      "actual_mode": "CLARIFY",
+      "top_candidate_knowledge_id": "KNO-DEL-CLASSIFICATION-001",
+      "top_candidate_score": 75.2,
+      "top_1_hit": true,
+      "top_5_hit": true,
+      "mode_match": true,
+      "unsafe_answer_gating_failure": false
+    },
+    {
+      "case_id": "CAND-OP-059",
+      "source_candidate_case_ids": [
+        "CAND-EVAL-0087"
+      ],
+      "utterance": "not sure if needs signature",
+      "expected_knowledge_ids": [
+        "KNO-DEL-SIG-ISR-001",
+        "KNO-DEL-SIG-DSR-001",
+        "KNO-DEL-SIG-ASR-001"
+      ],
+      "expected_mode": [
+        "CLARIFY"
+      ],
+      "publication_withheld": false,
+      "actual_mode": "CLARIFY",
+      "top_candidate_knowledge_id": "KNO-DEL-SIG-DSR-001",
+      "top_candidate_score": 152,
+      "top_1_hit": true,
+      "top_5_hit": true,
+      "mode_match": true,
+      "unsafe_answer_gating_failure": false
+    },
+    {
+      "case_id": "CAND-OP-060",
+      "source_candidate_case_ids": [
+        "CAND-EVAL-0091"
+      ],
+      "utterance": "not syncing",
+      "expected_knowledge_ids": [
+        "KNO-FORGE-SYNC-QUEUE-001"
+      ],
+      "expected_mode": [
+        "CLARIFY",
+        "ESCALATE"
+      ],
+      "publication_withheld": true,
+      "actual_mode": "ESCALATE",
+      "top_candidate_knowledge_id": "KNO-FORGE-SYNC-QUEUE-001",
+      "top_candidate_score": 110.8,
+      "top_1_hit": true,
+      "top_5_hit": true,
+      "mode_match": true,
+      "unsafe_answer_gating_failure": false
+    },
+    {
+      "case_id": "CAND-OP-061",
+      "source_candidate_case_ids": [
+        "CAND-EVAL-0093"
+      ],
+      "utterance": "package not on manifest",
+      "expected_knowledge_ids": [
+        "KNO-FORGE-UNMANIFESTED-DELIVERY-001"
+      ],
+      "expected_mode": [
+        "CLARIFY",
+        "ESCALATE"
+      ],
+      "publication_withheld": true,
+      "actual_mode": "CLARIFY",
+      "top_candidate_knowledge_id": "KNO-FORGE-UNMANIFESTED-DELIVERY-001",
+      "top_candidate_score": 166,
+      "top_1_hit": true,
+      "top_5_hit": true,
+      "mode_match": true,
+      "unsafe_answer_gating_failure": false
+    },
+    {
+      "case_id": "CAND-OP-062",
+      "source_candidate_case_ids": [
+        "CAND-EVAL-0101"
+      ],
+      "utterance": "scanner not working",
+      "expected_knowledge_ids": [
+        "KNO-DEL-BARCODE-001",
+        "KNO-PUP-SCANNER-FAIL-001"
+      ],
+      "expected_mode": [
+        "CLARIFY"
+      ],
+      "publication_withheld": false,
+      "actual_mode": "CLARIFY",
+      "top_candidate_knowledge_id": "KNO-PUP-SCANNER-FAIL-001",
+      "top_candidate_score": 154.93333,
+      "top_1_hit": true,
+      "top_5_hit": true,
+      "mode_match": true,
+      "unsafe_answer_gating_failure": false
+    },
+    {
+      "case_id": "CAND-OP-063",
+      "source_candidate_case_ids": [
+        "CAND-EVAL-0106"
+      ],
+      "utterance": "this one needs id",
+      "expected_knowledge_ids": [
+        "KNO-DEL-SIG-ASR-001",
+        "KNO-DEL-ALCOHOL-001"
+      ],
+      "expected_mode": [
+        "CLARIFY"
+      ],
+      "publication_withheld": false,
+      "actual_mode": "CLARIFY",
+      "top_candidate_knowledge_id": "KNO-DEL-SIG-ASR-001",
+      "top_candidate_score": 71.66667,
+      "top_1_hit": true,
+      "top_5_hit": true,
+      "mode_match": true,
+      "unsafe_answer_gating_failure": false
+    },
+    {
+      "case_id": "CAND-OP-064",
+      "source_candidate_case_ids": [
+        "CAND-EVAL-0109"
+      ],
+      "utterance": "unsafe stop",
+      "expected_knowledge_ids": [
+        "KNO-SEC-ROUTE-001",
+        "KNO-SEC-ACTIVE-THREAT-001",
+        "KNO-SAF-DOG-ENCOUNTER-001"
+      ],
+      "expected_mode": [
+        "ANSWER",
+        "CLARIFY"
+      ],
+      "publication_withheld": false,
+      "actual_mode": "CLARIFY",
+      "top_candidate_knowledge_id": "KNO-SAF-DOG-ENCOUNTER-001",
+      "top_candidate_score": 34,
+      "top_1_hit": true,
+      "top_5_hit": true,
+      "mode_match": true,
+      "unsafe_answer_gating_failure": false
+    },
+    {
+      "case_id": "CAND-OP-065",
+      "source_candidate_case_ids": [
+        "CAND-EVAL-0111"
+      ],
+      "utterance": "vehicle blocking road",
+      "expected_knowledge_ids": [
+        "KNO-INC-ACCIDENT-SCENE-001"
+      ],
+      "expected_mode": [
+        "ANSWER",
+        "CLARIFY"
+      ],
+      "publication_withheld": false,
+      "actual_mode": "ANSWER",
+      "top_candidate_knowledge_id": "KNO-INC-ACCIDENT-SCENE-001",
+      "top_candidate_score": 95.46667,
+      "top_1_hit": true,
+      "top_5_hit": true,
+      "mode_match": true,
+      "unsafe_answer_gating_failure": false
+    },
+    {
+      "case_id": "CAND-OP-066",
+      "source_candidate_case_ids": [
+        "CAND-EVAL-0124"
+      ],
+      "utterance": "what do i do with this call tag",
+      "expected_knowledge_ids": [
+        "KNO-PUP-CALLTAG-SUCCESS-001",
+        "KNO-PUP-CALLTAG-NOTREADY-001",
+        "KNO-PUP-CALLTAG-REFUSED-001",
+        "KNO-PUP-CALLTAG-RESTRICTED-001"
+      ],
+      "expected_mode": [
+        "CLARIFY"
+      ],
+      "publication_withheld": false,
+      "actual_mode": "CLARIFY",
+      "top_candidate_knowledge_id": "KNO-PUP-CALLTAG-SUCCESS-001",
+      "top_candidate_score": 206,
+      "top_1_hit": true,
+      "top_5_hit": true,
+      "mode_match": true,
+      "unsafe_answer_gating_failure": false
+    },
+    {
+      "case_id": "CAND-OP-067",
+      "source_candidate_case_ids": [
+        "CAND-EVAL-0136"
+      ],
+      "utterance": "what is op 200",
+      "expected_knowledge_ids": [
+        "KNO-DEL-DOORTAG-001"
+      ],
+      "expected_mode": [
+        "ANSWER"
+      ],
+      "publication_withheld": false,
+      "actual_mode": "ANSWER",
+      "top_candidate_knowledge_id": "KNO-DEL-DOORTAG-001",
+      "top_candidate_score": 53.08947,
+      "top_1_hit": true,
+      "top_5_hit": true,
+      "mode_match": true,
+      "unsafe_answer_gating_failure": false
+    },
+    {
+      "case_id": "CAND-OP-068",
+      "source_candidate_case_ids": [
+        "CAND-EVAL-0139"
+      ],
+      "utterance": "what is ppoda",
+      "expected_knowledge_ids": [
+        "KNO-DEL-PPOD-001"
+      ],
+      "expected_mode": [
+        "ANSWER"
+      ],
+      "publication_withheld": false,
+      "actual_mode": "ANSWER",
+      "top_candidate_knowledge_id": "KNO-DEL-PPOD-001",
+      "top_candidate_score": 54,
+      "top_1_hit": true,
+      "top_5_hit": true,
+      "mode_match": true,
+      "unsafe_answer_gating_failure": false
+    },
+    {
+      "case_id": "CAND-OP-069",
+      "source_candidate_case_ids": [
+        "CAND-EVAL-0141"
+      ],
+      "utterance": "what is rth",
+      "expected_knowledge_ids": [
+        "KNO-DEL-HAL-DELIVERY-001"
+      ],
+      "expected_mode": [
+        "ANSWER"
+      ],
+      "publication_withheld": false,
+      "actual_mode": "ANSWER",
+      "top_candidate_knowledge_id": "KNO-DEL-HAL-DELIVERY-001",
+      "top_candidate_score": 73.8314,
+      "top_1_hit": true,
+      "top_5_hit": true,
+      "mode_match": true,
+      "unsafe_answer_gating_failure": false
+    }
+  ]
+}

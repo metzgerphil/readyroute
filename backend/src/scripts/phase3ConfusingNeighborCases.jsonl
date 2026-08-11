@@ -1,0 +1,60 @@
+{"case_id":"P3-CN-001","utterance":"nobody answered the door what am I allowed to do","expected_knowledge_ids":["KNO-DEL-SIG-ISR-001","KNO-DEL-SIG-DSR-001","KNO-DEL-SIG-ASR-001","KNO-DEL-SAFEPLACE-001","KNO-DEL-CLASSIFICATION-001"],"expected_modes":["CLARIFY"],"top_match_optional":true,"failure_if_answer":"CLARIFICATION_FAILURE"}
+{"case_id":"P3-CN-002","utterance":"scanner is asking for a signature but I cannot tell which kind","expected_knowledge_ids":["KNO-DEL-SIG-ISR-001","KNO-DEL-SIG-DSR-001","KNO-DEL-SIG-ASR-001"],"expected_modes":["CLARIFY"],"top_match_optional":true,"failure_if_answer":"CLARIFICATION_FAILURE"}
+{"case_id":"P3-CN-003","utterance":"direct signature package and the neighbor offered to take it","expected_knowledge_ids":["KNO-DEL-SIG-DSR-001"],"expected_modes":["ANSWER"]}
+{"case_id":"P3-CN-004","utterance":"indirect signature parcel can the next door neighbor accept and sign","expected_knowledge_ids":["KNO-DEL-SIG-ISR-001"],"expected_modes":["ANSWER"]}
+{"case_id":"P3-CN-005","utterance":"adult signature stop but the only person here looks under twenty one","expected_knowledge_ids":["KNO-DEL-SIG-ASR-001"],"expected_modes":["ANSWER","CLARIFY"]}
+{"case_id":"P3-CN-006","utterance":"wine shipment recipient has no identification","expected_knowledge_ids":["KNO-DEL-ALCOHOL-001"],"expected_modes":["ANSWER"]}
+{"case_id":"P3-CN-007","utterance":"recipient refuses to sign on the handheld but will use the paper card","expected_knowledge_ids":["KNO-DEL-OP206-001"],"expected_modes":["ANSWER","CLARIFY"]}
+{"case_id":"P3-CN-008","utterance":"this is the fourth time this package has come back to the same address","expected_knowledge_ids":["KNO-DEL-ATTEMPT-LIMIT-001"],"expected_modes":["ANSWER","CLARIFY"]}
+{"case_id":"P3-CN-009","utterance":"ordinary customer refused the delivery what are all the steps","expected_knowledge_ids":["KNO-DEL-REFUSED-001"],"expected_modes":["ESCALATE"]}
+{"case_id":"P3-CN-010","utterance":"customer refuses to hand over the return package for this call tag","expected_knowledge_ids":["KNO-PUP-CALLTAG-REFUSED-001"],"expected_modes":["ANSWER"]}
+{"case_id":"P3-CN-011","utterance":"scheduled pickup has nothing going out today","expected_knowledge_ids":["KNO-PUP-ZERO-001"],"expected_modes":["ANSWER"]}
+{"case_id":"P3-CN-012","utterance":"call tag return is not boxed and has liquid coming out","expected_knowledge_ids":["KNO-PUP-CALLTAG-RESTRICTED-001","KNO-HAZ-LEAK-001"],"expected_modes":["ANSWER","CLARIFY"]}
+{"case_id":"P3-CN-013","utterance":"regular pickup carton is crushed and still has an old label can I accept it","expected_knowledge_ids":["KNO-PUP-PACKAGING-001"],"expected_modes":["ESCALATE"]}
+{"case_id":"P3-CN-014","utterance":"the pickup is not listed but the shipper has a package ready","expected_knowledge_ids":["KNO-PUP-UNLISTED-001"],"expected_modes":["ANSWER"]}
+{"case_id":"P3-CN-015","utterance":"this listed pickup belongs to another driver after we dispatched","expected_knowledge_ids":["KNO-PUP-WRONG-WA-001"],"expected_modes":["ANSWER","CLARIFY"]}
+{"case_id":"P3-CN-016","utterance":"I cannot finish this pickup before the closing time","expected_knowledge_ids":["KNO-PUP-WINDOW-RISK-001"],"expected_modes":["ANSWER"]}
+{"case_id":"P3-CN-017","utterance":"all of the pickup boxes will not fit in this truck","expected_knowledge_ids":["KNO-PUP-VEHICLE-CAPACITY-001"],"expected_modes":["ANSWER","CLARIFY"]}
+{"case_id":"P3-CN-018","utterance":"delivery label barcode is missing and there is only a double zero code","expected_knowledge_ids":["KNO-DEL-BARCODE-001"],"expected_modes":["ANSWER"]}
+{"case_id":"P3-CN-019","utterance":"pickup barcode will not read even with manual entry","expected_knowledge_ids":["KNO-PUP-SCANNER-FAIL-001"],"expected_modes":["ANSWER"]}
+{"case_id":"P3-CN-020","utterance":"hardware trigger died can I scan this barcode using the camera","expected_knowledge_ids":["KNO-FORGE-CAMERA-SCAN-001","KNO-FORGE-MANUAL-BARCODE-001"],"expected_modes":["ANSWER","CLARIFY"]}
+{"case_id":"P3-CN-021","utterance":"I scanned the wrong box into this stop by accident","expected_knowledge_ids":["KNO-FORGE-DELETE-SCAN-001"],"expected_modes":["ANSWER"]}
+{"case_id":"P3-CN-022","utterance":"package is not on the delivery manifest can I create a stop myself","expected_knowledge_ids":["KNO-FORGE-UNMANIFESTED-DELIVERY-001"],"expected_modes":["ESCALATE"]}
+{"case_id":"P3-CN-023","utterance":"manifest preview says a box may be loaded on the wrong route before dispatch","expected_knowledge_ids":["KNO-FORGE-MANIFEST-PREVIEW-001"],"expected_modes":["ANSWER","CLARIFY"],"required_status":"READY_ROUTE_APPROVED"}
+{"case_id":"P3-CN-024","utterance":"need to swap vans halfway through my route","expected_knowledge_ids":["KNO-FORGE-VEHICLE-CHANGE-001"],"expected_modes":["ANSWER"],"required_status":"READY_ROUTE_APPROVED"}
+{"case_id":"P3-CN-025","utterance":"normal authentication is down and I still need the route list","expected_knowledge_ids":["KNO-FORGE-DELAYED-LOGIN-001"],"expected_modes":["ANSWER","CLARIFY"]}
+{"case_id":"P3-CN-026","utterance":"login screen warns my medical card is expired can I bypass it","expected_knowledge_ids":["KNO-FORGE-LOGIN-WARNING-001"],"expected_modes":["ESCALATE"]}
+{"case_id":"P3-CN-027","utterance":"business will be closed every monday for the next month how do I report that","expected_knowledge_ids":["KNO-FORGE-BUSINESS-CLOSURE-MSG-001"],"expected_modes":["ANSWER","CLARIFY"]}
+{"case_id":"P3-CN-028","utterance":"closed business has no OP201 but the app still shows a release button","expected_knowledge_ids":["KNO-DEL-BUS-OP201-001"],"expected_modes":["ESCALATE"]}
+{"case_id":"P3-CN-029","utterance":"pharmacy counter is locked can the store receiving clerk sign instead","expected_knowledge_ids":["KNO-DEL-PHARMACY-001"],"expected_modes":["ESCALATE"]}
+{"case_id":"P3-CN-030","utterance":"apartment office is open but no one answers at the unit","expected_knowledge_ids":["KNO-DEL-APT-001"],"expected_modes":["ANSWER","CLARIFY"]}
+{"case_id":"P3-CN-031","utterance":"there is no secure place to leave this residential package","expected_knowledge_ids":["KNO-DEL-SAFEPLACE-001"],"expected_modes":["ANSWER"]}
+{"case_id":"P3-CN-032","utterance":"customer asked for the box behind a garage door that could open onto it","expected_knowledge_ids":["KNO-DEL-PLACEMENT-HAZARD-001"],"expected_modes":["ANSWER"]}
+{"case_id":"P3-CN-033","utterance":"hold location says this HAL package cannot be accepted","expected_knowledge_ids":["KNO-DEL-HAL-UNABLE-001"],"expected_modes":["ANSWER"]}
+{"case_id":"P3-CN-034","utterance":"a normal non HAL package appeared in the hold location transfer stop","expected_knowledge_ids":["KNO-DEL-HAL-NONHAL-TRANSFER-001"],"expected_modes":["ANSWER","CLARIFY"]}
+{"case_id":"P3-CN-035","utterance":"SenseAware pickup has no working healthy tag available","expected_knowledge_ids":["KNO-PUP-SENSEAWARE-NOHEALTHY-001"],"expected_modes":["ANSWER"]}
+{"case_id":"P3-CN-036","utterance":"I am delivering a package with a SenseAware device attached","expected_knowledge_ids":["KNO-DEL-SENSEAWARE-TAG-001"],"expected_modes":["ANSWER"]}
+{"case_id":"P3-CN-037","utterance":"hazardous material is leaking inside the vehicle right now","expected_knowledge_ids":["KNO-HAZ-LEAK-001"],"expected_modes":["ANSWER"]}
+{"case_id":"P3-CN-038","utterance":"hazmat pickup looks intact but I need to know whether I can accept it","expected_knowledge_ids":["KNO-HAZ-ACCEPTANCE-001"],"expected_modes":["ANSWER","CLARIFY"],"required_status":"READY_ROUTE_APPROVED"}
+{"case_id":"P3-CN-039","utterance":"accepted hazmat is loaded where do the papers stay while driving","expected_knowledge_ids":["KNO-HAZ-LOAD-PAPERS-001"],"expected_modes":["ANSWER"],"required_status":"READY_ROUTE_APPROVED"}
+{"case_id":"P3-CN-040","utterance":"hazmat package on my delivery manifest was delivered how do I update the paperwork","expected_knowledge_ids":["KNO-HAZ-MANIFEST-001"],"expected_modes":["ANSWER"]}
+{"case_id":"P3-CN-041","utterance":"dangerous goods shipment is going to Hawaii can it travel in this network","expected_knowledge_ids":["KNO-HAZ-AKHI-001"],"expected_modes":["ANSWER"]}
+{"case_id":"P3-CN-042","utterance":"hazmat delivery nobody home but the porch looks safe","expected_knowledge_ids":["KNO-DEL-HAZMAT-SIGNATURE-001"],"expected_modes":["ANSWER"]}
+{"case_id":"P3-CN-043","utterance":"dry ice carton is in the van and I smell something strange","expected_knowledge_ids":["KNO-HAZ-DRY-ICE-001"],"expected_modes":["ANSWER","CLARIFY"]}
+{"case_id":"P3-CN-044","utterance":"carrying a firearm into the station and security screening is ahead","expected_knowledge_ids":["KNO-SEC-WEAPONS-SCREENING-001"],"expected_modes":["ANSWER"]}
+{"case_id":"P3-CN-045","utterance":"armed person is attacking people in the parking lot","expected_knowledge_ids":["KNO-SEC-ACTIVE-THREAT-001"],"expected_modes":["ANSWER"]}
+{"case_id":"P3-CN-046","utterance":"someone broke into the truck and packages are missing but the attacker is gone","expected_knowledge_ids":["KNO-SEC-INCIDENT-REPORT-001"],"expected_modes":["ANSWER","CLARIFY"]}
+{"case_id":"P3-CN-047","utterance":"the loaded delivery van was stolen tell me the exact reporting procedure","expected_knowledge_ids":["KNO-SEC-STOLEN-VEHICLE-001"],"expected_modes":["ESCALATE"]}
+{"case_id":"P3-CN-048","utterance":"customer wants me to give a recorded interview about FedEx","expected_knowledge_ids":["KNO-COMMS-MEDIA-001"],"expected_modes":["ANSWER"]}
+{"case_id":"P3-CN-049","utterance":"collision just happened and our vehicle is blocking traffic","expected_knowledge_ids":["KNO-INC-ACCIDENT-SCENE-001"],"expected_modes":["ANSWER"]}
+{"case_id":"P3-CN-050","utterance":"the crash scene is safe now what report and notification steps are required","expected_knowledge_ids":["KNO-INC-ACCIDENT-REPORT-001"],"expected_modes":["ANSWER","CLARIFY"]}
+{"case_id":"P3-CN-051","utterance":"I am at the driving limit but unexpected snow shut the highway down","expected_knowledge_ids":["KNO-HOS-SHORT-ADVERSE-001","KNO-HOS-DUTY-LIMITS-001"],"expected_modes":["ANSWER","CLARIFY"]}
+{"case_id":"P3-CN-052","utterance":"can I keep driving after eleven hours if I still have stops","expected_knowledge_ids":["KNO-HOS-DUTY-LIMITS-001"],"expected_modes":["ANSWER"]}
+{"case_id":"P3-CN-053","utterance":"pretrip found a brake light out can I dispatch this vehicle","expected_knowledge_ids":["KNO-VEH-PRETRIP-DEFECT-001"],"expected_modes":["ANSWER","CLARIFY"]}
+{"case_id":"P3-CN-054","utterance":"rental van has no unit number or FedEx markings what must I do before route","expected_knowledge_ids":["KNO-VEH-RENTAL-PREP-001"],"expected_modes":["ESCALATE"]}
+{"case_id":"P3-CN-055","utterance":"scanner system is down so I need to record a HAL package by hand","expected_knowledge_ids":["KNO-DOC-HANDSHEET-001"],"expected_modes":["ANSWER"],"required_status":"READY_ROUTE_APPROVED"}
+{"case_id":"P3-CN-056","utterance":"drop box has a special holiday closing date what information do I enter","expected_knowledge_ids":["KNO-PUP-DROPBOX-HOLIDAY-001"],"expected_modes":["ANSWER"]}
+{"case_id":"P3-CN-057","utterance":"who is allowed to approve changing the drop box pickup schedule","expected_knowledge_ids":["KNO-PUP-DROPBOX-SCHEDULE-001"],"expected_modes":["ESCALATE"]}
+{"case_id":"P3-CN-058","utterance":"call tag was picked up normally but the screen also mentions suspected fraud","expected_knowledge_ids":["KNO-PUP-CALLTAG-FRAUD-001","KNO-PUP-CALLTAG-SUCCESS-001"],"expected_modes":["ESCALATE"]}
+{"case_id":"P3-CN-059","utterance":"this package is a vape shipment going to a private home","expected_knowledge_ids":["KNO-DEL-TOBACCO-001"],"expected_modes":["ESCALATE"]}
+{"case_id":"P3-CN-060","utterance":"can I type on the dispatch device while the truck is moving","expected_knowledge_ids":["KNO-SAF-DISTRACTION-001","KNO-FORGE-DEVICE-ROAD-001"],"expected_modes":["ANSWER"]}

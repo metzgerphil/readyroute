@@ -15,8 +15,10 @@ const BillingPage = lazy(() => import('./pages/BillingPage'));
 const CsaPage = lazy(() => import('./pages/CsaPage'));
 const DebugGoogleMapPage = lazy(() => import('./pages/DebugGoogleMapPage'));
 const DriversPage = lazy(() => import('./pages/DriversPage'));
+const DriverInvitePage = lazy(() => import('./pages/DriverInvitePage'));
 const FleetMapPage = lazy(() => import('./pages/FleetMapPage'));
 const LoginPage = lazy(() => import('./pages/LoginPage'));
+const KnowledgeActivityPage = lazy(() => import('./pages/KnowledgeActivityPage'));
 const ManifestPage = lazy(() => import('./pages/ManifestPage'));
 const NotificationsPage = lazy(() => import('./pages/NotificationsPage'));
 const RecordsPage = lazy(() => import('./pages/RecordsPage'));
@@ -83,6 +85,7 @@ function ProtectedApp() {
               <Route element={<NotificationsPage />} path="/notifications" />
               <Route element={<RecordsPage />} path="/records" />
               <Route element={<DriversPage />} path="/drivers" />
+              <Route element={<KnowledgeActivityPage />} path="/knowledge-activity" />
               <Route element={<VehiclesPage />} path="/vehicles" />
               <Route element={<AccessCodesPage />} path="/access-codes" />
               <Route element={<BillingPage />} path="/billing" />
@@ -135,6 +138,7 @@ export default function App() {
           <Route element={<StartTrialPage />} path="/start-trial" />
           <Route element={<TrialActivatePage />} path="/trial/activate" />
           <Route element={<ResetPasswordPage />} path="/reset-password" />
+          <Route element={<DriverInvitePage />} path="/driver-invite" />
           <Route
             element={
               <RequireStaffAuth>

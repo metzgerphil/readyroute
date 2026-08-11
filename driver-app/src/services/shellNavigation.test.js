@@ -3,7 +3,8 @@ import { getDrawerMenuItems, getModeSwitchLabel } from './shellNavigation';
 describe('shellNavigation helpers', () => {
   it('returns driver navigation items for driver mode', () => {
     expect(getDrawerMenuItems('driver').map((item) => item.label)).toEqual([
-      'Driver Home',
+      'Operational Help',
+      'Route Tools',
       'Notifications',
       'My Drive',
       'Manifest'
@@ -24,6 +25,16 @@ describe('shellNavigation helpers', () => {
       'Settings'
     ]);
     expect(managerItems.find((item) => item.label === 'Map View')?.screen).toBe('ManagerMap');
+  });
+
+  it('hides legacy driver tools in operational-help-only builds', () => {
+    expect(getDrawerMenuItems('driver', { driverHelpOnly: true })).toEqual([
+      {
+        key: 'driver-home',
+        label: 'Operational Help',
+        screen: 'Home'
+      }
+    ]);
   });
 
   it('builds the correct role switch label', () => {

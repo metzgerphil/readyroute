@@ -1,0 +1,9 @@
+Machine transcript review aid — SRC-MGB-VIDEO-0005
+
+Generated: 2026-08-10
+Model: mlx-community/whisper-small-mlx via mlx-whisper 0.4.3
+Language: English
+Status: Unedited machine transcription; known recognition errors remain. This file is not canonical knowledge and must be interpreted only with the source-specific audio-visual review and original MP4.
+
+Hi and welcome. The purpose of this video is to demonstrate the basic functionality of pickup alerts on FedEx Customer Connection, or FCC. An application that gives contracted service provider, authorized officers, and business contacts electronic access to their businesses' pickup and delivery information. FCC is available through MyGroundBiz Account or MGBA, and can be accessed by computer, tablet, or mobile phone. For the purpose of this demonstration, I will display the application on a desktop computer. Screens will let slender and slightly different when accessed via tablet or mobile phone. Pitchup Alerts tab provides a list of transferred pickups, remaining pickups that are within 30 and 15 minutes of the pickup window close time, and in select markets, same day on-call pickups. Remaining pickups that are within 30 minutes of the close time are shaded in yellow. Remaining pickups that are within 15 minutes of the close time are shaded in red. For transferred pickups, the received time indicates when the STAR device received the pickup, and the displayed time indicates when the STAR user viewed the added pickup message. If these fields are blank, this may indicate that the transferred pickup was not transmitted to the STAR device.
+

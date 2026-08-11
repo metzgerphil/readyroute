@@ -103,6 +103,21 @@ test('repeated failed logins return a standard rate-limit response', async () =>
   assert.ok(limited.headers['retry-after']);
 });
 
+test('driver password links are rate limited by token without exposing the token', async () => {
+  const app = createTestApp({ rateLimits: { passwordReset: 2 } });
+  const payload = { token: 'sensitive-driver-invite-token', password: 'ValidPassword!2026' };
+  const first = await request(app).post('/auth/driver/accept-invite').send(payload);
+  const second = await request(app).post('/auth/driver/accept-invite').send(payload);
+  const limited = await request(app).post('/auth/driver/accept-invite').send(payload);
+
+  assert.equal(first.status, 400);
+  assert.equal(second.status, 400);
+  assert.equal(limited.status, 429);
+  assert.equal(limited.body.code, 'RATE_LIMITED');
+  assert.equal(limited.body.limit, 'password_reset');
+  assert.equal(JSON.stringify(limited.body).includes(payload.token), false);
+});
+
 test('driver position limits are isolated by verified driver id', async () => {
   const app = express();
   const limiter = createDriverPositionLimiter({ limit: 2 });
