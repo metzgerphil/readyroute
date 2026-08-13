@@ -899,3 +899,85 @@ test('one-character driver misspellings normalize to the intended operational co
   assert.equal(decision.response_mode, 'ANSWER');
   assert.equal(decision.selected_records[0].knowledge_id, isr.knowledge_id);
 });
+
+test('device-time login errors answer the device-time procedure without generic login clarification', () => {
+  const deviceTime = {
+    ...records[0],
+    knowledge_id: 'KNO-FORGE-DEVICE-TIME-001',
+    canonical_situation: 'FORGE reports that the device time is incorrect and blocks login',
+    normalized_description: 'Device date time or clock is wrong during FORGE login',
+    driver_question_variants: ['forge says device time incorrect and wont login'],
+    concise_answer: 'Correct the managed device date and time before trying FORGE login again.'
+  };
+  const genericLogin = {
+    ...records[0],
+    knowledge_id: 'KNO-FORGE-LOGIN-WARNING-001',
+    canonical_situation: 'FORGE shows a warning during login',
+    normalized_description: 'Generic FORGE login warning',
+    driver_question_variants: ['forge warning at login']
+  };
+
+  const decision = buildDriverHelpDecision(
+    'forge says device time incorrect and wont login',
+    [genericLogin, deviceTime]
+  );
+
+  assert.equal(decision.response_mode, 'ANSWER');
+  assert.equal(decision.selected_records[0].knowledge_id, deviceTime.knowledge_id);
+});
+
+test('pickup-weight questions select the weight record and ask only the authored clarification', () => {
+  const pickupWeight = {
+    ...records[0],
+    knowledge_id: 'KNO-PUP-WEIGHT-ENTRY-001',
+    canonical_situation: 'Responding to a FORGE package-weight prompt during pickup',
+    normalized_description: 'FORGE asks for pickup package weight',
+    driver_question_variants: ['how do i put the pickup weight in forge'],
+    clarification_requirements: [
+      'Does FORGE mark the weight field optional or required?',
+      'Is a separate Dry Ice field shown?'
+    ],
+    driver_question_patterns: [{
+      utterance: 'how do i put the pickup weight in forge',
+      response_mode: 'ASK_MINIMUM_CLARIFICATION',
+      information_sufficiency: 'CONDITIONALLY_SUFFICIENT',
+      must_clarify: ['whether FORGE marks the weight optional or required']
+    }],
+    concise_answer: 'Follow the FORGE weight prompt and never invent a required weight.'
+  };
+  const scannerFailure = {
+    ...records[0],
+    knowledge_id: 'KNO-PUP-SCANNER-FAIL-001',
+    canonical_situation: 'Pickup package barcode will not scan',
+    normalized_description: 'Scanner cannot read a pickup barcode',
+    driver_question_variants: ['pickup scanner will not scan barcode']
+  };
+
+  const decision = buildDriverHelpDecision(
+    'how do i put the pickup weight in forge',
+    [scannerFailure, pickupWeight]
+  );
+
+  assert.equal(decision.response_mode, 'CLARIFY');
+  assert.equal(decision.candidates[0].knowledge_id, pickupWeight.knowledge_id);
+  assert.match(decision.clarification_prompt, /optional or required/i);
+});
+
+test('a request for a recorded FedEx interview selects the media procedure directly', () => {
+  const media = {
+    ...records[0],
+    knowledge_id: 'KNO-COMMS-MEDIA-001',
+    canonical_situation: 'Responding to media interview and publication requests',
+    normalized_description: 'Customer or reporter requests a recorded interview about FedEx',
+    driver_question_variants: ['customer wants me to give a recorded interview about FedEx'],
+    concise_answer: 'Do not provide the interview; direct the request through the approved channel.'
+  };
+
+  const decision = buildDriverHelpDecision(
+    'customer wants me to give a recorded interview about FedEx',
+    [media, ...records]
+  );
+
+  assert.equal(decision.response_mode, 'ANSWER');
+  assert.equal(decision.selected_records[0].knowledge_id, media.knowledge_id);
+});

@@ -7,6 +7,7 @@ The exact post-adjudication queue is now maintained in `knowledge/human_adjudica
 ## Record-status index: HUMAN_REVIEW_REQUIRED
 
 - `KNO-DEL-COD-MULTI-001` — Delivering multiple Collect on Delivery packages at one stop.
+- `KNO-DEL-BUS-CLOSED-001` — Business is closed when the driver attempts an assigned delivery.
 - `KNO-DEL-ALT-SIGNATURE-001` — Using FORGE Alternate Signature with a recipient-signed door tag or physical signature record.
 - `KNO-DEL-CRITICAL-HEALTH-001` — Delivering a critical healthcare package.
 - `KNO-DEL-PHARMACY-001` — Delivering packages designated for a pharmacy counter.

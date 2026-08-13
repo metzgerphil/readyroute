@@ -9,6 +9,7 @@ const {
   buildDriverHelpReferenceDecision,
   isReferenceRecord
 } = require('./driverHelpReference');
+const { composeGroundedDecision } = require('./driverHelpGroundedComposition');
 
 const MISSING_TABLE_CODES = new Set(['42P01', 'PGRST106', 'PGRST204', 'PGRST205']);
 
@@ -35,7 +36,11 @@ function resolveClarificationFollowUp(question, context = {}) {
   return question;
 }
 
-function createDriverHelpService({ supabase = defaultSupabase, now = () => new Date() } = {}) {
+function createDriverHelpService({
+  supabase = defaultSupabase,
+  now = () => new Date(),
+  composeGroundedAnswer = null
+} = {}) {
   async function loadKnowledgeRecords() {
     const { data, error } = await supabase
       .from('driver_help_knowledge_records')
@@ -177,7 +182,10 @@ function createDriverHelpService({ supabase = defaultSupabase, now = () => new D
         adjudication_id: record.adjudication_id || null,
         approved_by: record.approved_by || null,
         approval_date: record.approval_date || null,
-        canonical_schema_version: record.canonical_schema_version || null
+        canonical_schema_version: record.canonical_schema_version || null,
+        composition_source_paths: (decision.composition_grounding || [])
+          .filter((entry) => entry.knowledge_id === record.knowledge_id)
+          .flatMap((entry) => entry.source_paths || (entry.source_path ? [entry.source_path] : []))
       })),
       retrieval_candidates: decision.candidates,
       confidence: decision.confidence,
@@ -216,11 +224,12 @@ function createDriverHelpService({ supabase = defaultSupabase, now = () => new D
     ]);
     const resolvedQuestion = resolveClarificationFollowUp(question, sessionState.context);
     const referenceDecision = buildDriverHelpReferenceDecision(resolvedQuestion, records);
-    const decision = referenceDecision || buildDriverHelpDecision(
+    const baseDecision = referenceDecision || buildDriverHelpDecision(
       resolvedQuestion,
       records.filter((record) => !isReferenceRecord(record)),
       sessionState.context
     );
+    const decision = await composeGroundedDecision(baseDecision, composeGroundedAnswer);
     const effectiveSessionId = await createOrUpdateSession({
       sessionId: sessionState.session_id,
       accountId,
@@ -249,6 +258,7 @@ function createDriverHelpService({ supabase = defaultSupabase, now = () => new D
       answer: decision.answer || null,
       more_info: decision.more_info || null,
       answer_structure: decision.answer_structure || null,
+      composition_mode: decision.composition_mode || 'DETERMINISTIC',
       clarification_prompt: decision.clarification_prompt || null,
       clarification_options: decision.clarification_options || [],
       escalation_message: decision.escalation_message || null,

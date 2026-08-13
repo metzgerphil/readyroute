@@ -384,3 +384,9 @@ SRC-MGB-DOC-0039,Summer Driving page 2,KNO-SAF-HYDRATION-001,"Hydration amount/f
 SRC-MGB-DOC-0039,Summer Driving page 4,KNO-SAF-SUMMER-TRAFFIC-001,"Forward scan, speed, signaling/braking, rest, and seat-belt actions",2026-08-09
 SRC-MGB-DOC-0039,Summer Driving page 5,KNO-SAF-SUN-EXPOSURE-001,Sun-exposure risk and protective measures,2026-08-09
 SRC-MGB-DOC-0039,Summer Driving page 6,KNO-SAF-DISTRACTION-001,Driving-focus rule and enumerated distractions,2026-08-09
+SRC-GDRIVE-FILE-0014,"OP-117 v2 pages 19, 36, and 40",KNO-DEL-BUS-CLOSED-001,"Door-tag attempt handling, code 004 definition, and package notation fields; human review supplies crossing and SID steps",2026-08-11
+SRC-MGB-DOC-0047,FORGE 3.3.0 Combined Application Support Guide page 11,KNO-FORGE-FLOATING-ACTION-001,"Floating action button configuration, choices, default state, placement, and behavior",2026-08-12
+SRC-MGB-DOC-0047,FORGE 3.3.0 Combined Application Support Guide page 13,KNO-PUP-RECEIPT-001,"Pickup-receipt eligibility, selection, printing, contents, and unavailable condition",2026-08-12
+SRC-MGB-DOC-0047,FORGE 3.3.0 Combined Application Support Guide pages 14 and 32,KNO-PUP-WEIGHT-ENTRY-001,"Optional and required pickup weight branches, pound entry, and separate Dry Ice field",2026-08-12
+SRC-MGB-DOC-0047,FORGE 3.3.0 Combined Application Support Guide page 28,KNO-FORGE-DEVICE-TIME-001,"Login-time validation, comparison source, 24-hour block, and error behavior",2026-08-12
+SRC-MGB-DOC-0047,FORGE 3.3.0 Combined Application Support Guide pages 29-30,KNO-FORGE-SHUTTLE-TRANSFER-001,"Shuttle Transfer entry, validation, completion, code 95, created stop, and EOD visibility",2026-08-12

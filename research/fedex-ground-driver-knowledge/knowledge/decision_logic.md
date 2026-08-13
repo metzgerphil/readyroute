@@ -861,3 +861,54 @@ Record: KNO-SAF-SUN-EXPOSURE-001.
 2. While driving, do not text or dial, use apps or a dispatch device, take photos/video, reach for or move objects, adjust the radio, eat, drink, smoke, groom, or apply makeup.
 
 Records: KNO-SAF-DISTRACTION-001, KNO-FORGE-DEVICE-ROAD-001.
+
+## Closed business assigned delivery
+
+1. Confirm the stop is non-residential and no eligible signature or authorized-release path permits delivery.
+2. If confirmed, use the human-reviewed code-004, door-tag, package-crossing, SID-removal, and custody branch.
+3. If stop classification or release eligibility is unclear, contact the BC or station.
+
+Record: KNO-DEL-BUS-CLOSED-001.
+
+## FORGE floating action button
+
+1. Open Settings and select the desired Floating Button Action under Stop Detail Preferences.
+2. Before using the button on Stop Details, confirm its displayed action matches the intended task.
+3. Apply the normal operational and documentation requirements for that task.
+
+Record: KNO-FORGE-FLOATING-ACTION-001.
+
+## Pickup receipt
+
+1. Was at least one package successfully picked up?
+   - Yes: select the pickup-receipt checkbox on Stop Summary and print at the Pickup Receipt step.
+   - No: the source says the receipt option is unavailable.
+2. Confirm the printed receipt contains the pickup details and tracking numbers.
+
+Record: KNO-PUP-RECEIPT-001.
+
+## Pickup package-weight prompt
+
+1. Does FORGE mark weight optional or required?
+   - Optional: enter the known weight or continue without a value.
+   - Required: enter an accurate package weight before continuing.
+2. Keep any separately prompted Dry Ice weight in its own field.
+
+Record: KNO-PUP-WEIGHT-ENTRY-001.
+
+## FORGE device-time login block
+
+1. Verify the device date, time, and time zone.
+2. Correct the clock through approved managed-device settings and retry login.
+3. If the clock is correct and the error persists, contact device/FORGE support.
+
+Record: KNO-FORGE-DEVICE-TIME-001.
+
+## FORGE Shuttle Transfer
+
+1. Confirm Shuttle Transfer is available to the authorized user and identify the source work area.
+2. Enter the source work area, scan or key-enter each actual package, and remove any incorrect entry.
+3. Select Done only after a valid work area and at least one valid package are present.
+4. Confirm the closed station-address stop and code-95 results; do not count the packages as route deliveries.
+
+Record: KNO-FORGE-SHUTTLE-TRANSFER-001.

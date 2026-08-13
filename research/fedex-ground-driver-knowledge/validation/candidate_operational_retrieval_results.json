@@ -2,7 +2,7 @@
   "schema_version": "1.0.0",
   "evaluated_at": "2026-08-10",
   "evaluation_design": {
-    "indexed_case_count": 195,
+    "indexed_case_count": 201,
     "indexed_candidate_prompts": false,
     "candidate_case_count": 69,
     "independent_holdout_used": false,

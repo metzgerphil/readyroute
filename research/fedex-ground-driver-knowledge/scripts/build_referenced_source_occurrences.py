@@ -77,6 +77,7 @@ LOCATOR_BY_PAIR = {
     ("REFSRC-040", "SRC-MGB-PAGE-0034"): "Complete visible page — See more information about this option: Technical guides on MBA",
     ("REFSRC-041", "SRC-GDRIVE-FILE-0003"): "Driver Scenarios workbook rows 24-32 — cited pages 54, 57-58, 79, 121-122, and 163-167",
     ("REFSRC-042", "SRC-GDRIVE-FILE-0003"): "Driver Scenarios workbook rows 33-37 and 41 — cited Company Safety and Operation Handbook sections",
+    ("REFSRC-043", "SRC-GDRIVE-FILE-0014"): "OP-117 v2 pages 19, 36, and 40 — code 004, door-tag handling, and package-notation fields; crossing and SID-removal authority remains unresolved",
 }
 
 

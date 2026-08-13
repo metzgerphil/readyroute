@@ -206,10 +206,16 @@ function scoreKnowledgeRecord(question, record, context = {}) {
     { id: 'KNO-PUP-CALLTAG-FRAUD-001', required: ['call', 'tag', 'fraud'], boost: 80 },
     { id: 'KNO-DEL-MISDELIVERY-RECOVERY-001', required: ['wrong'], any: ['house', 'address', 'door'] },
     {
+      id: 'KNO-PUP-WEIGHT-ENTRY-001',
+      required: ['pickup', 'weight'],
+      any: ['forge', 'scanner', 'package', 'box', 'skip', 'required', 'put'],
+      boost: 320
+    },
+    {
       id: 'KNO-PUP-SCANNER-FAIL-001',
       required: ['pickup'],
-      anySets: [['scanner'], ['barcode']],
-      any: ['barcode', 'package', 'read', 'scan', 'manual', 'entry'],
+      anySets: [['barcode'], ['scanner', 'scan'], ['scanner', 'read'], ['scanner', 'wont']],
+      any: ['barcode', 'read', 'scan', 'wont', 'manual', 'entry'],
       boost: 200
     },
     { id: 'KNO-PUP-VEHICLE-CAPACITY-001', required: ['pickup', 'vehicle', 'fit'] },
@@ -241,7 +247,14 @@ function scoreKnowledgeRecord(question, record, context = {}) {
     { id: 'KNO-PUP-UNLISTED-001', required: ['pickup', 'listed'], any: ['not', 'shipper', 'ready'], boost: 180 },
     { id: 'KNO-PUP-WINDOW-RISK-001', required: ['pickup'], any: ['closing', 'window', 'late', 'finish'], boost: 180 },
     { id: 'KNO-FORGE-CAMERA-SCAN-001', required: ['camera', 'scan'], any: ['hardware', 'trigger', 'barcode'], boost: 190 },
+    { id: 'KNO-FORGE-DEVICE-TIME-001', required: ['device', 'time'], any: ['incorrect', 'wrong', 'error', 'login', 'forge'], boost: 320 },
     { id: 'KNO-FORGE-DELAYED-LOGIN-001', required: ['authentication'], any: ['down', 'outage', 'route', 'list'], boost: 190 },
+    {
+      id: 'KNO-COMMS-MEDIA-001',
+      anySets: [['recorded', 'interview'], ['media', 'interview'], ['reporter', 'interview']],
+      any: ['fedex', 'customer', 'reporter', 'comment', 'interview'],
+      boost: 320
+    },
     { id: 'KNO-DEL-APT-001', required: ['apartment', 'office'], any: ['unit', 'answers', 'open'], boost: 180 },
     { id: 'KNO-DEL-HAL-NONHAL-TRANSFER-001', required: ['hal', 'transfer'], any: ['normal', 'non', 'package'], boost: 190 },
     { id: 'KNO-HAZ-LOAD-PAPERS-001', required: ['hazmat', 'papers'], any: ['loaded', 'stay', 'driving'], boost: 200 },
@@ -1179,6 +1192,9 @@ function buildDriverHelpDecision(question, records, context = {}) {
     );
     const explicitlyDescribesWarning = /\b(warning|license|medical|qualification|agreement|carb|hours of service|hos)\b/.test(normalizedQuestion);
     const explicitlyDescribesOutage = /\b(outage|offline|authentication|network|delayed)\b/.test(normalizedQuestion);
+    const explicitlyDescribesDeviceTime = /\b(device|system)\b/.test(normalizedQuestion)
+      && /\b(time|date|clock|timezone)\b/.test(normalizedQuestion)
+      && /\b(incorrect|wrong|error)\b/.test(normalizedQuestion);
     if (!isProductionEligibleRecord(warningRecord) && explicitlyDescribesWarning) {
       return {
         response_mode: 'ESCALATE',
@@ -1188,7 +1204,9 @@ function buildDriverHelpDecision(question, records, context = {}) {
         escalation_message: 'A FORGE login failure may be an outage or an unresolved compliance warning. Ready Route cannot establish which from this description; report the exact screen message to your manager or station.'
       };
     }
-    if (!isProductionEligibleRecord(warningRecord) && !explicitlyDescribesOutage) {
+    if (!isProductionEligibleRecord(warningRecord)
+      && !explicitlyDescribesOutage
+      && !explicitlyDescribesDeviceTime) {
       return buildFlowClarification('forge-login-type', 'Is this an outage, or does FORGE show a warning?', [
         flowOption('forge-login-type', 'outage', 'Outage / offline', 'FORGE authentication outage need delayed login'),
         flowOption('forge-login-type', 'warning', 'Warning on screen', 'FORGE login warning exact message'),
@@ -1263,6 +1281,15 @@ function buildDriverHelpDecision(question, records, context = {}) {
       && queryTokenSet.has('delivery')
       && queryTokenSet.has('barcode')
       && ['missing', 'zero'].some((token) => queryTokenSet.has(token))
+  ) || (
+    top.record.knowledge_id === 'KNO-FORGE-DEVICE-TIME-001'
+      && queryTokenSet.has('device')
+      && queryTokenSet.has('time')
+      && ['incorrect', 'wrong', 'error', 'login'].some((token) => queryTokenSet.has(token))
+  ) || (
+    top.record.knowledge_id === 'KNO-COMMS-MEDIA-001'
+      && queryTokenSet.has('interview')
+      && ['recorded', 'media', 'reporter'].some((token) => queryTokenSet.has(token))
   ) || (
     /^KNO-DEL-SIG-(ISR|DSR|ASR)-/.test(top.record.knowledge_id)
       && ['isr', 'dsr', 'asr', 'indirect', 'direct', 'adult']

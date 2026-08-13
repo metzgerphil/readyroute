@@ -72,3 +72,14 @@ The local backend and manager portal were run against staging successfully. The 
 The hosted API passed staging driver login and HTTPS checks for `ANSWER`, `CLARIFY`, and `ESCALATE`, including the exact `KNO-DEL-SIG-DSR-001 v1` trace. It does not receive production traffic and does not connect to the production Supabase project.
 
 The Expo driver bundle was configured for the secure staging URL during local testing through `EXPO_PUBLIC_API_URL`; no staging URL or secret was committed to the production mobile configuration. The refreshed app loaded and its login form was exercised using the simulator's real on-screen keyboard. Simulator Safari independently failed to resolve the Cloud Run hostname and displayed "server can't be found," while Cloud Run logs showed no incoming request. The final native walkthrough therefore requires a physical device or a simulator with functioning external DNS. The hosted API itself remains healthy and fully verified from the backend and manager-client paths.
+
+## Grounded AI staging gate
+
+The staging service enables grounded composition only through server-side Cloud Run configuration:
+
+- `OPENAI_API_KEY` is injected from the staging-only Secret Manager secret `readyroute-staging-openai-api-key`.
+- `READYROUTE_DRIVER_HELP_AI_ENABLED=true` applies only to `readyroute-api-staging`.
+- `READYROUTE_DRIVER_HELP_MODEL=gpt-5.6-terra` uses the Responses API with strict structured output.
+- Production and local defaults remain disabled.
+
+Every staging release creates a disposable staging driver, signs in through the hosted API, and verifies two grounded direct answers, an ambiguity that remains `CLARIFY`, and an incomplete procedure that remains `ESCALATE`. The direct answers must expose selected-record and source-field traces. The disposable account and its interactions are deleted after the run. Provider errors, malformed output, unsupported codes/numbers, and invalid grounding are tested before deployment and must fall back to the deterministic canonical answer.

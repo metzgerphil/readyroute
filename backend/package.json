@@ -27,6 +27,7 @@
     "seed:auth": "node src/scripts/seedAuthUsers.js",
     "seed:manager": "node src/scripts/addManagerUser.js",
     "smoke:production": "node src/scripts/productionSmoke.js",
+    "smoke:staging-grounded-ai": "node src/scripts/stagingGroundedAiSmoke.js",
     "smoke:provision-manager": "node src/scripts/provisionProductionSmokeManager.js",
     "check:launch": "node src/scripts/checkLaunchConfig.js",
     "verify:schema": "node ../scripts/check-schema-version.js",

@@ -101,7 +101,13 @@ jobs:
           env_vars: |-
             SOURCE_COMMIT=${{ github.sha }}
             NODE_ENV=production
+            READYROUTE_DRIVER_HELP_AI_ENABLED=true
+            READYROUTE_DRIVER_HELP_MODEL=gpt-5.6-terra
+            READYROUTE_DRIVER_HELP_AI_TIMEOUT_MS=8000
           env_vars_update_strategy: merge
+          secrets: |-
+            OPENAI_API_KEY=readyroute-staging-openai-api-key:latest
+          secrets_update_strategy: merge
 
       - name: Verify staging release identity
         env:
@@ -119,9 +125,27 @@ jobs:
           echo "Staging health did not report the expected release and schema" >&2
           exit 1
 
+      - name: Run authenticated grounded AI staging smoke
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          SUPABASE_URL: ${{ env.STAGING_SUPABASE_URL }}
+          STAGING_BACKEND_URL: ${{ env.STAGING_BACKEND_URL }}
+        working-directory: backend
+        shell: bash
+        run: |
+          set -euo pipefail
+          keys_url="https://api.supabase.com/v1/projects/${STAGING_SUPABASE_PROJECT_REF}/api-keys"
+          keys_response="$(curl --fail-with-body --silent --show-error \
+            -H "Authorization: Bearer $SUPABASE_ACCESS_TOKEN" "$keys_url")"
+          service_key="$(jq -r '.[] | select(.name == "service_role") | (.api_key // .key)' <<<"$keys_response")"
+          test -n "$service_key" && test "$service_key" != "null"
+          echo "::add-mask::$service_key"
+          SUPABASE_SERVICE_KEY="$service_key" npm run smoke:staging-grounded-ai
+
       - name: Release summary
         run: |
           echo "### ReadyRoute staging driver-help release" >> "$GITHUB_STEP_SUMMARY"
           echo "- Commit: \`${{ github.sha }}\`" >> "$GITHUB_STEP_SUMMARY"
           echo "- Cloud Run URL: ${{ steps.deploy.outputs.url }}" >> "$GITHUB_STEP_SUMMARY"
           echo "- Canonical knowledge imported after pending staging migrations" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Authenticated grounded AI answer, clarification, escalation, and trace checks passed" >> "$GITHUB_STEP_SUMMARY"
