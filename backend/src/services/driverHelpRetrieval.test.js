@@ -390,6 +390,41 @@ test('asks for the signature type instead of guessing one signature procedure', 
   assert.match(frontDeskRanked[0].record.knowledge_id, /^KNO-DEL-SIG-/);
 });
 
+test('screenshot regression: an alcohol signing question selects the alcohol procedure', () => {
+  const signatureRecords = [
+    records[0],
+    {
+      ...records[0],
+      knowledge_id: 'KNO-DEL-SIG-ISR-001',
+      canonical_situation: 'Delivering an Indirect Signature Required package',
+      driver_question_variants: ['indirect signature package']
+    },
+    {
+      ...records[0],
+      knowledge_id: 'KNO-DEL-SIG-ASR-001',
+      canonical_situation: 'Completing an Adult Signature Required delivery',
+      driver_question_variants: ['adult signature package']
+    }
+  ];
+  const alcohol = {
+    ...records[0],
+    knowledge_id: 'KNO-DEL-ALCOHOL-001',
+    canonical_situation: 'Delivering an alcohol package',
+    normalized_description: 'Alcohol requires an adult age 21 or older with acceptable photo ID.',
+    driver_question_variants: ['who can sign for an alcohol package'],
+    concise_answer: 'Alcohol requires an in-person signature from someone 21 or older with acceptable photo ID.'
+  };
+
+  const decision = buildDriverHelpDecision(
+    "Who can sign for this package I think it's alcohol",
+    [alcohol, ...signatureRecords]
+  );
+
+  assert.equal(decision.response_mode, 'ANSWER');
+  assert.equal(decision.selected_records[0].knowledge_id, alcohol.knowledge_id);
+  assert.match(decision.answer, /21 or older/i);
+});
+
 test('asks for signature type before applying the neighbor ISR path', () => {
   const isrRecord = {
     ...records[0],

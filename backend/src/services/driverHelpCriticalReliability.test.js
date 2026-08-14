@@ -99,6 +99,9 @@ const CASES = [
     'Direct signature and nobody answered',
     'No one there for my direct signature package'
   ]),
+  ...questions('KNO-DEL-ALCOHOL-001', [
+    "Who can sign for this package I think it's alcohol"
+  ]),
   ...questions('KNO-FORGE-CAMERA-SCAN-001', [
     'Camera scan made the side button stop working',
     'How do I use camera scanning in FORGE',
@@ -116,7 +119,7 @@ const CASES = [
 ];
 
 test('critical driver-language reliability gate routes every supported variant correctly', () => {
-  assert.equal(CASES.length, 68);
+  assert.equal(CASES.length, 69);
   const canonical = readJsonLines(path.join(ROOT, 'knowledge/operations/records.jsonl'));
   const gates = buildPublicationGateIndex(canonical);
   const records = canonical.map((record) => toPublishedRecord(

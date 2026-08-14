@@ -283,9 +283,13 @@ function scoreKnowledgeRecord(question, record, context = {}) {
 
   const hasTypedSignature = ['asr', 'dsr', 'isr', 'adult', 'direct', 'indirect']
     .some((token) => queryTokenSet.has(token));
+  const hasSpecializedSignatureContext = queryTokenSet.has('alcohol')
+    || queryTokenSet.has('pharmacy')
+    || (queryTokenSet.has('recipient') && queryTokenSet.has('device'));
   if (/^KNO-DEL-SIG-(ISR|DSR|ASR)-/.test(record.knowledge_id)
     && queryTokenSet.has('signature')
-    && !hasTypedSignature) {
+    && !hasTypedSignature
+    && !hasSpecializedSignatureContext) {
     // Generic signature questions should rank the three controlling signature
     // branches ahead of records that merely mention a signer (for example a
     // pharmacy or hazmat record). The decision layer will still ask for the
@@ -781,6 +785,7 @@ function buildDriverFirstClarification(question, candidates = []) {
   if (tokens.has('signature')
     && !hasSignatureType
     && !(tokens.has('recipient') && tokens.has('device'))
+    && !tokens.has('alcohol')
     && !tokens.has('pharmacy')) {
     const nobodySuffix = nobodyHome ? ' nobody home' : '';
     return clarify('signature-type', 'What signature type does FORGE show?', [
@@ -933,6 +938,8 @@ function buildDiscoveredTopicClarification(question, ranked, candidates) {
 
   const explicitlyNamesSpecializedSignatureWorkflow = (
     topRankedRecord?.knowledge_id === 'KNO-DEL-PHARMACY-001' && tokens.has('pharmacy')
+  ) || (
+    topRankedRecord?.knowledge_id === 'KNO-DEL-ALCOHOL-001' && tokens.has('alcohol')
   ) || (
     topRankedRecord?.knowledge_id === 'KNO-DEL-OP206-001'
       && tokens.has('recipient')
