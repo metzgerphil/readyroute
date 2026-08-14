@@ -9,7 +9,6 @@ const {
   buildDriverHelpReferenceDecision,
   isReferenceRecord
 } = require('./driverHelpReference');
-const { composeGroundedDecision } = require('./driverHelpGroundedComposition');
 
 const MISSING_TABLE_CODES = new Set(['42P01', 'PGRST106', 'PGRST204', 'PGRST205']);
 
@@ -38,8 +37,7 @@ function resolveClarificationFollowUp(question, context = {}) {
 
 function createDriverHelpService({
   supabase = defaultSupabase,
-  now = () => new Date(),
-  composeGroundedAnswer = null
+  now = () => new Date()
 } = {}) {
   async function loadKnowledgeRecords() {
     const { data, error } = await supabase
@@ -229,7 +227,14 @@ function createDriverHelpService({
       records.filter((record) => !isReferenceRecord(record)),
       sessionState.context
     );
-    const decision = await composeGroundedDecision(baseDecision, composeGroundedAnswer);
+    // Canonical records already contain reviewed driver-facing wording. Keep
+    // language interpretation in retrieval and return the selected record's
+    // published answer without a second model rewriting it.
+    const decision = {
+      ...baseDecision,
+      composition_mode: 'DETERMINISTIC',
+      composition_grounding: []
+    };
     const effectiveSessionId = await createOrUpdateSession({
       sessionId: sessionState.session_id,
       accountId,

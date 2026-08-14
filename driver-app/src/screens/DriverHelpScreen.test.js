@@ -1,7 +1,11 @@
 import React from 'react';
 import { act, fireEvent, render, waitFor } from '@testing-library/react-native';
 
-import DriverHelpScreen, { shouldCompleteBackSwipe, shouldStartBackSwipe } from './DriverHelpScreen';
+import DriverHelpScreen, {
+  resetDriverHelpViewport,
+  shouldCompleteBackSwipe,
+  shouldStartBackSwipe
+} from './DriverHelpScreen';
 import api from '../services/api';
 import { ExpoSpeechRecognitionModule } from 'expo-speech-recognition';
 
@@ -486,6 +490,18 @@ describe('DriverHelpScreen', () => {
     expect(shouldCompleteBackSwipe({ dx: 120, vx: 0.1 })).toBe(true);
     expect(shouldCompleteBackSwipe({ dx: 75, vx: 0.3 })).toBe(true);
     expect(shouldCompleteBackSwipe({ dx: 60, vx: 0.5 })).toBe(false);
+  });
+
+  it('resets a retained answer scroll position before showing a new screen', () => {
+    const scrollTo = jest.fn();
+    const scheduleImmediately = (callback) => {
+      callback();
+      return 1;
+    };
+
+    resetDriverHelpViewport({ current: { scrollTo } }, scheduleImmediately);
+
+    expect(scrollTo).toHaveBeenCalledWith({ animated: false, y: 0 });
   });
 
   it('sends answer feedback against the interaction', async () => {

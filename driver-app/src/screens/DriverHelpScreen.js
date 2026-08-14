@@ -41,6 +41,12 @@ export function shouldCompleteBackSwipe({ dx, vx }) {
   return dx >= 110 || (dx >= 70 && vx >= 0.25);
 }
 
+export function resetDriverHelpViewport(scrollReference, schedule = setTimeout) {
+  return schedule(() => {
+    scrollReference.current?.scrollTo({ animated: false, y: 0 });
+  }, 0);
+}
+
 function MicrophoneIcon({ size = 50 }) {
   return (
     <Svg height={size} viewBox="0 0 48 48" width={size}>
@@ -162,6 +168,11 @@ export default function DriverHelpScreen() {
     return () => subscription.remove();
   }, []);
 
+  useEffect(() => {
+    const timer = resetDriverHelpViewport(scrollRef);
+    return () => clearTimeout(timer);
+  }, [result]);
+
   useSpeechRecognitionEvent('start', () => {
     setIsListening(true);
     setDictationError('');
@@ -204,6 +215,7 @@ export default function DriverHelpScreen() {
       return;
     }
     submittingRef.current = true;
+    Keyboard.dismiss();
 
     const previousState = {
       expandedOptionId,
@@ -313,6 +325,7 @@ export default function DriverHelpScreen() {
   }
 
   function startNewSituation() {
+    Keyboard.dismiss();
     historyRef.current = [];
     setSessionId(null);
     setResult(null);
@@ -324,6 +337,7 @@ export default function DriverHelpScreen() {
     setError('');
     setDictationError('');
     setDictationHint(false);
+    resetDriverHelpViewport(scrollRef);
   }
 
   function goBack() {
@@ -348,6 +362,7 @@ export default function DriverHelpScreen() {
     setError('');
     setDictationError('');
     setDictationHint(false);
+    resetDriverHelpViewport(scrollRef);
   }
 
   const backSwipeResponder = PanResponder.create({
@@ -416,7 +431,6 @@ export default function DriverHelpScreen() {
         style={styles.keyboardView}
       >
         <ScrollView
-          automaticallyAdjustKeyboardInsets={Platform.OS === 'ios'}
           contentContainerStyle={styles.content}
           keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'}
           keyboardShouldPersistTaps="always"

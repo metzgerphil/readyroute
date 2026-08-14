@@ -91,14 +91,14 @@ async function main() {
         name: 'camera-scan-answer',
         question: 'turned camera scan on now side button dead',
         responseMode: 'ANSWER',
-        compositionMode: 'GROUNDED_AI',
+        compositionMode: 'DETERMINISTIC',
         knowledgeId: 'KNO-FORGE-CAMERA-SCAN-001'
       },
       {
         name: 'recorded-media-answer',
         question: 'reporter wants a recorded interview',
         responseMode: 'ANSWER',
-        compositionMode: 'GROUNDED_AI',
+        compositionMode: 'DETERMINISTIC',
         knowledgeId: 'KNO-COMMS-MEDIA-001'
       },
       {
@@ -117,7 +117,7 @@ async function main() {
         name: 'accident-scene-critical-answer',
         question: 'I was just in a crash. What should I do first?',
         responseMode: 'ANSWER',
-        compositionMode: 'GROUNDED_AI',
+        compositionMode: 'DETERMINISTIC',
         knowledgeId: 'KNO-INC-ACCIDENT-SCENE-001',
         answerPatterns: [/(?:9-1-1|911)/i, /(?:safe|safety)/i]
       },
@@ -125,7 +125,7 @@ async function main() {
         name: 'signature-falsification-critical-answer',
         question: 'Can I sign the scanner for the customer to save time?',
         responseMode: 'ANSWER',
-        compositionMode: 'GROUNDED_AI',
+        compositionMode: 'DETERMINISTIC',
         knowledgeId: 'KNO-ETH-FALSIFICATION-001',
         answerPatterns: [/(?:do not|never)/i, /(?:sign|signature|forge)/i]
       },
@@ -133,9 +133,37 @@ async function main() {
         name: 'prescan-critical-answer',
         question: 'Can I prescan all my stops before I leave the station?',
         responseMode: 'ANSWER',
-        compositionMode: 'GROUNDED_AI',
+        compositionMode: 'DETERMINISTIC',
         knowledgeId: 'KNO-DEL-SCAN-INTEGRITY-001',
         answerPatterns: [/(?:do not|don't|never)/i, /(?:pre-?scan|customer location|actually happens)/i]
+      },
+      {
+        name: 'accident-driver-wording-answer',
+        question: 'Someone hit my truck and nobody looks hurt. What should I do?',
+        responseMode: 'ANSWER',
+        compositionMode: 'DETERMINISTIC',
+        knowledgeId: 'KNO-INC-ACCIDENT-SCENE-001'
+      },
+      {
+        name: 'accident-media-boundary-answer',
+        question: 'A reporter is asking me about an accident. Can I talk to them?',
+        responseMode: 'ANSWER',
+        compositionMode: 'DETERMINISTIC',
+        knowledgeId: 'KNO-COMMS-MEDIA-001'
+      },
+      {
+        name: 'plain-language-hos-answer',
+        question: 'How many hours am I allowed to drive today?',
+        responseMode: 'ANSWER',
+        compositionMode: 'DETERMINISTIC',
+        knowledgeId: 'KNO-HOS-DUTY-LIMITS-001'
+      },
+      {
+        name: 'plain-language-pickup-capacity-answer',
+        question: 'My truck is full and I still have a pickup. What should I do?',
+        responseMode: 'ANSWER',
+        compositionMode: 'DETERMINISTIC',
+        knowledgeId: 'KNO-PUP-VEHICLE-CAPACITY-001'
       }
     ];
     const summary = [];

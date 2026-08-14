@@ -1,20 +1,12 @@
 const express = require('express');
 
 const { createDriverHelpService } = require('../services/driverHelp');
-const { createDriverHelpAiComposer } = require('../services/driverHelpAiComposer');
 
 function createDriverHelpRouter(options = {}) {
   const router = express.Router();
-  const configuredComposer = options.composeGroundedAnswer !== undefined
-    ? options.composeGroundedAnswer
-    : createDriverHelpAiComposer({
-        env: options.env || process.env,
-        fetchImpl: options.fetchImpl
-      });
   const service = options.service || createDriverHelpService({
     supabase: options.supabase,
-    now: options.now,
-    composeGroundedAnswer: configuredComposer
+    now: options.now
   });
 
   router.post('/query', async (req, res) => {

@@ -29,7 +29,8 @@ const CASES = [
     'I backed into a vehicle what do I do',
     'Accident scene first steps',
     'I hit another truck on route',
-    'Crash is blocking the road'
+    'Crash is blocking the road',
+    'Someone hit my truck and nobody looks hurt. What should I do?'
   ]),
   ...questions('KNO-ETH-FALSIFICATION-001', [
     'Can I sign the scanner for the customer?',
@@ -83,7 +84,8 @@ const CASES = [
     'I am over my hours can I keep driving',
     'What are the hours of service driving limits',
     'HOS says 70 hours can I drive',
-    'Can I drive beyond the eleven hour limit'
+    'Can I drive beyond the eleven hour limit',
+    'How many hours am I allowed to drive today?'
   ]),
   ...questions(null, [
     'sig pkg nobody home',
@@ -105,12 +107,16 @@ const CASES = [
   ...questions('KNO-PUP-VEHICLE-CAPACITY-001', [
     'Pickup has more boxes than fit in my truck',
     'All pickup packages will not fit in the van',
-    'What if the pickup is too large for my vehicle'
+    'What if the pickup is too large for my vehicle',
+    'My truck is full and I still have a pickup. What should I do?'
+  ]),
+  ...questions('KNO-COMMS-MEDIA-001', [
+    'A reporter is asking me about an accident. Can I talk to them?'
   ])
 ];
 
 test('critical driver-language reliability gate routes every supported variant correctly', () => {
-  assert.equal(CASES.length, 64);
+  assert.equal(CASES.length, 68);
   const canonical = readJsonLines(path.join(ROOT, 'knowledge/operations/records.jsonl'));
   const gates = buildPublicationGateIndex(canonical);
   const records = canonical.map((record) => toPublishedRecord(

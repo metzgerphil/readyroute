@@ -10,18 +10,25 @@ const CRITICAL_INTENT_PROFILES = [
     knowledge_id: 'KNO-INC-ACCIDENT-SCENE-001',
     required_answer_patterns: ['(?:9-1-1|911)', '(?:safe|safety)'],
     matches({ normalized, tokens }) {
-      const accidentLanguage = hasAny(tokens, ['accident', 'crash', 'collision', 'wreck'])
+      const accidentLanguage = hasAny(tokens, ['crash', 'collision', 'wreck'])
+        || (tokens.has('accident')
+          && /\b(?:got|involved|vehicle|car|truck|van|scene|road|route|hit|collision)\b/.test(normalized))
         || /\b(?:got hit|hit (?:a|another|the) (?:car|vehicle|truck)|backed into)\b/.test(normalized)
-        || /\b(?:car|vehicle|truck)\b.*\bhit me\b/.test(normalized);
+        || /\b(?:car|vehicle|truck)\b.*\bhit me\b/.test(normalized)
+        || /\b(?:someone|somebody|a car|another car|a vehicle|another vehicle)\b.*\bhit (?:my|the) (?:car|vehicle|truck|van)\b/.test(normalized);
       const historicalPaperworkOnly = /\b(?:report|form|paperwork|document)\b/.test(normalized)
         && !/\b(?:just|now|scene|first|immediate|happened|involved)\b/.test(normalized);
       const evidenceCustodyQuestion = /\b(?:camera|vedr|evidence|recording)\b/.test(normalized)
         && /\b(?:record|custody|who has|taken out|removed)\b/.test(normalized);
+      const mediaInquiry = /\b(?:reporter|media|news|interview|public comment)\b/.test(normalized);
+      const followUpReporting = /\b(?:scene is safe|safe now)\b.*\b(?:report|notification|notify)\b/.test(normalized);
       const minorSituationNeedsDetail = /\bminor (?:crash|accident|collision)\b/.test(normalized)
-        && !/\b(?:just|now|scene|first|immediate)\b/.test(normalized);
+        && !/\b(?:just|scene|first|immediate)\b/.test(normalized);
       return accidentLanguage
         && !historicalPaperworkOnly
         && !evidenceCustodyQuestion
+        && !mediaInquiry
+        && !followUpReporting
         && !minorSituationNeedsDetail;
     }
   },
@@ -64,7 +71,8 @@ const CRITICAL_INTENT_PROFILES = [
     required_answer_patterns: ['(?:notify|contact)', '(?:ao|bc|station|cxpc)', '(?:do not|don.t).*overload'],
     matches({ normalized, tokens }) {
       if (!tokens.has('pickup') || !tokens.has('vehicle')) return false;
-      return hasAny(tokens, ['fit', 'capacity', 'large', 'big', 'overload'])
+      if (/\b\d+\b/.test(normalized)) return false;
+      return hasAny(tokens, ['fit', 'capacity', 'large', 'big', 'overload', 'full'])
         || /\b(?:too many|more packages|more boxes|will not fit|wont fit|cannot fit)\b/.test(normalized);
     }
   },
@@ -98,7 +106,8 @@ const CRITICAL_INTENT_PROFILES = [
     matches({ normalized, tokens }) {
       const drivingLimit = tokens.has('driving') || tokens.has('drive') || /\bkeep going\b/.test(normalized);
       const limitLanguage = /\b(?:11|eleven|14|fourteen|70|seventy)\b/.test(normalized)
-        || /\b(?:hours of service|hos|driving limit|out of hours|over my hours)\b/.test(normalized);
+        || /\b(?:hours of service|hos|driving limit|out of hours|over my hours)\b/.test(normalized)
+        || (tokens.has('hours') && /\b(?:allowed|can|may|how many|limit)\b/.test(normalized));
       return drivingLimit && limitLanguage;
     }
   }

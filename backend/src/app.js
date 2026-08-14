@@ -144,10 +144,7 @@ function createApp(options = {}) {
   const driverHelpRouter = createDriverHelpRouter({
     supabase: options.supabase,
     now: options.now,
-    service: options.driverHelpService,
-    composeGroundedAnswer: options.composeGroundedAnswer,
-    env: options.driverHelpAiEnv,
-    fetchImpl: options.driverHelpAiFetch
+    service: options.driverHelpService
   });
   const managerDriverHelpRouter = createManagerDriverHelpRouter({
     supabase: options.supabase
