@@ -9,6 +9,7 @@ const { buildImport, readJsonLines } = require('../scripts/importDriverKnowledge
 const {
   createDriverHelpService,
   filterActionableClarificationOptions,
+  isRepeatedClarification,
   resolveClarificationFollowUp,
   resolveClarificationSelection
 } = require('./driverHelp');
@@ -151,6 +152,30 @@ test('clarification choices expose only verified records or explicit routing flo
   ], operationalRows);
 
   assert.deepEqual(filtered.map((option) => option.label), ['Verified answer', 'Routing choice']);
+});
+
+test('an identical clarification after a selected routing choice is detected as a loop', () => {
+  const option = {
+    knowledge_id: 'FLOW:example:route',
+    version: 1,
+    label: 'Route this choice',
+    query: 'route this choice query'
+  };
+  const context = {
+    pending_clarification_prompt: 'Which situation matches?',
+    pending_clarification_options: [option]
+  };
+
+  assert.equal(isRepeatedClarification({
+    response_mode: 'CLARIFY',
+    clarification_prompt: 'Which situation matches?',
+    clarification_options: [option]
+  }, context, option), true);
+  assert.equal(isRepeatedClarification({
+    response_mode: 'CLARIFY',
+    clarification_prompt: 'What happened next?',
+    clarification_options: [option]
+  }, context, option), false);
 });
 
 test('selecting an offered verified clarification returns that answer directly', async () => {

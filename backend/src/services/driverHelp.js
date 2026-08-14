@@ -54,6 +54,25 @@ function filterActionableClarificationOptions(options, records) {
   });
 }
 
+function isRepeatedClarification(decision, context = {}, selection = null) {
+  if (!selection || decision?.response_mode !== 'CLARIFY') return false;
+  const previousPrompt = normalizeDriverQuestion(context.pending_clarification_prompt);
+  const nextPrompt = normalizeDriverQuestion(decision.clarification_prompt);
+  if (!previousPrompt || previousPrompt !== nextPrompt) return false;
+
+  const optionIdentity = (option) => [
+    option?.knowledge_id || '',
+    option?.version || '',
+    normalizeDriverQuestion(option?.label),
+    normalizeDriverQuestion(option?.query)
+  ].join('|');
+  const previousOptions = (context.pending_clarification_options || []).map(optionIdentity).sort();
+  const nextOptions = (decision.clarification_options || []).map(optionIdentity).sort();
+  return previousOptions.length > 0
+    && previousOptions.length === nextOptions.length
+    && previousOptions.every((value, index) => value === nextOptions[index]);
+}
+
 function resolveClarificationFollowUp(question, context = {}) {
   const selected = resolveClarificationSelection(question, context);
   if (selected?.query) return selected.query;
@@ -180,6 +199,9 @@ function createDriverHelpService({
       last_question: question,
       pending_clarification_id: decision.response_mode === 'CLARIFY'
         ? decision.clarification_id || null
+        : null,
+      pending_clarification_prompt: decision.response_mode === 'CLARIFY'
+        ? decision.clarification_prompt || null
         : null,
       pending_clarification_options: decision.response_mode === 'CLARIFY'
         ? (decision.clarification_options || []).map((option) => ({
@@ -324,11 +346,26 @@ function createDriverHelpService({
     // Canonical records already contain reviewed driver-facing wording. Keep
     // language interpretation in retrieval and return the selected record's
     // published answer without a second model rewriting it.
-    const decision = {
+    const actionableBaseDecision = {
       ...baseDecision,
       clarification_options: baseDecision.response_mode === 'CLARIFY'
         ? filterActionableClarificationOptions(baseDecision.clarification_options, records)
-        : [],
+        : []
+    };
+    const loopDetected = isRepeatedClarification(
+      actionableBaseDecision,
+      sessionState.context,
+      clarificationSelection
+    );
+    const decision = {
+      ...(loopDetected ? {
+        response_mode: 'ESCALATE',
+        confidence: actionableBaseDecision.confidence,
+        candidates: actionableBaseDecision.candidates || [],
+        selected_records: [],
+        clarification_options: [],
+        escalation_message: 'That choice did not resolve to one approved procedure. Contact your manager or station for the current direction rather than repeating the same selection.'
+      } : actionableBaseDecision),
       composition_mode: 'DETERMINISTIC',
       composition_grounding: []
     };
@@ -420,6 +457,7 @@ module.exports = {
   createDriverHelpService,
   filterActionableClarificationOptions,
   isMissingTableError,
+  isRepeatedClarification,
   resolveClarificationFollowUp,
   resolveClarificationSelection
 };
