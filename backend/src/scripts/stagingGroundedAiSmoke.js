@@ -52,7 +52,7 @@ async function main() {
   try {
     let result = await supabase.from('accounts').insert({
       id: accountId,
-      company_name: `Grounded AI staging smoke ${runId}`,
+      company_name: `Canonical answer staging smoke ${runId}`,
       plan: 'starter',
       subscription_status: 'smoke_test',
       account_status: 'active',
@@ -64,7 +64,7 @@ async function main() {
     result = await supabase.from('drivers').insert({
       id: driverId,
       account_id: accountId,
-      name: 'Grounded AI Smoke Driver',
+      name: 'Canonical Answer Smoke Driver',
       email,
       pin: passwordHash,
       password_hash: passwordHash,
@@ -178,17 +178,14 @@ async function main() {
       assert.equal(answer.response_mode, scenario.responseMode, `${scenario.name} response mode`);
       assert.equal(answer.composition_mode, scenario.compositionMode, `${scenario.name} composition mode`);
       if (scenario.knowledgeId) {
-        assert.ok(
-          (answer.trace || []).some((record) => record.knowledge_id === scenario.knowledgeId),
-          `${scenario.name} selected record`
-        );
-        assert.ok(
-          (answer.trace || []).some((record) => (
-            record.knowledge_id === scenario.knowledgeId
-              && Array.isArray(record.composition_source_paths)
-              && record.composition_source_paths.length > 0
-          )),
-          `${scenario.name} composition grounding trace`
+        const trace = (answer.trace || []).find((record) => (
+          record.knowledge_id === scenario.knowledgeId
+        ));
+        assert.ok(trace, `${scenario.name} selected record`);
+        assert.deepEqual(
+          trace.composition_source_paths || [],
+          [],
+          `${scenario.name} returned the canonical record without a rewrite`
         );
       }
       for (const pattern of scenario.answerPatterns || []) {
@@ -204,7 +201,7 @@ async function main() {
     }
 
     console.log(JSON.stringify({
-      staging_grounded_ai: 'passed',
+      staging_canonical_answers: 'passed',
       duration_ms: Date.now() - startedAt,
       scenarios: summary
     }, null, 2));
@@ -215,6 +212,6 @@ async function main() {
 }
 
 main().catch((error) => {
-  console.error(`Staging grounded AI smoke failed: ${error.message}`);
+  console.error(`Staging canonical-answer smoke failed: ${error.message}`);
   process.exitCode = 1;
 });
