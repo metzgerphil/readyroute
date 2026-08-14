@@ -1,6 +1,6 @@
 # Driver Operational Help staging environment
 
-> Historical staging snapshot: the import counts below describe the last authorized staging import and were not changed during the 2026-08-10 local reconciliation. The current local canonical release contains 144 indexed and 97 publication-ready records. No staging deployment or import was performed in this pass.
+> The earlier import counts below are retained as historical context. The grounded-AI staging release on 2026-08-13 imported the current canonical release: 150 indexed records and 103 publication-ready records.
 
 ## Identity
 
@@ -83,3 +83,17 @@ The staging service enables grounded composition only through server-side Cloud 
 - Production and local defaults remain disabled.
 
 Every staging release creates a disposable staging driver, signs in through the hosted API, and verifies two grounded direct answers, an ambiguity that remains `CLARIFY`, and an incomplete procedure that remains `ESCALATE`. The direct answers must expose selected-record and source-field traces. The disposable account and its interactions are deleted after the run. Provider errors, malformed output, unsupported codes/numbers, and invalid grounding are tested before deployment and must fall back to the deterministic canonical answer.
+
+### Verified release — 2026-08-13
+
+- Git commit: `8993d23e34b472b6b453381b50a1c8fda7b94d45`
+- GitHub Actions run: `31756219279`
+- Schema: required/current `20260811120000`, compatible
+- Launch state: ready; billing shadowed; FCC automation paused
+- Camera Scan answer: `GROUNDED_AI`, `KNO-FORGE-CAMERA-SCAN-001`, 4,643 ms
+- Recorded-media answer: `GROUNDED_AI`, `KNO-COMMS-MEDIA-001`, 2,982 ms
+- Ambiguous signature question: `CLARIFY`, deterministic, 1,021 ms
+- Incomplete refusal procedure: `ESCALATE`, deterministic, 1,066 ms
+- Disposable staging account: deleted by the smoke-test cleanup
+
+The release gate also exposed and corrected two staging-test defects before passing: the disposable driver fixture now satisfies the applied legacy `pin` constraint, and client responses now return the exact canonical source fields used for grounded composition instead of keeping that trace only in the stored interaction.
