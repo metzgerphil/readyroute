@@ -159,6 +159,36 @@ describe('DriverHelpScreen', () => {
     expect(screen.getByText('Contact management if the service type is unclear.')).toBeTruthy();
   });
 
+  it('renders signed visual references and opens them full screen', async () => {
+    api.post.mockResolvedValueOnce({
+      data: {
+        session_id: 'session-image',
+        interaction_id: 'interaction-image',
+        response_mode: 'ANSWER',
+        answer: 'Enable Camera Scan in FORGE settings.',
+        images: [{
+          filename: 'FAQ-FORGE-SETTINGS-P005.png',
+          caption: 'Use Camera to Scan setting',
+          width: 1170,
+          height: 2532,
+          url: 'https://signed.test/driver-help-images/settings.png'
+        }],
+        trace: [{ knowledge_id: 'KNO-FORGE-CAMERA-SCAN-001', version: 1 }]
+      }
+    });
+    const screen = render(<DriverHelpScreen />);
+
+    fireEvent.changeText(screen.getByLabelText('Driver question'), 'How do I use camera scan?');
+    fireEvent.press(screen.getByLabelText('Ask Ready Route'));
+
+    expect(await screen.findByText('Visual reference')).toBeTruthy();
+    expect(screen.getByText('Use Camera to Scan setting')).toBeTruthy();
+    fireEvent.press(screen.getByLabelText('Open image: Use Camera to Scan setting'));
+    expect(screen.getByLabelText('Close image')).toBeTruthy();
+    fireEvent.press(screen.getByLabelText('Close image'));
+    expect(screen.queryByLabelText('Close image')).toBeNull();
+  });
+
   it('shows approved alternatives as expandable choices', async () => {
     api.post.mockResolvedValueOnce({
       data: {

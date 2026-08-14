@@ -26,10 +26,21 @@ const operationalRows = buildImport(
   readJsonLines(path.join(root, 'knowledge/evaluations/driver-language-cases.jsonl'))
 ).knowledgeRows;
 
-function fakeSupabase(records) {
+function fakeSupabase(records, { signedUrl = null } = {}) {
   const writes = [];
   return {
     writes,
+    storage: {
+      from(bucket) {
+        return {
+          async createSignedUrl(storagePath, expiresIn) {
+            return signedUrl
+              ? { data: { signedUrl: `${signedUrl}/${bucket}/${storagePath}?expires=${expiresIn}` }, error: null }
+              : { data: null, error: { message: 'not configured' } };
+          }
+        };
+      }
+    },
     from(table) {
       if (table === 'driver_help_knowledge_records') {
         return {
@@ -122,4 +133,38 @@ test('production service returns the published canonical answer without AI rewri
   const interaction = supabase.writes.find((write) => write.table === 'driver_help_interactions');
   assert.equal(interaction.row.answer_snapshot, canonicalRecord.concise_answer);
   assert.deepEqual(interaction.row.canonical_trace[0].composition_source_paths, []);
+});
+
+test('production service signs images attached to the selected verified answer', async () => {
+  const cameraRecord = operationalRows.find((record) => (
+    record.knowledge_id === 'KNO-FORGE-CAMERA-SCAN-001'
+  ));
+  const records = operationalRows.map((record) => record === cameraRecord ? {
+    ...record,
+    images: [{
+      filename: 'FAQ-FORGE-SETTINGS-P005.png',
+      caption: 'Use Camera to Scan setting',
+      storage_bucket: 'driver-help-images',
+      storage_path: '2026-08-13.1/FAQ-FORGE-SETTINGS-P005.png',
+      width: 1170,
+      height: 2532
+    }]
+  } : record);
+  const service = createDriverHelpService({
+    supabase: fakeSupabase(records, { signedUrl: 'https://signed.test' }),
+    now: () => new Date('2026-08-14T12:00:00.000Z')
+  });
+
+  const response = await service.answerQuestion({
+    accountId: 'account-1',
+    driverId: 'driver-1',
+    question: 'turned camera scan on now side button dead'
+  });
+
+  assert.equal(response.response_mode, 'ANSWER');
+  assert.equal(response.images.length, 1);
+  assert.equal(response.images[0].caption, 'Use Camera to Scan setting');
+  assert.match(response.images[0].url, /^https:\/\/signed\.test\/driver-help-images\//);
+  assert.equal(response.images[0].expires_in, 900);
+  assert.equal(response.images[0].storage_path, undefined);
 });

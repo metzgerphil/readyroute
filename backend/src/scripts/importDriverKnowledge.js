@@ -26,6 +26,15 @@ const DEFAULT_REFERENCE_CASES_PATH = path.resolve(
   __dirname,
   '../../../knowledge/evaluations/reference-language-cases.jsonl'
 );
+const DEFAULT_ANSWER_BUNDLE_PATH = path.resolve(
+  __dirname,
+  '../../../outputs/answer-library-v1/drive-complete/runtime/bundle.json'
+);
+const DEFAULT_ANSWER_IMAGE_DIR = path.resolve(
+  __dirname,
+  '../../../outputs/answer-library-v1/drive-complete/runtime/images'
+);
+const DRIVER_HELP_IMAGE_BUCKET = 'driver-help-images';
 
 const PRODUCTION_ELIGIBLE_STATUSES = new Set(['SOURCE_VERIFIED', 'READY_ROUTE_APPROVED']);
 
@@ -37,6 +46,8 @@ function parseArguments(argv) {
     deliveryReferences: DEFAULT_DELIVERY_REFERENCES_PATH,
     pickupReferences: DEFAULT_PICKUP_REFERENCES_PATH,
     referenceCases: DEFAULT_REFERENCE_CASES_PATH,
+    answerBundle: DEFAULT_ANSWER_BUNDLE_PATH,
+    imageDir: DEFAULT_ANSWER_IMAGE_DIR,
     dryRun: false
   };
   for (let index = 0; index < argv.length; index += 1) {
@@ -59,6 +70,12 @@ function parseArguments(argv) {
       index += 1;
     } else if (argv[index] === '--reference-cases' && argv[index + 1]) {
       args.referenceCases = path.resolve(argv[index + 1]);
+      index += 1;
+    } else if (argv[index] === '--answer-bundle' && argv[index + 1]) {
+      args.answerBundle = path.resolve(argv[index + 1]);
+      index += 1;
+    } else if (argv[index] === '--image-dir' && argv[index + 1]) {
+      args.imageDir = path.resolve(argv[index + 1]);
       index += 1;
     }
   }
@@ -147,6 +164,80 @@ function checksum(value) {
   return crypto.createHash('sha256').update(JSON.stringify(value)).digest('hex');
 }
 
+function readPngDimensions(buffer, filename = 'image') {
+  const pngSignature = Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]);
+  if (buffer.length < 24 || !buffer.subarray(0, 8).equals(pngSignature)) {
+    throw new Error(`${filename} is not a valid PNG image.`);
+  }
+  const width = buffer.readUInt32BE(16);
+  const height = buffer.readUInt32BE(20);
+  if (!width || !height) {
+    throw new Error(`${filename} has invalid PNG dimensions.`);
+  }
+  return { width, height };
+}
+
+function readAnswerImageIndex(bundlePath, imageDir) {
+  if (!fs.existsSync(bundlePath)) {
+    throw new Error(`Answer bundle not found: ${bundlePath}`);
+  }
+  const bundle = JSON.parse(fs.readFileSync(bundlePath, 'utf8'));
+  const bundleVersion = String(bundle.bundle_version || '').trim();
+  if (!bundleVersion) {
+    throw new Error('Answer bundle is missing bundle_version.');
+  }
+
+  const imagesByKnowledgeId = new Map();
+  const assetsByStoragePath = new Map();
+  for (const record of bundle.records || []) {
+    const knowledgeId = String(record.trace?.source_record_id || '').trim();
+    if (!knowledgeId || !Array.isArray(record.images) || !record.images.length) continue;
+
+    const images = record.images.map((image) => {
+      const filename = path.basename(String(image.filename || '').trim());
+      if (!filename || filename !== image.filename || path.extname(filename).toLowerCase() !== '.png') {
+        throw new Error(`Unsafe or unsupported answer image filename: ${image.filename || 'missing'}`);
+      }
+      const localPath = path.join(imageDir, filename);
+      if (!fs.existsSync(localPath)) {
+        throw new Error(`Referenced answer image not found: ${localPath}`);
+      }
+      const bytes = fs.readFileSync(localPath);
+      const dimensions = readPngDimensions(bytes, filename);
+      const storagePath = `${bundleVersion}/${filename}`;
+      assetsByStoragePath.set(storagePath, {
+        filename,
+        localPath,
+        storagePath,
+        bytes,
+        checksum: crypto.createHash('sha256').update(bytes).digest('hex')
+      });
+      return {
+        filename,
+        caption: String(image.caption || '').trim(),
+        storage_bucket: DRIVER_HELP_IMAGE_BUCKET,
+        storage_path: storagePath,
+        width: dimensions.width,
+        height: dimensions.height,
+        checksum: assetsByStoragePath.get(storagePath).checksum
+      };
+    });
+
+    const existing = imagesByKnowledgeId.get(knowledgeId) || [];
+    const merged = [...existing];
+    for (const image of images) {
+      if (!merged.some((candidate) => candidate.storage_path === image.storage_path)) merged.push(image);
+    }
+    imagesByKnowledgeId.set(knowledgeId, merged);
+  }
+
+  return {
+    bundleVersion,
+    imagesByKnowledgeId,
+    assets: [...assetsByStoragePath.values()]
+  };
+}
+
 function validateProductionEligibleRecord(record) {
   const errors = [];
   if (!record.knowledge_id) errors.push('knowledge_id');
@@ -158,10 +249,17 @@ function validateProductionEligibleRecord(record) {
   return errors;
 }
 
-function toKnowledgeRow(record, importedAt, extraVariants = [], questionPatterns = [], publicationGate = {}) {
+function toKnowledgeRow(
+  record,
+  importedAt,
+  extraVariants = [],
+  questionPatterns = [],
+  publicationGate = {},
+  images
+) {
   const variants = [...new Set([...(record.driver_question_variants || []), ...extraVariants])];
   const isPublished = publicationGate.isPublished === true;
-  return {
+  const row = {
     knowledge_id: record.knowledge_id,
     version: record.record_version,
     status: record.knowledge_status,
@@ -197,6 +295,8 @@ function toKnowledgeRow(record, importedAt, extraVariants = [], questionPatterns
     published_at: isPublished ? importedAt : null,
     updated_at: importedAt
   };
+  if (images !== undefined) row.images = isPublished ? images : [];
+  return row;
 }
 
 function buildVariantIndex(driverCases = []) {
@@ -314,7 +414,8 @@ function buildImport(
   sourceInventory = new Map(),
   publicationGateIndex = buildPublicationGateIndex(records),
   references = [],
-  referenceCases = []
+  referenceCases = [],
+  imageIndex = null
 ) {
   const eligible = records.filter((record) => PRODUCTION_ELIGIBLE_STATUSES.has(record.knowledge_status));
   const invalid = eligible
@@ -345,7 +446,8 @@ function buildImport(
     importedAt,
     variantIndex.get(record.knowledge_id) || [],
     patternIndex.get(record.knowledge_id) || [],
-    publicationGateIndex.get(record.knowledge_id)
+    publicationGateIndex.get(record.knowledge_id),
+    imageIndex ? imageIndex.get(record.knowledge_id) || [] : undefined
   ));
   const canonicalReferences = references.map((reference) => (
     toCanonicalReferenceRecord(reference, referenceCases)
@@ -404,6 +506,18 @@ async function upsertInBatches(table, rows, options = {}) {
   }
 }
 
+async function uploadAnswerImages(supabase, assets) {
+  const bucket = supabase.storage.from(DRIVER_HELP_IMAGE_BUCKET);
+  for (const asset of assets) {
+    const { error } = await bucket.upload(asset.storagePath, asset.bytes, {
+      cacheControl: '31536000',
+      contentType: 'image/png',
+      upsert: true
+    });
+    if (error) throw error;
+  }
+}
+
 async function main() {
   const args = parseArguments(process.argv.slice(2));
   const records = readJsonLines(args.source);
@@ -413,6 +527,9 @@ async function main() {
     .filter((filePath) => fs.existsSync(filePath))
     .flatMap((filePath) => readJsonLines(filePath));
   const referenceCases = fs.existsSync(args.referenceCases) ? readJsonLines(args.referenceCases) : [];
+  const answerImages = fs.existsSync(args.answerBundle)
+    ? readAnswerImageIndex(args.answerBundle, args.imageDir)
+    : { bundleVersion: null, imagesByKnowledgeId: null, assets: [] };
   const publicationGateIndex = buildPublicationGateIndex(records);
   const payload = buildImport(
     records,
@@ -421,7 +538,8 @@ async function main() {
     sourceInventory,
     publicationGateIndex,
     references,
-    referenceCases
+    referenceCases,
+    answerImages.imagesByKnowledgeId
   );
   const summary = {
     source_file: args.source,
@@ -444,10 +562,15 @@ async function main() {
     )).length,
     sources: payload.sourceRows.length,
     evidence_links: payload.evidenceRows.length,
+    answer_bundle_version: answerImages.bundleVersion,
+    records_with_images: payload.knowledgeRows.filter((row) => row.images?.length).length,
+    answer_image_assets: answerImages.assets.length,
     dry_run: args.dryRun
   };
 
   if (!args.dryRun) {
+    const supabase = require('../lib/supabase');
+    await uploadAnswerImages(supabase, answerImages.assets);
     await upsertInBatches('driver_help_knowledge_sources', payload.sourceRows, { onConflict: 'source_id' });
     await upsertInBatches('driver_help_knowledge_records', payload.knowledgeRows, { onConflict: 'knowledge_id,version' });
     await upsertInBatches('driver_help_knowledge_record_sources', payload.evidenceRows, {
@@ -473,10 +596,13 @@ module.exports = {
   mapReferenceStatus,
   parseArguments,
   parseCsv,
+  readAnswerImageIndex,
   readJsonLines,
+  readPngDimensions,
   readSourceInventory,
   PRODUCTION_ELIGIBLE_STATUSES,
   toCanonicalReferenceRecord,
+  uploadAnswerImages,
   validateReferenceRecord,
   validateProductionEligibleRecord
 };

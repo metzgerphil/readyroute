@@ -1,5 +1,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const os = require('node:os');
 const path = require('node:path');
 
 const {
@@ -7,7 +9,9 @@ const {
   buildPublicationGateIndex,
   mapReferenceStatus,
   parseCsv,
+  readAnswerImageIndex,
   readJsonLines,
+  readPngDimensions,
   toCanonicalReferenceRecord,
   validateReferenceRecord,
   validateProductionEligibleRecord
@@ -49,6 +53,64 @@ test('production validation requires canonical evidence and a driver-language su
     validateProductionEligibleRecord(canonicalRecord({ source_evidence: [], driver_question_variants: [] })),
     ['source_evidence', 'driver_question_variants']
   );
+});
+
+test('published answer images map to canonical knowledge records with private storage metadata', () => {
+  const fixtureRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'readyroute-answer-images-'));
+  const imageDir = path.join(fixtureRoot, 'images');
+  fs.mkdirSync(imageDir);
+  const imageBytes = Buffer.alloc(24);
+  Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]).copy(imageBytes);
+  imageBytes.writeUInt32BE(1170, 16);
+  imageBytes.writeUInt32BE(2532, 20);
+  fs.writeFileSync(path.join(imageDir, 'FAQ-FORGE-SETTINGS-P005.png'), imageBytes);
+  const bundlePath = path.join(fixtureRoot, 'bundle.json');
+  fs.writeFileSync(bundlePath, JSON.stringify({
+    bundle_version: '2026-08-13.1',
+    records: [{
+      trace: { source_record_id: 'KNO-FORGE-CAMERA-SCAN-001' },
+      images: [{
+        filename: 'FAQ-FORGE-SETTINGS-P005.png',
+        caption: 'Use Camera to Scan setting'
+      }]
+    }]
+  }));
+  const imageIndex = readAnswerImageIndex(
+    bundlePath,
+    imageDir
+  );
+  const cameraImages = imageIndex.imagesByKnowledgeId.get('KNO-FORGE-CAMERA-SCAN-001');
+
+  assert.equal(imageIndex.bundleVersion, '2026-08-13.1');
+  assert.equal(imageIndex.imagesByKnowledgeId.size, 1);
+  assert.equal(imageIndex.assets.length, 1);
+  assert.equal(cameraImages[0].filename, 'FAQ-FORGE-SETTINGS-P005.png');
+  assert.equal(cameraImages[0].storage_bucket, 'driver-help-images');
+  assert.match(cameraImages[0].storage_path, /^2026-08-13\.1\//);
+  assert.ok(cameraImages[0].width > 0);
+  assert.ok(cameraImages[0].height > 0);
+  assert.match(cameraImages[0].checksum, /^[a-f0-9]{64}$/);
+
+  const payload = buildImport(
+    [canonicalRecord({ knowledge_id: 'KNO-FORGE-CAMERA-SCAN-001' })],
+    '2026-08-14T00:00:00.000Z',
+    [],
+    new Map(),
+    undefined,
+    [],
+    [],
+    imageIndex.imagesByKnowledgeId
+  );
+  assert.deepEqual(payload.knowledgeRows[0].images, cameraImages);
+});
+
+test('PNG validation rejects non-image bytes', () => {
+  assert.throws(() => readPngDimensions(Buffer.from('not a png'), 'bad.png'), /valid PNG/);
+});
+
+test('canonical imports preserve stored image mappings when the private bundle is unavailable', () => {
+  const payload = buildImport([canonicalRecord()], '2026-08-14T00:00:00.000Z');
+  assert.equal(Object.hasOwn(payload.knowledgeRows[0], 'images'), false);
 });
 
 test('canonical reference definitions import in a separate namespace with status-aware publication', () => {

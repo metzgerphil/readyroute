@@ -9,6 +9,10 @@ const {
   buildDriverHelpReferenceDecision,
   isReferenceRecord
 } = require('./driverHelpReference');
+const {
+  createSignedStorageUrl,
+  getSignedUrlTtlSeconds
+} = require('./privateStorage');
 
 const MISSING_TABLE_CODES = new Set(['42P01', 'PGRST106', 'PGRST204', 'PGRST205']);
 
@@ -63,6 +67,7 @@ function createDriverHelpService({
         'clarification_requirements',
         'driver_question_variants',
         'driver_question_patterns',
+        'images',
         'concise_answer',
         'more_info_answer'
       ].join(', '));
@@ -75,6 +80,39 @@ function createDriverHelpService({
     }
 
     return Array.isArray(data) ? data : [];
+  }
+
+  async function getAnswerImages(selectedRecords = []) {
+    const uniqueImages = new Map();
+    for (const record of selectedRecords) {
+      for (const image of record.images || []) {
+        const storagePath = String(image?.storage_path || '').trim();
+        if (storagePath && !uniqueImages.has(storagePath)) uniqueImages.set(storagePath, image);
+      }
+    }
+
+    const signedImages = await Promise.all([...uniqueImages.values()].map(async (image) => {
+      let url = null;
+      try {
+        url = await createSignedStorageUrl(supabase, {
+          bucket: image.storage_bucket,
+          path: image.storage_path
+        }, { fallbackBucket: 'driver-help-images' });
+      } catch (_error) {
+        return null;
+      }
+      if (!url) return null;
+      return {
+        filename: image.filename,
+        caption: image.caption || '',
+        width: Number(image.width) || null,
+        height: Number(image.height) || null,
+        url,
+        expires_in: getSignedUrlTtlSeconds()
+      };
+    }));
+
+    return signedImages.filter(Boolean);
   }
 
   async function loadSessionContext(sessionId, accountId, actorType, actorId) {
@@ -254,6 +292,9 @@ function createDriverHelpService({
       decision,
       responseLatencyMs: Math.max(0, Date.now() - startedAt)
     });
+    const images = decision.response_mode === 'ANSWER'
+      ? await getAnswerImages(decision.selected_records)
+      : [];
 
     return {
       session_id: effectiveSessionId,
@@ -263,6 +304,7 @@ function createDriverHelpService({
       answer: decision.answer || null,
       more_info: decision.more_info || null,
       answer_structure: decision.answer_structure || null,
+      images,
       composition_mode: decision.composition_mode || 'DETERMINISTIC',
       clarification_prompt: decision.clarification_prompt || null,
       clarification_options: decision.clarification_options || [],

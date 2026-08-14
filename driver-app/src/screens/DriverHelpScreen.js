@@ -1,8 +1,10 @@
 import { useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
+  Image,
   Keyboard,
   KeyboardAvoidingView,
+  Modal,
   PanResponder,
   Platform,
   Pressable,
@@ -157,6 +159,7 @@ export default function DriverHelpScreen() {
   const [dictationError, setDictationError] = useState('');
   const [isListening, setIsListening] = useState(false);
   const [selectedClarificationKey, setSelectedClarificationKey] = useState(null);
+  const [selectedImage, setSelectedImage] = useState(null);
   const answerStructure = getAnswerStructure(result);
 
   useEffect(() => {
@@ -236,6 +239,7 @@ export default function DriverHelpScreen() {
     setShowMore(false);
     setExpandedOptionId(null);
     setFeedback(null);
+    setSelectedImage(null);
 
     try {
       const response = await api.post('/driver-help/query', {
@@ -334,6 +338,7 @@ export default function DriverHelpScreen() {
     setShowMore(false);
     setExpandedOptionId(null);
     setFeedback(null);
+    setSelectedImage(null);
     setError('');
     setDictationError('');
     setDictationHint(false);
@@ -354,6 +359,7 @@ export default function DriverHelpScreen() {
     historyRef.current = historyRef.current.slice(0, -1);
     setExpandedOptionId(previousState.expandedOptionId);
     setFeedback(previousState.feedback);
+    setSelectedImage(null);
     setQuestion(previousState.question);
     setResult(previousState.result);
     setSessionId(previousState.sessionId);
@@ -581,6 +587,35 @@ export default function DriverHelpScreen() {
                 </View>
               ) : null}
 
+              {(result.images || []).length ? (
+                <View style={styles.visualReferenceSection}>
+                  <Text style={styles.visualReferenceTitle}>Visual reference</Text>
+                  <Text style={styles.visualReferenceNote}>The verified written procedure above controls.</Text>
+                  {(result.images || []).map((image, index) => {
+                    const label = image.caption || `Visual reference ${index + 1}`;
+                    return (
+                      <Pressable
+                        accessibilityHint="Opens the image full screen"
+                        accessibilityLabel={`Open image: ${label}`}
+                        accessibilityRole="imagebutton"
+                        key={`${image.filename || image.url}-${index}`}
+                        onPress={() => setSelectedImage(image)}
+                        style={({ pressed }) => [styles.answerImageCard, pressed ? styles.pressed : null]}
+                      >
+                        <Image
+                          accessibilityLabel={label}
+                          resizeMode="contain"
+                          source={{ uri: image.url }}
+                          style={styles.answerImage}
+                        />
+                        {image.caption ? <Text style={styles.answerImageCaption}>{image.caption}</Text> : null}
+                        <Text style={styles.answerImageHint}>Tap to enlarge</Text>
+                      </Pressable>
+                    );
+                  })}
+                </View>
+              ) : null}
+
               {answerStructure.prohibitedActions.length ? (
                 <View style={styles.warningPanel}>
                   <Text maxFontSizeMultiplier={1.25} style={styles.warningTitle}>Do not</Text>
@@ -784,6 +819,34 @@ export default function DriverHelpScreen() {
           style={styles.backSwipeEdge}
         />
       ) : null}
+      <Modal
+        animationType="fade"
+        onRequestClose={() => setSelectedImage(null)}
+        transparent
+        visible={Boolean(selectedImage)}
+      >
+        <SafeAreaView style={styles.imageModal}>
+          <View style={styles.imageModalHeader}>
+            <Text numberOfLines={2} style={styles.imageModalCaption}>{selectedImage?.caption || 'Visual reference'}</Text>
+            <Pressable
+              accessibilityLabel="Close image"
+              accessibilityRole="button"
+              onPress={() => setSelectedImage(null)}
+              style={({ pressed }) => [styles.imageModalClose, pressed ? styles.pressed : null]}
+            >
+              <Text style={styles.imageModalCloseText}>Close</Text>
+            </Pressable>
+          </View>
+          {selectedImage?.url ? (
+            <Image
+              accessibilityLabel={selectedImage.caption || 'Expanded visual reference'}
+              resizeMode="contain"
+              source={{ uri: selectedImage.url }}
+              style={styles.imageModalAsset}
+            />
+          ) : null}
+        </SafeAreaView>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -852,6 +915,19 @@ const styles = StyleSheet.create({
   answerOptionSummary: { color: appTheme.colors.textSecondary, fontSize: 14, lineHeight: 20, marginTop: 4 },
   answerOptionToggle: { color: appTheme.colors.greenText, fontSize: 24, fontWeight: '500', lineHeight: 25 },
   answerOptionDetails: { borderTopColor: appTheme.colors.divider, borderTopWidth: 1, marginTop: 12, paddingTop: 8 },
+  visualReferenceSection: { borderTopColor: appTheme.colors.divider, borderTopWidth: 1, gap: 10, marginTop: 20, paddingTop: 16 },
+  visualReferenceTitle: { color: BRAND_NAVY, fontSize: 13, fontWeight: '900', letterSpacing: 0.7, textTransform: 'uppercase' },
+  visualReferenceNote: { color: appTheme.colors.textSecondary, fontSize: 12, lineHeight: 18 },
+  answerImageCard: { backgroundColor: appTheme.colors.surfaceMuted, borderColor: appTheme.colors.border, borderRadius: 16, borderWidth: 1, overflow: 'hidden', padding: 10 },
+  answerImage: { backgroundColor: '#ffffff', borderRadius: 10, height: 260, width: '100%' },
+  answerImageCaption: { color: appTheme.colors.textPrimary, fontSize: 13, fontWeight: '700', lineHeight: 19, marginTop: 9 },
+  answerImageHint: { color: BRAND_ORANGE, fontSize: 11, fontWeight: '900', marginTop: 5, textTransform: 'uppercase' },
+  imageModal: { backgroundColor: 'rgba(8, 20, 31, 0.97)', flex: 1, padding: 16 },
+  imageModalHeader: { alignItems: 'center', flexDirection: 'row', gap: 16, justifyContent: 'space-between', minHeight: 52 },
+  imageModalCaption: { color: '#ffffff', flex: 1, fontSize: 14, fontWeight: '700', lineHeight: 20 },
+  imageModalClose: { borderColor: '#ffffff', borderRadius: 14, borderWidth: 1, paddingHorizontal: 16, paddingVertical: 10 },
+  imageModalCloseText: { color: '#ffffff', fontSize: 14, fontWeight: '900' },
+  imageModalAsset: { flex: 1, marginTop: 12, width: '100%' },
   warningPanel: { backgroundColor: appTheme.colors.warningSoft, borderColor: appTheme.colors.warning, borderRadius: 16, borderWidth: 1, marginTop: 18, padding: 14 },
   warningTitle: { color: appTheme.colors.warningText, fontSize: 12, fontWeight: '900', letterSpacing: 0.7, marginBottom: 6, textTransform: 'uppercase' },
   bulletRow: { alignItems: 'flex-start', flexDirection: 'row', gap: 8, marginTop: 6 },

@@ -54,6 +54,17 @@ npm run answer-library:release-check
 
 This rebuilds the authoring catalog and runtime bundle, runs deterministic matcher tests, runs the adversarial retrieval set, verifies image and manifest integrity, validates clarification targets, and checks the namespaced code index.
 
+## Publishing private image assets
+
+The canonical knowledge importer detects the local runtime bundle, uploads its referenced PNG files to the private `driver-help-images` bucket, and stores only versioned paths and captions on published knowledge records:
+
+```bash
+cd backend
+npm run knowledge:import
+```
+
+Run that command from an approved workspace containing `outputs/answer-library-v1/drive-complete/runtime/`. A clean CI checkout does not contain the private image bytes; in that environment the importer leaves existing image mappings unchanged instead of clearing them. The driver-help API generates short-lived signed URLs only for images belonging to the selected verified answer.
+
 ## Readiness boundary
 
 The answer library is prepared for application wiring after its build and validation checks pass. This document does not authorize a deployment, TestFlight submission, EAS build, or replacement of the existing frontend.
