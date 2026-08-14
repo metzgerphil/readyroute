@@ -20,6 +20,11 @@ const referenceRows = buildImport(
   references,
   cases
 ).knowledgeRows;
+const operationalRows = buildImport(
+  readJsonLines(path.join(root, 'knowledge/operations/records.jsonl')),
+  new Date(0).toISOString(),
+  readJsonLines(path.join(root, 'knowledge/evaluations/driver-language-cases.jsonl'))
+).knowledgeRows;
 
 function fakeSupabase(records) {
   const writes = [];
@@ -87,4 +92,34 @@ test('production service routes reference questions separately and preserves can
   const interaction = supabase.writes.find((write) => write.table === 'driver_help_interactions');
   assert.deepEqual(interaction.row.selected_knowledge_ids, ['DELIVERY_STATUS:002', 'DELIVERY_STATUS:003']);
   assert.ok(interaction.row.canonical_trace.every((item) => item.source_ids.length > 0));
+});
+
+test('grounded AI source fields are returned in the client trace and stored interaction trace', async () => {
+  const supabase = fakeSupabase(operationalRows);
+  const service = createDriverHelpService({
+    supabase,
+    now: () => new Date('2026-08-13T12:00:00.000Z'),
+    composeGroundedAnswer: async () => ({
+      selection: 'COMPOSED',
+      answer: 'Camera Scan disables the device barcode scanner while it is enabled.',
+      more_info: null,
+      answer_structure: null,
+      grounding: [{
+        output_path: 'answer',
+        knowledge_id: 'KNO-FORGE-CAMERA-SCAN-001',
+        source_paths: ['concise_answer']
+      }]
+    })
+  });
+
+  const response = await service.answerQuestion({
+    accountId: 'account-1',
+    driverId: 'driver-1',
+    question: 'turned camera scan on now side button dead'
+  });
+
+  assert.equal(response.composition_mode, 'GROUNDED_AI');
+  assert.deepEqual(response.trace[0].composition_source_paths, ['concise_answer']);
+  const interaction = supabase.writes.find((write) => write.table === 'driver_help_interactions');
+  assert.deepEqual(interaction.row.canonical_trace[0].composition_source_paths, ['concise_answer']);
 });

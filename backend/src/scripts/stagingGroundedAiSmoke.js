@@ -127,11 +127,11 @@ async function main() {
       assert.equal(answer.composition_mode, scenario.compositionMode, `${scenario.name} composition mode`);
       if (scenario.knowledgeId) {
         assert.ok(
-          (answer.selected_records || []).some((record) => record.knowledge_id === scenario.knowledgeId),
+          (answer.trace || []).some((record) => record.knowledge_id === scenario.knowledgeId),
           `${scenario.name} selected record`
         );
         assert.ok(
-          (answer.selected_records || []).some((record) => (
+          (answer.trace || []).some((record) => (
             record.knowledge_id === scenario.knowledgeId
               && Array.isArray(record.composition_source_paths)
               && record.composition_source_paths.length > 0
@@ -143,7 +143,7 @@ async function main() {
         name: scenario.name,
         response_mode: answer.response_mode,
         composition_mode: answer.composition_mode,
-        selected_knowledge_ids: (answer.selected_records || []).map((record) => record.knowledge_id),
+        selected_knowledge_ids: (answer.trace || []).map((record) => record.knowledge_id),
         latency_ms: Date.now() - before
       });
     }

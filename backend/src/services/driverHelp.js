@@ -268,7 +268,10 @@ function createDriverHelpService({
         canonical_version: record.version,
         category_paths: record.taxonomy_paths || [],
         source_ids: record.source_ids || [],
-        adjudication_id: record.adjudication_id || null
+        adjudication_id: record.adjudication_id || null,
+        composition_source_paths: (decision.composition_grounding || [])
+          .filter((entry) => entry.knowledge_id === record.knowledge_id)
+          .flatMap((entry) => entry.source_paths || (entry.source_path ? [entry.source_path] : []))
       }))
     };
   }
