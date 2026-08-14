@@ -49,3 +49,5 @@ yarn-debug.log*
 yarn-error.log*
 tmp_*.txt
 .vercel
+.firebase/
+firebase-debug.log*
