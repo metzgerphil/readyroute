@@ -20,3 +20,8 @@ set
   public = false,
   file_size_limit = excluded.file_size_limit,
   allowed_mime_types = excluded.allowed_mime_types;
+
+insert into public.readyroute_schema_state (id, version, applied_at)
+values (true, '20260814193000', now())
+on conflict (id) do update
+set version = excluded.version, applied_at = excluded.applied_at;
