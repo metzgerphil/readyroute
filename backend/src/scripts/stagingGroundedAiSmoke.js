@@ -66,6 +66,7 @@ async function main() {
       account_id: accountId,
       name: 'Grounded AI Smoke Driver',
       email,
+      pin: passwordHash,
       password_hash: passwordHash,
       invited_at: new Date().toISOString(),
       invite_accepted_at: new Date().toISOString(),
