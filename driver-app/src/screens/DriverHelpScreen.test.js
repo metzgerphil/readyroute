@@ -237,6 +237,53 @@ describe('DriverHelpScreen', () => {
     });
   });
 
+  it('submits a clarification option on the first tap and immediately shows progress', async () => {
+    let resolveFollowUp;
+    api.post
+      .mockResolvedValueOnce({
+        data: {
+          session_id: 'session-one-tap',
+          interaction_id: 'interaction-question',
+          response_mode: 'CLARIFY',
+          clarification_prompt: 'What signature type does FORGE show?',
+          clarification_options: [{
+            knowledge_id: 'FLOW:signature-type:dsr',
+            version: 1,
+            label: 'DSR — Direct Signature',
+            query: 'DSR package nobody home'
+          }]
+        }
+      })
+      .mockImplementationOnce(() => new Promise((resolve) => {
+        resolveFollowUp = resolve;
+      }));
+    const screen = render(<DriverHelpScreen />);
+
+    fireEvent.changeText(screen.getByLabelText('Driver question'), 'sig pkg nobody home');
+    fireEvent.press(screen.getByLabelText('Ask Ready Route'));
+    const option = await screen.findByLabelText('DSR — Direct Signature');
+    fireEvent.press(option);
+    fireEvent.press(option);
+
+    expect(screen.getByText('Checking…')).toBeTruthy();
+    expect(api.post).toHaveBeenCalledTimes(2);
+    expect(api.post).toHaveBeenLastCalledWith('/driver-help/query', {
+      question: 'DSR package nobody home',
+      session_id: 'session-one-tap'
+    });
+
+    await act(async () => resolveFollowUp({
+      data: {
+        session_id: 'session-one-tap',
+        interaction_id: 'interaction-answer',
+        response_mode: 'ANSWER',
+        answer: 'Use the direct-signature procedure.',
+        trace: [{ knowledge_id: 'KNO-DEL-SIG-DSR-001', version: 1 }]
+      }
+    }));
+    expect(await screen.findByText('Use the direct-signature procedure.')).toBeTruthy();
+  });
+
   it('lets a driver say they are not sure without inventing a clarification answer', async () => {
     api.post
       .mockResolvedValueOnce({

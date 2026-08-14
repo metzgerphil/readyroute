@@ -981,3 +981,49 @@ test('a request for a recorded FedEx interview selects the media procedure direc
   assert.equal(decision.response_mode, 'ANSWER');
   assert.equal(decision.selected_records[0].knowledge_id, media.knowledge_id);
 });
+
+test('critical intents bypass unrelated similarity candidates and select their definitive records', () => {
+  const criticalRecords = [
+    {
+      id: 'KNO-INC-ACCIDENT-SCENE-001',
+      situation: 'Immediate actions at a vehicle accident scene',
+      answer: 'Handle immediate safety first: call 9-1-1 if needed.'
+    },
+    {
+      id: 'KNO-ETH-FALSIFICATION-001',
+      situation: 'Potential falsification during service',
+      answer: 'Do not sign anything that is not true.'
+    },
+    {
+      id: 'KNO-DEL-SCAN-INTEGRITY-001',
+      situation: 'Choosing when and where to scan',
+      answer: 'Do not pre-scan. Scan at the customer location when the event happens.'
+    }
+  ].map((item) => ({
+    ...records[0],
+    knowledge_id: item.id,
+    canonical_situation: item.situation,
+    normalized_description: item.situation,
+    driver_question_variants: [],
+    concise_answer: item.answer
+  }));
+  const unrelatedSafePlace = {
+    ...records[0],
+    knowledge_id: 'KNO-DEL-SAFEPLACE-001',
+    canonical_situation: 'Finding a safe place for a delivery',
+    normalized_description: 'Scan packages and leave them at a protected location',
+    driver_question_variants: ['scan all stops before leaving the station']
+  };
+
+  const cases = [
+    ['I was just in a crash. What should I do first?', 'KNO-INC-ACCIDENT-SCENE-001'],
+    ['Can I sign the scanner for the customer to save time?', 'KNO-ETH-FALSIFICATION-001'],
+    ['Can I prescan all my stops before I leave the station?', 'KNO-DEL-SCAN-INTEGRITY-001']
+  ];
+  for (const [question, knowledgeId] of cases) {
+    const decision = buildDriverHelpDecision(question, [unrelatedSafePlace, ...criticalRecords]);
+    assert.equal(decision.response_mode, 'ANSWER');
+    assert.equal(decision.selected_records[0].knowledge_id, knowledgeId);
+    assert.match(decision.candidates[0].routing_reason, /^critical-intent:/);
+  }
+});

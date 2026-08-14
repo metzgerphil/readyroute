@@ -52,6 +52,21 @@ function extractOperationalNumbers(value) {
   return new Set(matches.map((match) => match.replace(/^0+(?=\d)/, '')));
 }
 
+function validateRequiredAnswerPatterns(payload, requiredPatterns = []) {
+  if (!requiredPatterns.length) return { valid: true, reason: null };
+  const output = sourceText({
+    answer: payload.answer,
+    more_info: payload.more_info,
+    answer_structure: payload.answer_structure
+  });
+  for (const pattern of requiredPatterns) {
+    if (!new RegExp(pattern, 'i').test(output)) {
+      return { valid: false, reason: 'missing_required_driver_instruction' };
+    }
+  }
+  return { valid: true, reason: null };
+}
+
 function validateGroundingEntry(entry, recordById) {
   if (!isPlainObject(entry) || typeof entry.output_path !== 'string') return false;
   const record = recordById.get(entry.knowledge_id);
@@ -161,6 +176,13 @@ async function composeGroundedDecision(decision, composer) {
   }
   const validation = validateGroundedComposition(payload, decision.selected_records);
   if (!validation.valid) return deterministicFallback(decision, validation.reason);
+  const instructionValidation = validateRequiredAnswerPatterns(
+    payload,
+    decision.required_answer_patterns || []
+  );
+  if (!instructionValidation.valid) {
+    return deterministicFallback(decision, instructionValidation.reason);
+  }
 
   return {
     ...decision,
@@ -179,5 +201,6 @@ module.exports = {
   ALLOWED_SOURCE_PATHS,
   buildGroundingSources,
   composeGroundedDecision,
-  validateGroundedComposition
+  validateGroundedComposition,
+  validateRequiredAnswerPatterns
 };

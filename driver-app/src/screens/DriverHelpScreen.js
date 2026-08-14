@@ -1,6 +1,7 @@
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
+  Keyboard,
   KeyboardAvoidingView,
   PanResponder,
   Platform,
@@ -133,7 +134,10 @@ function getAnswerStructure(result) {
 
 export default function DriverHelpScreen() {
   const inputRef = useRef(null);
+  const inputFocusedRef = useRef(false);
   const historyRef = useRef([]);
+  const scrollRef = useRef(null);
+  const submittingRef = useRef(false);
   const [question, setQuestion] = useState('');
   const [situationQuestion, setSituationQuestion] = useState('');
   const [sessionId, setSessionId] = useState(null);
@@ -146,7 +150,17 @@ export default function DriverHelpScreen() {
   const [dictationHint, setDictationHint] = useState(false);
   const [dictationError, setDictationError] = useState('');
   const [isListening, setIsListening] = useState(false);
+  const [selectedClarificationKey, setSelectedClarificationKey] = useState(null);
   const answerStructure = getAnswerStructure(result);
+
+  useEffect(() => {
+    const subscription = Keyboard.addListener('keyboardDidShow', () => {
+      if (inputFocusedRef.current) {
+        scrollRef.current?.scrollToEnd({ animated: true });
+      }
+    });
+    return () => subscription.remove();
+  }, []);
 
   useSpeechRecognitionEvent('start', () => {
     setIsListening(true);
@@ -186,9 +200,10 @@ export default function DriverHelpScreen() {
 
   async function submitQuestion(nextQuestion = question, { preserveSituation = false } = {}) {
     const trimmedQuestion = String(nextQuestion || '').trim();
-    if (trimmedQuestion.length < 2 || isSubmitting) {
+    if (trimmedQuestion.length < 2 || submittingRef.current) {
       return;
     }
+    submittingRef.current = true;
 
     const previousState = {
       expandedOptionId,
@@ -229,7 +244,9 @@ export default function DriverHelpScreen() {
           'Ready Route could not check the approved procedures right now. Contact your manager if you need an immediate answer.'
         ));
     } finally {
+      submittingRef.current = false;
       setIsSubmitting(false);
+      setSelectedClarificationKey(null);
     }
   }
 
@@ -282,13 +299,17 @@ export default function DriverHelpScreen() {
 
   function chooseClarification(option) {
     const followUp = option?.query || option?.label || '';
-    if (followUp) {
+    if (followUp && !submittingRef.current) {
+      setSelectedClarificationKey(`${option?.knowledge_id || 'option'}-${option?.version || 1}-${option?.label || followUp}`);
       submitQuestion(followUp, { preserveSituation: true });
     }
   }
 
   function chooseNotSure() {
-    submitQuestion("I'm not sure.", { preserveSituation: true });
+    if (!submittingRef.current) {
+      setSelectedClarificationKey('not-sure');
+      submitQuestion("I'm not sure.", { preserveSituation: true });
+    }
   }
 
   function startNewSituation() {
@@ -352,6 +373,13 @@ export default function DriverHelpScreen() {
             setQuestion(value);
             setError('');
           }}
+          onBlur={() => {
+            inputFocusedRef.current = false;
+          }}
+          onFocus={() => {
+            inputFocusedRef.current = true;
+            setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 120);
+          }}
           onSubmitEditing={() => submitQuestion()}
           placeholder={placeholder}
           placeholderTextColor={appTheme.colors.textTertiary}
@@ -388,8 +416,11 @@ export default function DriverHelpScreen() {
         style={styles.keyboardView}
       >
         <ScrollView
+          automaticallyAdjustKeyboardInsets={Platform.OS === 'ios'}
           contentContainerStyle={styles.content}
-          keyboardShouldPersistTaps="handled"
+          keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'}
+          keyboardShouldPersistTaps="always"
+          ref={scrollRef}
           showsVerticalScrollIndicator={false}
         >
           <View style={[styles.brandRow, result ? styles.brandRowCompact : null]}>
@@ -633,22 +664,45 @@ export default function DriverHelpScreen() {
               </View>
               <Text style={styles.clarificationPrompt}>{result.clarification_prompt}</Text>
               <View style={styles.optionList}>
-                {(result.clarification_options || []).map((option) => (
-                  <Pressable
-                    key={`${option.knowledge_id}-${option.version}`}
-                    onPress={() => chooseClarification(option)}
-                    style={({ pressed }) => [styles.optionButton, pressed ? styles.pressed : null]}
-                  >
-                    <Text style={styles.optionText}>{option.label}</Text>
-                  </Pressable>
-                ))}
+                {(result.clarification_options || []).map((option) => {
+                  const optionKey = `${option?.knowledge_id || 'option'}-${option?.version || 1}-${option?.label || option?.query}`;
+                  const isSelected = selectedClarificationKey === optionKey;
+                  return (
+                    <Pressable
+                      accessibilityLabel={option.label}
+                      accessibilityRole="button"
+                      disabled={isSubmitting}
+                      key={optionKey}
+                      onPress={() => chooseClarification(option)}
+                      style={({ pressed }) => [
+                        styles.optionButton,
+                        isSelected ? styles.optionButtonSelected : null,
+                        isSubmitting && !isSelected ? styles.disabled : null,
+                        pressed && !isSubmitting ? styles.pressed : null
+                      ]}
+                    >
+                      {isSelected && isSubmitting ? <ActivityIndicator color={BRAND_ORANGE} size="small" /> : null}
+                      <Text style={styles.optionText}>{isSelected && isSubmitting ? 'Checking…' : option.label}</Text>
+                    </Pressable>
+                  );
+                })}
                 <Pressable
                   accessibilityLabel="Not sure"
                   disabled={isSubmitting}
                   onPress={chooseNotSure}
-                  style={({ pressed }) => [styles.optionButton, styles.notSureButton, pressed ? styles.pressed : null]}
+                  style={({ pressed }) => [
+                    styles.optionButton,
+                    styles.notSureButton,
+                    selectedClarificationKey === 'not-sure' ? styles.optionButtonSelected : null,
+                    pressed && !isSubmitting ? styles.pressed : null
+                  ]}
                 >
-                  <Text style={styles.notSureText}>Not sure</Text>
+                  {selectedClarificationKey === 'not-sure' && isSubmitting ? (
+                    <ActivityIndicator color={BRAND_ORANGE} size="small" />
+                  ) : null}
+                  <Text style={styles.notSureText}>
+                    {selectedClarificationKey === 'not-sure' && isSubmitting ? 'Checking…' : 'Not sure'}
+                  </Text>
                 </Pressable>
               </View>
               {!(result.clarification_options || []).length ? (
@@ -732,7 +786,7 @@ const styles = StyleSheet.create({
   wordmark: { color: BRAND_NAVY, fontSize: 28, fontWeight: '900', letterSpacing: -1 },
   wordmarkAccent: { color: BRAND_ORANGE, fontWeight: '500' },
   homeHero: { alignItems: 'center', maxWidth: 620, paddingTop: 42, width: '100%' },
-  title: { color: BRAND_NAVY, fontSize: 34, fontWeight: '900', lineHeight: 41, maxWidth: 520, textAlign: 'center' },
+  title: { color: BRAND_NAVY, fontSize: 30, fontWeight: '900', lineHeight: 36, maxWidth: 520, textAlign: 'center' },
   micButton: { alignItems: 'center', backgroundColor: BRAND_ORANGE, borderColor: '#ffffff', borderRadius: 82, borderWidth: 5, height: 164, justifyContent: 'center', marginTop: 38, shadowColor: '#d45400', shadowOffset: { height: 10, width: 0 }, shadowOpacity: 0.24, shadowRadius: 22, width: 164 },
   micButtonListening: { backgroundColor: BRAND_NAVY, shadowColor: BRAND_NAVY },
   stopIcon: { backgroundColor: '#ffffff', borderRadius: 5, height: 38, width: 38 },
@@ -807,7 +861,8 @@ const styles = StyleSheet.create({
   feedbackSelected: { backgroundColor: appTheme.colors.orangeSoft, borderColor: appTheme.colors.orange },
   feedbackText: { color: appTheme.colors.textSecondary, fontSize: 14, fontWeight: '800' },
   optionList: { gap: 9, marginTop: 16 },
-  optionButton: { alignItems: 'center', backgroundColor: appTheme.colors.surface, borderColor: appTheme.colors.borderStrong, borderRadius: 15, borderWidth: 1, minHeight: 58, justifyContent: 'center', padding: 14 },
+  optionButton: { alignItems: 'center', backgroundColor: appTheme.colors.surface, borderColor: appTheme.colors.borderStrong, borderRadius: 15, borderWidth: 1, flexDirection: 'row', gap: 9, minHeight: 58, justifyContent: 'center', padding: 14 },
+  optionButtonSelected: { backgroundColor: appTheme.colors.orangeSoft, borderColor: BRAND_ORANGE },
   optionText: { color: appTheme.colors.textPrimary, fontSize: 15, fontWeight: '800', textAlign: 'center' },
   notSureButton: { borderStyle: 'dashed' },
   notSureText: { color: appTheme.colors.textTertiary, fontSize: 15, fontWeight: '800' },

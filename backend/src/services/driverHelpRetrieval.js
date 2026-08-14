@@ -1,3 +1,5 @@
+const { matchCriticalIntent } = require('./driverHelpIntentProfiles');
+
 const STOP_WORDS = new Set([
   'a', 'an', 'and', 'are', 'at', 'be', 'but', 'can', 'do', 'for', 'from', 'how', 'i',
   'if', 'in', 'is', 'it', 'm', 'me', 'my', 'of', 'on', 'or', 'the', 'there', 'this',
@@ -41,6 +43,8 @@ const TOKEN_ALIASES = new Map([
   ['misdelivered', 'wrong'],
   ['misdelivery', 'wrong'],
   ['leaked', 'leak'],
+  ['leaking', 'leak'],
+  ['leaks', 'leak'],
   ['syncing', 'sync'],
   ['ppoda', 'ppod'],
   ['sign', 'signature'],
@@ -606,6 +610,50 @@ function buildAnswerStructure(record, question = '') {
   };
 }
 
+function buildCriticalIntentDecision(question, records) {
+  const intent = matchCriticalIntent(question, {
+    normalize: normalizeDriverQuestion,
+    tokenize
+  });
+  if (!intent) return null;
+
+  const record = selectCanonicalRecordVersions(records).find((candidate) => (
+    candidate.knowledge_id === intent.knowledge_id
+  ));
+  const candidate = record ? [{
+    knowledge_id: record.knowledge_id,
+    version: record.version,
+    canonical_situation: record.canonical_situation,
+    score: 1000,
+    routing_reason: `critical-intent:${intent.intent_id}`
+  }] : [];
+
+  if (!isProductionEligibleRecord(record)) {
+    return {
+      response_mode: 'ESCALATE',
+      confidence: 1,
+      candidates: candidate,
+      selected_records: [],
+      intent_id: intent.intent_id,
+      intent_profile_version: intent.profile_version,
+      escalation_message: 'Ready Route identified a critical situation but could not load its driver-facing procedure. Contact your manager or station immediately, and call 9-1-1 when emergency help is needed.'
+    };
+  }
+
+  return {
+    response_mode: 'ANSWER',
+    confidence: 1,
+    candidates: candidate,
+    selected_records: [record],
+    intent_id: intent.intent_id,
+    intent_profile_version: intent.profile_version,
+    required_answer_patterns: intent.required_answer_patterns || [],
+    answer: buildPresentedAnswer(record, question),
+    more_info: record.more_info_answer || null,
+    answer_structure: buildAnswerStructure(record, question)
+  };
+}
+
 function buildClarificationDecision(ranked, candidates, topScore, prompt = 'Which situation best matches what is happening?') {
   const clarificationCandidates = ranked
     .filter((candidate) => topScore - candidate.score <= CLARIFICATION_MARGIN)
@@ -1096,6 +1144,8 @@ function buildDriverHelpDecision(question, records, context = {}) {
       escalation_message: 'Ready Route cannot provide an operational answer without an applicable verified procedure. Contact your manager or station.'
     };
   }
+  const criticalIntentDecision = buildCriticalIntentDecision(question, records);
+  if (criticalIntentDecision) return criticalIntentDecision;
   const multiIssueClarification = buildExplicitMultiIssueClarification(question);
   if (multiIssueClarification) return multiIssueClarification;
   const ranked = rankKnowledgeRecords(question, records, context);
@@ -1416,6 +1466,7 @@ module.exports = {
   ANSWER_THRESHOLD,
   CLARIFICATION_MARGIN,
   buildAnswerStructure,
+  buildCriticalIntentDecision,
   buildDriverHelpDecision,
   buildPresentedAnswer,
   getMatchingQuestionPattern,

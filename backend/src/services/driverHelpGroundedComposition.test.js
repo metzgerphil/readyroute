@@ -150,3 +150,25 @@ test('falls back safely when the composer errors or declines', async () => {
   assert.equal(errored.answer, decision.answer);
   assert.equal(declined.answer, decision.answer);
 });
+
+test('falls back when a critical composed answer drops a required instruction', async () => {
+  const decision = {
+    ...answerDecision(),
+    required_answer_patterns: ['(?:do not|never)', '(?:sign|signature)'],
+    answer: 'Do not sign for the recipient.'
+  };
+  const result = await composeGroundedDecision(decision, async () => ({
+    answer: 'Complete the normal delivery prompts.',
+    more_info: null,
+    answer_structure: null,
+    grounding: [{
+      output_path: 'answer',
+      knowledge_id: 'KNO-TEST-006',
+      source_paths: ['required_procedure']
+    }]
+  }));
+
+  assert.equal(result.composition_mode, 'DETERMINISTIC_FALLBACK');
+  assert.equal(result.answer, 'Do not sign for the recipient.');
+  assert.equal(result.composition_validation.reason, 'missing_required_driver_instruction');
+});

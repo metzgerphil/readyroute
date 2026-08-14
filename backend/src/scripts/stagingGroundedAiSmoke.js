@@ -112,6 +112,30 @@ async function main() {
         question: "Customer won't take delivery",
         responseMode: 'ESCALATE',
         compositionMode: 'DETERMINISTIC'
+      },
+      {
+        name: 'accident-scene-critical-answer',
+        question: 'I was just in a crash. What should I do first?',
+        responseMode: 'ANSWER',
+        compositionMode: 'GROUNDED_AI',
+        knowledgeId: 'KNO-INC-ACCIDENT-SCENE-001',
+        answerPatterns: [/(?:9-1-1|911)/i, /(?:safe|safety)/i]
+      },
+      {
+        name: 'signature-falsification-critical-answer',
+        question: 'Can I sign the scanner for the customer to save time?',
+        responseMode: 'ANSWER',
+        compositionMode: 'GROUNDED_AI',
+        knowledgeId: 'KNO-ETH-FALSIFICATION-001',
+        answerPatterns: [/(?:do not|never)/i, /(?:sign|signature|forge)/i]
+      },
+      {
+        name: 'prescan-critical-answer',
+        question: 'Can I prescan all my stops before I leave the station?',
+        responseMode: 'ANSWER',
+        compositionMode: 'GROUNDED_AI',
+        knowledgeId: 'KNO-DEL-SCAN-INTEGRITY-001',
+        answerPatterns: [/(?:do not|don't|never)/i, /(?:pre-?scan|customer location|actually happens)/i]
       }
     ];
     const summary = [];
@@ -138,6 +162,9 @@ async function main() {
           )),
           `${scenario.name} composition grounding trace`
         );
+      }
+      for (const pattern of scenario.answerPatterns || []) {
+        assert.match(answer.answer || '', pattern, `${scenario.name} required answer instruction`);
       }
       summary.push({
         name: scenario.name,
