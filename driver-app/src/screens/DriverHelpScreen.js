@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useContext, useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Image,
@@ -14,7 +14,7 @@ import {
   TextInput,
   View
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaInsetsContext, SafeAreaView } from 'react-native-safe-area-context';
 import Svg, { Line, Path } from 'react-native-svg';
 import {
   ExpoSpeechRecognitionModule,
@@ -47,6 +47,15 @@ export function resetDriverHelpViewport(scrollReference, schedule = setTimeout) 
   return schedule(() => {
     scrollReference.current?.scrollTo({ animated: false, y: 0 });
   }, 0);
+}
+
+export function getImageModalSafeAreaPadding(insets = {}) {
+  const top = Number(insets.top) || 0;
+  const bottom = Number(insets.bottom) || 0;
+  return {
+    paddingBottom: Math.max(bottom, 16),
+    paddingTop: Math.max(top + 8, 24)
+  };
 }
 
 function MicrophoneIcon({ size = 50 }) {
@@ -141,6 +150,7 @@ function getAnswerStructure(result) {
 }
 
 export default function DriverHelpScreen() {
+  const safeAreaInsets = useContext(SafeAreaInsetsContext) || { bottom: 0, top: 0 };
   const inputRef = useRef(null);
   const inputFocusedRef = useRef(false);
   const historyRef = useRef([]);
@@ -822,15 +832,20 @@ export default function DriverHelpScreen() {
       <Modal
         animationType="fade"
         onRequestClose={() => setSelectedImage(null)}
+        presentationStyle="overFullScreen"
         transparent
         visible={Boolean(selectedImage)}
       >
-        <SafeAreaView style={styles.imageModal}>
+        <View
+          style={[styles.imageModal, getImageModalSafeAreaPadding(safeAreaInsets)]}
+          testID="image-modal-surface"
+        >
           <View style={styles.imageModalHeader}>
             <Text numberOfLines={2} style={styles.imageModalCaption}>{selectedImage?.caption || 'Visual reference'}</Text>
             <Pressable
               accessibilityLabel="Close image"
               accessibilityRole="button"
+              hitSlop={12}
               onPress={() => setSelectedImage(null)}
               style={({ pressed }) => [styles.imageModalClose, pressed ? styles.pressed : null]}
             >
@@ -845,7 +860,7 @@ export default function DriverHelpScreen() {
               style={styles.imageModalAsset}
             />
           ) : null}
-        </SafeAreaView>
+        </View>
       </Modal>
     </SafeAreaView>
   );
@@ -922,10 +937,10 @@ const styles = StyleSheet.create({
   answerImage: { backgroundColor: '#ffffff', borderRadius: 10, height: 260, width: '100%' },
   answerImageCaption: { color: appTheme.colors.textPrimary, fontSize: 13, fontWeight: '700', lineHeight: 19, marginTop: 9 },
   answerImageHint: { color: BRAND_ORANGE, fontSize: 11, fontWeight: '900', marginTop: 5, textTransform: 'uppercase' },
-  imageModal: { backgroundColor: 'rgba(8, 20, 31, 0.97)', flex: 1, padding: 16 },
+  imageModal: { backgroundColor: 'rgba(8, 20, 31, 0.97)', flex: 1, paddingHorizontal: 16 },
   imageModalHeader: { alignItems: 'center', flexDirection: 'row', gap: 16, justifyContent: 'space-between', minHeight: 52 },
   imageModalCaption: { color: '#ffffff', flex: 1, fontSize: 14, fontWeight: '700', lineHeight: 20 },
-  imageModalClose: { borderColor: '#ffffff', borderRadius: 14, borderWidth: 1, paddingHorizontal: 16, paddingVertical: 10 },
+  imageModalClose: { borderColor: '#ffffff', borderRadius: 14, borderWidth: 1, minHeight: 48, minWidth: 92, paddingHorizontal: 16, paddingVertical: 10, zIndex: 2 },
   imageModalCloseText: { color: '#ffffff', fontSize: 14, fontWeight: '900' },
   imageModalAsset: { flex: 1, marginTop: 12, width: '100%' },
   warningPanel: { backgroundColor: appTheme.colors.warningSoft, borderColor: appTheme.colors.warning, borderRadius: 16, borderWidth: 1, marginTop: 18, padding: 14 },

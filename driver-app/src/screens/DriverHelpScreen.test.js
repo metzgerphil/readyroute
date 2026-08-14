@@ -2,6 +2,7 @@ import React from 'react';
 import { act, fireEvent, render, waitFor } from '@testing-library/react-native';
 
 import DriverHelpScreen, {
+  getImageModalSafeAreaPadding,
   resetDriverHelpViewport,
   shouldCompleteBackSwipe,
   shouldStartBackSwipe
@@ -33,6 +34,17 @@ describe('DriverHelpScreen', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     Object.keys(mockSpeechHandlers).forEach((key) => delete mockSpeechHandlers[key]);
+  });
+
+  it('keeps the image viewer controls below the device safe area', () => {
+    expect(getImageModalSafeAreaPadding({ top: 59, bottom: 34 })).toEqual({
+      paddingBottom: 34,
+      paddingTop: 67
+    });
+    expect(getImageModalSafeAreaPadding({ top: 0, bottom: 0 })).toEqual({
+      paddingBottom: 16,
+      paddingTop: 24
+    });
   });
 
   it('keeps the V1 home screen focused on one voice-or-text question', () => {
