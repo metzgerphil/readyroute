@@ -2,8 +2,12 @@ const crypto = require('crypto');
 
 const defaultSupabase = require('../lib/supabase');
 const {
+  buildAnswerStructure,
   buildDriverHelpDecision,
-  normalizeDriverQuestion
+  buildPresentedAnswer,
+  isProductionEligibleRecord,
+  normalizeDriverQuestion,
+  selectCanonicalRecordVersions
 } = require('./driverHelpRetrieval');
 const {
   buildDriverHelpReferenceDecision,
@@ -24,15 +28,20 @@ function randomId() {
   return crypto.randomUUID();
 }
 
-function resolveClarificationFollowUp(question, context = {}) {
+function resolveClarificationSelection(question, context = {}) {
   const normalized = normalizeDriverQuestion(question);
   const options = Array.isArray(context.pending_clarification_options)
     ? context.pending_clarification_options
     : [];
-  const selected = options.find((option) => (
+  return options.find((option) => (
     normalizeDriverQuestion(option?.label) === normalized
-  ));
+  )) || null;
+}
+
+function resolveClarificationFollowUp(question, context = {}) {
+  const selected = resolveClarificationSelection(question, context);
   if (selected?.query) return selected.query;
+  const normalized = normalizeDriverQuestion(question);
   if (/^(?:i m |im )?not sure$/.test(normalized) && context.pending_clarification_not_sure_query) {
     return context.pending_clarification_not_sure_query;
   }
@@ -158,8 +167,10 @@ function createDriverHelpService({
         : null,
       pending_clarification_options: decision.response_mode === 'CLARIFY'
         ? (decision.clarification_options || []).map((option) => ({
+            knowledge_id: option.knowledge_id || null,
             label: option.label,
-            query: option.query || null
+            query: option.query || null,
+            version: option.version || null
           }))
         : [],
       pending_clarification_not_sure_query: decision.response_mode === 'CLARIFY'
@@ -258,13 +269,42 @@ function createDriverHelpService({
       loadKnowledgeRecords(),
       loadSessionContext(sessionId, accountId, actorType, actorId)
     ]);
+    const clarificationSelection = resolveClarificationSelection(question, sessionState.context);
     const resolvedQuestion = resolveClarificationFollowUp(question, sessionState.context);
+    const selectedClarificationRecord = clarificationSelection
+      ? selectCanonicalRecordVersions(records).find((record) => (
+          !isReferenceRecord(record)
+          && isProductionEligibleRecord(record)
+          && (
+            (clarificationSelection.knowledge_id
+              && record.knowledge_id === clarificationSelection.knowledge_id
+              && (!clarificationSelection.version || record.version === clarificationSelection.version))
+            || (!clarificationSelection.knowledge_id
+              && normalizeDriverQuestion(record.canonical_situation) === normalizeDriverQuestion(clarificationSelection.label))
+          )
+        ))
+      : null;
     const referenceDecision = buildDriverHelpReferenceDecision(resolvedQuestion, records);
-    const baseDecision = referenceDecision || buildDriverHelpDecision(
-      resolvedQuestion,
-      records.filter((record) => !isReferenceRecord(record)),
-      sessionState.context
-    );
+    const baseDecision = selectedClarificationRecord
+      ? {
+          response_mode: 'ANSWER',
+          confidence: 1,
+          candidates: [{
+            knowledge_id: selectedClarificationRecord.knowledge_id,
+            version: selectedClarificationRecord.version,
+            canonical_situation: selectedClarificationRecord.canonical_situation,
+            score: 100
+          }],
+          selected_records: [selectedClarificationRecord],
+          answer: buildPresentedAnswer(selectedClarificationRecord, resolvedQuestion),
+          more_info: selectedClarificationRecord.more_info_answer || null,
+          answer_structure: buildAnswerStructure(selectedClarificationRecord, resolvedQuestion)
+        }
+      : referenceDecision || buildDriverHelpDecision(
+          resolvedQuestion,
+          records.filter((record) => !isReferenceRecord(record)),
+          sessionState.context
+        );
     // Canonical records already contain reviewed driver-facing wording. Keep
     // language interpretation in retrieval and return the selected record's
     // published answer without a second model rewriting it.
@@ -360,5 +400,6 @@ function createDriverHelpService({
 module.exports = {
   createDriverHelpService,
   isMissingTableError,
-  resolveClarificationFollowUp
+  resolveClarificationFollowUp,
+  resolveClarificationSelection
 };

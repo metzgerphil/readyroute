@@ -1640,6 +1640,7 @@ module.exports = {
   buildPresentedAnswer,
   getMatchingQuestionPattern,
   getPatternRuntimeMode,
+  isProductionEligibleRecord,
   normalizeDriverQuestion,
   rankKnowledgeRecords,
   scoreKnowledgeRecord,

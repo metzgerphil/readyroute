@@ -274,6 +274,37 @@ async function main() {
       });
     }
 
+    const closedBusinessClarification = await requestJson(`${backendUrl}/driver-help/query`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ question: 'What do I do when a business is closed?' })
+    });
+    assert.equal(closedBusinessClarification.response_mode, 'CLARIFY', 'closed-business question response mode');
+    const closedBusinessOption = (closedBusinessClarification.clarification_options || []).find((option) => (
+      option.knowledge_id === 'KNO-DEL-BUS-CLOSED-001'
+    ));
+    assert.ok(closedBusinessOption, 'closed-business question offers the assigned-delivery procedure');
+
+    const closedBusinessAnswer = await requestJson(`${backendUrl}/driver-help/query`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({
+        question: closedBusinessOption.query || closedBusinessOption.label,
+        session_id: closedBusinessClarification.session_id
+      })
+    });
+    assert.equal(closedBusinessAnswer.response_mode, 'ANSWER', 'selected closed-business option response mode');
+    assert.ok(
+      (closedBusinessAnswer.trace || []).some((record) => record.knowledge_id === 'KNO-DEL-BUS-CLOSED-001'),
+      'selected closed-business option returns its offered verified record'
+    );
+    summary.push({
+      name: 'closed-business-clarification-selection',
+      response_mode: closedBusinessAnswer.response_mode,
+      composition_mode: closedBusinessAnswer.composition_mode,
+      selected_knowledge_ids: (closedBusinessAnswer.trace || []).map((record) => record.knowledge_id)
+    });
+
     console.log(JSON.stringify({
       staging_canonical_answers: 'passed',
       duration_ms: Date.now() - startedAt,

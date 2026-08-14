@@ -6,7 +6,7 @@ process.env.SUPABASE_URL = process.env.SUPABASE_URL || 'https://example.supabase
 process.env.SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_KEY || 'test-service-role-key';
 
 const { buildImport, readJsonLines } = require('../scripts/importDriverKnowledge');
-const { createDriverHelpService, resolveClarificationFollowUp } = require('./driverHelp');
+const { createDriverHelpService, resolveClarificationFollowUp, resolveClarificationSelection } = require('./driverHelp');
 
 const root = path.resolve(__dirname, '../../..');
 const references = readJsonLines(path.join(root, 'knowledge/reference/delivery-status-codes.jsonl'));
@@ -26,7 +26,22 @@ const operationalRows = buildImport(
   readJsonLines(path.join(root, 'knowledge/evaluations/driver-language-cases.jsonl'))
 ).knowledgeRows;
 
-function fakeSupabase(records, { signedUrl = null } = {}) {
+function filterChain(result) {
+  const chain = {
+    eq() {
+      return chain;
+    },
+    maybeSingle() {
+      return Promise.resolve(result);
+    },
+    then(resolve, reject) {
+      return Promise.resolve(result).then(resolve, reject);
+    }
+  };
+  return chain;
+}
+
+function fakeSupabase(records, { sessionContext = null, signedUrl = null } = {}) {
   const writes = [];
   return {
     writes,
@@ -46,6 +61,24 @@ function fakeSupabase(records, { signedUrl = null } = {}) {
         return {
           select() {
             return Promise.resolve({ data: records, error: null });
+          }
+        };
+      }
+      if (table === 'driver_help_sessions') {
+        return {
+          insert(row) {
+            writes.push({ table, row });
+            return Promise.resolve({ error: null });
+          },
+          select() {
+            return filterChain({
+              data: sessionContext ? { id: 'session-clarification', context: sessionContext, status: 'active' } : null,
+              error: null
+            });
+          },
+          update(row) {
+            writes.push({ table, row });
+            return filterChain({ error: null });
           }
         };
       }
@@ -75,6 +108,51 @@ test('short replies resolve against the pending clarification choices', () => {
     'not sure whether package requires a signature'
   );
   assert.equal(resolveClarificationFollowUp('Actually it is ASR', context), 'Actually it is ASR');
+});
+
+test('clarification choices retain the selected verified record identity', () => {
+  const context = {
+    pending_clarification_options: [{
+      knowledge_id: 'KNO-DEL-BUS-CLOSED-001',
+      version: 1,
+      label: 'Business is closed when the driver attempts an assigned delivery',
+      query: 'Business is closed when the driver attempts an assigned delivery'
+    }]
+  };
+
+  assert.deepEqual(
+    resolveClarificationSelection('Business is closed when the driver attempts an assigned delivery', context),
+    context.pending_clarification_options[0]
+  );
+});
+
+test('selecting an offered verified clarification returns that answer directly', async () => {
+  const closedBusiness = operationalRows.find((record) => record.knowledge_id === 'KNO-DEL-BUS-CLOSED-001');
+  assert.ok(closedBusiness);
+  const label = closedBusiness.canonical_situation;
+  const sessionContext = {
+    pending_clarification_options: [{
+      knowledge_id: closedBusiness.knowledge_id,
+      version: closedBusiness.version,
+      label,
+      query: label
+    }]
+  };
+  const service = createDriverHelpService({
+    supabase: fakeSupabase(operationalRows, { sessionContext }),
+    now: () => new Date('2026-08-14T20:45:00.000Z')
+  });
+
+  const response = await service.answerQuestion({
+    accountId: 'account-1',
+    driverId: 'driver-1',
+    question: label,
+    sessionId: 'session-clarification'
+  });
+
+  assert.equal(response.response_mode, 'ANSWER');
+  assert.equal(response.trace[0].knowledge_id, 'KNO-DEL-BUS-CLOSED-001');
+  assert.ok(response.answer);
 });
 
 test('production service routes reference questions separately and preserves canonical trace', async () => {
