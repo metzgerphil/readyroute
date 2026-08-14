@@ -108,6 +108,14 @@ async function main() {
         compositionMode: 'DETERMINISTIC'
       },
       {
+        name: 'alcohol-signing-answer',
+        question: "Who can sign for this package I think it's alcohol",
+        responseMode: 'ANSWER',
+        compositionMode: 'DETERMINISTIC',
+        knowledgeId: 'KNO-DEL-ALCOHOL-001',
+        answerPatterns: [/21\+|21 or older/i, /photo ID/i]
+      },
+      {
         name: 'incomplete-refusal-escalation',
         question: "Customer won't take delivery",
         responseMode: 'ESCALATE',
