@@ -5,7 +5,10 @@ const jwt = require('jsonwebtoken');
 
 const defaultSupabase = require('../lib/supabase');
 const { createBillingService } = require('../services/billing');
-const { buildMetrics: buildDriverHelpMetrics } = require('../services/driverHelpMonthlyReport');
+const {
+  buildDriverMetrics,
+  buildMetrics: buildDriverHelpMetrics
+} = require('../services/driverHelpMonthlyReport');
 const { sendManagerInviteEmail: defaultSendManagerInviteEmail } = require('../services/managerInviteEmail');
 const {
   sendReadyRouteStaffInviteEmail: defaultSendReadyRouteStaffInviteEmail,
@@ -2316,7 +2319,7 @@ function createReadyRouteStaffRouter(options = {}) {
           .limit(25),
         supabase
           .from('driver_help_interactions')
-          .select('id, driver_id, question, response_mode, selected_knowledge_ids, response_latency_ms, created_at')
+          .select('id, session_id, driver_id, question, response_mode, selected_knowledge_ids, response_latency_ms, created_at')
           .eq('account_id', accountId)
           .gte('created_at', getUtcMonthStart(now()))
           .order('created_at', { ascending: false })
@@ -2366,6 +2369,7 @@ function createReadyRouteStaffRouter(options = {}) {
       const feedback = feedbackResult.data || [];
       const minutesPerAnswer = Number(accountResult.data.driver_help_minutes_per_answer_estimate || 5);
       const usageMetrics = buildDriverHelpMetrics(interactions, feedback, minutesPerAnswer);
+      const driverMetrics = buildDriverMetrics(interactions, feedback, driversResult.data || []);
       const account = presentAccountSummary(
         accountResult.data,
         profile,
@@ -2390,6 +2394,7 @@ function createReadyRouteStaffRouter(options = {}) {
         driver_help: {
           month_start: getUtcMonthStart(now()).slice(0, 10),
           metrics: usageMetrics,
+          driver_metrics: driverMetrics,
           recent_interactions: interactions.slice(0, 100),
           recent_feedback: feedback.slice(0, 100),
           unanswered_questions: unansweredResult.data || [],

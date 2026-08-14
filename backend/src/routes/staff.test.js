@@ -901,8 +901,9 @@ test('GET /staff/accounts/:accountId returns detail, usage, and timeline', async
       assert.equal(query.filters.some((filter) => filter.op === 'gte' && filter.column === 'created_at'), true);
       return {
         data: [
-          { id: 'interaction-1', driver_id: 'driver-1', question: 'sig pkg nobody home', response_mode: 'ANSWER', selected_knowledge_ids: ['KNO-1'], response_latency_ms: 900, created_at: '2026-07-05T15:00:00.000Z' },
-          { id: 'interaction-2', driver_id: 'driver-1', question: 'customer moved', response_mode: 'ESCALATE', selected_knowledge_ids: [], response_latency_ms: 800, created_at: '2026-07-05T14:00:00.000Z' }
+          { id: 'interaction-1', session_id: 'session-1', driver_id: 'driver-1', question: 'sig pkg nobody home', response_mode: 'ANSWER', selected_knowledge_ids: ['KNO-1'], response_latency_ms: 900, created_at: '2026-07-05T15:00:00.000Z' },
+          { id: 'interaction-clarify', session_id: 'session-1', driver_id: 'driver-1', question: 'signature package', response_mode: 'CLARIFY', selected_knowledge_ids: [], response_latency_ms: 700, created_at: '2026-07-05T14:59:00.000Z' },
+          { id: 'interaction-2', session_id: 'session-2', driver_id: 'driver-1', question: 'customer moved', response_mode: 'ESCALATE', selected_knowledge_ids: [], response_latency_ms: 800, created_at: '2026-07-05T14:00:00.000Z' }
         ],
         error: null
       };
@@ -938,9 +939,14 @@ test('GET /staff/accounts/:accountId returns detail, usage, and timeline', async
     assert.equal(payload.routes[0].id, 'route-1');
     assert.equal(payload.timeline.length > 0, true);
     assert.equal(payload.driver_help.metrics.total_questions, 2);
+    assert.equal(payload.driver_help.metrics.total_interactions, 3);
     assert.equal(payload.driver_help.metrics.verified_answers, 1);
+    assert.equal(payload.driver_help.metrics.failed_questions, 1);
+    assert.equal(payload.driver_help.metrics.success_rate, 0.5);
     assert.equal(payload.driver_help.metrics.helpful_rate, 1);
     assert.equal(payload.driver_help.metrics.estimated_manager_minutes_avoided, 5);
+    assert.equal(payload.driver_help.driver_metrics[0].driver_name, 'Driver One');
+    assert.equal(payload.driver_help.driver_metrics[0].total_questions, 2);
     assert.equal(payload.driver_help.recent_interactions[0].question, 'sig pkg nobody home');
     assert.equal(payload.driver_help.monthly_reports[0].delivery_status, 'sent');
   } finally {
