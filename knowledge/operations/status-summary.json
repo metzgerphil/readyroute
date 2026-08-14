@@ -1,10 +1,10 @@
 {
   "schema_version": "1.0.0",
-  "generated_at": "2026-08-13T04:52:36.945Z",
+  "generated_at": "2026-08-14T19:00:47.251Z",
   "total_records": 150,
   "by_status": {
-    "SOURCE_VERIFIED": 93,
-    "READY_ROUTE_APPROVED": 10,
+    "SOURCE_VERIFIED": 90,
+    "READY_ROUTE_APPROVED": 13,
     "PENDING_REVIEW": 27,
     "POTENTIALLY_OUTDATED": 20,
     "INSUFFICIENT_EVIDENCE": 0
@@ -19,5 +19,5 @@
   "candidate_gap_language_cases": 21,
   "delivery_status_references": 50,
   "pickup_reason_references": 7,
-  "active_adjudications": 10
+  "active_adjudications": 13
 }

@@ -100,7 +100,25 @@ const CASES = [
     'No one there for my direct signature package'
   ]),
   ...questions('KNO-DEL-ALCOHOL-001', [
-    "Who can sign for this package I think it's alcohol"
+    "Who can sign for this package I think it's alcohol",
+    'Alcohol package has no eligible signer at this residential stop',
+    'Alcohol package has no eligible signer at this non-residential stop',
+    'Alcohol recipient refuses to provide ID',
+    'Alcohol valid ID barcode will not scan'
+  ]),
+  ...questions(null, [
+    'Alcohol package has no eligible signer what code'
+  ], 'CLARIFY'),
+  ...questions('KNO-DEL-SIG-ASR-001', [
+    'ASR nobody eligible at residential stop',
+    'ASR nobody eligible at business stop'
+  ]),
+  ...questions('KNO-DEL-SIG-ISR-001', [
+    'ISR no approved release path at residential stop',
+    'ISR no approved release path at business stop'
+  ]),
+  ...questions('KNO-DEL-HAZMAT-SIGNATURE-001', [
+    'Hazmat business is closed on the weekend'
   ]),
   ...questions('KNO-FORGE-CAMERA-SCAN-001', [
     'Camera scan made the side button stop working',
@@ -119,7 +137,7 @@ const CASES = [
 ];
 
 test('critical driver-language reliability gate routes every supported variant correctly', () => {
-  assert.equal(CASES.length, 69);
+  assert.equal(CASES.length, 79);
   const canonical = readJsonLines(path.join(ROOT, 'knowledge/operations/records.jsonl'));
   const gates = buildPublicationGateIndex(canonical);
   const records = canonical.map((record) => toPublishedRecord(

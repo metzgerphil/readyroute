@@ -1,16 +1,16 @@
 {
   "schema_version": "1.0.0",
-  "generated_at": "2026-08-13T04:52:36.945Z",
+  "generated_at": "2026-08-14T19:00:47.251Z",
   "generator": "scripts/build-ready-route-knowledge.js",
   "authoring_corpus": "research/fedex-ground-driver-knowledge/knowledge/records.jsonl",
   "adjudication_input": "knowledge/adjudications/records.json",
   "counts": {
     "schema_version": "1.0.0",
-    "generated_at": "2026-08-13T04:52:36.945Z",
+    "generated_at": "2026-08-14T19:00:47.251Z",
     "total_records": 150,
     "by_status": {
-      "SOURCE_VERIFIED": 93,
-      "READY_ROUTE_APPROVED": 10,
+      "SOURCE_VERIFIED": 90,
+      "READY_ROUTE_APPROVED": 13,
       "PENDING_REVIEW": 27,
       "POTENTIALLY_OUTDATED": 20,
       "INSUFFICIENT_EVIDENCE": 0
@@ -25,13 +25,13 @@
     "candidate_gap_language_cases": 21,
     "delivery_status_references": 50,
     "pickup_reason_references": 7,
-    "active_adjudications": 10
+    "active_adjudications": 13
   },
   "checksums": {
-    "operations/records.jsonl": "df92927354057973e3e51254c76782096e622495cab8f8637596ea5557d5719b",
-    "operations/publication-ready.jsonl": "7a8471e2656cb66661cd7bd9e22170a1cd1fde7258a0dc4b778a14ae3ebe90d9",
+    "operations/records.jsonl": "d9dbe2815f8f20cdb5987a20931c15db09a602c822df39a79fcccadcc1d894e0",
+    "operations/publication-ready.jsonl": "7113606bf4fccf5289e05bc4169df507c2dac22aee04a5092ce4ade7cbed1eed",
     "operations/publication-gaps.jsonl": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-    "operations/status-summary.json": "369520e829f79e8cb20ae6251e91f892ed82570bc8c8d92ebad773a5d6760221",
+    "operations/status-summary.json": "1698c725d251623d4efa206b5093282163d7f1f617ce36754dfd4188894e852f",
     "pending-review/records.jsonl": "da1763548b5d82b683390b30a8c16be7f0c56a212d42749158f318a1a01b80a1",
     "pending-review/review-items.jsonl": "8e195d0a37be67c57833739bba204795ee85d78fc729b9a02c55263064c55242",
     "outdated/records.jsonl": "497a119e888d8d5ada47c92be2617989a9c24b4a1358002673f0a614ea4592fd",

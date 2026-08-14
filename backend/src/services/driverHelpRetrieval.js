@@ -238,7 +238,7 @@ function scoreKnowledgeRecord(question, record, context = {}) {
     {
       id: 'KNO-DEL-HAZMAT-SIGNATURE-001',
       required: ['hazmat'],
-      any: ['nobody', 'home', 'leave', 'door', 'porch', 'signature'],
+      any: ['nobody', 'home', 'leave', 'door', 'porch', 'signature', 'closed', 'weekend', 'business'],
       boost: 180
     },
     {
@@ -284,6 +284,7 @@ function scoreKnowledgeRecord(question, record, context = {}) {
   const hasTypedSignature = ['asr', 'dsr', 'isr', 'adult', 'direct', 'indirect']
     .some((token) => queryTokenSet.has(token));
   const hasSpecializedSignatureContext = queryTokenSet.has('alcohol')
+    || queryTokenSet.has('hazmat')
     || queryTokenSet.has('pharmacy')
     || (queryTokenSet.has('recipient') && queryTokenSet.has('device'));
   if (/^KNO-DEL-SIG-(ISR|DSR|ASR)-/.test(record.knowledge_id)
@@ -520,6 +521,157 @@ function getTaxonomyFamily(record) {
   return String(record.taxonomy_paths?.[0] || record.knowledge_id || '').split('/').slice(0, 2).join('/');
 }
 
+const STATUS_BRANCH_RECORD_IDS = new Set([
+  'KNO-DEL-SIG-ISR-001',
+  'KNO-DEL-SIG-DSR-001',
+  'KNO-DEL-SIG-ASR-001',
+  'KNO-DEL-ALCOHOL-001',
+  'KNO-DEL-HAZMAT-SIGNATURE-001'
+]);
+
+function statusBranchTopic(record) {
+  if (record.knowledge_id === 'KNO-DEL-ALCOHOL-001') return 'alcohol package';
+  if (record.knowledge_id === 'KNO-DEL-HAZMAT-SIGNATURE-001') return 'hazmat package';
+  if (record.knowledge_id === 'KNO-DEL-SIG-ASR-001') return 'ASR package';
+  if (record.knowledge_id === 'KNO-DEL-SIG-DSR-001') return 'DSR package';
+  return 'ISR package';
+}
+
+function explicitlyNamesStatusBranch(record, tokens) {
+  if (record.knowledge_id === 'KNO-DEL-ALCOHOL-001') return tokens.has('alcohol');
+  if (record.knowledge_id === 'KNO-DEL-HAZMAT-SIGNATURE-001') return tokens.has('hazmat');
+  if (record.knowledge_id === 'KNO-DEL-SIG-ASR-001') return tokens.has('asr') || tokens.has('adult');
+  if (record.knowledge_id === 'KNO-DEL-SIG-DSR-001') return tokens.has('dsr') || tokens.has('direct');
+  return tokens.has('isr') || tokens.has('indirect');
+}
+
+function getStatusBranchSignals(question) {
+  const normalized = normalizeDriverQuestion(question);
+  const tokens = new Set(tokenize(question));
+  const idScanProblem = tokens.has('id')
+    && tokens.has('scan')
+    && /\b(?:declin|refus|unread|won t|wont|will not|can t|cant|cannot|fail|broken)\w*\b/.test(normalized);
+  const idRefusal = tokens.has('id')
+    && !idScanProblem
+    && /\b(?:refus|won t|wont|will not|doesn t|doesnt|does not)\w*\b/.test(normalized);
+  const residential = /\b(?:residential|house|home|apartment)\b/.test(normalized);
+  const nonResidential = /\b(?:nonresidential|non residential|business|commercial|office)\b/.test(normalized);
+  const weekendClosed = tokens.has('weekend') && /\b(?:closed|not open)\b/.test(normalized);
+  const failedEligibility = /\b(?:nobody|no one|no eligible|no approved|unavailable|under 21|underage|no id|without id|intoxicated|drunk|cannot deliver|can t deliver|cant deliver|could not deliver)\b/.test(normalized)
+    || (tokens.has('what') && tokens.has('code'));
+  return {
+    failedEligibility,
+    idRefusal,
+    idScanProblem,
+    nonResidential,
+    residential,
+    tokens,
+    weekendClosed
+  };
+}
+
+function buildStatusSpecificAnswer(record, question) {
+  if (!STATUS_BRANCH_RECORD_IDS.has(record.knowledge_id)) return null;
+  const signals = getStatusBranchSignals(question);
+  const supportsIdBranches = ['KNO-DEL-SIG-ASR-001', 'KNO-DEL-ALCOHOL-001']
+    .includes(record.knowledge_id);
+  if (supportsIdBranches && signals.idScanProblem) {
+    return 'Do not use a non-delivery code only because a valid ID will not scan or the recipient declines scanning. Attempt the scan first. If valid ID was presented and the barcode is unreadable or scanning was declined, use manual DOB entry, record the decline when applicable, and select I HAVE VISUALLY VERIFIED AN ID.';
+  }
+  if (supportsIdBranches && signals.idRefusal) {
+    return 'Use Status Code 006 when the recipient refuses to provide ID. Add the required delivery notation, do not leave the package, and return it to the station.';
+  }
+  if (record.knowledge_id === 'KNO-DEL-HAZMAT-SIGNATURE-001' && signals.weekendClosed) {
+    return 'Use Status Code 011 for a weekend-closed non-residential recipient. Do not leave the Hazmat package. Leave the door tag where possible and complete the prompted attempt photo or the restricted-location bypass.';
+  }
+  if (signals.failedEligibility && signals.residential && !signals.nonResidential) {
+    return `Use Status Code 007 for this residential ${statusBranchTopic(record)} attempt. Do not leave the package. Complete and scan the door tag, leave it as the attempt notice, and capture the prompted attempt photo.`;
+  }
+  if (signals.failedEligibility && signals.nonResidential) {
+    return `Use Status Code 004 for this non-residential ${statusBranchTopic(record)} attempt. Do not leave the package. Complete and scan the door tag, leave it as the attempt notice, and capture the prompted attempt photo.`;
+  }
+  return null;
+}
+
+function buildStatusCodeOptions(record) {
+  if (!STATUS_BRANCH_RECORD_IDS.has(record.knowledge_id)) return [];
+  const topic = statusBranchTopic(record);
+  const options = [
+    {
+      id: `${record.knowledge_id}-residential-007`,
+      label: 'Cannot deliver — residential',
+      summary: 'Use Status Code 007 when the required delivery cannot be completed at a residential stop.',
+      details: [
+        'Use Status Code 007.',
+        'Complete and scan the door tag and capture PPODA when prompted.',
+        `Leave the tag as notice and do not leave the ${topic}.`
+      ]
+    },
+    {
+      id: `${record.knowledge_id}-nonresidential-004`,
+      label: 'Cannot deliver — non-residential',
+      summary: 'Use Status Code 004 when the required delivery cannot be completed at a non-residential stop.',
+      details: [
+        'Use Status Code 004.',
+        'Complete and scan the door tag and capture PPODA when prompted.',
+        `Leave the tag as notice and do not leave the ${topic}.`
+      ]
+    }
+  ];
+  if (['KNO-DEL-SIG-ASR-001', 'KNO-DEL-ALCOHOL-001'].includes(record.knowledge_id)) {
+    options.push(
+      {
+        id: `${record.knowledge_id}-id-refusal-006`,
+        label: 'Recipient refuses to provide ID',
+        summary: 'Use Status Code 006 for the verified ID-refusal branch.',
+        details: [
+          'Use Status Code 006.',
+          'Add the required delivery notation.',
+          'Do not leave the package; return it to the station.'
+        ]
+      },
+      {
+        id: `${record.knowledge_id}-id-scan-contingency`,
+        label: 'Valid ID will not scan',
+        summary: 'A scan problem does not automatically require a non-delivery code.',
+        details: [
+          'Attempt the ID scan first.',
+          'If valid ID was presented and scanning was declined or the barcode is unreadable, use manual DOB entry.',
+          'Record the decline when applicable and select I HAVE VISUALLY VERIFIED AN ID.'
+        ]
+      }
+    );
+  }
+  if (record.knowledge_id === 'KNO-DEL-HAZMAT-SIGNATURE-001') {
+    options.push({
+      id: `${record.knowledge_id}-weekend-closed-011`,
+      label: 'Business closed on the weekend',
+      summary: 'Use Status Code 011 for the weekend-closed non-residential branch.',
+      details: [
+        'Use Status Code 011.',
+        'Leave the door tag where possible.',
+        'Complete PPODA or the source-defined restricted-location bypass, and do not leave the package.'
+      ]
+    });
+  }
+  return options;
+}
+
+function buildStatusCodeClarification(question, ranked, candidates) {
+  const topRecord = ranked[0]?.record;
+  if (!topRecord || !STATUS_BRANCH_RECORD_IDS.has(topRecord.knowledge_id)) return null;
+  const signals = getStatusBranchSignals(question);
+  if (!explicitlyNamesStatusBranch(topRecord, signals.tokens)) return null;
+  if (!(signals.tokens.has('code') || signals.tokens.has('status'))
+    || !signals.failedEligibility || signals.residential || signals.nonResidential
+    || signals.idRefusal || signals.idScanProblem || signals.weekendClosed) return null;
+  const topic = statusBranchTopic(topRecord);
+  return buildFlowClarification('failed-delivery-stop-type', 'Is this stop residential or non-residential?', [
+    flowOption('failed-delivery-stop-type', 'residential', 'Residential', `${topic} no eligible signer at residential stop`),
+    flowOption('failed-delivery-stop-type', 'nonresidential', 'Non-residential', `${topic} no eligible signer at non-residential stop`)
+  ], `${topic} failed delivery stop type is unclear`, candidates);
+}
+
 function buildIsrPresentation(question) {
   const asksAboutNeighbor = tokenize(question).some((token) => ['neighbor', 'neighbour'].includes(token));
   const options = [
@@ -565,6 +717,7 @@ function buildIsrPresentation(question) {
       details: ['Complete the resulting FORGE delivery prompts.']
     }
   ];
+  options.push(...buildStatusCodeOptions({ knowledge_id: 'KNO-DEL-SIG-ISR-001' }));
 
   if (asksAboutNeighbor) {
     options.sort((left, right) => (left.id === 'isr-neighbor' ? -1 : right.id === 'isr-neighbor' ? 1 : 0));
@@ -580,6 +733,8 @@ function buildIsrPresentation(question) {
 
 function buildPresentedAnswer(record, question = '') {
   const normalized = normalizeDriverQuestion(question);
+  const statusSpecificAnswer = buildStatusSpecificAnswer(record, question);
+  if (statusSpecificAnswer) return statusSpecificAnswer;
   if (record.knowledge_id === 'KNO-DEL-PPOD-001') {
     if (normalized === 'what is ppod') {
       return 'PPOD means Picture Proof of Delivery—the photo record for an eligible completed delivery.';
@@ -604,7 +759,7 @@ function buildAnswerStructure(record, question = '') {
     : null;
   return {
     steps: isrPresentation?.steps || conciseSteps,
-    options: isrPresentation?.options || [],
+    options: isrPresentation?.options || buildStatusCodeOptions(record),
     procedure_steps: (record.required_procedure || [])
       .map((item) => String(item?.action || '').trim())
       .filter(Boolean),
@@ -786,6 +941,7 @@ function buildDriverFirstClarification(question, candidates = []) {
     && !hasSignatureType
     && !(tokens.has('recipient') && tokens.has('device'))
     && !tokens.has('alcohol')
+    && !tokens.has('hazmat')
     && !tokens.has('pharmacy')) {
     const nobodySuffix = nobodyHome ? ' nobody home' : '';
     return clarify('signature-type', 'What signature type does FORGE show?', [
@@ -940,6 +1096,8 @@ function buildDiscoveredTopicClarification(question, ranked, candidates) {
     topRankedRecord?.knowledge_id === 'KNO-DEL-PHARMACY-001' && tokens.has('pharmacy')
   ) || (
     topRankedRecord?.knowledge_id === 'KNO-DEL-ALCOHOL-001' && tokens.has('alcohol')
+  ) || (
+    topRankedRecord?.knowledge_id === 'KNO-DEL-HAZMAT-SIGNATURE-001' && tokens.has('hazmat')
   ) || (
     topRankedRecord?.knowledge_id === 'KNO-DEL-OP206-001'
       && tokens.has('recipient')
@@ -1099,6 +1257,7 @@ function buildDiscoveredTopicClarification(question, ranked, candidates) {
   }
 
   if (tokens.has('business') && tokens.has('closed')
+    && !tokens.has('hazmat')
     && !['leave', 'deliver', 'release', 'package'].some((token) => tokens.has(token))
     && !['delivery', 'pickup', 'both'].some((token) => tokens.has(token))) {
     return {
@@ -1274,6 +1433,9 @@ function buildDriverHelpDecision(question, records, context = {}) {
 
   const driverFirstClarification = buildDriverFirstClarification(question, candidates);
   if (driverFirstClarification) return driverFirstClarification;
+
+  const statusCodeClarification = buildStatusCodeClarification(question, ranked, candidates);
+  if (statusCodeClarification) return statusCodeClarification;
 
   const topicClarification = buildDiscoveredTopicClarification(question, ranked, candidates);
   if (topicClarification) return topicClarification;

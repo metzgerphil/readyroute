@@ -113,7 +113,67 @@ async function main() {
         responseMode: 'ANSWER',
         compositionMode: 'DETERMINISTIC',
         knowledgeId: 'KNO-DEL-ALCOHOL-001',
-        answerPatterns: [/21\+|21 or older/i, /photo ID/i]
+        answerPatterns: [/21\+|21 or older/i, /photo ID/i],
+        optionLabels: [
+          'Cannot deliver — residential',
+          'Cannot deliver — non-residential',
+          'Recipient refuses to provide ID',
+          'Valid ID will not scan'
+        ]
+      },
+      {
+        name: 'alcohol-residential-code-answer',
+        question: 'Alcohol package has no eligible signer at this residential stop',
+        responseMode: 'ANSWER',
+        compositionMode: 'DETERMINISTIC',
+        knowledgeId: 'KNO-DEL-ALCOHOL-001',
+        answerPatterns: [/Status Code 007/i]
+      },
+      {
+        name: 'alcohol-nonresidential-code-answer',
+        question: 'Alcohol package has no eligible signer at this non-residential stop',
+        responseMode: 'ANSWER',
+        compositionMode: 'DETERMINISTIC',
+        knowledgeId: 'KNO-DEL-ALCOHOL-001',
+        answerPatterns: [/Status Code 004/i]
+      },
+      {
+        name: 'alcohol-id-refusal-code-answer',
+        question: 'Alcohol recipient refuses to provide ID',
+        responseMode: 'ANSWER',
+        compositionMode: 'DETERMINISTIC',
+        knowledgeId: 'KNO-DEL-ALCOHOL-001',
+        answerPatterns: [/Status Code 006/i]
+      },
+      {
+        name: 'alcohol-id-scan-contingency-answer',
+        question: 'Alcohol valid ID barcode will not scan',
+        responseMode: 'ANSWER',
+        compositionMode: 'DETERMINISTIC',
+        knowledgeId: 'KNO-DEL-ALCOHOL-001',
+        answerPatterns: [/Do not use a non-delivery code/i, /manual DOB entry/i]
+      },
+      {
+        name: 'alcohol-missing-stop-type-clarification',
+        question: 'Alcohol package has no eligible signer what code',
+        responseMode: 'CLARIFY',
+        compositionMode: 'DETERMINISTIC'
+      },
+      {
+        name: 'isr-residential-code-answer',
+        question: 'ISR no approved release path at residential stop',
+        responseMode: 'ANSWER',
+        compositionMode: 'DETERMINISTIC',
+        knowledgeId: 'KNO-DEL-SIG-ISR-001',
+        answerPatterns: [/Status Code 007/i]
+      },
+      {
+        name: 'hazmat-weekend-code-answer',
+        question: 'Hazmat business is closed on the weekend',
+        responseMode: 'ANSWER',
+        compositionMode: 'DETERMINISTIC',
+        knowledgeId: 'KNO-DEL-HAZMAT-SIGNATURE-001',
+        answerPatterns: [/Status Code 011/i]
       },
       {
         name: 'incomplete-refusal-escalation',
@@ -198,6 +258,12 @@ async function main() {
       }
       for (const pattern of scenario.answerPatterns || []) {
         assert.match(answer.answer || '', pattern, `${scenario.name} required answer instruction`);
+      }
+      for (const label of scenario.optionLabels || []) {
+        assert.ok(
+          (answer.answer_structure?.options || []).some((option) => option.label === label),
+          `${scenario.name} answer option ${label}`
+        );
       }
       summary.push({
         name: scenario.name,

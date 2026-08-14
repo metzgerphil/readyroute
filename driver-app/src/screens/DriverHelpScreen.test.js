@@ -201,6 +201,47 @@ describe('DriverHelpScreen', () => {
     expect(screen.getByText('Leave the completed door tag at the original address.')).toBeTruthy();
   });
 
+  it('shows status-code paths and reveals the exact code with one tap', async () => {
+    api.post.mockResolvedValueOnce({
+      data: {
+        session_id: 'session-alcohol-codes',
+        interaction_id: 'interaction-alcohol-codes',
+        response_mode: 'ANSWER',
+        answer: 'Alcohol requires an eligible adult signer.',
+        answer_structure: {
+          steps: ['Alcohol requires an eligible adult signer.'],
+          options: [
+            {
+              id: 'alcohol-residential-007',
+              label: 'Cannot deliver — residential',
+              summary: 'Use Status Code 007 when the required delivery cannot be completed at a residential stop.',
+              details: ['Use Status Code 007.', 'Complete and scan the door tag.']
+            },
+            {
+              id: 'alcohol-id-refusal-006',
+              label: 'Recipient refuses to provide ID',
+              summary: 'Use Status Code 006 for the verified ID-refusal branch.',
+              details: ['Use Status Code 006.', 'Add the required delivery notation.']
+            }
+          ]
+        },
+        trace: [{ knowledge_id: 'KNO-DEL-ALCOHOL-001', version: 1 }]
+      }
+    });
+    const screen = render(<DriverHelpScreen />);
+
+    fireEvent.changeText(screen.getByLabelText('Driver question'), 'Who can sign for this package with alcohol?');
+    fireEvent.press(screen.getByLabelText('Ask Ready Route'));
+
+    expect(await screen.findByText('Cannot deliver — residential')).toBeTruthy();
+    expect(screen.getByText('Recipient refuses to provide ID')).toBeTruthy();
+    expect(screen.queryByText('Use Status Code 007.')).toBeNull();
+
+    fireEvent.press(screen.getByLabelText('Cannot deliver — residential. Show details'));
+    expect(screen.getByText('Use Status Code 007.')).toBeTruthy();
+    expect(screen.getByText('Complete and scan the door tag.')).toBeTruthy();
+  });
+
   it('submits the retrieval query behind a driver-friendly clarification option', async () => {
     api.post
       .mockResolvedValueOnce({

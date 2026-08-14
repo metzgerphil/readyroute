@@ -243,5 +243,77 @@
       "concise_driver_answer": "If the package may still be okay despite box damage, send your BC a clear photo and verify what to do. If it is returning for inspection, use code 010, cross the package with your work-area number, code 010, and the date, remove the SID sticker, and return it to the station. Use the hazmat emergency procedure for any leaking or hazardous package.",
       "more_info_answer": "Code 010 is the ordinary possible-damage inspection return. The BC photo step is for deciding whether a visibly damaged box is still okay to deliver; do not use it to bypass hazmat or unsafe-package procedures."
     }
+  },
+  {
+    "adjudication_id": "ADJ-20260814-ISR-STATUS-BRANCHES-001",
+    "knowledge_id": "KNO-DEL-SIG-ISR-001",
+    "status": "APPROVED",
+    "issue_reviewed": "Which delivery status codes apply when no approved ISR delivery or release path can be completed.",
+    "canonical_determination": "When no approved ISR path can be completed, use code 007 for a residential stop or code 004 for a non-residential stop, complete the unsuccessful-attempt documentation, and do not leave the package.",
+    "previous_interpretations": ["The ISR answer instructed the driver to apply the appropriate attempt status without identifying the residential and non-residential codes."],
+    "supporting_source_ids": ["SRC-GDRIVE-FILE-0014", "SRC-GDRIVE-FILE-0001", "SRC-GDRIVE-FILE-0002", "SRC-GDRIVE-FILE-0008"],
+    "conflicting_or_superseded_source_ids": [],
+    "reasoning": "The approved ISR release paths remain unchanged. Current OP-117 defines code 007 when a residential delivery cannot be released and code 004 for the equivalent non-residential recipient-not-in condition. The stop type controls the unsuccessful-attempt code.",
+    "approved_by": "Ready Route human review relayed by project owner",
+    "approval_date": "2026-08-14",
+    "effective_date": "2026-08-14",
+    "supersedes": [],
+    "reopen_conditions": ["A newer OP-117 or current status-code source changes code 004 or 007.", "A package has a stricter service or another condition that changes the unsuccessful-attempt branch."],
+    "canonical_overrides": {
+      "authoritative_rule": "ISR requires an approved signature or recipient authorization. If no approved ISR path can be completed, use Status Code 007 at a residential stop or Status Code 004 at a non-residential stop, complete the unsuccessful-attempt documentation, and do not leave the package.",
+      "required_procedure": [{"step": 1, "action": "Confirm FORGE identifies ISR and no stricter service applies."}, {"step": 2, "action": "Use an approved ISR path when available: an in-person signature at the address, a compliant signed indirect delivery, an eligible signed door tag, an applicable paper SRA, or Electronic Signature Received in FORGE."}, {"step": 3, "action": "If no approved ISR path is available, identify whether the stop is residential or non-residential."}, {"step": 4, "action": "Use code 007 for a residential stop or code 004 for a non-residential stop."}, {"step": 5, "action": "Complete and scan the door tag, capture PPODA when prompted, leave the tag as notice, and do not leave the package."}],
+      "required_documentation": ["Approved path-specific signature or recipient authorization when delivered", "Code 007 for the residential unsuccessful-attempt branch or code 004 for the non-residential branch", "Completed and scanned door tag and PPODA when prompted"],
+      "clarification_requirements": ["Does FORGE identify the package as ISR, and is any stricter service also present?", "Is an approved ISR delivery or release path available?", "If not, is the stop residential or non-residential?"],
+      "concise_driver_answer": "First confirm FORGE shows ISR and no stricter service applies. Use an approved signature or release path when available. If none applies, do not leave the package: use code 007 for a residential stop or code 004 for a non-residential stop, then complete and scan the door tag and capture the prompted attempt photo.",
+      "more_info_answer": "The stop type controls the failed-attempt code. The existing in-person, indirect-signature, signed-door-tag, paper-SRA, and electronic-signature requirements remain unchanged."
+    }
+  },
+  {
+    "adjudication_id": "ADJ-20260814-ASR-STATUS-BRANCHES-001",
+    "knowledge_id": "KNO-DEL-SIG-ASR-001",
+    "status": "APPROVED",
+    "issue_reviewed": "Which status-code or ID-verification branch applies when an ASR delivery cannot follow the normal ID and signature path.",
+    "canonical_determination": "For an ASR delivery with no eligible signer, use code 007 at a residential stop or code 004 at a non-residential stop. If the recipient refuses to provide ID, use code 006, add delivery notation, and return the package to the station. A valid ID that will not scan, or a declined scan after the attempt, uses the permitted manual DOB and visual-verification path rather than an automatic non-delivery code.",
+    "previous_interpretations": ["The ASR answer named code 006 for ID refusal but left the other failed-delivery status as merely applicable."],
+    "supporting_source_ids": ["SRC-GDRIVE-FILE-0014", "SRC-GDRIVE-FILE-0001", "SRC-GDRIVE-FILE-0002", "SRC-GDRIVE-FILE-0008"],
+    "conflicting_or_superseded_source_ids": [],
+    "reasoning": "Current ASR sources distinguish refusal to provide ID from a declined or unreadable ID scan. OP-117 defines code 007 when a residential ASR delivery has no eligible adult with ID and code 004 for the corresponding non-residential recipient-not-in condition.",
+    "approved_by": "Ready Route human review relayed by project owner",
+    "approval_date": "2026-08-14",
+    "effective_date": "2026-08-14",
+    "supersedes": [],
+    "reopen_conditions": ["A newer OP-117, FORGE guide, or current status-code source changes code 004, 006, or 007 or changes the ID-scan contingency.", "A different controlled service changes the ASR disposition."],
+    "canonical_overrides": {
+      "authoritative_rule": "ASR requires an eligible in-person signer age 21 or older, valid government ID, and no visible intoxication. If no eligible signer is available, use Status Code 007 at a residential stop or Status Code 004 at a non-residential stop. If the recipient refuses to provide ID, use Status Code 006, add delivery notation, and return the package to the station. If valid ID was presented but its barcode is unreadable or scanning was declined after the attempt, use the permitted manual DOB and visual-verification path.",
+      "required_procedure": [{"step": 1, "action": "Confirm the package is ASR and the signer is at the labeled/stop address or an allowed central receiving area."}, {"step": 2, "action": "Confirm the signer is 21 or older and not visibly intoxicated, inspect valid government ID, and attempt the ID scan."}, {"step": 3, "action": "If valid ID was presented but the barcode is unreadable or scanning was declined after the attempt, use manual DOB entry, record the decline when applicable, and select I HAVE VISUALLY VERIFIED AN ID."}, {"step": 4, "action": "If the recipient refuses to provide ID, use code 006, add delivery notation, return the package to the station, and do not leave it."}, {"step": 5, "action": "If no eligible signer is available for another reason, use code 007 at a residential stop or code 004 at a non-residential stop, complete and scan the door tag, capture PPODA when prompted, and do not leave the package."}],
+      "required_documentation": ["Government-issued ID scan or permitted manual DOB and visual-verification record", "In-person signature when delivered", "Code 006 and delivery notation for refusal to provide ID", "Code 007 for a residential no-eligible-signer attempt or code 004 for a non-residential attempt", "Completed/scanned door tag and PPODA when prompted for an unsuccessful attempt"],
+      "clarification_requirements": ["Is an eligible person age 21 or older present with valid government ID and no visible intoxication?", "Did the recipient refuse to provide ID, or was valid ID presented but the scan declined or unreadable?", "If no eligible signer is available, is the stop residential or non-residential?"],
+      "concise_driver_answer": "ASR requires an in-person signature from someone 21+ with valid government ID and no visible intoxication. If no eligible signer is available, use code 007 for a residential stop or code 004 for a non-residential stop, complete the attempt documentation, and do not leave the package. If the recipient refuses to provide ID, use code 006, add delivery notation, and return it to the station. A valid ID that will not scan, or a declined scan after the attempt, uses the permitted manual DOB and visual-verification path.",
+      "more_info_answer": "Refusing to provide ID is different from declining an ID scan after presenting valid ID. No ID provided: code 006 and station return. Valid ID presented but scan declined or unreadable: use the limited manual-verification contingency."
+    }
+  },
+  {
+    "adjudication_id": "ADJ-20260814-ALCOHOL-STATUS-BRANCHES-001",
+    "knowledge_id": "KNO-DEL-ALCOHOL-001",
+    "status": "APPROVED",
+    "issue_reviewed": "Which status-code or ID-verification branch applies when an alcohol delivery cannot be completed.",
+    "canonical_determination": "Alcohol requires the ASR path plus the alcohol restrictions. If no eligible signer is available, use code 007 at a residential stop or code 004 at a non-residential stop. If the recipient refuses to provide ID, use code 006, add delivery notation, and return the package to the station. A valid ID scan problem uses the permitted ASR manual-verification contingency rather than an automatic non-delivery code.",
+    "previous_interpretations": ["The alcohol answer said to apply the appropriate status without identifying the controlling conditions or codes."],
+    "supporting_source_ids": ["SRC-GDRIVE-FILE-0014", "SRC-GDRIVE-FILE-0001", "SRC-GDRIVE-FILE-0002", "SRC-GDRIVE-FILE-0008"],
+    "conflicting_or_superseded_source_ids": [],
+    "reasoning": "The alcohol record expressly uses the ASR path with additional restrictions. Current OP-117 establishes code 007 for a residential delivery with no eligible adult and ID, code 004 for the corresponding non-residential recipient-not-in condition, and code 006 for ASR refusal to provide ID.",
+    "approved_by": "Ready Route human review relayed by project owner",
+    "approval_date": "2026-08-14",
+    "effective_date": "2026-08-14",
+    "supersedes": [],
+    "reopen_conditions": ["A newer OP-117, FORGE guide, alcohol-delivery source, or current status-code source changes code 004, 006, or 007 or the ID-scan contingency.", "A jurisdiction-specific or package-specific requirement changes the verified alcohol branch."],
+    "canonical_overrides": {
+      "authoritative_rule": "Alcohol requires acceptable photo ID, age 21 or older, no visible intoxication, and an in-person adult signature at the labeled address. If no eligible signer is available, use Status Code 007 at a residential stop or Status Code 004 at a non-residential stop. If the recipient refuses to provide ID, use Status Code 006, add delivery notation, and return the package to the station. If valid ID was presented but the barcode is unreadable or scanning was declined after the attempt, use the permitted ASR manual DOB and visual-verification path.",
+      "required_procedure": [{"step": 1, "action": "Identify the unique alcohol label and treat the package as ASR with the additional alcohol restrictions."}, {"step": 2, "action": "Require acceptable photo ID, confirm age 21 or older and no visible intoxication, and obtain the in-person signature at the labeled address."}, {"step": 3, "action": "If valid ID was presented but the barcode is unreadable or scanning was declined after the attempt, use the permitted manual DOB and visual-verification path."}, {"step": 4, "action": "If the recipient refuses to provide ID, use code 006, add delivery notation, return the package to the station, and do not leave it."}, {"step": 5, "action": "If no eligible signer is available for another reason, use code 007 at a residential stop or code 004 at a non-residential stop, complete and scan the door tag, leave it as notice, capture PPODA when prompted, and do not leave the package."}],
+      "required_documentation": ["ID verification and adult signature when delivered", "Code 006 and delivery notation for refusal to provide ID", "Code 007 for a residential no-eligible-signer attempt or code 004 for a non-residential attempt", "Completed/scanned door tag and PPODA when prompted for an unsuccessful attempt"],
+      "clarification_requirements": ["Does the package display the unique alcohol label?", "Is an eligible person age 21 or older present with acceptable photo ID and no visible intoxication?", "Did the recipient refuse to provide ID, or was valid ID presented but the scan declined or unreadable?", "If no eligible signer is available, is the stop residential or non-residential?"],
+      "concise_driver_answer": "Alcohol requires acceptable photo ID and an in-person signature from someone 21+ at the labeled address who is not visibly intoxicated. If no eligible signer is available, use code 007 for a residential stop or code 004 for a non-residential stop, complete the attempt documentation, and do not leave the package. If the recipient refuses to provide ID, use code 006, add delivery notation, and return it to the station. A valid ID scan problem uses the permitted manual DOB and visual-verification path.",
+      "more_info_answer": "Never driver release, indirectly deliver, take the package to a neighbor, or use a signed door tag as alcohol release authorization. Refusing to provide ID is different from declining the scan after presenting valid ID."
+    }
   }
 ]

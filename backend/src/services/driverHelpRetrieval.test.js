@@ -423,6 +423,64 @@ test('screenshot regression: an alcohol signing question selects the alcohol pro
   assert.equal(decision.response_mode, 'ANSWER');
   assert.equal(decision.selected_records[0].knowledge_id, alcohol.knowledge_id);
   assert.match(decision.answer, /21 or older/i);
+  assert.deepEqual(decision.answer_structure.options.map((option) => option.label), [
+    'Cannot deliver — residential',
+    'Cannot deliver — non-residential',
+    'Recipient refuses to provide ID',
+    'Valid ID will not scan'
+  ]);
+});
+
+test('status-code branches answer exact conditions and clarify only the missing stop type', () => {
+  const alcohol = {
+    ...records[0],
+    knowledge_id: 'KNO-DEL-ALCOHOL-001',
+    canonical_situation: 'Delivering an alcohol package',
+    normalized_description: 'Alcohol delivery with adult ID and signature controls',
+    driver_question_variants: ['alcohol package nobody home'],
+    concise_answer: 'Use the alcohol procedure.'
+  };
+  const asr = {
+    ...alcohol,
+    knowledge_id: 'KNO-DEL-SIG-ASR-001',
+    canonical_situation: 'Completing an Adult Signature Required delivery',
+    driver_question_variants: ['ASR package ID verification']
+  };
+
+  const residential = buildDriverHelpDecision(
+    'Alcohol package has no eligible signer at this residential stop',
+    [alcohol, asr, ...records]
+  );
+  assert.equal(residential.response_mode, 'ANSWER');
+  assert.equal(residential.selected_records[0].knowledge_id, alcohol.knowledge_id);
+  assert.match(residential.answer, /Status Code 007/i);
+
+  const missingStopType = buildDriverHelpDecision(
+    'Alcohol package has no eligible signer what code',
+    [alcohol, asr, ...records]
+  );
+  assert.equal(missingStopType.response_mode, 'CLARIFY');
+  assert.equal(missingStopType.clarification_prompt, 'Is this stop residential or non-residential?');
+  assert.deepEqual(missingStopType.clarification_options.map((option) => option.label), [
+    'Residential',
+    'Non-residential'
+  ]);
+
+  const idRefusal = buildDriverHelpDecision(
+    'ASR recipient refuses to provide ID',
+    [asr, alcohol, ...records]
+  );
+  assert.equal(idRefusal.response_mode, 'ANSWER');
+  assert.equal(idRefusal.selected_records[0].knowledge_id, asr.knowledge_id);
+  assert.match(idRefusal.answer, /Status Code 006/i);
+
+  const scanFailure = buildDriverHelpDecision(
+    'ASR valid ID barcode will not scan',
+    [asr, alcohol, ...records]
+  );
+  assert.equal(scanFailure.response_mode, 'ANSWER');
+  assert.match(scanFailure.answer, /Do not use a non-delivery code/i);
+  assert.match(scanFailure.answer, /manual DOB entry/i);
 });
 
 test('asks for signature type before applying the neighbor ISR path', () => {
