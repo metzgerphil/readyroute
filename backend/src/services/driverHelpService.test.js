@@ -6,7 +6,12 @@ process.env.SUPABASE_URL = process.env.SUPABASE_URL || 'https://example.supabase
 process.env.SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_KEY || 'test-service-role-key';
 
 const { buildImport, readJsonLines } = require('../scripts/importDriverKnowledge');
-const { createDriverHelpService, resolveClarificationFollowUp, resolveClarificationSelection } = require('./driverHelp');
+const {
+  createDriverHelpService,
+  filterActionableClarificationOptions,
+  resolveClarificationFollowUp,
+  resolveClarificationSelection
+} = require('./driverHelp');
 
 const root = path.resolve(__dirname, '../../..');
 const references = readJsonLines(path.join(root, 'knowledge/reference/delivery-status-codes.jsonl'));
@@ -124,6 +129,28 @@ test('clarification choices retain the selected verified record identity', () =>
     resolveClarificationSelection('Business is closed when the driver attempts an assigned delivery', context),
     context.pending_clarification_options[0]
   );
+
+  context.pending_clarification_options[0].label = 'Driver-friendly choice';
+  assert.deepEqual(
+    resolveClarificationSelection('Business is closed when the driver attempts an assigned delivery', context),
+    context.pending_clarification_options[0]
+  );
+});
+
+test('clarification choices expose only verified records or explicit routing flows', () => {
+  const eligible = operationalRows.find((record) => record.knowledge_id === 'KNO-DEL-SCAN-INTEGRITY-001');
+  const ineligible = operationalRows.find((record) => record.knowledge_id === 'KNO-FORGE-STANDARD-DELIVERY-001');
+  assert.ok(eligible);
+  assert.ok(ineligible);
+
+  const filtered = filterActionableClarificationOptions([
+    { knowledge_id: eligible.knowledge_id, version: eligible.version, label: 'Verified answer' },
+    { knowledge_id: ineligible.knowledge_id, version: ineligible.version, label: 'Unavailable answer' },
+    { knowledge_id: 'FLOW:signature-type:unknown', version: 1, label: 'Routing choice' },
+    { label: 'Unidentified choice' }
+  ], operationalRows);
+
+  assert.deepEqual(filtered.map((option) => option.label), ['Verified answer', 'Routing choice']);
 });
 
 test('selecting an offered verified clarification returns that answer directly', async () => {

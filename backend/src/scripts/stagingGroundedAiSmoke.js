@@ -305,6 +305,37 @@ async function main() {
       selected_knowledge_ids: (closedBusinessAnswer.trace || []).map((record) => record.knowledge_id)
     });
 
+    const callTagClarification = await requestJson(`${backendUrl}/driver-help/query`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ question: 'How do I do a call tag?' })
+    });
+    assert.equal(callTagClarification.response_mode, 'CLARIFY', 'call-tag question response mode');
+    const callTagSuccessOption = (callTagClarification.clarification_options || []).find((option) => (
+      option.knowledge_id === 'KNO-PUP-CALLTAG-SUCCESS-001'
+    ));
+    assert.ok(callTagSuccessOption, 'call-tag question offers the successful-pickup procedure');
+
+    const callTagAnswer = await requestJson(`${backendUrl}/driver-help/query`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({
+        question: callTagSuccessOption.query || callTagSuccessOption.label,
+        session_id: callTagClarification.session_id
+      })
+    });
+    assert.equal(callTagAnswer.response_mode, 'ANSWER', 'selected call-tag option advances on the first tap');
+    assert.ok(
+      (callTagAnswer.trace || []).some((record) => record.knowledge_id === 'KNO-PUP-CALLTAG-SUCCESS-001'),
+      'selected call-tag option returns its offered verified record'
+    );
+    summary.push({
+      name: 'call-tag-clarification-selection',
+      response_mode: callTagAnswer.response_mode,
+      composition_mode: callTagAnswer.composition_mode,
+      selected_knowledge_ids: (callTagAnswer.trace || []).map((record) => record.knowledge_id)
+    });
+
     console.log(JSON.stringify({
       staging_canonical_answers: 'passed',
       duration_ms: Date.now() - startedAt,

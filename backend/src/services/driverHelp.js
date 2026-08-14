@@ -35,7 +35,23 @@ function resolveClarificationSelection(question, context = {}) {
     : [];
   return options.find((option) => (
     normalizeDriverQuestion(option?.label) === normalized
+    || normalizeDriverQuestion(option?.query) === normalized
   )) || null;
+}
+
+function filterActionableClarificationOptions(options, records) {
+  const canonicalRecords = selectCanonicalRecordVersions(records)
+    .filter((record) => !isReferenceRecord(record) && isProductionEligibleRecord(record));
+
+  return (Array.isArray(options) ? options : []).filter((option) => {
+    const knowledgeId = String(option?.knowledge_id || '');
+    if (knowledgeId.startsWith('FLOW:')) return true;
+    if (!knowledgeId) return false;
+    return canonicalRecords.some((record) => (
+      record.knowledge_id === knowledgeId
+      && (!option.version || record.version === option.version)
+    ));
+  });
 }
 
 function resolveClarificationFollowUp(question, context = {}) {
@@ -310,6 +326,9 @@ function createDriverHelpService({
     // published answer without a second model rewriting it.
     const decision = {
       ...baseDecision,
+      clarification_options: baseDecision.response_mode === 'CLARIFY'
+        ? filterActionableClarificationOptions(baseDecision.clarification_options, records)
+        : [],
       composition_mode: 'DETERMINISTIC',
       composition_grounding: []
     };
@@ -399,6 +418,7 @@ function createDriverHelpService({
 
 module.exports = {
   createDriverHelpService,
+  filterActionableClarificationOptions,
   isMissingTableError,
   resolveClarificationFollowUp,
   resolveClarificationSelection
