@@ -148,78 +148,10 @@ async function main() {
       });
     }
 
-    const evaluationScenarios = [
-      {
-        name: 'direct-signature-nobody-home',
-        question: 'I have a direct signature package and nobody is home. What do I do?'
-      },
-      {
-        name: 'ambiguous-signature-nobody-home',
-        question: 'sig pkg nobody home'
-      },
-      {
-        name: 'camera-scanning-side-button',
-        question: 'I turned on camera scanning and now the side scan button does nothing. How do I fix it?'
-      },
-      {
-        name: 'hazmat-leak-in-truck',
-        question: 'A hazmat package is leaking in my truck. What should I do?'
-      },
-      {
-        name: 'vehicle-accident-first-actions',
-        question: 'I was just in a crash. What should I do first?'
-      },
-      {
-        name: 'sign-for-customer',
-        question: 'Can I sign the scanner for the customer to save time?'
-      },
-      {
-        name: 'pickup-exceeds-vehicle-capacity',
-        question: 'My pickup has more packages than will fit in my truck. What do I do?'
-      },
-      {
-        name: 'prescan-before-leaving-station',
-        question: 'Can I prescan all my stops before I leave the station?'
-      },
-      {
-        name: 'customer-refuses-delivery',
-        question: "The customer won't take the delivery. What should I do?"
-      },
-      {
-        name: 'international-pickup-missing-documents',
-        question: "An international pickup says documents are attached, but there aren't any. What should I do?"
-      }
-    ];
-    const evaluation = [];
-
-    for (const scenario of evaluationScenarios) {
-      const before = Date.now();
-      const answer = await requestJson(`${backendUrl}/driver-help/query`, {
-        method: 'POST',
-        headers,
-        body: JSON.stringify({ question: scenario.question })
-      });
-      evaluation.push({
-        name: scenario.name,
-        question: scenario.question,
-        response_mode: answer.response_mode,
-        composition_mode: answer.composition_mode,
-        answer: answer.answer,
-        more_info: answer.more_info,
-        answer_structure: answer.answer_structure,
-        clarification_prompt: answer.clarification_prompt,
-        clarification_options: answer.clarification_options,
-        escalation_message: answer.escalation_message,
-        trace: answer.trace,
-        latency_ms: Date.now() - before
-      });
-    }
-
     console.log(JSON.stringify({
       staging_grounded_ai: 'passed',
       duration_ms: Date.now() - startedAt,
-      scenarios: summary,
-      ten_question_evaluation: evaluation
+      scenarios: summary
     }, null, 2));
   } finally {
     const cleanup = await supabase.from('accounts').delete().eq('id', accountId);
