@@ -17,6 +17,7 @@ async function provisionStagingManager() {
   const supabaseUrl = requireEnv('SUPABASE_URL');
   const supabaseServiceKey = requireEnv('SUPABASE_SERVICE_KEY');
   const email = requireEnv('STAGING_MANAGER_BOOTSTRAP_EMAIL').toLowerCase();
+  const bootstrapPassword = String(process.env.STAGING_MANAGER_BOOTSTRAP_PASSWORD || '');
 
   if (!supabaseUrl.includes(`${STAGING_PROJECT_REF}.supabase.co`)) {
     throw new Error('Refusing to provision a manager outside the ReadyRoute staging project');
@@ -71,7 +72,13 @@ async function provisionStagingManager() {
   }
 
   const now = new Date().toISOString();
-  const passwordHash = existingManager?.password_hash || await bcrypt.hash(crypto.randomBytes(32).toString('hex'), 12);
+  if (bootstrapPassword && bootstrapPassword.length < 16) {
+    throw new Error('STAGING_MANAGER_BOOTSTRAP_PASSWORD must be at least 16 characters');
+  }
+
+  const passwordHash = bootstrapPassword
+    ? await bcrypt.hash(bootstrapPassword, 12)
+    : existingManager?.password_hash || await bcrypt.hash(crypto.randomBytes(32).toString('hex'), 12);
   const managerPayload = {
     account_id: account.id,
     email,
