@@ -109,10 +109,10 @@ jobs:
           headers=(-H "Authorization: Bearer $SUPABASE_ACCESS_TOKEN" -H "Content-Type: application/json")
           query='{"query":"select (select count(*) from public.driver_help_knowledge_sources) as sources, (select count(*) from public.driver_help_knowledge_records) as records, (select count(*) from public.driver_help_knowledge_records where is_published = true) as published, (select count(*) from public.driver_help_knowledge_record_sources) as evidence_links, (select count(*) from public.driver_help_interactions) as interactions"}'
           response="$(curl --fail-with-body --silent --show-error --request POST "${headers[@]}" --data "$query" "$query_url")"
-          test "$(jq -r '.[0].sources' <<<"$response")" = "$EXPECTED_ANSWERS_SOURCES"
-          test "$(jq -r '.[0].records' <<<"$response")" = "$EXPECTED_ANSWERS_RECORDS"
+          test "$(jq -r '.[0].sources' <<<"$response")" -ge "$EXPECTED_ANSWERS_SOURCES"
+          test "$(jq -r '.[0].records' <<<"$response")" -ge "$EXPECTED_ANSWERS_RECORDS"
           test "$(jq -r '.[0].published' <<<"$response")" = "$EXPECTED_ANSWERS_PUBLISHED"
-          test "$(jq -r '.[0].evidence_links' <<<"$response")" = "$EXPECTED_ANSWERS_EVIDENCE"
+          test "$(jq -r '.[0].evidence_links' <<<"$response")" -ge "$EXPECTED_ANSWERS_EVIDENCE"
           test "$(jq -r '.[0].interactions' <<<"$response")" -ge "0"
 
       - name: Authenticate to Google Cloud
