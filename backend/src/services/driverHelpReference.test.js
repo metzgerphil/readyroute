@@ -73,6 +73,13 @@ test('uses an explicit pickup or delivery category to resolve duplicate numbers'
   assert.equal(delivery.selected_records[0].knowledge_id, 'DELIVERY_STATUS:024');
   assert.equal(pickup.response_mode, 'ANSWER');
   assert.equal(pickup.selected_records[0].knowledge_id, 'PICKUP_REASON:24');
+
+  const trailingPickup = buildDriverHelpReferenceDecision('code 24 pickup?', records);
+  const trailingDelivery = buildDriverHelpReferenceDecision('code 24 delivery?', records);
+  assert.equal(trailingPickup.response_mode, 'ANSWER');
+  assert.equal(trailingPickup.selected_records[0].knowledge_id, 'PICKUP_REASON:24');
+  assert.equal(trailingDelivery.response_mode, 'ANSWER');
+  assert.equal(trailingDelivery.selected_records[0].knowledge_id, 'DELIVERY_STATUS:024');
 });
 
 test('asks for the category when the same number has delivery and pickup meanings', () => {
@@ -81,7 +88,7 @@ test('asks for the category when the same number has delivery and pickup meaning
     reference({ knowledge_id: 'PICKUP_REASON:11' })
   ]);
   assert.equal(decision.response_mode, 'CLARIFY');
-  assert.match(decision.clarification_prompt, /category/i);
+  assert.match(decision.clarification_prompt, /delivery code or the pickup code/i);
 });
 
 test('withholds an unapproved matching reference', () => {

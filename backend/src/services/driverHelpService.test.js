@@ -370,6 +370,28 @@ test('actionable choices exclude missing and unpublished records', () => {
   assert.deepEqual(filterActionableClarificationOptions(options, records), [options[0]]);
 });
 
+test('actionable choices preserve published delivery and pickup reference options', () => {
+  const records = [{
+    knowledge_id: 'DELIVERY_STATUS:024',
+    version: 1,
+    status: 'SOURCE_VERIFIED',
+    is_published: true,
+    canonical_situation: 'Delivery Code 024'
+  }, {
+    knowledge_id: 'PICKUP_REASON:24',
+    version: 1,
+    status: 'SOURCE_VERIFIED',
+    is_published: true,
+    canonical_situation: 'Pickup Code 24'
+  }];
+  const options = records.map((record) => ({
+    knowledge_id: record.knowledge_id,
+    version: record.version,
+    label: record.canonical_situation
+  }));
+  assert.deepEqual(filterActionableClarificationOptions(options, records), options);
+});
+
 test('repeated identical clarification is detected', () => {
   const option = { knowledge_id: 'TEST-PROCEDURE-001', version: 1, label: 'Sample' };
   assert.equal(isRepeatedClarification({

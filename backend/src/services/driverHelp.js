@@ -56,7 +56,7 @@ function resolveClarificationSelection(question, context = {}) {
 
 function filterActionableClarificationOptions(options, records) {
   const canonicalRecords = selectCanonicalRecordVersions(records)
-    .filter((record) => !isReferenceRecord(record) && isProductionEligibleRecord(record));
+    .filter(isProductionEligibleRecord);
 
   return (Array.isArray(options) ? options : []).filter((option) => {
     const knowledgeId = String(option?.knowledge_id || '');

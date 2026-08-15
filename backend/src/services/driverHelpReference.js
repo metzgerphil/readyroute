@@ -22,10 +22,10 @@ function normalizedCode(code) {
 
 function requestedNamespace(question) {
   const normalized = normalizeDriverQuestion(question);
-  if (/\b(?:pickup|p u|pu) (?:reason )?code\b|\bpickup reason\b/.test(normalized)) {
+  if (/\b(?:pickup|p u|pu) (?:reason )?code\b|\bpickup reason\b|\bcode \d{1,4} (?:pickup|p u|pu)\b/.test(normalized)) {
     return 'PICKUP_REASON';
   }
-  if (/\b(?:delivery|status) code\b|\bdelivery status\b/.test(normalized)) {
+  if (/\b(?:delivery|status) code\b|\bdelivery status\b|\bcode \d{1,4} (?:delivery|status)\b/.test(normalized)) {
     return 'DELIVERY_STATUS';
   }
   return null;
@@ -130,7 +130,7 @@ function buildDriverHelpReferenceDecision(question, allRecords) {
     }
     const namespaces = new Set(matches.map((record) => referenceParts(record).namespace));
     if (namespaces.size > 1 && !namespace) {
-      return clarificationDecision(matches, 'Which reference category do you mean?');
+      return clarificationDecision(matches, 'Do you mean the delivery code or the pickup code?');
     }
     if (!matches.every(isEligibleReference)) {
       return escalationDecision(matches, 'The matching reference is not approved for use in the active corpus.');
