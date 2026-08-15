@@ -8,8 +8,9 @@ echo "==> Verifying ReadyRoute landing page"
 test -f "$LANDING_DIR/index.html"
 test -f "$LANDING_DIR/vercel.json"
 
-echo "==> Deploying landing page to Vercel"
+echo "==> Deploying landing page to Firebase Hosting"
 export NPM_CONFIG_CACHE="${NPM_CONFIG_CACHE:-/tmp/readyroute-npm-cache}"
-export XDG_CONFIG_HOME="${XDG_CONFIG_HOME:-/tmp/readyroute-xdg}"
-export XDG_CACHE_HOME="${XDG_CACHE_HOME:-/tmp/readyroute-xdg}"
-npx vercel --prod --yes --cwd "$LANDING_DIR"
+npx firebase-tools deploy \
+  --project ready-route-project \
+  --only hosting:landing \
+  --config "$ROOT_DIR/firebase.json"

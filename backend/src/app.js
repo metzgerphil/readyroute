@@ -73,6 +73,8 @@ function createApp(options = {}) {
     'https://portal.readyroute.org',
     'https://ready-route-project.web.app',
     'https://ready-route-project.firebaseapp.com',
+    'https://ready-route-landing.web.app',
+    'https://ready-route-landing.firebaseapp.com',
     process.env.VITE_MANAGER_PORTAL_URL,
     process.env.VERCEL_MANAGER_PORTAL_URL,
     process.env.MANAGER_PORTAL_URL

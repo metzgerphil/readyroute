@@ -12,5 +12,5 @@ export NPM_CONFIG_CACHE="${NPM_CONFIG_CACHE:-/tmp/readyroute-npm-cache}"
 
 npx firebase-tools deploy \
   --project ready-route-project \
-  --only hosting \
+  --only hosting:portal \
   --config "$ROOT_DIR/firebase.json"
