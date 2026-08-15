@@ -26,14 +26,6 @@ const DEFAULT_REFERENCE_CASES_PATH = path.resolve(
   __dirname,
   '../../../knowledge/evaluations/reference-language-cases.jsonl'
 );
-const DEFAULT_ANSWER_BUNDLE_PATH = path.resolve(
-  __dirname,
-  '../../../outputs/answer-library-v1/drive-complete/runtime/bundle.json'
-);
-const DEFAULT_ANSWER_IMAGE_DIR = path.resolve(
-  __dirname,
-  '../../../outputs/answer-library-v1/drive-complete/runtime/images'
-);
 const DRIVER_HELP_IMAGE_BUCKET = 'driver-help-images';
 
 const PRODUCTION_ELIGIBLE_STATUSES = new Set(['SOURCE_VERIFIED', 'READY_ROUTE_APPROVED']);
@@ -46,8 +38,8 @@ function parseArguments(argv) {
     deliveryReferences: DEFAULT_DELIVERY_REFERENCES_PATH,
     pickupReferences: DEFAULT_PICKUP_REFERENCES_PATH,
     referenceCases: DEFAULT_REFERENCE_CASES_PATH,
-    answerBundle: DEFAULT_ANSWER_BUNDLE_PATH,
-    imageDir: DEFAULT_ANSWER_IMAGE_DIR,
+    answerBundle: null,
+    imageDir: null,
     dryRun: false
   };
   for (let index = 0; index < argv.length; index += 1) {
@@ -527,7 +519,7 @@ async function main() {
     .filter((filePath) => fs.existsSync(filePath))
     .flatMap((filePath) => readJsonLines(filePath));
   const referenceCases = fs.existsSync(args.referenceCases) ? readJsonLines(args.referenceCases) : [];
-  const answerImages = fs.existsSync(args.answerBundle)
+  const answerImages = args.answerBundle && args.imageDir && fs.existsSync(args.answerBundle)
     ? readAnswerImageIndex(args.answerBundle, args.imageDir)
     : { bundleVersion: null, imagesByKnowledgeId: null, assets: [] };
   const publicationGateIndex = buildPublicationGateIndex(records);

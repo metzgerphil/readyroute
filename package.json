@@ -2,10 +2,6 @@
   "name": "readyroute",
   "private": true,
   "scripts": {
-    "answer-library:build": "python3 ./scripts/build-drive-answer-library.py && python3 ./scripts/publish-drive-answer-bundle.py",
-    "answer-library:test": "python3 -m unittest tests.test_answer_library_matcher && python3 ./scripts/run-answer-library-adversarial-eval.py",
-    "answer-library:validate": "python3 ./scripts/audit-answer-library-handoff.py",
-    "answer-library:release-check": "npm run answer-library:build && npm run answer-library:test && npm run answer-library:validate",
     "knowledge:build": "node ./scripts/build-ready-route-knowledge.js",
     "knowledge:validate": "node ./scripts/validate-ready-route-knowledge.js",
     "knowledge:release": "npm run knowledge:build && npm run knowledge:validate",

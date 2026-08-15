@@ -71,7 +71,7 @@ jobs:
               current_version="$version"
             fi
           done
-          test "$current_version" = "20260815030000"
+          test "$current_version" = "20260815120000"
 
       - name: Import canonical knowledge into staging
         env:
@@ -87,6 +87,21 @@ jobs:
           test -n "$service_key" && test "$service_key" != "null"
           echo "::add-mask::$service_key"
           SUPABASE_URL="$STAGING_SUPABASE_URL" SUPABASE_SERVICE_KEY="$service_key" npm run knowledge:import
+
+      - name: Verify the staging Answers corpus is empty
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          query_url="https://api.supabase.com/v1/projects/${STAGING_SUPABASE_PROJECT_REF}/database/query"
+          headers=(-H "Authorization: Bearer $SUPABASE_ACCESS_TOKEN" -H "Content-Type: application/json")
+          query='{"query":"select (select count(*) from public.driver_help_knowledge_sources) as sources, (select count(*) from public.driver_help_knowledge_records) as records, (select count(*) from public.driver_help_knowledge_record_sources) as evidence_links, (select count(*) from public.driver_help_interactions) as interactions"}'
+          response="$(curl --fail-with-body --silent --show-error --request POST "${headers[@]}" --data "$query" "$query_url")"
+          test "$(jq -r '.[0].sources' <<<"$response")" = "0"
+          test "$(jq -r '.[0].records' <<<"$response")" = "0"
+          test "$(jq -r '.[0].evidence_links' <<<"$response")" = "0"
+          test "$(jq -r '.[0].interactions' <<<"$response")" = "0"
 
       - name: Authenticate to Google Cloud
         uses: google-github-actions/auth@v3
@@ -115,7 +130,7 @@ jobs:
         run: |
           for attempt in {1..30}; do
             body="$(curl --fail --silent --show-error "$STAGING_BACKEND_URL/health" || true)"
-            if [[ "$body" == *"$EXPECTED_COMMIT"* && "$body" == *'"current":"20260815030000"'* && "$body" == *'"compatible":true'* ]]; then
+            if [[ "$body" == *"$EXPECTED_COMMIT"* && "$body" == *'"current":"20260815120000"'* && "$body" == *'"compatible":true'* ]]; then
               echo "Staging is serving $EXPECTED_COMMIT with current canonical knowledge schema"
               exit 0
             fi
@@ -124,27 +139,10 @@ jobs:
           echo "Staging health did not report the expected release and schema" >&2
           exit 1
 
-      - name: Run authenticated canonical-answer staging smoke
-        env:
-          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
-          SUPABASE_URL: ${{ env.STAGING_SUPABASE_URL }}
-          STAGING_BACKEND_URL: ${{ env.STAGING_BACKEND_URL }}
-        working-directory: backend
-        shell: bash
-        run: |
-          set -euo pipefail
-          keys_url="https://api.supabase.com/v1/projects/${STAGING_SUPABASE_PROJECT_REF}/api-keys"
-          keys_response="$(curl --fail-with-body --silent --show-error \
-            -H "Authorization: Bearer $SUPABASE_ACCESS_TOKEN" "$keys_url")"
-          service_key="$(jq -r '.[] | select(.name == "service_role") | (.api_key // .key)' <<<"$keys_response")"
-          test -n "$service_key" && test "$service_key" != "null"
-          echo "::add-mask::$service_key"
-          SUPABASE_SERVICE_KEY="$service_key" npm run smoke:staging-grounded-ai
-
       - name: Release summary
         run: |
           echo "### ReadyRoute staging driver-help release" >> "$GITHUB_STEP_SUMMARY"
           echo "- Commit: \`${{ github.sha }}\`" >> "$GITHUB_STEP_SUMMARY"
           echo "- Cloud Run URL: ${{ steps.deploy.outputs.url }}" >> "$GITHUB_STEP_SUMMARY"
-          echo "- Canonical knowledge imported after pending staging migrations" >> "$GITHUB_STEP_SUMMARY"
-          echo "- Authenticated canonical answer, clarification, escalation, and trace checks passed" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Ready Route Answers v2 corpus verified empty after the reset migration" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Backend deployed in fail-closed mode pending the replacement corpus" >> "$GITHUB_STEP_SUMMARY"

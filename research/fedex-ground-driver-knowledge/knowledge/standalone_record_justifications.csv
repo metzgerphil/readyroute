@@ -1,5 +1,0 @@
-knowledge_id,justification_type,reason
-KNO-COMMS-MEDIA-001,NARROW_STANDALONE_POLICY,"Recording, media, and brand-publication restrictions do not currently require another operational procedure to answer the source-defined situation."
-KNO-DEL-FAD-GROUND-001,NARROW_STANDALONE_POLICY,"The current FORGE 3.3 guide fully defines the conditional FAD identification, QR-validation, D39 non-delivery, HAL, and user-type branches; linking it to ordinary signature or PPOD records could incorrectly imply those paths substitute for FAD validation."
-KNO-DEL-TOBACCO-001,CONTENT_RESTRICTION_WITHHELD_BRANCH,"The content restriction and unresolved commercial exception are self-contained; no supplied companion record establishes a safe alternate delivery procedure."
-KNO-PUP-WEIGHT-ENTRY-001,NARROW_STANDALONE_POLICY,"The current FORGE weight prompt is a self-contained pickup data-entry rule; linking it to hazmat or other procedures could imply unsupported operational scope."

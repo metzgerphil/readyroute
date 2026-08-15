@@ -1,51 +1,5 @@
 {
-  "schema_version": "1.0.0",
-  "clarification_routes": {
-    "signature_type": {
-      "question": "What signature type does FORGE show?",
-      "choices": [
-        {"label": "ISR — Indirect Signature", "target_faq_id": "FAQ-DEL-SIG-ISR-001"},
-        {"label": "DSR — Direct Signature", "target_faq_id": "FAQ-DEL-SIG-DSR-001"},
-        {"label": "ASR — Adult Signature", "target_faq_id": "FAQ-DEL-SIG-ASR-001"}
-      ]
-    },
-    "business_closed_timing": {
-      "question": "Is the business closed on a weekday or on the weekend?",
-      "choices": [
-        {"label": "Weekday", "target_faq_id": "FAQ-DEL-BUS-CLOSED-001"},
-        {"label": "Weekend", "target_faq_id": "FAQ-DELIVERY-STATUS-011"}
-      ]
-    },
-    "damage_context": {
-      "question": "Which situation is this?",
-      "choices": [
-        {"label": "Ordinary delivery package damage", "target_faq_id": "FAQ-DEL-DAMAGE-INSPECTION-001"},
-        {"label": "Hazmat package is damaged or leaking", "target_faq_id": "FAQ-HAZ-LEAK-001"},
-        {"label": "Call-tag pickup package is damaged", "target_faq_id": "FAQ-PUP-CALLTAG-RESTRICTED-001"}
-      ]
-    },
-    "refusal_context": {
-      "question": "Is this an ordinary delivery or a call-tag pickup?",
-      "choices": [
-        {"label": "Ordinary delivery", "target_faq_id": "FAQ-DELIVERY-STATUS-006"},
-        {"label": "Call-tag pickup", "target_faq_id": "FAQ-PUP-CALLTAG-REFUSED-001"}
-      ]
-    },
-    "code_namespace": {
-      "question": "Which kind of code do you mean?",
-      "choices": [
-        {"label": "Delivery status code", "target_namespace": "delivery_status"},
-        {"label": "Pickup reason code", "target_namespace": "pickup_reason"},
-        {"label": "Call-tag status", "target_namespace": "call_tag_status"}
-      ]
-    }
-  },
-  "code_aliases": {
-    "call_tag_status": {
-      "006": "FAQ-PUP-CALLTAG-REFUSED-001",
-      "024": "FAQ-PUP-CALLTAG-NOTREADY-001",
-      "029": "FAQ-PUP-CALLTAG-SUCCESS-001",
-      "081": "FAQ-PUP-CALLTAG-RESTRICTED-001"
-    }
-  }
+  "schema_version": "2.0.0",
+  "clarification_routes": {},
+  "code_aliases": {}
 }

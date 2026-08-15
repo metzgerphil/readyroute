@@ -1,10 +1,12 @@
-# Ready Route operational knowledge
+# Ready Route Answers operational knowledge
 
-Ready Route is an operational-reference system for trained FedEx Ground drivers. It does not replace required training or authorize unsupported procedures.
+Ready Route Answers is an operational-reference product for trained FedEx Ground drivers. It does not replace required training or authorize unsupported procedures.
 
 ## Knowledge entry point
 
 Start with `knowledge/index.md`. The canonical machine-readable release is `knowledge/operations/records.jsonl`. The research and evidence workbench is under `research/fedex-ground-driver-knowledge/`; do not treat conversation memory or general model knowledge as operational authority.
+
+The active corpus was intentionally reset on 2026-08-15. The archived v1 dataset is historical material only and must not be searched, imported, quoted, or used to answer driver questions unless the owner explicitly starts a separate historical review. An empty active corpus means the correct behavior is to say that Ready Route Answers does not yet have a verified answer.
 
 ## Answering FedEx operational questions
 
