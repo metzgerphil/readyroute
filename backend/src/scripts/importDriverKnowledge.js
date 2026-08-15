@@ -283,7 +283,7 @@ function toKnowledgeRow(
     approval_date: record.approval_date || null,
     source_research_status: record.source_research_status || null,
     canonical_schema_version: record.schema_version || null,
-    record_checksum: checksum(record),
+    record_checksum: checksum({ record, variants, questionPatterns }),
     published_at: isPublished ? importedAt : null,
     updated_at: importedAt
   };
@@ -296,7 +296,7 @@ function buildVariantIndex(driverCases = []) {
   for (const testCase of driverCases) {
     for (const knowledgeId of testCase.expected_knowledge_ids || []) {
       const variants = index.get(knowledgeId) || [];
-      variants.push(testCase.utterance);
+      variants.push(testCase.utterance, ...(testCase.semantic_variations || []));
       index.set(knowledgeId, variants);
     }
   }
@@ -308,13 +308,14 @@ function buildPatternIndex(driverCases = []) {
   for (const testCase of driverCases) {
     for (const knowledgeId of testCase.expected_knowledge_ids || []) {
       const patterns = index.get(knowledgeId) || [];
-      patterns.push({
-        utterance: testCase.utterance,
+      const utterances = [testCase.utterance, ...(testCase.semantic_variations || [])];
+      patterns.push(...utterances.map((utterance) => ({
+        utterance,
         response_mode: testCase.response_mode,
         information_sufficiency: testCase.information_sufficiency,
         must_clarify: testCase.must_clarify || [],
         ...(testCase.answer_override ? { answer_override: testCase.answer_override } : {})
-      });
+      })));
       index.set(knowledgeId, patterns);
     }
   }
@@ -526,6 +527,30 @@ async function reconcilePublishedKnowledge(supabase, currentRows) {
   return staleRows.length;
 }
 
+async function verifyImportedKnowledge(supabase, currentRows) {
+  const { data, error } = await supabase
+    .from('driver_help_knowledge_records')
+    .select('knowledge_id, version, record_checksum, is_published');
+  if (error) throw error;
+
+  const actual = new Map((data || []).map((row) => (
+    [`${row.knowledge_id}\u0000${row.version}`, row]
+  )));
+  const mismatches = currentRows.filter((row) => {
+    const stored = actual.get(`${row.knowledge_id}\u0000${row.version}`);
+    return !stored
+      || stored.record_checksum !== row.record_checksum
+      || stored.is_published !== row.is_published;
+  });
+  if (mismatches.length) {
+    throw new Error(`Imported knowledge verification failed for: ${mismatches
+      .slice(0, 10)
+      .map((row) => `${row.knowledge_id}@${row.version}`)
+      .join(', ')}`);
+  }
+  return currentRows.length;
+}
+
 async function uploadAnswerImages(supabase, assets) {
   const bucket = supabase.storage.from(DRIVER_HELP_IMAGE_BUCKET);
   for (const asset of assets) {
@@ -597,6 +622,7 @@ async function main() {
     await upsertInBatches('driver_help_knowledge_record_sources', payload.evidenceRows, {
       onConflict: 'knowledge_id,knowledge_version,source_id,locator'
     });
+    summary.verified_imported_records = await verifyImportedKnowledge(supabase, payload.knowledgeRows);
   }
 
   process.stdout.write(`${JSON.stringify(summary, null, 2)}\n`);
@@ -623,6 +649,7 @@ module.exports = {
   readPngDimensions,
   readSourceInventory,
   reconcilePublishedKnowledge,
+  verifyImportedKnowledge,
   PRODUCTION_ELIGIBLE_STATUSES,
   toCanonicalReferenceRecord,
   uploadAnswerImages,

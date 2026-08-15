@@ -6,6 +6,7 @@ process.env.SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_KEY || 'test-ser
 
 const {
   buildContextualQuestion,
+  buildDeterministicRuntimeDecision,
   buildNextSessionContext,
   isClarificationAnswerSufficient,
   createDriverHelpService,
@@ -518,4 +519,51 @@ test('repeated identical clarification is detected', () => {
     pending_clarification_prompt: 'Was it already delivered?',
     pending_clarification_options: []
   }), true);
+});
+
+test('production-equivalent routing keeps operational code questions and later reference categories separate', () => {
+  const operational = knowledgeRecord({
+    knowledge_id: 'KNO-DEL-SECURITY-NODELIVERY-001',
+    taxonomy_paths: ['TAX-DELIVERY'],
+    canonical_situation: 'Security inspection or restriction at a delivery location',
+    driver_question_variants: ['Security has to inspect my vehicle before they let me deliver'],
+    driver_question_patterns: [{
+      utterance: 'Security has to inspect my vehicle before they let me deliver. Should I use Code 001?',
+      response_mode: 'DIRECT_SOURCE_GROUNDED_ANSWER',
+      must_clarify: [],
+      answer_override: {
+        direct_answer: 'Do not use Code 001 just because an allowed security inspection is required.',
+        steps: ['Follow the permitted inspection process.'],
+        watch_for: 'Use Code 001 only if security prevents delivery.'
+      }
+    }],
+    clarification_requirements: []
+  });
+  const delivery = referenceRecord(
+    'DELIVERY_STATUS:001',
+    'Code 001: Increased Security - No Delivery.',
+    'delivery status 001'
+  );
+  const pickup = referenceRecord(
+    'PICKUP_REASON:01',
+    'Code 01: Missed Pickup - DNA.',
+    'pickup reason 01'
+  );
+  const records = [operational, delivery, pickup];
+
+  const first = buildDeterministicRuntimeDecision(
+    'Security has to inspect my vehicle before they let me deliver. Should I use Code 001?',
+    records,
+    {}
+  );
+  assert.equal(first.decision.selected_records[0].knowledge_id, operational.knowledge_id);
+
+  const context = buildNextSessionContext({}, 'Security inspection question', first.decision);
+  const second = buildDeterministicRuntimeDecision(
+    'what is delivery status code 001',
+    records,
+    context
+  );
+  assert.equal(second.decision.response_mode, 'ANSWER');
+  assert.equal(second.decision.selected_records[0].knowledge_id, 'DELIVERY_STATUS:001');
 });

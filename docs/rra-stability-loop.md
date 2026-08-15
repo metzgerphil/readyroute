@@ -5,10 +5,15 @@ Ready Route Answers uses an automated regression gate before adding operational 
 ## What the gate checks
 
 - Every curated driver question selects the intended canonical record and response mode.
-- Three harmless wording variations are generated for every curated question.
+- Curated semantic paraphrases, driver shorthand, and ASR-style spellings must preserve the intended branch answer.
+- Three harmless wrapper and punctuation variations are generated for every curated question and semantic paraphrase.
 - Multi-turn conversations retain the original situation and all accepted clarification answers.
+- A clarification fails when it asks for a fact the driver already supplied or does not ask the expected decision-changing question.
 - Unsupported questions fail closed without producing an operational answer.
 - Every answer has one direct answer, one to four steps, an optional warning, and a canonical trace.
+- Branch-specific questions must return the reviewed compact direct sentence, not merely the correct general record.
+- The deterministic gate uses the same reference/operational routing path as the live service.
+- Staging import verifies every canonical record checksum, including its driver-language patterns, rather than accepting matching row counts alone.
 - Driver-facing code terminology uses `Code N`.
 - The entire suite passes three consecutive times.
 

@@ -390,6 +390,58 @@ function buildInterpretationResult({
   };
 }
 
+function buildDeterministicRuntimeDecision(question, records, context = {}) {
+  const clarificationSelection = resolveClarificationSelection(question, context);
+  const resolvedQuestion = buildContextualQuestion(question, context);
+  const decisionContext = applyClarificationAnswerToContext(context, question);
+  const selectedClarificationRecord = clarificationSelection
+    ? selectCanonicalRecordVersions(records).find((record) => (
+        !isReferenceRecord(record)
+        && isProductionEligibleRecord(record)
+        && (
+          (clarificationSelection.knowledge_id
+            && record.knowledge_id === clarificationSelection.knowledge_id
+            && (!clarificationSelection.version || record.version === clarificationSelection.version))
+          || (!clarificationSelection.knowledge_id
+            && normalizeDriverQuestion(record.canonical_situation) === normalizeDriverQuestion(clarificationSelection.label))
+        )
+      ))
+    : null;
+  // Prefer the driver's current words for a reference definition. Otherwise a
+  // prior “delivery or pickup?” prompt can contaminate the category in the
+  // accumulated transcript and return the wrong namespace.
+  const referenceDecision = buildDriverHelpReferenceDecision(question, records)
+    || buildDriverHelpReferenceDecision(resolvedQuestion, records);
+  const decision = selectedClarificationRecord
+    ? {
+        response_mode: 'ANSWER',
+        confidence: 1,
+        candidates: [{
+          knowledge_id: selectedClarificationRecord.knowledge_id,
+          version: selectedClarificationRecord.version,
+          canonical_situation: selectedClarificationRecord.canonical_situation,
+          score: 100
+        }],
+        selected_records: [selectedClarificationRecord],
+        answer: buildPresentedAnswer(selectedClarificationRecord, resolvedQuestion),
+        more_info: selectedClarificationRecord.more_info_answer || null,
+        answer_structure: buildAnswerStructure(selectedClarificationRecord, resolvedQuestion)
+      }
+    : referenceDecision || buildDriverHelpDecision(
+        resolvedQuestion,
+        records.filter((record) => !isReferenceRecord(record)),
+        decisionContext
+      );
+  return {
+    clarificationSelection,
+    decision,
+    decisionContext,
+    referenceDecision,
+    resolvedQuestion,
+    selectedClarificationRecord
+  };
+}
+
 function createDriverHelpService({
   supabase = defaultSupabase,
   now = () => new Date(),
@@ -612,43 +664,15 @@ function createDriverHelpService({
       loadKnowledgeRecords(),
       loadSessionContext(sessionId, accountId, actorType, actorId)
     ]);
-    const clarificationSelection = resolveClarificationSelection(question, sessionState.context);
-    const resolvedQuestion = buildContextualQuestion(question, sessionState.context);
-    const decisionContext = applyClarificationAnswerToContext(sessionState.context, question);
-    const selectedClarificationRecord = clarificationSelection
-      ? selectCanonicalRecordVersions(records).find((record) => (
-          !isReferenceRecord(record)
-          && isProductionEligibleRecord(record)
-          && (
-            (clarificationSelection.knowledge_id
-              && record.knowledge_id === clarificationSelection.knowledge_id
-              && (!clarificationSelection.version || record.version === clarificationSelection.version))
-            || (!clarificationSelection.knowledge_id
-              && normalizeDriverQuestion(record.canonical_situation) === normalizeDriverQuestion(clarificationSelection.label))
-          )
-        ))
-      : null;
-    const referenceDecision = buildDriverHelpReferenceDecision(resolvedQuestion, records);
-    const baseDecision = selectedClarificationRecord
-      ? {
-          response_mode: 'ANSWER',
-          confidence: 1,
-          candidates: [{
-            knowledge_id: selectedClarificationRecord.knowledge_id,
-            version: selectedClarificationRecord.version,
-            canonical_situation: selectedClarificationRecord.canonical_situation,
-            score: 100
-          }],
-          selected_records: [selectedClarificationRecord],
-          answer: buildPresentedAnswer(selectedClarificationRecord, resolvedQuestion),
-          more_info: selectedClarificationRecord.more_info_answer || null,
-          answer_structure: buildAnswerStructure(selectedClarificationRecord, resolvedQuestion)
-        }
-      : referenceDecision || buildDriverHelpDecision(
-          resolvedQuestion,
-          records.filter((record) => !isReferenceRecord(record)),
-          decisionContext
-        );
+    const runtime = buildDeterministicRuntimeDecision(question, records, sessionState.context);
+    const {
+      clarificationSelection,
+      decision: baseDecision,
+      decisionContext,
+      referenceDecision,
+      resolvedQuestion,
+      selectedClarificationRecord
+    } = runtime;
     let interpretedDecision = null;
     let interpretationMode = 'DETERMINISTIC';
     let interpretationConfidence = null;
@@ -846,6 +870,7 @@ module.exports = {
   applyClarificationAnswerToContext,
   buildAiCandidateRecords,
   buildContextualQuestion,
+  buildDeterministicRuntimeDecision,
   buildNextSessionContext,
   clarificationPromptDetail,
   buildAiSafetyIdentifier,

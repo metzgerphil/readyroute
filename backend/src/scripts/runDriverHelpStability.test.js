@@ -5,6 +5,7 @@ const {
   buildSummary,
   parseArguments,
   referenceWordingVariations,
+  validateExpectedPresentation,
   wordingVariations
 } = require('./runDriverHelpStability');
 
@@ -42,4 +43,17 @@ test('stability summary blocks expansion whenever a failure remains', () => {
   });
   assert.equal(summary.stability_gate, 'FAIL');
   assert.equal(summary.expansion_gate, 'BLOCKED');
+});
+
+test('stability presentation checks reject a generic record answer when a compact branch answer is required', () => {
+  const failures = validateExpectedPresentation({
+    response_mode: 'ANSWER',
+    answer: 'Review the complete premium-service rules.',
+    answer_structure: { direct_answer: 'Review the complete premium-service rules.' }
+  }, {
+    answer_override: { direct_answer: 'No. Deliver Evening service only during the 5–8 p.m. window.' }
+  }, {
+    suite: 'TEST', caseId: 'SPECIFICITY', run: 1, input: 'Can I deliver at 4:45?'
+  });
+  assert.equal(failures[0].category, 'ANSWER_SPECIFICITY');
 });

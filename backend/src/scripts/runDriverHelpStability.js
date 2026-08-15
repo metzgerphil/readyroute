@@ -8,11 +8,12 @@ process.env.SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_KEY || 'test-ser
 
 const {
   applyClarificationAnswerToContext,
+  buildDeterministicRuntimeDecision,
   buildContextualQuestion,
   buildNextSessionContext,
   filterActionableClarificationOptions
 } = require('../services/driverHelp');
-const { buildDriverHelpDecision } = require('../services/driverHelpRetrieval');
+const { buildDriverHelpDecision, requirementMatches } = require('../services/driverHelpRetrieval');
 const { buildDriverHelpReferenceDecision } = require('../services/driverHelpReference');
 const { buildImport, buildPublicationGateIndex } = require('./importDriverKnowledge');
 const {
@@ -57,14 +58,15 @@ function loadIndexedRecords() {
   const patterns = new Map();
   for (const testCase of cases) {
     for (const knowledgeId of testCase.expected_knowledge_ids || []) {
-      variants.set(knowledgeId, [...(variants.get(knowledgeId) || []), testCase.utterance]);
-      patterns.set(knowledgeId, [...(patterns.get(knowledgeId) || []), {
-        utterance: testCase.utterance,
+      const utterances = [testCase.utterance, ...(testCase.semantic_variations || [])];
+      variants.set(knowledgeId, [...(variants.get(knowledgeId) || []), ...utterances]);
+      patterns.set(knowledgeId, [...(patterns.get(knowledgeId) || []), ...utterances.map((utterance) => ({
+        utterance,
         response_mode: testCase.response_mode,
         information_sufficiency: testCase.information_sufficiency,
         must_clarify: testCase.must_clarify || [],
         ...(testCase.answer_override ? { answer_override: testCase.answer_override } : {})
-      }]);
+      }))]);
     }
   }
   return records.map((record) => toPublishedRecord(
@@ -121,6 +123,44 @@ function validateAnswerContract(decision, metadata) {
   return failures;
 }
 
+function validateExpectedPresentation(decision, testCase, metadata) {
+  const failures = [];
+  if (decision.response_mode === 'ANSWER' && testCase.answer_override?.direct_answer) {
+    const actual = String(decision.answer_structure?.direct_answer || decision.answer || '').trim();
+    const expected = String(testCase.answer_override.direct_answer).trim();
+    if (actual !== expected) {
+      failures.push(failure({
+        ...metadata,
+        category: 'ANSWER_SPECIFICITY',
+        expected,
+        actual
+      }));
+    }
+  }
+  if (decision.response_mode === 'CLARIFY' && (testCase.must_clarify || []).length) {
+    const prompt = String(decision.clarification_prompt || '');
+    if (!(testCase.must_clarify || []).some((expected) => requirementMatches(expected, prompt))) {
+      failures.push(failure({
+        ...metadata,
+        category: 'CLARIFICATION_RELEVANCE',
+        expected: testCase.must_clarify,
+        actual: prompt || null
+      }));
+    }
+  }
+  for (const forbidden of testCase.clarification_must_not_include || []) {
+    if (String(decision.clarification_prompt || '').toLowerCase().includes(String(forbidden).toLowerCase())) {
+      failures.push(failure({
+        ...metadata,
+        category: 'REDUNDANT_CLARIFICATION',
+        expected: `prompt without ${forbidden}`,
+        actual: decision.clarification_prompt
+      }));
+    }
+  }
+  return failures;
+}
+
 function wordingVariations(utterance) {
   return [
     `  ${String(utterance).toUpperCase()}!!!  `,
@@ -173,9 +213,14 @@ function runOnce({
   for (const testCase of cases) {
     const expectedIds = testCase.expected_knowledge_ids || [];
     const expectedModes = expectedRuntimeMode(testCase.response_mode);
-    const inputs = [testCase.utterance, ...wordingVariations(testCase.utterance)];
+    const authoredInputs = [testCase.utterance, ...(testCase.semantic_variations || [])];
+    const inputs = authoredInputs.flatMap((utterance) => [utterance, ...wordingVariations(utterance)]);
     for (const [variationIndex, input] of inputs.entries()) {
-      const decision = buildDriverHelpDecision(input, records);
+      const decision = buildDeterministicRuntimeDecision(
+        input,
+        [...records, ...referenceRecords],
+        {}
+      ).decision;
       const actualId = selectedKnowledgeId(decision);
       const caseId = variationIndex === 0 ? testCase.case_id : `${testCase.case_id}:VAR-${variationIndex}`;
       assertions += 2;
@@ -207,6 +252,12 @@ function runOnce({
         run,
         input
       }));
+      failures.push(...validateExpectedPresentation(decision, testCase, {
+        suite: variationIndex ? 'SEMANTIC_OR_WORDING_VARIATION' : 'CURATED_LANGUAGE',
+        caseId,
+        run,
+        input
+      }));
       assertions += decision.response_mode === 'ANSWER' ? 3 : 0;
     }
   }
@@ -214,9 +265,12 @@ function runOnce({
   for (const scenario of conversations) {
     let context = {};
     for (const [turnIndex, turn] of scenario.turns.entries()) {
-      const contextualQuestion = buildContextualQuestion(turn.input, context);
-      const decisionContext = applyClarificationAnswerToContext(context, turn.input);
-      const decision = buildDriverHelpDecision(contextualQuestion, records, decisionContext);
+      const runtime = buildDeterministicRuntimeDecision(
+        turn.input,
+        [...records, ...referenceRecords],
+        context
+      );
+      const decision = runtime.decision;
       const actualId = selectedKnowledgeId(decision);
       const caseId = `${scenario.scenario_id}:TURN-${turnIndex + 1}`;
       assertions += 2;
@@ -242,11 +296,30 @@ function runOnce({
           }));
         }
       }
+      if (turn.expected_direct_answer) {
+        assertions += 1;
+        const actual = decision.answer_structure?.direct_answer || decision.answer || null;
+        if (actual !== turn.expected_direct_answer) {
+          failures.push(failure({
+            suite: 'MULTI_TURN', caseId, run, category: 'ANSWER_SPECIFICITY', input: turn.input,
+            expected: turn.expected_direct_answer, actual
+          }));
+        }
+      }
+      for (const forbidden of turn.clarification_not_contains || []) {
+        assertions += 1;
+        if (String(decision.clarification_prompt || '').toLowerCase().includes(String(forbidden).toLowerCase())) {
+          failures.push(failure({
+            suite: 'MULTI_TURN', caseId, run, category: 'REDUNDANT_CLARIFICATION', input: turn.input,
+            expected: `prompt without ${forbidden}`, actual: decision.clarification_prompt
+          }));
+        }
+      }
       failures.push(...validateAnswerContract(decision, {
         suite: 'MULTI_TURN', caseId, run, input: turn.input
       }));
       assertions += decision.response_mode === 'ANSWER' ? 3 : 0;
-      context = buildNextSessionContext(decisionContext, turn.input, decision);
+      context = buildNextSessionContext(runtime.decisionContext, turn.input, decision);
     }
   }
 
@@ -429,7 +502,10 @@ function buildSummary({
     published_reference_definitions: referenceRecords.filter((record) => record.is_published).length,
     curated_language_cases: cases.length,
     curated_reference_cases: referenceCases.length,
-    generated_wording_variations: cases.length * 3,
+    semantic_variations: cases.reduce((sum, item) => sum + (item.semantic_variations || []).length, 0),
+    generated_wording_variations: cases.reduce((sum, item) => (
+      sum + (1 + (item.semantic_variations || []).length) * 3
+    ), 0),
     generated_reference_phrasings: referenceRecords.reduce((count, record) => {
       const [namespace, code] = record.knowledge_id.split(':');
       return count + referenceWordingVariations(namespace, code).length * 4;
@@ -496,6 +572,7 @@ module.exports = {
   parseArguments,
   runOnce,
   validateAnswerContract,
+  validateExpectedPresentation,
   referenceWordingVariations,
   wordingVariations
 };

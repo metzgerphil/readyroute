@@ -129,6 +129,30 @@ test('canonical imports preserve stored image mappings when the private bundle i
   assert.equal(Object.hasOwn(payload.knowledgeRows[0], 'images'), false);
 });
 
+test('semantic driver variations are imported as answer-bearing patterns, not test-only phrases', () => {
+  const answerOverride = {
+    direct_answer: 'No. Reconcile before leaving.',
+    steps: ['Close the pickup on site.'],
+    watch_for: 'Do not reconcile off site.'
+  };
+  const payload = buildImport([canonicalRecord()], '2026-08-14T00:00:00.000Z', [{
+    utterance: 'Can I reconcile after I leave?',
+    semantic_variations: ['I already left can I reconcile now'],
+    expected_knowledge_ids: ['KNO-TEST-001'],
+    response_mode: 'DIRECT_SOURCE_GROUNDED_ANSWER',
+    information_sufficiency: 'SUFFICIENT',
+    must_clarify: [],
+    answer_override: answerOverride
+  }]);
+  const row = payload.knowledgeRows[0];
+  assert.ok(row.driver_question_variants.includes('I already left can I reconcile now'));
+  assert.deepEqual(
+    row.driver_question_patterns.find((pattern) => pattern.utterance === 'I already left can I reconcile now')
+      .answer_override,
+    answerOverride
+  );
+});
+
 test('canonical reference definitions import in a separate namespace with status-aware publication', () => {
   const references = [
     {

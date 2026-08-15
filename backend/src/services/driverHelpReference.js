@@ -33,6 +33,12 @@ function requestedNamespace(question) {
 
 function explicitCodeTokens(question) {
   const normalized = normalizeDriverQuestion(question);
+  // A driver describing an event and asking whether a code applies needs the
+  // operational record evaluated. Treating that as a definition lookup loses
+  // the facts the driver already supplied and can create a false ambiguity.
+  if (/\b(?:can|could|do|should|would) i (?:apply|choose|select|use) code \d{1,4}\b/.test(normalized)) {
+    return [];
+  }
   const hasReferenceIntent = (
     /^(?:(?:what|which) (?:is |are )?)?(?:delivery |pickup |status |reason |reference )?code \d/.test(normalized)
     || /\b(?:delivery|pickup|status|reason|reference|p u|pu) code \d/.test(normalized)

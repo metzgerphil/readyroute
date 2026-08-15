@@ -508,10 +508,22 @@ function buildDriverHelpDecision(question, records, context = {}) {
     // detail. Re-ranking the entire accumulated clarification transcript lets
     // words from Ready Route's own prior prompts hijack the conversation.
     const newestAnswer = latestDriverAnswer(question);
-    const reconsidered = rankKnowledgeRecords(newestAnswer, records, {
+    let reconsiderationQuestion = newestAnswer;
+    let reconsidered = rankKnowledgeRecords(newestAnswer, records, {
       ...context,
       knowledge_ids: []
     });
+    // Some short follow-ups only have meaning with the original situation
+    // (for example, “the doors are locked” after a zero-package pickup). If
+    // the reply alone cannot select anything, retry with the driver's original
+    // situation while still excluding RRA's own clarification wording.
+    if (!reconsidered.length && tokenize(newestAnswer).length >= 3 && context.situation_question) {
+      reconsiderationQuestion = `${context.situation_question}. Driver follow-up: ${newestAnswer}`;
+      reconsidered = rankKnowledgeRecords(reconsiderationQuestion, records, {
+        ...context,
+        knowledge_ids: []
+      });
+    }
     const replacement = reconsidered[0] || null;
     const plannedCandidate = reconsidered.find(({ record }) => (
       record.knowledge_id === plannedRecord?.knowledge_id
@@ -538,9 +550,12 @@ function buildDriverHelpDecision(question, records, context = {}) {
         !plannedCandidate
         || replacement.score - plannedCandidate.score > CLARIFICATION_MARGIN
         || replacementNamesExplicitSubject
-      );
+    );
     if (shouldSwitchRecord) {
-      return buildDriverHelpDecision(newestAnswer, records, {
+      const switchQuestion = context.situation_question
+        ? `${context.situation_question}. Driver follow-up: ${newestAnswer}`
+        : reconsiderationQuestion;
+      return buildDriverHelpDecision(switchQuestion, records, {
         last_response_mode: context.last_response_mode,
         knowledge_ids: [],
         clarification_plan_active: false
@@ -586,7 +601,8 @@ function buildDriverHelpDecision(question, records, context = {}) {
     );
   }
 
-  const pattern = getMatchingQuestionPattern(question, top.record);
+  const pattern = getMatchingQuestionPattern(question, top.record)
+    || getMatchingQuestionPattern(latestDriverAnswer(question), top.record);
   const patternMode = getPatternRuntimeMode(pattern);
   if (patternMode === 'ESCALATE') return escalation(candidates, confidence);
   if (patternMode === 'CLARIFY') {
