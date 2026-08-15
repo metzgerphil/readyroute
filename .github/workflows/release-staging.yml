@@ -88,6 +88,23 @@ jobs:
           echo "::add-mask::$service_key"
           SUPABASE_URL="$STAGING_SUPABASE_URL" SUPABASE_SERVICE_KEY="$service_key" npm run knowledge:import
 
+      - name: Provision the staging manager
+        if: ${{ secrets.STAGING_MANAGER_BOOTSTRAP_EMAIL != '' }}
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          STAGING_MANAGER_BOOTSTRAP_EMAIL: ${{ secrets.STAGING_MANAGER_BOOTSTRAP_EMAIL }}
+        working-directory: backend
+        shell: bash
+        run: |
+          set -euo pipefail
+          keys_url="https://api.supabase.com/v1/projects/${STAGING_SUPABASE_PROJECT_REF}/api-keys"
+          keys_response="$(curl --fail-with-body --silent --show-error \
+            -H "Authorization: Bearer $SUPABASE_ACCESS_TOKEN" "$keys_url")"
+          service_key="$(jq -r '.[] | select(.name == "service_role") | (.api_key // .key)' <<<"$keys_response")"
+          test -n "$service_key" && test "$service_key" != "null"
+          echo "::add-mask::$service_key"
+          SUPABASE_URL="$STAGING_SUPABASE_URL" SUPABASE_SERVICE_KEY="$service_key" node src/scripts/provisionStagingManager.js
+
       - name: Calculate expected staging corpus counts
         working-directory: backend
         shell: bash
@@ -133,6 +150,7 @@ jobs:
             SOURCE_COMMIT=${{ github.sha }}
             NODE_ENV=production
             READYROUTE_DRIVER_HELP_AI_ENABLED=false
+            MANAGER_PORTAL_URL=https://ready-route-project--rra-test-mlshz0rb.web.app
           env_vars_update_strategy: merge
 
       - name: Verify staging release identity
