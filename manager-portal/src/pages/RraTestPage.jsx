@@ -82,7 +82,7 @@ export default function RraTestPage() {
         <div>
           <div className="eyebrow">Ready Route Answers</div>
           <h1>RRA Test Console</h1>
-          <p>Ask a question the way a driver would. The driver answer stays deterministic while AI runs in shadow mode.</p>
+          <p>Ask a question the way a driver would. AI may interpret the wording, but every answer stays locked to a published Ready Route record.</p>
         </div>
         {result ? <button className="secondary-button" onClick={newSituation} type="button">New situation</button> : null}
       </div>
@@ -160,9 +160,10 @@ export default function RraTestPage() {
 
           <section className="page-card rra-shadow-card">
             <div className="rra-card-kicker purple">Internal test only</div>
-            <h2>AI shadow check</h2>
-            {result.interpretation_mode === 'AI_SHADOW' ? (
+            <h2>Grounded AI interpretation</h2>
+            {['AI_SHADOW', 'GROUNDED_AI'].includes(result.interpretation_mode) ? (
               <dl className="rra-shadow-details">
+                <div><dt>Mode</dt><dd>{result.interpretation_mode === 'GROUNDED_AI' ? 'Active in test console' : 'Shadow only'}</dd></div>
                 <div><dt>Proposed record</dt><dd>{shadow.proposed_knowledge_id || 'None'}</dd></div>
                 <div><dt>Proposed result</dt><dd>{shadow.proposed_response_mode || 'None'}</dd></div>
                 <div><dt>Confidence</dt><dd>{percent(shadow.confidence)}</dd></div>
@@ -170,12 +171,12 @@ export default function RraTestPage() {
                 <div><dt>Answer/clarify agreement</dt><dd className={shadow.response_mode_agreement ? 'match' : 'different'}>{shadow.response_mode_agreement ? 'Match' : 'Different'}</dd></div>
                 <div><dt>AI response time</dt><dd>{Number.isFinite(shadow.latency_ms) ? `${shadow.latency_ms} ms` : '—'}</dd></div>
               </dl>
-            ) : result.interpretation_mode === 'AI_SHADOW_FALLBACK' ? (
-              <div className="rra-shadow-status warning">The AI returned no valid shadow result. The driver answer was unaffected.</div>
+            ) : ['AI_SHADOW_FALLBACK', 'DETERMINISTIC_FALLBACK'].includes(result.interpretation_mode) ? (
+              <div className="rra-shadow-status warning">AI found no safe matching record, so Ready Route used its fail-closed deterministic result.</div>
             ) : (
               <div className="rra-shadow-status">This question matched an exact data-authored rule, so AI interpretation was not needed.</div>
             )}
-            <p className="rra-shadow-note">Shadow results never change the driver answer on this page.</p>
+            <p className="rra-shadow-note">AI can select a published record in this test console, but it cannot write or alter the answer, steps, codes, or warnings.</p>
           </section>
         </div>
       ) : null}

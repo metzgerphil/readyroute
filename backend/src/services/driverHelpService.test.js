@@ -240,6 +240,39 @@ test('shadow mode records the AI proposal without changing the deterministic dri
   assert.equal(interaction.interpretation_result.record_agreement, false);
 });
 
+test('manager test console may activate grounded interpretation without changing the service default', async () => {
+  const record = knowledgeRecord({
+    clarification_requirements: ['Was any attempt made at the pickup location?'],
+    concise_answer: 'Use the controlled published answer.'
+  });
+  const supabase = fakeSupabase([record]);
+  const service = createDriverHelpService({
+    supabase,
+    now: () => new Date(0),
+    aiInterpretationMode: 'SHADOW',
+    aiInterpreter: async () => ({
+      selection: 'SELECT',
+      knowledge_id: record.knowledge_id,
+      decision: 'ANSWER',
+      clarification_requirement: null,
+      confidence: 0.97
+    })
+  });
+
+  const response = await service.answerQuestion({
+    accountId: '00000000-0000-0000-0000-000000000001',
+    driverId: null,
+    actorType: 'manager',
+    actorId: '00000000-0000-0000-0000-000000000003',
+    question: 'shipper waved me off before I headed over',
+    aiInterpretationModeOverride: 'ACTIVE'
+  });
+
+  assert.equal(response.response_mode, 'ANSWER');
+  assert.equal(response.answer, record.concise_answer);
+  assert.equal(response.interpretation_mode, 'GROUNDED_AI');
+});
+
 test('an exact data-authored clarification cannot be overridden by AI', async () => {
   const record = knowledgeRecord({
     driver_question_patterns: [{

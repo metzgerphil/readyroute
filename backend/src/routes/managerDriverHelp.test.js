@@ -108,6 +108,7 @@ test('POST /manager/driver-help/query uses manager identity and returns diagnost
     actorId: '00000000-0000-0000-0000-000000000002',
     question: 'pickup canceled before I went',
     sessionId: null,
-    includeDiagnostics: true
+    includeDiagnostics: true,
+    aiInterpretationModeOverride: 'ACTIVE'
   });
 });

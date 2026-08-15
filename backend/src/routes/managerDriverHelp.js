@@ -26,7 +26,8 @@ function createManagerDriverHelpRouter(options = {}) {
         actorId: req.account.manager_user_id || req.account.account_id,
         question,
         sessionId,
-        includeDiagnostics: true
+        includeDiagnostics: true,
+        aiInterpretationModeOverride: 'ACTIVE'
       });
       return res.status(200).json(result);
     } catch (error) {

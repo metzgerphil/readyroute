@@ -436,9 +436,15 @@ function createDriverHelpService({
     actorId = driverId,
     question,
     sessionId = null,
-    includeDiagnostics = false
+    includeDiagnostics = false,
+    aiInterpretationModeOverride = null
   }) {
     const startedAt = Date.now();
+    const effectiveAiInterpretationMode = ['OFF', 'SHADOW', 'ACTIVE'].includes(
+      String(aiInterpretationModeOverride || '').toUpperCase()
+    )
+      ? String(aiInterpretationModeOverride).toUpperCase()
+      : aiInterpretationMode;
     const [records, sessionState] = await Promise.all([
       loadKnowledgeRecords(),
       loadSessionContext(sessionId, accountId, actorType, actorId)
@@ -486,7 +492,7 @@ function createDriverHelpService({
     const aiCandidates = buildAiCandidateRecords(records);
     const shouldInterpret = Boolean(
       aiInterpreter
-      && ['SHADOW', 'ACTIVE'].includes(aiInterpretationMode)
+      && ['SHADOW', 'ACTIVE'].includes(effectiveAiInterpretationMode)
       && !selectedClarificationRecord
       && !referenceDecision
       && !isProtectedInterpretationRequest(resolvedQuestion)
@@ -515,8 +521,8 @@ function createDriverHelpService({
             baseDecision
           );
           interpretationMode = interpretedDecision
-            ? (aiInterpretationMode === 'SHADOW' ? 'AI_SHADOW' : 'GROUNDED_AI')
-            : (aiInterpretationMode === 'SHADOW' ? 'AI_SHADOW_FALLBACK' : 'DETERMINISTIC_FALLBACK');
+            ? (effectiveAiInterpretationMode === 'SHADOW' ? 'AI_SHADOW' : 'GROUNDED_AI')
+            : (effectiveAiInterpretationMode === 'SHADOW' ? 'AI_SHADOW_FALLBACK' : 'DETERMINISTIC_FALLBACK');
           interpretationConfidence = interpretedDecision ? interpretation.confidence : null;
           interpretationResult = buildInterpretationResult({
             status: interpretedDecision ? 'VALID' : 'REJECTED',
@@ -525,7 +531,7 @@ function createDriverHelpService({
             latencyMs: Date.now() - interpretationStartedAt
           });
         } else {
-          interpretationMode = aiInterpretationMode === 'SHADOW'
+          interpretationMode = effectiveAiInterpretationMode === 'SHADOW'
             ? 'AI_SHADOW_FALLBACK'
             : 'DETERMINISTIC_FALLBACK';
           interpretationResult = buildInterpretationResult({
@@ -535,7 +541,7 @@ function createDriverHelpService({
           });
         }
       } catch (_error) {
-        interpretationMode = aiInterpretationMode === 'SHADOW'
+        interpretationMode = effectiveAiInterpretationMode === 'SHADOW'
           ? 'AI_SHADOW_FALLBACK'
           : 'DETERMINISTIC_FALLBACK';
         interpretationResult = buildInterpretationResult({
@@ -548,7 +554,7 @@ function createDriverHelpService({
 
     // AI interprets language only. Published record content remains the sole
     // source of every driver-facing answer, step, code, warning, and More Info.
-    const interpretedOrBaseDecision = aiInterpretationMode === 'ACTIVE' && interpretedDecision
+    const interpretedOrBaseDecision = effectiveAiInterpretationMode === 'ACTIVE' && interpretedDecision
       ? interpretedDecision
       : baseDecision;
     const actionableBaseDecision = {
