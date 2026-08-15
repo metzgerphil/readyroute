@@ -1,8 +1,26 @@
 const STOP_WORDS = new Set([
   'a', 'an', 'and', 'are', 'at', 'be', 'but', 'can', 'do', 'for', 'from', 'how',
   'i', 'if', 'in', 'is', 'it', 'me', 'my', 'of', 'on', 'or', 'the', 'this', 'to',
-  'was', 'what', 'when', 'where', 'with', 'would', 'you'
+  'was', 'what', 'when', 'where', 'with', 'would', 'you', 'no', 'wut'
 ]);
+
+const DRIVER_TOKEN_ALIASES = new Map(Object.entries({
+  biz: 'business',
+  box: 'package',
+  boxes: 'package',
+  busted: 'damage',
+  crushed: 'damage',
+  cust: 'customer',
+  pckg: 'package',
+  pckgs: 'package',
+  pkg: 'package',
+  pkgs: 'package',
+  pu: 'pickup',
+  rte: 'route',
+  signin: 'login',
+  van: 'vehicle',
+  wa: 'workarea'
+}));
 
 const ANSWER_THRESHOLD = 18;
 const CLARIFICATION_MARGIN = 6;
@@ -26,7 +44,47 @@ function normalizeDriverQuestion(value) {
 function tokenize(value) {
   return normalizeDriverQuestion(value)
     .split(' ')
-    .filter((token) => token && (!STOP_WORDS.has(token) || /^\d+$/.test(token)));
+    .filter((token) => token && (!STOP_WORDS.has(token) || /^\d+$/.test(token)))
+    .map((token) => {
+      const singular = token.length > 4 && token.endsWith('s') ? token.slice(0, -1) : token;
+      return DRIVER_TOKEN_ALIASES.get(token)
+        || DRIVER_TOKEN_ALIASES.get(singular)
+        || singular;
+    });
+}
+
+function editDistanceWithinOne(left, right) {
+  if (left === right) return true;
+  if (Math.abs(left.length - right.length) > 1) return false;
+  let leftIndex = 0;
+  let rightIndex = 0;
+  let edits = 0;
+  while (leftIndex < left.length && rightIndex < right.length) {
+    if (left[leftIndex] === right[rightIndex]) {
+      leftIndex += 1;
+      rightIndex += 1;
+      continue;
+    }
+    edits += 1;
+    if (edits > 1) return false;
+    if (left.length > right.length) leftIndex += 1;
+    else if (right.length > left.length) rightIndex += 1;
+    else {
+      leftIndex += 1;
+      rightIndex += 1;
+    }
+  }
+  return edits + Number(leftIndex < left.length || rightIndex < right.length) <= 1;
+}
+
+function tokenMatchScore(queryToken, surfaceToken) {
+  if (queryToken === surfaceToken) return 1;
+  if (
+    queryToken.length >= 5
+    && surfaceToken.length >= 5
+    && editDistanceWithinOne(queryToken, surfaceToken)
+  ) return 0.82;
+  return 0;
 }
 
 function normalizeKnowledgeRecord(row = {}) {
@@ -67,12 +125,22 @@ function selectCanonicalRecordVersions(records) {
 }
 
 function getRecordSearchSurfaces(record) {
+  const questionVariants = record.driver_question_variants || [];
+  const taxonomyPaths = record.taxonomy_paths || [];
+  const combinedSurface = [
+    record.canonical_situation,
+    record.normalized_description,
+    record.authoritative_rule,
+    ...questionVariants,
+    ...taxonomyPaths
+  ].filter(Boolean).join(' ');
   return [
     { value: record.canonical_situation, weight: 2 },
     { value: record.normalized_description, weight: 1.4 },
     { value: record.authoritative_rule, weight: 0.7 },
-    ...(record.driver_question_variants || []).map((value) => ({ value, weight: 2.5 })),
-    ...(record.taxonomy_paths || []).map((value) => ({ value, weight: 0.8 }))
+    { value: combinedSurface, weight: 1.35 },
+    ...questionVariants.map((value) => ({ value, weight: 2.5 })),
+    ...taxonomyPaths.map((value) => ({ value, weight: 0.8 }))
   ].filter((surface) => surface.value);
 }
 
@@ -86,8 +154,9 @@ function scoreKnowledgeRecord(question, record, context = {}) {
     const normalizedSurface = normalizeDriverQuestion(surface.value);
     const surfaceTokens = tokenize(normalizedSurface);
     if (!surfaceTokens.length) continue;
-    const surfaceSet = new Set(surfaceTokens);
-    const overlap = queryTokens.filter((token) => surfaceSet.has(token)).length;
+    const overlap = queryTokens.reduce((total, queryToken) => (
+      total + Math.max(0, ...surfaceTokens.map((surfaceToken) => tokenMatchScore(queryToken, surfaceToken)))
+    ), 0);
     const queryCoverage = overlap / queryTokens.length;
     const surfaceCoverage = overlap / surfaceTokens.length;
     const exact = normalizedQuestion === normalizedSurface ? 70 : 0;
@@ -145,18 +214,83 @@ function buildPresentedAnswer(record) {
   return record?.concise_answer || null;
 }
 
-function buildAnswerStructure(record) {
-  const sentences = (String(buildPresentedAnswer(record) || '').match(/[^.!?]+[.!?]+|[^.!?]+$/g) || [])
+function splitSentences(value) {
+  return (String(value || '').match(/[^.!?]+[.!?]+|[^.!?]+$/g) || [])
     .map((sentence) => sentence.trim())
     .filter(Boolean);
+}
+
+function formatDriverCodeTerminology(value, record = {}) {
+  let text = String(value || '').trim();
+  const taxonomyPaths = record.taxonomy_paths || [];
+  const isPickup = taxonomyPaths.some((path) => String(path).startsWith('TAX-PICKUP'));
+  const isDelivery = taxonomyPaths.some((path) => String(path).startsWith('TAX-DELIVERY'));
+
+  if (isPickup) {
+    text = text
+      .replace(/\bpickup reason(?: code)?\s+(\d{1,3})\b/gi, 'Code $1')
+      .replace(/\breason(?: code)?\s+(\d{1,3})\b/gi, 'Code $1');
+  } else if (isDelivery) {
+    text = text
+      .replace(/\bdelivery status code\s+(\d{1,3})\b/gi, 'Code $1')
+      .replace(/\bcode\s+(\d{1,3})\b/gi, 'Code $1');
+  }
+
+  return text;
+}
+
+function compactProcedureSteps(record, maximum = 4) {
+  const steps = (record.required_procedure || [])
+    .map((item) => formatDriverCodeTerminology(item?.action || item, record))
+    .map((item) => String(item || '').trim())
+    .filter(Boolean);
+  if (steps.length <= maximum) return steps;
+
+  const visible = steps.slice(0, maximum - 1);
+  visible.push(steps.slice(maximum - 1).join(' '));
+  return visible;
+}
+
+function buildDirectAnswer(record) {
+  const conciseAnswer = formatDriverCodeTerminology(buildPresentedAnswer(record), record);
+  const firstSentence = splitSentences(conciseAnswer)[0] || conciseAnswer || null;
+  if (!firstSentence || /\bCode\s+\d{1,3}\b/i.test(firstSentence)) {
+    return firstSentence;
+  }
+
+  const procedure = (record.required_procedure || [])
+    .map((item) => formatDriverCodeTerminology(item?.action || item, record));
+  const codeNumbers = [...new Set(
+    [conciseAnswer, ...procedure]
+      .join(' ')
+      .match(/\bCode\s+(\d{1,3})\b/gi)
+      ?.map((value) => value.match(/\d{1,3}/)[0]) || []
+  )];
+  if (codeNumbers.length !== 1) return firstSentence;
+
+  return procedure.find((step) => (
+    new RegExp(`\\bCode\\s+0*${Number(codeNumbers[0])}\\b`, 'i').test(step)
+    && splitSentences(step).length === 1
+    && step.length <= 100
+  )) || firstSentence;
+}
+
+function buildAnswerStructure(record) {
+  const prohibitedActions = (record.prohibited_actions || [])
+    .map((item) => formatDriverCodeTerminology(item, record))
+    .map(String)
+    .filter(Boolean);
   return {
-    steps: sentences,
+    direct_answer: buildDirectAnswer(record),
+    steps: compactProcedureSteps(record),
+    watch_for: prohibitedActions[0] || null,
     options: [],
     procedure_steps: (record.required_procedure || [])
-      .map((item) => String(item?.action || item || '').trim())
+      .map((item) => formatDriverCodeTerminology(item?.action || item, record))
+      .map((item) => String(item || '').trim())
       .filter(Boolean),
     documentation: (record.required_documentation || []).map(String).filter(Boolean),
-    prohibited_actions: (record.prohibited_actions || []).map(String).filter(Boolean),
+    prohibited_actions: prohibitedActions,
     escalation_requirements: (record.escalation_requirements || []).map(String).filter(Boolean)
   };
 }
@@ -288,8 +422,11 @@ module.exports = {
   CLARIFICATION_MARGIN,
   buildAnswerStructure,
   buildCriticalIntentDecision,
+  buildDirectAnswer,
   buildDriverHelpDecision,
   buildPresentedAnswer,
+  compactProcedureSteps,
+  formatDriverCodeTerminology,
   getMatchingQuestionPattern,
   getPatternRuntimeMode,
   isProductionEligibleRecord,
@@ -297,5 +434,6 @@ module.exports = {
   rankKnowledgeRecords,
   scoreKnowledgeRecord,
   selectCanonicalRecordVersions,
+  tokenMatchScore,
   tokenize
 };

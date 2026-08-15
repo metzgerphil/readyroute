@@ -1,11 +1,67 @@
 const express = require('express');
 
 const defaultSupabase = require('../lib/supabase');
-const { isMissingTableError } = require('../services/driverHelp');
+const { createDriverHelpService, isMissingTableError } = require('../services/driverHelp');
 
 function createManagerDriverHelpRouter(options = {}) {
   const router = express.Router();
   const supabase = options.supabase || defaultSupabase;
+  const service = options.service || createDriverHelpService({
+    supabase,
+    now: options.now
+  });
+
+  router.post('/query', async (req, res) => {
+    const question = String(req.body?.question || '').trim();
+    const sessionId = req.body?.session_id ? String(req.body.session_id).trim() : null;
+    if (question.length < 2 || question.length > 500) {
+      return res.status(400).json({ error: 'Question must be between 2 and 500 characters.' });
+    }
+
+    try {
+      const result = await service.answerQuestion({
+        accountId: req.account.account_id,
+        driverId: null,
+        actorType: 'manager',
+        actorId: req.account.manager_user_id || req.account.account_id,
+        question,
+        sessionId,
+        includeDiagnostics: true
+      });
+      return res.status(200).json(result);
+    } catch (error) {
+      console.error('Manager RRA test query failed:', error);
+      return res.status(500).json({ error: 'Ready Route could not check the approved procedures right now.' });
+    }
+  });
+
+  router.post('/interactions/:interaction_id/feedback', async (req, res) => {
+    const rating = String(req.body?.rating || '').trim().toLowerCase();
+    const comment = req.body?.comment == null ? null : String(req.body.comment).trim();
+    if (!['up', 'down'].includes(rating)) {
+      return res.status(400).json({ error: 'Rating must be up or down.' });
+    }
+    if (comment && comment.length > 1000) {
+      return res.status(400).json({ error: 'Feedback comment must be 1000 characters or fewer.' });
+    }
+
+    try {
+      const feedback = await service.saveFeedback({
+        accountId: req.account.account_id,
+        driverId: null,
+        actorType: 'manager',
+        actorId: req.account.manager_user_id || req.account.account_id,
+        interactionId: req.params.interaction_id,
+        rating,
+        comment
+      });
+      if (!feedback) return res.status(404).json({ error: 'Interaction not found.' });
+      return res.status(200).json({ feedback });
+    } catch (error) {
+      console.error('Manager RRA test feedback failed:', error);
+      return res.status(500).json({ error: 'Feedback could not be saved right now.' });
+    }
+  });
 
   router.get('/overview', async (req, res) => {
     const accountId = req.account.account_id;
@@ -15,7 +71,7 @@ function createManagerDriverHelpRouter(options = {}) {
       const [interactionResult, unansweredResult, feedbackResult, activeDriverResult] = await Promise.all([
         supabase
           .from('driver_help_interactions')
-          .select('id, driver_id, question, response_mode, selected_knowledge_ids, selected_knowledge_versions, canonical_trace, retrieval_candidates, confidence, response_latency_ms, created_at')
+          .select('id, driver_id, question, response_mode, selected_knowledge_ids, selected_knowledge_versions, canonical_trace, retrieval_candidates, confidence, interpretation_mode, interpretation_result, response_latency_ms, created_at')
           .eq('account_id', accountId)
           .order('created_at', { ascending: false })
           .limit(limit),
@@ -58,6 +114,11 @@ function createManagerDriverHelpRouter(options = {}) {
               no_verified_answer_rate: 0,
               average_response_latency_ms: null,
               retrieval_failures: 0,
+              ai_shadow_runs: 0,
+              ai_shadow_valid_results: 0,
+              ai_shadow_errors: 0,
+              ai_shadow_record_agreement_rate: null,
+              ai_shadow_response_mode_agreement_rate: null,
               questions_by_category: {}
             },
             recent_interactions: [],
@@ -79,6 +140,10 @@ function createManagerDriverHelpRouter(options = {}) {
       const measuredLatencies = interactions
         .map((row) => Number(row.response_latency_ms))
         .filter((value) => Number.isFinite(value) && value >= 0);
+      const shadowRuns = interactions.filter((row) => (
+        ['AI_SHADOW', 'AI_SHADOW_FALLBACK'].includes(row.interpretation_mode)
+      ));
+      const validShadowResults = shadowRuns.filter((row) => row.interpretation_result?.status === 'VALID');
       const questionsByCategory = interactions.reduce((counts, row) => {
         const category = row.canonical_trace?.[0]?.category_paths?.[0] || 'UNMATCHED';
         counts[category] = (counts[category] || 0) + 1;
@@ -111,6 +176,15 @@ function createManagerDriverHelpRouter(options = {}) {
           retrieval_failures: interactions.filter((row) => (
             row.response_mode === 'ESCALATE' && !(row.selected_knowledge_ids || []).length
           )).length,
+          ai_shadow_runs: shadowRuns.length,
+          ai_shadow_valid_results: validShadowResults.length,
+          ai_shadow_errors: shadowRuns.filter((row) => row.interpretation_result?.status === 'ERROR').length,
+          ai_shadow_record_agreement_rate: validShadowResults.length
+            ? validShadowResults.filter((row) => row.interpretation_result.record_agreement === true).length / validShadowResults.length
+            : null,
+          ai_shadow_response_mode_agreement_rate: validShadowResults.length
+            ? validShadowResults.filter((row) => row.interpretation_result.response_mode_agreement === true).length / validShadowResults.length
+            : null,
           questions_by_category: questionsByCategory
         },
         recent_interactions: interactions,

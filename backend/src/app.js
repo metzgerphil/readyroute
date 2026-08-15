@@ -90,7 +90,10 @@ function createApp(options = {}) {
 
     try {
       const { hostname, protocol } = new URL(origin);
-      return protocol === 'https:' && hostname === 'readyroute.org';
+      return protocol === 'https:' && (
+        hostname === 'readyroute.org'
+        || /^ready-route-project--[a-z0-9-]+\.web\.app$/.test(hostname)
+      );
     } catch (_error) {
       return false;
     }
@@ -160,7 +163,9 @@ function createApp(options = {}) {
     service: options.driverHelpService
   });
   const managerDriverHelpRouter = createManagerDriverHelpRouter({
-    supabase: options.supabase
+    supabase: options.supabase,
+    now: options.now,
+    service: options.driverHelpService
   });
   const propertyIntelManagerRouter = options.supabase
     ? createPropertyIntelManagerRouter({ supabase: options.supabase })

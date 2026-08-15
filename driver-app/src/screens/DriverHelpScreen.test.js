@@ -134,7 +134,7 @@ describe('DriverHelpScreen', () => {
       });
       expect(screen.getByLabelText('Current question: Signature package nobody home')).toBeTruthy();
       expect(screen.getAllByText('Verified procedure')).toHaveLength(2);
-      expect(screen.getByText('What to do')).toBeTruthy();
+      expect(screen.getByText('Answer')).toBeTruthy();
       expect(screen.getByText('Do not leave the package without the required signature.')).toBeTruthy();
       expect(screen.getByText('KNO-DEL-SIG-DSR-001 v2')).toBeTruthy();
     });
@@ -148,7 +148,9 @@ describe('DriverHelpScreen', () => {
         response_mode: 'ANSWER',
         answer: 'A long fallback answer.',
         answer_structure: {
+          direct_answer: 'Use the verified signature procedure.',
           steps: ['Confirm the signature type.', 'Complete the applicable attempt procedure.'],
+          watch_for: 'Do not leave a restricted package.',
           prohibited_actions: ['Do not leave a restricted package.'],
           documentation: ['Scan the completed door tag.'],
           escalation_requirements: ['Contact management if the service type is unclear.']
@@ -163,6 +165,8 @@ describe('DriverHelpScreen', () => {
 
     expect(await screen.findByText('Confirm the signature type.')).toBeTruthy();
     expect(screen.getByText('Complete the applicable attempt procedure.')).toBeTruthy();
+    expect(screen.getByText('Use the verified signature procedure.')).toBeTruthy();
+    expect(screen.getByText('Watch for')).toBeTruthy();
     expect(screen.getByText('Do not leave a restricted package.')).toBeTruthy();
     expect(screen.queryByText('A long fallback answer.')).toBeNull();
 

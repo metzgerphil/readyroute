@@ -8,6 +8,10 @@ function formatDate(value) {
   return Number.isNaN(date.getTime()) ? '—' : date.toLocaleString();
 }
 
+function formatPercent(value) {
+  return Number.isFinite(Number(value)) ? `${Math.round(Number(value) * 100)}%` : '—';
+}
+
 export default function KnowledgeActivityPage() {
   const activityQuery = useQuery({
     queryKey: ['driver-help-overview'],
@@ -59,6 +63,22 @@ export default function KnowledgeActivityPage() {
       <section className="page-card">
         <div className="section-heading-row">
           <div>
+            <h2>AI shadow testing</h2>
+            <p>The AI proposal is measured here but does not control the answer shown to drivers.</p>
+          </div>
+        </div>
+        <div className="summary-grid">
+          <div className="summary-card"><span>Shadow runs</span><strong>{metrics.ai_shadow_runs || 0}</strong></div>
+          <div className="summary-card"><span>Valid results</span><strong>{metrics.ai_shadow_valid_results || 0}</strong></div>
+          <div className="summary-card"><span>Record agreement</span><strong>{formatPercent(metrics.ai_shadow_record_agreement_rate)}</strong></div>
+          <div className="summary-card"><span>Answer/clarify agreement</span><strong>{formatPercent(metrics.ai_shadow_response_mode_agreement_rate)}</strong></div>
+          <div className="summary-card"><span>AI errors</span><strong>{metrics.ai_shadow_errors || 0}</strong></div>
+        </div>
+      </section>
+
+      <section className="page-card">
+        <div className="section-heading-row">
+          <div>
             <h2>Unanswered questions</h2>
             <p>These produced no approved answer and were sent to management.</p>
           </div>
@@ -86,13 +106,16 @@ export default function KnowledgeActivityPage() {
         {interactions.length ? (
           <div className="table-wrap">
             <table>
-              <thead><tr><th>Question</th><th>Result</th><th>Knowledge trace</th><th>Time</th></tr></thead>
+              <thead><tr><th>Question</th><th>Result</th><th>Knowledge trace</th><th>AI shadow</th><th>Time</th></tr></thead>
               <tbody>
                 {interactions.map((row) => (
                   <tr key={row.id}>
                     <td>{row.question}</td>
                     <td>{row.response_mode}</td>
                     <td>{(row.selected_knowledge_ids || []).map((id, index) => `${id} v${row.selected_knowledge_versions?.[index] || 1}`).join(', ') || '—'}</td>
+                    <td>{row.interpretation_mode === 'AI_SHADOW'
+                      ? `${row.interpretation_result?.proposed_knowledge_id || 'No selection'} · ${row.interpretation_result?.record_agreement ? 'Match' : 'Different'}`
+                      : row.interpretation_mode === 'AI_SHADOW_FALLBACK' ? 'No valid result' : '—'}</td>
                     <td>{formatDate(row.created_at)}</td>
                   </tr>
                 ))}

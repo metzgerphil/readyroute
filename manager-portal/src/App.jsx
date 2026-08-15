@@ -22,6 +22,7 @@ const KnowledgeActivityPage = lazy(() => import('./pages/KnowledgeActivityPage')
 const ManifestPage = lazy(() => import('./pages/ManifestPage'));
 const NotificationsPage = lazy(() => import('./pages/NotificationsPage'));
 const RecordsPage = lazy(() => import('./pages/RecordsPage'));
+const RraTestPage = lazy(() => import('./pages/RraTestPage'));
 const ResetPasswordPage = lazy(() => import('./pages/ResetPasswordPage'));
 const RoutePage = lazy(() => import('./pages/RoutePage'));
 const RoutesPage = lazy(() => import('./pages/RoutesPage'));
@@ -86,6 +87,7 @@ function ProtectedApp() {
               <Route element={<RecordsPage />} path="/records" />
               <Route element={<DriversPage />} path="/drivers" />
               <Route element={<KnowledgeActivityPage />} path="/knowledge-activity" />
+              <Route element={<RraTestPage />} path="/rra-test" />
               <Route element={<VehiclesPage />} path="/vehicles" />
               <Route element={<AccessCodesPage />} path="/access-codes" />
               <Route element={<BillingPage />} path="/billing" />

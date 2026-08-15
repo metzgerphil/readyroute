@@ -134,15 +134,22 @@ function splitAnswerIntoSteps(answer) {
 
 function getAnswerStructure(result) {
   const source = result?.answer_structure || {};
+  const fallbackSentences = splitAnswerIntoSteps(result?.answer);
+  const directAnswer = String(source.direct_answer || fallbackSentences[0] || result?.answer || '').trim();
   const steps = Array.isArray(source.steps) && source.steps.length
     ? source.steps.map(String).filter(Boolean)
-    : splitAnswerIntoSteps(result?.answer);
+    : fallbackSentences.slice(1);
+  const prohibitedActions = Array.isArray(source.prohibited_actions)
+    ? source.prohibited_actions.map(String).filter(Boolean)
+    : [];
   return {
+    directAnswer,
     steps,
+    watchFor: String(source.watch_for || prohibitedActions[0] || '').trim(),
     options: Array.isArray(source.options) ? source.options.filter((option) => option?.id && option?.label) : [],
     procedureSteps: Array.isArray(source.procedure_steps) ? source.procedure_steps.map(String).filter(Boolean) : [],
     documentation: Array.isArray(source.documentation) ? source.documentation.map(String).filter(Boolean) : [],
-    prohibitedActions: Array.isArray(source.prohibited_actions) ? source.prohibited_actions.map(String).filter(Boolean) : [],
+    prohibitedActions,
     escalationRequirements: Array.isArray(source.escalation_requirements)
       ? source.escalation_requirements.map(String).filter(Boolean)
       : []
@@ -542,18 +549,24 @@ export default function DriverHelpScreen() {
                 <Text maxFontSizeMultiplier={1.25} style={styles.verifiedHeading}>Verified procedure</Text>
               </View>
               <View style={styles.cardDivider} />
-              <Text maxFontSizeMultiplier={1.25} style={styles.answerEyebrow}>What to do</Text>
+              <Text maxFontSizeMultiplier={1.25} style={styles.answerEyebrow}>Answer</Text>
+              <Text maxFontSizeMultiplier={1.35} style={styles.directAnswerText}>{answerStructure.directAnswer}</Text>
 
-              <View style={styles.stepList}>
-                {answerStructure.steps.map((step, index) => (
-                  <View key={`${index}-${step}`} style={styles.stepRow}>
-                    <View style={styles.stepNumber}>
-                      <Text maxFontSizeMultiplier={1.2} style={styles.stepNumberText}>{index + 1}</Text>
-                    </View>
-                    <Text maxFontSizeMultiplier={1.35} style={styles.stepText}>{step}</Text>
+              {answerStructure.steps.length ? (
+                <>
+                  <Text maxFontSizeMultiplier={1.25} style={styles.doThisHeading}>Do this</Text>
+                  <View style={styles.stepList}>
+                    {answerStructure.steps.map((step, index) => (
+                      <View key={`${index}-${step}`} style={styles.stepRow}>
+                        <View style={styles.stepNumber}>
+                          <Text maxFontSizeMultiplier={1.2} style={styles.stepNumberText}>{index + 1}</Text>
+                        </View>
+                        <Text maxFontSizeMultiplier={1.35} style={styles.stepText}>{step}</Text>
+                      </View>
+                    ))}
                   </View>
-                ))}
-              </View>
+                </>
+              ) : null}
 
               {answerStructure.options.length ? (
                 <View style={styles.answerOptions}>
@@ -626,19 +639,14 @@ export default function DriverHelpScreen() {
                 </View>
               ) : null}
 
-              {answerStructure.prohibitedActions.length ? (
+              {answerStructure.watchFor ? (
                 <View style={styles.warningPanel}>
-                  <Text maxFontSizeMultiplier={1.25} style={styles.warningTitle}>Do not</Text>
-                  {answerStructure.prohibitedActions.slice(0, 3).map((item) => (
-                    <View key={item} style={styles.bulletRow}>
-                      <Text maxFontSizeMultiplier={1.2} style={styles.warningBullet}>•</Text>
-                      <Text maxFontSizeMultiplier={1.35} style={styles.warningText}>{item}</Text>
-                    </View>
-                  ))}
+                  <Text maxFontSizeMultiplier={1.25} style={styles.warningTitle}>Watch for</Text>
+                  <Text maxFontSizeMultiplier={1.35} style={styles.warningText}>{answerStructure.watchFor}</Text>
                 </View>
               ) : null}
 
-              {result.more_info || answerStructure.procedureSteps.length || answerStructure.documentation.length || answerStructure.escalationRequirements.length ? (
+              {result.more_info || answerStructure.procedureSteps.length || answerStructure.documentation.length || answerStructure.prohibitedActions.length || answerStructure.escalationRequirements.length ? (
                 <>
                   <Pressable accessibilityRole="button" onPress={() => setShowMore((current) => !current)} style={styles.moreButton}>
                     <Text style={styles.moreButtonText}>{showMore ? 'Hide More Info' : 'More Info'}</Text>
@@ -661,6 +669,17 @@ export default function DriverHelpScreen() {
                         <View style={styles.detailSection}>
                           <Text style={styles.detailTitle}>Documentation</Text>
                           {answerStructure.documentation.map((item) => (
+                            <View key={item} style={styles.bulletRow}>
+                              <Text style={styles.detailBullet}>•</Text>
+                              <Text maxFontSizeMultiplier={1.35} style={styles.detailText}>{item}</Text>
+                            </View>
+                          ))}
+                        </View>
+                      ) : null}
+                      {answerStructure.prohibitedActions.length ? (
+                        <View style={styles.detailSection}>
+                          <Text style={styles.detailTitle}>Important restrictions</Text>
+                          {answerStructure.prohibitedActions.map((item) => (
                             <View key={item} style={styles.bulletRow}>
                               <Text style={styles.detailBullet}>•</Text>
                               <Text maxFontSizeMultiplier={1.35} style={styles.detailText}>{item}</Text>
@@ -901,6 +920,8 @@ const styles = StyleSheet.create({
   verifiedHeading: { color: BRAND_NAVY, fontSize: 17, fontWeight: '900', letterSpacing: 0.3, textTransform: 'uppercase' },
   cardDivider: { backgroundColor: appTheme.colors.divider, height: 1, marginVertical: 17 },
   answerEyebrow: { color: BRAND_NAVY, fontSize: 16, fontWeight: '900', letterSpacing: 0.7, textTransform: 'uppercase' },
+  directAnswerText: { color: BRAND_NAVY, fontSize: 22, fontWeight: '900', lineHeight: 29, marginTop: 8 },
+  doThisHeading: { color: appTheme.colors.textSecondary, fontSize: 12, fontWeight: '900', letterSpacing: 0.7, marginTop: 22, textTransform: 'uppercase' },
   clarifyHeadingRow: { alignItems: 'center', flexDirection: 'row', gap: 10 },
   questionMark: { alignItems: 'center', backgroundColor: BRAND_ORANGE, borderRadius: 15, height: 30, justifyContent: 'center', width: 30 },
   questionMarkText: { color: '#ffffff', fontSize: 18, fontWeight: '900' },

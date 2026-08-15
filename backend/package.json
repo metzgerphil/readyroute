@@ -20,6 +20,7 @@
     "knowledge:validate-candidate-retrieval": "node src/scripts/validateCandidateOperationalRetrieval.js",
     "knowledge:validate-driver-bot-contract": "node src/scripts/validateDriverBotInteractionContract.js",
     "knowledge:validate-traceability": "node src/scripts/validatePhase3Traceability.js",
+    "knowledge:evaluate-ai-shadow": "node src/scripts/evaluateDriverHelpAiInterpretation.js",
     "gate-codes:parse": "node src/scripts/parseGateCodesDocx.js",
     "gate-codes:review": "node src/scripts/reviewGateCodeImport.js",
     "seed:auth": "node src/scripts/seedAuthUsers.js",

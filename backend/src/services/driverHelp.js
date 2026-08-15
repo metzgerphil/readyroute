@@ -14,6 +14,11 @@ const {
   isReferenceRecord
 } = require('./driverHelpReference');
 const {
+  createDriverHelpAiInterpreter,
+  resolveDriverHelpAiInterpretationMode,
+  validateInterpretation
+} = require('./driverHelpAiInterpreter');
+const {
   createSignedStorageUrl,
   getSignedUrlTtlSeconds
 } = require('./privateStorage');
@@ -26,6 +31,12 @@ function isMissingTableError(error) {
 
 function randomId() {
   return crypto.randomUUID();
+}
+
+function buildAiSafetyIdentifier(accountId, actorType, actorId) {
+  return `rr_${crypto.createHash('sha256')
+    .update(`${accountId}:${actorType}:${actorId}`)
+    .digest('hex')}`;
 }
 
 function resolveClarificationSelection(question, context = {}) {
@@ -83,9 +94,118 @@ function resolveClarificationFollowUp(question, context = {}) {
   return question;
 }
 
+function isProtectedInterpretationRequest(question) {
+  const normalized = normalizeDriverQuestion(question);
+  return /\b(ignore|invent|pretend)\b/.test(normalized)
+    || /\b(hidden|system) (instructions|prompt)\b|\breveal (your )?(instructions|prompt)\b/.test(normalized);
+}
+
+function buildAiCandidateRecords(records) {
+  return selectCanonicalRecordVersions(records)
+    .filter((record) => !isReferenceRecord(record) && isProductionEligibleRecord(record))
+    .slice(0, 40)
+    .map((record) => ({
+      knowledge_id: record.knowledge_id,
+      version: record.version,
+      canonical_situation: record.canonical_situation,
+      normalized_description: record.normalized_description || '',
+      applicability: record.applicability || [],
+      conditions: record.conditions || [],
+      exceptions: record.exceptions || [],
+      clarification_requirements: record.clarification_requirements || [],
+      driver_question_variants: record.driver_question_variants || [],
+      driver_question_patterns: record.driver_question_patterns || []
+    }));
+}
+
+function hasDataAuthoredQuestionMatch(question, records) {
+  const normalized = normalizeDriverQuestion(question);
+  return selectCanonicalRecordVersions(records)
+    .filter((record) => !isReferenceRecord(record) && isProductionEligibleRecord(record))
+    .some((record) => (
+      (record.driver_question_variants || []).some((variant) => (
+        normalizeDriverQuestion(variant) === normalized
+      )) || (record.driver_question_patterns || []).some((pattern) => (
+        normalizeDriverQuestion(pattern?.utterance) === normalized
+      ))
+    ));
+}
+
+function applyAiInterpretation(interpretation, question, records, baseDecision) {
+  const selectedRecord = selectCanonicalRecordVersions(records).find((record) => (
+    record.knowledge_id === interpretation.knowledge_id
+    && isProductionEligibleRecord(record)
+    && !isReferenceRecord(record)
+  ));
+  if (!selectedRecord) return null;
+
+  const selectedCandidate = {
+    knowledge_id: selectedRecord.knowledge_id,
+    version: selectedRecord.version,
+    canonical_situation: selectedRecord.canonical_situation,
+    score: Number((interpretation.confidence * 100).toFixed(5))
+  };
+  const candidates = [
+    selectedCandidate,
+    ...(baseDecision.candidates || []).filter((candidate) => (
+      candidate.knowledge_id !== selectedRecord.knowledge_id
+    ))
+  ].slice(0, 5);
+
+  if (interpretation.decision === 'CLARIFY') {
+    return {
+      response_mode: 'CLARIFY',
+      confidence: interpretation.confidence,
+      candidates,
+      selected_records: [],
+      clarification_prompt: `Ready Route Answers needs one detail: ${interpretation.clarification_requirement}.`,
+      clarification_options: []
+    };
+  }
+
+  return {
+    response_mode: 'ANSWER',
+    confidence: interpretation.confidence,
+    candidates,
+    selected_records: [selectedRecord],
+    answer: buildPresentedAnswer(selectedRecord, question),
+    more_info: selectedRecord.more_info_answer || null,
+    answer_structure: buildAnswerStructure(selectedRecord, question)
+  };
+}
+
+function buildInterpretationResult({
+  status,
+  baseDecision,
+  interpretation = null,
+  latencyMs = null
+}) {
+  const deterministicKnowledgeId = baseDecision.selected_records?.[0]?.knowledge_id
+    || baseDecision.candidates?.[0]?.knowledge_id
+    || null;
+  return {
+    status,
+    proposed_knowledge_id: interpretation?.knowledge_id || null,
+    proposed_response_mode: interpretation?.decision || null,
+    proposed_clarification_requirement: interpretation?.clarification_requirement || null,
+    confidence: interpretation?.confidence ?? null,
+    deterministic_knowledge_id: deterministicKnowledgeId,
+    deterministic_response_mode: baseDecision.response_mode,
+    record_agreement: interpretation
+      ? interpretation.knowledge_id === deterministicKnowledgeId
+      : null,
+    response_mode_agreement: interpretation
+      ? interpretation.decision === baseDecision.response_mode
+      : null,
+    latency_ms: Number.isFinite(latencyMs) ? Math.max(0, latencyMs) : null
+  };
+}
+
 function createDriverHelpService({
   supabase = defaultSupabase,
-  now = () => new Date()
+  now = () => new Date(),
+  aiInterpreter = createDriverHelpAiInterpreter(),
+  aiInterpretationMode = resolveDriverHelpAiInterpretationMode()
 } = {}) {
   async function loadKnowledgeRecords() {
     const { data, error } = await supabase
@@ -103,6 +223,9 @@ function createDriverHelpService({
         'canonical_situation',
         'normalized_description',
         'taxonomy_paths',
+        'applicability',
+        'conditions',
+        'exceptions',
         'authoritative_rule',
         'required_procedure',
         'required_documentation',
@@ -268,6 +391,8 @@ function createDriverHelpService({
         approved_by: record.approved_by || null,
         approval_date: record.approval_date || null,
         canonical_schema_version: record.canonical_schema_version || null,
+        interpretation_mode: decision.interpretation_mode || 'DETERMINISTIC',
+        interpretation_confidence: decision.interpretation_confidence ?? null,
         composition_source_paths: (decision.composition_grounding || [])
           .filter((entry) => entry.knowledge_id === record.knowledge_id)
           .flatMap((entry) => entry.source_paths || (entry.source_path ? [entry.source_path] : []))
@@ -279,6 +404,8 @@ function createDriverHelpService({
       clarification_options: decision.clarification_options || [],
       escalation_message: decision.escalation_message || null,
       escalation_details: decision.escalation_details || [],
+      interpretation_mode: decision.interpretation_mode || 'DETERMINISTIC',
+      interpretation_result: decision.interpretation_result || {},
       response_latency_ms: responseLatencyMs,
       created_at: now().toISOString()
     };
@@ -301,7 +428,15 @@ function createDriverHelpService({
     return interactionId;
   }
 
-  async function answerQuestion({ accountId, driverId, actorType = 'driver', actorId = driverId, question, sessionId = null }) {
+  async function answerQuestion({
+    accountId,
+    driverId,
+    actorType = 'driver',
+    actorId = driverId,
+    question,
+    sessionId = null,
+    includeDiagnostics = false
+  }) {
     const startedAt = Date.now();
     const [records, sessionState] = await Promise.all([
       loadKnowledgeRecords(),
@@ -343,13 +478,82 @@ function createDriverHelpService({
           records.filter((record) => !isReferenceRecord(record)),
           sessionState.context
         );
-    // Canonical records already contain reviewed driver-facing wording. Keep
-    // language interpretation in retrieval and return the selected record's
-    // published answer without a second model rewriting it.
+    let interpretedDecision = null;
+    let interpretationMode = 'DETERMINISTIC';
+    let interpretationConfidence = null;
+    let interpretationResult = {};
+    const aiCandidates = buildAiCandidateRecords(records);
+    const shouldInterpret = Boolean(
+      aiInterpreter
+      && ['SHADOW', 'ACTIVE'].includes(aiInterpretationMode)
+      && !selectedClarificationRecord
+      && !referenceDecision
+      && !isProtectedInterpretationRequest(resolvedQuestion)
+      && !hasDataAuthoredQuestionMatch(resolvedQuestion, records)
+      && aiCandidates.length
+    );
+    if (shouldInterpret) {
+      const interpretationStartedAt = Date.now();
+      try {
+        const rawInterpretation = await aiInterpreter({
+          safety_identifier: buildAiSafetyIdentifier(accountId, actorType, actorId),
+          driver_question: resolvedQuestion,
+          conversation_context: {
+            previous_question: sessionState.context.last_question || null,
+            pending_clarification_prompt: sessionState.context.pending_clarification_prompt || null,
+            previous_knowledge_ids: sessionState.context.knowledge_ids || []
+          },
+          candidate_records: aiCandidates
+        });
+        const interpretation = validateInterpretation(rawInterpretation, aiCandidates);
+        if (interpretation) {
+          interpretedDecision = applyAiInterpretation(
+            interpretation,
+            resolvedQuestion,
+            records,
+            baseDecision
+          );
+          interpretationMode = interpretedDecision
+            ? (aiInterpretationMode === 'SHADOW' ? 'AI_SHADOW' : 'GROUNDED_AI')
+            : (aiInterpretationMode === 'SHADOW' ? 'AI_SHADOW_FALLBACK' : 'DETERMINISTIC_FALLBACK');
+          interpretationConfidence = interpretedDecision ? interpretation.confidence : null;
+          interpretationResult = buildInterpretationResult({
+            status: interpretedDecision ? 'VALID' : 'REJECTED',
+            baseDecision,
+            interpretation: interpretedDecision ? interpretation : null,
+            latencyMs: Date.now() - interpretationStartedAt
+          });
+        } else {
+          interpretationMode = aiInterpretationMode === 'SHADOW'
+            ? 'AI_SHADOW_FALLBACK'
+            : 'DETERMINISTIC_FALLBACK';
+          interpretationResult = buildInterpretationResult({
+            status: 'DECLINED_OR_REJECTED',
+            baseDecision,
+            latencyMs: Date.now() - interpretationStartedAt
+          });
+        }
+      } catch (_error) {
+        interpretationMode = aiInterpretationMode === 'SHADOW'
+          ? 'AI_SHADOW_FALLBACK'
+          : 'DETERMINISTIC_FALLBACK';
+        interpretationResult = buildInterpretationResult({
+          status: 'ERROR',
+          baseDecision,
+          latencyMs: Date.now() - interpretationStartedAt
+        });
+      }
+    }
+
+    // AI interprets language only. Published record content remains the sole
+    // source of every driver-facing answer, step, code, warning, and More Info.
+    const interpretedOrBaseDecision = aiInterpretationMode === 'ACTIVE' && interpretedDecision
+      ? interpretedDecision
+      : baseDecision;
     const actionableBaseDecision = {
-      ...baseDecision,
-      clarification_options: baseDecision.response_mode === 'CLARIFY'
-        ? filterActionableClarificationOptions(baseDecision.clarification_options, records)
+      ...interpretedOrBaseDecision,
+      clarification_options: interpretedOrBaseDecision.response_mode === 'CLARIFY'
+        ? filterActionableClarificationOptions(interpretedOrBaseDecision.clarification_options, records)
         : []
     };
     const loopDetected = isRepeatedClarification(
@@ -367,7 +571,10 @@ function createDriverHelpService({
         escalation_message: 'That choice did not resolve to one approved procedure. Contact your manager or station for the current direction rather than repeating the same selection.'
       } : actionableBaseDecision),
       composition_mode: 'DETERMINISTIC',
-      composition_grounding: []
+      composition_grounding: [],
+      interpretation_mode: interpretationMode,
+      interpretation_confidence: interpretationConfidence,
+      interpretation_result: interpretationResult
     };
     const effectiveSessionId = await createOrUpdateSession({
       sessionId: sessionState.session_id,
@@ -402,6 +609,9 @@ function createDriverHelpService({
       answer_structure: decision.answer_structure || null,
       images,
       composition_mode: decision.composition_mode || 'DETERMINISTIC',
+      interpretation_mode: decision.interpretation_mode || 'DETERMINISTIC',
+      interpretation_confidence: decision.interpretation_confidence,
+      ...(includeDiagnostics ? { interpretation_result: decision.interpretation_result || {} } : {}),
       clarification_prompt: decision.clarification_prompt || null,
       clarification_options: decision.clarification_options || [],
       escalation_message: decision.escalation_message || null,
@@ -412,6 +622,8 @@ function createDriverHelpService({
         category_paths: record.taxonomy_paths || [],
         source_ids: record.source_ids || [],
         adjudication_id: record.adjudication_id || null,
+        interpretation_mode: decision.interpretation_mode || 'DETERMINISTIC',
+        interpretation_confidence: decision.interpretation_confidence ?? null,
         composition_source_paths: (decision.composition_grounding || [])
           .filter((entry) => entry.knowledge_id === record.knowledge_id)
           .flatMap((entry) => entry.source_paths || (entry.source_path ? [entry.source_path] : []))
@@ -454,6 +666,10 @@ function createDriverHelpService({
 }
 
 module.exports = {
+  applyAiInterpretation,
+  buildAiCandidateRecords,
+  buildAiSafetyIdentifier,
+  buildInterpretationResult,
   createDriverHelpService,
   filterActionableClarificationOptions,
   isMissingTableError,

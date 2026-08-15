@@ -49,6 +49,34 @@ function fakeSupabase(records = []) {
   };
 }
 
+function knowledgeRecord(overrides = {}) {
+  return {
+    knowledge_id: 'KNO-PUP-CANCELED-001',
+    version: 1,
+    status: 'READY_ROUTE_APPROVED',
+    is_published: true,
+    source_ids: ['SRC-OWNER'],
+    canonical_situation: 'A listed pickup is canceled or has no packages',
+    normalized_description: 'A driver must distinguish cancellation before an attempt from a closed attempted pickup.',
+    taxonomy_paths: ['TAX-PICKUP'],
+    applicability: ['A listed pickup was canceled'],
+    conditions: ['The selected reason must match whether an attempt occurred'],
+    exceptions: [],
+    authoritative_rule: 'Use the matching code for what occurred.',
+    required_procedure: [{ step: 1, action: 'Confirm whether an attempt occurred.' }],
+    required_documentation: [],
+    prohibited_actions: ['Do not guess a code.'],
+    escalation_requirements: [],
+    clarification_requirements: ['Was any attempt made at the pickup location?'],
+    driver_question_variants: ['Pickup got canceled'],
+    driver_question_patterns: [],
+    images: [],
+    concise_answer: 'If it was canceled before any attempt, use Code 24.',
+    more_info_answer: 'The code depends on whether an attempt occurred.',
+    ...overrides
+  };
+}
+
 test('short replies resolve only against pending data-authored choices', () => {
   const context = {
     pending_clarification_options: [
@@ -86,6 +114,156 @@ test('empty corpus returns and records a fail-closed escalation', async () => {
   assert.deepEqual(response.trace, []);
   assert.match(response.escalation_message, /does not have a verified answer/i);
   assert.ok(supabase.writes.some((write) => write.table === 'driver_help_unanswered_questions'));
+});
+
+test('grounded AI interpretation may select a record but the answer remains canonical record content', async () => {
+  const record = knowledgeRecord();
+  const supabase = fakeSupabase([record]);
+  let interpretationRequest = null;
+  const service = createDriverHelpService({
+    supabase,
+    now: () => new Date(0),
+    aiInterpretationMode: 'ACTIVE',
+    aiInterpreter: async (request) => {
+      interpretationRequest = request;
+      return {
+        selection: 'SELECT',
+        knowledge_id: record.knowledge_id,
+        decision: 'ANSWER',
+        clarification_requirement: null,
+        confidence: 0.93
+      };
+    }
+  });
+
+  const response = await service.answerQuestion({
+    accountId: '00000000-0000-0000-0000-000000000001',
+    driverId: '00000000-0000-0000-0000-000000000002',
+    question: 'shipper waved me off before i headed over'
+  });
+
+  assert.equal(interpretationRequest.candidate_records[0].knowledge_id, record.knowledge_id);
+  assert.equal(response.response_mode, 'ANSWER');
+  assert.equal(response.answer, record.concise_answer);
+  assert.equal(response.answer_structure.direct_answer, record.concise_answer);
+  assert.equal(response.interpretation_mode, 'GROUNDED_AI');
+  assert.equal(response.interpretation_confidence, 0.93);
+  assert.equal(response.trace[0].interpretation_mode, 'GROUNDED_AI');
+});
+
+test('invalid or unavailable AI interpretation falls back to deterministic retrieval', async () => {
+  const record = knowledgeRecord({ clarification_requirements: [] });
+  const supabase = fakeSupabase([record]);
+  const service = createDriverHelpService({
+    supabase,
+    now: () => new Date(0),
+    aiInterpretationMode: 'ACTIVE',
+    aiInterpreter: async () => { throw new Error('provider unavailable'); }
+  });
+
+  const response = await service.answerQuestion({
+    accountId: '00000000-0000-0000-0000-000000000001',
+    driverId: '00000000-0000-0000-0000-000000000002',
+    question: 'cancelled before i went to the pickup'
+  });
+
+  assert.equal(response.response_mode, 'ANSWER');
+  assert.equal(response.answer, record.concise_answer);
+  assert.equal(response.interpretation_mode, 'DETERMINISTIC_FALLBACK');
+});
+
+test('exact data-authored driver wording bypasses AI interpretation', async () => {
+  const record = knowledgeRecord({ clarification_requirements: [] });
+  const supabase = fakeSupabase([record]);
+  let calls = 0;
+  const service = createDriverHelpService({
+    supabase,
+    now: () => new Date(0),
+    aiInterpreter: async () => { calls += 1; return null; }
+  });
+
+  const response = await service.answerQuestion({
+    accountId: '00000000-0000-0000-0000-000000000001',
+    driverId: '00000000-0000-0000-0000-000000000002',
+    question: 'Pickup got canceled'
+  });
+
+  assert.equal(response.response_mode, 'ANSWER');
+  assert.equal(response.interpretation_mode, 'DETERMINISTIC');
+  assert.equal(calls, 0);
+});
+
+test('shadow mode records the AI proposal without changing the deterministic driver answer', async () => {
+  const deterministicRecord = knowledgeRecord({
+    knowledge_id: 'KNO-PUP-CANCELED-001',
+    clarification_requirements: [],
+    concise_answer: 'Deterministic published answer.'
+  });
+  const proposedRecord = knowledgeRecord({
+    knowledge_id: 'KNO-PUP-ZERO-001',
+    canonical_situation: 'A listed pickup has zero packages',
+    normalized_description: 'The shipper has no packages at an attempted listed pickup.',
+    driver_question_variants: ['Empty pickup'],
+    clarification_requirements: [],
+    concise_answer: 'AI-selected record answer that must stay hidden in shadow mode.'
+  });
+  const supabase = fakeSupabase([deterministicRecord, proposedRecord]);
+  const service = createDriverHelpService({
+    supabase,
+    now: () => new Date(0),
+    aiInterpretationMode: 'SHADOW',
+    aiInterpreter: async () => ({
+      selection: 'SELECT',
+      knowledge_id: proposedRecord.knowledge_id,
+      decision: 'ANSWER',
+      clarification_requirement: null,
+      confidence: 0.94
+    })
+  });
+
+  const response = await service.answerQuestion({
+    accountId: '00000000-0000-0000-0000-000000000001',
+    driverId: '00000000-0000-0000-0000-000000000002',
+    question: 'cancelled before i went to the pickup'
+  });
+  const interaction = supabase.writes.find((write) => write.table === 'driver_help_interactions').row;
+
+  assert.equal(response.answer, deterministicRecord.concise_answer);
+  assert.equal(response.trace[0].knowledge_id, deterministicRecord.knowledge_id);
+  assert.equal(response.interpretation_mode, 'AI_SHADOW');
+  assert.equal(interaction.interpretation_mode, 'AI_SHADOW');
+  assert.equal(interaction.interpretation_result.status, 'VALID');
+  assert.equal(interaction.interpretation_result.proposed_knowledge_id, proposedRecord.knowledge_id);
+  assert.equal(interaction.interpretation_result.deterministic_knowledge_id, deterministicRecord.knowledge_id);
+  assert.equal(interaction.interpretation_result.record_agreement, false);
+});
+
+test('an exact data-authored clarification cannot be overridden by AI', async () => {
+  const record = knowledgeRecord({
+    driver_question_patterns: [{
+      utterance: 'Pickup is canceled',
+      response_mode: 'ASK_MINIMUM_CLARIFICATION',
+      must_clarify: ['Was any attempt made at the pickup location?']
+    }]
+  });
+  const supabase = fakeSupabase([record]);
+  let calls = 0;
+  const service = createDriverHelpService({
+    supabase,
+    now: () => new Date(0),
+    aiInterpreter: async () => { calls += 1; return null; }
+  });
+
+  const response = await service.answerQuestion({
+    accountId: '00000000-0000-0000-0000-000000000001',
+    driverId: '00000000-0000-0000-0000-000000000002',
+    question: 'Pickup is canceled'
+  });
+
+  assert.equal(response.response_mode, 'CLARIFY');
+  assert.match(response.clarification_prompt, /Was any attempt made/);
+  assert.equal(response.interpretation_mode, 'DETERMINISTIC');
+  assert.equal(calls, 0);
 });
 
 test('actionable choices exclude missing and unpublished records', () => {

@@ -57,6 +57,7 @@ test('production CORS accepts the Firebase Hosting origins', async () => {
     for (const origin of [
       'https://ready-route-project.web.app',
       'https://ready-route-project.firebaseapp.com',
+      'https://ready-route-project--rra-test-mlshz0rb.web.app',
       'https://ready-route-landing.web.app',
       'https://ready-route-landing.firebaseapp.com'
     ]) {
