@@ -11,6 +11,7 @@
     "deploy:backend": "bash ./scripts/release-backend.sh",
     "deploy:landing": "bash ./scripts/release-landing.sh",
     "deploy:portal": "bash ./scripts/release-portal.sh",
+    "deploy:rra-test": "bash ./scripts/release-rra-test.sh",
     "setup:fedex-scheduler": "bash ./scripts/setup-cloud-scheduler-fedex-sync.sh",
     "smoke": "bash ./scripts/release-smoke.sh",
     "release:backend": "bash ./scripts/release-backend.sh",
