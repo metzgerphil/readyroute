@@ -374,7 +374,7 @@ function toCanonicalReferenceRecord(reference, referenceCases = []) {
       `code ${reference.code}`,
       ...caseMatches.map((testCase) => testCase.utterance)
     ],
-    concise_driver_answer: `${reference.code} — ${reference.label}: ${reference.applies_when}`,
+    concise_driver_answer: `Code ${reference.code}: ${reference.label}. ${reference.applies_when}`,
     more_info_answer: [...(reference.scope_notes || []), boundary].join(' '),
     source_date_or_version: reference.source_version || null,
     source_ids: [reference.source_id],

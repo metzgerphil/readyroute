@@ -16,6 +16,21 @@ function referenceParts(record) {
   return match ? { namespace: match[1], code: match[2] } : null;
 }
 
+function normalizedCode(code) {
+  return String(Number.parseInt(String(code), 10));
+}
+
+function requestedNamespace(question) {
+  const normalized = normalizeDriverQuestion(question);
+  if (/\b(?:pickup|p u|pu) (?:reason )?code\b|\bpickup reason\b/.test(normalized)) {
+    return 'PICKUP_REASON';
+  }
+  if (/\b(?:delivery|status) code\b|\bdelivery status\b/.test(normalized)) {
+    return 'DELIVERY_STATUS';
+  }
+  return null;
+}
+
 function explicitCodeTokens(question) {
   const normalized = normalizeDriverQuestion(question);
   const hasReferenceIntent = (
@@ -96,15 +111,25 @@ function buildDriverHelpReferenceDecision(question, allRecords) {
 
   const codes = explicitCodeTokens(question);
   if (codes.length) {
-    const matches = records.filter((record) => codes.includes(referenceParts(record).code));
-    const unknown = codes.filter((code) => !matches.some((record) => referenceParts(record).code === code));
+    const namespace = requestedNamespace(question);
+    const requestedCodes = new Set(codes.map(normalizedCode));
+    const numericMatches = records.filter((record) => (
+      requestedCodes.has(normalizedCode(referenceParts(record).code))
+    ));
+    const matches = namespace
+      ? numericMatches.filter((record) => referenceParts(record).namespace === namespace)
+      : numericMatches;
+    const unknown = codes.filter((code) => !matches.some((record) => (
+      normalizedCode(referenceParts(record).code) === normalizedCode(code)
+    )));
     if (unknown.length) {
       return escalationDecision(matches, `Ready Route Answers cannot verify reference code ${unknown.join(', ')} in the active corpus.`);
     }
+    if (codes.length > 1 && /\b(?:or|versus|vs)\b/.test(normalized)) {
+      return clarificationDecision(matches, 'What happened? RRA needs the actual condition before distinguishing between these codes.');
+    }
     const namespaces = new Set(matches.map((record) => referenceParts(record).namespace));
-    if (namespaces.size > 1 && ![...namespaces].some((namespace) => (
-      normalized.includes(namespace.toLowerCase().replaceAll('_', ' '))
-    ))) {
+    if (namespaces.size > 1 && !namespace) {
       return clarificationDecision(matches, 'Which reference category do you mean?');
     }
     if (!matches.every(isEligibleReference)) {
@@ -124,5 +149,7 @@ module.exports = {
   buildDriverHelpReferenceDecision,
   explicitCodeTokens,
   isReferenceRecord,
+  normalizedCode,
+  requestedNamespace,
   referenceParts
 };

@@ -1,6 +1,6 @@
 {
   "schema_version": "1.0.0",
-  "generated_at": "2026-08-15T17:09:08.625Z",
+  "generated_at": "2026-08-15T17:35:28.508Z",
   "total_records": 29,
   "by_status": {
     "SOURCE_VERIFIED": 21,
@@ -14,12 +14,12 @@
   "status_eligible_but_evidence_gated": 0,
   "source_records": 8,
   "driver_language_cases": 70,
-  "reference_language_cases": 3,
+  "reference_language_cases": 9,
   "conversation_scenarios": 9,
   "out_of_corpus_cases": 9,
   "candidate_operational_language_cases": 0,
   "candidate_gap_language_cases": 0,
-  "delivery_status_references": 8,
-  "pickup_reason_references": 2,
+  "delivery_status_references": 50,
+  "pickup_reason_references": 13,
   "active_adjudications": 8
 }

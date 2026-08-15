@@ -158,7 +158,7 @@ test('canonical reference definitions import in a separate namespace with status
   assert.equal(payload.evidenceRows.length, 2);
 });
 
-test('the selectively recovered v2 corpus imports only its reviewed reference definitions', () => {
+test('the v2 corpus imports the complete reviewed code-reference dictionary', () => {
   const root = path.resolve(__dirname, '../../..');
   const references = [
     ...readJsonLines(path.join(root, 'knowledge/reference/delivery-status-codes.jsonl')),
@@ -167,23 +167,19 @@ test('the selectively recovered v2 corpus imports only its reviewed reference de
   const cases = readJsonLines(path.join(root, 'knowledge/evaluations/reference-language-cases.jsonl'));
   const payload = buildImport([], '2026-08-10T00:00:00.000Z', [], new Map(), new Map(), references, cases);
 
-  assert.deepEqual(payload.knowledgeRows.map((row) => row.knowledge_id), [
-    'DELIVERY_STATUS:004',
-    'DELIVERY_STATUS:010',
-    'DELIVERY_STATUS:012',
-    'DELIVERY_STATUS:006',
-    'DELIVERY_STATUS:007',
-    'DELIVERY_STATUS:024',
-    'DELIVERY_STATUS:029',
-    'DELIVERY_STATUS:081',
-    'PICKUP_REASON:11',
-    'PICKUP_REASON:24'
-  ]);
-  assert.equal(payload.knowledgeRows.filter((row) => row.is_published).length, 10);
+  const ids = new Set(payload.knowledgeRows.map((row) => row.knowledge_id));
+  assert.equal(payload.knowledgeRows.length, 63);
+  assert.equal(payload.knowledgeRows.filter((row) => row.is_published).length, 63);
+  assert.equal(ids.has('DELIVERY_STATUS:001'), true);
+  assert.equal(ids.has('DELIVERY_STATUS:030'), true);
+  assert.equal(ids.has('DELIVERY_STATUS:364'), true);
+  assert.equal(ids.has('PICKUP_REASON:01'), true);
+  assert.equal(ids.has('PICKUP_REASON:20'), true);
+  assert.equal(ids.has('PICKUP_REASON:26'), true);
   assert.equal(mapReferenceStatus('VERIFIED'), 'SOURCE_VERIFIED');
   assert.equal(mapReferenceStatus('HUMAN_REVIEW_REQUIRED'), 'PENDING_REVIEW');
   assert.equal(mapReferenceStatus('POTENTIALLY_OUTDATED'), 'POTENTIALLY_OUTDATED');
-  assert.equal(references.length, 10);
+  assert.equal(references.length, 63);
 });
 
 test('malformed and duplicate canonical reference identities fail import closed', () => {

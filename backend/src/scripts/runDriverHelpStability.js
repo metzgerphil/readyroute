@@ -12,7 +12,8 @@ const {
   buildNextSessionContext
 } = require('../services/driverHelp');
 const { buildDriverHelpDecision } = require('../services/driverHelpRetrieval');
-const { buildPublicationGateIndex } = require('./importDriverKnowledge');
+const { buildDriverHelpReferenceDecision } = require('../services/driverHelpReference');
+const { buildImport, buildPublicationGateIndex } = require('./importDriverKnowledge');
 const {
   expectedRuntimeMode,
   toPublishedRecord
@@ -23,6 +24,9 @@ const RECORDS_PATH = path.join(ROOT, 'knowledge/operations/records.jsonl');
 const CASES_PATH = path.join(ROOT, 'knowledge/evaluations/driver-language-cases.jsonl');
 const CONVERSATIONS_PATH = path.join(ROOT, 'knowledge/evaluations/conversation-scenarios.jsonl');
 const OUT_OF_CORPUS_PATH = path.join(ROOT, 'knowledge/evaluations/out-of-corpus-cases.jsonl');
+const REFERENCE_CASES_PATH = path.join(ROOT, 'knowledge/evaluations/reference-language-cases.jsonl');
+const DELIVERY_REFERENCES_PATH = path.join(ROOT, 'knowledge/reference/delivery-status-codes.jsonl');
+const PICKUP_REFERENCES_PATH = path.join(ROOT, 'knowledge/reference/pickup-reason-codes.jsonl');
 
 function readJsonLines(filePath) {
   return fs.readFileSync(filePath, 'utf8')
@@ -70,6 +74,21 @@ function loadIndexedRecords() {
   ));
 }
 
+function loadIndexedReferenceRecords() {
+  const references = [DELIVERY_REFERENCES_PATH, PICKUP_REFERENCES_PATH]
+    .flatMap((filePath) => readJsonLines(filePath));
+  const referenceCases = readJsonLines(REFERENCE_CASES_PATH);
+  return buildImport(
+    [],
+    new Date().toISOString(),
+    [],
+    new Map(),
+    new Map(),
+    references,
+    referenceCases
+  ).knowledgeRows;
+}
+
 function selectedKnowledgeId(decision) {
   return decision.selected_records?.[0]?.knowledge_id
     || decision.candidates?.[0]?.knowledge_id
@@ -109,7 +128,15 @@ function wordingVariations(utterance) {
   ];
 }
 
-function runOnce({ run, records, cases, conversations, outOfCorpus }) {
+function runOnce({
+  run,
+  records,
+  referenceRecords = [],
+  cases,
+  referenceCases = [],
+  conversations,
+  outOfCorpus
+}) {
   const failures = [];
   let assertions = 0;
 
@@ -210,10 +237,104 @@ function runOnce({ run, records, cases, conversations, outOfCorpus }) {
     }
   }
 
+
+  for (const record of referenceRecords) {
+    const [namespace, code] = record.knowledge_id.split(':');
+    const category = namespace === 'PICKUP_REASON' ? 'pickup' : 'delivery';
+    const utterance = `what is ${category} code ${code}`;
+    const inputs = [utterance, ...wordingVariations(utterance)];
+    for (const [variationIndex, input] of inputs.entries()) {
+      const decision = buildDriverHelpReferenceDecision(input, referenceRecords);
+      const caseId = `REFERENCE:${record.knowledge_id}${variationIndex ? `:VAR-${variationIndex}` : ''}`;
+      assertions += 4;
+      if (decision.response_mode !== 'ANSWER') {
+        failures.push(failure({
+          suite: 'REFERENCE_DEFINITION', caseId, run, category: 'REFERENCE_MODE', input,
+          expected: 'ANSWER', actual: decision.response_mode
+        }));
+      }
+      if (decision.selected_records?.[0]?.knowledge_id !== record.knowledge_id) {
+        failures.push(failure({
+          suite: 'REFERENCE_DEFINITION', caseId, run, category: 'REFERENCE_SELECTION', input,
+          expected: record.knowledge_id, actual: decision.selected_records?.[0]?.knowledge_id || null
+        }));
+      }
+      if (!String(decision.answer || '').includes(`Code ${code}`)) {
+        failures.push(failure({
+          suite: 'REFERENCE_DEFINITION', caseId, run, category: 'REFERENCE_FORMAT', input,
+          expected: `Code ${code}`, actual: decision.answer || null
+        }));
+      }
+      if (!/does not by itself authorize|do not by themselves authorize/i.test(String(decision.more_info || ''))) {
+        failures.push(failure({
+          suite: 'REFERENCE_DEFINITION', caseId, run, category: 'REFERENCE_BOUNDARY', input,
+          expected: 'workflow boundary', actual: decision.more_info || null
+        }));
+      }
+    }
+  }
+
+  for (const testCase of referenceCases) {
+    const decision = buildDriverHelpReferenceDecision(testCase.utterance, referenceRecords);
+    const expectedMode = String(testCase.response_mode).startsWith('ANSWER') ? 'ANSWER' : 'CLARIFY';
+    const selectedIds = new Set((decision.selected_records || []).map((record) => record.knowledge_id));
+    assertions += 2;
+    if (decision.response_mode !== expectedMode) {
+      failures.push(failure({
+        suite: 'CURATED_REFERENCE', caseId: testCase.case_id, run, category: 'REFERENCE_MODE',
+        input: testCase.utterance, expected: expectedMode, actual: decision.response_mode
+      }));
+    }
+    if (expectedMode === 'ANSWER' && !(testCase.expected_reference_ids || []).every((id) => selectedIds.has(id))) {
+      failures.push(failure({
+        suite: 'CURATED_REFERENCE', caseId: testCase.case_id, run, category: 'REFERENCE_SELECTION',
+        input: testCase.utterance, expected: testCase.expected_reference_ids, actual: [...selectedIds]
+      }));
+    }
+  }
+
+  const ambiguousCodes = new Map();
+  for (const record of referenceRecords) {
+    const [, code] = record.knowledge_id.split(':');
+    const numericCode = String(Number.parseInt(code, 10));
+    ambiguousCodes.set(numericCode, [...(ambiguousCodes.get(numericCode) || []), record.knowledge_id]);
+  }
+  for (const [code, ids] of ambiguousCodes) {
+    if (new Set(ids.map((id) => id.split(':')[0])).size < 2) continue;
+    const decision = buildDriverHelpReferenceDecision(`what is code ${code}`, referenceRecords);
+    assertions += 1;
+    if (decision.response_mode !== 'CLARIFY') {
+      failures.push(failure({
+        suite: 'AMBIGUOUS_REFERENCE', caseId: `AMBIGUOUS-CODE-${code}`, run,
+        category: 'REFERENCE_AMBIGUITY', input: `what is code ${code}`,
+        expected: 'CLARIFY', actual: decision.response_mode
+      }));
+    }
+  }
+
+  const unknownReference = buildDriverHelpReferenceDecision('what is code 9999', referenceRecords);
+  assertions += 1;
+  if (unknownReference.response_mode !== 'ESCALATE') {
+    failures.push(failure({
+      suite: 'UNKNOWN_REFERENCE', caseId: 'UNKNOWN-CODE-9999', run,
+      category: 'REFERENCE_UNKNOWN', input: 'what is code 9999',
+      expected: 'ESCALATE', actual: unknownReference.response_mode
+    }));
+  }
+
   return { assertions, failures };
 }
 
-function buildSummary({ args, records, cases, conversations, outOfCorpus, runs }) {
+function buildSummary({
+  args,
+  records,
+  referenceRecords = [],
+  cases,
+  referenceCases = [],
+  conversations,
+  outOfCorpus,
+  runs
+}) {
   const failures = runs.flatMap((result) => result.failures);
   const assertions = runs.reduce((sum, result) => sum + result.assertions, 0);
   const byCategory = failures.reduce((counts, item) => {
@@ -226,7 +347,9 @@ function buildSummary({ args, records, cases, conversations, outOfCorpus, runs }
     generated_at: new Date().toISOString(),
     repeat_runs: args.repeat,
     published_records: records.filter((record) => record.is_published).length,
+    published_reference_definitions: referenceRecords.filter((record) => record.is_published).length,
     curated_language_cases: cases.length,
+    curated_reference_cases: referenceCases.length,
     generated_wording_variations: cases.length * 3,
     conversation_scenarios: conversations.length,
     conversation_turns: conversations.reduce((sum, item) => sum + item.turns.length, 0),
@@ -246,17 +369,23 @@ function buildSummary({ args, records, cases, conversations, outOfCorpus, runs }
 function main(argv) {
   const args = parseArguments(argv);
   const records = loadIndexedRecords();
+  const referenceRecords = loadIndexedReferenceRecords();
   const cases = readJsonLines(CASES_PATH);
+  const referenceCases = readJsonLines(REFERENCE_CASES_PATH);
   const conversations = readJsonLines(CONVERSATIONS_PATH);
   const outOfCorpus = readJsonLines(OUT_OF_CORPUS_PATH);
   const runs = Array.from({ length: args.repeat }, (_, index) => runOnce({
     run: index + 1,
     records,
+    referenceRecords,
     cases,
+    referenceCases,
     conversations,
     outOfCorpus
   }));
-  const summary = buildSummary({ args, records, cases, conversations, outOfCorpus, runs });
+  const summary = buildSummary({
+    args, records, referenceRecords, cases, referenceCases, conversations, outOfCorpus, runs
+  });
   const output = `${JSON.stringify(summary, null, 2)}\n`;
   if (args.report) {
     fs.mkdirSync(path.dirname(args.report), { recursive: true });
@@ -279,6 +408,7 @@ if (require.main === module) {
 module.exports = {
   buildSummary,
   loadIndexedRecords,
+  loadIndexedReferenceRecords,
   main,
   parseArguments,
   runOnce,
