@@ -34,10 +34,16 @@ async function provisionStagingManager() {
     .from('accounts')
     .select('id, company_name')
     .eq('company_name', STAGING_COMPANY_NAME)
-    .single();
+    .eq('account_status', 'active')
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .maybeSingle();
 
   if (accountError) {
     throw accountError;
+  }
+  if (!account) {
+    throw new Error(`Staging account not found: ${STAGING_COMPANY_NAME}`);
   }
 
   const { data: existingManager, error: lookupError } = await supabase
