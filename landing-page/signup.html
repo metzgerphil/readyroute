@@ -1,0 +1,190 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Sign Up | ReadyRoute</title>
+  <meta name="description" content="Sign up your contractor company for ReadyRoute. Add your company administrator and driver count to begin setup at $5 per driver per month.">
+  <style>
+    :root{color-scheme:light;--navy:#071d2b;--navy-2:#123247;--orange:#ff6200;--orange-dark:#df5600;--purple:#7254d8;--ink:#183244;--body:#5f7280;--muted:#80909b;--line:#dbe5eb;--sand:#f6f3ee;--warm:#fff1e7;--green:#26875b;--green-soft:#eaf7f0;--red:#b42318;--red-soft:#fff0ee;--shadow:0 24px 70px rgba(16,43,60,.12);--soft-shadow:0 10px 30px rgba(16,43,60,.08);--font:Inter,ui-sans-serif,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
+    *{box-sizing:border-box}html{scroll-behavior:smooth}body{margin:0;background:var(--sand);color:var(--ink);font-family:var(--font);line-height:1.55;-webkit-font-smoothing:antialiased}a{color:inherit}a:focus-visible,button:focus-visible,input:focus-visible,select:focus-visible{outline:3px solid rgba(255,98,0,.3);outline-offset:3px}.container{width:min(1120px,calc(100% - 48px));margin:0 auto}
+    .site-nav{border-bottom:1px solid rgba(219,229,235,.9);background:#fff}.nav-inner{min-height:72px;display:flex;align-items:center;justify-content:space-between;gap:24px}.brand{color:var(--navy);font-size:28px;font-weight:950;line-height:1;text-decoration:none}.brand span{color:var(--orange)}.nav-actions{display:flex;align-items:center;gap:10px}.back-link{color:var(--body);font-size:14px;font-weight:850;text-decoration:none}.back-link:hover{color:var(--navy)}.portal-link{min-height:42px;display:inline-flex;align-items:center;padding:9px 16px;border:1px solid var(--line);border-radius:999px;background:#fff;color:var(--navy);font-size:14px;font-weight:900;text-decoration:none}
+    main{padding:68px 0 86px;background:radial-gradient(circle at 10% 5%,rgba(255,98,0,.1),transparent 26%),radial-gradient(circle at 90% 18%,rgba(114,84,216,.08),transparent 25%)}.signup-grid{display:grid;grid-template-columns:minmax(0,.78fr) minmax(520px,1.22fr);gap:54px;align-items:start}.intro{position:sticky;top:28px;padding-top:18px}.eyebrow{display:inline-flex;align-items:center;gap:10px;margin:0 0 15px;color:var(--purple);font-size:12px;font-weight:950;letter-spacing:1.7px;text-transform:uppercase}.eyebrow::before{width:28px;height:2px;background:var(--orange);content:""}h1,h2,h3{margin-top:0;color:var(--navy);line-height:1.08;letter-spacing:-.025em}h1{margin-bottom:20px;font-size:clamp(44px,5.8vw,68px);font-weight:950}h1 span{color:var(--orange)}.intro-copy{max-width:500px;margin:0;color:var(--body);font-size:19px;line-height:1.65}.price-card{margin:30px 0 24px;padding:24px;border:1px solid rgba(255,98,0,.28);border-radius:20px;background:#fff;box-shadow:var(--soft-shadow)}.price-line{display:flex;align-items:baseline;gap:8px}.price-line strong{color:var(--navy);font-size:48px;font-weight:950;line-height:1}.price-line span{color:var(--body);font-size:15px;font-weight:850}.price-card p{margin:10px 0 0;color:var(--body);font-size:14px}.benefits{display:grid;gap:12px;margin:0;padding:0;list-style:none}.benefits li{display:grid;grid-template-columns:28px 1fr;gap:11px;align-items:start;color:var(--ink);font-size:15px;font-weight:800}.check{display:grid;width:26px;height:26px;place-items:center;border-radius:50%;color:var(--green);background:var(--green-soft);font-size:13px;font-weight:950}
+    .form-card{padding:34px;border:1px solid var(--line);border-radius:26px;background:#fff;box-shadow:var(--shadow)}.form-heading{margin-bottom:28px;padding-bottom:23px;border-bottom:1px solid var(--line)}.step-label{margin:0 0 8px;color:var(--orange);font-size:12px;font-weight:950;letter-spacing:1.3px;text-transform:uppercase}.form-heading h2{margin-bottom:8px;font-size:31px}.form-heading p{margin:0;color:var(--body);font-size:15px}.form-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:18px}.field{display:grid;gap:7px}.field.full{grid-column:1/-1}.field label{color:var(--navy);font-size:14px;font-weight:900}.required{color:var(--orange)}.field-hint{margin:-2px 0 0;color:var(--muted);font-size:12px}input,select{width:100%;min-height:48px;border:1px solid #cbd9e2;border-radius:12px;background:#fff;color:var(--navy);font:inherit;font-size:16px;font-weight:650;padding:11px 13px;transition:.16s}input:hover,select:hover{border-color:#9fb2bf}input:focus,select:focus{border-color:var(--orange);box-shadow:0 0 0 4px rgba(255,98,0,.11);outline:none}input::placeholder{color:#9aa8b2;font-weight:500}.honeypot{position:absolute!important;width:1px!important;height:1px!important;overflow:hidden!important;clip:rect(1px,1px,1px,1px)!important;white-space:nowrap!important}
+    .estimate{display:flex;justify-content:space-between;gap:20px;align-items:center;margin:24px 0 18px;padding:18px;border-radius:15px;background:var(--warm)}.estimate-copy strong{display:block;color:var(--navy);font-size:15px}.estimate-copy span{color:var(--body);font-size:12px}.estimate-total{color:var(--navy);font-size:25px;font-weight:950;white-space:nowrap}.estimate-total small{color:var(--body);font-size:12px;font-weight:800}.submit{width:100%;min-height:52px;border:0;border-radius:999px;background:var(--orange);color:#fff;cursor:pointer;font:inherit;font-size:16px;font-weight:950;box-shadow:0 14px 30px rgba(255,98,0,.24);transition:.18s}.submit:hover{background:var(--orange-dark);transform:translateY(-1px)}.submit:disabled{cursor:wait;opacity:.7;transform:none}.legal{margin:14px 8px 0;color:var(--muted);font-size:12px;text-align:center}.legal a{color:var(--body);font-weight:850}.message{display:none;margin-top:16px;padding:14px 16px;border-radius:13px;font-size:14px;font-weight:800}.message.show{display:block}.message.error{border:1px solid #ffc7bf;background:var(--red-soft);color:var(--red)}
+    .success-panel{display:none}.success-panel.show{display:block}.success-icon{display:grid;width:58px;height:58px;place-items:center;margin-bottom:20px;border-radius:50%;color:#fff;background:var(--green);font-size:28px;font-weight:950}.success-panel h2{margin-bottom:12px;font-size:36px}.success-panel>p{margin:0 0 24px;color:var(--body);font-size:17px}.next-steps{display:grid;gap:12px;margin:0 0 26px;padding:0;list-style:none}.next-steps li{display:grid;grid-template-columns:34px 1fr;gap:12px;align-items:start;padding:15px;border:1px solid var(--line);border-radius:14px}.next-steps span{display:grid;width:30px;height:30px;place-items:center;border-radius:50%;color:var(--purple);background:#f0edff;font-size:13px;font-weight:950}.next-steps strong{display:block;color:var(--navy);font-size:15px}.next-steps p{margin:3px 0 0;color:var(--body);font-size:13px}.home-button{min-height:46px;display:inline-flex;align-items:center;justify-content:center;padding:10px 18px;border-radius:999px;color:#fff;background:var(--navy);font-weight:900;text-decoration:none}
+    footer{padding:28px 0;border-top:1px solid var(--line);background:#fff;color:var(--muted);font-size:13px}.footer-inner{display:flex;justify-content:space-between;gap:20px}.footer-links{display:flex;gap:18px}.footer-links a{font-weight:800;text-decoration:none}
+    @media(max-width:900px){main{padding-top:48px}.signup-grid{grid-template-columns:1fr;gap:36px}.intro{position:static;padding-top:0}.intro-copy{max-width:700px}.benefits{grid-template-columns:repeat(3,1fr)}.price-card{max-width:520px}}
+    @media(max-width:680px){.container{width:min(100% - 30px,1120px)}.nav-inner{min-height:64px}.brand{font-size:23px}.back-link{display:none}.portal-link{padding:8px 13px;font-size:13px}.form-card{padding:23px 18px;border-radius:20px}.form-grid{grid-template-columns:1fr}.field.full{grid-column:auto}.benefits{grid-template-columns:1fr}.estimate{align-items:flex-start;flex-direction:column;gap:8px}.footer-inner{flex-direction:column}.footer-links{flex-wrap:wrap}}
+  </style>
+</head>
+<body>
+  <nav class="site-nav" aria-label="Signup navigation">
+    <div class="container nav-inner">
+      <a class="brand" href="/" aria-label="ReadyRoute home">ready<span>Route</span></a>
+      <div class="nav-actions"><a class="back-link" href="/">Back to ReadyRoute</a><a class="portal-link" href="https://portal.readyroute.org/login">Portal login</a></div>
+    </div>
+  </nav>
+  <main>
+    <div class="container signup-grid">
+      <section class="intro" aria-labelledby="signup-title">
+        <p class="eyebrow">Company signup</p>
+        <h1 id="signup-title">Bring ReadyRoute to <span>your drivers.</span></h1>
+        <p class="intro-copy">Tell us about your company and primary administrator. We’ll prepare your ReadyRoute company account so you can add staff and drivers.</p>
+        <div class="price-card">
+          <div class="price-line"><strong>$5</strong><span>per driver, per month</span></div>
+          <p>Simple monthly pricing that grows with your active driver team.</p>
+        </div>
+        <ul class="benefits" aria-label="What happens after signup">
+          <li><span class="check">1</span><span>We create your company workspace.</span></li>
+          <li><span class="check">2</span><span>You configure staff and driver access.</span></li>
+          <li><span class="check">3</span><span>Your team begins using ReadyRoute.</span></li>
+        </ul>
+      </section>
+
+      <section class="form-card" aria-labelledby="form-title">
+        <div id="form-content">
+          <header class="form-heading">
+            <p class="step-label">Start here</p>
+            <h2 id="form-title">Company and administrator details</h2>
+            <p>This should take about two minutes.</p>
+          </header>
+          <form id="signup-form" novalidate>
+            <div class="form-grid">
+              <div class="field">
+                <label for="name">Full name <span class="required" aria-hidden="true">*</span></label>
+                <input id="name" name="name" autocomplete="name" required>
+              </div>
+              <div class="field">
+                <label for="email">Work email <span class="required" aria-hidden="true">*</span></label>
+                <input id="email" name="email" type="email" inputmode="email" autocomplete="email" required>
+              </div>
+              <div class="field">
+                <label for="phone">Phone number <span class="required" aria-hidden="true">*</span></label>
+                <input id="phone" name="phone" type="tel" inputmode="tel" autocomplete="tel" required>
+              </div>
+              <div class="field">
+                <label for="role">Your role <span class="required" aria-hidden="true">*</span></label>
+                <select id="role" name="role" required>
+                  <option value="">Select your role</option>
+                  <option>Owner</option>
+                  <option>Business contact</option>
+                  <option>Manager</option>
+                  <option>Dispatcher</option>
+                  <option>Other</option>
+                </select>
+              </div>
+              <div class="field full">
+                <label for="company">Company / CSA name <span class="required" aria-hidden="true">*</span></label>
+                <input id="company" name="company" autocomplete="organization" required>
+              </div>
+              <div class="field">
+                <label for="drivers">Number of drivers <span class="required" aria-hidden="true">*</span></label>
+                <input id="drivers" name="drivers" type="number" inputmode="numeric" min="1" max="5000" step="1" placeholder="25" required>
+                <p class="field-hint">Use your expected active driver count.</p>
+              </div>
+              <div class="field">
+                <label for="csas">Number of CSAs</label>
+                <input id="csas" name="csas" type="number" inputmode="numeric" min="1" max="500" step="1" placeholder="1">
+                <p class="field-hint">Optional if you operate one company.</p>
+              </div>
+              <div class="honeypot" aria-hidden="true">
+                <label for="website">Website</label><input id="website" name="website" tabindex="-1" autocomplete="off">
+              </div>
+            </div>
+            <div class="estimate" aria-live="polite">
+              <div class="estimate-copy"><strong>Estimated monthly price</strong><span>Based on the active driver count above.</span></div>
+              <div class="estimate-total" id="monthly-estimate">$0 <small>/ month</small></div>
+            </div>
+            <button class="submit" id="submit-button" type="submit">Submit company signup</button>
+            <p class="legal">By submitting, you agree that ReadyRoute may contact you about company setup. See our <a href="/privacy">Privacy Policy</a> and <a href="/terms">Terms</a>.</p>
+            <p class="message error" id="signup-error" role="alert"></p>
+          </form>
+        </div>
+
+        <div class="success-panel" id="signup-success" role="status" tabindex="-1">
+          <div class="success-icon" aria-hidden="true">✓</div>
+          <h2>We received your signup.</h2>
+          <p>Thanks, <span id="success-name">we have your information</span>. ReadyRoute will contact you at <strong id="success-email"></strong> to complete company setup.</p>
+          <ol class="next-steps">
+            <li><span>1</span><div><strong>Company workspace</strong><p>We prepare your ReadyRoute company account.</p></div></li>
+            <li><span>2</span><div><strong>Staff and drivers</strong><p>You add the people who need access.</p></div></li>
+            <li><span>3</span><div><strong>Begin using ReadyRoute</strong><p>Your drivers can start getting verified operational guidance.</p></div></li>
+          </ol>
+          <a class="home-button" href="/">Return to ReadyRoute</a>
+        </div>
+      </section>
+    </div>
+  </main>
+  <footer><div class="container footer-inner"><span>&copy; 2026 ReadyRoute. All rights reserved.</span><div class="footer-links"><a href="/privacy">Privacy</a><a href="/terms">Terms</a><a href="mailto:info@readyroute.org">Contact us</a></div></div></footer>
+  <script>
+    const form = document.getElementById('signup-form');
+    const driversField = document.getElementById('drivers');
+    const estimate = document.getElementById('monthly-estimate');
+    const submitButton = document.getElementById('submit-button');
+    const errorMessage = document.getElementById('signup-error');
+    const formContent = document.getElementById('form-content');
+    const successPanel = document.getElementById('signup-success');
+
+    function getApiBase() {
+      const host = window.location.hostname;
+      return host === 'localhost' || host === '127.0.0.1' || window.location.protocol === 'file:'
+        ? 'http://127.0.0.1:3001'
+        : 'https://api.readyroute.org';
+    }
+
+    function updateEstimate() {
+      const count = Number.parseInt(driversField.value, 10);
+      const monthly = Number.isInteger(count) && count > 0 ? count * 5 : 0;
+      estimate.innerHTML = `$${monthly.toLocaleString()} <small>/ month</small>`;
+    }
+
+    driversField.addEventListener('input', updateEstimate);
+
+    form.addEventListener('submit', async (event) => {
+      event.preventDefault();
+      errorMessage.classList.remove('show');
+
+      if (!form.reportValidity()) return;
+      const formData = new FormData(form);
+      if (formData.get('website')) return;
+
+      const payload = {
+        name: formData.get('name'),
+        email: formData.get('email'),
+        phone: formData.get('phone'),
+        company: formData.get('company'),
+        role: formData.get('role'),
+        drivers: formData.get('drivers'),
+        csas: formData.get('csas'),
+        source_page: window.location.href
+      };
+
+      submitButton.disabled = true;
+      submitButton.textContent = 'Submitting signup…';
+
+      try {
+        const response = await fetch(`${getApiBase()}/waitlist/early-access`, {
+          method: 'POST',
+          headers: {'Content-Type':'application/json'},
+          body: JSON.stringify(payload)
+        });
+        const result = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(result.error || 'We could not save your signup. Please try again.');
+
+        document.getElementById('success-name').textContent = String(payload.name).split(/\s+/)[0] || 'we have your information';
+        document.getElementById('success-email').textContent = payload.email;
+        formContent.style.display = 'none';
+        successPanel.classList.add('show');
+        successPanel.focus();
+      } catch (error) {
+        errorMessage.textContent = error.message || 'We could not save your signup. Please try again.';
+        errorMessage.classList.add('show');
+      } finally {
+        submitButton.disabled = false;
+        submitButton.textContent = 'Submit company signup';
+      }
+    });
+  </script>
+</body>
+</html>

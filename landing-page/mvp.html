@@ -925,8 +925,8 @@
               <input id="role" name="role" placeholder="Owner, manager, dispatcher, driver">
             </div>
             <div class="field">
-              <label for="routes">Number of drivers</label>
-              <input id="routes" name="routes" inputmode="numeric">
+              <label for="drivers">Number of drivers</label>
+              <input id="drivers" name="drivers" inputmode="numeric">
             </div>
             <div class="field">
               <label for="csas">Number of CSAs</label>
@@ -995,7 +995,7 @@
         phone: formData.get('phone'),
         company: formData.get('company'),
         role: formData.get('role'),
-        routes: formData.get('routes'),
+        drivers: formData.get('drivers'),
         csas: formData.get('csas'),
         source_page: window.location.href
       };

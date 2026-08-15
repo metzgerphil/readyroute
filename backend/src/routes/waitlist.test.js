@@ -103,8 +103,8 @@ test('POST /waitlist/early-access stores early access signup details', async () 
     assert.equal(query.payload.phone_number, '555-123-4567');
     assert.equal(query.payload.company_csa, 'Ready Route CSA');
     assert.equal(query.payload.role, 'Owner');
-    assert.equal(query.payload.route_count, 12);
-    assert.equal(query.payload.driver_count, null);
+    assert.equal(query.payload.route_count, null);
+    assert.equal(query.payload.driver_count, 12);
     assert.equal(query.payload.csa_count, 2);
     assert.equal(query.payload.current_routing_tool, 'GroundCloud');
     assert.equal(query.payload.interested_in_beta, true);
@@ -124,7 +124,7 @@ test('POST /waitlist/early-access stores early access signup details', async () 
         phone: '555-123-4567',
         company: 'Ready Route CSA',
         role: 'Owner',
-        routes: '12',
+        drivers: '12',
         csas: '2',
         tool: 'GroundCloud',
         beta: 'Yes'

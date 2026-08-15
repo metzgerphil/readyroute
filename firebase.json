@@ -95,6 +95,10 @@
           "destination": "/support.html"
         },
         {
+          "source": "/signup",
+          "destination": "/signup.html"
+        },
+        {
           "source": "/about",
           "destination": "/about.html"
         },
