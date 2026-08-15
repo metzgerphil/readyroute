@@ -4,27 +4,26 @@ Date: 2026-08-15
 
 ## Purpose
 
-This plan catalogs the preserved v1 knowledge corpus for selective review. It does not authorize or activate any archived answer. The active RRA corpus remains the controlled 14-record v2 baseline.
+This plan catalogs the preserved v1 knowledge corpus for selective review. Archived answers are never activated merely because they appear here. After the first controlled recovery batch, the active RRA corpus contains 22 records.
 
 ## Inventory boundary
 
 | Group | Records | Treatment |
 | --- | ---: | --- |
 | Preserved v1 archive | 150 | Historical recovery source only |
-| Already represented in active v2 | 7 | Do not import again |
-| Remaining archived candidates | 143 | Review selectively |
-| Historically `READY_ROUTE_APPROVED` | 10 | Recheck scope and current evidence before reuse |
-| Historically `SOURCE_VERIFIED` | 87 | Re-review source bytes and rewrite for the v2 answer format |
+| Already represented in active v2 | 15 | Do not import again |
+| Remaining archived candidates | 135 | Review selectively |
+| Historically answer-eligible candidates remaining | 89 | Recheck scope and current evidence before reuse |
 | Historically `PENDING_REVIEW` | 26 | Hold until the unresolved issue is decided |
 | Historically `POTENTIALLY_OUTDATED` | 20 | Hold until current applicability is established |
 
-The 14 active v2 records consist of seven selectively recovered v1 topics and seven newly approved v2 topics. The full record-by-record ledger is `v1_selective_recovery_inventory.csv` in this directory.
+The 22 active v2 records consist of 15 selectively recovered v1 topics and seven newly approved v2 topics. The full record-by-record ledger is `v1_selective_recovery_inventory.csv` in this directory.
 
-## Topic map of the 143 remaining candidates
+## Topic map of the 135 remaining candidates
 
 | Topic family | Records | Initial handling |
 | --- | ---: | --- |
-| Delivery | 33 | Recover in tightly related decision families |
+| Delivery | 25 | Recover in tightly related decision families |
 | FORGE | 31 | Defer version-sensitive items; recover stable workflows selectively |
 | Pickup | 28 | Good source for later high-frequency batches |
 | DOT / hours / vehicle / safety | 25 | Higher consequence; require narrower review |
@@ -35,22 +34,22 @@ The 14 active v2 records consist of seven selectively recovered v1 topics and se
 | SenseAware | 2 | Specialized workflow; later batch |
 | Appearance, ethics, public communication | 4 | Lower initial driver-answer priority |
 
-## Proposed first recovery batch: signature-restricted delivery
+## Completed first recovery batch: signature-restricted delivery
 
-This family is proposed first because drivers ask these questions frequently, the records share the same decision variables, and the current test already exposed a major alcohol-answer gap.
+This family was selected first because drivers ask these questions frequently, the records share the same decision variables, and the initial test exposed a major alcohol-answer gap.
 
 | Candidate | Driver decision covered | Archive status | Current action |
 | --- | --- | --- | --- |
-| `KNO-DEL-SIG-ISR-001` | What is allowed for ISR and what to do when no approved release path exists | Ready Route approved | Re-author from reviewed current evidence |
-| `KNO-DEL-SIG-DSR-001` | Who may sign for DSR and what to do when nobody can sign | Ready Route approved | Re-author from reviewed current evidence |
-| `KNO-DEL-SIG-ASR-001` | Age, ID, signature, ID-refusal, and ID-scan branches for ASR | Ready Route approved | Re-author from reviewed current evidence |
-| `KNO-DEL-ALCOHOL-001` | Alcohol delivery requirements and unsuccessful-delivery branches | Ready Route approved | Re-author from reviewed current evidence |
-| `KNO-DEL-DOORTAG-001` | Completing, scanning, and placing a door tag | Source verified | Re-review OP-117 pages cited by v1 |
-| `KNO-DEL-SRA-001` | Handling a Shipment Release Authorization for ISR | Source verified | Re-review OP-117 pages 23-25 |
-| `KNO-DEL-PPOD-001` | Required delivery and attempt photographs | Source verified | Narrow to claims supported by reintroduced sources |
-| `KNO-DEL-ATTEMPT-LIMIT-001` | What happens after three unsuccessful attempts | Source verified | Narrow to claims supported by reintroduced sources |
+| `KNO-DEL-SIG-ISR-001` | What is allowed for ISR and what to do when no approved release path exists | Ready Route approved | Re-authored and activated from reviewed v2 evidence |
+| `KNO-DEL-SIG-DSR-001` | Who may sign for DSR and what to do when nobody can sign | Ready Route approved | Re-authored and activated from reviewed v2 evidence |
+| `KNO-DEL-SIG-ASR-001` | Age, ID, signature, ID-refusal, and ID-scan branches for ASR | Ready Route approved | Re-authored and activated from reviewed v2 evidence |
+| `KNO-DEL-ALCOHOL-001` | Alcohol delivery requirements and unsuccessful-delivery branches | Ready Route approved | Re-authored and activated from reviewed v2 evidence |
+| `KNO-DEL-DOORTAG-001` | Completing, scanning, and placing a door tag | Source verified | Re-authored and activated from reviewed v2 evidence |
+| `KNO-DEL-SRA-001` | Handling a Shipment Release Authorization for ISR | Source verified | Re-authored and activated from reviewed v2 evidence |
+| `KNO-DEL-PPOD-001` | Required delivery and attempt photographs | Source verified | Narrowed, re-authored, and activated from reviewed v2 evidence |
+| `KNO-DEL-ATTEMPT-LIMIT-001` | What happens after three unsuccessful attempts | Source verified | Narrowed, re-authored, and activated from reviewed v2 evidence |
 
-These are candidates, not copies. Archived answer text, aliases, and clarification rules must not be transferred automatically.
+These records were rebuilt rather than copied. The batch passed 3,249 of 3,249 deterministic assertions across three consecutive runs and all 66 grounded-AI shadow cases, including eight out-of-corpus cases with zero unsafe selections.
 
 ## Required review before activation
 

@@ -54,6 +54,62 @@ test('unmatched distinctive terms fail closed instead of matching generic packag
   assert.match(decision.escalation_message, /does not have a verified answer/i);
 });
 
+test('an unsupported operational acronym cannot be absorbed by a neighboring refusal workflow', () => {
+  const decision = buildDriverHelpDecision('The customer refuses a COD package', [
+    record({
+      knowledge_id: 'TEST-ASR-001',
+      canonical_situation: 'Completing an ASR delivery when a customer refuses ID',
+      normalized_description: 'Adult signature recipient refuses to provide identification',
+      driver_question_variants: ['ASR customer refuses ID']
+    }),
+    record({
+      knowledge_id: 'TEST-ALCOHOL-001',
+      canonical_situation: 'Delivering an alcohol package',
+      normalized_description: 'Alcohol customer refuses to provide identification',
+      driver_question_variants: ['Alcohol customer refuses ID']
+    })
+  ]);
+
+  assert.equal(decision.response_mode, 'ESCALATE');
+  assert.deepEqual(decision.selected_records, []);
+});
+
+test('an explicit signature type can switch a clarification plan to the correct neighboring record', () => {
+  const asr = record({
+    knowledge_id: 'TEST-ASR-001',
+    canonical_situation: 'Completing an ASR delivery',
+    normalized_description: 'Adult Signature Required package nobody home',
+    driver_question_variants: ['ASR nobody home'],
+    clarification_requirements: [
+      'What signature service does FORGE show?',
+      'If nobody can sign, is the stop residential or non-residential?'
+    ]
+  });
+  const dsr = record({
+    knowledge_id: 'TEST-DSR-001',
+    canonical_situation: 'Completing a DSR delivery',
+    normalized_description: 'Direct Signature Required package nobody home',
+    driver_question_variants: ['DSR nobody home at a house'],
+    clarification_requirements: [
+      'What signature service does FORGE show?',
+      'If nobody can sign, is the stop residential or non-residential?'
+    ]
+  });
+  const decision = buildDriverHelpDecision(
+    'Signature package nobody home. FORGE shows DSR and this is a house.',
+    [asr, dsr],
+    {
+      clarification_plan_active: true,
+      knowledge_ids: ['TEST-ASR-001'],
+      answered_clarification_requirements: ['What signature service does FORGE show?'],
+      remaining_clarification_requirements: []
+    }
+  );
+
+  assert.equal(decision.response_mode, 'ANSWER');
+  assert.equal(decision.selected_records[0].knowledge_id, 'TEST-DSR-001');
+});
+
 test('exact evaluated variant can return the stored published answer', () => {
   const decision = buildDriverHelpDecision('sample indicator appeared in training', [record()]);
   assert.equal(decision.response_mode, 'ANSWER');
@@ -213,14 +269,14 @@ test('promotes a single applicable status code into the direct answer', () => {
   assert.equal(structure.direct_answer, 'Apply Code 012.');
 });
 
-test('all 14 controlled records satisfy the compact initial-answer contract', () => {
+test('all controlled records satisfy the compact initial-answer contract', () => {
   const recordsPath = path.resolve(__dirname, '../../../knowledge/operations/records.jsonl');
   const records = fs.readFileSync(recordsPath, 'utf8')
     .trim()
     .split('\n')
     .map(JSON.parse);
 
-  assert.equal(records.length, 14);
+  assert.equal(records.length, 22);
   for (const canonical of records) {
     const structure = buildAnswerStructure({
       ...canonical,

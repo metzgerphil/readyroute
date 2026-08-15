@@ -2,7 +2,8 @@ const STOP_WORDS = new Set([
   'a', 'an', 'and', 'are', 'at', 'be', 'but', 'can', 'do', 'for', 'from', 'how',
   'i', 'if', 'in', 'is', 'it', 'me', 'my', 'of', 'on', 'or', 'the', 'this', 'to',
   'was', 'what', 'when', 'where', 'with', 'would', 'you', 'no', 'wut',
-  'asked', 'asking', 'help', 'please', 'question', 'tell'
+  'answer', 'answered', 'answers', 'asked', 'asking', 'detail', 'help', 'need',
+  'needs', 'one', 'please', 'question', 'ready', 'show', 'shows', 'tell'
 ]);
 
 const DRIVER_TOKEN_ALIASES = new Map(Object.entries({
@@ -31,7 +32,15 @@ const DRIVER_TOKEN_ALIASES = new Map(Object.entries({
 // can be forced into an unrelated delivery-package record.
 const GENERIC_DOMAIN_TOKENS = new Set([
   'box', 'code', 'deliver', 'delivery', 'driver', 'package', 'pickup', 'route',
-  'scan', 'scanner', 'vehicle', 'workarea'
+  'forge', 'scan', 'scanner', 'service', 'signature', 'vehicle', 'workarea'
+]);
+
+// Short operational acronyms carry more meaning than ordinary fuzzy terms.
+// If a driver says DSR, ASR, ISR, SRA, PPOD, PPODA, or COD, a candidate must
+// contain that exact acronym. This prevents a known neighboring workflow from
+// absorbing a different or currently unsupported procedure.
+const EXACT_OPERATIONAL_TOKENS = new Set([
+  'asr', 'cod', 'dsr', 'isr', 'ppod', 'ppoda', 'sra'
 ]);
 
 const ANSWER_THRESHOLD = 18;
@@ -187,6 +196,8 @@ function scoreKnowledgeRecord(question, record, context = {}) {
     const normalizedSurface = normalizeDriverQuestion(surface.value);
     const surfaceTokens = tokenize(normalizedSurface);
     if (!surfaceTokens.length) continue;
+    const exactOperationalTokens = queryTokens.filter((token) => EXACT_OPERATIONAL_TOKENS.has(token));
+    if (exactOperationalTokens.some((token) => !surfaceTokens.includes(token))) continue;
     const distinctiveQueryTokens = queryTokens.filter((token) => !GENERIC_DOMAIN_TOKENS.has(token));
     const distinctiveOverlapCount = distinctiveQueryTokens.filter((queryToken) => (
       surfaceTokens.some((surfaceToken) => tokenMatchScore(queryToken, surfaceToken) > 0)
@@ -411,12 +422,29 @@ function requirementMatches(left, right) {
   return smaller.every((token) => larger.some((candidate) => tokenMatchScore(token, candidate) > 0));
 }
 
-function unansweredClarificationRequirements(record, context = {}) {
+function questionSatisfiesClarificationRequirement(requirement, question) {
+  const normalizedRequirement = normalizeDriverQuestion(requirement);
+  const normalizedQuestion = normalizeDriverQuestion(question);
+  if (!normalizedQuestion) return false;
+  if (/signature service/.test(normalizedRequirement)) {
+    return /\b(?:isr|dsr|asr|alcohol)\b/.test(normalizedQuestion);
+  }
+  if (/residential or non residential|stop residential or non residential/.test(normalizedRequirement)) {
+    return /\b(?:house|home|residential|apartment|business|commercial|non residential)\b/.test(normalizedQuestion);
+  }
+  if (/sra form have a barcode/.test(normalizedRequirement)) {
+    return /\b(?:has|have|with|without|no|not) (?:a )?barcode\b/.test(normalizedQuestion);
+  }
+  return false;
+}
+
+function unansweredClarificationRequirements(record, context = {}, question = '') {
   const answered = Array.isArray(context.answered_clarification_requirements)
     ? context.answered_clarification_requirements
     : [];
   return (record.clarification_requirements || []).filter((requirement) => (
     !answered.some((completed) => requirementMatches(requirement, completed))
+    && !questionSatisfiesClarificationRequirement(requirement, question)
   ));
 }
 
@@ -447,7 +475,20 @@ function buildDriverHelpDecision(question, records, context = {}) {
       (context.knowledge_ids || []).includes(record.knowledge_id)
       && isProductionEligibleRecord(record)
     ));
-    if (plannedRecord) {
+    const reconsidered = rankKnowledgeRecords(question, records, {
+      ...context,
+      knowledge_ids: []
+    });
+    const replacement = reconsidered[0] || null;
+    const plannedCandidate = reconsidered.find(({ record }) => (
+      record.knowledge_id === plannedRecord?.knowledge_id
+    ));
+    const shouldSwitchRecord = plannedRecord
+      && replacement
+      && replacement.record.knowledge_id !== plannedRecord.knowledge_id
+      && replacement.score >= ANSWER_THRESHOLD
+      && (!plannedCandidate || replacement.score - plannedCandidate.score > CLARIFICATION_MARGIN);
+    if (plannedRecord && !shouldSwitchRecord) {
       const plannedCandidates = [{
         knowledge_id: plannedRecord.knowledge_id,
         version: plannedRecord.version,
@@ -494,10 +535,10 @@ function buildDriverHelpDecision(question, records, context = {}) {
     const unansweredPatternRequirements = (pattern.must_clarify || []).filter((requirement) => (
       !((context.answered_clarification_requirements || []).some((completed) => (
         requirementMatches(requirement, completed)
-      )))
+      ))) && !questionSatisfiesClarificationRequirement(requirement, question)
     ));
     const requirement = unansweredPatternRequirements[0]
-      || unansweredClarificationRequirements(top.record, context)[0]
+      || unansweredClarificationRequirements(top.record, context, question)[0]
       || 'one more detail about the situation';
     const decision = clarify(ranked, candidates, confidence, buildClarificationPrompt(requirement));
     decision.clarification_requirement = requirement;
@@ -508,7 +549,7 @@ function buildDriverHelpDecision(question, records, context = {}) {
     return answer(top.record, candidates, confidence, pattern);
   }
 
-  const unansweredRequirements = unansweredClarificationRequirements(top.record, context);
+  const unansweredRequirements = unansweredClarificationRequirements(top.record, context, question);
   if (unansweredRequirements.length) {
     const decision = clarify(
       ranked,
@@ -563,5 +604,6 @@ module.exports = {
   selectCanonicalRecordVersions,
   tokenMatchScore,
   tokenize,
+  questionSatisfiesClarificationRequirement,
   unansweredClarificationRequirements
 };

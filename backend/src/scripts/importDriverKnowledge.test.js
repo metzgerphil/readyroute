@@ -171,14 +171,16 @@ test('the selectively recovered v2 corpus imports only its reviewed reference de
     'DELIVERY_STATUS:004',
     'DELIVERY_STATUS:010',
     'DELIVERY_STATUS:012',
+    'DELIVERY_STATUS:006',
+    'DELIVERY_STATUS:007',
     'PICKUP_REASON:11',
     'PICKUP_REASON:24'
   ]);
-  assert.equal(payload.knowledgeRows.filter((row) => row.is_published).length, 5);
+  assert.equal(payload.knowledgeRows.filter((row) => row.is_published).length, 7);
   assert.equal(mapReferenceStatus('VERIFIED'), 'SOURCE_VERIFIED');
   assert.equal(mapReferenceStatus('HUMAN_REVIEW_REQUIRED'), 'PENDING_REVIEW');
   assert.equal(mapReferenceStatus('POTENTIALLY_OUTDATED'), 'POTENTIALLY_OUTDATED');
-  assert.equal(references.length, 5);
+  assert.equal(references.length, 7);
 });
 
 test('malformed and duplicate canonical reference identities fail import closed', () => {
