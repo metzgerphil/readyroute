@@ -4,22 +4,22 @@ Date: 2026-08-15
 
 ## Purpose
 
-This plan catalogs the preserved v1 knowledge corpus for selective review. Archived answers are never activated merely because they appear here. After the second controlled recovery batch, the active RRA corpus contains 29 records.
+This plan catalogs the preserved v1 knowledge corpus for selective review. Archived answers are never activated merely because they appear here. After the third controlled recovery batch, the active RRA corpus contains 33 records.
 
 ## Inventory boundary
 
 | Group | Records | Treatment |
 | --- | ---: | --- |
 | Preserved v1 archive | 150 | Historical recovery source only |
-| Already represented in active v2 | 20 | Do not import again |
-| Remaining archived candidates | 130 | Review selectively |
-| Historically answer-eligible candidates remaining | 84 | Recheck scope and current evidence before reuse |
+| Already represented in active v2 | 24 | Do not import again |
+| Remaining archived candidates | 126 | Review selectively |
+| Historically answer-eligible candidates remaining | 80 | Recheck scope and current evidence before reuse |
 | Historically `PENDING_REVIEW` | 26 | Hold until the unresolved issue is decided |
 | Historically `POTENTIALLY_OUTDATED` | 20 | Hold until current applicability is established |
 
-The 29 active v2 records consist of 20 selectively recovered v1 topics and nine newly created or approved v2 topics. The full record-by-record ledger is `v1_selective_recovery_inventory.csv` in this directory.
+The 33 active v2 records consist of 24 selectively recovered v1 topics and nine newly created or approved v2 topics. The full record-by-record ledger is `v1_selective_recovery_inventory.csv` in this directory.
 
-## Topic map of the 135 remaining candidates
+## Topic map of the remaining candidates
 
 | Topic family | Records | Initial handling |
 | --- | ---: | --- |
@@ -66,6 +66,19 @@ This family was selected because the records share one source section and one cl
 | `KNO-FORGE-CALLTAG-SCOPE-001` | All-tags action versus individual handling | Narrowed, re-authored, and activated; suspected-fraud procedure remains excluded |
 
 The expanded 29-record corpus passed 3,951 of 3,951 deterministic assertions across three consecutive clean runs and all 79 grounded-AI shadow cases, including nine out-of-corpus cases with zero unsafe selections. The AI evaluation was changed to run sequentially with compact routing metadata so expansion does not create burst-related provider failures.
+
+## Completed third recovery batch: ordinary pickup exceptions
+
+This family was selected because the four records share OP-117 pages 65-69 and cover common coordination decisions without introducing higher-risk hazmat or DOT procedures.
+
+| Active record | Driver decision covered | Current action |
+| --- | --- | --- |
+| `KNO-PUP-WINDOW-RISK-001` | Pickup cannot be completed within the customer's pickup window | Re-authored from the current pickup-window and update-message guidance |
+| `KNO-PUP-WRONG-WA-001` | Pickup is on the wrong listing or work area | Re-authored with separate before- and after-dispatch paths |
+| `KNO-PUP-VEHICLE-CAPACITY-001` | All pickup packages will not fit on the vehicle | Narrowed to the source-established AO/BC and CXPC/station notification path |
+| `KNO-PUP-PRR-001` | CXPC requests details about a reported missed pickup | Narrowed to the specific pickup/date and source-defined response scope |
+
+The expanded 33-record corpus passed 32,082 of 32,082 deterministic assertions across three consecutive clean runs and all 89 grounded-AI shadow cases, including nine out-of-corpus cases with zero unsafe selections.
 
 ## Required review before activation
 
