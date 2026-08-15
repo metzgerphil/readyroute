@@ -62,6 +62,10 @@ function tokenize(value) {
     });
 }
 
+function normalizeAuthoredQuestionPattern(value) {
+  return tokenize(value).join(' ');
+}
+
 function editDistanceWithinOne(left, right) {
   if (left === right) return true;
   if (Math.abs(left.length - right.length) > 1) return false;
@@ -199,9 +203,9 @@ function rankKnowledgeRecords(question, records, context = {}) {
 }
 
 function getMatchingQuestionPattern(question, record) {
-  const normalizedQuestion = normalizeDriverQuestion(question);
+  const normalizedQuestion = normalizeAuthoredQuestionPattern(question);
   return (record.driver_question_patterns || []).find((pattern) => (
-    normalizeDriverQuestion(pattern?.utterance) === normalizedQuestion
+    normalizeAuthoredQuestionPattern(pattern?.utterance) === normalizedQuestion
   )) || null;
 }
 
@@ -365,6 +369,15 @@ function clarify(ranked, candidates, confidence, prompt) {
   };
 }
 
+function buildClarificationPrompt(requirement) {
+  const detail = String(requirement || 'one more detail about the situation')
+    .trim()
+    .replace(/[.!?]+$/, '');
+  const punctuation = /^(?:are|can|could|did|do|does|has|have|is|should|was|were|what|when|where|which|who|why)\b/i
+    .test(detail) ? '?' : '.';
+  return `Ready Route Answers needs one detail: ${detail}${punctuation}`;
+}
+
 function buildCriticalIntentDecision() {
   // Critical routing is intentionally data-driven in v2. A source-backed record
   // and evaluated question patterns must exist before an intent can answer.
@@ -401,7 +414,7 @@ function buildDriverHelpDecision(question, records, context = {}) {
     const requirement = pattern.must_clarify?.[0]
       || top.record.clarification_requirements[0]
       || 'one more detail about the situation';
-    return clarify(ranked, candidates, confidence, `Ready Route Answers needs one detail: ${requirement}.`);
+    return clarify(ranked, candidates, confidence, buildClarificationPrompt(requirement));
   }
   if (patternMode === 'ANSWER' || hasExactQuestionVariant(question, top.record)) {
     return answer(top.record, candidates, confidence);
@@ -412,7 +425,7 @@ function buildDriverHelpDecision(question, records, context = {}) {
       ranked,
       candidates,
       confidence,
-      `Ready Route Answers needs one detail: ${top.record.clarification_requirements[0]}.`
+      buildClarificationPrompt(top.record.clarification_requirements[0])
     );
   }
 
@@ -436,6 +449,7 @@ module.exports = {
   CLARIFICATION_MARGIN,
   GENERIC_DOMAIN_TOKENS,
   buildAnswerStructure,
+  buildClarificationPrompt,
   buildCriticalIntentDecision,
   buildDirectAnswer,
   buildDriverHelpDecision,

@@ -3,11 +3,13 @@ const crypto = require('crypto');
 const defaultSupabase = require('../lib/supabase');
 const {
   buildAnswerStructure,
+  buildClarificationPrompt,
   buildDriverHelpDecision,
   buildPresentedAnswer,
   isProductionEligibleRecord,
   normalizeDriverQuestion,
-  selectCanonicalRecordVersions
+  selectCanonicalRecordVersions,
+  tokenize
 } = require('./driverHelpRetrieval');
 const {
   buildDriverHelpReferenceDecision,
@@ -121,13 +123,14 @@ function buildAiCandidateRecords(records) {
 
 function hasDataAuthoredQuestionMatch(question, records) {
   const normalized = normalizeDriverQuestion(question);
+  const normalizedPattern = tokenize(question).join(' ');
   return selectCanonicalRecordVersions(records)
     .filter((record) => !isReferenceRecord(record) && isProductionEligibleRecord(record))
     .some((record) => (
       (record.driver_question_variants || []).some((variant) => (
         normalizeDriverQuestion(variant) === normalized
       )) || (record.driver_question_patterns || []).some((pattern) => (
-        normalizeDriverQuestion(pattern?.utterance) === normalized
+        tokenize(pattern?.utterance).join(' ') === normalizedPattern
       ))
     ));
 }
@@ -159,7 +162,7 @@ function applyAiInterpretation(interpretation, question, records, baseDecision) 
       confidence: interpretation.confidence,
       candidates,
       selected_records: [],
-      clarification_prompt: `Ready Route Answers needs one detail: ${interpretation.clarification_requirement}.`,
+      clarification_prompt: buildClarificationPrompt(interpretation.clarification_requirement),
       clarification_options: []
     };
   }

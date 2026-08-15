@@ -79,6 +79,33 @@ test('record-authored clarification requirements control ambiguity handling', ()
   assert.match(decision.clarification_prompt, /which training screen is visible/i);
 });
 
+test('data-authored patterns ignore filler words and do not repeat an already supplied business fact', () => {
+  const decision = buildDriverHelpDecision('The business is closed and nobody is there.', [record({
+    canonical_situation: 'A business recipient is not in and delivery release is not permitted',
+    driver_question_variants: ['business closed what code'],
+    driver_question_patterns: [{
+      utterance: 'business closed nobody there',
+      response_mode: 'ASK_MINIMUM_CLARIFICATION',
+      must_clarify: [
+        'Is any authorized signature or release path available?',
+        'Is this a weekend closure?'
+      ]
+    }],
+    clarification_requirements: [
+      'Is the stop a business or non-residential address?',
+      'Is any authorized signature or release path available?',
+      'Is this a weekend closure?'
+    ]
+  })]);
+
+  assert.equal(decision.response_mode, 'CLARIFY');
+  assert.equal(
+    decision.clarification_prompt,
+    'Ready Route Answers needs one detail: Is any authorized signature or release path available?'
+  );
+  assert.doesNotMatch(decision.clarification_prompt, /business or non-residential/i);
+});
+
 test('active approved adjudication can outrank a newer raw version', () => {
   const approved = record({ status: 'READY_ROUTE_APPROVED', version: 1 });
   const newer = record({ status: 'SOURCE_VERIFIED', version: 2 });

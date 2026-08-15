@@ -126,7 +126,9 @@ function createDriverHelpAiInterpreter(options = {}) {
                   'Select only one supplied candidate record when its situation, applicability, and conditions match.',
                   'When the driver question exactly matches a supplied driver_question_pattern, follow that pattern response_mode: ASK_MINIMUM_CLARIFICATION, CLARIFY, or IMMEDIATE_SAFETY_ACTION_THEN_CLARIFY means CLARIFY; DIRECT_SOURCE_GROUNDED_ANSWER, ALTERNATE_DOCUMENTATION, or ANSWER means ANSWER.',
                   'Return ANSWER only when the supplied wording and context contain enough detail to choose that record safely.',
-                  'Return CLARIFY when exactly one supplied clarification requirement is needed; copy that requirement exactly.',
+                  'Never ask for a fact the driver question or conversation context already states clearly.',
+                  'When multiple clarification requirements exist, choose the first still-unanswered requirement that materially affects the procedure.',
+                  'Return CLARIFY when one supplied clarification requirement should be asked next; copy that requirement exactly.',
                   'Return NONE when no supplied record safely fits.',
                   'Do not provide an operational answer, procedure, code, explanation, or any fact outside the structured fields.'
                 ].join(' ')

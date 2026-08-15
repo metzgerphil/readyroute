@@ -1,12 +1,12 @@
 {
   "schema_version": "1.0.0",
-  "generated_at": "2026-08-15T12:59:03.054Z",
+  "generated_at": "2026-08-15T13:57:29.941Z",
   "generator": "scripts/build-ready-route-knowledge.js",
   "authoring_corpus": "research/fedex-ground-driver-knowledge/knowledge/records.jsonl",
   "adjudication_input": "knowledge/adjudications/records.json",
   "counts": {
     "schema_version": "1.0.0",
-    "generated_at": "2026-08-15T12:59:03.054Z",
+    "generated_at": "2026-08-15T13:57:29.941Z",
     "total_records": 14,
     "by_status": {
       "SOURCE_VERIFIED": 6,
@@ -28,16 +28,16 @@
     "active_adjudications": 8
   },
   "checksums": {
-    "operations/records.jsonl": "d58704a51760108d7fbca96fcf3e8053f42b6709639d3fb96b017f67fd18d956",
-    "operations/publication-ready.jsonl": "d58704a51760108d7fbca96fcf3e8053f42b6709639d3fb96b017f67fd18d956",
+    "operations/records.jsonl": "8d03262842c3f99987afa0ad33b9b728c9e4e7087b76048bee3b57ecf223fe97",
+    "operations/publication-ready.jsonl": "8d03262842c3f99987afa0ad33b9b728c9e4e7087b76048bee3b57ecf223fe97",
     "operations/publication-gaps.jsonl": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-    "operations/status-summary.json": "4958d59832b2963599e94c6ac5b5aec935c473dd2822a3b3992decb76f8fb72b",
+    "operations/status-summary.json": "a3da794080e6cccd7297b8ef24b44bbe80d9ed990cb64f367a79e5146dd3f0fb",
     "pending-review/records.jsonl": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
     "pending-review/review-items.jsonl": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
     "outdated/records.jsonl": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
     "insufficient-evidence/records.jsonl": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
     "sources/registry.jsonl": "007437765fc35ad097dece91fa36dfa1414506aeae3ac4085800f60a1d471c21",
-    "evaluations/driver-language-cases.jsonl": "693faee217d78bf2187c9b2bc84eb0bacfc2e31a0e999447c189be76ea95f0f6",
+    "evaluations/driver-language-cases.jsonl": "e14ec66da8b7cb881e5ef7e580e7ecf7f4478f76c1739281fcd0ee19a683ec11",
     "evaluations/reference-language-cases.jsonl": "545801a66931a1be49ade9a21f5c0af29cd778c642ad7f19441ac105390fdc64",
     "evaluations/candidate-operational-language-cases.jsonl": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
     "evaluations/candidate-gap-language-cases.jsonl": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
