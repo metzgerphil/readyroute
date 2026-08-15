@@ -77,6 +77,7 @@ test('record-authored clarification requirements control ambiguity handling', ()
   })]);
   assert.equal(decision.response_mode, 'CLARIFY');
   assert.match(decision.clarification_prompt, /which training screen is visible/i);
+  assert.deepEqual(decision.clarification_options, []);
 });
 
 test('data-authored patterns ignore filler words and do not repeat an already supplied business fact', () => {
@@ -104,6 +105,7 @@ test('data-authored patterns ignore filler words and do not repeat an already su
     'Ready Route Answers needs one detail: Is any authorized signature or release path available?'
   );
   assert.doesNotMatch(decision.clarification_prompt, /business or non-residential/i);
+  assert.deepEqual(decision.clarification_options, []);
 });
 
 test('active approved adjudication can outrank a newer raw version', () => {

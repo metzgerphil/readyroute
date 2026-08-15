@@ -358,14 +358,14 @@ function answer(record, candidates, confidence) {
   };
 }
 
-function clarify(ranked, candidates, confidence, prompt) {
+function clarify(ranked, candidates, confidence, prompt, includeSituationOptions = false) {
   return {
     response_mode: 'CLARIFY',
     confidence,
     candidates,
     selected_records: [],
     clarification_prompt: prompt,
-    clarification_options: clarificationOptions(ranked)
+    clarification_options: includeSituationOptions ? clarificationOptions(ranked) : []
   };
 }
 
@@ -434,7 +434,13 @@ function buildDriverHelpDecision(question, records, context = {}) {
     && top.score - second.score <= CLARIFICATION_MARGIN
     && second.record.knowledge_id !== top.record.knowledge_id;
   if (ambiguous) {
-    return clarify(ranked, candidates, confidence, 'Which situation best matches what is happening?');
+    return clarify(
+      ranked,
+      candidates,
+      confidence,
+      'Which situation best matches what is happening?',
+      true
+    );
   }
 
   if (tokenize(question).length <= 2) {
