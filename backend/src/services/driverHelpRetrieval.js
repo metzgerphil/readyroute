@@ -361,19 +361,33 @@ function buildAnswerStructure(record, answerOverride = null) {
     .map((item) => formatDriverCodeTerminology(item, record))
     .map(String)
     .filter(Boolean);
+  const overrideSteps = Array.isArray(answerOverride?.steps)
+    ? answerOverride.steps
+      .map((item) => formatDriverCodeTerminology(item, record))
+      .map(String)
+      .filter(Boolean)
+      .slice(0, 4)
+    : null;
+  const overrideWatchFor = answerOverride?.watch_for
+    ? formatDriverCodeTerminology(answerOverride.watch_for, record)
+    : null;
   return {
-    direct_answer: answerOverride?.direct_answer || buildDirectAnswer(record),
-    steps: Array.isArray(answerOverride?.steps)
-      ? answerOverride.steps.map(String).filter(Boolean).slice(0, 4)
-      : compactProcedureSteps(record),
-    watch_for: answerOverride?.watch_for || prohibitedActions[0] || null,
+    direct_answer: answerOverride?.direct_answer
+      ? formatDriverCodeTerminology(answerOverride.direct_answer, record)
+      : buildDirectAnswer(record),
+    steps: overrideSteps || compactProcedureSteps(record),
+    watch_for: overrideWatchFor || prohibitedActions[0] || null,
     options: [],
-    procedure_steps: (record.required_procedure || [])
+    procedure_steps: overrideSteps || (record.required_procedure || [])
       .map((item) => formatDriverCodeTerminology(item?.action || item, record))
       .map((item) => String(item || '').trim())
       .filter(Boolean),
-    documentation: (record.required_documentation || []).map(String).filter(Boolean),
-    prohibited_actions: prohibitedActions,
+    documentation: overrideSteps
+      ? []
+      : (record.required_documentation || []).map(String).filter(Boolean),
+    prohibited_actions: overrideSteps
+      ? [overrideWatchFor].filter(Boolean)
+      : prohibitedActions,
     escalation_requirements: (record.escalation_requirements || []).map(String).filter(Boolean)
   };
 }
@@ -418,7 +432,9 @@ function answer(record, candidates, confidence, pattern = null) {
     confidence,
     candidates,
     selected_records: [record],
-    answer: answerOverride?.direct_answer || buildPresentedAnswer(record),
+    answer: answerOverride?.direct_answer
+      ? formatDriverCodeTerminology(answerOverride.direct_answer, record)
+      : buildPresentedAnswer(record),
     more_info: record.more_info_answer || null,
     answer_structure: buildAnswerStructure(record, answerOverride)
   };
@@ -508,21 +524,35 @@ function buildDriverHelpDecision(question, records, context = {}) {
     // detail. Re-ranking the entire accumulated clarification transcript lets
     // words from Ready Route's own prior prompts hijack the conversation.
     const newestAnswer = latestDriverAnswer(question);
-    let reconsiderationQuestion = newestAnswer;
-    let reconsidered = rankKnowledgeRecords(newestAnswer, records, {
+    const standaloneReconsidered = rankKnowledgeRecords(newestAnswer, records, {
       ...context,
       knowledge_ids: []
     });
-    // Some short follow-ups only have meaning with the original situation
-    // (for example, “the doors are locked” after a zero-package pickup). If
-    // the reply alone cannot select anything, retry with the driver's original
-    // situation while still excluding RRA's own clarification wording.
-    if (!reconsidered.length && tokenize(newestAnswer).length >= 3 && context.situation_question) {
-      reconsiderationQuestion = `${context.situation_question}. Driver follow-up: ${newestAnswer}`;
-      reconsidered = rankKnowledgeRecords(reconsiderationQuestion, records, {
+    const normalizedNewestAnswer = normalizeDriverQuestion(newestAnswer);
+    const describesSituationBranch = /\b(?:closed|locked|open|customer|shipper|recipient|nobody|present|unavailable)\b/.test(
+      normalizedNewestAnswer
+    );
+    // State-describing replies such as “it was closed” only have meaning with
+    // the original driver situation. Ordinary yes/no fact answers should keep
+    // advancing the planned record instead of being reclassified from the
+    // entire situation on every turn.
+    const contextualFollowUp = context.situation_question
+      ? `${context.situation_question}. Driver follow-up: ${newestAnswer}`
+      : newestAnswer;
+    const shouldUseContextualFollowUp = contextualFollowUp !== newestAnswer && (
+      describesSituationBranch
+      || (!standaloneReconsidered.length && tokenize(newestAnswer).length >= 3)
+    );
+    let reconsiderationQuestion = shouldUseContextualFollowUp ? contextualFollowUp : newestAnswer;
+    let reconsidered = shouldUseContextualFollowUp
+      ? rankKnowledgeRecords(contextualFollowUp, records, {
         ...context,
         knowledge_ids: []
-      });
+      })
+      : standaloneReconsidered;
+    if (!reconsidered.length && shouldUseContextualFollowUp) {
+      reconsiderationQuestion = newestAnswer;
+      reconsidered = standaloneReconsidered;
     }
     const replacement = reconsidered[0] || null;
     const plannedCandidate = reconsidered.find(({ record }) => (

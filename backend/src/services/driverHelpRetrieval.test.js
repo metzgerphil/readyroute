@@ -40,6 +40,27 @@ test('empty corpus always fails closed', () => {
   assert.match(decision.escalation_message, /does not have a verified answer/i);
 });
 
+test('branch-specific answer overrides cannot leak a conflicting base procedure or reason wording', () => {
+  const structure = buildAnswerStructure(record({
+    taxonomy_paths: ['TAX-PICKUP'],
+    required_procedure: [{ step: 1, action: 'Apply Code 004.' }],
+    required_documentation: ['Status Code 004'],
+    prohibited_actions: ['Do not use Code 004 for a residential stop']
+  }), {
+    direct_answer: 'Use reason 11 because the attempted pickup was closed.',
+    steps: ['Select reason 11.', 'Close the stop.'],
+    watch_for: 'Do not use reason 11 when the customer confirms no package.'
+  });
+
+  assert.equal(structure.direct_answer, 'Use Code 11 because the attempted pickup was closed.');
+  assert.deepEqual(structure.procedure_steps, ['Select Code 11.', 'Close the stop.']);
+  assert.deepEqual(structure.documentation, []);
+  assert.deepEqual(structure.prohibited_actions, [
+    'Do not use Code 11 when the customer confirms no package.'
+  ]);
+  assert.doesNotMatch(JSON.stringify(structure), /Code 004/);
+});
+
 test('unmatched distinctive terms fail closed instead of matching generic package words', () => {
   const decision = buildDriverHelpDecision('How do I deliver an alcohol package?', [record({
     canonical_situation: 'A delivery package has possible damage and needs inspection',
