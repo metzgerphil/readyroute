@@ -16,6 +16,8 @@ export default function LoginPage() {
       ? 'Manager access is active. Sign in with the password you just set.'
       : searchParams.get('reset') === 'success'
         ? 'Password reset. Sign in with your new password.'
+        : searchParams.get('password') === 'changed'
+          ? 'Password updated. Sign in with your new password.'
         : ''
   );
   const [isSubmitting, setIsSubmitting] = useState(false);

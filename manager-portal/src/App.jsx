@@ -20,6 +20,7 @@ const FleetMapPage = lazy(() => import('./pages/FleetMapPage'));
 const LoginPage = lazy(() => import('./pages/LoginPage'));
 const KnowledgeActivityPage = lazy(() => import('./pages/KnowledgeActivityPage'));
 const ManifestPage = lazy(() => import('./pages/ManifestPage'));
+const ManagerSettingsPage = lazy(() => import('./pages/ManagerSettingsPage'));
 const NotificationsPage = lazy(() => import('./pages/NotificationsPage'));
 const RecordsPage = lazy(() => import('./pages/RecordsPage'));
 const RraTestPage = lazy(() => import('./pages/RraTestPage'));
@@ -83,6 +84,7 @@ function ProtectedApp() {
               <Route element={<DashboardPage />} path="/" />
               <Route element={<CsaPage />} path="/csa" />
               <Route element={<ManifestPage />} path="/manifest" />
+              <Route element={<ManagerSettingsPage />} path="/settings" />
               <Route element={<NotificationsPage />} path="/notifications" />
               <Route element={<RecordsPage />} path="/records" />
               <Route element={<DriversPage />} path="/drivers" />
