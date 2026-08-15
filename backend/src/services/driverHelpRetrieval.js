@@ -1,7 +1,8 @@
 const STOP_WORDS = new Set([
   'a', 'an', 'and', 'are', 'at', 'be', 'but', 'can', 'do', 'for', 'from', 'how',
   'i', 'if', 'in', 'is', 'it', 'me', 'my', 'of', 'on', 'or', 'the', 'this', 'to',
-  'was', 'what', 'when', 'where', 'with', 'would', 'you', 'no', 'wut'
+  'was', 'what', 'when', 'where', 'with', 'would', 'you', 'no', 'wut',
+  'asked', 'asking', 'help', 'please', 'question', 'tell'
 ]);
 
 const DRIVER_TOKEN_ALIASES = new Map(Object.entries({
@@ -11,6 +12,7 @@ const DRIVER_TOKEN_ALIASES = new Map(Object.entries({
   busted: 'damage',
   crushed: 'damage',
   cust: 'customer',
+  other: 'different',
   pckg: 'package',
   pckgs: 'package',
   pkg: 'package',
@@ -18,6 +20,7 @@ const DRIVER_TOKEN_ALIASES = new Map(Object.entries({
   pu: 'pickup',
   rte: 'route',
   signin: 'login',
+  truck: 'vehicle',
   van: 'vehicle',
   wa: 'workarea'
 }));
@@ -69,6 +72,18 @@ function normalizeAuthoredQuestionPattern(value) {
 function editDistanceWithinOne(left, right) {
   if (left === right) return true;
   if (Math.abs(left.length - right.length) > 1) return false;
+  if (left.length === right.length) {
+    const differences = [];
+    for (let index = 0; index < left.length; index += 1) {
+      if (left[index] !== right[index]) differences.push(index);
+    }
+    if (
+      differences.length === 2
+      && differences[1] === differences[0] + 1
+      && left[differences[0]] === right[differences[1]]
+      && left[differences[1]] === right[differences[0]]
+    ) return true;
+  }
   let leftIndex = 0;
   let rightIndex = 0;
   let edits = 0;
@@ -139,12 +154,16 @@ function selectCanonicalRecordVersions(records) {
 
 function getRecordSearchSurfaces(record) {
   const questionVariants = record.driver_question_variants || [];
+  const questionPatterns = (record.driver_question_patterns || [])
+    .map((pattern) => pattern?.utterance)
+    .filter(Boolean);
   const taxonomyPaths = record.taxonomy_paths || [];
   const combinedSurface = [
     record.canonical_situation,
     record.normalized_description,
     record.authoritative_rule,
     ...questionVariants,
+    ...questionPatterns,
     ...taxonomyPaths
   ].filter(Boolean).join(' ');
   return [
@@ -153,6 +172,7 @@ function getRecordSearchSurfaces(record) {
     { value: record.authoritative_rule, weight: 0.7 },
     { value: combinedSurface, weight: 1.35 },
     ...questionVariants.map((value) => ({ value, weight: 2.5 })),
+    ...questionPatterns.map((value) => ({ value, weight: 2.5 })),
     ...taxonomyPaths.map((value) => ({ value, weight: 0.8 }))
   ].filter((surface) => surface.value);
 }
@@ -168,10 +188,14 @@ function scoreKnowledgeRecord(question, record, context = {}) {
     const surfaceTokens = tokenize(normalizedSurface);
     if (!surfaceTokens.length) continue;
     const distinctiveQueryTokens = queryTokens.filter((token) => !GENERIC_DOMAIN_TOKENS.has(token));
-    const distinctiveOverlap = distinctiveQueryTokens.some((queryToken) => (
+    const distinctiveOverlapCount = distinctiveQueryTokens.filter((queryToken) => (
       surfaceTokens.some((surfaceToken) => tokenMatchScore(queryToken, surfaceToken) > 0)
-    ));
-    if (distinctiveQueryTokens.length && !distinctiveOverlap) continue;
+    )).length;
+    if (distinctiveQueryTokens.length && !distinctiveOverlapCount) continue;
+    const minimumDistinctiveMatches = distinctiveQueryTokens.length >= 2
+      ? Math.max(2, Math.ceil(distinctiveQueryTokens.length * 0.6))
+      : distinctiveQueryTokens.length;
+    if (distinctiveOverlapCount < minimumDistinctiveMatches) continue;
     const overlap = queryTokens.reduce((total, queryToken) => (
       total + Math.max(0, ...surfaceTokens.map((surfaceToken) => tokenMatchScore(queryToken, surfaceToken)))
     ), 0);
@@ -204,9 +228,14 @@ function rankKnowledgeRecords(question, records, context = {}) {
 
 function getMatchingQuestionPattern(question, record) {
   const normalizedQuestion = normalizeAuthoredQuestionPattern(question);
-  return (record.driver_question_patterns || []).find((pattern) => (
-    normalizeAuthoredQuestionPattern(pattern?.utterance) === normalizedQuestion
-  )) || null;
+  const questionTokens = normalizedQuestion.split(' ').filter(Boolean);
+  return (record.driver_question_patterns || []).find((pattern) => {
+    const normalizedPattern = normalizeAuthoredQuestionPattern(pattern?.utterance);
+    if (normalizedPattern === normalizedQuestion) return true;
+    const patternTokens = normalizedPattern.split(' ').filter(Boolean);
+    return patternTokens.length === questionTokens.length
+      && patternTokens.every((token, index) => tokenMatchScore(token, questionTokens[index]) >= 0.82);
+  }) || null;
 }
 
 function hasExactQuestionVariant(question, record) {
@@ -368,8 +397,27 @@ function clarify(ranked, candidates, confidence, prompt, includeSituationOptions
     candidates,
     selected_records: [],
     clarification_prompt: prompt,
+    clarification_requirement: prompt,
     clarification_options: includeSituationOptions ? clarificationOptions(ranked) : []
   };
+}
+
+function requirementMatches(left, right) {
+  const leftTokens = tokenize(left);
+  const rightTokens = tokenize(right);
+  if (!leftTokens.length || !rightTokens.length) return false;
+  const smaller = leftTokens.length <= rightTokens.length ? leftTokens : rightTokens;
+  const larger = leftTokens.length <= rightTokens.length ? rightTokens : leftTokens;
+  return smaller.every((token) => larger.some((candidate) => tokenMatchScore(token, candidate) > 0));
+}
+
+function unansweredClarificationRequirements(record, context = {}) {
+  const answered = Array.isArray(context.answered_clarification_requirements)
+    ? context.answered_clarification_requirements
+    : [];
+  return (record.clarification_requirements || []).filter((requirement) => (
+    !answered.some((completed) => requirementMatches(requirement, completed))
+  ));
 }
 
 function buildClarificationPrompt(requirement) {
@@ -392,6 +440,35 @@ function buildDriverHelpDecision(question, records, context = {}) {
   const bypassRequest = /\b(ignore|invent|pretend)\b/.test(normalizedQuestion);
   const protectedRequest = /\b(hidden|system) (instructions|prompt)\b|\breveal (your )?(instructions|prompt)\b/.test(normalizedQuestion);
   if (!normalizedQuestion || bypassRequest || protectedRequest) return escalation();
+  if (/^(?:what is )?code \d{1,3}$/.test(normalizedQuestion)) return escalation();
+
+  if (context.clarification_plan_active === true) {
+    const plannedRecord = selectCanonicalRecordVersions(records).find((record) => (
+      (context.knowledge_ids || []).includes(record.knowledge_id)
+      && isProductionEligibleRecord(record)
+    ));
+    if (plannedRecord) {
+      const plannedCandidates = [{
+        knowledge_id: plannedRecord.knowledge_id,
+        version: plannedRecord.version,
+        canonical_situation: plannedRecord.canonical_situation,
+        score: 100
+      }];
+      const remaining = Array.isArray(context.remaining_clarification_requirements)
+        ? context.remaining_clarification_requirements
+        : [];
+      if (!remaining.length) return answer(plannedRecord, plannedCandidates, 1);
+      const decision = clarify(
+        [{ record: plannedRecord, score: 100 }],
+        plannedCandidates,
+        1,
+        buildClarificationPrompt(remaining[0])
+      );
+      decision.clarification_requirement = remaining[0];
+      decision.clarification_plan = remaining;
+      return decision;
+    }
+  }
 
   const ranked = rankKnowledgeRecords(question, records, context);
   const candidates = candidateSummary(ranked);
@@ -414,22 +491,33 @@ function buildDriverHelpDecision(question, records, context = {}) {
   const patternMode = getPatternRuntimeMode(pattern);
   if (patternMode === 'ESCALATE') return escalation(candidates, confidence);
   if (patternMode === 'CLARIFY') {
-    const requirement = pattern.must_clarify?.[0]
-      || top.record.clarification_requirements[0]
+    const unansweredPatternRequirements = (pattern.must_clarify || []).filter((requirement) => (
+      !((context.answered_clarification_requirements || []).some((completed) => (
+        requirementMatches(requirement, completed)
+      )))
+    ));
+    const requirement = unansweredPatternRequirements[0]
+      || unansweredClarificationRequirements(top.record, context)[0]
       || 'one more detail about the situation';
-    return clarify(ranked, candidates, confidence, buildClarificationPrompt(requirement));
+    const decision = clarify(ranked, candidates, confidence, buildClarificationPrompt(requirement));
+    decision.clarification_requirement = requirement;
+    decision.clarification_plan = unansweredPatternRequirements;
+    return decision;
   }
   if (patternMode === 'ANSWER' || hasExactQuestionVariant(question, top.record)) {
     return answer(top.record, candidates, confidence, pattern);
   }
 
-  if (top.record.clarification_requirements.length) {
-    return clarify(
+  const unansweredRequirements = unansweredClarificationRequirements(top.record, context);
+  if (unansweredRequirements.length) {
+    const decision = clarify(
       ranked,
       candidates,
       confidence,
-      buildClarificationPrompt(top.record.clarification_requirements[0])
+      buildClarificationPrompt(unansweredRequirements[0])
     );
+    decision.clarification_requirement = unansweredRequirements[0];
+    return decision;
   }
 
   const ambiguous = second
@@ -470,8 +558,10 @@ module.exports = {
   isProductionEligibleRecord,
   normalizeDriverQuestion,
   rankKnowledgeRecords,
+  requirementMatches,
   scoreKnowledgeRecord,
   selectCanonicalRecordVersions,
   tokenMatchScore,
-  tokenize
+  tokenize,
+  unansweredClarificationRequirements
 };

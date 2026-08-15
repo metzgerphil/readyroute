@@ -7,6 +7,10 @@ on:
       - main
     paths:
       - 'backend/**'
+      - 'knowledge/**'
+      - 'research/fedex-ground-driver-knowledge/validation/**'
+      - 'scripts/build-ready-route-knowledge.js'
+      - 'scripts/validate-ready-route-knowledge.js'
       - 'supabase/migrations/**'
       - '.github/workflows/release-production.yml'
       - '.github/workflows/production-smoke.yml'
@@ -49,6 +53,13 @@ jobs:
           GOOGLE_MAPS_API_KEY: test-google-maps-key
           GOOGLE_CLOUD_PROJECT: ready-route-project
         run: npm run verify:schema && npm run check:launch && npm run test:unit
+
+      - name: Run Ready Route Answers stability gate
+        working-directory: .
+        env:
+          SUPABASE_URL: https://example.supabase.co
+          SUPABASE_SERVICE_KEY: test-service-role-key
+        run: npm run knowledge:gate
 
   migrate:
     name: Apply Supabase Migrations

@@ -134,6 +134,25 @@ test('data-authored patterns ignore filler words and do not repeat an already su
   assert.deepEqual(decision.clarification_options, []);
 });
 
+test('data-authored patterns tolerate harmless wrappers and a one-character driver typo', () => {
+  const publishedRecord = record({
+    driver_question_patterns: [{
+      utterance: 'pickup canceled before I went there',
+      response_mode: 'DIRECT_SOURCE_GROUNDED_ANSWER',
+      must_clarify: []
+    }],
+    clarification_requirements: ['Was any attempt made?']
+  });
+  assert.equal(
+    buildDriverHelpDecision('Please help: pickup canceled before I went there', [publishedRecord]).response_mode,
+    'ANSWER'
+  );
+  assert.equal(
+    buildDriverHelpDecision('pickup canceld before I went there', [publishedRecord]).response_mode,
+    'ANSWER'
+  );
+});
+
 test('active approved adjudication can outrank a newer raw version', () => {
   const approved = record({ status: 'READY_ROUTE_APPROVED', version: 1 });
   const newer = record({ status: 'SOURCE_VERIFIED', version: 2 });

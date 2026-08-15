@@ -8,6 +8,7 @@ const {
   buildPresentedAnswer,
   isProductionEligibleRecord,
   normalizeDriverQuestion,
+  requirementMatches,
   selectCanonicalRecordVersions,
   tokenize
 } = require('./driverHelpRetrieval');
@@ -118,7 +119,58 @@ function buildContextualQuestion(question, context = {}) {
   return [situationQuestion, ...details].filter(Boolean).join('. ');
 }
 
+function clarificationPromptDetail(value) {
+  return String(value || '')
+    .replace(/^Ready Route Answers needs one detail:\s*/i, '')
+    .replace(/[.!?]+$/, '')
+    .trim();
+}
+
+function isClarificationAnswerSufficient(requirement, answer) {
+  const normalizedRequirement = normalizeDriverQuestion(requirement);
+  const normalizedAnswer = normalizeDriverQuestion(answer);
+  if (!normalizedAnswer || /^(?:(?:i m|im|i am) )?(?:not sure|unsure|dont know|do not know)$/.test(normalizedAnswer)) {
+    return false;
+  }
+  if (/\b(actual )?(vehicle|tracking|work area) number\b/.test(normalizedRequirement)) {
+    return /\d/.test(normalizedAnswer);
+  }
+  if (/^why\b|\bwhy\b/.test(normalizedRequirement)) {
+    return tokenize(normalizedAnswer).length >= 2 && !/^(?:yes|no)$/.test(normalizedAnswer);
+  }
+  if (/^(?:is|was|were|did|does|do|has|have|whether)\b/.test(normalizedRequirement)) {
+    return /^(?:yes|no)\b/.test(normalizedAnswer)
+      || tokenize(normalizedAnswer).length >= 3;
+  }
+  return tokenize(normalizedAnswer).length >= 1;
+}
+
+function applyClarificationAnswerToContext(context = {}, answer) {
+  const pendingPrompt = String(context.pending_clarification_prompt || '').trim();
+  if (!pendingPrompt) return { ...context };
+  const pendingRequirement = String(
+    context.pending_clarification_requirement
+      || clarificationPromptDetail(pendingPrompt)
+  ).trim();
+  if (!isClarificationAnswerSufficient(pendingRequirement, answer)) return { ...context };
+
+  const answered = Array.isArray(context.answered_clarification_requirements)
+    ? context.answered_clarification_requirements
+    : [];
+  const remaining = Array.isArray(context.remaining_clarification_requirements)
+    ? context.remaining_clarification_requirements
+    : [];
+  return {
+    ...context,
+    answered_clarification_requirements: [...new Set([...answered, pendingRequirement])],
+    remaining_clarification_requirements: remaining.filter((requirement) => (
+      !requirementMatches(requirement, pendingRequirement)
+    ))
+  };
+}
+
 function buildNextSessionContext(previousContext = {}, question, decision) {
+  const answeredContext = applyClarificationAnswerToContext(previousContext, question);
   const pendingPrompt = String(previousContext.pending_clarification_prompt || '').trim();
   const previousHistory = Array.isArray(previousContext.clarification_history)
     ? previousContext.clarification_history
@@ -129,9 +181,20 @@ function buildNextSessionContext(previousContext = {}, question, decision) {
   const situationQuestion = pendingPrompt
     ? String(previousContext.situation_question || previousContext.last_question || question).trim()
     : String(question || '').trim();
+  const pendingRequirement = String(
+    previousContext.pending_clarification_requirement
+      || clarificationPromptDetail(pendingPrompt)
+  ).trim();
+  const answeredRequirements = Array.isArray(answeredContext.answered_clarification_requirements)
+    ? answeredContext.answered_clarification_requirements
+    : [];
+  const nextAnsweredRequirements = pendingPrompt
+    && isClarificationAnswerSufficient(pendingRequirement, question)
+    ? [...new Set([...answeredRequirements, pendingRequirement])]
+    : answeredRequirements;
   const contextualCandidates = decision.selected_records.length
     ? decision.selected_records.map((record) => ({ knowledge_id: record.knowledge_id, version: record.version }))
-    : (decision.candidates || []).slice(0, 3);
+    : (decision.candidates || []).slice(0, decision.clarification_plan?.length ? 1 : 3);
 
   return {
     knowledge_ids: contextualCandidates.map((record) => record.knowledge_id),
@@ -140,11 +203,21 @@ function buildNextSessionContext(previousContext = {}, question, decision) {
     last_question: question,
     situation_question: situationQuestion,
     clarification_history: clarificationHistory,
+    answered_clarification_requirements: nextAnsweredRequirements,
+    clarification_plan_active: decision.response_mode === 'CLARIFY'
+      ? Boolean(decision.clarification_plan?.length || answeredContext.clarification_plan_active)
+      : false,
+    remaining_clarification_requirements: decision.response_mode === 'CLARIFY'
+      ? (decision.clarification_plan || answeredContext.remaining_clarification_requirements || [])
+      : [],
     pending_clarification_id: decision.response_mode === 'CLARIFY'
       ? decision.clarification_id || null
       : null,
     pending_clarification_prompt: decision.response_mode === 'CLARIFY'
       ? decision.clarification_prompt || null
+      : null,
+    pending_clarification_requirement: decision.response_mode === 'CLARIFY'
+      ? decision.clarification_requirement || clarificationPromptDetail(decision.clarification_prompt)
       : null,
     pending_clarification_options: decision.response_mode === 'CLARIFY'
       ? (decision.clarification_options || []).map((option) => ({
@@ -226,6 +299,7 @@ function applyAiInterpretation(interpretation, question, records, baseDecision) 
       candidates,
       selected_records: [],
       clarification_prompt: buildClarificationPrompt(interpretation.clarification_requirement),
+      clarification_requirement: interpretation.clarification_requirement,
       clarification_options: []
     };
   }
@@ -492,6 +566,7 @@ function createDriverHelpService({
     ]);
     const clarificationSelection = resolveClarificationSelection(question, sessionState.context);
     const resolvedQuestion = buildContextualQuestion(question, sessionState.context);
+    const decisionContext = applyClarificationAnswerToContext(sessionState.context, question);
     const selectedClarificationRecord = clarificationSelection
       ? selectCanonicalRecordVersions(records).find((record) => (
           !isReferenceRecord(record)
@@ -524,7 +599,7 @@ function createDriverHelpService({
       : referenceDecision || buildDriverHelpDecision(
           resolvedQuestion,
           records.filter((record) => !isReferenceRecord(record)),
-          sessionState.context
+          decisionContext
         );
     let interpretedDecision = null;
     let interpretationMode = 'DETERMINISTIC';
@@ -547,11 +622,11 @@ function createDriverHelpService({
           safety_identifier: buildAiSafetyIdentifier(accountId, actorType, actorId),
           driver_question: resolvedQuestion,
           conversation_context: {
-            original_situation: sessionState.context.situation_question || null,
-            clarification_history: sessionState.context.clarification_history || [],
-            previous_question: sessionState.context.last_question || null,
-            pending_clarification_prompt: sessionState.context.pending_clarification_prompt || null,
-            previous_knowledge_ids: sessionState.context.knowledge_ids || []
+            original_situation: decisionContext.situation_question || null,
+            clarification_history: decisionContext.clarification_history || [],
+            previous_question: decisionContext.last_question || null,
+            pending_clarification_prompt: decisionContext.pending_clarification_prompt || null,
+            previous_knowledge_ids: decisionContext.knowledge_ids || []
           },
           candidate_records: aiCandidates
         });
@@ -634,7 +709,7 @@ function createDriverHelpService({
       actorId,
       question,
       decision,
-      previousContext: sessionState.context
+      previousContext: decisionContext
     });
     const interactionId = await recordInteraction({
       sessionId: effectiveSessionId,
@@ -718,14 +793,17 @@ function createDriverHelpService({
 
 module.exports = {
   applyAiInterpretation,
+  applyClarificationAnswerToContext,
   buildAiCandidateRecords,
   buildContextualQuestion,
   buildNextSessionContext,
+  clarificationPromptDetail,
   buildAiSafetyIdentifier,
   buildInterpretationResult,
   createDriverHelpService,
   filterActionableClarificationOptions,
   isMissingTableError,
+  isClarificationAnswerSufficient,
   isRepeatedClarification,
   resolveClarificationFollowUp,
   resolveClarificationSelection

@@ -5,6 +5,8 @@
     "knowledge:build": "node ./scripts/build-ready-route-knowledge.js",
     "knowledge:validate": "node ./scripts/validate-ready-route-knowledge.js",
     "knowledge:release": "npm run knowledge:build && npm run knowledge:validate",
+    "knowledge:stability": "npm --prefix backend run knowledge:stability",
+    "knowledge:gate": "npm run knowledge:release && npm run knowledge:stability",
     "verify": "bash ./scripts/verify.sh",
     "deploy:backend": "bash ./scripts/release-backend.sh",
     "deploy:landing": "bash ./scripts/release-landing.sh",

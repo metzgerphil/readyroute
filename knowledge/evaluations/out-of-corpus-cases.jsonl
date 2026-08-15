@@ -1,0 +1,6 @@
+{"case_id":"OOC-001","utterance":"How do I deliver an alcohol package?","expected_mode":"ESCALATE"}
+{"case_id":"OOC-002","utterance":"My truck has a flat tire on the highway","expected_mode":"ESCALATE"}
+{"case_id":"OOC-003","utterance":"A dog is loose in the front yard","expected_mode":"ESCALATE"}
+{"case_id":"OOC-004","utterance":"What time should I take my lunch break?","expected_mode":"ESCALATE"}
+{"case_id":"OOC-005","utterance":"Can I leave this package inside a customer's garage?","expected_mode":"ESCALATE"}
+{"case_id":"OOC-006","utterance":"What is Code 20?","expected_mode":"ESCALATE"}

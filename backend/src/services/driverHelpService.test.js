@@ -7,12 +7,22 @@ process.env.SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_KEY || 'test-ser
 const {
   buildContextualQuestion,
   buildNextSessionContext,
+  isClarificationAnswerSufficient,
   createDriverHelpService,
   filterActionableClarificationOptions,
   isRepeatedClarification,
   resolveClarificationFollowUp,
   resolveClarificationSelection
 } = require('./driverHelp');
+
+test('clarification answer validation recognizes common fact types', () => {
+  assert.equal(isClarificationAnswerSufficient('actual vehicle number', '2387'), true);
+  assert.equal(isClarificationAnswerSufficient('actual vehicle number', 'yes'), false);
+  assert.equal(isClarificationAnswerSufficient('whether the generator is set to Code 128', 'yes'), true);
+  assert.equal(isClarificationAnswerSufficient('why no packages were obtained', 'the shipper had none ready'), true);
+  assert.equal(isClarificationAnswerSufficient('why no packages were obtained', 'no'), false);
+  assert.equal(isClarificationAnswerSufficient('whether anything was scanned', 'I am not sure'), false);
+});
 
 test('clarification replies keep the original situation and accumulated answers', () => {
   const firstContext = buildNextSessionContext({}, 'The vehicle barcode is missing', {
