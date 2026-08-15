@@ -25,4 +25,6 @@ Production customer, route, driver, vehicle, billing, and Ready Route Operations
 
 ## Replacement-corpus rule
 
-Only newly supplied and explicitly accepted source material may populate v2. Archived records cannot be copied forward by default. Until v2 contains publication-ready records, the answer system must fail closed and provide no definitive driver instruction.
+Only explicitly accepted source material may populate v2. Archived records cannot be copied forward by default. The product owner may authorize a selective recovery, but the original source bytes must be reintroduced, the cited evidence must be re-reviewed, and unsupported v1 language must be removed before publication.
+
+On 2026-08-15, the product owner authorized the first selective recovery based on the partner handoff dated 2026-08-14. Eight narrowly scoped candidates were recovered or created; six passed source and evidence review, while the wrong-route disposition and Bulk Transfer candidates remained pending because the reviewed documents did not establish their complete procedures.

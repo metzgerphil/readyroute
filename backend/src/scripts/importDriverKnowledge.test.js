@@ -158,7 +158,7 @@ test('canonical reference definitions import in a separate namespace with status
   assert.equal(payload.evidenceRows.length, 2);
 });
 
-test('the clean v2 baseline contains no active reference definitions', () => {
+test('the selectively recovered v2 corpus imports only its reviewed reference definitions', () => {
   const root = path.resolve(__dirname, '../../..');
   const references = [
     ...readJsonLines(path.join(root, 'knowledge/reference/delivery-status-codes.jsonl')),
@@ -167,12 +167,18 @@ test('the clean v2 baseline contains no active reference definitions', () => {
   const cases = readJsonLines(path.join(root, 'knowledge/evaluations/reference-language-cases.jsonl'));
   const payload = buildImport([], '2026-08-10T00:00:00.000Z', [], new Map(), new Map(), references, cases);
 
-  assert.equal(payload.knowledgeRows.length, 0);
-  assert.equal(payload.knowledgeRows.filter((row) => row.is_published).length, 0);
+  assert.deepEqual(payload.knowledgeRows.map((row) => row.knowledge_id), [
+    'DELIVERY_STATUS:004',
+    'DELIVERY_STATUS:010',
+    'DELIVERY_STATUS:012',
+    'PICKUP_REASON:11',
+    'PICKUP_REASON:24'
+  ]);
+  assert.equal(payload.knowledgeRows.filter((row) => row.is_published).length, 5);
   assert.equal(mapReferenceStatus('VERIFIED'), 'SOURCE_VERIFIED');
   assert.equal(mapReferenceStatus('HUMAN_REVIEW_REQUIRED'), 'PENDING_REVIEW');
   assert.equal(mapReferenceStatus('POTENTIALLY_OUTDATED'), 'POTENTIALLY_OUTDATED');
-  assert.deepEqual(references, []);
+  assert.equal(references.length, 5);
 });
 
 test('malformed and duplicate canonical reference identities fail import closed', () => {
