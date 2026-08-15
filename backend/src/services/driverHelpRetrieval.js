@@ -37,12 +37,12 @@ const GENERIC_DOMAIN_TOKENS = new Set([
   'forge', 'procedure', 'scan', 'scanner', 'service', 'signature', 'vehicle', 'workarea'
 ]);
 
-// Short operational acronyms carry more meaning than ordinary fuzzy terms.
-// If a driver says DSR, ASR, ISR, SRA, PPOD, PPODA, or COD, a candidate must
-// contain that exact acronym. This prevents a known neighboring workflow from
-// absorbing a different or currently unsupported procedure.
+// Operational acronyms and named location subjects carry more meaning than
+// ordinary fuzzy terms. A candidate must contain the same exact subject. This
+// prevents a known neighboring workflow (for example, apartment vs. garage)
+// from absorbing a different or currently unsupported procedure.
 const EXACT_OPERATIONAL_TOKENS = new Set([
-  'asr', 'cod', 'dsr', 'isr', 'ppod', 'ppoda', 'sra'
+  'asr', 'cod', 'dsr', 'garage', 'isr', 'ppod', 'ppoda', 'sra'
 ]);
 
 const ANSWER_THRESHOLD = 18;
@@ -225,7 +225,10 @@ function scoreKnowledgeRecord(question, record, context = {}) {
     best = Math.max(best, score);
   }
 
-  const contextBoost = (context.knowledge_ids || []).includes(record.knowledge_id) ? 5 : 0;
+  const isContextRecord = (context.knowledge_ids || []).includes(record.knowledge_id);
+  const contextBoost = !isContextRecord
+    ? 0
+    : (context.last_response_mode === 'ANSWER' ? (best > 0 ? 25 : 0) : 5);
   return Number((best + contextBoost).toFixed(5));
 }
 

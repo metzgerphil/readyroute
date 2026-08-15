@@ -22,8 +22,8 @@ class QueryBuilder {
 test('GET /manager/driver-help/overview returns scoped operational-help metrics', async () => {
   const rows = {
     driver_help_interactions: [
-      { id: '1', response_mode: 'ANSWER', selected_knowledge_ids: ['KNO-1'], response_latency_ms: 100, canonical_trace: [{ category_paths: ['TAX-DELIVERY'] }], interpretation_mode: 'AI_SHADOW', interpretation_result: { status: 'VALID', record_agreement: true, response_mode_agreement: true } },
-      { id: '2', response_mode: 'ESCALATE', selected_knowledge_ids: [], response_latency_ms: 200, interpretation_mode: 'AI_SHADOW', interpretation_result: { status: 'VALID', record_agreement: false, response_mode_agreement: false } },
+      { id: '1', response_mode: 'ANSWER', selected_knowledge_ids: ['KNO-1'], response_latency_ms: 100, canonical_trace: [{ category_paths: ['TAX-DELIVERY'] }], interpretation_mode: 'AI_SHADOW', interpretation_result: { status: 'VALID', record_agreement: true, response_mode_agreement: true, usage: { input_tokens: 100, cached_input_tokens: 20, output_tokens: 10, reasoning_tokens: 5, total_tokens: 110, estimated_cost_usd: 0.001 } } },
+      { id: '2', response_mode: 'ESCALATE', selected_knowledge_ids: [], response_latency_ms: 200, interpretation_mode: 'AI_SHADOW', interpretation_result: { status: 'VALID', record_agreement: false, response_mode_agreement: false, usage: { input_tokens: 200, cached_input_tokens: 40, output_tokens: 20, reasoning_tokens: 10, total_tokens: 220, estimated_cost_usd: 0.002 } } },
       { id: '3', response_mode: 'CLARIFY', selected_knowledge_ids: [], response_latency_ms: 300, interpretation_mode: 'AI_SHADOW_FALLBACK', interpretation_result: { status: 'ERROR' } }
     ],
     driver_help_unanswered_questions: [{ id: 'u1', status: 'open' }],
@@ -59,6 +59,14 @@ test('GET /manager/driver-help/overview returns scoped operational-help metrics'
     ai_shadow_runs: 3,
     ai_shadow_valid_results: 2,
     ai_shadow_errors: 1,
+    ai_shadow_usage: {
+      input_tokens: 300,
+      cached_input_tokens: 60,
+      output_tokens: 30,
+      reasoning_tokens: 15,
+      total_tokens: 330,
+      estimated_cost_usd: 0.003
+    },
     ai_shadow_record_agreement_rate: 1 / 2,
     ai_shadow_response_mode_agreement_rate: 1 / 2,
     questions_by_category: { 'TAX-DELIVERY': 1, UNMATCHED: 2 }

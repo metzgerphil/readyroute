@@ -53,6 +53,45 @@ test('clarification replies keep the original situation and accumulated answers'
   assert.match(thirdQuestion, /Driver answered: yes/i);
 });
 
+test('obvious follow-ups retain the answered situation without carrying unrelated questions', () => {
+  const context = {
+    last_response_mode: 'ANSWER',
+    last_question: 'The scanner technology failed during my pickup'
+  };
+
+  assert.equal(
+    buildContextualQuestion('What details do I give the station', context),
+    'The scanner technology failed during my pickup. Driver follow-up: What details do I give the station'
+  );
+  assert.equal(
+    buildContextualQuestion('It is a business', context),
+    'The scanner technology failed during my pickup. Driver follow-up: It is a business'
+  );
+  assert.equal(
+    buildContextualQuestion('Where is that in FORGE', context),
+    'The scanner technology failed during my pickup. Driver follow-up: Where is that in FORGE'
+  );
+  assert.equal(
+    buildContextualQuestion('I lost it', context),
+    'The scanner technology failed during my pickup. Driver follow-up: I lost it'
+  );
+  assert.equal(
+    buildContextualQuestion('The HAL stop was already closed when FedEx Office refused it', context),
+    'The HAL stop was already closed when FedEx Office refused it'
+  );
+  assert.equal(
+    buildContextualQuestion('A dog is loose in the yard', context),
+    'A dog is loose in the yard'
+  );
+});
+
+test('a short badge-state reply satisfies the pending badge clarification', () => {
+  assert.equal(
+    isClarificationAnswerSufficient('Was the badge forgotten, lost, or found after replacement?', 'I lost it'),
+    true
+  );
+});
+
 function filterChain(result) {
   const chain = {
     eq() { return chain; },
@@ -287,7 +326,12 @@ test('shadow mode records the AI proposal without changing the deterministic dri
       knowledge_id: proposedRecord.knowledge_id,
       decision: 'ANSWER',
       clarification_requirement: null,
-      confidence: 0.94
+      confidence: 0.94,
+      provider_metadata: {
+        response_id: 'resp_shadow_test',
+        request_id: 'req_shadow_test',
+        usage: { input_tokens: 100, output_tokens: 20, total_tokens: 120 }
+      }
     })
   });
 
@@ -306,6 +350,8 @@ test('shadow mode records the AI proposal without changing the deterministic dri
   assert.equal(interaction.interpretation_result.proposed_knowledge_id, proposedRecord.knowledge_id);
   assert.equal(interaction.interpretation_result.deterministic_knowledge_id, deterministicRecord.knowledge_id);
   assert.equal(interaction.interpretation_result.record_agreement, false);
+  assert.equal(interaction.interpretation_result.provider_response_id, 'resp_shadow_test');
+  assert.equal(interaction.interpretation_result.usage.input_tokens, 100);
 });
 
 test('manager test console may activate grounded interpretation without changing the service default', async () => {
@@ -463,4 +509,13 @@ test('repeated identical clarification is detected', () => {
     pending_clarification_prompt: 'Which sample?',
     pending_clarification_options: [option]
   }, option), true);
+
+  assert.equal(isRepeatedClarification({
+    response_mode: 'CLARIFY',
+    clarification_prompt: 'Was it already delivered?',
+    clarification_options: []
+  }, {
+    pending_clarification_prompt: 'Was it already delivered?',
+    pending_clarification_options: []
+  }), true);
 });

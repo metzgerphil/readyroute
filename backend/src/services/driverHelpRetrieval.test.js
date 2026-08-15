@@ -117,6 +117,31 @@ test('exact evaluated variant can return the stored published answer', () => {
   assert.equal(decision.selected_records[0].knowledge_id, 'TEST-PROCEDURE-001');
 });
 
+test('a lexical follow-up preserves the answered record without making unrelated context sticky', () => {
+  const active = record({
+    knowledge_id: 'TEST-SCANNER-FAIL-001',
+    canonical_situation: 'Scanner failure during a pickup requires station details',
+    normalized_description: 'Scanning technology failed and station personnel need the pickup details',
+    driver_question_variants: ['What details do I give the station after scanner failure']
+  });
+  const neighbor = record({
+    knowledge_id: 'TEST-STATION-OTHER-001',
+    canonical_situation: 'A different station procedure',
+    normalized_description: 'Station details for an unrelated procedure',
+    driver_question_variants: ['Give the station different details']
+  });
+  const context = {
+    last_response_mode: 'ANSWER',
+    knowledge_ids: [active.knowledge_id]
+  };
+
+  const followUp = rankKnowledgeRecords('What details do I give the station?', [active, neighbor], context);
+  assert.equal(followUp[0].record.knowledge_id, active.knowledge_id);
+
+  const unrelated = rankKnowledgeRecords('A dog is loose in the yard', [active], context);
+  assert.deepEqual(unrelated, []);
+});
+
 test('an answer pattern may select a compact source-authored branch presentation', () => {
   const decision = buildDriverHelpDecision('pickup canceled before I went there', [record({
     canonical_situation: 'A listed pickup is canceled or has no packages',
@@ -289,7 +314,7 @@ test('all controlled records satisfy the compact initial-answer contract', () =>
     .split('\n')
     .map(JSON.parse);
 
-  assert.equal(records.length, 33);
+  assert.equal(records.length, 71);
   for (const canonical of records) {
     const structure = buildAnswerStructure({
       ...canonical,

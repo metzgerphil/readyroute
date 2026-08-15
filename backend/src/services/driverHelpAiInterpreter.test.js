@@ -54,13 +54,21 @@ test('AI interpretation sends only constrained routing fields with a strict sche
         ok: true,
         async json() {
           return {
+            id: 'resp_test_123',
             output_text: JSON.stringify({
               selection: 'SELECT',
               knowledge_id: 'KNO-PUP-CANCELED-001',
               decision: 'CLARIFY',
               clarification_requirement: 'Was any attempt made at the pickup location?',
               confidence: 0.91
-            })
+            }),
+            usage: {
+              input_tokens: 120,
+              input_tokens_details: { cached_tokens: 20 },
+              output_tokens: 30,
+              output_tokens_details: { reasoning_tokens: 10 },
+              total_tokens: 150
+            }
           };
         }
       };
@@ -86,6 +94,8 @@ test('AI interpretation sends only constrained routing fields with a strict sche
   assert.equal(requestBody.text.format.strict, true);
   assert.deepEqual(requestBody.text.format.schema, responseSchema(candidates));
   assert.equal(result.decision, 'CLARIFY');
+  assert.equal(result.provider_metadata.response_id, 'resp_test_123');
+  assert.equal(result.provider_metadata.usage.input_tokens, 120);
 });
 
 test('interpretation validation accepts only eligible candidates and exact clarification requirements', () => {
@@ -134,5 +144,46 @@ test('provider failures remain catchable for deterministic fallback', async () =
   await assert.rejects(
     () => interpreter({ driver_question: 'pickup cancelled', candidate_records: candidates }),
     /status 503/
+  );
+});
+
+test('provider failures preserve safe rate-limit diagnostics', async () => {
+  const interpreter = createDriverHelpAiInterpreter({
+    env: configuredEnv,
+    fetchImpl: async () => ({
+      ok: false,
+      status: 429,
+      headers: {
+        get(name) {
+          return {
+            'x-request-id': 'req_test_123',
+            'x-ratelimit-remaining-tokens': '0',
+            'x-ratelimit-reset-tokens': '45s'
+          }[name] || null;
+        }
+      },
+      async text() {
+        return JSON.stringify({
+          error: {
+            code: 'rate_limit_exceeded',
+            type: 'tokens',
+            message: 'Please retry after the token window resets.'
+          }
+        });
+      }
+    })
+  });
+
+  await assert.rejects(
+    () => interpreter({ driver_question: 'pickup cancelled', candidate_records: candidates }),
+    (error) => {
+      assert.equal(error.status, 429);
+      assert.equal(error.provider_code, 'rate_limit_exceeded');
+      assert.equal(error.provider_type, 'tokens');
+      assert.equal(error.request_id, 'req_test_123');
+      assert.equal(error.rate_limit.remaining_tokens, '0');
+      assert.equal(error.rate_limit.reset_tokens, '45s');
+      return true;
+    }
   );
 });

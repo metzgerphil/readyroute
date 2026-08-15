@@ -7,6 +7,7 @@ const path = require('node:path');
 const {
   buildImport,
   buildPublicationGateIndex,
+  findStalePublishedRecords,
   mapReferenceStatus,
   parseCsv,
   readAnswerImageIndex,
@@ -46,6 +47,21 @@ function canonicalRecord(overrides = {}) {
     ...overrides
   };
 }
+
+test('release reconciliation preserves history but unpublishes superseded and removed records', () => {
+  const existing = [
+    { knowledge_id: 'KNO-TEST-001', version: 2, is_published: true },
+    { knowledge_id: 'KNO-TEST-001', version: 3, is_published: true },
+    { knowledge_id: 'KNO-REMOVED-001', version: 1, is_published: true },
+    { knowledge_id: 'KNO-ARCHIVED-001', version: 1, is_published: false }
+  ];
+  const current = [{ knowledge_id: 'KNO-TEST-001', version: 3, is_published: true }];
+
+  assert.deepEqual(findStalePublishedRecords(existing, current), [
+    { knowledge_id: 'KNO-TEST-001', version: 2, is_published: true },
+    { knowledge_id: 'KNO-REMOVED-001', version: 1, is_published: true }
+  ]);
+});
 
 test('production validation requires canonical evidence and a driver-language surface', () => {
   assert.deepEqual(validateProductionEligibleRecord(canonicalRecord()), []);

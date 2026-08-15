@@ -499,6 +499,33 @@ async function upsertInBatches(table, rows, options = {}) {
   }
 }
 
+function findStalePublishedRecords(existingRows, currentRows) {
+  const currentKeys = new Set(currentRows.map((row) => `${row.knowledge_id}\u0000${row.version}`));
+  return existingRows.filter((row) => (
+    row.is_published === true
+    && !currentKeys.has(`${row.knowledge_id}\u0000${row.version}`)
+  ));
+}
+
+async function reconcilePublishedKnowledge(supabase, currentRows) {
+  const { data, error } = await supabase
+    .from('driver_help_knowledge_records')
+    .select('knowledge_id, version, is_published')
+    .eq('is_published', true);
+  if (error) throw error;
+
+  const staleRows = findStalePublishedRecords(data || [], currentRows);
+  for (const row of staleRows) {
+    const { error: updateError } = await supabase
+      .from('driver_help_knowledge_records')
+      .update({ is_published: false })
+      .eq('knowledge_id', row.knowledge_id)
+      .eq('version', row.version);
+    if (updateError) throw updateError;
+  }
+  return staleRows.length;
+}
+
 async function uploadAnswerImages(supabase, assets) {
   const bucket = supabase.storage.from(DRIVER_HELP_IMAGE_BUCKET);
   for (const asset of assets) {
@@ -566,6 +593,7 @@ async function main() {
     await uploadAnswerImages(supabase, answerImages.assets);
     await upsertInBatches('driver_help_knowledge_sources', payload.sourceRows, { onConflict: 'source_id' });
     await upsertInBatches('driver_help_knowledge_records', payload.knowledgeRows, { onConflict: 'knowledge_id,version' });
+    summary.superseded_records_unpublished = await reconcilePublishedKnowledge(supabase, payload.knowledgeRows);
     await upsertInBatches('driver_help_knowledge_record_sources', payload.evidenceRows, {
       onConflict: 'knowledge_id,knowledge_version,source_id,locator'
     });
@@ -586,6 +614,7 @@ module.exports = {
   buildPublicationGateIndex,
   buildPatternIndex,
   buildVariantIndex,
+  findStalePublishedRecords,
   mapReferenceStatus,
   parseArguments,
   parseCsv,
@@ -593,6 +622,7 @@ module.exports = {
   readJsonLines,
   readPngDimensions,
   readSourceInventory,
+  reconcilePublishedKnowledge,
   PRODUCTION_ELIGIBLE_STATUSES,
   toCanonicalReferenceRecord,
   uploadAnswerImages,

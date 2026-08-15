@@ -78,6 +78,42 @@ function validateInterpretation(payload, candidates = [], minimumConfidence = DE
   };
 }
 
+async function providerError(response) {
+  let body = null;
+  try {
+    const raw = typeof response.text === 'function' ? await response.text() : '';
+    body = raw ? JSON.parse(raw) : null;
+  } catch {
+    body = null;
+  }
+
+  const header = (name) => response.headers?.get?.(name) || null;
+  const detail = body?.error || {};
+  const error = new Error([
+    `Driver-help interpretation request failed with status ${response.status}`,
+    detail.code ? `code ${detail.code}` : null,
+    detail.type ? `type ${detail.type}` : null,
+    detail.message ? `message ${detail.message}` : null
+  ].filter(Boolean).join('; '));
+  error.status = response.status;
+  error.provider_code = detail.code || null;
+  error.provider_type = detail.type || null;
+  error.request_id = header('x-request-id');
+  error.retry_after = header('retry-after');
+  error.rate_limit = {
+    limit_requests: header('x-ratelimit-limit-requests'),
+    remaining_requests: header('x-ratelimit-remaining-requests'),
+    reset_requests: header('x-ratelimit-reset-requests'),
+    limit_tokens: header('x-ratelimit-limit-tokens'),
+    remaining_tokens: header('x-ratelimit-remaining-tokens'),
+    reset_tokens: header('x-ratelimit-reset-tokens'),
+    limit_project_tokens: header('x-ratelimit-limit-project-tokens'),
+    remaining_project_tokens: header('x-ratelimit-remaining-project-tokens'),
+    reset_project_tokens: header('x-ratelimit-reset-project-tokens')
+  };
+  return error;
+}
+
 function createDriverHelpAiInterpreter(options = {}) {
   const env = options.env || process.env;
   if (resolveDriverHelpAiInterpretationMode(env) === 'OFF') return null;
@@ -99,8 +135,13 @@ function createDriverHelpAiInterpreter(options = {}) {
     const candidates = Array.isArray(request?.candidate_records) ? request.candidate_records : [];
     if (!candidates.length) return null;
     const safetyIdentifier = String(request?.safety_identifier || '').trim() || undefined;
-    const modelRequest = { ...request };
-    delete modelRequest.safety_identifier;
+    // Keep the large, repeated candidate corpus at the start of the request so
+    // provider prompt caching can reuse it across evaluation and live traffic.
+    const modelRequest = {
+      candidate_records: candidates,
+      driver_question: request?.driver_question || '',
+      conversation_context: request?.conversation_context || {}
+    };
 
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), timeoutMs);
@@ -154,13 +195,17 @@ function createDriverHelpAiInterpreter(options = {}) {
         })
       });
 
-      if (!response.ok) {
-        throw new Error(`Driver-help interpretation request failed with status ${response.status}`);
-      }
+      if (!response.ok) throw await providerError(response);
       const body = await response.json();
       const text = outputText(body);
       if (!text) throw new Error('Driver-help interpretation returned no structured output');
-      return JSON.parse(text);
+      const payload = JSON.parse(text);
+      payload.provider_metadata = {
+        response_id: body.id || null,
+        request_id: response.headers?.get?.('x-request-id') || null,
+        usage: body.usage || null
+      };
+      return payload;
     } finally {
       clearTimeout(timer);
     }

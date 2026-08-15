@@ -140,9 +140,9 @@ function buildDriverHelpReferenceDecision(question, allRecords) {
     return answerDecision(matches);
   }
 
-  if (/\b(?:what|which) code\b|\bcode (?:do|should|would|for)\b/.test(normalized)) {
-    return clarificationDecision([], 'Describe what happened and identify the reference category shown in the approved source.');
-  }
+  // A scenario followed by “what code should I use?” is an operational
+  // question, not a request to define a numbered reference. Let normal
+  // operational retrieval evaluate the stated facts.
   return null;
 }
 

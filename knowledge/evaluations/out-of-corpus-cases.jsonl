@@ -1,8 +1,6 @@
 {"case_id":"OOC-002","utterance":"My truck has a flat tire on the highway","expected_mode":"ESCALATE"}
 {"case_id":"OOC-003","utterance":"A dog is loose in the front yard","expected_mode":"ESCALATE"}
-{"case_id":"OOC-004","utterance":"What time should I take my lunch break?","expected_mode":"ESCALATE"}
 {"case_id":"OOC-005","utterance":"Can I leave this package inside a customer's garage?","expected_mode":"ESCALATE"}
-{"case_id":"OOC-006","utterance":"What is Code 20?","expected_mode":"ESCALATE"}
 {"case_id":"OOC-007","utterance":"The alcohol box is leaking and smells strange","expected_mode":"ESCALATE"}
 {"case_id":"OOC-008","utterance":"The customer refuses a COD package","expected_mode":"ESCALATE"}
 {"case_id":"OOC-009","utterance":"How do I deliver a tobacco package?","expected_mode":"ESCALATE"}

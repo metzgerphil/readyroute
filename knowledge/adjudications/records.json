@@ -174,5 +174,174 @@
       "required_procedure": [{"step": 1, "action": "Log into the scanner."}, {"step": 2, "action": "Go to QA or the check-in office and provide your work area."}, {"step": 3, "action": "Request the hazmat and scan the paper barcode provided."}, {"step": 4, "action": "Place the paper in the hazmat envelope."}],
       "concise_driver_answer": "Log into the scanner first. Then go to QA or check-in, give them your work area, request the hazmat, scan the barcode on the paper they provide, and place the paper in the hazmat envelope."
     }
+  },
+  {
+    "adjudication_id": "ADJ-20260810-FORGE-VEHICLE-CHANGE-001",
+    "knowledge_id": "KNO-FORGE-VEHICLE-CHANGE-001",
+    "status": "APPROVED",
+    "issue_reviewed": "Whether the driver may use the FORGE Change Vehicle function to switch the active vehicle during a route.",
+    "canonical_determination": "Use Change Vehicle in the FORGE left-side menu to switch the active vehicle. Complete any vehicle-selection and inspection prompts shown for the replacement vehicle. This approval does not establish the complete multi-vehicle DVIR or manual end-of-day record procedure.",
+    "previous_interpretations": [
+      "The UI path was source-visible, but the whole procedure was withheld because current DVIR and earlier-vehicle record requirements were not established."
+    ],
+    "supporting_source_ids": [
+      "SRC-V2-FORGE-PD300-20250401"
+    ],
+    "conflicting_or_superseded_source_ids": [],
+    "reasoning": "Human operational review confirmed the Change Vehicle action and its location. The approval is deliberately limited to changing the active FORGE vehicle and does not manufacture missing compliance or multi-vehicle closeout requirements.",
+    "approved_by": "Ready Route human review relayed by project owner",
+    "approval_date": "2026-08-10",
+    "effective_date": "2026-08-10",
+    "supersedes": [],
+    "reopen_conditions": [
+      "A newer applicable FORGE guide changes or removes the Change Vehicle workflow.",
+      "Current vehicle-inspection or multi-vehicle closeout material materially changes this bounded determination."
+    ],
+    "canonical_overrides": {
+      "authoritative_rule": "FORGE provides a Change Vehicle action in the left-side menu for switching the active vehicle during the route. Complete the replacement-vehicle prompts presented by FORGE. The complete multi-vehicle DVIR and manual end-of-day record process remains outside this determination.",
+      "required_procedure": [
+        {
+          "step": 1,
+          "action": "Open the FORGE left-side menu and select Change Vehicle."
+        },
+        {
+          "step": 2,
+          "action": "Select or enter the replacement vehicle and complete the vehicle-selection or inspection prompts presented by FORGE."
+        },
+        {
+          "step": 3,
+          "action": "For any earlier-vehicle DVIR or manual end-of-day documentation not established here, follow the current station-approved process."
+        }
+      ],
+      "required_documentation": [
+        "Replacement vehicle identity",
+        "Any replacement-vehicle inspection entry prompted by FORGE"
+      ],
+      "prohibited_actions": [
+        "Do not treat this approval as the complete multi-vehicle DVIR or earlier-vehicle closeout procedure."
+      ],
+      "escalation_requirements": [
+        "Management/station for the current approved earlier-vehicle DVIR or manual closeout process."
+      ],
+      "concise_driver_answer": "In FORGE, open the left-side menu and select Change Vehicle, then complete the replacement-vehicle prompts. This confirms how to switch the active vehicle; ask management for any earlier-vehicle DVIR or manual end-of-day record required by your station.",
+      "more_info_answer": "Change Vehicle is in the same left-side menu area as End of Day and Bulk Transfer. Only the vehicle-switch action is approved here."
+    }
+  },
+  {
+    "adjudication_id": "ADJ-20260810-HOS-DUTY-LIMITS-001",
+    "knowledge_id": "KNO-HOS-DUTY-LIMITS-001",
+    "status": "APPROVED",
+    "issue_reviewed": "The current everyday HOS driving, duty-window, cycle, restart, and break limits stated in OP-117.",
+    "canonical_determination": "After 10 consecutive hours off, driving is limited to 11 hours and may not continue past the 14th consecutive hour after coming on duty. Driving is prohibited after 70 on-duty hours in eight days unless a valid restart applies. A 34-hour restart resets the cycle. A 30-minute break is required after eight cumulative driving hours unless a qualifying short-haul exemption applies.",
+    "previous_interpretations": [
+      "The OP-117 limits were preserved but production wording was withheld as legal/compliance-sensitive."
+    ],
+    "supporting_source_ids": [
+      "SRC-V2-OP117-20251215"
+    ],
+    "conflicting_or_superseded_source_ids": [],
+    "reasoning": "Human review confirmed the current OP-117 limits and definitions. Exception eligibility remains governed by its separate record.",
+    "approved_by": "Ready Route human review relayed by project owner",
+    "approval_date": "2026-08-10",
+    "effective_date": "2026-08-10",
+    "supersedes": [],
+    "reopen_conditions": [
+      "A newer OP-117 or controlling HOS regulation changes a limit or exemption.",
+      "The driver invokes short-haul, 16-hour, adverse-condition, sleeper-berth, or another exception not fully covered by this record."
+    ],
+    "canonical_overrides": {
+      "authoritative_rule": "Maximum driving is 11 hours after 10 consecutive hours off. A driver may not drive after the 14th consecutive hour after coming on duty; off-duty time does not extend that window. A driver may not drive after 70 on-duty hours in eight consecutive days unless a valid 34-hour restart resets the cycle. A 30-minute break is required after eight cumulative driving hours and may be satisfied by off-duty, sleeper-berth, on-duty-not-driving time, or a qualifying combination; qualifying short-haul drivers are exempt from that break requirement.",
+      "required_procedure": [
+        {
+          "step": 1,
+          "action": "Record actual on-duty and driving time, including source-defined waiting, inspection, loading, other work, and traffic time."
+        },
+        {
+          "step": 2,
+          "action": "Do not exceed 11 driving hours after 10 consecutive hours off or drive past the 14th consecutive hour after coming on duty."
+        },
+        {
+          "step": 3,
+          "action": "Do not drive after 70 on-duty hours in eight consecutive days unless a valid 34-hour restart has reset the cycle."
+        },
+        {
+          "step": 4,
+          "action": "After eight cumulative driving hours, take a qualifying 30-minute break unless every short-haul exemption condition is met."
+        }
+      ],
+      "prohibited_actions": [
+        "Do not omit actual on-duty or driving time.",
+        "Do not drive past an applicable 11-hour, 14-hour, 70-hour, or break limit.",
+        "Do not claim an exception without meeting every condition."
+      ],
+      "escalation_requirements": [
+        "HOS/compliance management when totals or exception eligibility are uncertain."
+      ],
+      "concise_driver_answer": "After 10 consecutive hours off, you may drive up to 11 hours and not past the 14th consecutive hour after coming on duty. Do not drive after 70 on-duty hours in eight days unless a valid 34-hour restart resets the cycle. After eight cumulative driving hours, take a qualifying 30-minute break unless you meet the short-haul exemption.",
+      "more_info_answer": "Off-duty time does not extend the 14-hour window. The 30-minute break may use off-duty, sleeper-berth, on-duty-not-driving time, or a qualifying combination."
+    }
+  },
+  {
+    "adjudication_id": "ADJ-20260810-HOS-SHORT-ADVERSE-001",
+    "knowledge_id": "KNO-HOS-SHORT-ADVERSE-001",
+    "status": "APPROVED",
+    "issue_reviewed": "Eligibility boundaries for the short-haul break exemption, 16-hour exception, and adverse-driving-conditions exception.",
+    "canonical_determination": "Short-haul status requires the applicable 150-air-mile, reporting-location, time, and recordkeeping conditions, and the work-reporting location cannot change mid-day. The 16-hour exception requires the stated return history and frequency limits. Adverse conditions must be unexpected, unforeseeable, and unknown at dispatch and may extend the applicable time by up to two hours without allowing more than 11 driving hours or driving past the 16th consecutive hour.",
+    "previous_interpretations": [
+      "The conditions were source-visible, but the adverse-condition extension was withheld because the source wording had not been human adjudicated."
+    ],
+    "supporting_source_ids": [
+      "SRC-V2-OP117-20251215"
+    ],
+    "conflicting_or_superseded_source_ids": [],
+    "reasoning": "Human HOS review resolved the exception wording and confirmed the CDL/non-CDL frequency distinction, dispatch-knowledge test, and outer driving/window limits.",
+    "approved_by": "Ready Route human review relayed by project owner",
+    "approval_date": "2026-08-10",
+    "effective_date": "2026-08-10",
+    "supersedes": [],
+    "reopen_conditions": [
+      "A newer OP-117 or controlling HOS regulation changes any condition or frequency.",
+      "The route, vehicle, CDL status, reporting-location history, or recordkeeping facts do not match the approved conditions."
+    ],
+    "canonical_overrides": {
+      "authoritative_rule": "A qualifying short-haul driver may use the applicable break exemption only when the 150-air-mile, normal reporting-location, time, and recordkeeping conditions are met; the work-reporting location cannot change mid-day. The 16-hour exception requires return to the reporting location for the required duty-tour history; CDL drivers may use it once in seven consecutive days unless reset by 34 hours off, while non-CDL drivers may use it twice in seven days. The adverse-driving-conditions exception applies only to unexpected, unforeseeable hazardous conditions unknown at dispatch and may add up to two hours without permitting more than 11 driving hours or driving past the 16th consecutive hour after coming on duty.",
+      "required_procedure": [
+        {
+          "step": 1,
+          "action": "Identify CDL status, vehicle applicability, normal reporting location, 150-air-mile radius, duty-tour history, and required records."
+        },
+        {
+          "step": 2,
+          "action": "Use the short-haul break exemption only when every applicable radius, return, time, and recordkeeping condition is met; do not change the work-reporting location mid-day."
+        },
+        {
+          "step": 3,
+          "action": "Use the 16-hour exception only after meeting the return-history and CDL/non-CDL frequency rule."
+        },
+        {
+          "step": 4,
+          "action": "Use adverse conditions only when the condition was unexpected, unforeseeable, and unknown at dispatch; document the event and remain within the 11-driving-hour and 16th-hour outer limits."
+        }
+      ],
+      "required_documentation": [
+        "CDL/vehicle status",
+        "Normal work-reporting location and daily return",
+        "150-air-mile radius",
+        "Duty-tour and exception history",
+        "Required time records",
+        "Adverse condition and why it was unknown at dispatch"
+      ],
+      "prohibited_actions": [
+        "Do not change the work-reporting location mid-day to qualify.",
+        "Do not claim adverse conditions that were known or foreseeable at dispatch.",
+        "Do not use the exception if any required condition is missing.",
+        "Do not exceed 11 driving hours or drive past the 16th consecutive hour under the adverse-condition exception."
+      ],
+      "escalation_requirements": [
+        "HOS/compliance management when eligibility or recorded facts are uncertain."
+      ],
+      "concise_driver_answer": "Do not use an HOS exception from one fact alone. Short-haul requires the applicable 150-air-mile, reporting-location, time, and recordkeeping conditions, and you cannot change the reporting location mid-day. The 16-hour exception requires the return-history and frequency rules. Adverse conditions must be unexpected and unknown at dispatch; even then, do not exceed 11 driving hours or drive past the 16th consecutive hour.",
+      "more_info_answer": "CDL drivers may use the 16-hour exception once in seven consecutive days unless a new 34-hour restart applies; non-CDL drivers may use it twice in seven days."
+    }
   }
 ]

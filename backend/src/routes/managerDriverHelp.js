@@ -118,6 +118,14 @@ function createManagerDriverHelpRouter(options = {}) {
               ai_shadow_runs: 0,
               ai_shadow_valid_results: 0,
               ai_shadow_errors: 0,
+              ai_shadow_usage: {
+                input_tokens: 0,
+                cached_input_tokens: 0,
+                output_tokens: 0,
+                reasoning_tokens: 0,
+                total_tokens: 0,
+                estimated_cost_usd: 0
+              },
               ai_shadow_record_agreement_rate: null,
               ai_shadow_response_mode_agreement_rate: null,
               questions_by_category: {}
@@ -145,6 +153,25 @@ function createManagerDriverHelpRouter(options = {}) {
         ['AI_SHADOW', 'AI_SHADOW_FALLBACK'].includes(row.interpretation_mode)
       ));
       const validShadowResults = shadowRuns.filter((row) => row.interpretation_result?.status === 'VALID');
+      const shadowUsage = shadowRuns.reduce((totals, row) => {
+        const usage = row.interpretation_result?.usage;
+        if (!usage) return totals;
+        totals.input_tokens += Number(usage.input_tokens || 0);
+        totals.cached_input_tokens += Number(usage.cached_input_tokens || 0);
+        totals.output_tokens += Number(usage.output_tokens || 0);
+        totals.reasoning_tokens += Number(usage.reasoning_tokens || 0);
+        totals.total_tokens += Number(usage.total_tokens || 0);
+        totals.estimated_cost_usd += Number(usage.estimated_cost_usd || 0);
+        return totals;
+      }, {
+        input_tokens: 0,
+        cached_input_tokens: 0,
+        output_tokens: 0,
+        reasoning_tokens: 0,
+        total_tokens: 0,
+        estimated_cost_usd: 0
+      });
+      shadowUsage.estimated_cost_usd = Number(shadowUsage.estimated_cost_usd.toFixed(6));
       const questionsByCategory = interactions.reduce((counts, row) => {
         const category = row.canonical_trace?.[0]?.category_paths?.[0] || 'UNMATCHED';
         counts[category] = (counts[category] || 0) + 1;
@@ -180,6 +207,7 @@ function createManagerDriverHelpRouter(options = {}) {
           ai_shadow_runs: shadowRuns.length,
           ai_shadow_valid_results: validShadowResults.length,
           ai_shadow_errors: shadowRuns.filter((row) => row.interpretation_result?.status === 'ERROR').length,
+          ai_shadow_usage: shadowUsage,
           ai_shadow_record_agreement_rate: validShadowResults.length
             ? validShadowResults.filter((row) => row.interpretation_result.record_agreement === true).length / validShadowResults.length
             : null,

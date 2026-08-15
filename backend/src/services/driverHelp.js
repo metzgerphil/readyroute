@@ -25,6 +25,7 @@ const {
   createSignedStorageUrl,
   getSignedUrlTtlSeconds
 } = require('./privateStorage');
+const { estimateUsageCost } = require('./openAiUsageCost');
 
 const MISSING_TABLE_CODES = new Set(['42P01', 'PGRST106', 'PGRST204', 'PGRST205']);
 
@@ -70,10 +71,14 @@ function filterActionableClarificationOptions(options, records) {
 }
 
 function isRepeatedClarification(decision, context = {}, selection = null) {
-  if (!selection || decision?.response_mode !== 'CLARIFY') return false;
+  if (decision?.response_mode !== 'CLARIFY') return false;
   const previousPrompt = normalizeDriverQuestion(context.pending_clarification_prompt);
   const nextPrompt = normalizeDriverQuestion(decision.clarification_prompt);
   if (!previousPrompt || previousPrompt !== nextPrompt) return false;
+
+  // A free-text reply that produces the exact same question is also a loop.
+  // Do not make the driver answer an unchanged prompt indefinitely.
+  if (!selection) return true;
 
   const optionIdentity = (option) => [
     option?.knowledge_id || '',
@@ -98,10 +103,31 @@ function resolveClarificationFollowUp(question, context = {}) {
   return question;
 }
 
+function isAnsweredSituationFollowUp(question) {
+  const normalized = normalizeDriverQuestion(question);
+  return /\b(?:also|still|again|instead|then)\b/.test(normalized)
+    || /\bnone of\b.*\b(?:this|that) (?:customer|location|stop)\b/.test(normalized)
+    || /^(?:what|which) (?:details|information)\b/.test(normalized)
+    || /^(?:it|this|that)\b/.test(normalized)
+    || /^(?:where|what|which|can|could|should|do|does|did)\b.*\b(?:it|this|that)\b/.test(normalized)
+    || /^i (?:lost|forgot|found) (?:it|this|that)\b/.test(normalized)
+    || /^i (?:cannot|can t|cant) (?:safely )?(?:get out|escape)\b/.test(normalized);
+}
+
 function buildContextualQuestion(question, context = {}) {
   const currentAnswer = resolveClarificationFollowUp(question, context);
   const pendingPrompt = String(context.pending_clarification_prompt || '').trim();
-  if (!pendingPrompt) return currentAnswer;
+  if (!pendingPrompt) {
+    const answeredFollowUp = context.last_response_mode === 'ANSWER'
+      && String(context.last_question || '').trim()
+      && isAnsweredSituationFollowUp(currentAnswer);
+    const answeredSituation = String(
+      context.situation_question || context.last_question || ''
+    ).trim();
+    return answeredFollowUp
+      ? `${answeredSituation}. Driver follow-up: ${currentAnswer}`
+      : currentAnswer;
+  }
 
   const situationQuestion = String(
     context.situation_question || context.last_question || ''
@@ -134,6 +160,9 @@ function isClarificationAnswerSufficient(requirement, answer) {
   }
   if (/\b(actual )?(vehicle|tracking|work area) number\b/.test(normalizedRequirement)) {
     return /\d/.test(normalizedAnswer);
+  }
+  if (/\bforgotten\b.*\blost\b|\blost\b.*\bforgotten\b/.test(normalizedRequirement)) {
+    return /\b(?:forgot|forgotten|lost|found|replacement)\b/.test(normalizedAnswer);
   }
   if (/^why\b|\bwhy\b/.test(normalizedRequirement)) {
     return tokenize(normalizedAnswer).length >= 2 && !/^(?:yes|no)$/.test(normalizedAnswer);
@@ -178,9 +207,13 @@ function buildNextSessionContext(previousContext = {}, question, decision) {
   const clarificationHistory = pendingPrompt
     ? [...previousHistory, { prompt: pendingPrompt, answer: String(question || '').trim() }].slice(-6)
     : [];
+  const answeredFollowUp = previousContext.last_response_mode === 'ANSWER'
+    && isAnsweredSituationFollowUp(question);
   const situationQuestion = pendingPrompt
     ? String(previousContext.situation_question || previousContext.last_question || question).trim()
-    : String(question || '').trim();
+    : (answeredFollowUp
+      ? String(previousContext.situation_question || previousContext.last_question || question).trim()
+      : String(question || '').trim());
   const pendingRequirement = String(
     previousContext.pending_clarification_requirement
       || clarificationPromptDetail(pendingPrompt)
@@ -242,6 +275,7 @@ function isProtectedInterpretationRequest(question) {
 function buildAiCandidateRecords(records) {
   return selectCanonicalRecordVersions(records)
     .filter((record) => !isReferenceRecord(record) && isProductionEligibleRecord(record))
+    .sort((left, right) => left.knowledge_id.localeCompare(right.knowledge_id))
     .slice(0, 40)
     .map((record) => ({
       knowledge_id: record.knowledge_id,
@@ -305,6 +339,7 @@ function applyAiInterpretation(interpretation, question, records, baseDecision) 
       selected_records: [],
       clarification_prompt: buildClarificationPrompt(interpretation.clarification_requirement),
       clarification_requirement: interpretation.clarification_requirement,
+      clarification_plan: [interpretation.clarification_requirement],
       clarification_options: []
     };
   }
@@ -324,11 +359,15 @@ function buildInterpretationResult({
   status,
   baseDecision,
   interpretation = null,
-  latencyMs = null
+  latencyMs = null,
+  providerMetadata = null
 }) {
   const deterministicKnowledgeId = baseDecision.selected_records?.[0]?.knowledge_id
     || baseDecision.candidates?.[0]?.knowledge_id
     || null;
+  const providerUsage = providerMetadata?.usage
+    ? estimateUsageCost(process.env.READYROUTE_DRIVER_HELP_MODEL, providerMetadata.usage)
+    : null;
   return {
     status,
     proposed_knowledge_id: interpretation?.knowledge_id || null,
@@ -343,7 +382,11 @@ function buildInterpretationResult({
     response_mode_agreement: interpretation
       ? interpretation.decision === baseDecision.response_mode
       : null,
-    latency_ms: Number.isFinite(latencyMs) ? Math.max(0, latencyMs) : null
+    latency_ms: Number.isFinite(latencyMs) ? Math.max(0, latencyMs) : null,
+    provider_model: providerUsage ? process.env.READYROUTE_DRIVER_HELP_MODEL : null,
+    provider_response_id: providerMetadata?.response_id || null,
+    provider_request_id: providerMetadata?.request_id || null,
+    usage: providerUsage
   };
 }
 
@@ -651,7 +694,8 @@ function createDriverHelpService({
             status: interpretedDecision ? 'VALID' : 'REJECTED',
             baseDecision,
             interpretation: interpretedDecision ? interpretation : null,
-            latencyMs: Date.now() - interpretationStartedAt
+            latencyMs: Date.now() - interpretationStartedAt,
+            providerMetadata: rawInterpretation?.provider_metadata || null
           });
         } else {
           interpretationMode = effectiveAiInterpretationMode === 'SHADOW'
@@ -660,7 +704,8 @@ function createDriverHelpService({
           interpretationResult = buildInterpretationResult({
             status: 'DECLINED_OR_REJECTED',
             baseDecision,
-            latencyMs: Date.now() - interpretationStartedAt
+            latencyMs: Date.now() - interpretationStartedAt,
+            providerMetadata: rawInterpretation?.provider_metadata || null
           });
         }
       } catch (_error) {
@@ -698,7 +743,7 @@ function createDriverHelpService({
         candidates: actionableBaseDecision.candidates || [],
         selected_records: [],
         clarification_options: [],
-        escalation_message: 'That choice did not resolve to one approved procedure. Contact your manager or station for the current direction rather than repeating the same selection.'
+        escalation_message: 'Ready Route cannot resolve that required detail from the answer provided. Contact your manager or station for the current direction instead of repeating the same question.'
       } : actionableBaseDecision),
       composition_mode: 'DETERMINISTIC',
       composition_grounding: [],

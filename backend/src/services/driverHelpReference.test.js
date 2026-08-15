@@ -41,6 +41,16 @@ test('does not intercept a barcode symbology as an operational reference code', 
   );
 });
 
+test('does not intercept a stated operational situation that asks which code to use', () => {
+  assert.equal(
+    buildDriverHelpReferenceDecision(
+      'The business is closed and nobody is there. What code should I use?',
+      [reference()]
+    ),
+    null
+  );
+});
+
 test('empty reference corpus fails closed', () => {
   const decision = buildDriverHelpReferenceDecision('what is code 101', []);
   assert.equal(decision.response_mode, 'ESCALATE');
