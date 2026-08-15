@@ -5,12 +5,43 @@ process.env.SUPABASE_URL = process.env.SUPABASE_URL || 'https://example.supabase
 process.env.SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_KEY || 'test-service-role-key';
 
 const {
+  buildContextualQuestion,
+  buildNextSessionContext,
   createDriverHelpService,
   filterActionableClarificationOptions,
   isRepeatedClarification,
   resolveClarificationFollowUp,
   resolveClarificationSelection
 } = require('./driverHelp');
+
+test('clarification replies keep the original situation and accumulated answers', () => {
+  const firstContext = buildNextSessionContext({}, 'The vehicle barcode is missing', {
+    response_mode: 'CLARIFY',
+    selected_records: [],
+    candidates: [{ knowledge_id: 'KNO-VEHICLE', version: 1 }],
+    clarification_prompt: 'Ready Route Answers needs one detail: actual vehicle number.',
+    clarification_options: []
+  });
+  const secondQuestion = buildContextualQuestion('2387', firstContext);
+
+  assert.match(secondQuestion, /vehicle barcode is missing/i);
+  assert.match(secondQuestion, /actual vehicle number/i);
+  assert.match(secondQuestion, /2387/);
+
+  const secondContext = buildNextSessionContext(firstContext, '2387', {
+    response_mode: 'CLARIFY',
+    selected_records: [],
+    candidates: [{ knowledge_id: 'KNO-VEHICLE', version: 1 }],
+    clarification_prompt: 'Ready Route Answers needs one detail: Is the generator set to Code 128?',
+    clarification_options: []
+  });
+  const thirdQuestion = buildContextualQuestion('yes', secondContext);
+
+  assert.match(thirdQuestion, /vehicle barcode is missing/i);
+  assert.match(thirdQuestion, /2387/);
+  assert.match(thirdQuestion, /generator set to Code 128/i);
+  assert.match(thirdQuestion, /Driver answered: yes/i);
+});
 
 function filterChain(result) {
   const chain = {

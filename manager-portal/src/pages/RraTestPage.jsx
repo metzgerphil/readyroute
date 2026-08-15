@@ -67,6 +67,7 @@ export default function RraTestPage() {
   const [copyStatus, setCopyStatus] = useState('');
   const structure = answerStructure(result);
   const shadow = result?.interpretation_result || {};
+  const isFollowUp = result?.response_mode === 'CLARIFY';
 
   useEffect(() => {
     window.sessionStorage.setItem(TEST_HISTORY_STORAGE_KEY, JSON.stringify(testHistory));
@@ -148,20 +149,23 @@ export default function RraTestPage() {
 
       <section className="page-card rra-test-question-card">
         <form onSubmit={askQuestion}>
-          <label htmlFor="rra-test-question">Driver question</label>
+          <label htmlFor="rra-test-question">{isFollowUp ? 'Your follow-up answer' : 'Driver question'}</label>
+          {isFollowUp ? <p>Continue in this same box. Ready Route will keep the original situation and your earlier answers.</p> : null}
           <textarea
             autoFocus
             id="rra-test-question"
             maxLength={500}
             onChange={(event) => setQuestion(event.target.value)}
-            placeholder="Example: The pickup was canceled before I went there. What code do I use?"
+            placeholder={isFollowUp
+              ? 'Type the requested detail here, such as: 2387, yes, or no advance notice.'
+              : 'Example: The pickup was canceled before I went there. What code do I use?'}
             rows={4}
             value={question}
           />
           <div className="rra-test-form-footer">
             <span>{question.length}/500</span>
             <button className="primary-cta" disabled={isSubmitting || question.trim().length < 2} type="submit">
-              {isSubmitting ? 'Checking approved records…' : 'Ask Ready Route'}
+              {isSubmitting ? 'Checking approved records…' : isFollowUp ? 'Send follow-up' : 'Ask Ready Route'}
             </button>
           </div>
         </form>
@@ -252,7 +256,7 @@ export default function RraTestPage() {
                 </button>
               ))}
             </div>
-          ) : <p>Enter the missing detail in the question box above and ask again.</p>}
+          ) : <p>Enter your answer in the same box above, then select Send follow-up.</p>}
         </section>
       ) : null}
 

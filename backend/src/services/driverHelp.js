@@ -97,6 +97,69 @@ function resolveClarificationFollowUp(question, context = {}) {
   return question;
 }
 
+function buildContextualQuestion(question, context = {}) {
+  const currentAnswer = resolveClarificationFollowUp(question, context);
+  const pendingPrompt = String(context.pending_clarification_prompt || '').trim();
+  if (!pendingPrompt) return currentAnswer;
+
+  const situationQuestion = String(
+    context.situation_question || context.last_question || ''
+  ).trim();
+  const history = Array.isArray(context.clarification_history)
+    ? context.clarification_history
+    : [];
+  const details = [
+    ...history.map((item) => (
+      `Ready Route asked: ${String(item?.prompt || '').trim()} Driver answered: ${String(item?.answer || '').trim()}`
+    )),
+    `Ready Route asked: ${pendingPrompt} Driver answered: ${currentAnswer}`
+  ].filter(Boolean);
+
+  return [situationQuestion, ...details].filter(Boolean).join('. ');
+}
+
+function buildNextSessionContext(previousContext = {}, question, decision) {
+  const pendingPrompt = String(previousContext.pending_clarification_prompt || '').trim();
+  const previousHistory = Array.isArray(previousContext.clarification_history)
+    ? previousContext.clarification_history
+    : [];
+  const clarificationHistory = pendingPrompt
+    ? [...previousHistory, { prompt: pendingPrompt, answer: String(question || '').trim() }].slice(-6)
+    : [];
+  const situationQuestion = pendingPrompt
+    ? String(previousContext.situation_question || previousContext.last_question || question).trim()
+    : String(question || '').trim();
+  const contextualCandidates = decision.selected_records.length
+    ? decision.selected_records.map((record) => ({ knowledge_id: record.knowledge_id, version: record.version }))
+    : (decision.candidates || []).slice(0, 3);
+
+  return {
+    knowledge_ids: contextualCandidates.map((record) => record.knowledge_id),
+    knowledge_versions: contextualCandidates.map((record) => record.version),
+    last_response_mode: decision.response_mode,
+    last_question: question,
+    situation_question: situationQuestion,
+    clarification_history: clarificationHistory,
+    pending_clarification_id: decision.response_mode === 'CLARIFY'
+      ? decision.clarification_id || null
+      : null,
+    pending_clarification_prompt: decision.response_mode === 'CLARIFY'
+      ? decision.clarification_prompt || null
+      : null,
+    pending_clarification_options: decision.response_mode === 'CLARIFY'
+      ? (decision.clarification_options || []).map((option) => ({
+          knowledge_id: option.knowledge_id || null,
+          label: option.label,
+          query: option.query || null,
+          version: option.version || null
+        }))
+      : [],
+    pending_clarification_not_sure_query: decision.response_mode === 'CLARIFY'
+      ? decision.clarification_not_sure_query || null
+      : null
+  };
+}
+
 function isProtectedInterpretationRequest(question) {
   const normalized = normalizeDriverQuestion(question);
   return /\b(ignore|invent|pretend)\b/.test(normalized)
@@ -314,34 +377,9 @@ function createDriverHelpService({
     };
   }
 
-  async function createOrUpdateSession({ sessionId, accountId, driverId, actorType, actorId, question, decision }) {
+  async function createOrUpdateSession({ sessionId, accountId, driverId, actorType, actorId, question, decision, previousContext = {} }) {
     const timestamp = now().toISOString();
-    const contextualCandidates = decision.selected_records.length
-      ? decision.selected_records.map((record) => ({ knowledge_id: record.knowledge_id, version: record.version }))
-      : (decision.candidates || []).slice(0, 3);
-    const context = {
-      knowledge_ids: contextualCandidates.map((record) => record.knowledge_id),
-      knowledge_versions: contextualCandidates.map((record) => record.version),
-      last_response_mode: decision.response_mode,
-      last_question: question,
-      pending_clarification_id: decision.response_mode === 'CLARIFY'
-        ? decision.clarification_id || null
-        : null,
-      pending_clarification_prompt: decision.response_mode === 'CLARIFY'
-        ? decision.clarification_prompt || null
-        : null,
-      pending_clarification_options: decision.response_mode === 'CLARIFY'
-        ? (decision.clarification_options || []).map((option) => ({
-            knowledge_id: option.knowledge_id || null,
-            label: option.label,
-            query: option.query || null,
-            version: option.version || null
-          }))
-        : [],
-      pending_clarification_not_sure_query: decision.response_mode === 'CLARIFY'
-        ? decision.clarification_not_sure_query || null
-        : null
-    };
+    const context = buildNextSessionContext(previousContext, question, decision);
 
     if (sessionId) {
       const { error } = await supabase
@@ -453,7 +491,7 @@ function createDriverHelpService({
       loadSessionContext(sessionId, accountId, actorType, actorId)
     ]);
     const clarificationSelection = resolveClarificationSelection(question, sessionState.context);
-    const resolvedQuestion = resolveClarificationFollowUp(question, sessionState.context);
+    const resolvedQuestion = buildContextualQuestion(question, sessionState.context);
     const selectedClarificationRecord = clarificationSelection
       ? selectCanonicalRecordVersions(records).find((record) => (
           !isReferenceRecord(record)
@@ -509,6 +547,8 @@ function createDriverHelpService({
           safety_identifier: buildAiSafetyIdentifier(accountId, actorType, actorId),
           driver_question: resolvedQuestion,
           conversation_context: {
+            original_situation: sessionState.context.situation_question || null,
+            clarification_history: sessionState.context.clarification_history || [],
             previous_question: sessionState.context.last_question || null,
             pending_clarification_prompt: sessionState.context.pending_clarification_prompt || null,
             previous_knowledge_ids: sessionState.context.knowledge_ids || []
@@ -593,7 +633,8 @@ function createDriverHelpService({
       actorType,
       actorId,
       question,
-      decision
+      decision,
+      previousContext: sessionState.context
     });
     const interactionId = await recordInteraction({
       sessionId: effectiveSessionId,
@@ -678,6 +719,8 @@ function createDriverHelpService({
 module.exports = {
   applyAiInterpretation,
   buildAiCandidateRecords,
+  buildContextualQuestion,
+  buildNextSessionContext,
   buildAiSafetyIdentifier,
   buildInterpretationResult,
   createDriverHelpService,
