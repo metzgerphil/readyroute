@@ -22,6 +22,8 @@ function reference(overrides = {}) {
 test('recognizes explicit reference identifiers without operational assumptions', () => {
   assert.equal(isReferenceRecord(reference()), true);
   assert.deepEqual(explicitCodeTokens('what is reference code 101'), ['101']);
+  assert.deepEqual(explicitCodeTokens('what does pickup code 101 mean'), ['101']);
+  assert.deepEqual(explicitCodeTokens('code 101 for delivery'), ['101']);
   assert.deepEqual(explicitCodeTokens('there are 101 items'), []);
   assert.deepEqual(
     explicitCodeTokens("Van 538765's barcode is missing, and my barcode generator is set to Code 128."),
@@ -76,10 +78,16 @@ test('uses an explicit pickup or delivery category to resolve duplicate numbers'
 
   const trailingPickup = buildDriverHelpReferenceDecision('code 24 pickup?', records);
   const trailingDelivery = buildDriverHelpReferenceDecision('code 24 delivery?', records);
+  const pickupReason = buildDriverHelpReferenceDecision('code 24 pickup reason', records);
+  const pickupAbbreviation = buildDriverHelpReferenceDecision('code 24 PU', records);
+  const deliveryFor = buildDriverHelpReferenceDecision('code 24 for delivery', records);
   assert.equal(trailingPickup.response_mode, 'ANSWER');
   assert.equal(trailingPickup.selected_records[0].knowledge_id, 'PICKUP_REASON:24');
   assert.equal(trailingDelivery.response_mode, 'ANSWER');
   assert.equal(trailingDelivery.selected_records[0].knowledge_id, 'DELIVERY_STATUS:024');
+  assert.equal(pickupReason.selected_records[0].knowledge_id, 'PICKUP_REASON:24');
+  assert.equal(pickupAbbreviation.selected_records[0].knowledge_id, 'PICKUP_REASON:24');
+  assert.equal(deliveryFor.selected_records[0].knowledge_id, 'DELIVERY_STATUS:024');
 });
 
 test('asks for the category when the same number has delivery and pickup meanings', () => {

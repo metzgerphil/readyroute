@@ -9,7 +9,8 @@ process.env.SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_KEY || 'test-ser
 const {
   applyClarificationAnswerToContext,
   buildContextualQuestion,
-  buildNextSessionContext
+  buildNextSessionContext,
+  filterActionableClarificationOptions
 } = require('../services/driverHelp');
 const { buildDriverHelpDecision } = require('../services/driverHelpRetrieval');
 const { buildDriverHelpReferenceDecision } = require('../services/driverHelpReference');
@@ -128,6 +129,35 @@ function wordingVariations(utterance) {
   ];
 }
 
+function referenceWordingVariations(namespace, code) {
+  const unpadded = String(Number.parseInt(code, 10));
+  const category = namespace === 'PICKUP_REASON' ? 'pickup' : 'delivery';
+  const categoryAlias = namespace === 'PICKUP_REASON' ? 'PU' : 'status';
+  const type = namespace === 'PICKUP_REASON' ? 'pickup reason' : 'delivery status';
+  return [...new Set([
+    `what is ${category} code ${code}`,
+    `what is code ${unpadded} ${category}`,
+    `${type} code ${unpadded}`,
+    `code ${code} ${type}`,
+    `${categoryAlias} code ${unpadded}`,
+    `code ${unpadded} ${categoryAlias}`,
+    `code ${unpadded} for ${category}`,
+    `what does ${category} code ${unpadded} mean`,
+    `Please tell me: ${category} code ${code}?`
+  ])];
+}
+
+function finalizeClarificationDecision(decision, records) {
+  if (!decision || decision.response_mode !== 'CLARIFY') return decision;
+  return {
+    ...decision,
+    clarification_options: filterActionableClarificationOptions(
+      decision.clarification_options,
+      records
+    )
+  };
+}
+
 function runOnce({
   run,
   records,
@@ -240,42 +270,44 @@ function runOnce({
 
   for (const record of referenceRecords) {
     const [namespace, code] = record.knowledge_id.split(':');
-    const category = namespace === 'PICKUP_REASON' ? 'pickup' : 'delivery';
-    const utterance = `what is ${category} code ${code}`;
-    const inputs = [utterance, ...wordingVariations(utterance)];
+    const inputs = referenceWordingVariations(namespace, code)
+      .flatMap((utterance) => [utterance, ...wordingVariations(utterance)]);
     for (const [variationIndex, input] of inputs.entries()) {
       const decision = buildDriverHelpReferenceDecision(input, referenceRecords);
       const caseId = `REFERENCE:${record.knowledge_id}${variationIndex ? `:VAR-${variationIndex}` : ''}`;
       assertions += 4;
-      if (decision.response_mode !== 'ANSWER') {
+      if (decision?.response_mode !== 'ANSWER') {
         failures.push(failure({
           suite: 'REFERENCE_DEFINITION', caseId, run, category: 'REFERENCE_MODE', input,
-          expected: 'ANSWER', actual: decision.response_mode
+          expected: 'ANSWER', actual: decision?.response_mode || null
         }));
       }
-      if (decision.selected_records?.[0]?.knowledge_id !== record.knowledge_id) {
+      if (decision?.selected_records?.[0]?.knowledge_id !== record.knowledge_id) {
         failures.push(failure({
           suite: 'REFERENCE_DEFINITION', caseId, run, category: 'REFERENCE_SELECTION', input,
-          expected: record.knowledge_id, actual: decision.selected_records?.[0]?.knowledge_id || null
+          expected: record.knowledge_id, actual: decision?.selected_records?.[0]?.knowledge_id || null
         }));
       }
-      if (!String(decision.answer || '').includes(`Code ${code}`)) {
+      if (!String(decision?.answer || '').includes(`Code ${code}`)) {
         failures.push(failure({
           suite: 'REFERENCE_DEFINITION', caseId, run, category: 'REFERENCE_FORMAT', input,
-          expected: `Code ${code}`, actual: decision.answer || null
+          expected: `Code ${code}`, actual: decision?.answer || null
         }));
       }
-      if (!/does not by itself authorize|do not by themselves authorize/i.test(String(decision.more_info || ''))) {
+      if (!/does not by itself authorize|do not by themselves authorize/i.test(String(decision?.more_info || ''))) {
         failures.push(failure({
           suite: 'REFERENCE_DEFINITION', caseId, run, category: 'REFERENCE_BOUNDARY', input,
-          expected: 'workflow boundary', actual: decision.more_info || null
+          expected: 'workflow boundary', actual: decision?.more_info || null
         }));
       }
     }
   }
 
   for (const testCase of referenceCases) {
-    const decision = buildDriverHelpReferenceDecision(testCase.utterance, referenceRecords);
+    const decision = finalizeClarificationDecision(
+      buildDriverHelpReferenceDecision(testCase.utterance, referenceRecords),
+      referenceRecords
+    );
     const expectedMode = String(testCase.response_mode).startsWith('ANSWER') ? 'ANSWER' : 'CLARIFY';
     const selectedIds = new Set((decision.selected_records || []).map((record) => record.knowledge_id));
     assertions += 2;
@@ -291,6 +323,16 @@ function runOnce({
         input: testCase.utterance, expected: testCase.expected_reference_ids, actual: [...selectedIds]
       }));
     }
+    if (expectedMode === 'CLARIFY') {
+      const optionIds = new Set((decision.clarification_options || []).map((option) => option.knowledge_id));
+      assertions += 1;
+      if (!(testCase.expected_reference_ids || []).every((id) => optionIds.has(id))) {
+        failures.push(failure({
+          suite: 'CURATED_REFERENCE', caseId: testCase.case_id, run, category: 'CLARIFICATION_OPTIONS',
+          input: testCase.utterance, expected: testCase.expected_reference_ids, actual: [...optionIds]
+        }));
+      }
+    }
   }
 
   const ambiguousCodes = new Map();
@@ -301,14 +343,51 @@ function runOnce({
   }
   for (const [code, ids] of ambiguousCodes) {
     if (new Set(ids.map((id) => id.split(':')[0])).size < 2) continue;
-    const decision = buildDriverHelpReferenceDecision(`what is code ${code}`, referenceRecords);
-    assertions += 1;
+    const decision = finalizeClarificationDecision(
+      buildDriverHelpReferenceDecision(`what is code ${code}`, referenceRecords),
+      referenceRecords
+    );
+    assertions += 3;
     if (decision.response_mode !== 'CLARIFY') {
       failures.push(failure({
         suite: 'AMBIGUOUS_REFERENCE', caseId: `AMBIGUOUS-CODE-${code}`, run,
         category: 'REFERENCE_AMBIGUITY', input: `what is code ${code}`,
         expected: 'CLARIFY', actual: decision.response_mode
       }));
+    }
+    if (!/delivery code or the pickup code/i.test(String(decision.clarification_prompt || ''))) {
+      failures.push(failure({
+        suite: 'AMBIGUOUS_REFERENCE', caseId: `AMBIGUOUS-CODE-${code}`, run,
+        category: 'CLARIFICATION_PROMPT', input: `what is code ${code}`,
+        expected: 'delivery code or the pickup code', actual: decision.clarification_prompt || null
+      }));
+    }
+    const options = decision.clarification_options || [];
+    const optionIds = new Set(options.map((option) => option.knowledge_id));
+    if (options.length !== ids.length || !ids.every((id) => optionIds.has(id))) {
+      failures.push(failure({
+        suite: 'AMBIGUOUS_REFERENCE', caseId: `AMBIGUOUS-CODE-${code}`, run,
+        category: 'CLARIFICATION_OPTIONS', input: `what is code ${code}`,
+        expected: ids, actual: [...optionIds]
+      }));
+    }
+    for (const option of options) {
+      const resolved = buildDriverHelpReferenceDecision(option.query, referenceRecords);
+      assertions += 2;
+      if (resolved?.response_mode !== 'ANSWER') {
+        failures.push(failure({
+          suite: 'REFERENCE_CLICK_THROUGH', caseId: `AMBIGUOUS-CODE-${code}:${option.knowledge_id}`, run,
+          category: 'CLICK_THROUGH_MODE', input: option.query,
+          expected: 'ANSWER', actual: resolved?.response_mode || null
+        }));
+      }
+      if (resolved?.selected_records?.[0]?.knowledge_id !== option.knowledge_id) {
+        failures.push(failure({
+          suite: 'REFERENCE_CLICK_THROUGH', caseId: `AMBIGUOUS-CODE-${code}:${option.knowledge_id}`, run,
+          category: 'CLICK_THROUGH_SELECTION', input: option.query,
+          expected: option.knowledge_id, actual: resolved?.selected_records?.[0]?.knowledge_id || null
+        }));
+      }
     }
   }
 
@@ -351,6 +430,10 @@ function buildSummary({
     curated_language_cases: cases.length,
     curated_reference_cases: referenceCases.length,
     generated_wording_variations: cases.length * 3,
+    generated_reference_phrasings: referenceRecords.reduce((count, record) => {
+      const [namespace, code] = record.knowledge_id.split(':');
+      return count + referenceWordingVariations(namespace, code).length * 4;
+    }, 0),
     conversation_scenarios: conversations.length,
     conversation_turns: conversations.reduce((sum, item) => sum + item.turns.length, 0),
     out_of_corpus_cases: outOfCorpus.length,
@@ -413,5 +496,6 @@ module.exports = {
   parseArguments,
   runOnce,
   validateAnswerContract,
+  referenceWordingVariations,
   wordingVariations
 };

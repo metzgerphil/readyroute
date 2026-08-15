@@ -22,10 +22,10 @@ function normalizedCode(code) {
 
 function requestedNamespace(question) {
   const normalized = normalizeDriverQuestion(question);
-  if (/\b(?:pickup|p u|pu) (?:reason )?code\b|\bpickup reason\b|\bcode \d{1,4} (?:pickup|p u|pu)\b/.test(normalized)) {
+  if (/\b(?:pickup|p u|pu) (?:reason )?code\b|\b(?:pickup )?reason code\b|\bpickup reason\b|\bcode \d{1,4} (?:for )?(?:pickup|p u|pu)(?: reason)?\b/.test(normalized)) {
     return 'PICKUP_REASON';
   }
-  if (/\b(?:delivery|status) code\b|\bdelivery status\b|\bcode \d{1,4} (?:delivery|status)\b/.test(normalized)) {
+  if (/\b(?:delivery|status) code\b|\bdelivery status\b|\bcode \d{1,4} (?:for )?(?:delivery|status)\b/.test(normalized)) {
     return 'DELIVERY_STATUS';
   }
   return null;
@@ -35,7 +35,9 @@ function explicitCodeTokens(question) {
   const normalized = normalizeDriverQuestion(question);
   const hasReferenceIntent = (
     /^(?:(?:what|which) (?:is |are )?)?(?:delivery |pickup |status |reason |reference )?code \d/.test(normalized)
-    || /\b(?:delivery|pickup|status|reason|reference) code \d/.test(normalized)
+    || /\b(?:delivery|pickup|status|reason|reference|p u|pu) code \d/.test(normalized)
+    || /\bcode \d{1,4} (?:for )?(?:delivery|pickup|status|reason|p u|pu)\b/.test(normalized)
+    || /^what does (?:delivery |pickup |status |reason |reference )?code \d{1,4} mean$/.test(normalized)
     || /\b(?:apply|choose|select|use) code \d/.test(normalized)
     || /\bcode \d{1,4} (?:or|versus|vs) \d{1,4}\b/.test(normalized)
   );

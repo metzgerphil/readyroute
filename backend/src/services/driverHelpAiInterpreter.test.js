@@ -79,6 +79,8 @@ test('AI interpretation sends only constrained routing fields with a strict sche
   assert.equal(requestBody.model, 'test-model');
   assert.equal(requestBody.safety_identifier, 'rr_test-user');
   assert.doesNotMatch(requestBody.input[1].content[0].text, /rr_test-user/);
+  assert.match(requestBody.input[0].content[0].text, /tobacco is not alcohol/i);
+  assert.match(requestBody.input[0].content[0].text, /Return NONE when the stated subject is not covered/i);
   assert.equal(requestBody.text.format.strict, true);
   assert.deepEqual(requestBody.text.format.schema, responseSchema(candidates));
   assert.equal(result.decision, 'CLARIFY');

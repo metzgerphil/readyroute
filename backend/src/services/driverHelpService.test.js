@@ -118,6 +118,20 @@ function knowledgeRecord(overrides = {}) {
   };
 }
 
+function referenceRecord(knowledgeId, conciseAnswer, canonicalSituation) {
+  return {
+    knowledge_id: knowledgeId,
+    version: 1,
+    status: 'SOURCE_VERIFIED',
+    is_published: true,
+    source_ids: ['SRC-REFERENCE'],
+    taxonomy_paths: ['REFERENCE'],
+    canonical_situation: canonicalSituation,
+    concise_answer: conciseAnswer,
+    images: []
+  };
+}
+
 test('short replies resolve only against pending data-authored choices', () => {
   const context = {
     pending_clarification_options: [
@@ -390,6 +404,53 @@ test('actionable choices preserve published delivery and pickup reference option
     label: record.canonical_situation
   }));
   assert.deepEqual(filterActionableClarificationOptions(options, records), options);
+});
+
+test('full service path resolves a trailing code category without unnecessary clarification', async () => {
+  const records = [
+    referenceRecord('DELIVERY_STATUS:024', 'Code 024: Call tag package not ready.', 'Call tag package not ready'),
+    referenceRecord('PICKUP_REASON:24', 'Code 24: Canceled before an attempt.', 'Pickup canceled before an attempt')
+  ];
+  const service = createDriverHelpService({ supabase: fakeSupabase(records), now: () => new Date(0) });
+  const response = await service.answerQuestion({
+    accountId: '00000000-0000-0000-0000-000000000001',
+    driverId: '00000000-0000-0000-0000-000000000002',
+    question: 'code 24 pickup?'
+  });
+
+  assert.equal(response.response_mode, 'ANSWER');
+  assert.equal(response.answer, 'Code 24: Canceled before an attempt.');
+  assert.equal(response.trace[0].knowledge_id, 'PICKUP_REASON:24');
+});
+
+test('full service path returns actionable category choices and each choice resolves', async () => {
+  const records = [
+    referenceRecord('DELIVERY_STATUS:024', 'Code 024: Call tag package not ready.', 'Call tag package not ready'),
+    referenceRecord('PICKUP_REASON:24', 'Code 24: Canceled before an attempt.', 'Pickup canceled before an attempt')
+  ];
+  const service = createDriverHelpService({ supabase: fakeSupabase(records), now: () => new Date(0) });
+  const clarification = await service.answerQuestion({
+    accountId: '00000000-0000-0000-0000-000000000001',
+    driverId: '00000000-0000-0000-0000-000000000002',
+    question: 'what is code 24'
+  });
+
+  assert.equal(clarification.response_mode, 'CLARIFY');
+  assert.match(clarification.clarification_prompt, /delivery code or the pickup code/i);
+  assert.deepEqual(
+    clarification.clarification_options.map((option) => option.knowledge_id).sort(),
+    ['DELIVERY_STATUS:024', 'PICKUP_REASON:24']
+  );
+
+  for (const option of clarification.clarification_options) {
+    const resolved = await service.answerQuestion({
+      accountId: '00000000-0000-0000-0000-000000000001',
+      driverId: '00000000-0000-0000-0000-000000000002',
+      question: option.query
+    });
+    assert.equal(resolved.response_mode, 'ANSWER');
+    assert.equal(resolved.trace[0].knowledge_id, option.knowledge_id);
+  }
 });
 
 test('repeated identical clarification is detected', () => {
