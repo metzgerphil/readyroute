@@ -88,7 +88,18 @@ jobs:
           echo "::add-mask::$service_key"
           SUPABASE_URL="$STAGING_SUPABASE_URL" SUPABASE_SERVICE_KEY="$service_key" npm run knowledge:import
 
-      - name: Verify the staging Answers corpus is empty
+      - name: Calculate expected staging corpus counts
+        working-directory: backend
+        shell: bash
+        run: |
+          set -euo pipefail
+          summary="$(node src/scripts/importDriverKnowledge.js --dry-run)"
+          echo "EXPECTED_ANSWERS_SOURCES=$(jq -r '.sources' <<<"$summary")" >> "$GITHUB_ENV"
+          echo "EXPECTED_ANSWERS_RECORDS=$(jq -r '.indexed_records' <<<"$summary")" >> "$GITHUB_ENV"
+          echo "EXPECTED_ANSWERS_EVIDENCE=$(jq -r '.evidence_links' <<<"$summary")" >> "$GITHUB_ENV"
+          echo "EXPECTED_ANSWERS_PUBLISHED=$(jq -r '.published_production_eligible_records' <<<"$summary")" >> "$GITHUB_ENV"
+
+      - name: Verify the staging Answers corpus matches the canonical release
         env:
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
         shell: bash
@@ -96,11 +107,12 @@ jobs:
           set -euo pipefail
           query_url="https://api.supabase.com/v1/projects/${STAGING_SUPABASE_PROJECT_REF}/database/query"
           headers=(-H "Authorization: Bearer $SUPABASE_ACCESS_TOKEN" -H "Content-Type: application/json")
-          query='{"query":"select (select count(*) from public.driver_help_knowledge_sources) as sources, (select count(*) from public.driver_help_knowledge_records) as records, (select count(*) from public.driver_help_knowledge_record_sources) as evidence_links, (select count(*) from public.driver_help_interactions) as interactions"}'
+          query='{"query":"select (select count(*) from public.driver_help_knowledge_sources) as sources, (select count(*) from public.driver_help_knowledge_records) as records, (select count(*) from public.driver_help_knowledge_records where is_published = true) as published, (select count(*) from public.driver_help_knowledge_record_sources) as evidence_links, (select count(*) from public.driver_help_interactions) as interactions"}'
           response="$(curl --fail-with-body --silent --show-error --request POST "${headers[@]}" --data "$query" "$query_url")"
-          test "$(jq -r '.[0].sources' <<<"$response")" = "0"
-          test "$(jq -r '.[0].records' <<<"$response")" = "0"
-          test "$(jq -r '.[0].evidence_links' <<<"$response")" = "0"
+          test "$(jq -r '.[0].sources' <<<"$response")" = "$EXPECTED_ANSWERS_SOURCES"
+          test "$(jq -r '.[0].records' <<<"$response")" = "$EXPECTED_ANSWERS_RECORDS"
+          test "$(jq -r '.[0].published' <<<"$response")" = "$EXPECTED_ANSWERS_PUBLISHED"
+          test "$(jq -r '.[0].evidence_links' <<<"$response")" = "$EXPECTED_ANSWERS_EVIDENCE"
           test "$(jq -r '.[0].interactions' <<<"$response")" = "0"
 
       - name: Authenticate to Google Cloud
@@ -144,5 +156,6 @@ jobs:
           echo "### ReadyRoute staging driver-help release" >> "$GITHUB_STEP_SUMMARY"
           echo "- Commit: \`${{ github.sha }}\`" >> "$GITHUB_STEP_SUMMARY"
           echo "- Cloud Run URL: ${{ steps.deploy.outputs.url }}" >> "$GITHUB_STEP_SUMMARY"
-          echo "- Ready Route Answers v2 corpus verified empty after the reset migration" >> "$GITHUB_STEP_SUMMARY"
-          echo "- Backend deployed in fail-closed mode pending the replacement corpus" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Canonical corpus: $EXPECTED_ANSWERS_RECORDS indexed records, $EXPECTED_ANSWERS_PUBLISHED published" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Database counts verified against the generated v2 release" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Backend remains fail-closed for pending or unmatched questions" >> "$GITHUB_STEP_SUMMARY"
