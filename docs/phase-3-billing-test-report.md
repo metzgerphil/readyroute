@@ -4,7 +4,7 @@ Status: local shadow-ledger testing; live charging is disabled.
 
 ## Implemented semantics
 
-- Price is exactly $5 USD per driver per UTC calendar month.
+- Monthly price is exactly $10 USD per driver per UTC calendar month; Stripe also offers a $100 USD annual price per active driver.
 - Activation at any instant in a month creates the full-month liability; no proration.
 - Deactivation ends access but does not void the accrued month.
 - Repeated deactivation/reactivation in the same month cannot create another row because `(account_id, driver_id, billing_month)` is unique.

@@ -7,7 +7,8 @@ const { createBillingService } = require('../services/billing');
 const { buildSignupPayload } = require('./waitlist');
 const {
   createStripeSignupBillingService,
-  normalizeBillingAddress
+  normalizeBillingAddress,
+  normalizeBillingInterval
 } = require('../services/stripeSignupBilling');
 
 function getStripeClient(stripeClient) {
@@ -33,7 +34,9 @@ function createBillingRouter(options = {}) {
   const billingService = createBillingService({
     supabase,
     stripeClient,
-    stripePriceId: options.stripePriceId
+    stripePriceId: options.stripePriceId,
+    stripeMonthlyPriceId: options.stripeMonthlyPriceId,
+    stripeAnnualPriceId: options.stripeAnnualPriceId
   });
   const webhookSecret = options.webhookSecret || process.env.STRIPE_WEBHOOK_SECRET;
   const publicFormLimiter = options.publicFormLimiter || ((_req, _res, next) => next());
@@ -42,6 +45,8 @@ function createBillingRouter(options = {}) {
     stripeClient: stripeClient || (process.env.STRIPE_SECRET_KEY ? getStripeClient() : null),
     publishableKey: options.stripePublishableKey,
     priceId: options.stripePriceId,
+    monthlyPriceId: options.stripeMonthlyPriceId,
+    annualPriceId: options.stripeAnnualPriceId,
     signupEnabled: options.stripeSignupEnabled,
     taxEnabled: options.stripeTaxEnabled,
     taxRegistrationsConfirmed: options.stripeTaxRegistrationsConfirmed
@@ -79,6 +84,8 @@ function createBillingRouter(options = {}) {
     }
     const { address, error: addressError } = normalizeBillingAddress(req.body);
     if (addressError) return res.status(400).json({ error: addressError });
+    const billingInterval = normalizeBillingInterval(req.body?.billing_interval);
+    if (!billingInterval) return res.status(400).json({ error: 'Choose monthly or annual billing.' });
 
     try {
       const signupRecord = {
@@ -89,7 +96,8 @@ function createBillingRouter(options = {}) {
         billing_address_city: address.city,
         billing_address_state: address.state,
         billing_address_postal_code: address.postal_code,
-        billing_address_country: address.country
+        billing_address_country: address.country,
+        billing_interval: billingInterval
       };
       const { data: signup, error: upsertError } = await supabase
         .from('early_access_signups')
@@ -102,7 +110,8 @@ function createBillingRouter(options = {}) {
         signup: { ...signup, billing_legal_name: signupRecord.billing_legal_name },
         address,
         requestId,
-        ip: req.ip
+        ip: req.ip,
+        billingInterval
       });
       return res.status(201).json(paymentSetup);
     } catch (error) {
@@ -173,7 +182,9 @@ function createBillingRouter(options = {}) {
       }
 
       await billingService.createCustomer(account.manager_email, account.company_name, account.id);
-      const subscription = await billingService.createSubscription(account.id, routeCommitment);
+      const subscription = await billingService.createSubscription(account.id, routeCommitment, {
+        billingInterval: normalizeBillingInterval(req.body?.billing_interval) || 'monthly'
+      });
 
       return res.status(200).json({
         client_secret: subscription.client_secret,

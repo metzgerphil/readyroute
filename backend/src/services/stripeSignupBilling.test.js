@@ -4,7 +4,8 @@ const assert = require('node:assert/strict');
 const {
   BILLING_POLICY_VERSION,
   createStripeSignupBillingService,
-  normalizeBillingAddress
+  normalizeBillingAddress,
+  normalizeBillingInterval
 } = require('./stripeSignupBilling');
 
 class Query {
@@ -44,6 +45,12 @@ test('normalizeBillingAddress requires a complete US address', () => {
   });
 });
 
+test('normalizeBillingInterval accepts only monthly or annual billing', () => {
+  assert.equal(normalizeBillingInterval('monthly'), 'monthly');
+  assert.equal(normalizeBillingInterval('annual'), 'annual');
+  assert.equal(normalizeBillingInterval('weekly'), null);
+});
+
 test('prepareSignupPayment creates a customer and off-session SetupIntent without charging', async () => {
   const updates = [];
   const calls = [];
@@ -70,13 +77,16 @@ test('prepareSignupPayment creates a customer and off-session SetupIntent withou
     supabase: db,
     stripeClient: stripe,
     publishableKey: 'pk_test_safe',
+    monthlyPriceId: 'price_monthly_1000',
+    annualPriceId: 'price_annual_10000',
     signupEnabled: true
   });
   const result = await service.prepareSignupPayment({
     signup: { id: 'signup-1', email: 'owner@example.com', company_csa: 'ReadyRoute Test', stripe_customer_id: null },
     address: { line1: '1 Main St', city: 'Sacramento', state: 'CA', postal_code: '95814', country: 'US' },
     requestId: '00000000-0000-4000-8000-000000000001',
-    ip: '127.0.0.1'
+    ip: '127.0.0.1',
+    billingInterval: 'annual'
   });
 
   assert.equal(result.client_secret, 'seti_secret_test');
@@ -84,6 +94,8 @@ test('prepareSignupPayment creates a customer and off-session SetupIntent withou
   assert.equal(calls[1].payload.usage, 'off_session');
   assert.equal(Object.hasOwn(calls[1].payload, 'payment_method_types'), false);
   assert.equal(updates[0].billing_setup_status, 'processing');
+  assert.equal(updates[0].billing_interval, 'annual');
+  assert.equal(calls[1].payload.metadata.billing_interval, 'annual');
 });
 
 test('activateSubscription bills only active drivers and leaves Tax off by default', async () => {
@@ -92,7 +104,7 @@ test('activateSubscription bills only active drivers and leaves Tax off by defau
     if (query.table === 'accounts' && query.operation === 'select') {
       return { data: {
         id: 'acct-1', stripe_customer_id: 'cus_test', stripe_subscription_id: null,
-        stripe_default_payment_method_id: 'pm_test', billing_setup_status: 'succeeded'
+        stripe_default_payment_method_id: 'pm_test', billing_setup_status: 'succeeded', billing_interval: 'monthly'
       }, error: null };
     }
     if (query.table === 'drivers' && query.operation === 'select') {
@@ -115,13 +127,14 @@ test('activateSubscription bills only active drivers and leaves Tax off by defau
       subscriptionPayload = payload;
       return { id: 'sub_test', status: 'incomplete', items: { data: [{ id: 'si_test' }] } };
     } } },
-    priceId: 'price_test_500',
+    monthlyPriceId: 'price_monthly_1000',
+    annualPriceId: 'price_annual_10000',
     taxEnabled: false
   });
 
   const result = await service.activateSubscription('acct-1');
   assert.equal(result.active_driver_count, 2);
-  assert.deepEqual(subscriptionPayload.items, [{ price: 'price_test_500', quantity: 2 }]);
+  assert.deepEqual(subscriptionPayload.items, [{ price: 'price_monthly_1000', quantity: 2 }]);
   assert.equal(Object.hasOwn(subscriptionPayload, 'automatic_tax'), false);
   assert.equal(updates.at(-1).billed_driver_count, 2);
 });
@@ -130,7 +143,8 @@ test('activateSubscription refuses Tax before registrations are confirmed', asyn
   const service = createStripeSignupBillingService({
     supabase: createDb(() => { throw new Error('Database must not be called'); }),
     stripeClient: { subscriptions: { create: async () => ({}) } },
-    priceId: 'price_test_500',
+    monthlyPriceId: 'price_monthly_1000',
+    annualPriceId: 'price_annual_10000',
     taxEnabled: true,
     taxRegistrationsConfirmed: false
   });

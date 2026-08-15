@@ -2191,6 +2191,8 @@ function createManagerRouter(options = {}) {
     supabase,
     stripeClient: options.stripeClient,
     stripePriceId: options.stripePriceId,
+    stripeMonthlyPriceId: options.stripeMonthlyPriceId,
+    stripeAnnualPriceId: options.stripeAnnualPriceId,
     trialDays: options.trialDays
   });
   const driverBillingSyncEnabled = options.driverBillingSyncEnabled ?? (

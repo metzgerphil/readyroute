@@ -19,7 +19,9 @@ function getLaunchReadiness(env = process.env) {
   const stripeWebhookConfigured = Boolean(String(env.STRIPE_WEBHOOK_SECRET || '').trim());
   const stripeSignupEnabled = isEnabled(env.STRIPE_SIGNUP_ENABLED);
   const stripePublishableConfigured = Boolean(String(env.STRIPE_PUBLISHABLE_KEY || '').trim());
-  const stripePriceConfigured = Boolean(String(env.STRIPE_PRICE_ID || '').trim());
+  const stripeMonthlyPriceConfigured = Boolean(String(env.STRIPE_MONTHLY_PRICE_ID || env.STRIPE_PRICE_ID || '').trim());
+  const stripeAnnualPriceConfigured = Boolean(String(env.STRIPE_ANNUAL_PRICE_ID || '').trim());
+  const stripePricesConfigured = stripeMonthlyPriceConfigured && stripeAnnualPriceConfigured;
   const stripeTaxEnabled = isEnabled(env.STRIPE_TAX_ENABLED);
   const stripeTaxRegistrationsConfirmed = isEnabled(env.STRIPE_TAX_REGISTRATIONS_CONFIRMED);
   const errors = [];
@@ -46,8 +48,11 @@ function getLaunchReadiness(env = process.env) {
   if (stripeSignupEnabled && (!stripeConfigured || !stripePublishableConfigured || !stripeWebhookConfigured)) {
     errors.push('Stripe signup requires secret, publishable, and webhook configuration.');
   }
-  if (liveBillingApproved && !stripePriceConfigured) {
-    errors.push('Live Stripe billing requires STRIPE_PRICE_ID.');
+  if (stripeSignupEnabled && !stripePricesConfigured) {
+    errors.push('Stripe signup requires monthly and annual Stripe price IDs.');
+  }
+  if (liveBillingApproved && !stripePricesConfigured) {
+    errors.push('Live Stripe billing requires STRIPE_MONTHLY_PRICE_ID and STRIPE_ANNUAL_PRICE_ID.');
   }
   if (stripeTaxEnabled && !stripeTaxRegistrationsConfirmed) {
     errors.push('Stripe Tax cannot be enabled until STRIPE_TAX_REGISTRATIONS_CONFIRMED=true.');

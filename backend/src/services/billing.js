@@ -22,7 +22,7 @@ async function loadAccount(supabase, accountId) {
   const { data, error } = await supabase
     .from('accounts')
     .select(
-      'id, company_name, manager_email, stripe_customer_id, stripe_subscription_id, subscription_status, vehicle_count, plan'
+      'id, company_name, manager_email, stripe_customer_id, stripe_subscription_id, subscription_status, vehicle_count, plan, billing_interval'
     )
     .eq('id', accountId)
     .maybeSingle();
@@ -33,7 +33,8 @@ async function loadAccount(supabase, accountId) {
 function createBillingService(options = {}) {
   const supabase = options.supabase || defaultSupabase;
   const stripeClient = options.stripeClient;
-  const stripePriceId = options.stripePriceId || process.env.STRIPE_PRICE_ID;
+  const stripeMonthlyPriceId = options.stripeMonthlyPriceId || options.stripePriceId || process.env.STRIPE_MONTHLY_PRICE_ID || process.env.STRIPE_PRICE_ID;
+  const stripeAnnualPriceId = options.stripeAnnualPriceId || process.env.STRIPE_ANNUAL_PRICE_ID;
   const trialDays = Number(options.trialDays || process.env.STRIPE_TRIAL_DAYS || 14);
 
   function getStripe() {
@@ -77,9 +78,15 @@ function createBillingService(options = {}) {
     return customer.id;
   }
 
-  async function createSubscription(accountId, vehicleCount) {
+  function getPriceId(billingInterval = 'monthly') {
+    if (billingInterval === 'annual') return stripeAnnualPriceId;
+    return stripeMonthlyPriceId;
+  }
+
+  async function createSubscription(accountId, vehicleCount, { billingInterval = 'monthly' } = {}) {
+    const stripePriceId = getPriceId(billingInterval);
     if (!stripePriceId) {
-      throw new Error('Missing STRIPE_PRICE_ID environment variable');
+      throw new Error(`Missing Stripe ${billingInterval} price ID environment variable`);
     }
 
     const { data: account, error: accountError } = await loadAccount(supabase, accountId);
@@ -117,7 +124,8 @@ function createBillingService(options = {}) {
         stripe_subscription_id: subscription.id,
         subscription_status: subscription.status,
         vehicle_count: vehicleCount,
-        plan: subscription.status === 'active' ? 'pro' : 'starter'
+        plan: subscription.status === 'active' ? 'pro' : 'starter',
+        billing_interval: billingInterval
       })
       .eq('id', accountId);
 
@@ -142,9 +150,10 @@ function createBillingService(options = {}) {
     };
   }
 
-  async function createTrialCheckoutSession(accountId, vehicleCount, { successUrl, cancelUrl } = {}) {
+  async function createTrialCheckoutSession(accountId, vehicleCount, { successUrl, cancelUrl, billingInterval = 'monthly' } = {}) {
+    const stripePriceId = getPriceId(billingInterval);
     if (!stripePriceId) {
-      throw new Error('Missing STRIPE_PRICE_ID environment variable');
+      throw new Error(`Missing Stripe ${billingInterval} price ID environment variable`);
     }
 
     if (!successUrl || !cancelUrl) {
@@ -180,7 +189,8 @@ function createBillingService(options = {}) {
       subscription_data: {
         trial_period_days: trialDays,
         metadata: {
-          account_id: accountId
+          account_id: accountId,
+          billing_interval: billingInterval
         }
       }
     });

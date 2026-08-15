@@ -15,7 +15,7 @@ Every discovered issue receives one primary category, optional contributing cate
 | `SOURCE_PRECEDENCE_FAILURE` | Raw, older, conflicting, superseded, or newly ingested material overrides active approved knowledge without governance. | A raw source silently replaces a `READY_ROUTE_APPROVED` answer. |
 | `SPEECH_RECOGNITION_FAILURE` | Transcription materially changes operational meaning without safe confirmation. | ASR becomes ISR and selects a different procedure. |
 | `AUTHENTICATION_FAILURE` | Login, invitation, reset, recovery, sharing, deactivation, or session control is bypassed or incorrect. | Old device remains authorized after replacement. |
-| `BILLING_FAILURE` | Seat/month accrual, activation state, idempotency, payment, or cancellation behavior is wrong. | Same driver receives two $5 liabilities in one month. |
+| `BILLING_FAILURE` | Seat/month accrual, activation state, idempotency, payment, or cancellation behavior is wrong. | Same driver receives two $10 liabilities in one month. |
 | `SECURITY_FAILURE` | Security or canonical boundary is bypassed, data or secrets leak, or abusive input succeeds. | Cross-company access or prompt-driven source disclosure. |
 | `PERFORMANCE_FAILURE` | Latency, reliability, or resource behavior materially harms correct use. | Timeout presents a partial answer as verified. |
 | `UX_FAILURE` | Correct result is presented in a confusing, inaccessible, or error-prone manner. | Critical action is hidden below optional background. |
@@ -27,4 +27,3 @@ Every discovered issue receives one primary category, optional contributing cate
 - `HIGH`: likely wrong operational action, material security/privacy/billing harm, or frequent inability to use the product; blocks pilot until resolved or explicitly converted to a safe fail-closed path.
 - `MEDIUM`: bounded correctness, reliability, or usability defect with a safe fallback.
 - `LOW`: nonmaterial friction, observability improvement, or test-harness cleanup.
-

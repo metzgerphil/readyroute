@@ -32,7 +32,7 @@ This work does not deploy the application, create an EAS build, or build a produ
 
 - An additive canonical-status/trace migration.
 - A driver invitation and device-session lifecycle compatible with existing authentication.
-- A calendar-month activation ledger that charges a company once per driver/month at $5, with no proration or same-month duplicate charge.
+- A calendar-month activation ledger that charges a company once per driver/month at $10, with no proration or same-month duplicate charge. Stripe subscriptions may instead use the $100-per-driver annual option.
 - Internal aggregates for category, response mode, clarification, unresolved rate, negative feedback, retrieval outcome, and latency.
 - Security tests for prompt injection, cross-company access, deactivation/session invalidation, and canonical-boundary bypass attempts.
 
@@ -56,7 +56,7 @@ Retain company-scoped authorization, hashed credentials, active-driver checks, a
 
 ## 9. Billing changes
 
-Keep current payment infrastructure but create a separate idempotent driver-month ledger keyed by company, driver, and calendar month. First activation or reactivation in a month creates one $5 liability; deactivation ends access but does not reverse that month; later same-month reactivation does not duplicate it; an inactive driver is not charged in future months. Payment-provider charging and production rollout require separate release configuration and are not performed here.
+Keep current payment infrastructure but create a separate idempotent driver-month ledger keyed by company, driver, and calendar month. First activation or reactivation in a month creates one $10 liability; deactivation ends access but does not reverse that month; later same-month reactivation does not duplicate it; an inactive driver is not charged in future months. Stripe subscriptions can alternatively bill $100 per active driver annually. Payment-provider charging and production rollout require separate release configuration.
 
 ## 10. Analytics
 

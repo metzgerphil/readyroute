@@ -27,6 +27,8 @@ function createAuthRouter(options = {}) {
     supabase,
     stripeClient: options.stripeClient,
     stripePriceId: options.stripePriceId,
+    stripeMonthlyPriceId: options.stripeMonthlyPriceId,
+    stripeAnnualPriceId: options.stripeAnnualPriceId,
     trialDays: options.trialDays
   });
   const sendManagerPasswordResetEmail = options.sendManagerPasswordResetEmail || defaultSendManagerPasswordResetEmail;
@@ -477,9 +479,12 @@ function createAuthRouter(options = {}) {
           '24h'
         );
 
+        const billingInterval = req.body?.billing_interval === 'annual' ? 'annual' : 'monthly';
+        await supabase.from('accounts').update({ billing_interval: billingInterval }).eq('id', account.id);
         const checkoutSession = await billingService.createTrialCheckoutSession(account.id, routeCommitment, {
           successUrl: buildTrialActivationUrl(activationToken),
-          cancelUrl: buildTrialCancelUrl(email)
+          cancelUrl: buildTrialCancelUrl(email),
+          billingInterval
         });
 
         return res.status(200).json({

@@ -9,11 +9,11 @@ const {
 
 test('activation at any time uses the full UTC calendar-month charge', () => {
   assert.equal(getUtcBillingMonth('2026-08-31T23:59:59Z'), '2026-08-01');
-  assert.deepEqual(summarizeDriverMonthCharges([{ unit_amount_cents: 500, charge_status: 'accrued' }], 1), {
+  assert.deepEqual(summarizeDriverMonthCharges([{ unit_amount_cents: 1000, charge_status: 'accrued' }], 1), {
     active_driver_count: 1,
     charged_driver_count: 1,
-    unit_amount_cents: 500,
-    total_amount_cents: 500,
+    unit_amount_cents: 1000,
+    total_amount_cents: 1000,
     currency: 'usd',
     live_charging_enabled: false
   });
@@ -35,19 +35,19 @@ test('a subsequent month creates a different charge key', () => {
 
 test('deactivated drivers remain charged for accrued month but voided corrections do not total', () => {
   const summary = summarizeDriverMonthCharges([
-    { unit_amount_cents: 500, charge_status: 'accrued' },
-    { unit_amount_cents: 500, charge_status: 'voided' }
+    { unit_amount_cents: 1000, charge_status: 'accrued' },
+    { unit_amount_cents: 1000, charge_status: 'voided' }
   ], 0);
   assert.equal(summary.active_driver_count, 0);
   assert.equal(summary.charged_driver_count, 1);
-  assert.equal(summary.total_amount_cents, 500);
+  assert.equal(summary.total_amount_cents, 1000);
 });
 
 test('zero drivers and zero ledger rows produce a zero-dollar month', () => {
   assert.deepEqual(summarizeDriverMonthCharges([], 0), {
     active_driver_count: 0,
     charged_driver_count: 0,
-    unit_amount_cents: 500,
+    unit_amount_cents: 1000,
     total_amount_cents: 0,
     currency: 'usd',
     live_charging_enabled: false
@@ -56,13 +56,13 @@ test('zero drivers and zero ledger rows produce a zero-dollar month', () => {
 
 test('multiple driver-month rows total exactly five dollars each regardless of active count', () => {
   const summary = summarizeDriverMonthCharges([
-    { unit_amount_cents: 500, charge_status: 'accrued' },
-    { unit_amount_cents: 500, charge_status: 'invoiced' },
-    { unit_amount_cents: 500, charge_status: 'paid' }
+    { unit_amount_cents: 1000, charge_status: 'accrued' },
+    { unit_amount_cents: 1000, charge_status: 'invoiced' },
+    { unit_amount_cents: 1000, charge_status: 'paid' }
   ], 2);
   assert.equal(summary.active_driver_count, 2);
   assert.equal(summary.charged_driver_count, 3);
-  assert.equal(summary.total_amount_cents, 1500);
+  assert.equal(summary.total_amount_cents, 3000);
 });
 
 test('UTC month transition is exact at midnight with no proration', () => {

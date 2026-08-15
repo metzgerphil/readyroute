@@ -1789,7 +1789,7 @@ function createReadyRouteStaffRouter(options = {}) {
 
       const signupLookup = await supabase
         .from('early_access_signups')
-        .select('id, stripe_customer_id, stripe_payment_method_id, billing_setup_status, billing_policy_version, billing_consent_at')
+        .select('id, stripe_customer_id, stripe_payment_method_id, billing_setup_status, billing_policy_version, billing_consent_at, billing_interval')
         .eq('email', managerEmail)
         .maybeSingle();
       if (signupLookup.error) throw signupLookup.error;
@@ -1809,6 +1809,7 @@ function createReadyRouteStaffRouter(options = {}) {
           stripe_default_payment_method_id: signup?.stripe_payment_method_id || null,
           billing_setup_status: signup?.billing_setup_status || 'not_started',
           billing_activation_status: signup?.billing_setup_status === 'succeeded' ? 'ready' : 'not_started',
+          billing_interval: signup?.billing_interval || 'monthly',
           billing_policy_version: signup?.billing_policy_version || null,
           billing_consent_at: signup?.billing_consent_at || null
         })
