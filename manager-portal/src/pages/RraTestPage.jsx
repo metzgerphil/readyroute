@@ -37,6 +37,7 @@ export default function RraTestPage() {
     const nextQuestion = String(overrideQuestion || question).trim();
     if (nextQuestion.length < 2 || isSubmitting) return;
 
+    setQuestion(nextQuestion);
     setIsSubmitting(true);
     setError('');
     setFeedback(null);
@@ -48,7 +49,6 @@ export default function RraTestPage() {
       });
       setResult(response.data || null);
       setSessionId(response.data?.session_id || sessionId);
-      setQuestion('');
     } catch (requestError) {
       setError(requestError.response?.data?.error || 'Ready Route Answers could not check the knowledge records right now.');
     } finally {
