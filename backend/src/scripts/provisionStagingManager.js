@@ -34,7 +34,6 @@ async function provisionStagingManager() {
     .from('accounts')
     .select('id, company_name')
     .eq('company_name', STAGING_COMPANY_NAME)
-    .eq('account_status', 'active')
     .order('created_at', { ascending: false })
     .limit(1)
     .maybeSingle();
