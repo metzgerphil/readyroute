@@ -143,6 +143,8 @@ test('grounded AI interpretation may select a record but the answer remains cano
   });
 
   assert.equal(interpretationRequest.candidate_records[0].knowledge_id, record.knowledge_id);
+  assert.match(interpretationRequest.safety_identifier, /^rr_[a-f0-9]+$/);
+  assert.equal(interpretationRequest.safety_identifier.length, 64);
   assert.equal(response.response_mode, 'ANSWER');
   assert.equal(response.answer, record.concise_answer);
   assert.equal(response.answer_structure.direct_answer, record.concise_answer);

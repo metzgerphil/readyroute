@@ -40,6 +40,20 @@ test('empty corpus always fails closed', () => {
   assert.match(decision.escalation_message, /does not have a verified answer/i);
 });
 
+test('unmatched distinctive terms fail closed instead of matching generic package words', () => {
+  const decision = buildDriverHelpDecision('How do I deliver an alcohol package?', [record({
+    canonical_situation: 'A delivery package has possible damage and needs inspection',
+    normalized_description: 'A damaged package is returned for inspection',
+    driver_question_variants: ['box is crushed before delivery'],
+    clarification_requirements: ['Is the package leaking or hazardous?'],
+    taxonomy_paths: ['TAX-DELIVERY']
+  })]);
+
+  assert.equal(decision.response_mode, 'ESCALATE');
+  assert.deepEqual(decision.selected_records, []);
+  assert.match(decision.escalation_message, /does not have a verified answer/i);
+});
+
 test('exact evaluated variant can return the stored published answer', () => {
   const decision = buildDriverHelpDecision('sample indicator appeared in training', [record()]);
   assert.equal(decision.response_mode, 'ANSWER');

@@ -36,7 +36,8 @@ function randomId() {
 function buildAiSafetyIdentifier(accountId, actorType, actorId) {
   return `rr_${crypto.createHash('sha256')
     .update(`${accountId}:${actorType}:${actorId}`)
-    .digest('hex')}`;
+    .digest('hex')
+    .slice(0, 61)}`;
 }
 
 function resolveClarificationSelection(question, context = {}) {

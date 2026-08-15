@@ -22,6 +22,15 @@ const DRIVER_TOKEN_ALIASES = new Map(Object.entries({
   wa: 'workarea'
 }));
 
+// These words identify the broad product domain but not a specific procedure.
+// A record must match at least one more-distinctive query term when one exists;
+// otherwise an out-of-corpus question such as "deliver an alcohol package"
+// can be forced into an unrelated delivery-package record.
+const GENERIC_DOMAIN_TOKENS = new Set([
+  'box', 'code', 'deliver', 'delivery', 'driver', 'package', 'pickup', 'route',
+  'scan', 'scanner', 'vehicle', 'workarea'
+]);
+
 const ANSWER_THRESHOLD = 18;
 const CLARIFICATION_MARGIN = 6;
 const PRODUCTION_ELIGIBLE_STATUSES = new Set(['SOURCE_VERIFIED', 'READY_ROUTE_APPROVED']);
@@ -154,6 +163,11 @@ function scoreKnowledgeRecord(question, record, context = {}) {
     const normalizedSurface = normalizeDriverQuestion(surface.value);
     const surfaceTokens = tokenize(normalizedSurface);
     if (!surfaceTokens.length) continue;
+    const distinctiveQueryTokens = queryTokens.filter((token) => !GENERIC_DOMAIN_TOKENS.has(token));
+    const distinctiveOverlap = distinctiveQueryTokens.some((queryToken) => (
+      surfaceTokens.some((surfaceToken) => tokenMatchScore(queryToken, surfaceToken) > 0)
+    ));
+    if (distinctiveQueryTokens.length && !distinctiveOverlap) continue;
     const overlap = queryTokens.reduce((total, queryToken) => (
       total + Math.max(0, ...surfaceTokens.map((surfaceToken) => tokenMatchScore(queryToken, surfaceToken)))
     ), 0);
@@ -420,6 +434,7 @@ function buildDriverHelpDecision(question, records, context = {}) {
 module.exports = {
   ANSWER_THRESHOLD,
   CLARIFICATION_MARGIN,
+  GENERIC_DOMAIN_TOKENS,
   buildAnswerStructure,
   buildCriticalIntentDecision,
   buildDirectAnswer,
