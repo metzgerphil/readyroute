@@ -177,6 +177,7 @@ function createWaitlistRouter(options = {}) {
 }
 
 module.exports = createWaitlistRouter();
+module.exports.buildSignupPayload = buildSignupPayload;
 module.exports.createWaitlistRouter = createWaitlistRouter;
 module.exports.buildFeedbackPayload = buildFeedbackPayload;
 module.exports.buildSignupPayload = buildSignupPayload;

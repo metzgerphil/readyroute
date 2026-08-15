@@ -17,6 +17,11 @@ function getLaunchReadiness(env = process.env) {
   ).trim());
   const stripeConfigured = Boolean(String(env.STRIPE_SECRET_KEY || '').trim());
   const stripeWebhookConfigured = Boolean(String(env.STRIPE_WEBHOOK_SECRET || '').trim());
+  const stripeSignupEnabled = isEnabled(env.STRIPE_SIGNUP_ENABLED);
+  const stripePublishableConfigured = Boolean(String(env.STRIPE_PUBLISHABLE_KEY || '').trim());
+  const stripePriceConfigured = Boolean(String(env.STRIPE_PRICE_ID || '').trim());
+  const stripeTaxEnabled = isEnabled(env.STRIPE_TAX_ENABLED);
+  const stripeTaxRegistrationsConfirmed = isEnabled(env.STRIPE_TAX_REGISTRATIONS_CONFIRMED);
   const errors = [];
   const warnings = [];
 
@@ -38,6 +43,15 @@ function getLaunchReadiness(env = process.env) {
   if (billingMode === 'live' && (!stripeConfigured || !stripeWebhookConfigured)) {
     errors.push('Live route billing requires Stripe secret and webhook configuration.');
   }
+  if (stripeSignupEnabled && (!stripeConfigured || !stripePublishableConfigured || !stripeWebhookConfigured)) {
+    errors.push('Stripe signup requires secret, publishable, and webhook configuration.');
+  }
+  if (liveBillingApproved && !stripePriceConfigured) {
+    errors.push('Live Stripe billing requires STRIPE_PRICE_ID.');
+  }
+  if (stripeTaxEnabled && !stripeTaxRegistrationsConfirmed) {
+    errors.push('Stripe Tax cannot be enabled until STRIPE_TAX_REGISTRATIONS_CONFIRMED=true.');
+  }
 
   return {
     ready: errors.length === 0,
@@ -49,7 +63,9 @@ function getLaunchReadiness(env = process.env) {
       maps_geocoding: mapsConfigured,
       route_optimization: optimizationProjectConfigured,
       stripe: stripeConfigured,
-      stripe_webhooks: stripeWebhookConfigured
+      stripe_webhooks: stripeWebhookConfigured,
+      stripe_signup: stripeSignupEnabled && stripeConfigured && stripePublishableConfigured,
+      stripe_tax: stripeTaxEnabled && stripeTaxRegistrationsConfirmed
     },
     errors,
     warnings

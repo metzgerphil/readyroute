@@ -12,7 +12,10 @@ function getStripeClient(stripeClient) {
     throw new Error('Missing STRIPE_SECRET_KEY environment variable');
   }
 
-  return new Stripe(process.env.STRIPE_SECRET_KEY);
+  return new Stripe(process.env.STRIPE_SECRET_KEY, {
+    apiVersion: process.env.STRIPE_API_VERSION || '2026-06-24.dahlia',
+    appInfo: { name: 'ReadyRoute', url: 'https://readyroute.org' }
+  });
 }
 
 async function loadAccount(supabase, accountId) {
@@ -260,6 +263,61 @@ function createBillingService(options = {}) {
     };
   }
 
+  async function syncActiveDriverQuantity(accountId) {
+    const { data: account, error: accountError } = await loadAccount(supabase, accountId);
+    if (accountError) throw accountError;
+    if (!account?.stripe_subscription_id) {
+      return { synced: false, reason: 'subscription_not_created' };
+    }
+
+    const { data: activeDrivers, error: driversError } = await supabase
+      .from('drivers')
+      .select('id')
+      .eq('account_id', accountId)
+      .eq('is_active', true);
+    if (driversError) throw driversError;
+    const quantity = (activeDrivers || []).length;
+    if (quantity < 1) {
+      await supabase.from('accounts').update({
+        next_renewal_driver_count: 0,
+        billing_seat_sync_status: 'reconciliation_required'
+      }).eq('id', accountId);
+      return { synced: false, reason: 'zero_active_drivers', quantity: 0 };
+    }
+
+    const subscription = await getStripe().subscriptions.retrieve(account.stripe_subscription_id);
+    const item = subscription.items?.data?.[0];
+    if (!item?.id) throw new Error('Stripe subscription is missing a price item');
+    const previousQuantity = Number(item.quantity || 0);
+    if (previousQuantity === quantity) {
+      await supabase.from('accounts').update({
+        billed_driver_count: quantity,
+        next_renewal_driver_count: null,
+        billing_seat_sync_status: 'in_sync'
+      }).eq('id', accountId);
+      return { synced: true, quantity, changed: false };
+    }
+
+    await supabase.from('accounts').update({ billing_seat_sync_status: 'update_pending' }).eq('id', accountId);
+    try {
+      await getStripe().subscriptions.update(account.stripe_subscription_id, {
+        items: [{ id: item.id, quantity }],
+        proration_behavior: quantity > previousQuantity ? 'create_prorations' : 'none'
+      }, {
+        idempotencyKey: `readyroute-seat-sync:${accountId}:${quantity}`
+      });
+      await supabase.from('accounts').update({
+        billed_driver_count: quantity,
+        next_renewal_driver_count: null,
+        billing_seat_sync_status: 'in_sync'
+      }).eq('id', accountId);
+      return { synced: true, quantity, previous_quantity: previousQuantity, changed: true };
+    } catch (error) {
+      await supabase.from('accounts').update({ billing_seat_sync_status: 'failed' }).eq('id', accountId);
+      throw error;
+    }
+  }
+
   async function scheduleAccountCancellation(accountId, { now = new Date() } = {}) {
     const { data: account, error: accountError } = await loadAccount(supabase, accountId);
 
@@ -347,6 +405,7 @@ function createBillingService(options = {}) {
     createTrialCheckoutSession,
     updateSubscriptionQuantity,
     getSubscriptionStatus,
+    syncActiveDriverQuantity,
     scheduleAccountCancellation,
     resumeAccountSubscription
   };

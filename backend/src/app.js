@@ -106,15 +106,18 @@ function createApp(options = {}) {
     authorizeDriverDevice: options.authorizeDriverDevice,
     requireDriverDeviceId: options.requireDriverDeviceId
   });
-  const billingRouter = options.supabase && !options.stripeClient && !process.env.STRIPE_SECRET_KEY
-      ? express.Router()
-      : createBillingRouter({
-        supabase: options.supabase,
-        requireManager,
-        stripeClient: options.stripeClient,
-        webhookSecret: options.webhookSecret,
-        stripePriceId: options.stripePriceId
-      });
+  const billingRouter = createBillingRouter({
+    supabase: options.supabase,
+    requireManager,
+    stripeClient: options.stripeClient,
+    webhookSecret: options.webhookSecret,
+    stripePriceId: options.stripePriceId,
+    stripePublishableKey: options.stripePublishableKey,
+    stripeSignupEnabled: options.stripeSignupEnabled,
+    stripeTaxEnabled: options.stripeTaxEnabled,
+    stripeTaxRegistrationsConfirmed: options.stripeTaxRegistrationsConfirmed,
+    publicFormLimiter: rateLimiters.publicForm
+  });
   const requireActiveSubscription = options.enforceBilling === false || (Boolean(options.supabase) && options.enforceBilling !== true)
     ? (_req, _res, next) => next()
     : createRequireActiveSubscription({ supabase: options.supabase });

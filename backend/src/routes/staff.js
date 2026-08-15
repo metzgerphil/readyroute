@@ -1787,6 +1787,14 @@ function createReadyRouteStaffRouter(options = {}) {
         .maybeSingle();
       if (existing.error) throw existing.error;
 
+      const signupLookup = await supabase
+        .from('early_access_signups')
+        .select('id, stripe_customer_id, stripe_payment_method_id, billing_setup_status, billing_policy_version, billing_consent_at')
+        .eq('email', managerEmail)
+        .maybeSingle();
+      if (signupLookup.error) throw signupLookup.error;
+      const signup = signupLookup.data;
+
       const inaccessiblePasswordHash = await bcrypt.hash(crypto.randomBytes(32).toString('hex'), 10);
       const { data: account, error: accountError } = await supabase
         .from('accounts')
@@ -1796,12 +1804,26 @@ function createReadyRouteStaffRouter(options = {}) {
           manager_password_hash: inaccessiblePasswordHash,
           vehicle_count: 0,
           plan: 'starter',
-          subscription_status: 'incomplete'
+          subscription_status: 'incomplete',
+          stripe_customer_id: signup?.stripe_customer_id || null,
+          stripe_default_payment_method_id: signup?.stripe_payment_method_id || null,
+          billing_setup_status: signup?.billing_setup_status || 'not_started',
+          billing_activation_status: signup?.billing_setup_status === 'succeeded' ? 'ready' : 'not_started',
+          billing_policy_version: signup?.billing_policy_version || null,
+          billing_consent_at: signup?.billing_consent_at || null
         })
         .select('id, company_name, manager_email, subscription_status, plan, created_at')
         .single();
       if (accountError || !account) throw accountError || new Error('Account was not created');
       createdAccountId = account.id;
+
+      if (signup?.id) {
+        const { error: signupUpdateError } = await supabase
+          .from('early_access_signups')
+          .update({ account_id: account.id, updated_at: now().toISOString() })
+          .eq('id', signup.id);
+        if (signupUpdateError) throw signupUpdateError;
+      }
 
       const invitedAt = now().toISOString();
       const linkedExistingManager = Boolean(existing.data?.password_hash);
