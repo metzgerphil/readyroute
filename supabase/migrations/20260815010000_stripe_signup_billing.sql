@@ -1,3 +1,48 @@
+-- Some long-lived environments were initialized from the operational schema
+-- after the public signup tables were introduced. Reconcile those environments
+-- here so the billing migration is safe whether or not the legacy lead capture
+-- migration was applied.
+create table if not exists public.early_access_signups (
+  id uuid primary key default gen_random_uuid(),
+  name text not null,
+  email text not null,
+  company_csa text,
+  role text,
+  driver_count integer,
+  csa_count integer,
+  current_routing_tool text,
+  interested_in_beta boolean,
+  source_page text,
+  user_agent text,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  phone_number text,
+  route_count integer,
+  email_sent boolean not null default false,
+  email_sent_at timestamptz,
+  email_error text,
+  resend_email_id text,
+  thank_you_email_attempts integer not null default 0,
+  last_email_attempt_at timestamptz,
+  constraint early_access_signups_email_not_blank check (length(trim(email)) > 0),
+  constraint early_access_signups_name_not_blank check (length(trim(name)) > 0),
+  constraint early_access_signups_driver_count_nonnegative check (driver_count is null or driver_count >= 0),
+  constraint early_access_signups_csa_count_nonnegative check (csa_count is null or csa_count >= 0),
+  constraint early_access_signups_route_count_nonnegative check (route_count is null or route_count >= 0),
+  constraint early_access_signups_email_attempts_nonnegative check (thank_you_email_attempts >= 0)
+);
+
+create unique index if not exists early_access_signups_email_uidx
+  on public.early_access_signups (email);
+
+create unique index if not exists early_access_signups_lower_email_uidx
+  on public.early_access_signups (lower(email));
+
+create index if not exists early_access_signups_created_at_idx
+  on public.early_access_signups (created_at desc);
+
+alter table public.early_access_signups enable row level security;
+
 alter table public.early_access_signups
   add column if not exists stripe_customer_id text,
   add column if not exists stripe_setup_intent_id text,
@@ -71,6 +116,20 @@ alter table public.accounts
 
 create index if not exists accounts_billing_state_idx
   on public.accounts (billing_activation_status, billing_access_status, subscription_status);
+
+create table if not exists public.stripe_webhook_events (
+  stripe_event_id text primary key,
+  event_type text not null,
+  processing_status text not null default 'processed',
+  processed_at timestamptz not null default now(),
+  account_id uuid references public.accounts(id) on delete set null,
+  payload jsonb not null default '{}'::jsonb,
+  constraint stripe_webhook_events_processing_status_check check (
+    processing_status in ('processed', 'failed', 'ignored')
+  )
+);
+
+alter table public.stripe_webhook_events enable row level security;
 
 alter table public.stripe_webhook_events
   add column if not exists object_created_at timestamptz,
