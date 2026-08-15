@@ -18,7 +18,13 @@ function referenceParts(record) {
 
 function explicitCodeTokens(question) {
   const normalized = normalizeDriverQuestion(question);
-  if (!/\b(code|status|reason|reference)\b/.test(normalized)) return [];
+  const hasReferenceIntent = (
+    /^(?:(?:what|which) (?:is |are )?)?(?:delivery |pickup |status |reason |reference )?code \d/.test(normalized)
+    || /\b(?:delivery|pickup|status|reason|reference) code \d/.test(normalized)
+    || /\b(?:apply|choose|select|use) code \d/.test(normalized)
+    || /\bcode \d{1,4} (?:or|versus|vs) \d{1,4}\b/.test(normalized)
+  );
+  if (!hasReferenceIntent) return [];
   return [...new Set(normalized.match(/\b\d{1,4}\b/g) || [])];
 }
 

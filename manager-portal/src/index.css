@@ -301,6 +301,102 @@ body {
   gap: var(--rr-space-3);
 }
 
+.rra-test-history-card {
+  margin-top: var(--rr-space-5);
+  border-left: 4px solid var(--rr-color-green);
+}
+
+.rra-test-history-heading,
+.rra-test-history-item-heading,
+.rra-test-history-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--rr-space-3);
+}
+
+.rra-test-history-heading,
+.rra-test-history-item-heading {
+  justify-content: space-between;
+}
+
+.rra-test-history-heading h2,
+.rra-test-history-heading p {
+  margin: var(--rr-space-2) 0 0;
+}
+
+.rra-test-history-actions {
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.rra-test-history-actions .text-button {
+  color: var(--rr-color-text-muted);
+  background: transparent;
+  border: 0;
+  cursor: pointer;
+  font-weight: 700;
+}
+
+.rra-copy-status {
+  margin: var(--rr-space-4) 0 0;
+  color: var(--rr-color-green);
+  font-weight: 700;
+}
+
+.rra-test-history-list {
+  display: grid;
+  gap: var(--rr-space-3);
+  margin: var(--rr-space-5) 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.rra-test-history-list > li {
+  padding: var(--rr-space-4);
+  background: var(--rr-color-surface-muted);
+  border: 1px solid var(--rr-color-border);
+  border-radius: var(--rr-radius-md);
+}
+
+.rra-test-history-list p {
+  margin: var(--rr-space-2) 0 0;
+}
+
+.rra-test-history-item-heading span {
+  flex: 0 0 auto;
+  padding: 3px 9px;
+  color: var(--rr-color-text-muted);
+  background: var(--rr-color-surface);
+  border: 1px solid var(--rr-color-border);
+  border-radius: var(--rr-radius-pill);
+  font-size: 0.72rem;
+  font-weight: 800;
+}
+
+.rra-test-history-list details {
+  margin-top: var(--rr-space-3);
+}
+
+.rra-test-history-list summary {
+  color: var(--rr-color-text-muted);
+  cursor: pointer;
+  font-size: 0.86rem;
+  font-weight: 700;
+}
+
+.rra-test-history-list pre {
+  max-height: 320px;
+  margin: var(--rr-space-3) 0 0;
+  padding: var(--rr-space-3);
+  overflow: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  background: var(--rr-color-text-strong);
+  color: var(--rr-color-surface);
+  border-radius: var(--rr-radius-sm);
+  font-size: 0.76rem;
+}
+
 @media (max-width: 900px) {
   .rra-test-results-grid {
     grid-template-columns: 1fr;
@@ -309,7 +405,9 @@ body {
 
 @media (max-width: 560px) {
   .rra-test-form-footer,
-  .rra-feedback-row {
+  .rra-feedback-row,
+  .rra-test-history-heading,
+  .rra-test-history-actions {
     align-items: stretch;
     flex-direction: column;
   }

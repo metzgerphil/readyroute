@@ -1,6 +1,14 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 
 import api from '../services/api';
+import {
+  appendRraTestLogEntry,
+  buildRraTestLogEntry,
+  formatRraTestLog,
+  summarizeRraTestLogEntry
+} from '../utils/rraTestLog';
+
+const TEST_HISTORY_STORAGE_KEY = 'readyroute:rra-test-history:v1';
 
 function percent(value) {
   return Number.isFinite(Number(value)) ? `${Math.round(Number(value) * 100)}%` : '—';
@@ -21,6 +29,32 @@ function answerStructure(result) {
   };
 }
 
+function loadTestHistory() {
+  try {
+    const stored = JSON.parse(window.sessionStorage.getItem(TEST_HISTORY_STORAGE_KEY) || '[]');
+    return Array.isArray(stored) ? stored : [];
+  } catch {
+    return [];
+  }
+}
+
+async function copyTextToClipboard(text) {
+  if (navigator.clipboard?.writeText) {
+    await navigator.clipboard.writeText(text);
+    return;
+  }
+
+  const textArea = document.createElement('textarea');
+  textArea.value = text;
+  textArea.setAttribute('readonly', '');
+  textArea.style.position = 'fixed';
+  textArea.style.opacity = '0';
+  document.body.appendChild(textArea);
+  textArea.select();
+  document.execCommand('copy');
+  document.body.removeChild(textArea);
+}
+
 export default function RraTestPage() {
   const [question, setQuestion] = useState('');
   const [sessionId, setSessionId] = useState(null);
@@ -29,8 +63,14 @@ export default function RraTestPage() {
   const [showMore, setShowMore] = useState(false);
   const [feedback, setFeedback] = useState(null);
   const [error, setError] = useState('');
+  const [testHistory, setTestHistory] = useState(loadTestHistory);
+  const [copyStatus, setCopyStatus] = useState('');
   const structure = answerStructure(result);
   const shadow = result?.interpretation_result || {};
+
+  useEffect(() => {
+    window.sessionStorage.setItem(TEST_HISTORY_STORAGE_KEY, JSON.stringify(testHistory));
+  }, [testHistory]);
 
   async function askQuestion(event, overrideQuestion = null) {
     event?.preventDefault?.();
@@ -49,6 +89,11 @@ export default function RraTestPage() {
       });
       setResult(response.data || null);
       setSessionId(response.data?.session_id || sessionId);
+      setTestHistory((entries) => appendRraTestLogEntry(
+        entries,
+        buildRraTestLogEntry(nextQuestion, response.data || {})
+      ));
+      setCopyStatus('');
     } catch (requestError) {
       setError(requestError.response?.data?.error || 'Ready Route Answers could not check the knowledge records right now.');
     } finally {
@@ -74,6 +119,20 @@ export default function RraTestPage() {
     setShowMore(false);
     setFeedback(null);
     setError('');
+  }
+
+  async function copyTestLog(entries, successMessage) {
+    try {
+      await copyTextToClipboard(formatRraTestLog(entries));
+      setCopyStatus(successMessage);
+    } catch {
+      setCopyStatus('Copy failed. Select the test details below and copy them manually.');
+    }
+  }
+
+  function clearTestLog() {
+    setTestHistory([]);
+    setCopyStatus('Test log cleared.');
   }
 
   return (
@@ -201,6 +260,51 @@ export default function RraTestPage() {
         <section className="page-card warning-card">
           <h2>No approved answer</h2>
           <p>{result.escalation_message}</p>
+        </section>
+      ) : null}
+
+      {testHistory.length ? (
+        <section className="page-card rra-test-history-card">
+          <div className="rra-test-history-heading">
+            <div>
+              <div className="rra-card-kicker">Testing workspace</div>
+              <h2>Running test log</h2>
+              <p>{testHistory.length} question{testHistory.length === 1 ? '' : 's'} saved in this browser tab.</p>
+            </div>
+            <div className="rra-test-history-actions">
+              <button
+                className="secondary-button"
+                onClick={() => copyTestLog([testHistory[testHistory.length - 1]], 'Latest result copied.')}
+                type="button"
+              >
+                Copy latest result
+              </button>
+              <button
+                className="primary-cta"
+                onClick={() => copyTestLog(testHistory, 'Full test log copied.')}
+                type="button"
+              >
+                Copy full test log
+              </button>
+              <button className="text-button" onClick={clearTestLog} type="button">Clear log</button>
+            </div>
+          </div>
+          {copyStatus ? <p className="rra-copy-status" role="status">{copyStatus}</p> : null}
+          <ol className="rra-test-history-list">
+            {[...testHistory].reverse().map((entry, index) => (
+              <li key={`${entry.recorded_at}-${entry.diagnostics?.interaction_id || index}`}>
+                <div className="rra-test-history-item-heading">
+                  <strong>{entry.question}</strong>
+                  <span>{entry.response_mode || 'UNKNOWN'}</span>
+                </div>
+                <p>{summarizeRraTestLogEntry(entry)}</p>
+                <details>
+                  <summary>View diagnostic details</summary>
+                  <pre>{formatRraTestLog([entry], entry.recorded_at)}</pre>
+                </details>
+              </li>
+            ))}
+          </ol>
         </section>
       ) : null}
     </main>

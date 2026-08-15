@@ -23,6 +23,20 @@ test('recognizes explicit reference identifiers without operational assumptions'
   assert.equal(isReferenceRecord(reference()), true);
   assert.deepEqual(explicitCodeTokens('what is reference code 101'), ['101']);
   assert.deepEqual(explicitCodeTokens('there are 101 items'), []);
+  assert.deepEqual(
+    explicitCodeTokens("Van 538765's barcode is missing, and my barcode generator is set to Code 128."),
+    []
+  );
+});
+
+test('does not intercept a barcode symbology as an operational reference code', () => {
+  assert.equal(
+    buildDriverHelpReferenceDecision(
+      "Van 538765's barcode is missing, and my barcode generator is set to Code 128.",
+      [reference()]
+    ),
+    null
+  );
 });
 
 test('empty reference corpus fails closed', () => {
