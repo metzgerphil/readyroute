@@ -61,6 +61,32 @@ test('exact evaluated variant can return the stored published answer', () => {
   assert.equal(decision.selected_records[0].knowledge_id, 'TEST-PROCEDURE-001');
 });
 
+test('an answer pattern may select a compact source-authored branch presentation', () => {
+  const decision = buildDriverHelpDecision('pickup canceled before I went there', [record({
+    canonical_situation: 'A listed pickup is canceled or has no packages',
+    driver_question_variants: ['pickup got canceled'],
+    driver_question_patterns: [{
+      utterance: 'pickup canceled before I went there',
+      response_mode: 'DIRECT_SOURCE_GROUNDED_ANSWER',
+      must_clarify: [],
+      answer_override: {
+        direct_answer: 'Use Code 24.',
+        steps: ['Open the correct listed pickup.', 'Select Code 24 and tap DONE.'],
+        watch_for: 'Use Code 24 only when no attempt was made.'
+      }
+    }]
+  })]);
+
+  assert.equal(decision.response_mode, 'ANSWER');
+  assert.equal(decision.answer, 'Use Code 24.');
+  assert.equal(decision.answer_structure.direct_answer, 'Use Code 24.');
+  assert.deepEqual(decision.answer_structure.steps, [
+    'Open the correct listed pickup.',
+    'Select Code 24 and tap DONE.'
+  ]);
+  assert.equal(decision.answer_structure.watch_for, 'Use Code 24 only when no attempt was made.');
+});
+
 test('ineligible records never produce definitive instructions', () => {
   const decision = buildDriverHelpDecision('sample indicator appeared in training', [record({
     status: 'PENDING_REVIEW',

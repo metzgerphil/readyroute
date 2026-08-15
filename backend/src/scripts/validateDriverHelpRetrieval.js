@@ -61,7 +61,8 @@ function validate() {
         utterance: testCase.utterance,
         response_mode: testCase.response_mode,
         information_sufficiency: testCase.information_sufficiency,
-        must_clarify: testCase.must_clarify || []
+        must_clarify: testCase.must_clarify || [],
+        ...(testCase.answer_override ? { answer_override: testCase.answer_override } : {})
       }]);
     }
   }

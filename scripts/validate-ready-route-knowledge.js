@@ -87,6 +87,17 @@ function main() {
     for (const knowledgeId of testCase.expected_knowledge_ids || []) {
       if (!recordIds.has(knowledgeId)) errors.push(`${testCase.case_id} references unknown knowledge ${knowledgeId}`);
     }
+    if (testCase.answer_override) {
+      const override = testCase.answer_override;
+      if (!String(override.direct_answer || '').trim()) errors.push(`${testCase.case_id} answer override is missing direct_answer`);
+      if (!Array.isArray(override.steps) || !override.steps.length || override.steps.length > 4) {
+        errors.push(`${testCase.case_id} answer override must contain one to four steps`);
+      }
+      if (!String(override.watch_for || '').trim()) errors.push(`${testCase.case_id} answer override is missing watch_for`);
+      if (!['DIRECT_SOURCE_GROUNDED_ANSWER', 'ANSWER'].includes(testCase.response_mode)) {
+        errors.push(`${testCase.case_id} answer override requires a direct-answer response mode`);
+      }
+    }
   }
   const referenceCaseIds = new Set();
   for (const testCase of referenceCases) {

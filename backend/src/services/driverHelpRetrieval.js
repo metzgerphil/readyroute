@@ -293,15 +293,17 @@ function buildDirectAnswer(record) {
   )) || firstSentence;
 }
 
-function buildAnswerStructure(record) {
+function buildAnswerStructure(record, answerOverride = null) {
   const prohibitedActions = (record.prohibited_actions || [])
     .map((item) => formatDriverCodeTerminology(item, record))
     .map(String)
     .filter(Boolean);
   return {
-    direct_answer: buildDirectAnswer(record),
-    steps: compactProcedureSteps(record),
-    watch_for: prohibitedActions[0] || null,
+    direct_answer: answerOverride?.direct_answer || buildDirectAnswer(record),
+    steps: Array.isArray(answerOverride?.steps)
+      ? answerOverride.steps.map(String).filter(Boolean).slice(0, 4)
+      : compactProcedureSteps(record),
+    watch_for: answerOverride?.watch_for || prohibitedActions[0] || null,
     options: [],
     procedure_steps: (record.required_procedure || [])
       .map((item) => formatDriverCodeTerminology(item?.action || item, record))
@@ -346,15 +348,16 @@ function escalation(candidates = [], confidence = 0, message = null) {
   };
 }
 
-function answer(record, candidates, confidence) {
+function answer(record, candidates, confidence, pattern = null) {
+  const answerOverride = pattern?.answer_override || null;
   return {
     response_mode: 'ANSWER',
     confidence,
     candidates,
     selected_records: [record],
-    answer: buildPresentedAnswer(record),
+    answer: answerOverride?.direct_answer || buildPresentedAnswer(record),
     more_info: record.more_info_answer || null,
-    answer_structure: buildAnswerStructure(record)
+    answer_structure: buildAnswerStructure(record, answerOverride)
   };
 }
 
@@ -417,7 +420,7 @@ function buildDriverHelpDecision(question, records, context = {}) {
     return clarify(ranked, candidates, confidence, buildClarificationPrompt(requirement));
   }
   if (patternMode === 'ANSWER' || hasExactQuestionVariant(question, top.record)) {
-    return answer(top.record, candidates, confidence);
+    return answer(top.record, candidates, confidence, pattern);
   }
 
   if (top.record.clarification_requirements.length) {
