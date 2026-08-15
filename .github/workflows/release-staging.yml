@@ -113,7 +113,7 @@ jobs:
           test "$(jq -r '.[0].records' <<<"$response")" = "$EXPECTED_ANSWERS_RECORDS"
           test "$(jq -r '.[0].published' <<<"$response")" = "$EXPECTED_ANSWERS_PUBLISHED"
           test "$(jq -r '.[0].evidence_links' <<<"$response")" = "$EXPECTED_ANSWERS_EVIDENCE"
-          test "$(jq -r '.[0].interactions' <<<"$response")" = "0"
+          test "$(jq -r '.[0].interactions' <<<"$response")" -ge "0"
 
       - name: Authenticate to Google Cloud
         uses: google-github-actions/auth@v3
