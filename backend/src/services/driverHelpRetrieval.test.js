@@ -209,6 +209,19 @@ test('data-authored patterns tolerate harmless wrappers and a one-character driv
   );
 });
 
+test('common driver shorthand still retrieves the named signature procedure', () => {
+  const decision = buildDriverHelpDecision('sig proceedure for ASR?', [record({
+    knowledge_id: 'TEST-ASR-001',
+    canonical_situation: 'Completing an Adult Signature Required delivery',
+    normalized_description: 'An ASR delivery requires an adult signature',
+    driver_question_variants: ['How do I deliver an ASR package'],
+    concise_answer: 'Require valid ID and an adult signature.'
+  })]);
+
+  assert.equal(decision.response_mode, 'ANSWER');
+  assert.equal(decision.selected_records[0].knowledge_id, 'TEST-ASR-001');
+});
+
 test('active approved adjudication can outrank a newer raw version', () => {
   const approved = record({ status: 'READY_ROUTE_APPROVED', version: 1 });
   const newer = record({ status: 'SOURCE_VERIFIED', version: 2 });
@@ -276,7 +289,7 @@ test('all controlled records satisfy the compact initial-answer contract', () =>
     .split('\n')
     .map(JSON.parse);
 
-  assert.equal(records.length, 22);
+  assert.equal(records.length, 29);
   for (const canonical of records) {
     const structure = buildAnswerStructure({
       ...canonical,

@@ -6,3 +6,4 @@
 {"case_id":"OOC-007","utterance":"The alcohol box is leaking and smells strange","expected_mode":"ESCALATE"}
 {"case_id":"OOC-008","utterance":"The customer refuses a COD package","expected_mode":"ESCALATE"}
 {"case_id":"OOC-009","utterance":"How do I deliver a tobacco package?","expected_mode":"ESCALATE"}
+{"case_id":"OOC-010","utterance":"Cancel all call tags for suspected fraud","expected_mode":"ESCALATE"}

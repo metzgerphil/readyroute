@@ -158,7 +158,14 @@ test('empty corpus returns and records a fail-closed escalation', async () => {
 });
 
 test('grounded AI interpretation may select a record but the answer remains canonical record content', async () => {
-  const record = knowledgeRecord();
+  const record = knowledgeRecord({
+    driver_question_patterns: [{
+      utterance: 'Pickup canceled before attempt',
+      response_mode: 'DIRECT_SOURCE_GROUNDED_ANSWER',
+      must_clarify: [],
+      answer_override: { direct_answer: 'Use Code 24.' }
+    }]
+  });
   const supabase = fakeSupabase([record]);
   let interpretationRequest = null;
   const service = createDriverHelpService({
@@ -184,6 +191,12 @@ test('grounded AI interpretation may select a record but the answer remains cano
   });
 
   assert.equal(interpretationRequest.candidate_records[0].knowledge_id, record.knowledge_id);
+  assert.deepEqual(interpretationRequest.candidate_records[0].driver_question_patterns, [{
+    utterance: 'Pickup canceled before attempt',
+    response_mode: 'DIRECT_SOURCE_GROUNDED_ANSWER',
+    information_sufficiency: null,
+    must_clarify: []
+  }]);
   assert.match(interpretationRequest.safety_identifier, /^rr_[a-f0-9]+$/);
   assert.equal(interpretationRequest.safety_identifier.length, 64);
   assert.equal(response.response_mode, 'ANSWER');

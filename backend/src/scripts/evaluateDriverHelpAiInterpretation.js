@@ -39,7 +39,12 @@ function candidateRecord(record) {
     exceptions: record.exceptions || [],
     clarification_requirements: record.clarification_requirements || [],
     driver_question_variants: record.driver_question_variants || [],
-    driver_question_patterns: record.driver_question_patterns || []
+    driver_question_patterns: (record.driver_question_patterns || []).map((pattern) => ({
+      utterance: pattern?.utterance || '',
+      response_mode: pattern?.response_mode || null,
+      information_sufficiency: pattern?.information_sufficiency || null,
+      must_clarify: pattern?.must_clarify || []
+    }))
   };
 }
 
@@ -108,13 +113,17 @@ async function main() {
           response_mode_match: false,
           valid_result: false,
           latency_ms: Date.now() - startedAt,
-          error: error.name || 'Error'
+          error: error.message || error.name || 'Error'
         };
       }
     }
   }
 
-  await Promise.all(Array.from({ length: Math.min(4, evaluationCases.length) }, () => worker()));
+  const configuredConcurrency = Number(process.env.READYROUTE_AI_EVALUATION_CONCURRENCY || 1);
+  const concurrency = Number.isInteger(configuredConcurrency) && configuredConcurrency > 0
+    ? Math.min(configuredConcurrency, 4, evaluationCases.length)
+    : 1;
+  await Promise.all(Array.from({ length: concurrency }, () => worker()));
 
   const validResults = results.filter((result) => result.valid_result);
   const recordMatches = results.filter((result) => result.record_match);

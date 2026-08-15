@@ -4,20 +4,20 @@ Date: 2026-08-15
 
 ## Purpose
 
-This plan catalogs the preserved v1 knowledge corpus for selective review. Archived answers are never activated merely because they appear here. After the first controlled recovery batch, the active RRA corpus contains 22 records.
+This plan catalogs the preserved v1 knowledge corpus for selective review. Archived answers are never activated merely because they appear here. After the second controlled recovery batch, the active RRA corpus contains 29 records.
 
 ## Inventory boundary
 
 | Group | Records | Treatment |
 | --- | ---: | --- |
 | Preserved v1 archive | 150 | Historical recovery source only |
-| Already represented in active v2 | 15 | Do not import again |
-| Remaining archived candidates | 135 | Review selectively |
-| Historically answer-eligible candidates remaining | 89 | Recheck scope and current evidence before reuse |
+| Already represented in active v2 | 20 | Do not import again |
+| Remaining archived candidates | 130 | Review selectively |
+| Historically answer-eligible candidates remaining | 84 | Recheck scope and current evidence before reuse |
 | Historically `PENDING_REVIEW` | 26 | Hold until the unresolved issue is decided |
 | Historically `POTENTIALLY_OUTDATED` | 20 | Hold until current applicability is established |
 
-The 22 active v2 records consist of 15 selectively recovered v1 topics and seven newly approved v2 topics. The full record-by-record ledger is `v1_selective_recovery_inventory.csv` in this directory.
+The 29 active v2 records consist of 20 selectively recovered v1 topics and nine newly created or approved v2 topics. The full record-by-record ledger is `v1_selective_recovery_inventory.csv` in this directory.
 
 ## Topic map of the 135 remaining candidates
 
@@ -25,7 +25,7 @@ The 22 active v2 records consist of 15 selectively recovered v1 topics and seven
 | --- | ---: | --- |
 | Delivery | 25 | Recover in tightly related decision families |
 | FORGE | 31 | Defer version-sensitive items; recover stable workflows selectively |
-| Pickup | 28 | Good source for later high-frequency batches |
+| Pickup | 23 | Good source for later high-frequency batches |
 | DOT / hours / vehicle / safety | 25 | Higher consequence; require narrower review |
 | Security | 7 | Review separately from ordinary delivery help |
 | Qualification | 6 | Manager/training audience; not an early driver-answer priority |
@@ -50,6 +50,22 @@ This family was selected first because drivers ask these questions frequently, t
 | `KNO-DEL-ATTEMPT-LIMIT-001` | What happens after three unsuccessful attempts | Source verified | Narrowed, re-authored, and activated from reviewed v2 evidence |
 
 These records were rebuilt rather than copied. The batch passed 3,249 of 3,249 deterministic assertions across three consecutive runs and all 66 grounded-AI shadow cases, including eight out-of-corpus cases with zero unsafe selections.
+
+## Completed second recovery batch: call-tag outcomes
+
+This family was selected because the records share one source section and one clear decision tree. The archived records were rechecked visually against OP-117 pages 52-54 and 81. Two distinct branches were split out during review so Code 024, Code 081, and the hazmat prohibition could not be blended.
+
+| Active record | Driver decision covered | Current action |
+| --- | --- | --- |
+| `KNO-PUP-CALLTAG-SUCCESS-001` | Successful pickup, Code 029, label placement, and recipient receipt | Re-authored and activated |
+| `KNO-PUP-CALLTAG-NOTREADY-001` | Package not ready and no same-day return, Code 024, signatures, and station handoff | Re-authored and activated |
+| `KNO-PUP-CALLTAG-NOTHOME-001` | Residential recipient not home and package not left, Code 007 | Split into a separate active decision |
+| `KNO-PUP-CALLTAG-REFUSED-001` | Recipient refusal, Code 006, signatures, notation, and check-in | Re-authored and activated |
+| `KNO-PUP-CALLTAG-RESTRICTED-001` | Shipping restriction, inadequate packaging, or damage, Code 081 | Narrowed, re-authored, and activated |
+| `KNO-PUP-CALLTAG-HAZMAT-001` | Hazmat prohibition and original-shipper instructions | Split from the restricted-package record without assigning an unsupported code |
+| `KNO-FORGE-CALLTAG-SCOPE-001` | All-tags action versus individual handling | Narrowed, re-authored, and activated; suspected-fraud procedure remains excluded |
+
+The expanded 29-record corpus passed 3,951 of 3,951 deterministic assertions across three consecutive clean runs and all 79 grounded-AI shadow cases, including nine out-of-corpus cases with zero unsafe selections. The AI evaluation was changed to run sequentially with compact routing metadata so expansion does not create burst-related provider failures.
 
 ## Required review before activation
 
@@ -77,10 +93,9 @@ The batch can move to activation only after the full stability gate passes three
 
 ## Suggested later batches
 
-1. Call-tag pickup outcomes.
-2. Ordinary pickup execution and missed-window situations.
-3. Safe placement, apartments, lockers, and proof photographs.
-4. HAL and transfer workflows.
-5. Hazmat, incident, DOT/HOS, and security families after higher-consequence review.
+1. Ordinary pickup execution and missed-window situations.
+2. Safe placement, apartments, lockers, and proof photographs.
+3. HAL and transfer workflows.
+4. Hazmat, incident, DOT/HOS, and security families after higher-consequence review.
 
 Code 20 remains outside every batch until the product owner supplies or confirms the intended Code 20 information.

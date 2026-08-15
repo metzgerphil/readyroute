@@ -18,8 +18,10 @@ const DRIVER_TOKEN_ALIASES = new Map(Object.entries({
   pckgs: 'package',
   pkg: 'package',
   pkgs: 'package',
+  proceedure: 'procedure',
   pu: 'pickup',
   rte: 'route',
+  sig: 'signature',
   signin: 'login',
   truck: 'vehicle',
   van: 'vehicle',
@@ -32,7 +34,7 @@ const DRIVER_TOKEN_ALIASES = new Map(Object.entries({
 // can be forced into an unrelated delivery-package record.
 const GENERIC_DOMAIN_TOKENS = new Set([
   'box', 'code', 'deliver', 'delivery', 'driver', 'package', 'pickup', 'route',
-  'forge', 'scan', 'scanner', 'service', 'signature', 'vehicle', 'workarea'
+  'forge', 'procedure', 'scan', 'scanner', 'service', 'signature', 'vehicle', 'workarea'
 ]);
 
 // Short operational acronyms carry more meaning than ordinary fuzzy terms.
