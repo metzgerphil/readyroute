@@ -30,7 +30,7 @@ async function provisionStagingManager() {
     auth: { persistSession: false, autoRefreshToken: false }
   });
 
-  const { data: account, error: accountError } = await supabase
+  const { data: existingAccount, error: accountError } = await supabase
     .from('accounts')
     .select('id, company_name')
     .eq('company_name', STAGING_COMPANY_NAME)
@@ -41,8 +41,22 @@ async function provisionStagingManager() {
   if (accountError) {
     throw accountError;
   }
+  let account = existingAccount;
   if (!account) {
-    throw new Error(`Staging account not found: ${STAGING_COMPANY_NAME}`);
+    const { data: createdAccount, error: createAccountError } = await supabase
+      .from('accounts')
+      .insert({
+        company_name: STAGING_COMPANY_NAME,
+        plan: 'starter',
+        subscription_status: 'smoke_test',
+        account_status: 'active',
+        driver_starter_pin: '1234',
+        operations_timezone: 'America/Los_Angeles'
+      })
+      .select('id, company_name')
+      .single();
+    if (createAccountError) throw createAccountError;
+    account = createdAccount;
   }
 
   const { data: existingManager, error: lookupError } = await supabase
