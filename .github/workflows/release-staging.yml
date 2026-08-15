@@ -89,7 +89,6 @@ jobs:
           SUPABASE_URL="$STAGING_SUPABASE_URL" SUPABASE_SERVICE_KEY="$service_key" npm run knowledge:import
 
       - name: Provision the staging manager
-        if: ${{ secrets.STAGING_MANAGER_BOOTSTRAP_EMAIL != '' }}
         env:
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
           STAGING_MANAGER_BOOTSTRAP_EMAIL: ${{ secrets.STAGING_MANAGER_BOOTSTRAP_EMAIL }}
