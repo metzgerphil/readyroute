@@ -27,6 +27,7 @@ function toPublishedRecord(record, extraVariants = [], patterns = [], isPublishe
     applicability: record.applicability || [],
     conditions: record.conditions || [],
     exceptions: record.exceptions || [],
+    related_knowledge_ids: record.related_knowledge_ids || [],
     authoritative_rule: record.authoritative_rule,
     clarification_requirements: record.clarification_requirements || [],
     required_procedure: record.required_procedure || [],

@@ -168,6 +168,38 @@ test('an answer pattern may select a compact source-authored branch presentation
   assert.equal(decision.answer_structure.watch_for, 'Use Code 24 only when no attempt was made.');
 });
 
+test('authored compact answers survive omitted articles and common driver inflections', () => {
+  const decision = buildDriverHelpDecision('Can I reconcile a pickup after leaving the customer?', [record({
+    canonical_situation: 'Pickup reconciliation at the customer location',
+    driver_question_variants: ['reconcile pickup at customer'],
+    driver_question_patterns: [{
+      utterance: 'Can I reconcile the pickup after I leave the customer?',
+      response_mode: 'DIRECT_SOURCE_GROUNDED_ANSWER',
+      must_clarify: [],
+      answer_override: { direct_answer: 'No. Reconcile before leaving.' }
+    }]
+  })]);
+
+  assert.equal(decision.response_mode, 'ANSWER');
+  assert.equal(decision.answer, 'No. Reconcile before leaving.');
+});
+
+test('authored question matching treats written HOS numbers like digits', () => {
+  const decision = buildDriverHelpDecision('How many hours after ten hours off?', [record({
+    canonical_situation: 'HOS driving limit after required off duty time',
+    driver_question_variants: ['hours drive after ten off'],
+    driver_question_patterns: [{
+      utterance: 'How many hours after 10 hours off?',
+      response_mode: 'DIRECT_SOURCE_GROUNDED_ANSWER',
+      must_clarify: [],
+      answer_override: { direct_answer: 'Up to 11 driving hours.' }
+    }]
+  })]);
+
+  assert.equal(decision.response_mode, 'ANSWER');
+  assert.equal(decision.answer, 'Up to 11 driving hours.');
+});
+
 test('ineligible records never produce definitive instructions', () => {
   const decision = buildDriverHelpDecision('sample indicator appeared in training', [record({
     status: 'PENDING_REVIEW',

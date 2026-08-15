@@ -23,6 +23,10 @@ const DRIVER_TOKEN_ALIASES = new Map(Object.entries({
   rte: 'route',
   sig: 'signature',
   signin: 'login',
+  eight: '8',
+  fourteen: '14',
+  leaving: 'leave',
+  ten: '10',
   truck: 'vehicle',
   van: 'vehicle',
   wa: 'workarea'
@@ -133,6 +137,7 @@ function normalizeKnowledgeRecord(row = {}) {
     taxonomy_paths: Array.isArray(row.taxonomy_paths) ? row.taxonomy_paths : [],
     driver_question_variants: Array.isArray(row.driver_question_variants) ? row.driver_question_variants : [],
     driver_question_patterns: Array.isArray(row.driver_question_patterns) ? row.driver_question_patterns : [],
+    related_knowledge_ids: Array.isArray(row.related_knowledge_ids) ? row.related_knowledge_ids : [],
     clarification_requirements: Array.isArray(row.clarification_requirements) ? row.clarification_requirements : [],
     required_procedure: Array.isArray(row.required_procedure) ? row.required_procedure : [],
     required_documentation: Array.isArray(row.required_documentation) ? row.required_documentation : [],
@@ -245,12 +250,25 @@ function rankKnowledgeRecords(question, records, context = {}) {
 function getMatchingQuestionPattern(question, record) {
   const normalizedQuestion = normalizeAuthoredQuestionPattern(question);
   const questionTokens = normalizedQuestion.split(' ').filter(Boolean);
+  const optionalWords = new Set(['a', 'an', 'and', 'at', 'in', 'of', 'the', 'to']);
+  const compact = (tokens) => tokens.filter((token) => !optionalWords.has(token));
+  const compactQuestionTokens = compact(questionTokens);
   return (record.driver_question_patterns || []).find((pattern) => {
     const normalizedPattern = normalizeAuthoredQuestionPattern(pattern?.utterance);
     if (normalizedPattern === normalizedQuestion) return true;
     const patternTokens = normalizedPattern.split(' ').filter(Boolean);
-    return patternTokens.length === questionTokens.length
+    const positionallyEquivalent = patternTokens.length === questionTokens.length
       && patternTokens.every((token, index) => tokenMatchScore(token, questionTokens[index]) >= 0.82);
+    if (positionallyEquivalent) return true;
+
+    // Drivers routinely omit articles and short connector words. Treat those
+    // differences as the same authored question so a concise reviewed answer
+    // does not disappear merely because the driver skipped "the" or "a".
+    const compactPatternTokens = compact(patternTokens);
+    return compactPatternTokens.length === compactQuestionTokens.length
+      && compactPatternTokens.every((token, index) => (
+        tokenMatchScore(token, compactQuestionTokens[index]) >= 0.82
+      ));
   }) || null;
 }
 
@@ -468,6 +486,12 @@ function buildCriticalIntentDecision() {
   return null;
 }
 
+function latestDriverAnswer(question) {
+  const value = String(question || '');
+  const matches = [...value.matchAll(/Driver answered:\s*([\s\S]*?)(?=\. Ready Route asked:|$)/gi)];
+  return matches.length ? matches[matches.length - 1][1].trim() : value;
+}
+
 function buildDriverHelpDecision(question, records, context = {}) {
   const normalizedQuestion = normalizeDriverQuestion(question);
   const bypassRequest = /\b(ignore|invent|pretend)\b/.test(normalizedQuestion);
@@ -480,7 +504,11 @@ function buildDriverHelpDecision(question, records, context = {}) {
       (context.knowledge_ids || []).includes(record.knowledge_id)
       && isProductionEligibleRecord(record)
     ));
-    const reconsidered = rankKnowledgeRecords(question, records, {
+    // Reconsider the selected record using only the newest driver-supplied
+    // detail. Re-ranking the entire accumulated clarification transcript lets
+    // words from Ready Route's own prior prompts hijack the conversation.
+    const newestAnswer = latestDriverAnswer(question);
+    const reconsidered = rankKnowledgeRecords(newestAnswer, records, {
       ...context,
       knowledge_ids: []
     });
@@ -488,11 +516,36 @@ function buildDriverHelpDecision(question, records, context = {}) {
     const plannedCandidate = reconsidered.find(({ record }) => (
       record.knowledge_id === plannedRecord?.knowledge_id
     ));
+    const recordsAreRelated = Boolean(plannedRecord && replacement) && (
+      (plannedRecord.related_knowledge_ids || []).includes(replacement.record.knowledge_id)
+      || (replacement.record.related_knowledge_ids || []).includes(plannedRecord.knowledge_id)
+    );
+    const explicitSubjects = tokenize(newestAnswer)
+      .filter((token) => EXACT_OPERATIONAL_TOKENS.has(token));
+    const replacementSurface = tokenize([
+      replacement?.record?.canonical_situation,
+      ...(replacement?.record?.driver_question_variants || [])
+    ].join(' '));
+    const replacementNamesExplicitSubject = explicitSubjects.some((subject) => (
+      replacementSurface.includes(subject)
+    ));
     const shouldSwitchRecord = plannedRecord
       && replacement
       && replacement.record.knowledge_id !== plannedRecord.knowledge_id
+      && (recordsAreRelated || replacementNamesExplicitSubject)
       && replacement.score >= ANSWER_THRESHOLD
-      && (!plannedCandidate || replacement.score - plannedCandidate.score > CLARIFICATION_MARGIN);
+      && (
+        !plannedCandidate
+        || replacement.score - plannedCandidate.score > CLARIFICATION_MARGIN
+        || replacementNamesExplicitSubject
+      );
+    if (shouldSwitchRecord) {
+      return buildDriverHelpDecision(newestAnswer, records, {
+        last_response_mode: context.last_response_mode,
+        knowledge_ids: [],
+        clarification_plan_active: false
+      });
+    }
     if (plannedRecord && !shouldSwitchRecord) {
       const plannedCandidates = [{
         knowledge_id: plannedRecord.knowledge_id,
