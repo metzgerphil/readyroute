@@ -78,15 +78,10 @@
                 <label for="company">Company / CSA name <span class="required" aria-hidden="true">*</span></label>
                 <input id="company" name="company" autocomplete="organization" required>
               </div>
-              <div class="field">
+              <div class="field full">
                 <label for="drivers">Number of drivers <span class="required" aria-hidden="true">*</span></label>
                 <input id="drivers" name="drivers" type="number" inputmode="numeric" min="1" max="5000" step="1" placeholder="25" required>
                 <p class="field-hint">Use your expected active driver count.</p>
-              </div>
-              <div class="field">
-                <label for="csas">Number of CSAs</label>
-                <input id="csas" name="csas" type="number" inputmode="numeric" min="1" max="500" step="1" placeholder="1">
-                <p class="field-hint">Optional if you operate one company.</p>
               </div>
               <div class="honeypot" aria-hidden="true">
                 <label for="website">Website</label><input id="website" name="website" tabindex="-1" autocomplete="off">
@@ -156,7 +151,6 @@
         company: formData.get('company'),
         role: formData.get('role'),
         drivers: formData.get('drivers'),
-        csas: formData.get('csas'),
         source_page: window.location.href
       };
 
