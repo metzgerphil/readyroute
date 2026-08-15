@@ -62,8 +62,12 @@ jobs:
             if [[ "$version" > "$current_version" ]]; then
               echo "Applying staging migration $version"
               jq -Rs '{query: .}' < "$migration" > /tmp/staging-migration.json
-              curl --fail-with-body --silent --show-error --request POST "${headers[@]}" \
-                --data @/tmp/staging-migration.json "$query_url" >/dev/null
+              migration_response=''
+              if ! migration_response="$(curl --fail-with-body --silent --show-error --request POST "${headers[@]}" \
+                --data @/tmp/staging-migration.json "$query_url")"; then
+                echo "$migration_response" >&2
+                exit 1
+              fi
               current_version="$version"
             fi
           done
