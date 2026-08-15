@@ -4,7 +4,7 @@
 
 This is the clean v2 baseline created on 2026-08-15. The active corpus intentionally contains no operational sources, records, references, adjudications, aliases, or evaluation cases.
 
-Until new material passes review and publication gates, Ready Route Answers must return an honest knowledge-gap or escalation response. It must not reuse the archived v1 dataset, conversation memory, general model knowledge, or plausible inference.
+Ready Route Answers accepts two publication paths: documentary source verification and explicit Ready Route product-owner verification. Owner-provided operational knowledge does not require a matching PDF, but it must be preserved as an approved adjudication with exact scope and provenance. General model knowledge and plausible inference remain prohibited.
 
 ## Active locations
 
@@ -19,10 +19,11 @@ Until new material passes review and publication gates, Ready Route Answers must
 
 1. Preserve each supplied source's original identity and bytes in the private source area.
 2. Register the source before extracting claims.
-3. Create narrowly scoped records with exact evidence locators.
-4. Mark unresolved, conflicting, or version-sensitive material as ineligible for definitive answers.
-5. Add real driver-language evaluation cases.
-6. Run `npm run knowledge:release`.
-7. Review the manifest and evaluation results before importing anything into an answer environment.
+3. Create narrowly scoped records with exact evidence locators or an exact owner-verification trace.
+4. When the product owner verifies a procedure without documentary support, preserve it through a `READY_ROUTE_APPROVED` adjudication instead of labeling it source-verified.
+5. Mark unresolved, conflicting, or version-sensitive material as ineligible for definitive answers unless the product owner explicitly resolves it.
+6. Add real driver-language evaluation cases.
+7. Run `npm run knowledge:release`.
+8. Review the manifest and evaluation results before importing anything into an answer environment.
 
 The archived v1 corpus is documented in `docs/ready-route-answers-reset-2026-08-15.md`. It is not part of this active knowledge system.
