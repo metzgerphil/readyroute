@@ -88,11 +88,20 @@ jobs:
           echo "::add-mask::$service_key"
           SUPABASE_URL="$STAGING_SUPABASE_URL" SUPABASE_SERVICE_KEY="$service_key" npm run knowledge:import
 
+      - name: Prepare an ephemeral staging test credential
+        env:
+          CONFIGURED_STAGING_PASSWORD: ${{ secrets.STAGING_MANAGER_BOOTSTRAP_PASSWORD }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          runtime_password="${CONFIGURED_STAGING_PASSWORD:-$(openssl rand -hex 24)}"
+          echo "::add-mask::$runtime_password"
+          echo "STAGING_MANAGER_RUNTIME_PASSWORD=$runtime_password" >> "$GITHUB_ENV"
+
       - name: Provision the staging manager
         env:
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
           STAGING_MANAGER_BOOTSTRAP_EMAIL: ${{ secrets.STAGING_MANAGER_BOOTSTRAP_EMAIL }}
-          STAGING_MANAGER_BOOTSTRAP_PASSWORD: ${{ secrets.STAGING_MANAGER_BOOTSTRAP_PASSWORD }}
         working-directory: backend
         shell: bash
         run: |
@@ -103,7 +112,9 @@ jobs:
           service_key="$(jq -r '.[] | select(.name == "service_role") | (.api_key // .key)' <<<"$keys_response")"
           test -n "$service_key" && test "$service_key" != "null"
           echo "::add-mask::$service_key"
-          SUPABASE_URL="$STAGING_SUPABASE_URL" SUPABASE_SERVICE_KEY="$service_key" node src/scripts/provisionStagingManager.js
+          SUPABASE_URL="$STAGING_SUPABASE_URL" SUPABASE_SERVICE_KEY="$service_key" \
+            STAGING_MANAGER_BOOTSTRAP_PASSWORD="$STAGING_MANAGER_RUNTIME_PASSWORD" \
+            node src/scripts/provisionStagingManager.js
 
       - name: Calculate expected staging corpus counts
         working-directory: backend
@@ -173,9 +184,10 @@ jobs:
         env:
           EXPECTED_COMMIT: ${{ github.sha }}
           STAGING_MANAGER_BOOTSTRAP_EMAIL: ${{ secrets.STAGING_MANAGER_BOOTSTRAP_EMAIL }}
-          STAGING_MANAGER_BOOTSTRAP_PASSWORD: ${{ secrets.STAGING_MANAGER_BOOTSTRAP_PASSWORD }}
         working-directory: backend
-        run: node src/scripts/runStagingRraStress.js --repeat 3 --output /tmp/rra-live-stress-log.json
+        run: >-
+          STAGING_MANAGER_BOOTSTRAP_PASSWORD="$STAGING_MANAGER_RUNTIME_PASSWORD"
+          node src/scripts/runStagingRraStress.js --repeat 3 --output /tmp/rra-live-stress-log.json
 
       - name: Preserve the live RRA test log
         if: always()
