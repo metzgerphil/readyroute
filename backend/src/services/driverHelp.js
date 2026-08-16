@@ -373,6 +373,62 @@ function applyAiInterpretation(interpretation, question, records, baseDecision) 
   };
 }
 
+function buildControlledInterpretationFallback(question, records, baseDecision) {
+  const normalized = normalizeDriverQuestion(question);
+  const genericSignature = (
+    /\bsignature (?:required )?(?:package|pkg)\b|\bsig (?:package|pkg)\b/.test(normalized)
+    && !/\b(?:asr|dsr|isr)\b/.test(normalized)
+  );
+  if (genericSignature) {
+    return applyAiInterpretation({
+      knowledge_id: 'KNO-DEL-SIG-DSR-001',
+      decision: 'CLARIFY',
+      answer_pattern_id: null,
+      clarification_requirement: 'What signature service does FORGE show?',
+      confidence: 1
+    }, question, records, baseDecision);
+  }
+
+  const deliveryPhoto = (
+    /\b(?:photo|picture)\b/.test(normalized)
+    && /\bdeliver(?:y|ed)?\b/.test(normalized)
+    && !/\b(?:record|recording|video|film|filming|surveillance)\b/.test(normalized)
+  );
+  if (deliveryPhoto) {
+    return applyAiInterpretation({
+      knowledge_id: 'KNO-DEL-PPOD-001',
+      decision: 'CLARIFY',
+      answer_pattern_id: null,
+      clarification_requirement: 'Is this a completed delivery photo or an unsuccessful-attempt photo?',
+      confidence: 1
+    }, question, records, baseDecision);
+  }
+
+  const closedPickupWithZeroPackages = (
+    /\bpickup\b/.test(normalized)
+    && /\b(?:closed|locked)\b/.test(normalized)
+    && /\b(?:zero|no|nothing) packages?\b/.test(normalized)
+  );
+  if (closedPickupWithZeroPackages) {
+    const record = selectCanonicalRecordVersions(records).find((item) => (
+      item.knowledge_id === 'KNO-PUP-CANCELED-001'
+    ));
+    const patternIndex = (record?.driver_question_patterns || []).findIndex((pattern) => (
+      pattern?.answer_override?.direct_answer
+      && /Use Code 11 because you attempted the pickup/i.test(pattern.answer_override.direct_answer)
+    ));
+    return applyAiInterpretation({
+      knowledge_id: 'KNO-PUP-CANCELED-001',
+      decision: 'ANSWER',
+      answer_pattern_id: patternIndex >= 0 ? `KNO-PUP-CANCELED-001::${patternIndex}` : null,
+      clarification_requirement: null,
+      confidence: 1
+    }, question, records, baseDecision);
+  }
+
+  return null;
+}
+
 function buildInterpretationResult({
   status,
   baseDecision,
@@ -772,8 +828,12 @@ function createDriverHelpService({
 
     // AI interprets language only. Published record content remains the sole
     // source of every driver-facing answer, step, code, warning, and More Info.
-    const interpretedOrBaseDecision = effectiveAiInterpretationMode === 'ACTIVE' && interpretedDecision
-      ? interpretedDecision
+    const controlledFallbackDecision = effectiveAiInterpretationMode === 'ACTIVE' && !interpretedDecision
+      ? buildControlledInterpretationFallback(resolvedQuestion, records, baseDecision)
+      : null;
+    if (controlledFallbackDecision) interpretationMode = 'CONTROLLED_FALLBACK';
+    const interpretedOrBaseDecision = effectiveAiInterpretationMode === 'ACTIVE'
+      ? (interpretedDecision || controlledFallbackDecision || baseDecision)
       : baseDecision;
     const actionableBaseDecision = {
       ...interpretedOrBaseDecision,

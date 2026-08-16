@@ -476,6 +476,38 @@ test('invalid or unavailable AI interpretation falls back to deterministic retri
   assert.equal(response.interpretation_mode, 'DETERMINISTIC_FALLBACK');
 });
 
+test('controlled delivery-photo clarification survives an AI provider failure', async () => {
+  const photoRecord = knowledgeRecord({
+    knowledge_id: 'KNO-DEL-PPOD-001',
+    canonical_situation: 'Taking a delivery photo',
+    normalized_description: 'A driver asks about proof-of-delivery or unsuccessful-attempt photos.',
+    driver_question_variants: ['Do I need a delivery photo'],
+    clarification_requirements: [
+      'Is this a completed delivery photo or an unsuccessful-attempt photo?'
+    ]
+  });
+  const service = createDriverHelpService({
+    supabase: fakeSupabase([photoRecord]),
+    now: () => new Date(0),
+    aiInterpretationMode: 'ACTIVE',
+    aiInterpreter: async () => {
+      throw new Error('temporary provider failure');
+    }
+  });
+
+  const response = await service.answerQuestion({
+    accountId: '00000000-0000-0000-0000-000000000001',
+    driverId: '00000000-0000-0000-0000-000000000002',
+    question: 'Do I need to take a picture of this delivery?',
+    includeDiagnostics: true
+  });
+
+  assert.equal(response.response_mode, 'CLARIFY');
+  assert.match(response.clarification_prompt, /completed delivery photo/i);
+  assert.equal(response.interpretation_mode, 'CONTROLLED_FALLBACK');
+  assert.equal(response.interpretation_result.status, 'ERROR');
+});
+
 test('active AI interprets exact data-authored wording instead of accepting a keyword match blindly', async () => {
   const record = knowledgeRecord({ clarification_requirements: [] });
   const supabase = fakeSupabase([record]);
