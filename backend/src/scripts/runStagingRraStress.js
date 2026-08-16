@@ -74,9 +74,9 @@ const CASES = [
   ['VLAD_SAFE_PORCH', 'It looks like I can safely leave this on the porch, is that ok without a signature?', 'ANSWER', 'KNO-DEL-PLACEMENT-HAZARD-001', 'Yes, only if the package is eligible for residential driver release.'],
   ['VLAD_SIGNATURE_CLARIFIER', "I'm at the house with the signature package, but no one's home. What should I do?", 'CLARIFY', null, null],
   ['VLAD_BIZ_CLOSED', 'biz closed', 'ANSWER', 'KNO-DEL-BUS-CLOSED-001', 'Do not leave the package unless an authorized release path applies; use Code 011 for a weekend closure, otherwise use Code 004 when release is not permitted.'],
-  ['VLAD_GAP_WEIGHT', 'The scanner is asking me for the weight of this pickup box.', 'ESCALATE', null, null],
-  ['VLAD_GAP_RECEIPT', 'The customer wants a receipt for the packages I just picked up.', 'ESCALATE', null, null],
-  ['VLAD_GAP_DEVICE_TIME', "Forge won't let me log in, it says the date on my device is wrong.", 'ESCALATE', null, null]
+  ['VLAD_FORGE_WEIGHT', 'The scanner is asking me for the weight of this pickup box.', 'CLARIFY', null, null],
+  ['VLAD_FORGE_RECEIPT', 'The customer wants a receipt for the packages I just picked up.', 'ANSWER', 'KNO-PUP-RECEIPT-001', null],
+  ['VLAD_FORGE_DEVICE_TIME', "Forge won't let me log in, it says the date on my device is wrong.", 'ANSWER', 'KNO-FORGE-DEVICE-TIME-001', null]
 ].map(([caseId, question, expectedMode, expectedKnowledgeId, expectedDirectAnswer]) => ({
   case_id: caseId,
   question,
