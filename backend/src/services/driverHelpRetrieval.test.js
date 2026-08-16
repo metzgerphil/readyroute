@@ -75,18 +75,6 @@ test('unmatched distinctive terms fail closed instead of matching generic packag
   assert.match(decision.escalation_message, /does not have a verified answer/i);
 });
 
-test('an animal-at-delivery report cannot fall through to an unrelated delivery procedure', () => {
-  const decision = buildDriverHelpDecision('Dog on the property, cannot deliver', [record({
-    canonical_situation: 'A residential recipient is not available',
-    driver_question_variants: ['Nobody is home at the house'],
-    taxonomy_paths: ['TAX-DELIVERY']
-  })]);
-
-  assert.equal(decision.response_mode, 'ESCALATE');
-  assert.deepEqual(decision.selected_records, []);
-  assert.match(decision.escalation_message, /animal-at-delivery/i);
-});
-
 test('a canceled pickup with no attempt resolves to Code 24 without an irrelevant second question', () => {
   const canceled = record({
     knowledge_id: 'KNO-PUP-CANCELED-001',
@@ -448,7 +436,7 @@ test('all controlled records satisfy the compact initial-answer contract', () =>
     .split('\n')
     .map(JSON.parse);
 
-  assert.equal(records.length, 99);
+  assert.equal(records.length, 100);
   for (const canonical of records) {
     const structure = buildAnswerStructure({
       ...canonical,

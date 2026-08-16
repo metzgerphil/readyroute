@@ -618,22 +618,6 @@ function buildDriverHelpDecision(question, records, context = {}) {
   const protectedRequest = /\b(hidden|system) (instructions|prompt)\b|\breveal (your )?(instructions|prompt)\b/.test(normalizedQuestion);
   if (!normalizedQuestion || bypassRequest || protectedRequest) return escalation();
   if (/^(?:what is )?code \d{1,3}$/.test(normalizedQuestion)) return escalation();
-  const unsupportedAnimalHazard = (
-    /\b(?:loose animal|aggressive animal)\b/.test(normalizedQuestion)
-    || (
-      /\bdog\b/.test(normalizedQuestion)
-      && /\b(?:loose|aggressive|property|yard|unsafe|cannot deliver|cant deliver|wont deliver)\b/.test(normalizedQuestion)
-      && !/\b(?:detection dog|security dog|service dog)\b/.test(normalizedQuestion)
-    )
-  );
-  if (unsupportedAnimalHazard) {
-    return escalation(
-      [],
-      0,
-      'Ready Route Answers does not yet have an approved animal-at-delivery procedure. Do not substitute an unrelated delivery procedure; contact your manager or station for the current direction.'
-    );
-  }
-
   if (context.clarification_plan_active === true) {
     const newestAnswer = latestDriverAnswer(question);
     const plannedRecord = selectCanonicalRecordVersions(records).find((record) => (

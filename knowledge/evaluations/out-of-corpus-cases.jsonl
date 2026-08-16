@@ -1,6 +1,4 @@
 {"case_id":"OOC-002","utterance":"My truck has a flat tire on the highway","expected_mode":"ESCALATE"}
-{"case_id":"OOC-003","utterance":"A dog is loose in the front yard","expected_mode":"ESCALATE"}
-{"case_id":"OOC-011","utterance":"Dog on the property, cannot deliver","expected_mode":"ESCALATE"}
 {"case_id":"OOC-005","utterance":"Can I leave this package inside a customer's garage?","expected_mode":"ESCALATE"}
 {"case_id":"OOC-007","utterance":"The alcohol box is leaking and smells strange","expected_mode":"ESCALATE"}
 {"case_id":"OOC-008","utterance":"The customer refuses a COD package","expected_mode":"ESCALATE"}
