@@ -189,6 +189,33 @@ function referenceRecord(knowledgeId, conciseAnswer, canonicalSituation) {
   };
 }
 
+test('ordinary record clarifications retain the selected record and resolve a yes or no reply', () => {
+  const record = knowledgeRecord({
+    driver_question_variants: ['Pickup canceled at the customer location']
+  });
+  const first = buildDeterministicRuntimeDecision(
+    'My pickup was canceled at the customer location',
+    [record],
+    {}
+  );
+  assert.equal(first.decision.response_mode, 'CLARIFY');
+  assert.deepEqual(first.decision.clarification_plan, [
+    'Was any attempt made at the pickup location?'
+  ]);
+
+  const context = buildNextSessionContext(
+    {},
+    'My pickup was canceled at the customer location',
+    first.decision
+  );
+  assert.equal(context.clarification_plan_active, true);
+  assert.deepEqual(context.knowledge_ids, [record.knowledge_id]);
+
+  const second = buildDeterministicRuntimeDecision('yes', [record], context);
+  assert.equal(second.decision.response_mode, 'ANSWER');
+  assert.equal(second.decision.selected_records[0].knowledge_id, record.knowledge_id);
+});
+
 test('short replies resolve only against pending data-authored choices', () => {
   const context = {
     pending_clarification_options: [

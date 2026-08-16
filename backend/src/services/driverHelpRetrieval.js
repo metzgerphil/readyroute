@@ -253,7 +253,7 @@ function getMatchingQuestionPattern(question, record) {
   const optionalWords = new Set(['a', 'an', 'and', 'at', 'in', 'of', 'the', 'to']);
   const compact = (tokens) => tokens.filter((token) => !optionalWords.has(token));
   const compactQuestionTokens = compact(questionTokens);
-  return (record.driver_question_patterns || []).find((pattern) => {
+  const matches = (record.driver_question_patterns || []).filter((pattern) => {
     const normalizedPattern = normalizeAuthoredQuestionPattern(pattern?.utterance);
     if (normalizedPattern === normalizedQuestion) return true;
     const patternTokens = normalizedPattern.split(' ').filter(Boolean);
@@ -269,7 +269,11 @@ function getMatchingQuestionPattern(question, record) {
       && compactPatternTokens.every((token, index) => (
         tokenMatchScore(token, compactQuestionTokens[index]) >= 0.82
       ));
-  }) || null;
+  });
+  // A later reviewed correction can intentionally refine the presentation for
+  // an utterance that was already covered by a broader routing-only case.
+  // Prefer that authored answer without deleting the older evaluation history.
+  return matches.find((pattern) => pattern?.answer_override) || matches[0] || null;
 }
 
 function hasExactQuestionVariant(question, record) {
@@ -474,6 +478,34 @@ function questionSatisfiesClarificationRequirement(requirement, question) {
   if (/sra form have a barcode/.test(normalizedRequirement)) {
     return /\b(?:has|have|with|without|no|not) (?:a )?barcode\b/.test(normalizedQuestion);
   }
+  if (/physically recovered/.test(normalizedRequirement)) {
+    return /\b(?:recover|recovered|retrieved|picked up)\b/.test(normalizedQuestion);
+  }
+  if (/correct address known/.test(normalizedRequirement)) {
+    return /\bcorrect address\b/.test(normalizedQuestion);
+  }
+  if (/redelivered today|redeliver(?:ed)? (?:it )?today/.test(normalizedRequirement)) {
+    return /\b(?:redeliver|deliver)\b.*\b(?:today|same day)\b/.test(normalizedQuestion);
+  }
+  if (/marked known as hazmat|hazmat or dangerous goods/.test(normalizedRequirement)) {
+    return /\b(?:hazmat|dangerous goods|hazardous)\b/.test(normalizedQuestion);
+  }
+  if (/leaking or damaged/.test(normalizedRequirement)) {
+    return /\b(?:leak|leaking|damaged|damage|punctured|spilled)\b/.test(normalizedQuestion);
+  }
+  if (/yellow radioactive iii or blue dangerous when wet/.test(normalizedRequirement)) {
+    return /\b(?:radioactive(?: iii)?|dangerous when wet)\b/.test(normalizedQuestion);
+  }
+  if (/recurring day single date or date range/.test(normalizedRequirement)) {
+    return /\b(?:every (?:monday|tuesday|wednesday|thursday|friday|saturday|sunday|day|week)|recurring|single date|date range)\b/.test(normalizedQuestion);
+  }
+  if (/residential driver release package/.test(normalizedRequirement)) {
+    return /\b(?:residential|apartment|house|home)\b/.test(normalizedQuestion)
+      && /\b(?:driver release|release eligible|eligible|no signature)\b/.test(normalizedQuestion);
+  }
+  if (/locker full broken or wrong/.test(normalizedRequirement)) {
+    return /\b(?:full|broken|won t fit|wont fit|does not fit|wrong locker)\b/.test(normalizedQuestion);
+  }
   return false;
 }
 
@@ -662,6 +694,7 @@ function buildDriverHelpDecision(question, records, context = {}) {
       buildClarificationPrompt(unansweredRequirements[0])
     );
     decision.clarification_requirement = unansweredRequirements[0];
+    decision.clarification_plan = unansweredRequirements;
     return decision;
   }
 
