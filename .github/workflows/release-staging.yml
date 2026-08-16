@@ -2,6 +2,11 @@ name: Release Staging Driver Help
 
 on:
   workflow_dispatch:
+    inputs:
+      manager_reset_email:
+        description: Optional active staging manager email needing a one-time reset link
+        required: false
+        type: string
 
 permissions:
   contents: read
@@ -196,6 +201,51 @@ jobs:
           path: /tmp/rra-live-stress-log.json
           if-no-files-found: warn
           retention-days: 30
+
+      - name: Prepare optional manager password reset link
+        if: ${{ inputs.manager_reset_email != '' }}
+        env:
+          TARGET_MANAGER_EMAIL: ${{ inputs.manager_reset_email }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          login_payload="$(jq -n \
+            --arg email 'rra-staging-automation@readyroute.test' \
+            --arg password "$STAGING_MANAGER_RUNTIME_PASSWORD" \
+            '{email: $email, password: $password}')"
+          login_response="$(curl --fail-with-body --silent --show-error \
+            -H 'Content-Type: application/json' \
+            --data "$login_payload" \
+            "$STAGING_BACKEND_URL/auth/manager/login")"
+          manager_token="$(jq -r '.token // empty' <<<"$login_response")"
+          test -n "$manager_token"
+          echo "::add-mask::$manager_token"
+
+          managers_response="$(curl --fail-with-body --silent --show-error \
+            -H "Authorization: Bearer $manager_token" \
+            "$STAGING_BACKEND_URL/manager/manager-users")"
+          manager_id="$(jq -r --arg email "${TARGET_MANAGER_EMAIL,,}" \
+            '.manager_users[] | select((.email | ascii_downcase) == $email) | .id' \
+            <<<"$managers_response" | head -n 1)"
+          test -n "$manager_id" || { echo 'The requested active manager was not found in the staging workspace.' >&2; exit 1; }
+
+          reset_response="$(curl --fail-with-body --silent --show-error \
+            -X POST \
+            -H "Authorization: Bearer $manager_token" \
+            "$STAGING_BACKEND_URL/manager/manager-users/$manager_id/password-reset")"
+          reset_url="$(jq -r '.reset_url // empty' <<<"$reset_response")"
+          test -n "$reset_url" || { echo 'The staging server did not return a reset link.' >&2; exit 1; }
+          echo "::add-mask::$reset_url"
+          printf '%s\n' "$reset_url" > /tmp/readyroute-staging-reset-url.txt
+
+      - name: Preserve optional manager reset link briefly
+        if: ${{ inputs.manager_reset_email != '' }}
+        uses: actions/upload-artifact@v6
+        with:
+          name: readyroute-staging-manager-reset-${{ github.run_id }}
+          path: /tmp/readyroute-staging-reset-url.txt
+          if-no-files-found: error
+          retention-days: 1
 
       - name: Release summary
         run: |
