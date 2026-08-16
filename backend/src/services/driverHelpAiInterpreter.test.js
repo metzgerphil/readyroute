@@ -98,6 +98,8 @@ test('AI interpretation sends only constrained routing fields with a strict sche
   assert.match(requestBody.input[0].content[0].text, /Return NONE when the stated subject is not covered/i);
   assert.match(requestBody.input[0].content[0].text, /reserve NONE for questions whose situation does not safely match/i);
   assert.match(requestBody.input[0].content[0].text, /do not return NONE merely because the subtype is not yet known/i);
+  assert.deepEqual(requestBody.reasoning, { effort: 'low', context: 'current_turn' });
+  assert.equal(requestBody.text.verbosity, 'low');
   assert.equal(requestBody.text.format.strict, true);
   assert.deepEqual(requestBody.text.format.schema, responseSchema(candidates));
   assert.equal(result.decision, 'CLARIFY');
@@ -173,6 +175,37 @@ test('generic signature-package questions always collect the signature service f
   assert.equal(result.decision, 'CLARIFY');
   assert.equal(result.clarification_requirement, 'What signature service does FORGE show?');
   assert.equal(result.facts.recipient_present, 'NO');
+});
+
+test('a verbal shipper claim cannot override an explicit signature requirement', () => {
+  const shipperCandidate = {
+    knowledge_id: 'KNO-DEL-SHIPPER-RELEASE-001',
+    clarification_requirements: [],
+    driver_question_patterns: [{
+      pattern_id: 'KNO-DEL-SHIPPER-RELEASE-001::2',
+      utterance: 'The customer says the shipper told them I can just leave it, no signature needed. Is that true?',
+      response_mode: 'DIRECT_SOURCE_GROUNDED_ANSWER'
+    }]
+  };
+  const signatureCandidate = {
+    knowledge_id: 'KNO-DEL-SIG-DSR-001',
+    clarification_requirements: ['What signature service does FORGE show?'],
+    driver_question_patterns: []
+  };
+  const result = validateInterpretation({
+    selection: 'SELECT',
+    knowledge_id: signatureCandidate.knowledge_id,
+    decision: 'CLARIFY',
+    answer_pattern_id: null,
+    clarification_requirement: 'What signature service does FORGE show?',
+    facts: { signature_service: 'UNKNOWN' },
+    confidence: 0.97
+  }, [signatureCandidate, shipperCandidate], undefined,
+  'The package says signature required, but the customer says the shipper told me to leave it.');
+
+  assert.equal(result.knowledge_id, shipperCandidate.knowledge_id);
+  assert.equal(result.decision, 'ANSWER');
+  assert.equal(result.answer_pattern_id, 'KNO-DEL-SHIPPER-RELEASE-001::2');
 });
 
 test('explicit out-of-corpus exceptions reject a model selection that crosses the boundary', () => {

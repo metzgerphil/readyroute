@@ -417,7 +417,7 @@ test('AI-selected signature clarification presents ASR DSR and ISR buttons', asy
   assert.deepEqual(response.clarification_options.map((option) => option.query), ['ASR', 'DSR', 'ISR']);
 });
 
-test('grounded AI receives every published record instead of an alphabetical first-page cutoff', async () => {
+test('grounded AI receives a relevant bounded shortlist instead of the full corpus', async () => {
   const records = Array.from({ length: 55 }, (_, index) => knowledgeRecord({
     knowledge_id: `KNO-TEST-${String(index + 1).padStart(3, '0')}`,
     canonical_situation: `Test situation ${index + 1}`,
@@ -426,6 +426,7 @@ test('grounded AI receives every published record instead of an alphabetical fir
     clarification_requirements: []
   }));
   const target = records.at(-1);
+  target.driver_question_variants = ['A completely natural paraphrase that needs semantic interpretation'];
   const supabase = fakeSupabase(records);
   let candidateIds = [];
   const service = createDriverHelpService({
@@ -450,9 +451,71 @@ test('grounded AI receives every published record instead of an alphabetical fir
     question: 'A completely natural paraphrase that needs semantic interpretation'
   });
 
-  assert.equal(candidateIds.length, records.length);
+  assert.ok(candidateIds.length <= 16);
+  assert.ok(candidateIds.length < records.length);
   assert.equal(candidateIds.includes(target.knowledge_id), true);
   assert.equal(response.trace[0].knowledge_id, target.knowledge_id);
+});
+
+test('before or after dispatch clarification uses meaningful options and understands a natural reply', () => {
+  const context = {
+    pending_clarification_requirement: 'Was the package discovered before or after dispatch?',
+    pending_clarification_options: [
+      {
+        knowledge_id: 'KNO-FORGE-MANIFEST-PREVIEW-001',
+        label: 'Before dispatch',
+        query: 'before dispatch package is on the wrong route'
+      },
+      {
+        knowledge_id: 'KNO-DEL-MISLOAD-AFTERDISPATCH-001',
+        label: 'After dispatch',
+        query: 'found another route package after dispatch'
+      }
+    ]
+  };
+
+  assert.equal(
+    resolveClarificationSelection('It was before dispatch', context).knowledge_id,
+    'KNO-FORGE-MANIFEST-PREVIEW-001'
+  );
+  assert.equal(
+    resolveClarificationSelection('after', context).knowledge_id,
+    'KNO-DEL-MISLOAD-AFTERDISPATCH-001'
+  );
+});
+
+test('completed-photo clarification maps to the approved completed-delivery branch', () => {
+  const ppod = knowledgeRecord({
+    knowledge_id: 'KNO-DEL-PPOD-001',
+    canonical_situation: 'Photographic proof of delivery and unsuccessful-attempt photos',
+    clarification_requirements: ['Is this a completed delivery photo or an unsuccessful-attempt photo?'],
+    driver_question_patterns: [{
+      utterance: 'What should my delivery photo show?',
+      response_mode: 'DIRECT_SOURCE_GROUNDED_ANSWER',
+      must_clarify: [],
+      answer_override: {
+        direct_answer: 'Show the package in its release location.',
+        steps: ['Capture the package at the actual release location.'],
+        watch_for: 'Do not use a blurry image.'
+      }
+    }]
+  });
+  const context = {
+    pending_clarification_requirement: 'Is this a completed delivery photo or an unsuccessful-attempt photo?',
+    pending_clarification_options: [{
+      knowledge_id: ppod.knowledge_id,
+      version: 1,
+      label: 'Completed delivery photo',
+      query: 'What should my delivery photo show?'
+    }]
+  };
+  const result = buildDeterministicRuntimeDecision('completed delivery photo', [ppod], context);
+
+  assert.equal(result.decision.response_mode, 'ANSWER');
+  assert.equal(result.decision.answer_structure.direct_answer, 'Show the package in its release location.');
+  assert.deepEqual(result.decision.answer_structure.steps, [
+    'Capture the package at the actual release location.'
+  ]);
 });
 
 test('invalid or unavailable AI interpretation falls back to deterministic retrieval', async () => {
@@ -474,6 +537,44 @@ test('invalid or unavailable AI interpretation falls back to deterministic retri
   assert.equal(response.response_mode, 'ANSWER');
   assert.equal(response.answer, record.concise_answer);
   assert.equal(response.interpretation_mode, 'DETERMINISTIC_FALLBACK');
+});
+
+test('provider timeout cannot turn a signature-required package into shipper release', async () => {
+  const record = knowledgeRecord({
+    knowledge_id: 'KNO-DEL-SHIPPER-RELEASE-001',
+    canonical_situation: 'Shipper-authorized release shown in FORGE',
+    normalized_description: 'Verbal permission is not authorization and signature services cannot use shipper release.',
+    taxonomy_paths: ['TAX-DELIVERY'],
+    clarification_requirements: [],
+    driver_question_variants: ['Customer says the shipper told them I can leave it'],
+    driver_question_patterns: [{
+      utterance: 'The customer says the shipper told them I can just leave it, no signature needed. Is that true?',
+      response_mode: 'DIRECT_SOURCE_GROUNDED_ANSWER',
+      must_clarify: [],
+      answer_override: {
+        direct_answer: 'No. A customer statement is not shipper-release authorization.',
+        steps: ['Follow the package’s signature requirement.'],
+        watch_for: 'Do not substitute verbal permission for FORGE authorization.'
+      }
+    }],
+    concise_answer: 'Release only when FORGE explicitly authorizes a no-signature-service package.'
+  });
+  const service = createDriverHelpService({
+    supabase: fakeSupabase([record]),
+    now: () => new Date(0),
+    aiInterpretationMode: 'ACTIVE',
+    aiInterpreter: async () => { throw new Error('provider timeout'); }
+  });
+
+  const response = await service.answerQuestion({
+    accountId: '00000000-0000-0000-0000-000000000001',
+    driverId: '00000000-0000-0000-0000-000000000002',
+    question: 'The package says signature required, but the customer says the shipper told me to leave it.'
+  });
+
+  assert.equal(response.response_mode, 'ANSWER');
+  assert.equal(response.answer_structure.direct_answer, 'No. A customer statement is not shipper-release authorization.');
+  assert.equal(response.interpretation_mode, 'CONTROLLED_FALLBACK');
 });
 
 test('controlled delivery-photo clarification survives an AI provider failure', async () => {

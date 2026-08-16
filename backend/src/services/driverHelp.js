@@ -8,8 +8,10 @@ const {
   buildDriverHelpDecision,
   buildPresentedAnswer,
   formatDriverCodeTerminology,
+  getMatchingQuestionPattern,
   isProductionEligibleRecord,
   normalizeDriverQuestion,
+  rankKnowledgeRecords,
   requirementMatches,
   selectCanonicalRecordVersions,
   tokenize
@@ -51,10 +53,40 @@ function resolveClarificationSelection(question, context = {}) {
   const options = Array.isArray(context.pending_clarification_options)
     ? context.pending_clarification_options
     : [];
-  return options.find((option) => (
+  const exact = options.find((option) => (
     normalizeDriverQuestion(option?.label) === normalized
     || normalizeDriverQuestion(option?.query) === normalized
-  )) || null;
+  ));
+  if (exact) return exact;
+
+  const requirement = normalizeDriverQuestion(
+    context.pending_clarification_requirement || context.pending_clarification_prompt
+  );
+  if (/before or after dispatch/.test(requirement)) {
+    if (/\bbefore(?: dispatch)?\b/.test(normalized)) {
+      return options.find((option) => /\bbefore dispatch\b/.test(
+        normalizeDriverQuestion(`${option?.label || ''} ${option?.query || ''}`)
+      )) || null;
+    }
+    if (/\bafter(?: dispatch)?\b/.test(normalized)) {
+      return options.find((option) => /\bafter dispatch\b/.test(
+        normalizeDriverQuestion(`${option?.label || ''} ${option?.query || ''}`)
+      )) || null;
+    }
+  }
+  if (/completed delivery photo or an unsuccessful attempt photo/.test(requirement)) {
+    if (/\bcompleted\b|\bdelivered\b|\brelease(?:d)?\b/.test(normalized)) {
+      return options.find((option) => /completed delivery photo/.test(
+        normalizeDriverQuestion(option?.label)
+      )) || null;
+    }
+    if (/\battempt\b|\bunsuccessful\b|\bdoor tag\b/.test(normalized)) {
+      return options.find((option) => /unsuccessful attempt photo/.test(
+        normalizeDriverQuestion(option?.label)
+      )) || null;
+    }
+  }
+  return null;
 }
 
 function filterActionableClarificationOptions(options, records) {
@@ -281,20 +313,99 @@ function isProtectedInterpretationRequest(question) {
     || /\b(hidden|system) (instructions|prompt)\b|\breveal (your )?(instructions|prompt)\b/.test(normalized);
 }
 
-function buildAiCandidateRecords(records) {
-  return selectCanonicalRecordVersions(records)
+const DEFAULT_AI_CANDIDATE_LIMIT = 16;
+const AI_SUBJECT_GUARDS = Object.freeze([
+  { pattern: /\b(?:threat|threatening|weapon|gun|knife|following me|unsafe|scared|danger)\b/, knowledgeIds: ['KNO-SEC-ACTIVE-THREAT-001'] },
+  { pattern: /\b(?:dog|animal)\b/, knowledgeIds: ['KNO-DEL-ANIMAL-HAZARD-001'] },
+  { pattern: /\b(?:alcohol|wine|beer|liquor|intoxicated|drunk)\b/, knowledgeIds: ['KNO-DEL-ALCOHOL-001'] },
+  { pattern: /\b(?:badge|id card)\b/, knowledgeIds: ['KNO-SEC-LOST-BADGE-001'] },
+  { pattern: /\b(?:photo|picture|ppod)\b/, knowledgeIds: ['KNO-DEL-PPOD-001'] },
+  { pattern: /\b(?:asr|dsr|isr|signature required|signature package)\b/, knowledgeIds: ['KNO-DEL-SIG-ASR-001', 'KNO-DEL-SIG-DSR-001', 'KNO-DEL-SIG-ISR-001'] },
+  { pattern: /\b(?:wrong route|different route|another route|misload|manifest)\b/, knowledgeIds: ['KNO-DEL-MISLOAD-AFTERDISPATCH-001', 'KNO-FORGE-MANIFEST-PREVIEW-001', 'KNO-FORGE-BULK-TRANSFER-001'] }
+]);
+
+function candidateSearchText(record) {
+  return [
+    record.canonical_situation,
+    record.normalized_description,
+    ...(record.applicability || []),
+    ...(record.conditions || []),
+    ...(record.exceptions || []),
+    ...(record.clarification_requirements || []),
+    ...(record.driver_question_variants || []),
+    ...(record.driver_question_patterns || []).map((pattern) => pattern?.utterance)
+  ].filter(Boolean).join(' ');
+}
+
+function broadCandidateScore(question, record, deterministicScore = 0) {
+  const queryTokens = tokenize(question);
+  const surfaceTokens = new Set(tokenize(candidateSearchText(record)));
+  const overlap = queryTokens.filter((token) => surfaceTokens.has(token)).length;
+  const coverage = queryTokens.length ? overlap / queryTokens.length : 0;
+  return deterministicScore * 2 + overlap * 12 + coverage * 30;
+}
+
+function selectRelevantPatterns(record, question, maximum = 16) {
+  const patterns = (record.driver_question_patterns || []).map((pattern, index) => ({
+    pattern_id: `${record.knowledge_id}::${index}`,
+    utterance: pattern?.utterance || '',
+    response_mode: pattern?.response_mode || '',
+    must_clarify: pattern?.must_clarify || [],
+    relevance: broadCandidateScore(question, {
+      canonical_situation: pattern?.utterance || '',
+      driver_question_variants: [],
+      driver_question_patterns: []
+    })
+  })).filter((pattern) => pattern.utterance);
+  return patterns
+    .sort((left, right) => right.relevance - left.relevance || left.pattern_id.localeCompare(right.pattern_id))
+    .slice(0, maximum)
+    .map(({ relevance: _relevance, ...pattern }) => pattern);
+}
+
+function buildAiCandidateRecords(records, options = {}) {
+  const question = String(options.driverQuestion || options.question || '').trim();
+  const context = options.context || {};
+  const eligible = selectCanonicalRecordVersions(records)
     .filter((record) => !isReferenceRecord(record) && isProductionEligibleRecord(record))
-    .sort((left, right) => left.knowledge_id.localeCompare(right.knowledge_id))
+    .sort((left, right) => left.knowledge_id.localeCompare(right.knowledge_id));
+  const configuredLimit = Number(options.limit || process.env.READYROUTE_DRIVER_HELP_AI_CANDIDATE_LIMIT);
+  const limit = Number.isFinite(configuredLimit) && configuredLimit > 0
+    ? Math.max(4, Math.floor(configuredLimit))
+    : DEFAULT_AI_CANDIDATE_LIMIT;
+
+  let selected = eligible;
+  if (question && eligible.length > limit) {
+    const deterministicRanks = new Map(rankKnowledgeRecords(question, eligible, context)
+      .map(({ record, score }) => [record.knowledge_id, score]));
+    const requiredIds = new Set([
+      ...(options.preferredKnowledgeIds || []),
+      ...(context.knowledge_ids || [])
+    ]);
+    const normalizedQuestion = normalizeDriverQuestion(question);
+    for (const guard of AI_SUBJECT_GUARDS) {
+      if (guard.pattern.test(normalizedQuestion)) {
+        for (const knowledgeId of guard.knowledgeIds) requiredIds.add(knowledgeId);
+      }
+    }
+    selected = eligible
+      .map((record) => ({
+        record,
+        required: requiredIds.has(record.knowledge_id),
+        score: broadCandidateScore(question, record, deterministicRanks.get(record.knowledge_id) || 0)
+      }))
+      .sort((left, right) => (
+        Number(right.required) - Number(left.required)
+        || right.score - left.score
+        || left.record.knowledge_id.localeCompare(right.record.knowledge_id)
+      ))
+      .slice(0, Math.max(limit, requiredIds.size))
+      .map(({ record }) => record);
+  }
+
+  return selected
     .map((record) => {
-      const patterns = (record.driver_question_patterns || []).map((pattern, index) => ({
-        pattern_id: `${record.knowledge_id}::${index}`,
-        utterance: pattern?.utterance || '',
-        response_mode: pattern?.response_mode || '',
-        must_clarify: pattern?.must_clarify || []
-      })).filter((pattern) => pattern.utterance);
-      const selectedPatterns = patterns.length <= 32
-        ? patterns
-        : [...patterns.slice(0, 16), ...patterns.slice(-16)];
+      const selectedPatterns = selectRelevantPatterns(record, question, 16);
       return {
         knowledge_id: record.knowledge_id,
         version: record.version,
@@ -304,7 +415,15 @@ function buildAiCandidateRecords(records) {
         conditions: record.conditions || [],
         exceptions: record.exceptions || [],
         clarification_requirements: record.clarification_requirements || [],
-        driver_question_examples: (record.driver_question_variants || []).slice(0, 12),
+        driver_question_examples: (record.driver_question_variants || [])
+          .map((example) => ({ example, score: broadCandidateScore(question, {
+            canonical_situation: example,
+            driver_question_variants: [],
+            driver_question_patterns: []
+          }) }))
+          .sort((left, right) => right.score - left.score)
+          .slice(0, 8)
+          .map(({ example }) => example),
         driver_question_patterns: selectedPatterns
       };
     });
@@ -375,6 +494,32 @@ function applyAiInterpretation(interpretation, question, records, baseDecision) 
 
 function buildControlledInterpretationFallback(question, records, baseDecision) {
   const normalized = normalizeDriverQuestion(question);
+  const verbalReleaseClaimOnSignaturePackage = (
+    /\bsignature required\b|\b(?:asr|dsr|isr)\b/.test(normalized)
+    && /\b(?:customer|recipient)\b/.test(normalized)
+    && /\bshipper\b/.test(normalized)
+    && /\b(?:leave|release|no signature|without signature)\b/.test(normalized)
+  );
+  if (verbalReleaseClaimOnSignaturePackage) {
+    const record = selectCanonicalRecordVersions(records).find((item) => (
+      item.knowledge_id === 'KNO-DEL-SHIPPER-RELEASE-001'
+    ));
+    const patternIndex = (record?.driver_question_patterns || []).findIndex((pattern) => (
+      /customer statement is not shipper-release authorization/i.test(
+        pattern?.answer_override?.direct_answer || ''
+      )
+    ));
+    return applyAiInterpretation({
+      knowledge_id: 'KNO-DEL-SHIPPER-RELEASE-001',
+      decision: 'ANSWER',
+      answer_pattern_id: patternIndex >= 0
+        ? `KNO-DEL-SHIPPER-RELEASE-001::${patternIndex}`
+        : null,
+      clarification_requirement: null,
+      confidence: 1
+    }, question, records, baseDecision);
+  }
+
   const genericSignature = (
     /\bsignature (?:required )?(?:package|pkg)\b|\bsig (?:package|pkg)\b/.test(normalized)
     && !/\b(?:asr|dsr|isr)\b/.test(normalized)
@@ -434,7 +579,8 @@ function buildInterpretationResult({
   baseDecision,
   interpretation = null,
   latencyMs = null,
-  providerMetadata = null
+  providerMetadata = null,
+  candidateRecords = []
 }) {
   const deterministicKnowledgeId = baseDecision.selected_records?.[0]?.knowledge_id
     || baseDecision.candidates?.[0]?.knowledge_id
@@ -459,6 +605,8 @@ function buildInterpretationResult({
       ? interpretation.decision === baseDecision.response_mode
       : null,
     latency_ms: Number.isFinite(latencyMs) ? Math.max(0, latencyMs) : null,
+    candidate_count: candidateRecords.length,
+    candidate_knowledge_ids: candidateRecords.map((record) => record.knowledge_id),
     provider_model: providerUsage ? process.env.READYROUTE_DRIVER_HELP_MODEL : null,
     provider_response_id: providerMetadata?.response_id || null,
     provider_request_id: providerMetadata?.request_id || null,
@@ -499,9 +647,23 @@ function buildDeterministicRuntimeDecision(question, records, context = {}) {
           score: 100
         }],
         selected_records: [selectedClarificationRecord],
-        answer: buildPresentedAnswer(selectedClarificationRecord, resolvedQuestion),
+        answer: (() => {
+          const pattern = getMatchingQuestionPattern(
+            clarificationSelection?.query || resolvedQuestion,
+            selectedClarificationRecord
+          );
+          return pattern?.answer_override?.direct_answer
+            ? formatDriverCodeTerminology(pattern.answer_override.direct_answer, selectedClarificationRecord)
+            : buildPresentedAnswer(selectedClarificationRecord, resolvedQuestion);
+        })(),
         more_info: selectedClarificationRecord.more_info_answer || null,
-        answer_structure: buildAnswerStructure(selectedClarificationRecord, resolvedQuestion)
+        answer_structure: (() => {
+          const pattern = getMatchingQuestionPattern(
+            clarificationSelection?.query || resolvedQuestion,
+            selectedClarificationRecord
+          );
+          return buildAnswerStructure(selectedClarificationRecord, pattern?.answer_override || null);
+        })()
       }
     : referenceDecision || buildDriverHelpDecision(
         resolvedQuestion,
@@ -754,7 +916,14 @@ function createDriverHelpService({
     let interpretationMode = 'DETERMINISTIC';
     let interpretationConfidence = null;
     let interpretationResult = {};
-    const aiCandidates = buildAiCandidateRecords(records);
+    const aiCandidates = buildAiCandidateRecords(records, {
+      driverQuestion: resolvedQuestion,
+      context: decisionContext,
+      preferredKnowledgeIds: [
+        ...(baseDecision.candidates || []).slice(0, 5).map((candidate) => candidate.knowledge_id),
+        ...(decisionContext.knowledge_ids || [])
+      ]
+    });
     const shouldInterpret = Boolean(
       aiInterpreter
       && ['SHADOW', 'ACTIVE'].includes(effectiveAiInterpretationMode)
@@ -801,7 +970,8 @@ function createDriverHelpService({
             baseDecision,
             interpretation: interpretedDecision ? interpretation : null,
             latencyMs: Date.now() - interpretationStartedAt,
-            providerMetadata: rawInterpretation?.provider_metadata || null
+            providerMetadata: rawInterpretation?.provider_metadata || null,
+            candidateRecords: aiCandidates
           });
         } else {
           interpretationMode = effectiveAiInterpretationMode === 'SHADOW'
@@ -811,7 +981,8 @@ function createDriverHelpService({
             status: 'DECLINED_OR_REJECTED',
             baseDecision,
             latencyMs: Date.now() - interpretationStartedAt,
-            providerMetadata: rawInterpretation?.provider_metadata || null
+            providerMetadata: rawInterpretation?.provider_metadata || null,
+            candidateRecords: aiCandidates
           });
         }
       } catch (_error) {
@@ -821,7 +992,8 @@ function createDriverHelpService({
         interpretationResult = buildInterpretationResult({
           status: 'ERROR',
           baseDecision,
-          latencyMs: Date.now() - interpretationStartedAt
+          latencyMs: Date.now() - interpretationStartedAt,
+          candidateRecords: aiCandidates
         });
       }
     }

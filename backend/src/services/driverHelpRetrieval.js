@@ -454,9 +454,34 @@ function clarificationOptionsForRequirement(requirement, ranked) {
   const topRecord = ranked.find(({ record }) => isProductionEligibleRecord(record))?.record;
   if (/completed delivery photo or an unsuccessful attempt photo/.test(normalized) && topRecord) {
     return [
-      { knowledge_id: topRecord.knowledge_id, version: topRecord.version, label: 'Completed delivery photo', query: 'completed delivery photo' },
-      { knowledge_id: topRecord.knowledge_id, version: topRecord.version, label: 'Unsuccessful-attempt photo', query: 'unsuccessful attempt photo' }
+      { knowledge_id: topRecord.knowledge_id, version: topRecord.version, label: 'Completed delivery photo', query: 'What should my delivery photo show?' },
+      { knowledge_id: topRecord.knowledge_id, version: topRecord.version, label: 'Unsuccessful-attempt photo', query: 'What should the attempt photo show?' }
     ];
+  }
+  if (/package discovered before or after dispatch/.test(normalized)) {
+    const canonical = ranked
+      .map(({ record }) => record)
+      .filter(isProductionEligibleRecord);
+    const beforeRecord = canonical.find((record) => (
+      record.knowledge_id === 'KNO-FORGE-MANIFEST-PREVIEW-001'
+    ));
+    const afterRecord = canonical.find((record) => (
+      record.knowledge_id === 'KNO-DEL-MISLOAD-AFTERDISPATCH-001'
+    ));
+    return [
+      beforeRecord && {
+        knowledge_id: beforeRecord.knowledge_id,
+        version: beforeRecord.version,
+        label: 'Before dispatch',
+        query: 'before dispatch package is on the wrong route'
+      },
+      afterRecord && {
+        knowledge_id: afterRecord.knowledge_id,
+        version: afterRecord.version,
+        label: 'After dispatch',
+        query: 'found another route package after dispatch'
+      }
+    ].filter(Boolean);
   }
   if (/free form epic air waybill or the special 00 condition/.test(normalized) && topRecord) {
     return [

@@ -11,6 +11,7 @@ const {
   validateInterpretation
 } = require('../services/driverHelpAiInterpreter');
 const { estimateUsageCost } = require('../services/openAiUsageCost');
+const { buildAiCandidateRecords } = require('../services/driverHelp');
 
 const root = path.resolve(__dirname, '../../..');
 
@@ -39,19 +40,17 @@ function candidateRecord(record) {
   return {
     knowledge_id: record.knowledge_id,
     version: record.record_version,
+    status: record.knowledge_status,
+    is_published: true,
     canonical_situation: record.canonical_situation,
     normalized_description: record.normalized_description || '',
+    taxonomy_paths: record.category_paths || [],
     applicability: record.applicability || [],
     conditions: record.conditions || [],
     exceptions: record.exceptions || [],
     clarification_requirements: record.clarification_requirements || [],
     driver_question_variants: record.driver_question_variants || [],
-    driver_question_patterns: (record.driver_question_patterns || []).map((pattern) => ({
-      utterance: pattern?.utterance || '',
-      response_mode: pattern?.response_mode || null,
-      information_sufficiency: pattern?.information_sufficiency || null,
-      must_clarify: pattern?.must_clarify || []
-    }))
+    driver_question_patterns: record.driver_question_patterns || []
   };
 }
 
@@ -125,13 +124,16 @@ async function main() {
       try {
         await waitForRequestSlot();
         requestStartedAt = Date.now();
+        const caseCandidates = buildAiCandidateRecords(candidates, {
+          driverQuestion: testCase.utterance
+        });
         const raw = await interpreter({
           safety_identifier: 'rr_shadow_evaluation',
           driver_question: testCase.utterance,
           conversation_context: {},
-          candidate_records: candidates
+          candidate_records: caseCandidates
         });
-        const interpretation = validateInterpretation(raw, candidates, undefined, testCase.utterance);
+        const interpretation = validateInterpretation(raw, caseCandidates, undefined, testCase.utterance);
         const usage = estimateUsageCost(
           process.env.READYROUTE_DRIVER_HELP_MODEL,
           raw?.provider_metadata?.usage || {}
@@ -144,6 +146,8 @@ async function main() {
           case_id: testCase.case_id,
           evaluation_type: testCase.evaluation_type,
           expected_knowledge_ids: expectedKnowledgeIds,
+          candidate_count: caseCandidates.length,
+          candidate_knowledge_ids: caseCandidates.map((candidate) => candidate.knowledge_id),
           actual_knowledge_id: interpretation?.knowledge_id || null,
           expected_response_mode: expectedResponseMode,
           actual_response_mode: interpretation?.decision || null,

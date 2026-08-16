@@ -125,6 +125,34 @@ function validateInterpretation(
   }
 
   const normalizedQuestion = String(question || '').toLowerCase();
+  const verbalReleaseClaimOnSignaturePackage = (
+    /\bsignature required\b|\b(?:asr|dsr|isr)\b/.test(normalizedQuestion)
+    && /\b(?:customer|recipient)\b/.test(normalizedQuestion)
+    && /\bshipper\b/.test(normalizedQuestion)
+    && /\b(?:leave|release|no signature|without signature)\b/.test(normalizedQuestion)
+  );
+  if (verbalReleaseClaimOnSignaturePackage) {
+    const shipperReleaseCandidate = candidates.find((item) => (
+      item.knowledge_id === 'KNO-DEL-SHIPPER-RELEASE-001'
+    ));
+    const verbalClaimPattern = (shipperReleaseCandidate?.driver_question_patterns || []).find((pattern) => (
+      /customer says the shipper|customer claims the shipper|recipient says the shipper/i.test(
+        pattern?.utterance || ''
+      )
+    ));
+    if (shipperReleaseCandidate && verbalClaimPattern) {
+      return {
+        selection: 'SELECT',
+        knowledge_id: shipperReleaseCandidate.knowledge_id,
+        decision: 'ANSWER',
+        answer_pattern_id: verbalClaimPattern.pattern_id,
+        clarification_requirement: null,
+        facts: normalizeFacts(payload.facts),
+        confidence: payload.confidence
+      };
+    }
+  }
+
   const asksAboutGenericSignaturePackage = (
     /\bsignature(?: required)? (?:package|pkg)\b|\bsig (?:package|pkg)\b/.test(normalizedQuestion)
     && !/\b(?:asr|dsr|isr)\b/.test(normalizedQuestion)
@@ -239,8 +267,8 @@ function createDriverHelpAiInterpreter(options = {}) {
     const candidates = Array.isArray(request?.candidate_records) ? request.candidate_records : [];
     if (!candidates.length) return null;
     const safetyIdentifier = String(request?.safety_identifier || '').trim() || undefined;
-    // Keep the large, repeated candidate corpus at the start of the request so
-    // provider prompt caching can reuse it across evaluation and live traffic.
+    // Candidate selection happens locally before this request. The model sees
+    // only the bounded shortlist needed to interpret this situation.
     const modelRequest = {
       candidate_records: candidates,
       driver_question: request?.driver_question || '',
@@ -260,6 +288,10 @@ function createDriverHelpAiInterpreter(options = {}) {
         body: JSON.stringify({
           model,
           ...(safetyIdentifier ? { safety_identifier: safetyIdentifier } : {}),
+          reasoning: {
+            effort: 'low',
+            context: 'current_turn'
+          },
           input: [
             {
               role: 'system',
@@ -294,6 +326,7 @@ function createDriverHelpAiInterpreter(options = {}) {
             }
           ],
           text: {
+            verbosity: 'low',
             format: {
               type: 'json_schema',
               name: 'ready_route_driver_question_interpretation',
