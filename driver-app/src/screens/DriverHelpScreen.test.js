@@ -100,6 +100,49 @@ describe('DriverHelpScreen', () => {
     });
   });
 
+  it('keeps the original situation when a driver speaks a follow-up question', async () => {
+    ExpoSpeechRecognitionModule.requestPermissionsAsync.mockResolvedValueOnce({ granted: true });
+    api.post
+      .mockResolvedValueOnce({
+        data: {
+          session_id: 'follow-up-session',
+          interaction_id: 'first-interaction',
+          response_mode: 'ANSWER',
+          answer: 'Use Code 004 for this situation.',
+          trace: [{ knowledge_id: 'KNO-CODE-004', version: 1 }]
+        }
+      })
+      .mockResolvedValueOnce({
+        data: {
+          session_id: 'follow-up-session',
+          interaction_id: 'follow-up-interaction',
+          response_mode: 'ANSWER',
+          answer: 'Complete the required documentation.',
+          trace: [{ knowledge_id: 'KNO-CODE-004', version: 1 }]
+        }
+      });
+    const screen = render(<DriverHelpScreen />);
+
+    fireEvent.changeText(screen.getByLabelText('Driver question'), 'The business is closed');
+    fireEvent.press(screen.getByLabelText('Ask Ready Route'));
+    await screen.findByText('Use Code 004 for this situation.');
+
+    fireEvent.press(screen.getByLabelText('Speak a follow-up question'));
+    await waitFor(() => expect(ExpoSpeechRecognitionModule.start).toHaveBeenCalled());
+    act(() => mockSpeechHandlers.result({
+      isFinal: true,
+      results: [{ transcript: 'What documentation do I need?' }]
+    }));
+
+    await waitFor(() => {
+      expect(api.post).toHaveBeenLastCalledWith('/driver-help/query', {
+        question: 'What documentation do I need?',
+        session_id: 'follow-up-session'
+      });
+      expect(screen.getByLabelText('Current question: The business is closed')).toBeTruthy();
+    });
+  });
+
   it('explains how to recover when speech permission is denied', async () => {
     ExpoSpeechRecognitionModule.requestPermissionsAsync.mockResolvedValueOnce({ granted: false });
     const screen = render(<DriverHelpScreen />);
@@ -112,7 +155,7 @@ describe('DriverHelpScreen', () => {
     expect(ExpoSpeechRecognitionModule.start).not.toHaveBeenCalled();
   });
 
-  it('submits a driver question and renders the approved answer with traceability', async () => {
+  it('submits a driver question and renders a direct answer without internal traceability', async () => {
     api.post.mockResolvedValueOnce({
       data: {
         session_id: 'session-1',
@@ -133,11 +176,57 @@ describe('DriverHelpScreen', () => {
         question: 'Signature package nobody home'
       });
       expect(screen.getByLabelText('Current question: Signature package nobody home')).toBeTruthy();
-      expect(screen.getAllByText('Verified procedure')).toHaveLength(2);
-      expect(screen.getByText('Answer')).toBeTruthy();
       expect(screen.getByText('Do not leave the package without the required signature.')).toBeTruthy();
-      expect(screen.getByText('KNO-DEL-SIG-DSR-001 v2')).toBeTruthy();
+      expect(screen.queryByText('Verified procedure')).toBeNull();
+      expect(screen.queryByText('KNO-DEL-SIG-DSR-001 v2')).toBeNull();
+      expect(screen.getByText('Ask about this answer')).toBeTruthy();
+      expect(screen.getByText('Start a New Question')).toBeTruthy();
     });
+  });
+
+  it('makes one applicable code prominent', async () => {
+    api.post.mockResolvedValueOnce({
+      data: {
+        session_id: 'session-code',
+        interaction_id: 'interaction-code',
+        response_mode: 'ANSWER',
+        answer_structure: {
+          direct_answer: 'Use Code 004 because the business is closed.',
+          steps: ['Select Code 004 in FORGE.', 'Complete the required documentation.']
+        },
+        trace: [{ knowledge_id: 'KNO-CODE-004', version: 1 }]
+      }
+    });
+    const screen = render(<DriverHelpScreen />);
+
+    fireEvent.changeText(screen.getByLabelText('Driver question'), 'Business is closed');
+    fireEvent.press(screen.getByLabelText('Ask Ready Route'));
+
+    expect(await screen.findByText('USE CODE 004')).toBeTruthy();
+    expect(screen.getByText('What to do')).toBeTruthy();
+    expect(screen.getByLabelText('Use code 004')).toBeTruthy();
+  });
+
+  it('does not show one prominent code when the answer has conditional code paths', async () => {
+    api.post.mockResolvedValueOnce({
+      data: {
+        session_id: 'session-multiple-codes',
+        interaction_id: 'interaction-multiple-codes',
+        response_mode: 'ANSWER',
+        answer_structure: {
+          direct_answer: 'Use Code 011 for one condition or Code 004 when the business is closed.',
+          steps: []
+        },
+        trace: [{ knowledge_id: 'KNO-MULTIPLE-CODES', version: 1 }]
+      }
+    });
+    const screen = render(<DriverHelpScreen />);
+
+    fireEvent.changeText(screen.getByLabelText('Driver question'), 'Which code applies?');
+    fireEvent.press(screen.getByLabelText('Ask Ready Route'));
+
+    expect(await screen.findByText('Use Code 011 for one condition or Code 004 when the business is closed.')).toBeTruthy();
+    expect(screen.queryByText(/^USE CODE/)).toBeNull();
   });
 
   it('renders operational answers as numbered steps with separate prohibitions', async () => {
@@ -425,16 +514,16 @@ describe('DriverHelpScreen', () => {
     fireEvent.press(screen.getByLabelText('Ask Ready Route'));
 
     await waitFor(() => {
-      expect(screen.getByText('Verified answer unavailable')).toBeTruthy();
+      expect(screen.getByText('Answer unavailable')).toBeTruthy();
       expect(screen.getByText(
-        'Ready Route does not have enough verified information to give a definitive answer for this situation.'
+        'Ready Route does not have enough confirmed information to give a definitive answer for this situation.'
       )).toBeTruthy();
       expect(screen.getByText('Ready Route cannot establish an approved answer. Contact your manager.')).toBeTruthy();
       expect(screen.getByText('Ready Route will not guess.')).toBeTruthy();
     });
   });
 
-  it('states clearly that a network timeout produced no verified answer', async () => {
+  it('states clearly that a network timeout produced no confirmed answer', async () => {
     api.post.mockRejectedValueOnce(Object.assign(new Error('timeout of 15000ms exceeded'), {
       code: 'ECONNABORTED'
     }));
@@ -444,7 +533,7 @@ describe('DriverHelpScreen', () => {
     fireEvent.press(screen.getByLabelText('Ask Ready Route'));
 
     expect(await screen.findByText(
-      'Ready Route did not receive a verified answer. Check your connection and tap Ask Ready Route again. Contact your manager if you need an immediate answer.'
+      'Ready Route did not receive a confirmed answer. Check your connection and tap Ask Ready Route again. Contact your manager if you need an immediate answer.'
     )).toBeTruthy();
     expect(screen.queryByText('What to do now')).toBeNull();
   });
@@ -499,7 +588,7 @@ describe('DriverHelpScreen', () => {
     fireEvent.press(screen.getByLabelText('Ask Ready Route'));
     await screen.findByText('Complete the approved procedure.');
 
-    fireEvent.press(screen.getByLabelText('Start a new situation'));
+    fireEvent.press(screen.getByLabelText('Start a new question'));
     expect(screen.queryByText('Complete the approved procedure.')).toBeNull();
 
     fireEvent.changeText(screen.getByLabelText('Driver question'), 'Different driver situation');

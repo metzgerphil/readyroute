@@ -156,6 +156,16 @@ function getAnswerStructure(result) {
   };
 }
 
+export function getProminentCode(answerStructure = {}) {
+  const answerText = [answerStructure.directAnswer, ...(answerStructure.steps || [])]
+    .filter(Boolean)
+    .join(' ');
+  const codes = [...answerText.matchAll(/\b(?:status\s+)?code\s+(\d{1,3})\b/gi)]
+    .map((match) => match[1]);
+  const uniqueCodes = [...new Set(codes)];
+  return uniqueCodes.length === 1 ? uniqueCodes[0] : null;
+}
+
 export default function DriverHelpScreen() {
   const safeAreaInsets = useContext(SafeAreaInsetsContext) || { bottom: 0, top: 0 };
   const inputRef = useRef(null);
@@ -178,6 +188,7 @@ export default function DriverHelpScreen() {
   const [selectedClarificationKey, setSelectedClarificationKey] = useState(null);
   const [selectedImage, setSelectedImage] = useState(null);
   const answerStructure = getAnswerStructure(result);
+  const prominentCode = getProminentCode(answerStructure);
 
   useEffect(() => {
     const subscription = Keyboard.addListener('keyboardDidShow', () => {
@@ -210,7 +221,7 @@ export default function DriverHelpScreen() {
       const isFinalTranscript = event.isFinal === true || event.results?.[0]?.isFinal === true;
       setDictationHint(!isFinalTranscript);
       if (isFinalTranscript) {
-        submitQuestion(transcript);
+        submitQuestion(transcript, { preserveSituation: Boolean(result) });
       }
     }
   });
@@ -271,7 +282,7 @@ export default function DriverHelpScreen() {
     } catch (requestError) {
       const requestFailedBeforeVerification = requestError?.code === 'ECONNABORTED' || !requestError?.response;
       setError(requestFailedBeforeVerification
-        ? 'Ready Route did not receive a verified answer. Check your connection and tap Ask Ready Route again. Contact your manager if you need an immediate answer.'
+        ? 'Ready Route did not receive a confirmed answer. Check your connection and tap Ask Ready Route again. Contact your manager if you need an immediate answer.'
         : getApiErrorMessage(
           requestError,
           'Ready Route could not check the approved procedures right now. Contact your manager if you need an immediate answer.'
@@ -399,7 +410,10 @@ export default function DriverHelpScreen() {
     }
   });
 
-  function renderQuestionComposer(placeholder = 'Type your question') {
+  function renderQuestionComposer(
+    placeholder = 'Type your question',
+    { preserveSituation = false, showMicrophone = false } = {}
+  ) {
     return (
       <View style={styles.questionComposer}>
         <TextInput
@@ -418,7 +432,7 @@ export default function DriverHelpScreen() {
             inputFocusedRef.current = true;
             setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 120);
           }}
-          onSubmitEditing={() => submitQuestion()}
+          onSubmitEditing={() => submitQuestion(question, { preserveSituation })}
           placeholder={placeholder}
           placeholderTextColor={appTheme.colors.textTertiary}
           ref={inputRef}
@@ -427,10 +441,27 @@ export default function DriverHelpScreen() {
           textAlignVertical="center"
           value={question}
         />
+        {showMicrophone ? (
+          <Pressable
+            accessibilityHint={isListening ? 'Stops speech recognition' : 'Starts speech recognition'}
+            accessibilityLabel={isListening ? 'Stop listening' : 'Speak a follow-up question'}
+            accessibilityRole="button"
+            disabled={isSubmitting}
+            onPress={toggleDictation}
+            style={({ pressed }) => [
+              styles.followUpMicButton,
+              isListening ? styles.followUpMicButtonListening : null,
+              isSubmitting ? styles.disabled : null,
+              pressed ? styles.pressed : null
+            ]}
+          >
+            {isListening ? <View style={styles.smallStopIcon} /> : <MicrophoneIcon size={22} />}
+          </Pressable>
+        ) : null}
         <Pressable
           accessibilityLabel="Ask Ready Route"
           disabled={question.trim().length < 2 || isSubmitting}
-          onPress={() => submitQuestion()}
+          onPress={() => submitQuestion(question, { preserveSituation })}
           style={({ pressed }) => [
             styles.sendButton,
             (question.trim().length < 2 || isSubmitting) ? styles.disabled : null,
@@ -528,7 +559,7 @@ export default function DriverHelpScreen() {
           {isSubmitting && result ? (
             <View style={styles.verificationNotice}>
               <Text style={styles.verificationNoticeText}>
-                Checking your follow-up. The answer below is from your previous question until verification finishes.
+                Checking your follow-up. The answer below is from your previous question until the new answer is ready.
               </Text>
             </View>
           ) : null}
@@ -544,17 +575,16 @@ export default function DriverHelpScreen() {
 
           {result?.response_mode === 'ANSWER' ? (
             <View style={styles.answerCard}>
-              <View style={styles.statusHeadingRow}>
-                <StatusShieldIcon />
-                <Text maxFontSizeMultiplier={1.25} style={styles.verifiedHeading}>Verified procedure</Text>
-              </View>
-              <View style={styles.cardDivider} />
-              <Text maxFontSizeMultiplier={1.25} style={styles.answerEyebrow}>Answer</Text>
+              {prominentCode ? (
+                <View accessibilityLabel={`Use code ${prominentCode}`} style={styles.codeBanner}>
+                  <Text maxFontSizeMultiplier={1.25} style={styles.codeBannerText}>USE CODE {prominentCode}</Text>
+                </View>
+              ) : null}
               <Text maxFontSizeMultiplier={1.35} style={styles.directAnswerText}>{answerStructure.directAnswer}</Text>
 
               {answerStructure.steps.length ? (
                 <>
-                  <Text maxFontSizeMultiplier={1.25} style={styles.doThisHeading}>Do this</Text>
+                  <Text maxFontSizeMultiplier={1.25} style={styles.doThisHeading}>What to do</Text>
                   <View style={styles.stepList}>
                     {answerStructure.steps.map((step, index) => (
                       <View key={`${index}-${step}`} style={styles.stepRow}>
@@ -613,7 +643,7 @@ export default function DriverHelpScreen() {
               {(result.images || []).length ? (
                 <View style={styles.visualReferenceSection}>
                   <Text style={styles.visualReferenceTitle}>Visual reference</Text>
-                  <Text style={styles.visualReferenceNote}>The verified written procedure above controls.</Text>
+                  <Text style={styles.visualReferenceNote}>Follow the written procedure above.</Text>
                   {(result.images || []).map((image, index) => {
                     const label = image.caption || `Visual reference ${index + 1}`;
                     return (
@@ -703,15 +733,6 @@ export default function DriverHelpScreen() {
                 </>
               ) : null}
 
-              <View style={styles.traceRow}>
-                <Text style={styles.traceText}>Verified procedure</Text>
-                {result.trace?.[0] ? (
-                  <Text style={styles.traceId}>
-                    {result.trace[0].knowledge_id} v{result.trace[0].version}
-                  </Text>
-                ) : null}
-              </View>
-
               <View style={styles.feedbackRow}>
                 <Text style={styles.feedbackLabel}>Was this helpful?</Text>
               </View>
@@ -792,9 +813,9 @@ export default function DriverHelpScreen() {
           {result?.response_mode === 'ESCALATE' ? (
             <View style={styles.escalationCard}>
               <View style={styles.unavailableIcon}><StatusShieldIcon unavailable /></View>
-              <Text style={styles.escalationEyebrow}>Verified answer unavailable</Text>
+              <Text style={styles.escalationEyebrow}>Answer unavailable</Text>
               <Text maxFontSizeMultiplier={1.35} style={styles.escalationText}>
-                Ready Route does not have enough verified information to give a definitive answer for this situation.
+                Ready Route does not have enough confirmed information to give a definitive answer for this situation.
               </Text>
               <View style={styles.nextStepPanel}>
                 <Text style={styles.nextStepTitle}>Next step</Text>
@@ -817,26 +838,25 @@ export default function DriverHelpScreen() {
           ) : null}
 
           {result ? (
-            <>
-              <View style={styles.followUpHeader}>
-                <Text style={styles.followUpHint}>
-                  Ready Route will keep this situation in context.
-                </Text>
-                <Pressable
-                  accessibilityLabel="Start a new situation"
-                  accessibilityRole="button"
-                  onPress={startNewSituation}
-                  style={({ pressed }) => [styles.newSituationButton, pressed ? styles.pressed : null]}
-                >
-                  <Text style={styles.newSituationText}>Ask another question</Text>
-                </Pressable>
-              </View>
+            <View style={styles.followUpSection}>
+              <Text style={styles.followUpLabel}>
+                {result.response_mode === 'CLARIFY' ? 'Answer this detail' : 'Ask about this answer'}
+              </Text>
               {renderQuestionComposer(
                 result.response_mode === 'CLARIFY'
                   ? 'Answer this detail'
-                  : 'Ask a follow-up question'
+                  : 'Ask a follow-up question',
+                { preserveSituation: true, showMicrophone: true }
               )}
-            </>
+              <Pressable
+                accessibilityLabel="Start a new question"
+                accessibilityRole="button"
+                onPress={startNewSituation}
+                style={({ pressed }) => [styles.newSituationButton, pressed ? styles.pressed : null]}
+              >
+                <Text style={styles.newSituationText}>Start a New Question</Text>
+              </Pressable>
+            </View>
           ) : null}
         </ScrollView>
       </KeyboardAvoidingView>
@@ -907,6 +927,9 @@ const styles = StyleSheet.create({
   dictationError: { color: appTheme.colors.danger, fontSize: 13, fontWeight: '700', marginTop: 10, maxWidth: 620, textAlign: 'center' },
   questionComposer: { alignItems: 'center', backgroundColor: appTheme.colors.surface, borderColor: '#dde5eb', borderRadius: 18, borderWidth: 1, flexDirection: 'row', gap: 10, marginTop: 32, maxWidth: 680, minHeight: 64, paddingHorizontal: 8, paddingVertical: 7, width: '100%', ...appTheme.shadows.card },
   input: { color: BRAND_NAVY, flex: 1, fontSize: 17, lineHeight: 23, maxHeight: 112, minHeight: 48, paddingHorizontal: 10, paddingVertical: 8 },
+  followUpMicButton: { alignItems: 'center', backgroundColor: BRAND_ORANGE, borderRadius: 24, height: 48, justifyContent: 'center', width: 48 },
+  followUpMicButtonListening: { backgroundColor: BRAND_NAVY },
+  smallStopIcon: { backgroundColor: '#ffffff', borderRadius: 3, height: 17, width: 17 },
   sendButton: { alignItems: 'center', backgroundColor: BRAND_ORANGE, borderRadius: 24, height: 48, justifyContent: 'center', width: 48 },
   disabled: { opacity: 0.45 },
   pressed: { opacity: 0.78 },
@@ -916,11 +939,9 @@ const styles = StyleSheet.create({
   answerCard: { backgroundColor: appTheme.colors.surface, borderColor: '#dde5eb', borderRadius: 22, borderWidth: 1, marginTop: 16, maxWidth: 680, padding: 20, width: '100%', ...appTheme.shadows.card },
   clarifyCard: { backgroundColor: appTheme.colors.surface, borderColor: '#dde5eb', borderRadius: 22, borderWidth: 1, marginTop: 16, maxWidth: 680, padding: 20, width: '100%', ...appTheme.shadows.card },
   escalationCard: { alignItems: 'stretch', backgroundColor: appTheme.colors.surface, borderColor: '#dde5eb', borderRadius: 22, borderWidth: 1, marginTop: 16, maxWidth: 680, padding: 20, width: '100%', ...appTheme.shadows.card },
-  statusHeadingRow: { alignItems: 'center', flexDirection: 'row', gap: 11 },
-  verifiedHeading: { color: BRAND_NAVY, fontSize: 17, fontWeight: '900', letterSpacing: 0.3, textTransform: 'uppercase' },
-  cardDivider: { backgroundColor: appTheme.colors.divider, height: 1, marginVertical: 17 },
-  answerEyebrow: { color: BRAND_NAVY, fontSize: 16, fontWeight: '900', letterSpacing: 0.7, textTransform: 'uppercase' },
-  directAnswerText: { color: BRAND_NAVY, fontSize: 22, fontWeight: '900', lineHeight: 29, marginTop: 8 },
+  codeBanner: { alignItems: 'center', backgroundColor: BRAND_NAVY, borderRadius: 15, marginBottom: 16, paddingHorizontal: 18, paddingVertical: 15 },
+  codeBannerText: { color: '#ffffff', fontSize: 21, fontWeight: '900', letterSpacing: 0.8 },
+  directAnswerText: { color: BRAND_NAVY, fontSize: 22, fontWeight: '900', lineHeight: 29 },
   doThisHeading: { color: appTheme.colors.textSecondary, fontSize: 12, fontWeight: '900', letterSpacing: 0.7, marginTop: 22, textTransform: 'uppercase' },
   clarifyHeadingRow: { alignItems: 'center', flexDirection: 'row', gap: 10 },
   questionMark: { alignItems: 'center', backgroundColor: BRAND_ORANGE, borderRadius: 15, height: 30, justifyContent: 'center', width: 30 },
@@ -971,15 +992,12 @@ const styles = StyleSheet.create({
   warningText: { color: appTheme.colors.warningText, flex: 1, fontSize: 14, fontWeight: '700', lineHeight: 21 },
   moreButton: { alignItems: 'center', borderColor: BRAND_ORANGE, borderRadius: 14, borderWidth: 1.5, marginTop: 18, paddingHorizontal: 14, paddingVertical: 13, width: '100%' },
   moreButtonText: { color: BRAND_ORANGE, fontSize: 14, fontWeight: '900', textTransform: 'uppercase' },
-  moreContent: { gap: 14, marginTop: 14 },
+  moreContent: { backgroundColor: appTheme.colors.surfaceTint, borderColor: appTheme.colors.orangeBorder, borderRadius: 14, borderWidth: 1, gap: 14, marginTop: 14, padding: 14 },
   moreText: { color: appTheme.colors.textSecondary, fontSize: 15, lineHeight: 23 },
   detailSection: { borderTopColor: appTheme.colors.divider, borderTopWidth: 1, paddingTop: 12 },
   detailTitle: { color: appTheme.colors.textPrimary, fontSize: 13, fontWeight: '900' },
   detailBullet: { color: appTheme.colors.textSecondary, fontSize: 15, lineHeight: 22 },
   detailText: { color: appTheme.colors.textSecondary, flex: 1, fontSize: 14, lineHeight: 21 },
-  traceRow: { alignItems: 'center', borderTopColor: appTheme.colors.divider, borderTopWidth: 1, flexDirection: 'row', justifyContent: 'space-between', marginTop: 18, paddingTop: 14 },
-  traceText: { color: appTheme.colors.greenText, fontSize: 12, fontWeight: '800' },
-  traceId: { color: appTheme.colors.textTertiary, fontSize: 10, marginLeft: 10 },
   feedbackRow: { marginTop: 18 },
   feedbackLabel: { color: BRAND_NAVY, fontSize: 14, fontWeight: '700' },
   feedbackButtons: { flexDirection: 'row', gap: 10, marginTop: 10 },
@@ -993,10 +1011,10 @@ const styles = StyleSheet.create({
   notSureButton: { borderStyle: 'dashed' },
   notSureText: { color: appTheme.colors.textTertiary, fontSize: 15, fontWeight: '800' },
   clarificationHelp: { color: appTheme.colors.textSecondary, fontSize: 13, lineHeight: 19, marginTop: 12 },
-  followUpHeader: { alignItems: 'center', flexDirection: 'row', gap: 12, justifyContent: 'space-between', marginTop: 18, maxWidth: 680, width: '100%' },
-  followUpHint: { color: appTheme.colors.textSecondary, flex: 1, fontSize: 13, lineHeight: 18 },
-  newSituationButton: { backgroundColor: BRAND_ORANGE, borderColor: BRAND_ORANGE, borderRadius: 14, borderWidth: 1, paddingHorizontal: 14, paddingVertical: 10 },
-  newSituationText: { color: appTheme.colors.white, fontSize: 13, fontWeight: '800' },
+  followUpSection: { marginTop: 22, maxWidth: 680, width: '100%' },
+  followUpLabel: { color: BRAND_NAVY, fontSize: 17, fontWeight: '900' },
+  newSituationButton: { alignItems: 'center', borderColor: BRAND_NAVY, borderRadius: 14, borderWidth: 1.5, marginTop: 14, paddingHorizontal: 14, paddingVertical: 13 },
+  newSituationText: { color: BRAND_NAVY, fontSize: 14, fontWeight: '900' },
   errorCard: { backgroundColor: appTheme.colors.dangerSoft, borderColor: appTheme.colors.danger, borderRadius: 16, borderWidth: 1, marginTop: 16, maxWidth: 680, padding: 14, width: '100%' },
   errorText: { color: appTheme.colors.dangerText, fontSize: 14, lineHeight: 20 },
   verificationNotice: { backgroundColor: appTheme.colors.warningSoft, borderColor: appTheme.colors.warning, borderRadius: 16, borderWidth: 1, marginTop: 16, maxWidth: 680, padding: 14, width: '100%' },
