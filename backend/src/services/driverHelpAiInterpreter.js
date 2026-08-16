@@ -119,11 +119,35 @@ function validateInterpretation(
   minimumConfidence = DEFAULT_MINIMUM_CONFIDENCE,
   question = ''
 ) {
-  if (!payload || payload.selection === 'NONE' || payload.decision === 'NONE') return null;
-  if (payload.selection !== 'SELECT') return null;
+  if (!payload) return null;
   if (!Number.isFinite(payload.confidence) || payload.confidence < minimumConfidence || payload.confidence > 1) {
     return null;
   }
+
+  const normalizedQuestion = String(question || '').toLowerCase();
+  const asksAboutGenericSignaturePackage = (
+    /\bsignature(?: required)? (?:package|pkg)\b|\bsig (?:package|pkg)\b/.test(normalizedQuestion)
+    && !/\b(?:asr|dsr|isr)\b/.test(normalizedQuestion)
+  );
+  if (asksAboutGenericSignaturePackage) {
+    const signatureRequirementCandidate = candidates.find((item) => (
+      (item.clarification_requirements || []).includes('What signature service does FORGE show?')
+    ));
+    if (signatureRequirementCandidate) {
+      return {
+        selection: 'SELECT',
+        knowledge_id: signatureRequirementCandidate.knowledge_id,
+        decision: 'CLARIFY',
+        answer_pattern_id: null,
+        clarification_requirement: 'What signature service does FORGE show?',
+        facts: normalizeFacts(payload.facts),
+        confidence: payload.confidence
+      };
+    }
+  }
+
+  if (payload.selection === 'NONE' || payload.decision === 'NONE') return null;
+  if (payload.selection !== 'SELECT') return null;
 
   const candidate = candidates.find((item) => item.knowledge_id === payload.knowledge_id);
   if (!candidate || !['ANSWER', 'CLARIFY'].includes(payload.decision)) return null;

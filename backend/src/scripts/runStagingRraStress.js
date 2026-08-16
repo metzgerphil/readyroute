@@ -232,6 +232,11 @@ async function main() {
           escalation_message: result.escalation_message || null,
           interaction_id: result.interaction_id || null,
           interpretation_mode: result.interpretation_mode || null,
+          interpretation_status: result.interpretation_result?.status || null,
+          proposed_knowledge_id: result.interpretation_result?.proposed_knowledge_id || null,
+          proposed_response_mode: result.interpretation_result?.proposed_response_mode || null,
+          proposed_answer_pattern_id: result.interpretation_result?.proposed_answer_pattern_id || null,
+          interpreted_facts: result.interpretation_result?.facts || null,
           estimated_cost_usd: usageCost(result)
         } : null,
         latency_ms: Date.now() - startedAt,

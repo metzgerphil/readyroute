@@ -146,6 +146,35 @@ test('interpretation validation accepts only eligible candidates and exact clari
   }, candidates), null);
 });
 
+test('generic signature-package questions always collect the signature service first', () => {
+  const signatureCandidates = [
+    {
+      knowledge_id: 'KNO-DEL-SIG-ASR-001',
+      clarification_requirements: ['Was valid government ID presented?'],
+      driver_question_patterns: []
+    },
+    {
+      knowledge_id: 'KNO-DEL-SIG-DSR-001',
+      clarification_requirements: ['What signature service does FORGE show?'],
+      driver_question_patterns: []
+    }
+  ];
+  const result = validateInterpretation({
+    selection: 'SELECT',
+    knowledge_id: 'KNO-DEL-SIG-ASR-001',
+    decision: 'CLARIFY',
+    answer_pattern_id: null,
+    clarification_requirement: 'Was valid government ID presented?',
+    facts: { recipient_present: 'NO' },
+    confidence: 0.96
+  }, signatureCandidates, undefined, 'I have a signature package and nobody is home.');
+
+  assert.equal(result.knowledge_id, 'KNO-DEL-SIG-DSR-001');
+  assert.equal(result.decision, 'CLARIFY');
+  assert.equal(result.clarification_requirement, 'What signature service does FORGE show?');
+  assert.equal(result.facts.recipient_present, 'NO');
+});
+
 test('explicit out-of-corpus exceptions reject a model selection that crosses the boundary', () => {
   const placementCandidates = [{
     knowledge_id: 'KNO-DEL-PLACEMENT-HAZARD-001',
