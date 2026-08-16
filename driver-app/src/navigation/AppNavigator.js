@@ -5,6 +5,7 @@ import { createStackNavigator } from '@react-navigation/stack';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import MobileNavigationDrawer from '../components/MobileNavigationDrawer';
+import RraPrivacyModal from '../components/RraPrivacyModal';
 import SupportRequestModal from '../components/SupportRequestModal';
 import { usePortalSession } from '../context/PortalSessionContext';
 import api from '../services/api';
@@ -113,6 +114,8 @@ export default function AppNavigator() {
   } = usePortalSession();
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
   const [isSupportOpen, setIsSupportOpen] = useState(false);
+  const [isPrivacyOpen, setIsPrivacyOpen] = useState(false);
+  const [isPrivacyChoiceRequired, setIsPrivacyChoiceRequired] = useState(false);
   const [currentRouteName, setCurrentRouteName] = useState(null);
   const [isLoadingManagerCsas, setIsLoadingManagerCsas] = useState(false);
   const [isSwitchingManagerCsa, setIsSwitchingManagerCsa] = useState(false);
@@ -165,6 +168,26 @@ export default function AppNavigator() {
   }, [hasAnyAccess]);
 
   useEffect(() => {
+    if (!DRIVER_HELP_ONLY || !hasAnyAccess || needsModeSelection || activeMode !== 'driver') return;
+    let active = true;
+    api.get('/driver-help/privacy-preferences')
+      .then((response) => {
+        if (!active) return;
+        const preference = response.data || {};
+        const hasCurrentChoice = Boolean(preference.updated_at)
+          && preference.policy_version === preference.current_policy_version;
+        setIsPrivacyChoiceRequired(!hasCurrentChoice);
+        setIsPrivacyOpen(!hasCurrentChoice);
+      })
+      .catch(() => {
+        if (!active) return;
+        setIsPrivacyChoiceRequired(true);
+        setIsPrivacyOpen(true);
+      });
+    return () => { active = false; };
+  }, [activeMode, hasAnyAccess, needsModeSelection, sessionTokens?.driverToken]);
+
+  useEffect(() => {
     if (!hasAnyAccess || needsModeSelection) {
       return;
     }
@@ -208,6 +231,24 @@ export default function AppNavigator() {
   function openSupport() {
     setIsDrawerOpen(false);
     setIsSupportOpen(true);
+  }
+
+  function openPrivacy() {
+    setIsDrawerOpen(false);
+    setIsPrivacyOpen(true);
+  }
+
+  async function handlePrivacyChoice(consent, policyVersion) {
+    try {
+      await api.put('/driver-help/privacy-preferences', {
+        ai_processing_consent: consent,
+        policy_version: policyVersion
+      });
+      setIsPrivacyChoiceRequired(false);
+      setIsPrivacyOpen(false);
+    } catch (_error) {
+      Alert.alert('Could Not Save Preference', 'Check your connection and try again. No question will be sent for AI processing until your choice is saved.');
+    }
   }
 
   function handleNavigate(screen) {
@@ -602,6 +643,7 @@ export default function AppNavigator() {
             onManagerWorkspaceSwitch={handleManagerWorkspaceSwitch}
             onLogout={logout}
             onNavigate={handleNavigate}
+            onPrivacyPress={openPrivacy}
             onSupportPress={openSupport}
             onSwitchMode={() => handleSelectMode(activeMode === 'manager' ? 'driver' : 'manager')}
             showModeSwitch={!DRIVER_HELP_ONLY && (availableModes.length > 1 || (activeMode === 'manager' && Boolean(sessionTokens?.managerToken)))}
@@ -612,6 +654,12 @@ export default function AppNavigator() {
             identity={identity}
             onClose={() => setIsSupportOpen(false)}
             visible={isSupportOpen}
+          />
+          <RraPrivacyModal
+            onChoose={handlePrivacyChoice}
+            onClose={() => setIsPrivacyOpen(false)}
+            required={isPrivacyChoiceRequired}
+            visible={isPrivacyOpen}
           />
         </>
       ) : null}

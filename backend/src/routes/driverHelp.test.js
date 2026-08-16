@@ -49,7 +49,8 @@ test('POST /driver-help/query passes authenticated account and driver scope to t
     actorId: 'driver-1',
     actorType: 'driver',
     question: 'Signature package nobody home.',
-    sessionId: 'session-1'
+    sessionId: 'session-1',
+    allowAiProcessing: true
   }]);
 });
 

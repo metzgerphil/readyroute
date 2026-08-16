@@ -1,4 +1,4 @@
-import { Modal, Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
+import { Linking, Modal, Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { getDrawerMenuItems, getModeSwitchLabel } from '../services/shellNavigation';
@@ -62,6 +62,7 @@ export default function MobileNavigationDrawer({
   onManagerCsaSelect,
   onLogout,
   onNavigate,
+  onPrivacyPress,
   onSupportPress,
   onSwitchMode,
   showModeSwitch
@@ -188,6 +189,16 @@ export default function MobileNavigationDrawer({
           </ScrollView>
 
           <View style={[styles.footer, { paddingBottom: Math.max(insets.bottom, 12) }]}>
+            {driverHelpOnly && activeMode === 'driver' ? (
+              <>
+                <Pressable onPress={onPrivacyPress} style={({ pressed }) => [styles.supportButton, pressed ? styles.pressed : null]}>
+                  <Text style={styles.supportText}>Privacy &amp; AI</Text>
+                </Pressable>
+                <Pressable onPress={() => Linking.openURL('https://readyroute.org/account.html')} style={({ pressed }) => [styles.supportButton, pressed ? styles.pressed : null]}>
+                  <Text style={styles.supportText}>Delete account</Text>
+                </Pressable>
+              </>
+            ) : null}
             <Pressable onPress={onSupportPress} style={({ pressed }) => [styles.supportButton, pressed ? styles.pressed : null]}>
               <Text style={styles.supportText}>Support</Text>
             </Pressable>

@@ -30,6 +30,10 @@ const {
   getSignedUrlTtlSeconds
 } = require('./privateStorage');
 const { estimateUsageCost } = require('./openAiUsageCost');
+const {
+  redactConversationContextForAi,
+  redactTextForAi
+} = require('./driverHelpPrivacy');
 
 const MISSING_TABLE_CODES = new Set(['42P01', 'PGRST106', 'PGRST204', 'PGRST205']);
 
@@ -778,9 +782,10 @@ function createDriverHelpService({
     if (!interpretation.knowledge_id || !Number.isInteger(Number(interpretation.knowledge_version))) return null;
     if (!supabase || typeof supabase.rpc !== 'function') return null;
 
+    const routeKey = answerMemoryRouteKey(question);
     const { data, error } = await supabase.rpc('observe_driver_help_answer_memory', {
-      p_route_key: answerMemoryRouteKey(question),
-      p_normalized_question: normalizeDriverQuestion(question),
+      p_route_key: routeKey,
+      p_normalized_question: `route:${routeKey}`,
       p_knowledge_id: interpretation.knowledge_id,
       p_knowledge_version: Number(interpretation.knowledge_version),
       p_response_mode: interpretation.decision,
@@ -1019,14 +1024,15 @@ function createDriverHelpService({
     question,
     sessionId = null,
     includeDiagnostics = false,
-    aiInterpretationModeOverride = null
+    aiInterpretationModeOverride = null,
+    allowAiProcessing = true
   }) {
     const startedAt = Date.now();
-    const effectiveAiInterpretationMode = ['OFF', 'SHADOW', 'ACTIVE'].includes(
+    const effectiveAiInterpretationMode = allowAiProcessing && ['OFF', 'SHADOW', 'ACTIVE'].includes(
       String(aiInterpretationModeOverride || '').toUpperCase()
     )
       ? String(aiInterpretationModeOverride).toUpperCase()
-      : aiInterpretationMode;
+      : (allowAiProcessing ? aiInterpretationMode : 'OFF');
     const [records, sessionState] = await Promise.all([
       loadKnowledgeRecords(),
       loadSessionContext(sessionId, accountId, actorType, actorId)
@@ -1104,15 +1110,15 @@ function createDriverHelpService({
       try {
         const rawAudit = await aiInterpreter({
           safety_identifier: buildAiSafetyIdentifier(accountId, actorType, actorId),
-          driver_question: resolvedQuestion,
-          conversation_context: {
+          driver_question: redactTextForAi(resolvedQuestion),
+          conversation_context: redactConversationContextForAi({
             original_situation: decisionContext.situation_question || null,
             clarification_history: decisionContext.clarification_history || [],
             previous_question: decisionContext.last_question || null,
             pending_clarification_prompt: decisionContext.pending_clarification_prompt || null,
             previous_knowledge_ids: decisionContext.knowledge_ids || [],
             interpreted_facts: decisionContext.interpretation_facts || null
-          },
+          }),
           candidate_records: aiCandidates
         });
         const auditInterpretation = validateInterpretation(
@@ -1198,15 +1204,15 @@ function createDriverHelpService({
       try {
         const rawInterpretation = await aiInterpreter({
           safety_identifier: buildAiSafetyIdentifier(accountId, actorType, actorId),
-          driver_question: resolvedQuestion,
-          conversation_context: {
+          driver_question: redactTextForAi(resolvedQuestion),
+          conversation_context: redactConversationContextForAi({
             original_situation: decisionContext.situation_question || null,
             clarification_history: decisionContext.clarification_history || [],
             previous_question: decisionContext.last_question || null,
             pending_clarification_prompt: decisionContext.pending_clarification_prompt || null,
             previous_knowledge_ids: decisionContext.knowledge_ids || [],
             interpreted_facts: decisionContext.interpretation_facts || null
-          },
+          }),
           candidate_records: aiCandidates
         });
         const interpretation = validateInterpretation(

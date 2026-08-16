@@ -5,6 +5,7 @@ const helmet = require('helmet');
 const { createAuthRouter } = require('./routes/auth');
 const { createBillingRouter } = require('./routes/billing');
 const { createDriverHelpRouter } = require('./routes/driverHelp');
+const { createPublicAccountRouter } = require('./routes/publicAccount');
 const { createManagerRouter } = require('./routes/manager');
 const { createManagerDriverHelpRouter } = require('./routes/managerDriverHelp');
 const propertyIntelManagerRoutes = require('./routes/propertyIntelManager');
@@ -111,6 +112,11 @@ function createApp(options = {}) {
     authorizeDriverDevice: options.authorizeDriverDevice,
     requireDriverDeviceId: options.requireDriverDeviceId
   });
+  const publicAccountRouter = createPublicAccountRouter({
+    supabase: options.supabase,
+    jwtSecret: options.jwtSecret,
+    now: options.now
+  });
   const billingRouter = createBillingRouter({
     supabase: options.supabase,
     requireManager,
@@ -158,7 +164,7 @@ function createApp(options = {}) {
     requireManager
   });
   const driverHelpRouter = createDriverHelpRouter({
-    supabase: options.supabase,
+    supabase: options.supabase || defaultSupabase,
     now: options.now,
     service: options.driverHelpService
   });
@@ -254,7 +260,8 @@ function createApp(options = {}) {
     '/auth/driver/login',
     '/auth/manager/login',
     '/auth/mobile/login',
-    '/staff/login'
+    '/staff/login',
+    '/account/login'
   ], rateLimiters.login);
   app.use([
     '/auth/driver/accept-invite',
@@ -286,6 +293,7 @@ function createApp(options = {}) {
   });
 
   app.use('/auth', authRouter);
+  app.use('/account', publicAccountRouter);
   app.use('/waitlist', waitlistRouter);
   app.use('/support', supportRouter);
   app.use('/staff', staffRouter);

@@ -1,12 +1,66 @@
 const express = require('express');
 
 const { createDriverHelpService } = require('../services/driverHelp');
+const {
+  AI_CONSENT_POLICY_VERSION,
+  createDriverHelpPrivacyService
+} = require('../services/driverHelpPrivacy');
 
 function createDriverHelpRouter(options = {}) {
   const router = express.Router();
   const service = options.service || createDriverHelpService({
     supabase: options.supabase,
     now: options.now
+  });
+  const privacyService = options.privacyService || (options.supabase
+    ? createDriverHelpPrivacyService({ supabase: options.supabase, now: options.now })
+    : null);
+
+  function getActor(req) {
+    return {
+      accountId: req.driver.account_id,
+      driverId: req.driver.driver_id,
+      actorId: req.driver.auth_subject_id || req.driver.driver_id,
+      actorType: req.driver.driver_mode_source === 'manager' ? 'manager' : 'driver'
+    };
+  }
+
+  router.get('/privacy-preferences', async (req, res) => {
+    try {
+      const preference = privacyService
+        ? await privacyService.getPreference(getActor(req))
+        : { ai_processing_consent: false, policy_version: AI_CONSENT_POLICY_VERSION };
+      return res.status(200).json({
+        ...preference,
+        current_policy_version: AI_CONSENT_POLICY_VERSION
+      });
+    } catch (error) {
+      console.error('Driver help privacy preference lookup failed:', error);
+      return res.status(500).json({ error: 'Privacy preferences could not be loaded right now.' });
+    }
+  });
+
+  router.put('/privacy-preferences', async (req, res) => {
+    if (typeof req.body?.ai_processing_consent !== 'boolean') {
+      return res.status(400).json({ error: 'ai_processing_consent must be true or false.' });
+    }
+    try {
+      const preference = await privacyService.setPreference({
+        ...getActor(req),
+        consent: req.body.ai_processing_consent,
+        policyVersion: String(req.body?.policy_version || '')
+      });
+      return res.status(200).json({
+        ...preference,
+        current_policy_version: AI_CONSENT_POLICY_VERSION
+      });
+    } catch (error) {
+      if (error?.code === 'POLICY_VERSION_MISMATCH') {
+        return res.status(409).json({ error: error.message, current_policy_version: AI_CONSENT_POLICY_VERSION });
+      }
+      console.error('Driver help privacy preference update failed:', error);
+      return res.status(500).json({ error: 'Privacy preferences could not be saved right now.' });
+    }
   });
 
   router.post('/query', async (req, res) => {
@@ -18,13 +72,15 @@ function createDriverHelpRouter(options = {}) {
     }
 
     try {
+      const actor = getActor(req);
+      const preference = privacyService
+        ? await privacyService.getPreference(actor)
+        : { ai_processing_consent: true, policy_version: AI_CONSENT_POLICY_VERSION };
       const result = await service.answerQuestion({
-        accountId: req.driver.account_id,
-        driverId: req.driver.driver_id,
-        actorId: req.driver.auth_subject_id || req.driver.driver_id,
-        actorType: req.driver.driver_mode_source === 'manager' ? 'manager' : 'driver',
+        ...actor,
         question,
-        sessionId
+        sessionId,
+        allowAiProcessing: preference.ai_processing_consent === true
       });
       return res.status(200).json(result);
     } catch (error) {

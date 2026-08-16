@@ -118,24 +118,24 @@ function main() {
       }
     }
 
-    if (profileName === 'testflight') {
+    if (['testflight', 'production'].includes(profileName)) {
       const easConfig = JSON.parse(fs.readFileSync(easJsonPath, 'utf8'));
-      const profile = easConfig?.build?.testflight;
-      const submitProfile = easConfig?.submit?.testflight;
+      const profile = easConfig?.build?.[profileName];
+      const submitProfile = easConfig?.submit?.[profileName];
       if (profile?.distribution !== 'store') {
-        errors.push('TestFlight profile must use store distribution.');
+        errors.push(`${profileName} profile must use store distribution.`);
       }
       if (!profile?.autoIncrement) {
-        errors.push('TestFlight profile must auto-increment the build number.');
+        errors.push(`${profileName} profile must auto-increment the build number.`);
       }
       if (!submitProfile?.ios?.ascAppId) {
-        errors.push('TestFlight submit profile is missing ascAppId.');
+        errors.push(`${profileName} submit profile is missing ascAppId.`);
       }
       if (!driverHelpOnly) {
-        errors.push('TestFlight profile must set EXPO_PUBLIC_DRIVER_HELP_ONLY=true.');
+        errors.push(`${profileName} profile must set EXPO_PUBLIC_DRIVER_HELP_ONLY=true.`);
       }
       if (appConfig?.ios?.bundleIdentifier !== 'com.readyroute.driverapp') {
-        errors.push('TestFlight profile must use the production iOS bundle identifier.');
+        errors.push(`${profileName} profile must use the production iOS bundle identifier.`);
       }
       if (!appConfig?.extra?.eas?.projectId) {
         errors.push('Expo projectId is missing.');
