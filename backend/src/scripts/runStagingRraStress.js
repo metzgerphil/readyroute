@@ -53,7 +53,30 @@ const CASES = [
   ['UNMANIFESTED_AUTHORIZED', 'Station assigned me a package that is not on my manifest and the label has the address', 'ANSWER', 'KNO-FORGE-UNMANIFESTED-DELIVERY-001', 'Scan it, select Delivery, enter the label-supported stop details, and choose the actual business or residential type.'],
   ['UNMANIFESTED_OTHER_ROUTE', 'The unmanifested package belongs to another route', 'ANSWER', 'KNO-FORGE-UNMANIFESTED-DELIVERY-001', 'Do not use the new-stop workflow to self-assign another route\'s package. Contact station or management.'],
   ['UNMANIFESTED_AUTHORIZED_NATURAL', 'Station assigned me a package that is not on my manifest, and the label has the address. How do I add it?', 'ANSWER', 'KNO-FORGE-UNMANIFESTED-DELIVERY-001', 'Scan it, select Delivery, enter the label-supported stop details, and choose the actual business or residential type.'],
-  ['UNMANIFESTED_OTHER_ROUTE_NATURAL', 'This unmanifested package belongs to another route. Can I add it as a new stop?', 'ANSWER', 'KNO-FORGE-UNMANIFESTED-DELIVERY-001', 'Do not use the new-stop workflow to self-assign another route\'s package. Contact station or management.']
+  ['UNMANIFESTED_OTHER_ROUTE_NATURAL', 'This unmanifested package belongs to another route. Can I add it as a new stop?', 'ANSWER', 'KNO-FORGE-UNMANIFESTED-DELIVERY-001', 'Do not use the new-stop workflow to self-assign another route\'s package. Contact station or management.'],
+  ['VLAD_ALCOHOL_INTOXICATED', "There's a case of wine here but the guy who answered looks pretty drunk. Can I still hand it to him?", 'ANSWER', 'KNO-DEL-ALCOHOL-001', 'No. Do not deliver alcohol to a visibly intoxicated person.'],
+  ['VLAD_BUSINESS_CLOSED', "I knocked and nobody answered at this business. It's locked up, what do I do with the package?", 'ANSWER', 'KNO-DEL-BUS-CLOSED-001', 'Use Code 004 when the closed business has no authorized release path.'],
+  ['VLAD_CALLTAG_REFUSED', "I picked up a return package but the customer won't give it to me, they're refusing it.", 'ANSWER', 'KNO-PUP-CALLTAG-REFUSED-001', 'Use Code 006 for the refused call tag.'],
+  ['VLAD_HAZMAT_LEAK', "This box has a hazard sticker on it and it looks like it's leaking. Should I still take it?", 'ANSWER', 'KNO-HAZ-LEAK-001', 'No. Do not handle, pick up, or deliver the leaking Hazmat package.'],
+  ['VLAD_MISDELIVERY', 'I marked a package delivered but then realized I actually dropped it at the wrong house.', 'CLARIFY', null, null],
+  ['VLAD_PICKUP_SCANNER', "My scanner just died at this pickup stop and I've got a bunch of boxes to log.", 'ANSWER', 'KNO-PUP-SCANNER-FAIL-001', 'Use Code 26 when scanning technology prevents the pickup scans.'],
+  ['VLAD_APARTMENT_OFFICE', "I'm at an apartment building, nobody's answering the buzzer, but the front office said they'd take the package.", 'ANSWER', 'KNO-DEL-APT-001', 'Use the front office only when an authorized employee accepts and signs for the package.'],
+  ['VLAD_LOST_BADGE', 'I lost my badge today, can another driver just scan me in?', 'ANSWER', 'KNO-SEC-LOST-BADGE-001', 'No. Never use another person’s badge; report the loss and get a replacement.'],
+  ['VLAD_SHIPPER_RELEASE', 'The customer says the shipper told them I can just leave it, no signature needed. Is that true?', 'ANSWER', 'KNO-DEL-SHIPPER-RELEASE-001', 'No. A customer statement is not shipper-release authorization.'],
+  ['VLAD_HAL_UNABLE', "I'm supposed to drop this off at a hold location but they're saying they can't take it.", 'ANSWER', 'KNO-DEL-HAL-UNABLE-001', 'Use the branch that matches whether the HAL stop is still open.'],
+  ['VLAD_HOS_LONG', "I've been driving a really long time today, am I allowed to keep going?", 'CLARIFY', null, null],
+  ['VLAD_THREAT', 'Someone at this stop is threatening me, what should I do right now?', 'ANSWER', 'KNO-SEC-ROUTE-001', 'Protect yourself—leave safely if you can and do not resist for the packages.'],
+  ['VLAD_REPORTER', 'A reporter came up and started asking me questions about my job.', 'ANSWER', 'KNO-COMMS-MEDIA-001', 'Direct the reporter to FedEx station staff or management.'],
+  ['VLAD_PHOTO', 'Do I need to take a photo of this delivery before I drive off?', 'CLARIFY', null, null],
+  ['VLAD_BULK', 'This is a huge bulk shipment, do I handle it different?', 'ANSWER', 'KNO-FORGE-BULK-001', 'Treat the bulk count as physical packages, not as one package per barcode.'],
+  ['VLAD_VEHICLE_CHANGE', "I'm switching vehicles in the middle of my route.", 'ANSWER', 'KNO-FORGE-VEHICLE-CHANGE-001', 'Open the FORGE left-side menu and select Change Vehicle.'],
+  ['VLAD_CLASSIFICATION', "I can't tell if this address is a house or a business, how do I mark the stop?", 'ANSWER', 'KNO-DEL-CLASSIFICATION-001', 'Classify the actual delivery point; if the definitions still do not resolve it, choose Business/Commercial.'],
+  ['VLAD_SAFE_PORCH', 'It looks like I can safely leave this on the porch, is that ok without a signature?', 'ANSWER', 'KNO-DEL-PLACEMENT-HAZARD-001', 'Yes, only if the package is eligible for residential driver release.'],
+  ['VLAD_SIGNATURE_CLARIFIER', "I'm at the house with the signature package, but no one's home. What should I do?", 'CLARIFY', null, null],
+  ['VLAD_BIZ_CLOSED', 'biz closed', 'ANSWER', 'KNO-DEL-BUS-CLOSED-001', 'Do not leave the package unless an authorized release path applies; use Code 011 for a weekend closure, otherwise use Code 004 when release is not permitted.'],
+  ['VLAD_GAP_WEIGHT', 'The scanner is asking me for the weight of this pickup box.', 'ESCALATE', null, null],
+  ['VLAD_GAP_RECEIPT', 'The customer wants a receipt for the packages I just picked up.', 'ESCALATE', null, null],
+  ['VLAD_GAP_DEVICE_TIME', "Forge won't let me log in, it says the date on my device is wrong.", 'ESCALATE', null, null]
 ].map(([caseId, question, expectedMode, expectedKnowledgeId, expectedDirectAnswer]) => ({
   case_id: caseId,
   question,
@@ -98,6 +121,7 @@ function selectedKnowledgeId(result) {
   return result?.trace?.[0]?.knowledge_id
     || result?.selected_knowledge_ids?.[0]
     || result?.diagnostics?.trace?.[0]?.knowledge_id
+    || result?.candidates?.[0]?.knowledge_id
     || null;
 }
 

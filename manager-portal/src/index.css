@@ -102,6 +102,22 @@ body {
   box-shadow: var(--rr-shadow-focus);
 }
 
+.rra-test-situation-summary {
+  background: var(--rr-color-surface-muted);
+  border-left: 4px solid var(--rr-color-orange);
+  border-radius: 8px;
+  margin-bottom: 1rem;
+  padding: 0.9rem 1rem;
+}
+
+.rra-test-situation-summary p {
+  margin: 0.35rem 0;
+}
+
+.rra-test-situation-summary span {
+  color: var(--rr-color-text-muted);
+}
+
 .rra-test-form-footer,
 .rra-feedback-row {
   display: flex;

@@ -131,6 +131,44 @@ test('an explicit signature type can switch a clarification plan to the correct 
   assert.equal(decision.selected_records[0].knowledge_id, 'TEST-DSR-001');
 });
 
+test('a negative Hazmat-label answer removes the Hazmat record before continuing', () => {
+  const hazmat = record({
+    knowledge_id: 'KNO-DEL-HAZMAT-SIGNATURE-001',
+    canonical_situation: 'Hazmat delivery nobody home',
+    normalized_description: 'Hazmat requires an in-person signature',
+    driver_question_variants: ['Hazmat package nobody home'],
+    clarification_requirements: ['Does the delivery package display Hazmat on the label?']
+  });
+  const signature = record({
+    knowledge_id: 'KNO-DEL-SIG-ASR-001',
+    canonical_situation: 'Signature package nobody home',
+    normalized_description: 'A signature-required delivery has no recipient available',
+    driver_question_variants: ['Signature package nobody home'],
+    driver_question_patterns: [{
+      utterance: 'Signature package nobody home',
+      response_mode: 'ASK_MINIMUM_CLARIFICATION',
+      must_clarify: ['What signature service does FORGE show?']
+    }],
+    clarification_requirements: ['What signature service does FORGE show?']
+  });
+
+  const decision = buildDriverHelpDecision(
+    'Signature package nobody home. Ready Route asked: Does the delivery package display Hazmat on the label? Driver answered: no',
+    [hazmat, signature],
+    {
+      clarification_plan_active: true,
+      knowledge_ids: [hazmat.knowledge_id],
+      situation_question: 'Signature package nobody home',
+      pending_clarification_requirement: 'Does the delivery package display Hazmat on the label?'
+    }
+  );
+
+  assert.equal(decision.response_mode, 'CLARIFY');
+  assert.equal(decision.candidates[0].knowledge_id, signature.knowledge_id);
+  assert.match(decision.clarification_prompt, /signature service/i);
+  assert.doesNotMatch(decision.clarification_prompt, /hazmat/i);
+});
+
 test('exact evaluated variant can return the stored published answer', () => {
   const decision = buildDriverHelpDecision('sample indicator appeared in training', [record()]);
   assert.equal(decision.response_mode, 'ANSWER');
@@ -265,7 +303,7 @@ test('data-authored patterns ignore filler words and do not repeat an already su
     'Ready Route Answers needs one detail: Is any authorized signature or release path available?'
   );
   assert.doesNotMatch(decision.clarification_prompt, /business or non-residential/i);
-  assert.deepEqual(decision.clarification_options, []);
+  assert.deepEqual(decision.clarification_options.map((option) => option.label), ['Yes', 'No']);
 });
 
 test('data-authored patterns tolerate harmless wrappers and a one-character driver typo', () => {

@@ -1,6 +1,6 @@
 {
   "schema_version": "1.0.0",
-  "generated_at": "2026-08-16T02:54:32.800Z",
+  "generated_at": "2026-08-16T03:27:45.876Z",
   "total_records": 93,
   "by_status": {
     "SOURCE_VERIFIED": 79,
@@ -13,10 +13,10 @@
   "publication_ready_records": 93,
   "status_eligible_but_evidence_gated": 0,
   "source_records": 8,
-  "driver_language_cases": 317,
-  "reference_language_cases": 10,
-  "conversation_scenarios": 44,
-  "out_of_corpus_cases": 7,
+  "driver_language_cases": 369,
+  "reference_language_cases": 11,
+  "conversation_scenarios": 45,
+  "out_of_corpus_cases": 13,
   "candidate_operational_language_cases": 0,
   "candidate_gap_language_cases": 0,
   "delivery_status_references": 50,

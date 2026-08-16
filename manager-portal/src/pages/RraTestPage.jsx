@@ -57,6 +57,7 @@ async function copyTextToClipboard(text) {
 
 export default function RraTestPage() {
   const [question, setQuestion] = useState('');
+  const [situationQuestion, setSituationQuestion] = useState('');
   const [sessionId, setSessionId] = useState(null);
   const [result, setResult] = useState(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -79,6 +80,7 @@ export default function RraTestPage() {
     if (nextQuestion.length < 2 || isSubmitting) return;
 
     setQuestion(nextQuestion);
+    if (!sessionId) setSituationQuestion(nextQuestion);
     setIsSubmitting(true);
     setError('');
     setFeedback(null);
@@ -94,6 +96,7 @@ export default function RraTestPage() {
         entries,
         buildRraTestLogEntry(nextQuestion, response.data || {})
       ));
+      if (response.data?.response_mode === 'CLARIFY') setQuestion('');
       setCopyStatus('');
     } catch (requestError) {
       setError(requestError.response?.data?.error || 'Ready Route Answers could not check the knowledge records right now.');
@@ -115,6 +118,7 @@ export default function RraTestPage() {
 
   function newSituation() {
     setQuestion('');
+    setSituationQuestion('');
     setSessionId(null);
     setResult(null);
     setShowMore(false);
@@ -150,7 +154,13 @@ export default function RraTestPage() {
       <section className="page-card rra-test-question-card">
         <form onSubmit={askQuestion}>
           <label htmlFor="rra-test-question">{isFollowUp ? 'Your follow-up answer' : 'Driver question'}</label>
-          {isFollowUp ? <p>Continue in this same box. Ready Route will keep the original situation and your earlier answers.</p> : null}
+          {isFollowUp ? (
+            <div className="rra-test-situation-summary">
+              <strong>Original driver situation</strong>
+              <p>{situationQuestion}</p>
+              <span>Answer only the requested detail below. Ready Route will keep the original situation and earlier answers.</span>
+            </div>
+          ) : null}
           <textarea
             autoFocus
             id="rra-test-question"

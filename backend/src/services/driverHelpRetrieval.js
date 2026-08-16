@@ -417,6 +417,33 @@ function clarificationOptions(ranked) {
     }));
 }
 
+function clarificationOptionsForRequirement(requirement, ranked) {
+  const normalized = normalizeDriverQuestion(requirement);
+  if (/signature service/.test(normalized)) {
+    const labels = {
+      'KNO-DEL-SIG-ASR-001': 'ASR — Adult Signature Required',
+      'KNO-DEL-SIG-DSR-001': 'DSR — Direct Signature Required',
+      'KNO-DEL-SIG-ISR-001': 'ISR — Indirect Signature Required'
+    };
+    return ranked
+      .filter(({ record }) => labels[record.knowledge_id] && isProductionEligibleRecord(record))
+      .slice(0, 3)
+      .map(({ record }) => ({
+        knowledge_id: record.knowledge_id,
+        version: record.version,
+        label: labels[record.knowledge_id],
+        query: record.knowledge_id.split('-')[3]
+      }));
+  }
+  if (/^(?:is|was|were|did|does|do|has|have|can|could|should|will|would)\b/.test(normalized)) {
+    return [
+      { knowledge_id: 'FLOW:YES', version: 1, label: 'Yes', query: 'yes' },
+      { knowledge_id: 'FLOW:NO', version: 1, label: 'No', query: 'no' }
+    ];
+  }
+  return [];
+}
+
 function escalation(candidates = [], confidence = 0, message = null) {
   return {
     response_mode: 'ESCALATE',
@@ -540,6 +567,14 @@ function latestDriverAnswer(question) {
   return matches.length ? matches[matches.length - 1][1].trim() : value;
 }
 
+function clarificationAnswerRejectsRecord(record, requirement, answer) {
+  const normalizedRequirement = normalizeDriverQuestion(requirement);
+  const normalizedAnswer = normalizeDriverQuestion(answer);
+  return record?.knowledge_id === 'KNO-DEL-HAZMAT-SIGNATURE-001'
+    && /display hazmat on the label/.test(normalizedRequirement)
+    && /^(?:no|nope|not hazmat|it is not hazmat)$/.test(normalizedAnswer);
+}
+
 function buildDriverHelpDecision(question, records, context = {}) {
   const normalizedQuestion = normalizeDriverQuestion(question);
   const bypassRequest = /\b(ignore|invent|pretend)\b/.test(normalizedQuestion);
@@ -548,14 +583,25 @@ function buildDriverHelpDecision(question, records, context = {}) {
   if (/^(?:what is )?code \d{1,3}$/.test(normalizedQuestion)) return escalation();
 
   if (context.clarification_plan_active === true) {
+    const newestAnswer = latestDriverAnswer(question);
     const plannedRecord = selectCanonicalRecordVersions(records).find((record) => (
       (context.knowledge_ids || []).includes(record.knowledge_id)
       && isProductionEligibleRecord(record)
     ));
+    if (plannedRecord && clarificationAnswerRejectsRecord(
+      plannedRecord,
+      context.pending_clarification_requirement || context.pending_clarification_prompt,
+      newestAnswer
+    )) {
+      return buildDriverHelpDecision(
+        context.situation_question || newestAnswer,
+        records.filter((record) => record.knowledge_id !== plannedRecord.knowledge_id),
+        { knowledge_ids: [], clarification_plan_active: false }
+      );
+    }
     // Reconsider the selected record using only the newest driver-supplied
     // detail. Re-ranking the entire accumulated clarification transcript lets
     // words from Ready Route's own prior prompts hijack the conversation.
-    const newestAnswer = latestDriverAnswer(question);
     const standaloneReconsidered = rankKnowledgeRecords(newestAnswer, records, {
       ...context,
       knowledge_ids: []
@@ -642,6 +688,10 @@ function buildDriverHelpDecision(question, records, context = {}) {
       );
       decision.clarification_requirement = remaining[0];
       decision.clarification_plan = remaining;
+      decision.clarification_options = clarificationOptionsForRequirement(
+        remaining[0],
+        [{ record: plannedRecord, score: 100 }]
+      );
       return decision;
     }
   }
@@ -679,6 +729,7 @@ function buildDriverHelpDecision(question, records, context = {}) {
     const decision = clarify(ranked, candidates, confidence, buildClarificationPrompt(requirement));
     decision.clarification_requirement = requirement;
     decision.clarification_plan = unansweredPatternRequirements;
+    decision.clarification_options = clarificationOptionsForRequirement(requirement, ranked);
     return decision;
   }
   if (patternMode === 'ANSWER' || hasExactQuestionVariant(question, top.record)) {
@@ -695,6 +746,10 @@ function buildDriverHelpDecision(question, records, context = {}) {
     );
     decision.clarification_requirement = unansweredRequirements[0];
     decision.clarification_plan = unansweredRequirements;
+    decision.clarification_options = clarificationOptionsForRequirement(
+      unansweredRequirements[0],
+      ranked
+    );
     return decision;
   }
 

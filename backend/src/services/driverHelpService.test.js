@@ -303,12 +303,7 @@ test('grounded AI interpretation may select a record but the answer remains cano
   });
 
   assert.equal(interpretationRequest.candidate_records[0].knowledge_id, record.knowledge_id);
-  assert.deepEqual(interpretationRequest.candidate_records[0].driver_question_patterns, [{
-    utterance: 'Pickup canceled before attempt',
-    response_mode: 'DIRECT_SOURCE_GROUNDED_ANSWER',
-    information_sufficiency: null,
-    must_clarify: []
-  }]);
+  assert.equal('driver_question_patterns' in interpretationRequest.candidate_records[0], false);
   assert.match(interpretationRequest.safety_identifier, /^rr_[a-f0-9]+$/);
   assert.equal(interpretationRequest.safety_identifier.length, 64);
   assert.equal(response.response_mode, 'ANSWER');
@@ -317,6 +312,44 @@ test('grounded AI interpretation may select a record but the answer remains cano
   assert.equal(response.interpretation_mode, 'GROUNDED_AI');
   assert.equal(response.interpretation_confidence, 0.93);
   assert.equal(response.trace[0].interpretation_mode, 'GROUNDED_AI');
+});
+
+test('grounded AI receives every published record instead of an alphabetical first-page cutoff', async () => {
+  const records = Array.from({ length: 55 }, (_, index) => knowledgeRecord({
+    knowledge_id: `KNO-TEST-${String(index + 1).padStart(3, '0')}`,
+    canonical_situation: `Test situation ${index + 1}`,
+    normalized_description: `Distinct operational condition ${index + 1}`,
+    driver_question_variants: [`Authored wording ${index + 1}`],
+    clarification_requirements: []
+  }));
+  const target = records.at(-1);
+  const supabase = fakeSupabase(records);
+  let candidateIds = [];
+  const service = createDriverHelpService({
+    supabase,
+    now: () => new Date(0),
+    aiInterpretationMode: 'ACTIVE',
+    aiInterpreter: async (request) => {
+      candidateIds = request.candidate_records.map((candidate) => candidate.knowledge_id);
+      return {
+        selection: 'SELECT',
+        knowledge_id: target.knowledge_id,
+        decision: 'ANSWER',
+        clarification_requirement: null,
+        confidence: 0.95
+      };
+    }
+  });
+
+  const response = await service.answerQuestion({
+    accountId: '00000000-0000-0000-0000-000000000001',
+    driverId: '00000000-0000-0000-0000-000000000002',
+    question: 'A completely natural paraphrase that needs semantic interpretation'
+  });
+
+  assert.equal(candidateIds.length, records.length);
+  assert.equal(candidateIds.includes(target.knowledge_id), true);
+  assert.equal(response.trace[0].knowledge_id, target.knowledge_id);
 });
 
 test('invalid or unavailable AI interpretation falls back to deterministic retrieval', async () => {
