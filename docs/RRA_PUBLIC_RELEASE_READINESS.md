@@ -90,7 +90,7 @@ Provide App Review with a stable demo driver account and keep the production API
 
 ## Required operational setup before submission
 
-1. Apply migration `20260816230000_rra_public_privacy.sql` to production Supabase.
+1. Apply migration `20260816231000_rra_public_privacy.sql` to production Supabase.
 2. Deploy the backend and landing-page changes.
 3. Schedule `npm run privacy:maintain` in the backend once each day and alert on failure.
 4. Test consent allow, decline, and withdrawal with a real authorized driver account.
