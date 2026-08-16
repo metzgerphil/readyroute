@@ -164,6 +164,7 @@ jobs:
           env_vars: |-
             SOURCE_COMMIT=${{ github.sha }}
             NODE_ENV=production
+            READYROUTE_DRIVER_HELP_AI_INTERPRETATION_MODE=ACTIVE
             READYROUTE_DRIVER_HELP_AI_ENABLED=false
             MANAGER_PORTAL_URL=https://ready-route-project--rra-test-mlshz0rb.web.app
           env_vars_update_strategy: merge
