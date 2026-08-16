@@ -4,6 +4,7 @@ const { createClient } = require('@supabase/supabase-js');
 
 const STAGING_PROJECT_REF = 'xtzbjlmizmdfqelvhhwx';
 const STAGING_COMPANY_NAME = 'Smoke Test ReadyRoute Account';
+const STAGING_AUTOMATION_EMAIL = 'rra-staging-automation@readyroute.test';
 
 function requireEnv(name) {
   const value = String(process.env[name] || '').trim();
@@ -16,7 +17,10 @@ function requireEnv(name) {
 async function provisionStagingManager() {
   const supabaseUrl = requireEnv('SUPABASE_URL');
   const supabaseServiceKey = requireEnv('SUPABASE_SERVICE_KEY');
-  const email = requireEnv('STAGING_MANAGER_BOOTSTRAP_EMAIL').toLowerCase();
+  // This identity is intentionally fixed and non-human. Staging releases rotate
+  // its password on every run, so accepting a configured manager email here
+  // could silently invalidate a real tester's password.
+  const email = STAGING_AUTOMATION_EMAIL;
   const bootstrapPassword = String(process.env.STAGING_MANAGER_BOOTSTRAP_PASSWORD || '');
 
   if (!supabaseUrl.includes(`${STAGING_PROJECT_REF}.supabase.co`)) {
@@ -126,4 +130,9 @@ if (require.main === module) {
   });
 }
 
-module.exports = { provisionStagingManager, STAGING_COMPANY_NAME, STAGING_PROJECT_REF };
+module.exports = {
+  provisionStagingManager,
+  STAGING_AUTOMATION_EMAIL,
+  STAGING_COMPANY_NAME,
+  STAGING_PROJECT_REF
+};

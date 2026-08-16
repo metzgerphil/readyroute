@@ -101,7 +101,6 @@ jobs:
       - name: Provision the staging manager
         env:
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
-          STAGING_MANAGER_BOOTSTRAP_EMAIL: ${{ secrets.STAGING_MANAGER_BOOTSTRAP_EMAIL }}
         working-directory: backend
         shell: bash
         run: |
@@ -183,7 +182,7 @@ jobs:
       - name: Run the live RRA question loop
         env:
           EXPECTED_COMMIT: ${{ github.sha }}
-          STAGING_MANAGER_BOOTSTRAP_EMAIL: ${{ secrets.STAGING_MANAGER_BOOTSTRAP_EMAIL }}
+          STAGING_MANAGER_BOOTSTRAP_EMAIL: rra-staging-automation@readyroute.test
         working-directory: backend
         run: >-
           STAGING_MANAGER_BOOTSTRAP_PASSWORD="$STAGING_MANAGER_RUNTIME_PASSWORD"
