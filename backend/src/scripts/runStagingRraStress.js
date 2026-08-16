@@ -76,7 +76,13 @@ const CASES = [
   ['VLAD_BIZ_CLOSED', 'biz closed', 'ANSWER', 'KNO-DEL-BUS-CLOSED-001', 'Do not leave the package unless an authorized release path applies; use Code 011 for a weekend closure, otherwise use Code 004 when release is not permitted.'],
   ['VLAD_FORGE_WEIGHT', 'The scanner is asking me for the weight of this pickup box.', 'CLARIFY', null, null],
   ['VLAD_FORGE_RECEIPT', 'The customer wants a receipt for the packages I just picked up.', 'ANSWER', 'KNO-PUP-RECEIPT-001', null],
-  ['VLAD_FORGE_DEVICE_TIME', "Forge won't let me log in, it says the date on my device is wrong.", 'ANSWER', 'KNO-FORGE-DEVICE-TIME-001', null]
+  ['VLAD_FORGE_DEVICE_TIME', "Forge won't let me log in, it says the date on my device is wrong.", 'ANSWER', 'KNO-FORGE-DEVICE-TIME-001', null],
+  ['VLAD_STATION_HOLD', 'The customer wants me to hold their package at the station instead of delivering it.', 'ANSWER', 'KNO-DEL-HOLD-STATION-001', 'Use Code 15 when the recipient requests station hold for pickup.'],
+  ['VLAD_DOORTAG_ERROR', 'I wrote the wrong thing on the door tag, what do I do now?', 'ANSWER', 'KNO-DEL-DOORTAG-CORRECTION-001', 'Stop before knowingly scanning or leaving the incorrect door tag.'],
+  ['VLAD_LATE_MISDELIVERY', "I found a package yesterday that I'd actually left at the wrong address.", 'ANSWER', 'KNO-DEL-MISDELIVERY-LATE-RETRIEVAL-001', 'Use Code 361 when retrieving a misdelivered package after the day it was misdelivered.'],
+  ['VLAD_DOG_GAP', 'A dog is loose in the front yard. What should I do?', 'ESCALATE', null, null],
+  ['VLAD_END_OF_SHIFT_GAP', 'I finished my route. What is the complete end-of-shift close-out procedure?', 'ESCALATE', null, null],
+  ['VLAD_TOBACCO_GAP', 'How do I deliver a tobacco package?', 'ESCALATE', null, null]
 ].map(([caseId, question, expectedMode, expectedKnowledgeId, expectedDirectAnswer]) => ({
   case_id: caseId,
   question,
