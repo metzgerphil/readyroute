@@ -29,6 +29,7 @@ const navGroups = [
       { to: '/time-commits', label: 'P&D Time Commits', icon: 'commits' },
       { to: '/drivers', label: 'Drivers', icon: 'drivers' },
       { to: '/knowledge-activity', label: 'Knowledge Activity', icon: 'knowledge' },
+      { to: '/answer-memory', label: 'Answer Memory', icon: 'knowledge' },
       { to: '/rra-test', label: 'RRA Test Console', icon: 'knowledge' },
       { to: '/vehicles', label: 'Vehicles', icon: 'vehicles' },
       { to: '/notifications', label: 'Notifications', icon: 'notifications' },

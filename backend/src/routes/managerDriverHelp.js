@@ -1,7 +1,7 @@
 const express = require('express');
 
 const defaultSupabase = require('../lib/supabase');
-const { createDriverHelpService, isMissingTableError } = require('../services/driverHelp');
+const { applyAiInterpretation, createDriverHelpService, isMissingTableError } = require('../services/driverHelp');
 
 function createManagerDriverHelpRouter(options = {}) {
   const router = express.Router();
@@ -84,7 +84,31 @@ function createManagerDriverHelpRouter(options = {}) {
         if (isMissingTableError(error)) return res.status(200).json({ routes: [], setup_required: true });
         throw error;
       }
-      return res.status(200).json({ routes: data || [], setup_required: false });
+      const records = await service.loadKnowledgeRecords();
+      const routes = (data || []).map((route) => {
+        const previewDecision = applyAiInterpretation({
+          knowledge_id: route.knowledge_id,
+          decision: route.response_mode,
+          answer_pattern_id: route.answer_pattern_id || null,
+          clarification_requirement: route.clarification_requirement || null,
+          confidence: Number(route.highest_confidence || 1)
+        }, route.normalized_question, records, { candidates: [] });
+        return {
+          ...route,
+          preview: previewDecision ? {
+            response_mode: previewDecision.response_mode,
+            answer: previewDecision.answer || null,
+            answer_structure: previewDecision.answer_structure || null,
+            clarification_prompt: previewDecision.clarification_prompt || null,
+            clarification_options: (previewDecision.clarification_options || []).map((option) => ({
+              label: option.label,
+              query: option.query
+            })),
+            more_info: previewDecision.more_info || null
+          } : null
+        };
+      });
+      return res.status(200).json({ routes, setup_required: false });
     } catch (error) {
       console.error('Manager RRA answer-memory list failed:', error);
       return res.status(500).json({ error: 'Unable to load learned answer routes.' });
