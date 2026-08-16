@@ -112,7 +112,7 @@ export default function AnswerMemoryPage() {
 
       <section className="page-card answer-memory-guidance">
         <h2>How it works</h2>
-        <p><strong>Active</strong> routes can bypass AI for that same question. Standard routes activate after repeated agreement. High-risk routes remain under <strong>Needs review</strong> until a manager approves them. Any disagreement or negative feedback suspends the route.</p>
+        <p><strong>Active</strong> routes can bypass AI for that same question. Direct standard answers require three matching AI confirmations. Clarifications and high-risk routes require five; high-risk routes also require manager approval. Any disagreement or negative feedback suspends the route.</p>
       </section>
 
       <section className="page-card">
@@ -164,7 +164,7 @@ export default function AnswerMemoryPage() {
                         <td><strong>{route.normalized_question}</strong><small>{route.response_mode === 'CLARIFY' ? 'Asks a clarification' : 'Gives an answer'} · {route.risk_tier === 'HIGH' ? 'High-risk topic' : 'Standard topic'}</small></td>
                         <td><strong>{formatKnowledgeId(route.knowledge_id)}</strong><small>{route.knowledge_id} · version {route.knowledge_version}</small></td>
                         <td><span className={`answer-memory-status ${meta.tone}`}>{meta.label}</span></td>
-                        <td><strong>{route.agreement_count || 0} agreements</strong><small>{route.reuse_count || 0} AI calls avoided · {route.disagreement_count || 0} disagreements</small></td>
+                        <td><strong>{route.agreement_count || 0} of {route.required_agreements || (route.response_mode === 'CLARIFY' || route.risk_tier === 'HIGH' ? 5 : 3)} confirmations</strong><small>{route.reuse_count || 0} AI calls avoided · {route.disagreement_count || 0} disagreements</small></td>
                         <td>{formatDate(route.last_seen_at)}</td>
                         <td>
                           <div className="answer-memory-actions">
@@ -178,11 +178,15 @@ export default function AnswerMemoryPage() {
                             {route.status !== 'ACTIVE' ? (
                               <button
                                 className="primary-button"
-                                disabled={isUpdating || !preview}
+                                disabled={isUpdating || !preview || !route.ready_for_approval}
                                 onClick={() => reviewMutation.mutate({ routeKey: route.route_key, action: 'APPROVE' })}
                                 type="button"
                               >
-                                {isUpdating ? 'Saving…' : route.status === 'SUSPENDED' ? 'Reactivate' : 'Approve'}
+                                {isUpdating
+                                  ? 'Saving…'
+                                  : !route.ready_for_approval
+                                    ? `Needs ${(route.required_agreements || 5) - (route.agreement_count || 0)} more`
+                                    : route.status === 'SUSPENDED' ? 'Reactivate' : 'Approve'}
                               </button>
                             ) : null}
                             {route.status !== 'SUSPENDED' ? (

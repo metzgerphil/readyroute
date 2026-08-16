@@ -86,6 +86,7 @@ function createManagerDriverHelpRouter(options = {}) {
       }
       const records = await service.loadKnowledgeRecords();
       const routes = (data || []).map((route) => {
+        const requiredAgreements = route.risk_tier === 'HIGH' || route.response_mode === 'CLARIFY' ? 5 : 3;
         const previewDecision = applyAiInterpretation({
           knowledge_id: route.knowledge_id,
           decision: route.response_mode,
@@ -95,6 +96,8 @@ function createManagerDriverHelpRouter(options = {}) {
         }, route.normalized_question, records, { candidates: [] });
         return {
           ...route,
+          required_agreements: requiredAgreements,
+          ready_for_approval: Number(route.agreement_count || 0) >= requiredAgreements,
           preview: previewDecision ? {
             response_mode: previewDecision.response_mode,
             answer: previewDecision.answer || null,
