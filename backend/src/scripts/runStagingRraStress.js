@@ -31,7 +31,20 @@ const CASES = [
   ['BLUE_SHEET', 'What is the Blue Sheet?', 'ANSWER', 'KNO-DOC-HANDSHEET-001', '“Blue Sheet” is an informal name; the confirmed forms are OP-207 and OP-207Res for HAL packages when FORGE or scanning is inoperable.'],
   ['BLUE_SHEET_FIELDS', 'What is the Blue Sheet? can you tell me how to complete every field', 'ANSWER', 'KNO-DOC-HANDSHEET-001', 'Ready Route cannot safely provide every field from “Blue Sheet” alone.'],
   ['BADGE', 'Can I start my route without my FedEx badge?', 'ANSWER', 'KNO-CX-APPEARANCE-001', 'No. Complete the temporary or replacement badge process before providing service.'],
-  ['MISDELIVERY_SHORT', 'I recovered a package I misdelivered.', 'ANSWER', 'KNO-DEL-MISDELIVERY-RECOVERY-001', 'Use Code 17 for the recovered misdelivery.']
+  ['MISDELIVERY_SHORT', 'I recovered a package I misdelivered.', 'ANSWER', 'KNO-DEL-MISDELIVERY-RECOVERY-001', 'Use Code 17 for the recovered misdelivery.'],
+  ['COD_MULTI', 'I have three COD packages at one stop', 'ANSWER', 'KNO-DEL-COD-MULTI-001', 'Handle every COD package separately: verify each package amount, review the combined stop total, and complete a separate COD screen for each package.'],
+  ['COD_PREFILLED', 'The COD amount was prefilled. Do I still verify it', 'ANSWER', 'KNO-DEL-COD-MULTI-001', 'Yes. Verify the correct COD amount even when the scan prepopulates it.'],
+  ['COD_REFUSAL_BOUNDARY', 'The customer refuses a COD package', 'ESCALATE', null, null],
+  ['CRITICAL_HEALTH', 'I have a Critical Healthcare delivery', 'ANSWER', 'KNO-DEL-CRITICAL-HEALTH-001', 'Treat it as a Time Definite delivery with a SenseAware ID.'],
+  ['CRITICAL_TRACKER', 'What do I do with the Critical Healthcare SenseAware ID after delivery', 'ANSWER', 'KNO-DEL-CRITICAL-HEALTH-001', 'Remove it before handing over the delivered package, then return it to station personnel.'],
+  ['BULK_BARCODE', 'Does one bulk barcode mean there is only one package', 'ANSWER', 'KNO-FORGE-BULK-001', 'No. One bulk barcode can represent many physical packages.'],
+  ['BULK_COUNT', 'Can I accept the displayed bulk pickup count without counting', 'ANSWER', 'KNO-FORGE-BULK-001', 'No. Verify the actual physical-package count before accepting it.'],
+  ['ORDINARY_REFUSAL', 'The recipient is here and refuses this ordinary delivery', 'ANSWER', 'KNO-DEL-REFUSED-001', 'Use Code 006 for an ordinary delivery package the present recipient explicitly refuses.'],
+  ['REFUSAL_NOT_HOME', 'Nobody is home. Is that Code 006 refused', 'ANSWER', 'KNO-DEL-REFUSED-001', 'No. Do not use Code 006 merely because the recipient is absent.'],
+  ['ZIP_CORRECTION', 'I typed the wrong ZIP after scanning the package', 'ANSWER', 'KNO-FORGE-EDIT-ADDRESS-001', 'Use Edit Address, then choose ReEnter to correct the ZIP.'],
+  ['MOVED_RECIPIENT', 'The recipient moved and is not at the label address', 'ANSWER', 'KNO-FORGE-EDIT-ADDRESS-001', 'Use Code 002 and return the package to the station.'],
+  ['UNMANIFESTED_AUTHORIZED', 'Station assigned me a package that is not on my manifest and the label has the address', 'ANSWER', 'KNO-FORGE-UNMANIFESTED-DELIVERY-001', 'Scan it, select Delivery, enter the label-supported stop details, and choose the actual business or residential type.'],
+  ['UNMANIFESTED_OTHER_ROUTE', 'The unmanifested package belongs to another route', 'ANSWER', 'KNO-FORGE-UNMANIFESTED-DELIVERY-001', 'Do not use the new-stop workflow to self-assign another route\'s package. Contact station or management.']
 ].map(([caseId, question, expectedMode, expectedKnowledgeId, expectedDirectAnswer]) => ({
   case_id: caseId,
   question,
@@ -182,4 +195,3 @@ main().catch((error) => {
   console.error(error.stack || error.message);
   process.exitCode = 1;
 });
-

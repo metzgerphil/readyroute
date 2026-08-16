@@ -23,6 +23,13 @@ test('clarification answer validation recognizes common fact types', () => {
   assert.equal(isClarificationAnswerSufficient('why no packages were obtained', 'the shipper had none ready'), true);
   assert.equal(isClarificationAnswerSufficient('why no packages were obtained', 'no'), false);
   assert.equal(isClarificationAnswerSufficient('whether anything was scanned', 'I am not sure'), false);
+  assert.equal(
+    isClarificationAnswerSufficient(
+      'Is this an ordinary delivery, ASR or ID refusal, call tag, or COD payment refusal?',
+      'It is an ordinary delivery'
+    ),
+    true
+  );
 });
 
 test('clarification replies keep the original situation and accumulated answers', () => {
@@ -75,6 +82,13 @@ test('obvious follow-ups retain the answered situation without carrying unrelate
   assert.equal(
     buildContextualQuestion('I lost it', context),
     'The scanner technology failed during my pickup. Driver follow-up: I lost it'
+  );
+  assert.equal(
+    buildContextualQuestion('One amount was prefilled', {
+      last_response_mode: 'ANSWER',
+      last_question: 'I have three COD packages at one stop'
+    }),
+    'I have three COD packages at one stop. Driver follow-up: One amount was prefilled'
   );
   assert.equal(
     buildContextualQuestion('The HAL stop was already closed when FedEx Office refused it', context),

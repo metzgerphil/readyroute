@@ -109,6 +109,7 @@ function isAnsweredSituationFollowUp(question) {
     || /\bnone of\b.*\b(?:this|that) (?:customer|location|stop)\b/.test(normalized)
     || /^(?:what|which) (?:details|information)\b/.test(normalized)
     || /^(?:it|this|that)\b/.test(normalized)
+    || /^(?:one|the)\b.*\b(?:amount|barcode|check|count|screen)\b/.test(normalized)
     || /^(?:where|what|which|can|could|should|do|does|did)\b.*\b(?:it|this|that)\b/.test(normalized)
     || /^i (?:lost|forgot|found) (?:it|this|that)\b/.test(normalized)
     || /^i (?:cannot|can t|cant) (?:safely )?(?:get out|escape)\b/.test(normalized);
@@ -163,6 +164,9 @@ function isClarificationAnswerSufficient(requirement, answer) {
   }
   if (/\bforgotten\b.*\blost\b|\blost\b.*\bforgotten\b/.test(normalizedRequirement)) {
     return /\b(?:forgot|forgotten|lost|found|replacement)\b/.test(normalizedAnswer);
+  }
+  if (/\bordinary delivery\b.*\b(?:asr|call tag|cod)\b/.test(normalizedRequirement)) {
+    return /\b(?:ordinary delivery|asr|id refusal|call tag|cod|payment refusal)\b/.test(normalizedAnswer);
   }
   if (/^why\b|\bwhy\b/.test(normalizedRequirement)) {
     return tokenize(normalizedAnswer).length >= 2 && !/^(?:yes|no)$/.test(normalizedAnswer);

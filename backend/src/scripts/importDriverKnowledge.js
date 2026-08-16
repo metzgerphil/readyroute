@@ -294,6 +294,8 @@ function toKnowledgeRow(
 function buildVariantIndex(driverCases = []) {
   const index = new Map();
   for (const testCase of driverCases) {
+    if (['INSUFFICIENT', 'ESCALATE_NO_ANSWER'].includes(testCase.information_sufficiency)
+      || String(testCase.response_mode || '').startsWith('ESCALATE')) continue;
     for (const knowledgeId of testCase.expected_knowledge_ids || []) {
       const variants = index.get(knowledgeId) || [];
       variants.push(testCase.utterance, ...(testCase.semantic_variations || []));

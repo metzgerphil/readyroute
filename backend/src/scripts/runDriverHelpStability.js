@@ -59,7 +59,11 @@ function loadIndexedRecords() {
   for (const testCase of cases) {
     for (const knowledgeId of testCase.expected_knowledge_ids || []) {
       const utterances = [testCase.utterance, ...(testCase.semantic_variations || [])];
-      variants.set(knowledgeId, [...(variants.get(knowledgeId) || []), ...utterances]);
+      const isEscalationCase = ['INSUFFICIENT', 'ESCALATE_NO_ANSWER'].includes(testCase.information_sufficiency)
+        || String(testCase.response_mode || '').startsWith('ESCALATE');
+      if (!isEscalationCase) {
+        variants.set(knowledgeId, [...(variants.get(knowledgeId) || []), ...utterances]);
+      }
       patterns.set(knowledgeId, [...(patterns.get(knowledgeId) || []), ...utterances.map((utterance) => ({
         utterance,
         response_mode: testCase.response_mode,
