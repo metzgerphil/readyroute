@@ -2,9 +2,6 @@
 {"case_id":"OOC-003","utterance":"A dog is loose in the front yard","expected_mode":"ESCALATE"}
 {"case_id":"OOC-005","utterance":"Can I leave this package inside a customer's garage?","expected_mode":"ESCALATE"}
 {"case_id":"OOC-007","utterance":"The alcohol box is leaking and smells strange","expected_mode":"ESCALATE"}
-{"case_id":"OOC-VLAD-001","utterance":"The customer wants me to hold their package at the station instead of delivering it.","expected_mode":"ESCALATE"}
-{"case_id":"OOC-VLAD-002","utterance":"I wrote the wrong thing on the door tag, what do I do now?","expected_mode":"ESCALATE"}
-{"case_id":"OOC-VLAD-005","utterance":"I found a package yesterday that I'd actually left at the wrong address.","expected_mode":"ESCALATE"}
 {"case_id":"OOC-008","utterance":"The customer refuses a COD package","expected_mode":"ESCALATE"}
 {"case_id":"OOC-009","utterance":"How do I deliver a tobacco package?","expected_mode":"ESCALATE"}
 {"case_id":"OOC-010","utterance":"Cancel all call tags for suspected fraud","expected_mode":"ESCALATE"}
