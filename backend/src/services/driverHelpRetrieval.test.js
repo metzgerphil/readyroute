@@ -75,6 +75,48 @@ test('unmatched distinctive terms fail closed instead of matching generic packag
   assert.match(decision.escalation_message, /does not have a verified answer/i);
 });
 
+test('an animal-at-delivery report cannot fall through to an unrelated delivery procedure', () => {
+  const decision = buildDriverHelpDecision('Dog on the property, cannot deliver', [record({
+    canonical_situation: 'A residential recipient is not available',
+    driver_question_variants: ['Nobody is home at the house'],
+    taxonomy_paths: ['TAX-DELIVERY']
+  })]);
+
+  assert.equal(decision.response_mode, 'ESCALATE');
+  assert.deepEqual(decision.selected_records, []);
+  assert.match(decision.escalation_message, /animal-at-delivery/i);
+});
+
+test('a canceled pickup with no attempt resolves to Code 24 without an irrelevant second question', () => {
+  const canceled = record({
+    knowledge_id: 'KNO-PUP-CANCELED-001',
+    canonical_situation: 'A listed pickup was canceled',
+    concise_answer: 'Determine whether an attempt was made.',
+    clarification_requirements: [
+      'Was any attempt made at the pickup location?',
+      'If attempted, was the location closed and were zero packages obtained?'
+    ],
+    taxonomy_paths: ['TAX-PICKUP']
+  });
+  const decision = buildDriverHelpDecision('no attempt was made', [canceled], {
+    knowledge_ids: [canceled.knowledge_id],
+    clarification_plan_active: true,
+    pending_clarification_requirement: 'Was any attempt made at the pickup location?',
+    pending_clarification_prompt: 'Was any attempt made at the pickup location?',
+    remaining_clarification_requirements: [
+      'If attempted, was the location closed and were zero packages obtained?'
+    ]
+  });
+
+  assert.equal(decision.response_mode, 'ANSWER');
+  assert.equal(decision.answer_structure.direct_answer, 'Use Code 24 when the listed pickup was canceled and no attempt was made.');
+  assert.deepEqual(decision.answer_structure.steps, [
+    'Open the correct listed pickup and choose Close (Zero Pkg).',
+    'Confirm the package count is 0.',
+    'Select Code 24 and tap DONE.'
+  ]);
+});
+
 test('an unsupported operational acronym cannot be absorbed by a neighboring refusal workflow', () => {
   const decision = buildDriverHelpDecision('The customer refuses a COD package', [
     record({

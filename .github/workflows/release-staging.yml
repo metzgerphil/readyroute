@@ -46,7 +46,7 @@ jobs:
           JWT_SECRET: test-secret
           GOOGLE_MAPS_API_KEY: test-google-maps-key
           GOOGLE_CLOUD_PROJECT: ready-route-project
-        run: npm ci && npm run verify:schema && npm run check:launch && npm run test:unit
+        run: npm ci && npm run verify:schema && npm run check:launch && npm run knowledge:gold-gate && npm run test:unit
 
       - name: Apply pending staging migrations
         env:

@@ -1,9 +1,10 @@
 const STOP_WORDS = new Set([
-  'a', 'an', 'and', 'are', 'at', 'be', 'but', 'can', 'do', 'for', 'from', 'how',
+  'a', 'am', 'an', 'and', 'are', 'at', 'be', 'but', 'can', 'do', 'for', 'from', 'how',
   'i', 'if', 'in', 'is', 'it', 'me', 'my', 'of', 'on', 'or', 'the', 'this', 'to',
   'was', 'what', 'when', 'where', 'with', 'would', 'you', 'no', 'wut',
   'answer', 'answered', 'answers', 'asked', 'asking', 'detail', 'help', 'need',
-  'needs', 'one', 'please', 'question', 'ready', 'show', 'shows', 'tell'
+  'needs', 'one', 'please', 'question', 'ready', 'show', 'shows', 'tell',
+  'current', 'here', 'next', 'now', 'step', 'stopped'
 ]);
 
 const DRIVER_TOKEN_ALIASES = new Map(Object.entries({
@@ -419,6 +420,21 @@ function clarificationOptions(ranked) {
 
 function clarificationOptionsForRequirement(requirement, ranked) {
   const normalized = normalizeDriverQuestion(requirement);
+  const topRecord = ranked.find(({ record }) => isProductionEligibleRecord(record))?.record;
+  if (/completed delivery photo or an unsuccessful attempt photo/.test(normalized) && topRecord) {
+    return [
+      { knowledge_id: topRecord.knowledge_id, version: topRecord.version, label: 'Completed delivery photo', query: 'completed delivery photo' },
+      { knowledge_id: topRecord.knowledge_id, version: topRecord.version, label: 'Unsuccessful-attempt photo', query: 'unsuccessful attempt photo' }
+    ];
+  }
+  if (/free form epic air waybill or the special 00 condition/.test(normalized) && topRecord) {
+    return [
+      { knowledge_id: topRecord.knowledge_id, version: topRecord.version, label: 'Free Form', query: 'Free Form' },
+      { knowledge_id: topRecord.knowledge_id, version: topRecord.version, label: 'EPIC', query: 'EPIC' },
+      { knowledge_id: topRecord.knowledge_id, version: topRecord.version, label: 'Air Waybill', query: 'Air Waybill' },
+      { knowledge_id: topRecord.knowledge_id, version: topRecord.version, label: 'Special 00 condition', query: 'special 00 condition' }
+    ];
+  }
   if (/signature service/.test(normalized)) {
     const labels = {
       'KNO-DEL-SIG-ASR-001': 'ASR — Adult Signature Required',
@@ -435,7 +451,10 @@ function clarificationOptionsForRequirement(requirement, ranked) {
         query: record.knowledge_id.split('-')[3]
       }));
   }
-  if (/^(?:is|was|were|did|does|do|has|have|can|could|should|will|would)\b/.test(normalized)) {
+  if (
+    /^(?:is|was|were|did|does|do|has|have|can|could|should|will|would)\b/.test(normalized)
+    || /^if attempted\b/.test(normalized)
+  ) {
     return [
       { knowledge_id: 'FLOW:YES', version: 1, label: 'Yes', query: 'yes' },
       { knowledge_id: 'FLOW:NO', version: 1, label: 'No', query: 'no' }
@@ -581,6 +600,21 @@ function buildDriverHelpDecision(question, records, context = {}) {
   const protectedRequest = /\b(hidden|system) (instructions|prompt)\b|\breveal (your )?(instructions|prompt)\b/.test(normalizedQuestion);
   if (!normalizedQuestion || bypassRequest || protectedRequest) return escalation();
   if (/^(?:what is )?code \d{1,3}$/.test(normalizedQuestion)) return escalation();
+  const unsupportedAnimalHazard = (
+    /\b(?:loose animal|aggressive animal)\b/.test(normalizedQuestion)
+    || (
+      /\bdog\b/.test(normalizedQuestion)
+      && /\b(?:loose|aggressive|property|yard|unsafe|cannot deliver|cant deliver|wont deliver)\b/.test(normalizedQuestion)
+      && !/\b(?:detection dog|security dog|service dog)\b/.test(normalizedQuestion)
+    )
+  );
+  if (unsupportedAnimalHazard) {
+    return escalation(
+      [],
+      0,
+      'Ready Route Answers does not yet have an approved animal-at-delivery procedure. Do not substitute an unrelated delivery procedure; contact your manager or station for the current direction.'
+    );
+  }
 
   if (context.clarification_plan_active === true) {
     const newestAnswer = latestDriverAnswer(question);
@@ -679,6 +713,26 @@ function buildDriverHelpDecision(question, records, context = {}) {
       const remaining = Array.isArray(context.remaining_clarification_requirements)
         ? context.remaining_clarification_requirements
         : [];
+      const normalizedRequirement = normalizeDriverQuestion(
+        context.pending_clarification_requirement || context.pending_clarification_prompt
+      );
+      if (
+        plannedRecord.knowledge_id === 'KNO-PUP-CANCELED-001'
+        && /attempt made/.test(normalizedRequirement)
+        && /^(?:no|no attempt|no attempt was made|i did not attempt|did not attempt)\b/.test(normalizedNewestAnswer)
+      ) {
+        return answer(plannedRecord, plannedCandidates, 1, {
+          answer_override: {
+            direct_answer: 'Use Code 24 when the listed pickup was canceled and no attempt was made.',
+            steps: [
+              'Open the correct listed pickup and choose Close (Zero Pkg).',
+              'Confirm the package count is 0.',
+              'Select Code 24 and tap DONE.'
+            ],
+            watch_for: 'Do not use Code 24 after an attempt was made.'
+          }
+        });
+      }
       if (!remaining.length) return answer(plannedRecord, plannedCandidates, 1);
       const decision = clarify(
         [{ record: plannedRecord, score: 100 }],

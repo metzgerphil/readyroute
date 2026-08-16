@@ -1,6 +1,6 @@
 {
   "schema_version": "1.0.0",
-  "generated_at": "2026-08-16T04:03:06.911Z",
+  "generated_at": "2026-08-16T04:38:21.899Z",
   "total_records": 99,
   "by_status": {
     "SOURCE_VERIFIED": 85,
@@ -15,8 +15,8 @@
   "source_records": 9,
   "driver_language_cases": 373,
   "reference_language_cases": 11,
-  "conversation_scenarios": 45,
-  "out_of_corpus_cases": 7,
+  "conversation_scenarios": 55,
+  "out_of_corpus_cases": 8,
   "candidate_operational_language_cases": 0,
   "candidate_gap_language_cases": 0,
   "delivery_status_references": 50,
