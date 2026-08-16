@@ -169,6 +169,23 @@ jobs:
           echo "Staging health did not report the expected release and schema" >&2
           exit 1
 
+      - name: Run the live RRA question loop
+        env:
+          EXPECTED_COMMIT: ${{ github.sha }}
+          STAGING_MANAGER_BOOTSTRAP_EMAIL: ${{ secrets.STAGING_MANAGER_BOOTSTRAP_EMAIL }}
+          STAGING_MANAGER_BOOTSTRAP_PASSWORD: ${{ secrets.STAGING_MANAGER_BOOTSTRAP_PASSWORD }}
+        working-directory: backend
+        run: node src/scripts/runStagingRraStress.js --repeat 3 --output /tmp/rra-live-stress-log.json
+
+      - name: Preserve the live RRA test log
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: rra-live-stress-log-${{ github.run_id }}
+          path: /tmp/rra-live-stress-log.json
+          if-no-files-found: warn
+          retention-days: 30
+
       - name: Release summary
         run: |
           echo "### ReadyRoute staging driver-help release" >> "$GITHUB_STEP_SUMMARY"
