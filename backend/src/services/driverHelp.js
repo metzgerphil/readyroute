@@ -473,6 +473,7 @@ function createDriverHelpService({
         'prohibited_actions',
         'escalation_requirements',
         'clarification_requirements',
+        'related_knowledge_ids',
         'driver_question_variants',
         'driver_question_patterns',
         'images',

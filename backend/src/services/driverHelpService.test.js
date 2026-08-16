@@ -104,8 +104,10 @@ function filterChain(result) {
 
 function fakeSupabase(records = []) {
   const writes = [];
+  const selects = [];
   return {
     writes,
+    selects,
     storage: {
       from() {
         return { async createSignedUrl() { return { data: null, error: null }; } };
@@ -113,7 +115,12 @@ function fakeSupabase(records = []) {
     },
     from(table) {
       if (table === 'driver_help_knowledge_records') {
-        return { select() { return Promise.resolve({ data: records, error: null }); } };
+        return {
+          select(columns) {
+            selects.push({ table, columns });
+            return Promise.resolve({ data: records, error: null });
+          }
+        };
       }
       if (table === 'driver_help_sessions') {
         return {
@@ -129,6 +136,16 @@ function fakeSupabase(records = []) {
     }
   };
 }
+
+test('database retrieval includes related record links used by clarification branch switching', async () => {
+  const supabase = fakeSupabase([]);
+  const service = createDriverHelpService({ supabase, now: () => new Date(0) });
+
+  await service.loadKnowledgeRecords();
+
+  const selection = supabase.selects.find((item) => item.table === 'driver_help_knowledge_records');
+  assert.match(selection.columns, /related_knowledge_ids/);
+});
 
 function knowledgeRecord(overrides = {}) {
   return {
