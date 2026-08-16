@@ -5,6 +5,7 @@ const helmet = require('helmet');
 const { createAuthRouter } = require('./routes/auth');
 const { createBillingRouter } = require('./routes/billing');
 const { createDriverHelpRouter } = require('./routes/driverHelp');
+const { createPublicAccountRouter } = require('./routes/publicAccount');
 const { createManagerRouter } = require('./routes/manager');
 const { createManagerDriverHelpRouter } = require('./routes/managerDriverHelp');
 const propertyIntelManagerRoutes = require('./routes/propertyIntelManager');
@@ -71,6 +72,10 @@ function createApp(options = {}) {
     'https://www.readyroute.org',
     'https://app.readyroute.app',
     'https://portal.readyroute.org',
+    'https://ready-route-project.web.app',
+    'https://ready-route-project.firebaseapp.com',
+    'https://ready-route-landing.web.app',
+    'https://ready-route-landing.firebaseapp.com',
     process.env.VITE_MANAGER_PORTAL_URL,
     process.env.VERCEL_MANAGER_PORTAL_URL,
     process.env.MANAGER_PORTAL_URL
@@ -86,7 +91,10 @@ function createApp(options = {}) {
 
     try {
       const { hostname, protocol } = new URL(origin);
-      return protocol === 'https:' && hostname === 'readyroute.org';
+      return protocol === 'https:' && (
+        hostname === 'readyroute.org'
+        || /^ready-route-project--[a-z0-9-]+\.web\.app$/.test(hostname)
+      );
     } catch (_error) {
       return false;
     }
@@ -96,21 +104,33 @@ function createApp(options = {}) {
     jwtSecret: options.jwtSecret,
     stripeClient: options.stripeClient,
     stripePriceId: options.stripePriceId,
+    stripeMonthlyPriceId: options.stripeMonthlyPriceId,
+    stripeAnnualPriceId: options.stripeAnnualPriceId,
     trialDays: options.trialDays,
     requireManager,
     sendManagerPasswordResetEmail: options.sendManagerPasswordResetEmail,
     authorizeDriverDevice: options.authorizeDriverDevice,
     requireDriverDeviceId: options.requireDriverDeviceId
   });
-  const billingRouter = options.supabase && !options.stripeClient && !process.env.STRIPE_SECRET_KEY
-      ? express.Router()
-      : createBillingRouter({
-        supabase: options.supabase,
-        requireManager,
-        stripeClient: options.stripeClient,
-        webhookSecret: options.webhookSecret,
-        stripePriceId: options.stripePriceId
-      });
+  const publicAccountRouter = createPublicAccountRouter({
+    supabase: options.supabase,
+    jwtSecret: options.jwtSecret,
+    now: options.now
+  });
+  const billingRouter = createBillingRouter({
+    supabase: options.supabase,
+    requireManager,
+    stripeClient: options.stripeClient,
+    webhookSecret: options.webhookSecret,
+    stripePriceId: options.stripePriceId,
+    stripeMonthlyPriceId: options.stripeMonthlyPriceId,
+    stripeAnnualPriceId: options.stripeAnnualPriceId,
+    stripePublishableKey: options.stripePublishableKey,
+    stripeSignupEnabled: options.stripeSignupEnabled,
+    stripeTaxEnabled: options.stripeTaxEnabled,
+    stripeTaxRegistrationsConfirmed: options.stripeTaxRegistrationsConfirmed,
+    publicFormLimiter: rateLimiters.publicForm
+  });
   const requireActiveSubscription = options.enforceBilling === false || (Boolean(options.supabase) && options.enforceBilling !== true)
     ? (_req, _res, next) => next()
     : createRequireActiveSubscription({ supabase: options.supabase });
@@ -137,17 +157,21 @@ function createApp(options = {}) {
     sendManagerPasswordResetEmail: options.sendManagerPasswordResetEmail,
     stripeClient: options.stripeClient,
     stripePriceId: options.stripePriceId,
+    stripeMonthlyPriceId: options.stripeMonthlyPriceId,
+    stripeAnnualPriceId: options.stripeAnnualPriceId,
     trialDays: options.trialDays,
     billingService: options.billingService,
     requireManager
   });
   const driverHelpRouter = createDriverHelpRouter({
-    supabase: options.supabase,
+    supabase: options.supabase || defaultSupabase,
     now: options.now,
     service: options.driverHelpService
   });
   const managerDriverHelpRouter = createManagerDriverHelpRouter({
-    supabase: options.supabase
+    supabase: options.supabase,
+    now: options.now,
+    service: options.driverHelpService
   });
   const propertyIntelManagerRouter = options.supabase
     ? createPropertyIntelManagerRouter({ supabase: options.supabase })
@@ -236,7 +260,8 @@ function createApp(options = {}) {
     '/auth/driver/login',
     '/auth/manager/login',
     '/auth/mobile/login',
-    '/staff/login'
+    '/staff/login',
+    '/account/login'
   ], rateLimiters.login);
   app.use([
     '/auth/driver/accept-invite',
@@ -268,6 +293,7 @@ function createApp(options = {}) {
   });
 
   app.use('/auth', authRouter);
+  app.use('/account', publicAccountRouter);
   app.use('/waitlist', waitlistRouter);
   app.use('/support', supportRouter);
   app.use('/staff', staffRouter);

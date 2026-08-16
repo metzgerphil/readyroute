@@ -19,9 +19,12 @@ const DriverInvitePage = lazy(() => import('./pages/DriverInvitePage'));
 const FleetMapPage = lazy(() => import('./pages/FleetMapPage'));
 const LoginPage = lazy(() => import('./pages/LoginPage'));
 const KnowledgeActivityPage = lazy(() => import('./pages/KnowledgeActivityPage'));
+const AnswerMemoryPage = lazy(() => import('./pages/AnswerMemoryPage'));
 const ManifestPage = lazy(() => import('./pages/ManifestPage'));
+const ManagerSettingsPage = lazy(() => import('./pages/ManagerSettingsPage'));
 const NotificationsPage = lazy(() => import('./pages/NotificationsPage'));
 const RecordsPage = lazy(() => import('./pages/RecordsPage'));
+const RraTestPage = lazy(() => import('./pages/RraTestPage'));
 const ResetPasswordPage = lazy(() => import('./pages/ResetPasswordPage'));
 const RoutePage = lazy(() => import('./pages/RoutePage'));
 const RoutesPage = lazy(() => import('./pages/RoutesPage'));
@@ -82,10 +85,13 @@ function ProtectedApp() {
               <Route element={<DashboardPage />} path="/" />
               <Route element={<CsaPage />} path="/csa" />
               <Route element={<ManifestPage />} path="/manifest" />
+              <Route element={<ManagerSettingsPage />} path="/settings" />
               <Route element={<NotificationsPage />} path="/notifications" />
               <Route element={<RecordsPage />} path="/records" />
               <Route element={<DriversPage />} path="/drivers" />
               <Route element={<KnowledgeActivityPage />} path="/knowledge-activity" />
+              <Route element={<AnswerMemoryPage />} path="/answer-memory" />
+              <Route element={<RraTestPage />} path="/rra-test" />
               <Route element={<VehiclesPage />} path="/vehicles" />
               <Route element={<AccessCodesPage />} path="/access-codes" />
               <Route element={<BillingPage />} path="/billing" />

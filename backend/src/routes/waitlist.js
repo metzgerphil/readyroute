@@ -51,11 +51,16 @@ function buildSignupPayload(body = {}, req) {
     return { error: 'A valid email is required.' };
   }
 
-  const routeCount = normalizeInteger(body.routes ?? body.route_count ?? body.drivers ?? body.driver_count);
+  const routeCount = normalizeInteger(body.routes ?? body.route_count);
+  const driverCount = normalizeInteger(body.drivers ?? body.driver_count);
   const csaCount = normalizeInteger(body.csas ?? body.csa_count);
 
-  if ((body.routes ?? body.route_count ?? body.drivers ?? body.driver_count) && routeCount === null) {
+  if ((body.routes ?? body.route_count) && routeCount === null) {
     return { error: 'Number of routes must be a whole number.' };
+  }
+
+  if ((body.drivers ?? body.driver_count) && driverCount === null) {
+    return { error: 'Number of drivers must be a whole number.' };
   }
 
   if ((body.csas ?? body.csa_count) && csaCount === null) {
@@ -70,7 +75,7 @@ function buildSignupPayload(body = {}, req) {
       company_csa: normalizeText(body.company ?? body.company_csa, 200),
       role: normalizeText(body.role, 120),
       route_count: routeCount,
-      driver_count: null,
+      driver_count: driverCount,
       csa_count: csaCount,
       current_routing_tool: normalizeText(body.tool ?? body.current_routing_tool, 160),
       interested_in_beta: normalizeBetaInterest(body.beta ?? body.interested_in_beta),
@@ -172,6 +177,7 @@ function createWaitlistRouter(options = {}) {
 }
 
 module.exports = createWaitlistRouter();
+module.exports.buildSignupPayload = buildSignupPayload;
 module.exports.createWaitlistRouter = createWaitlistRouter;
 module.exports.buildFeedbackPayload = buildFeedbackPayload;
 module.exports.buildSignupPayload = buildSignupPayload;

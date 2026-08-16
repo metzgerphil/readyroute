@@ -4,6 +4,10 @@ on:
   pull_request:
     paths:
       - 'backend/**'
+      - 'knowledge/**'
+      - 'research/fedex-ground-driver-knowledge/validation/**'
+      - 'scripts/build-ready-route-knowledge.js'
+      - 'scripts/validate-ready-route-knowledge.js'
       - 'scripts/release-backend.sh'
       - '.github/workflows/backend-ci.yml'
   push:
@@ -11,6 +15,10 @@ on:
       - main
     paths:
       - 'backend/**'
+      - 'knowledge/**'
+      - 'research/fedex-ground-driver-knowledge/validation/**'
+      - 'scripts/build-ready-route-knowledge.js'
+      - 'scripts/validate-ready-route-knowledge.js'
       - 'scripts/release-backend.sh'
       - '.github/workflows/backend-ci.yml'
 
@@ -49,6 +57,13 @@ jobs:
           SUPABASE_SERVICE_KEY: test-service-role-key
           JWT_SECRET: test-secret
         run: npm run test:unit
+
+      - name: Run Ready Route Answers stability gate
+        working-directory: .
+        env:
+          SUPABASE_URL: https://example.supabase.co
+          SUPABASE_SERVICE_KEY: test-service-role-key
+        run: npm run knowledge:gate
 
       - name: Skip backend e2e in GitHub CI for now
         run: echo "Backend e2e remains a local/release check until GitHub test secrets are configured."

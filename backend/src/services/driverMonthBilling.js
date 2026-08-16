@@ -1,4 +1,4 @@
-const DRIVER_MONTH_PRICE_CENTS = 500;
+const DRIVER_MONTH_PRICE_CENTS = 1000;
 
 function getUtcBillingMonth(value = new Date()) {
   const date = value instanceof Date ? value : new Date(value);

@@ -1,7 +1,10 @@
-import { useRef, useState } from 'react';
+import { useContext, useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
+  Image,
+  Keyboard,
   KeyboardAvoidingView,
+  Modal,
   PanResponder,
   Platform,
   Pressable,
@@ -11,7 +14,7 @@ import {
   TextInput,
   View
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaInsetsContext, SafeAreaView } from 'react-native-safe-area-context';
 import Svg, { Line, Path } from 'react-native-svg';
 import {
   ExpoSpeechRecognitionModule,
@@ -38,6 +41,21 @@ export function shouldStartBackSwipe({ startX, dx, dy, hasResult, isSubmitting }
 
 export function shouldCompleteBackSwipe({ dx, vx }) {
   return dx >= 110 || (dx >= 70 && vx >= 0.25);
+}
+
+export function resetDriverHelpViewport(scrollReference, schedule = setTimeout) {
+  return schedule(() => {
+    scrollReference.current?.scrollTo({ animated: false, y: 0 });
+  }, 0);
+}
+
+export function getImageModalSafeAreaPadding(insets = {}) {
+  const top = Number(insets.top) || 0;
+  const bottom = Number(insets.bottom) || 0;
+  return {
+    paddingBottom: Math.max(bottom, 16),
+    paddingTop: Math.max(top + 8, 24)
+  };
 }
 
 function MicrophoneIcon({ size = 50 }) {
@@ -116,24 +134,45 @@ function splitAnswerIntoSteps(answer) {
 
 function getAnswerStructure(result) {
   const source = result?.answer_structure || {};
+  const fallbackSentences = splitAnswerIntoSteps(result?.answer);
+  const directAnswer = String(source.direct_answer || fallbackSentences[0] || result?.answer || '').trim();
   const steps = Array.isArray(source.steps) && source.steps.length
     ? source.steps.map(String).filter(Boolean)
-    : splitAnswerIntoSteps(result?.answer);
+    : fallbackSentences.slice(1);
+  const prohibitedActions = Array.isArray(source.prohibited_actions)
+    ? source.prohibited_actions.map(String).filter(Boolean)
+    : [];
   return {
+    directAnswer,
     steps,
+    watchFor: String(source.watch_for || prohibitedActions[0] || '').trim(),
     options: Array.isArray(source.options) ? source.options.filter((option) => option?.id && option?.label) : [],
     procedureSteps: Array.isArray(source.procedure_steps) ? source.procedure_steps.map(String).filter(Boolean) : [],
     documentation: Array.isArray(source.documentation) ? source.documentation.map(String).filter(Boolean) : [],
-    prohibitedActions: Array.isArray(source.prohibited_actions) ? source.prohibited_actions.map(String).filter(Boolean) : [],
+    prohibitedActions,
     escalationRequirements: Array.isArray(source.escalation_requirements)
       ? source.escalation_requirements.map(String).filter(Boolean)
       : []
   };
 }
 
+export function getProminentCode(answerStructure = {}) {
+  const answerText = [answerStructure.directAnswer, ...(answerStructure.steps || [])]
+    .filter(Boolean)
+    .join(' ');
+  const codes = [...answerText.matchAll(/\b(?:status\s+)?code\s+(\d{1,3})\b/gi)]
+    .map((match) => match[1]);
+  const uniqueCodes = [...new Set(codes)];
+  return uniqueCodes.length === 1 ? uniqueCodes[0] : null;
+}
+
 export default function DriverHelpScreen() {
+  const safeAreaInsets = useContext(SafeAreaInsetsContext) || { bottom: 0, top: 0 };
   const inputRef = useRef(null);
+  const inputFocusedRef = useRef(false);
   const historyRef = useRef([]);
+  const scrollRef = useRef(null);
+  const submittingRef = useRef(false);
   const [question, setQuestion] = useState('');
   const [situationQuestion, setSituationQuestion] = useState('');
   const [sessionId, setSessionId] = useState(null);
@@ -146,7 +185,24 @@ export default function DriverHelpScreen() {
   const [dictationHint, setDictationHint] = useState(false);
   const [dictationError, setDictationError] = useState('');
   const [isListening, setIsListening] = useState(false);
+  const [selectedClarificationKey, setSelectedClarificationKey] = useState(null);
+  const [selectedImage, setSelectedImage] = useState(null);
   const answerStructure = getAnswerStructure(result);
+  const prominentCode = getProminentCode(answerStructure);
+
+  useEffect(() => {
+    const subscription = Keyboard.addListener('keyboardDidShow', () => {
+      if (inputFocusedRef.current) {
+        scrollRef.current?.scrollToEnd({ animated: true });
+      }
+    });
+    return () => subscription.remove();
+  }, []);
+
+  useEffect(() => {
+    const timer = resetDriverHelpViewport(scrollRef);
+    return () => clearTimeout(timer);
+  }, [result]);
 
   useSpeechRecognitionEvent('start', () => {
     setIsListening(true);
@@ -165,7 +221,7 @@ export default function DriverHelpScreen() {
       const isFinalTranscript = event.isFinal === true || event.results?.[0]?.isFinal === true;
       setDictationHint(!isFinalTranscript);
       if (isFinalTranscript) {
-        submitQuestion(transcript);
+        submitQuestion(transcript, { preserveSituation: Boolean(result) });
       }
     }
   });
@@ -186,9 +242,11 @@ export default function DriverHelpScreen() {
 
   async function submitQuestion(nextQuestion = question, { preserveSituation = false } = {}) {
     const trimmedQuestion = String(nextQuestion || '').trim();
-    if (trimmedQuestion.length < 2 || isSubmitting) {
+    if (trimmedQuestion.length < 2 || submittingRef.current) {
       return;
     }
+    submittingRef.current = true;
+    Keyboard.dismiss();
 
     const previousState = {
       expandedOptionId,
@@ -209,6 +267,7 @@ export default function DriverHelpScreen() {
     setShowMore(false);
     setExpandedOptionId(null);
     setFeedback(null);
+    setSelectedImage(null);
 
     try {
       const response = await api.post('/driver-help/query', {
@@ -223,13 +282,15 @@ export default function DriverHelpScreen() {
     } catch (requestError) {
       const requestFailedBeforeVerification = requestError?.code === 'ECONNABORTED' || !requestError?.response;
       setError(requestFailedBeforeVerification
-        ? 'Ready Route did not receive a verified answer. Check your connection and tap Ask Ready Route again. Contact your manager if you need an immediate answer.'
+        ? 'Ready Route did not receive a confirmed answer. Check your connection and tap Ask Ready Route again. Contact your manager if you need an immediate answer.'
         : getApiErrorMessage(
           requestError,
           'Ready Route could not check the approved procedures right now. Contact your manager if you need an immediate answer.'
         ));
     } finally {
+      submittingRef.current = false;
       setIsSubmitting(false);
+      setSelectedClarificationKey(null);
     }
   }
 
@@ -282,16 +343,21 @@ export default function DriverHelpScreen() {
 
   function chooseClarification(option) {
     const followUp = option?.query || option?.label || '';
-    if (followUp) {
+    if (followUp && !submittingRef.current) {
+      setSelectedClarificationKey(`${option?.knowledge_id || 'option'}-${option?.version || 1}-${option?.label || followUp}`);
       submitQuestion(followUp, { preserveSituation: true });
     }
   }
 
   function chooseNotSure() {
-    submitQuestion("I'm not sure.", { preserveSituation: true });
+    if (!submittingRef.current) {
+      setSelectedClarificationKey('not-sure');
+      submitQuestion("I'm not sure.", { preserveSituation: true });
+    }
   }
 
   function startNewSituation() {
+    Keyboard.dismiss();
     historyRef.current = [];
     setSessionId(null);
     setResult(null);
@@ -300,9 +366,11 @@ export default function DriverHelpScreen() {
     setShowMore(false);
     setExpandedOptionId(null);
     setFeedback(null);
+    setSelectedImage(null);
     setError('');
     setDictationError('');
     setDictationHint(false);
+    resetDriverHelpViewport(scrollRef);
   }
 
   function goBack() {
@@ -319,6 +387,7 @@ export default function DriverHelpScreen() {
     historyRef.current = historyRef.current.slice(0, -1);
     setExpandedOptionId(previousState.expandedOptionId);
     setFeedback(previousState.feedback);
+    setSelectedImage(null);
     setQuestion(previousState.question);
     setResult(previousState.result);
     setSessionId(previousState.sessionId);
@@ -327,6 +396,7 @@ export default function DriverHelpScreen() {
     setError('');
     setDictationError('');
     setDictationHint(false);
+    resetDriverHelpViewport(scrollRef);
   }
 
   const backSwipeResponder = PanResponder.create({
@@ -340,7 +410,10 @@ export default function DriverHelpScreen() {
     }
   });
 
-  function renderQuestionComposer(placeholder = 'Type your question') {
+  function renderQuestionComposer(
+    placeholder = 'Type your question',
+    { preserveSituation = false, showMicrophone = false } = {}
+  ) {
     return (
       <View style={styles.questionComposer}>
         <TextInput
@@ -352,7 +425,14 @@ export default function DriverHelpScreen() {
             setQuestion(value);
             setError('');
           }}
-          onSubmitEditing={() => submitQuestion()}
+          onBlur={() => {
+            inputFocusedRef.current = false;
+          }}
+          onFocus={() => {
+            inputFocusedRef.current = true;
+            setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 120);
+          }}
+          onSubmitEditing={() => submitQuestion(question, { preserveSituation })}
           placeholder={placeholder}
           placeholderTextColor={appTheme.colors.textTertiary}
           ref={inputRef}
@@ -361,10 +441,27 @@ export default function DriverHelpScreen() {
           textAlignVertical="center"
           value={question}
         />
+        {showMicrophone ? (
+          <Pressable
+            accessibilityHint={isListening ? 'Stops speech recognition' : 'Starts speech recognition'}
+            accessibilityLabel={isListening ? 'Stop listening' : 'Speak a follow-up question'}
+            accessibilityRole="button"
+            disabled={isSubmitting}
+            onPress={toggleDictation}
+            style={({ pressed }) => [
+              styles.followUpMicButton,
+              isListening ? styles.followUpMicButtonListening : null,
+              isSubmitting ? styles.disabled : null,
+              pressed ? styles.pressed : null
+            ]}
+          >
+            {isListening ? <View style={styles.smallStopIcon} /> : <MicrophoneIcon size={22} />}
+          </Pressable>
+        ) : null}
         <Pressable
           accessibilityLabel="Ask Ready Route"
           disabled={question.trim().length < 2 || isSubmitting}
-          onPress={() => submitQuestion()}
+          onPress={() => submitQuestion(question, { preserveSituation })}
           style={({ pressed }) => [
             styles.sendButton,
             (question.trim().length < 2 || isSubmitting) ? styles.disabled : null,
@@ -389,7 +486,9 @@ export default function DriverHelpScreen() {
       >
         <ScrollView
           contentContainerStyle={styles.content}
-          keyboardShouldPersistTaps="handled"
+          keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'}
+          keyboardShouldPersistTaps="always"
+          ref={scrollRef}
           showsVerticalScrollIndicator={false}
         >
           <View style={[styles.brandRow, result ? styles.brandRowCompact : null]}>
@@ -460,7 +559,7 @@ export default function DriverHelpScreen() {
           {isSubmitting && result ? (
             <View style={styles.verificationNotice}>
               <Text style={styles.verificationNoticeText}>
-                Checking your follow-up. The answer below is from your previous question until verification finishes.
+                Checking your follow-up. The answer below is from your previous question until the new answer is ready.
               </Text>
             </View>
           ) : null}
@@ -476,23 +575,28 @@ export default function DriverHelpScreen() {
 
           {result?.response_mode === 'ANSWER' ? (
             <View style={styles.answerCard}>
-              <View style={styles.statusHeadingRow}>
-                <StatusShieldIcon />
-                <Text maxFontSizeMultiplier={1.25} style={styles.verifiedHeading}>Verified procedure</Text>
-              </View>
-              <View style={styles.cardDivider} />
-              <Text maxFontSizeMultiplier={1.25} style={styles.answerEyebrow}>What to do</Text>
+              {prominentCode ? (
+                <View accessibilityLabel={`Use code ${prominentCode}`} style={styles.codeBanner}>
+                  <Text maxFontSizeMultiplier={1.25} style={styles.codeBannerText}>USE CODE {prominentCode}</Text>
+                </View>
+              ) : null}
+              <Text maxFontSizeMultiplier={1.35} style={styles.directAnswerText}>{answerStructure.directAnswer}</Text>
 
-              <View style={styles.stepList}>
-                {answerStructure.steps.map((step, index) => (
-                  <View key={`${index}-${step}`} style={styles.stepRow}>
-                    <View style={styles.stepNumber}>
-                      <Text maxFontSizeMultiplier={1.2} style={styles.stepNumberText}>{index + 1}</Text>
-                    </View>
-                    <Text maxFontSizeMultiplier={1.35} style={styles.stepText}>{step}</Text>
+              {answerStructure.steps.length ? (
+                <>
+                  <Text maxFontSizeMultiplier={1.25} style={styles.doThisHeading}>What to do</Text>
+                  <View style={styles.stepList}>
+                    {answerStructure.steps.map((step, index) => (
+                      <View key={`${index}-${step}`} style={styles.stepRow}>
+                        <View style={styles.stepNumber}>
+                          <Text maxFontSizeMultiplier={1.2} style={styles.stepNumberText}>{index + 1}</Text>
+                        </View>
+                        <Text maxFontSizeMultiplier={1.35} style={styles.stepText}>{step}</Text>
+                      </View>
+                    ))}
                   </View>
-                ))}
-              </View>
+                </>
+              ) : null}
 
               {answerStructure.options.length ? (
                 <View style={styles.answerOptions}>
@@ -536,19 +640,43 @@ export default function DriverHelpScreen() {
                 </View>
               ) : null}
 
-              {answerStructure.prohibitedActions.length ? (
-                <View style={styles.warningPanel}>
-                  <Text maxFontSizeMultiplier={1.25} style={styles.warningTitle}>Do not</Text>
-                  {answerStructure.prohibitedActions.slice(0, 3).map((item) => (
-                    <View key={item} style={styles.bulletRow}>
-                      <Text maxFontSizeMultiplier={1.2} style={styles.warningBullet}>•</Text>
-                      <Text maxFontSizeMultiplier={1.35} style={styles.warningText}>{item}</Text>
-                    </View>
-                  ))}
+              {(result.images || []).length ? (
+                <View style={styles.visualReferenceSection}>
+                  <Text style={styles.visualReferenceTitle}>Visual reference</Text>
+                  <Text style={styles.visualReferenceNote}>Follow the written procedure above.</Text>
+                  {(result.images || []).map((image, index) => {
+                    const label = image.caption || `Visual reference ${index + 1}`;
+                    return (
+                      <Pressable
+                        accessibilityHint="Opens the image full screen"
+                        accessibilityLabel={`Open image: ${label}`}
+                        accessibilityRole="imagebutton"
+                        key={`${image.filename || image.url}-${index}`}
+                        onPress={() => setSelectedImage(image)}
+                        style={({ pressed }) => [styles.answerImageCard, pressed ? styles.pressed : null]}
+                      >
+                        <Image
+                          accessibilityLabel={label}
+                          resizeMode="contain"
+                          source={{ uri: image.url }}
+                          style={styles.answerImage}
+                        />
+                        {image.caption ? <Text style={styles.answerImageCaption}>{image.caption}</Text> : null}
+                        <Text style={styles.answerImageHint}>Tap to enlarge</Text>
+                      </Pressable>
+                    );
+                  })}
                 </View>
               ) : null}
 
-              {result.more_info || answerStructure.procedureSteps.length || answerStructure.documentation.length || answerStructure.escalationRequirements.length ? (
+              {answerStructure.watchFor ? (
+                <View style={styles.warningPanel}>
+                  <Text maxFontSizeMultiplier={1.25} style={styles.warningTitle}>Watch for</Text>
+                  <Text maxFontSizeMultiplier={1.35} style={styles.warningText}>{answerStructure.watchFor}</Text>
+                </View>
+              ) : null}
+
+              {result.more_info || answerStructure.procedureSteps.length || answerStructure.documentation.length || answerStructure.prohibitedActions.length || answerStructure.escalationRequirements.length ? (
                 <>
                   <Pressable accessibilityRole="button" onPress={() => setShowMore((current) => !current)} style={styles.moreButton}>
                     <Text style={styles.moreButtonText}>{showMore ? 'Hide More Info' : 'More Info'}</Text>
@@ -578,6 +706,17 @@ export default function DriverHelpScreen() {
                           ))}
                         </View>
                       ) : null}
+                      {answerStructure.prohibitedActions.length ? (
+                        <View style={styles.detailSection}>
+                          <Text style={styles.detailTitle}>Important restrictions</Text>
+                          {answerStructure.prohibitedActions.map((item) => (
+                            <View key={item} style={styles.bulletRow}>
+                              <Text style={styles.detailBullet}>•</Text>
+                              <Text maxFontSizeMultiplier={1.35} style={styles.detailText}>{item}</Text>
+                            </View>
+                          ))}
+                        </View>
+                      ) : null}
                       {answerStructure.escalationRequirements.length ? (
                         <View style={styles.detailSection}>
                           <Text style={styles.detailTitle}>When to contact management</Text>
@@ -593,15 +732,6 @@ export default function DriverHelpScreen() {
                   ) : null}
                 </>
               ) : null}
-
-              <View style={styles.traceRow}>
-                <Text style={styles.traceText}>Verified procedure</Text>
-                {result.trace?.[0] ? (
-                  <Text style={styles.traceId}>
-                    {result.trace[0].knowledge_id} v{result.trace[0].version}
-                  </Text>
-                ) : null}
-              </View>
 
               <View style={styles.feedbackRow}>
                 <Text style={styles.feedbackLabel}>Was this helpful?</Text>
@@ -633,22 +763,45 @@ export default function DriverHelpScreen() {
               </View>
               <Text style={styles.clarificationPrompt}>{result.clarification_prompt}</Text>
               <View style={styles.optionList}>
-                {(result.clarification_options || []).map((option) => (
-                  <Pressable
-                    key={`${option.knowledge_id}-${option.version}`}
-                    onPress={() => chooseClarification(option)}
-                    style={({ pressed }) => [styles.optionButton, pressed ? styles.pressed : null]}
-                  >
-                    <Text style={styles.optionText}>{option.label}</Text>
-                  </Pressable>
-                ))}
+                {(result.clarification_options || []).map((option) => {
+                  const optionKey = `${option?.knowledge_id || 'option'}-${option?.version || 1}-${option?.label || option?.query}`;
+                  const isSelected = selectedClarificationKey === optionKey;
+                  return (
+                    <Pressable
+                      accessibilityLabel={option.label}
+                      accessibilityRole="button"
+                      disabled={isSubmitting}
+                      key={optionKey}
+                      onPress={() => chooseClarification(option)}
+                      style={({ pressed }) => [
+                        styles.optionButton,
+                        isSelected ? styles.optionButtonSelected : null,
+                        isSubmitting && !isSelected ? styles.disabled : null,
+                        pressed && !isSubmitting ? styles.pressed : null
+                      ]}
+                    >
+                      {isSelected && isSubmitting ? <ActivityIndicator color={BRAND_ORANGE} size="small" /> : null}
+                      <Text style={styles.optionText}>{isSelected && isSubmitting ? 'Checking…' : option.label}</Text>
+                    </Pressable>
+                  );
+                })}
                 <Pressable
                   accessibilityLabel="Not sure"
                   disabled={isSubmitting}
                   onPress={chooseNotSure}
-                  style={({ pressed }) => [styles.optionButton, styles.notSureButton, pressed ? styles.pressed : null]}
+                  style={({ pressed }) => [
+                    styles.optionButton,
+                    styles.notSureButton,
+                    selectedClarificationKey === 'not-sure' ? styles.optionButtonSelected : null,
+                    pressed && !isSubmitting ? styles.pressed : null
+                  ]}
                 >
-                  <Text style={styles.notSureText}>Not sure</Text>
+                  {selectedClarificationKey === 'not-sure' && isSubmitting ? (
+                    <ActivityIndicator color={BRAND_ORANGE} size="small" />
+                  ) : null}
+                  <Text style={styles.notSureText}>
+                    {selectedClarificationKey === 'not-sure' && isSubmitting ? 'Checking…' : 'Not sure'}
+                  </Text>
                 </Pressable>
               </View>
               {!(result.clarification_options || []).length ? (
@@ -660,9 +813,9 @@ export default function DriverHelpScreen() {
           {result?.response_mode === 'ESCALATE' ? (
             <View style={styles.escalationCard}>
               <View style={styles.unavailableIcon}><StatusShieldIcon unavailable /></View>
-              <Text style={styles.escalationEyebrow}>Verified answer unavailable</Text>
+              <Text style={styles.escalationEyebrow}>Answer unavailable</Text>
               <Text maxFontSizeMultiplier={1.35} style={styles.escalationText}>
-                Ready Route does not have enough verified information to give a definitive answer for this situation.
+                Ready Route does not have enough confirmed information to give a definitive answer for this situation.
               </Text>
               <View style={styles.nextStepPanel}>
                 <Text style={styles.nextStepTitle}>Next step</Text>
@@ -685,26 +838,25 @@ export default function DriverHelpScreen() {
           ) : null}
 
           {result ? (
-            <>
-              <View style={styles.followUpHeader}>
-                <Text style={styles.followUpHint}>
-                  Ready Route will keep this situation in context.
-                </Text>
-                <Pressable
-                  accessibilityLabel="Start a new situation"
-                  accessibilityRole="button"
-                  onPress={startNewSituation}
-                  style={({ pressed }) => [styles.newSituationButton, pressed ? styles.pressed : null]}
-                >
-                  <Text style={styles.newSituationText}>Ask another question</Text>
-                </Pressable>
-              </View>
+            <View style={styles.followUpSection}>
+              <Text style={styles.followUpLabel}>
+                {result.response_mode === 'CLARIFY' ? 'Answer this detail' : 'Ask about this answer'}
+              </Text>
               {renderQuestionComposer(
                 result.response_mode === 'CLARIFY'
                   ? 'Answer this detail'
-                  : 'Ask a follow-up question'
+                  : 'Ask a follow-up question',
+                { preserveSituation: true, showMicrophone: true }
               )}
-            </>
+              <Pressable
+                accessibilityLabel="Start a new question"
+                accessibilityRole="button"
+                onPress={startNewSituation}
+                style={({ pressed }) => [styles.newSituationButton, pressed ? styles.pressed : null]}
+              >
+                <Text style={styles.newSituationText}>Start a New Question</Text>
+              </Pressable>
+            </View>
           ) : null}
         </ScrollView>
       </KeyboardAvoidingView>
@@ -716,6 +868,39 @@ export default function DriverHelpScreen() {
           style={styles.backSwipeEdge}
         />
       ) : null}
+      <Modal
+        animationType="fade"
+        onRequestClose={() => setSelectedImage(null)}
+        presentationStyle="overFullScreen"
+        transparent
+        visible={Boolean(selectedImage)}
+      >
+        <View
+          style={[styles.imageModal, getImageModalSafeAreaPadding(safeAreaInsets)]}
+          testID="image-modal-surface"
+        >
+          <View style={styles.imageModalHeader}>
+            <Text numberOfLines={2} style={styles.imageModalCaption}>{selectedImage?.caption || 'Visual reference'}</Text>
+            <Pressable
+              accessibilityLabel="Close image"
+              accessibilityRole="button"
+              hitSlop={12}
+              onPress={() => setSelectedImage(null)}
+              style={({ pressed }) => [styles.imageModalClose, pressed ? styles.pressed : null]}
+            >
+              <Text style={styles.imageModalCloseText}>Close</Text>
+            </Pressable>
+          </View>
+          {selectedImage?.url ? (
+            <Image
+              accessibilityLabel={selectedImage.caption || 'Expanded visual reference'}
+              resizeMode="contain"
+              source={{ uri: selectedImage.url }}
+              style={styles.imageModalAsset}
+            />
+          ) : null}
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -732,7 +917,7 @@ const styles = StyleSheet.create({
   wordmark: { color: BRAND_NAVY, fontSize: 28, fontWeight: '900', letterSpacing: -1 },
   wordmarkAccent: { color: BRAND_ORANGE, fontWeight: '500' },
   homeHero: { alignItems: 'center', maxWidth: 620, paddingTop: 42, width: '100%' },
-  title: { color: BRAND_NAVY, fontSize: 34, fontWeight: '900', lineHeight: 41, maxWidth: 520, textAlign: 'center' },
+  title: { color: BRAND_NAVY, fontSize: 30, fontWeight: '900', lineHeight: 36, maxWidth: 520, textAlign: 'center' },
   micButton: { alignItems: 'center', backgroundColor: BRAND_ORANGE, borderColor: '#ffffff', borderRadius: 82, borderWidth: 5, height: 164, justifyContent: 'center', marginTop: 38, shadowColor: '#d45400', shadowOffset: { height: 10, width: 0 }, shadowOpacity: 0.24, shadowRadius: 22, width: 164 },
   micButtonListening: { backgroundColor: BRAND_NAVY, shadowColor: BRAND_NAVY },
   stopIcon: { backgroundColor: '#ffffff', borderRadius: 5, height: 38, width: 38 },
@@ -742,6 +927,9 @@ const styles = StyleSheet.create({
   dictationError: { color: appTheme.colors.danger, fontSize: 13, fontWeight: '700', marginTop: 10, maxWidth: 620, textAlign: 'center' },
   questionComposer: { alignItems: 'center', backgroundColor: appTheme.colors.surface, borderColor: '#dde5eb', borderRadius: 18, borderWidth: 1, flexDirection: 'row', gap: 10, marginTop: 32, maxWidth: 680, minHeight: 64, paddingHorizontal: 8, paddingVertical: 7, width: '100%', ...appTheme.shadows.card },
   input: { color: BRAND_NAVY, flex: 1, fontSize: 17, lineHeight: 23, maxHeight: 112, minHeight: 48, paddingHorizontal: 10, paddingVertical: 8 },
+  followUpMicButton: { alignItems: 'center', backgroundColor: BRAND_ORANGE, borderRadius: 24, height: 48, justifyContent: 'center', width: 48 },
+  followUpMicButtonListening: { backgroundColor: BRAND_NAVY },
+  smallStopIcon: { backgroundColor: '#ffffff', borderRadius: 3, height: 17, width: 17 },
   sendButton: { alignItems: 'center', backgroundColor: BRAND_ORANGE, borderRadius: 24, height: 48, justifyContent: 'center', width: 48 },
   disabled: { opacity: 0.45 },
   pressed: { opacity: 0.78 },
@@ -751,10 +939,10 @@ const styles = StyleSheet.create({
   answerCard: { backgroundColor: appTheme.colors.surface, borderColor: '#dde5eb', borderRadius: 22, borderWidth: 1, marginTop: 16, maxWidth: 680, padding: 20, width: '100%', ...appTheme.shadows.card },
   clarifyCard: { backgroundColor: appTheme.colors.surface, borderColor: '#dde5eb', borderRadius: 22, borderWidth: 1, marginTop: 16, maxWidth: 680, padding: 20, width: '100%', ...appTheme.shadows.card },
   escalationCard: { alignItems: 'stretch', backgroundColor: appTheme.colors.surface, borderColor: '#dde5eb', borderRadius: 22, borderWidth: 1, marginTop: 16, maxWidth: 680, padding: 20, width: '100%', ...appTheme.shadows.card },
-  statusHeadingRow: { alignItems: 'center', flexDirection: 'row', gap: 11 },
-  verifiedHeading: { color: BRAND_NAVY, fontSize: 17, fontWeight: '900', letterSpacing: 0.3, textTransform: 'uppercase' },
-  cardDivider: { backgroundColor: appTheme.colors.divider, height: 1, marginVertical: 17 },
-  answerEyebrow: { color: BRAND_NAVY, fontSize: 16, fontWeight: '900', letterSpacing: 0.7, textTransform: 'uppercase' },
+  codeBanner: { alignItems: 'center', backgroundColor: BRAND_NAVY, borderRadius: 15, marginBottom: 16, paddingHorizontal: 18, paddingVertical: 15 },
+  codeBannerText: { color: '#ffffff', fontSize: 21, fontWeight: '900', letterSpacing: 0.8 },
+  directAnswerText: { color: BRAND_NAVY, fontSize: 22, fontWeight: '900', lineHeight: 29 },
+  doThisHeading: { color: appTheme.colors.textSecondary, fontSize: 12, fontWeight: '900', letterSpacing: 0.7, marginTop: 22, textTransform: 'uppercase' },
   clarifyHeadingRow: { alignItems: 'center', flexDirection: 'row', gap: 10 },
   questionMark: { alignItems: 'center', backgroundColor: BRAND_ORANGE, borderRadius: 15, height: 30, justifyContent: 'center', width: 30 },
   questionMarkText: { color: '#ffffff', fontSize: 18, fontWeight: '900' },
@@ -784,6 +972,19 @@ const styles = StyleSheet.create({
   answerOptionSummary: { color: appTheme.colors.textSecondary, fontSize: 14, lineHeight: 20, marginTop: 4 },
   answerOptionToggle: { color: appTheme.colors.greenText, fontSize: 24, fontWeight: '500', lineHeight: 25 },
   answerOptionDetails: { borderTopColor: appTheme.colors.divider, borderTopWidth: 1, marginTop: 12, paddingTop: 8 },
+  visualReferenceSection: { borderTopColor: appTheme.colors.divider, borderTopWidth: 1, gap: 10, marginTop: 20, paddingTop: 16 },
+  visualReferenceTitle: { color: BRAND_NAVY, fontSize: 13, fontWeight: '900', letterSpacing: 0.7, textTransform: 'uppercase' },
+  visualReferenceNote: { color: appTheme.colors.textSecondary, fontSize: 12, lineHeight: 18 },
+  answerImageCard: { backgroundColor: appTheme.colors.surfaceMuted, borderColor: appTheme.colors.border, borderRadius: 16, borderWidth: 1, overflow: 'hidden', padding: 10 },
+  answerImage: { backgroundColor: '#ffffff', borderRadius: 10, height: 260, width: '100%' },
+  answerImageCaption: { color: appTheme.colors.textPrimary, fontSize: 13, fontWeight: '700', lineHeight: 19, marginTop: 9 },
+  answerImageHint: { color: BRAND_ORANGE, fontSize: 11, fontWeight: '900', marginTop: 5, textTransform: 'uppercase' },
+  imageModal: { backgroundColor: 'rgba(8, 20, 31, 0.97)', flex: 1, paddingHorizontal: 16 },
+  imageModalHeader: { alignItems: 'center', flexDirection: 'row', gap: 16, justifyContent: 'space-between', minHeight: 52 },
+  imageModalCaption: { color: '#ffffff', flex: 1, fontSize: 14, fontWeight: '700', lineHeight: 20 },
+  imageModalClose: { borderColor: '#ffffff', borderRadius: 14, borderWidth: 1, minHeight: 48, minWidth: 92, paddingHorizontal: 16, paddingVertical: 10, zIndex: 2 },
+  imageModalCloseText: { color: '#ffffff', fontSize: 14, fontWeight: '900' },
+  imageModalAsset: { flex: 1, marginTop: 12, width: '100%' },
   warningPanel: { backgroundColor: appTheme.colors.warningSoft, borderColor: appTheme.colors.warning, borderRadius: 16, borderWidth: 1, marginTop: 18, padding: 14 },
   warningTitle: { color: appTheme.colors.warningText, fontSize: 12, fontWeight: '900', letterSpacing: 0.7, marginBottom: 6, textTransform: 'uppercase' },
   bulletRow: { alignItems: 'flex-start', flexDirection: 'row', gap: 8, marginTop: 6 },
@@ -791,15 +992,12 @@ const styles = StyleSheet.create({
   warningText: { color: appTheme.colors.warningText, flex: 1, fontSize: 14, fontWeight: '700', lineHeight: 21 },
   moreButton: { alignItems: 'center', borderColor: BRAND_ORANGE, borderRadius: 14, borderWidth: 1.5, marginTop: 18, paddingHorizontal: 14, paddingVertical: 13, width: '100%' },
   moreButtonText: { color: BRAND_ORANGE, fontSize: 14, fontWeight: '900', textTransform: 'uppercase' },
-  moreContent: { gap: 14, marginTop: 14 },
+  moreContent: { backgroundColor: appTheme.colors.surfaceTint, borderColor: appTheme.colors.orangeBorder, borderRadius: 14, borderWidth: 1, gap: 14, marginTop: 14, padding: 14 },
   moreText: { color: appTheme.colors.textSecondary, fontSize: 15, lineHeight: 23 },
   detailSection: { borderTopColor: appTheme.colors.divider, borderTopWidth: 1, paddingTop: 12 },
   detailTitle: { color: appTheme.colors.textPrimary, fontSize: 13, fontWeight: '900' },
   detailBullet: { color: appTheme.colors.textSecondary, fontSize: 15, lineHeight: 22 },
   detailText: { color: appTheme.colors.textSecondary, flex: 1, fontSize: 14, lineHeight: 21 },
-  traceRow: { alignItems: 'center', borderTopColor: appTheme.colors.divider, borderTopWidth: 1, flexDirection: 'row', justifyContent: 'space-between', marginTop: 18, paddingTop: 14 },
-  traceText: { color: appTheme.colors.greenText, fontSize: 12, fontWeight: '800' },
-  traceId: { color: appTheme.colors.textTertiary, fontSize: 10, marginLeft: 10 },
   feedbackRow: { marginTop: 18 },
   feedbackLabel: { color: BRAND_NAVY, fontSize: 14, fontWeight: '700' },
   feedbackButtons: { flexDirection: 'row', gap: 10, marginTop: 10 },
@@ -807,15 +1005,16 @@ const styles = StyleSheet.create({
   feedbackSelected: { backgroundColor: appTheme.colors.orangeSoft, borderColor: appTheme.colors.orange },
   feedbackText: { color: appTheme.colors.textSecondary, fontSize: 14, fontWeight: '800' },
   optionList: { gap: 9, marginTop: 16 },
-  optionButton: { alignItems: 'center', backgroundColor: appTheme.colors.surface, borderColor: appTheme.colors.borderStrong, borderRadius: 15, borderWidth: 1, minHeight: 58, justifyContent: 'center', padding: 14 },
+  optionButton: { alignItems: 'center', backgroundColor: appTheme.colors.surface, borderColor: appTheme.colors.borderStrong, borderRadius: 15, borderWidth: 1, flexDirection: 'row', gap: 9, minHeight: 58, justifyContent: 'center', padding: 14 },
+  optionButtonSelected: { backgroundColor: appTheme.colors.orangeSoft, borderColor: BRAND_ORANGE },
   optionText: { color: appTheme.colors.textPrimary, fontSize: 15, fontWeight: '800', textAlign: 'center' },
   notSureButton: { borderStyle: 'dashed' },
   notSureText: { color: appTheme.colors.textTertiary, fontSize: 15, fontWeight: '800' },
   clarificationHelp: { color: appTheme.colors.textSecondary, fontSize: 13, lineHeight: 19, marginTop: 12 },
-  followUpHeader: { alignItems: 'center', flexDirection: 'row', gap: 12, justifyContent: 'space-between', marginTop: 18, maxWidth: 680, width: '100%' },
-  followUpHint: { color: appTheme.colors.textSecondary, flex: 1, fontSize: 13, lineHeight: 18 },
-  newSituationButton: { backgroundColor: BRAND_ORANGE, borderColor: BRAND_ORANGE, borderRadius: 14, borderWidth: 1, paddingHorizontal: 14, paddingVertical: 10 },
-  newSituationText: { color: appTheme.colors.white, fontSize: 13, fontWeight: '800' },
+  followUpSection: { marginTop: 22, maxWidth: 680, width: '100%' },
+  followUpLabel: { color: BRAND_NAVY, fontSize: 17, fontWeight: '900' },
+  newSituationButton: { alignItems: 'center', borderColor: BRAND_NAVY, borderRadius: 14, borderWidth: 1.5, marginTop: 14, paddingHorizontal: 14, paddingVertical: 13 },
+  newSituationText: { color: BRAND_NAVY, fontSize: 14, fontWeight: '900' },
   errorCard: { backgroundColor: appTheme.colors.dangerSoft, borderColor: appTheme.colors.danger, borderRadius: 16, borderWidth: 1, marginTop: 16, maxWidth: 680, padding: 14, width: '100%' },
   errorText: { color: appTheme.colors.dangerText, fontSize: 14, lineHeight: 20 },
   verificationNotice: { backgroundColor: appTheme.colors.warningSoft, borderColor: appTheme.colors.warning, borderRadius: 16, borderWidth: 1, marginTop: 16, maxWidth: 680, padding: 14, width: '100%' },

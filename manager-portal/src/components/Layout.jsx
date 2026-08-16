@@ -29,6 +29,8 @@ const navGroups = [
       { to: '/time-commits', label: 'P&D Time Commits', icon: 'commits' },
       { to: '/drivers', label: 'Drivers', icon: 'drivers' },
       { to: '/knowledge-activity', label: 'Knowledge Activity', icon: 'knowledge' },
+      { to: '/answer-memory', label: 'Answer Memory', icon: 'knowledge' },
+      { to: '/rra-test', label: 'RRA Test Console', icon: 'knowledge' },
       { to: '/vehicles', label: 'Vehicles', icon: 'vehicles' },
       { to: '/notifications', label: 'Notifications', icon: 'notifications' },
       { to: '/access-codes', label: 'Access Codes', icon: 'access' },
@@ -41,6 +43,12 @@ const navGroups = [
     links: [
       { to: '/csa', label: 'CSA Access', icon: 'csa', end: true },
       { to: '/vedr', label: 'VEDR Providers', icon: 'vedr', showsSetupBadge: true }
+    ]
+  },
+  {
+    label: 'Account',
+    links: [
+      { to: '/settings', label: 'Settings', icon: 'settings' }
     ]
   }
 ];
@@ -140,6 +148,13 @@ function SidebarIcon({ type }) {
         <svg aria-hidden="true" className="sidebar-link-icon-svg" viewBox="0 0 24 24">
           <path d="M12 21s6-5.33 6-11a6 6 0 1 0-12 0c0 5.67 6 11 6 11z" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
           <circle cx="12" cy="10" r="2.4" fill="currentColor" />
+        </svg>
+      );
+    case 'settings':
+      return (
+        <svg aria-hidden="true" className="sidebar-link-icon-svg" viewBox="0 0 24 24">
+          <circle cx="12" cy="12" fill="none" r="3" stroke="currentColor" strokeWidth="1.8" />
+          <path d="M19 13.5v-3l-2-.7a7 7 0 0 0-.7-1.7l.9-1.9-2.1-2.1-1.9.9a7 7 0 0 0-1.7-.7L10.5 2h-3l-.7 2.3a7 7 0 0 0-1.7.7l-1.9-.9-2.1 2.1L2 8.1a7 7 0 0 0-.7 1.7l-2 .7v3l2 .7a7 7 0 0 0 .7 1.7l-.9 1.9 2.1 2.1 1.9-.9a7 7 0 0 0 1.7.7l.7 2.3h3l.7-2.3a7 7 0 0 0 1.7-.7l1.9.9 2.1-2.1-.9-1.9a7 7 0 0 0 .7-1.7z" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.4" transform="translate(1.5 0)" />
         </svg>
       );
     default:

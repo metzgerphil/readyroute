@@ -1,0 +1,17 @@
+{
+  "projects": {
+    "default": "ready-route-project"
+  },
+  "targets": {
+    "ready-route-project": {
+      "hosting": {
+        "portal": [
+          "ready-route-project"
+        ],
+        "landing": [
+          "ready-route-landing"
+        ]
+      }
+    }
+  }
+}

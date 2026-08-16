@@ -22,8 +22,8 @@ function formatMonth(value) {
   return new Intl.DateTimeFormat(undefined, { month: 'long', year: 'numeric', timeZone: 'UTC' }).format(date);
 }
 
-function formatPercent(value) {
-  return value == null ? 'No ratings' : `${Math.round(Number(value) * 100)}%`;
+function formatPercent(value, emptyLabel = 'No ratings') {
+  return value == null ? emptyLabel : `${Math.round(Number(value) * 100)}%`;
 }
 
 function formatEstimatedTime(minutes) {
@@ -147,6 +147,7 @@ export default function StaffCompaniesPage() {
   const metrics = driverHelp.metrics || {};
   const interactions = Array.isArray(driverHelp.recent_interactions) ? driverHelp.recent_interactions : [];
   const feedback = Array.isArray(driverHelp.recent_feedback) ? driverHelp.recent_feedback : [];
+  const driverMetrics = Array.isArray(driverHelp.driver_metrics) ? driverHelp.driver_metrics : [];
   const managers = Array.isArray(detail.managers) ? detail.managers : [];
   const drivers = Array.isArray(detail.drivers) ? detail.drivers : [];
   const monthlyReports = Array.isArray(driverHelp.monthly_reports) ? driverHelp.monthly_reports : [];
@@ -247,11 +248,14 @@ export default function StaffCompaniesPage() {
               <div className="staff-stat-grid staff-usage-stat-grid">
                 <StatCard label="Active drivers" value={metrics.active_drivers ?? account.counts?.active_drivers ?? 0} />
                 <StatCard label="Questions this month" value={metrics.total_questions || 0} />
+                <StatCard label="Verified success rate" value={formatPercent(metrics.success_rate, 'No questions')} tone={metrics.success_rate != null ? 'active' : 'default'} />
+                <StatCard label="Failed questions" value={metrics.failed_questions || 0} tone={metrics.failed_questions ? 'warning' : 'default'} />
                 <StatCard label="Helpful ratings" value={formatPercent(metrics.helpful_rate)} tone={metrics.helpful_rate != null ? 'active' : 'default'} />
+                <StatCard label="Feedback coverage" value={formatPercent(metrics.feedback_response_rate, 'No answers')} />
                 <StatCard label="Estimated time saved" value={formatEstimatedTime(metrics.estimated_manager_minutes_avoided)} />
               </div>
               <p className="staff-usage-estimate-note">
-                Time saved is an estimate: {metrics.minutes_per_answer_estimate || account.driver_help_minutes_per_answer_estimate || 5} minutes for each verified answer that may have replaced a manager interruption.
+                A question is one driver-help situation, even when Ready Route asks a follow-up. Success means the situation reached at least one verified answer. Helpful rate includes rated answers only; feedback coverage shows how many verified answers received a rating. Time saved remains an estimate: {metrics.minutes_per_answer_estimate || account.driver_help_minutes_per_answer_estimate || 5} minutes per successful situation.
               </p>
 
               <section className="staff-simple-section">
@@ -306,7 +310,7 @@ export default function StaffCompaniesPage() {
                     <h3>Driver questions</h3>
                     <p>{formatMonth(driverHelp.month_start)} · newest first</p>
                   </div>
-                  <span>{metrics.verified_answers || 0} verified · {metrics.clarifications || 0} clarified · {metrics.no_verified_answer || 0} escalated</span>
+                  <span>{metrics.verified_answers || 0} verified · {metrics.clarifications || 0} clarification turns · {metrics.failed_questions || 0} failed</span>
                 </div>
                 {interactions.length ? (
                   <div className="staff-question-list">
@@ -331,6 +335,37 @@ export default function StaffCompaniesPage() {
                 ) : <EmptyState title="No questions this month" description="Driver questions and answer outcomes will appear here." variant="inline" />}
               </section>
 
+              <section className="staff-simple-section">
+                <div className="staff-simple-section-header">
+                  <div>
+                    <h3>Results by driver</h3>
+                    <p>Current-month question volume, verified success, failures, and answer ratings.</p>
+                  </div>
+                </div>
+                {driverMetrics.length ? (
+                  <div className="table-wrap">
+                    <table>
+                      <thead>
+                        <tr><th>Driver</th><th>Questions</th><th>Verified</th><th>Failed</th><th>Success rate</th><th>Helpful</th><th>Not helpful</th></tr>
+                      </thead>
+                      <tbody>
+                        {driverMetrics.map((driverMetric) => (
+                          <tr key={driverMetric.driver_id || driverMetric.driver_name}>
+                            <td>{driverMetric.driver_name}</td>
+                            <td>{driverMetric.total_questions}</td>
+                            <td>{driverMetric.verified_answers}</td>
+                            <td>{driverMetric.failed_questions}</td>
+                            <td>{formatPercent(driverMetric.success_rate, 'No questions')}</td>
+                            <td>{driverMetric.helpful_ratings}</td>
+                            <td>{driverMetric.unhelpful_ratings}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                ) : <EmptyState title="No driver question activity" description="Per-driver results will appear after drivers ask Ready Route." variant="inline" />}
+              </section>
+
               <div className="staff-detail-grid staff-company-report-grid">
                 <section className="staff-simple-section">
                   <h3>Drivers</h3>
@@ -353,7 +388,13 @@ export default function StaffCompaniesPage() {
                     <div className="staff-compact-list">
                       {monthlyReports.slice(0, 8).map((report) => (
                         <article key={report.id}>
-                          <div><strong>{formatMonth(report.report_month)}</strong><span>{report.recipient_email}</span></div>
+                          <div>
+                            <strong>{formatMonth(report.report_month)}</strong>
+                            <span>{report.recipient_email}</span>
+                            <span>
+                              {report.metrics?.total_questions || 0} questions · {report.metrics?.success_rate == null ? 'success not recorded' : `${formatPercent(report.metrics.success_rate)} success`} · {report.metrics?.helpful_ratings || 0} helpful · {report.metrics?.unhelpful_ratings || 0} not helpful
+                            </span>
+                          </div>
                           <StatusBadge tone={report.delivery_status === 'sent' ? 'active' : report.delivery_status === 'failed' ? 'urgent' : 'warning'}>
                             {report.delivery_status}
                           </StatusBadge>

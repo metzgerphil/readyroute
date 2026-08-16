@@ -1,13 +1,18 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const os = require('node:os');
 const path = require('node:path');
 
 const {
   buildImport,
   buildPublicationGateIndex,
+  findStalePublishedRecords,
   mapReferenceStatus,
   parseCsv,
+  readAnswerImageIndex,
   readJsonLines,
+  readPngDimensions,
   toCanonicalReferenceRecord,
   validateReferenceRecord,
   validateProductionEligibleRecord
@@ -43,11 +48,108 @@ function canonicalRecord(overrides = {}) {
   };
 }
 
+test('release reconciliation preserves history but unpublishes superseded and removed records', () => {
+  const existing = [
+    { knowledge_id: 'KNO-TEST-001', version: 2, is_published: true },
+    { knowledge_id: 'KNO-TEST-001', version: 3, is_published: true },
+    { knowledge_id: 'KNO-REMOVED-001', version: 1, is_published: true },
+    { knowledge_id: 'KNO-ARCHIVED-001', version: 1, is_published: false }
+  ];
+  const current = [{ knowledge_id: 'KNO-TEST-001', version: 3, is_published: true }];
+
+  assert.deepEqual(findStalePublishedRecords(existing, current), [
+    { knowledge_id: 'KNO-TEST-001', version: 2, is_published: true },
+    { knowledge_id: 'KNO-REMOVED-001', version: 1, is_published: true }
+  ]);
+});
+
 test('production validation requires canonical evidence and a driver-language surface', () => {
   assert.deepEqual(validateProductionEligibleRecord(canonicalRecord()), []);
   assert.deepEqual(
     validateProductionEligibleRecord(canonicalRecord({ source_evidence: [], driver_question_variants: [] })),
     ['source_evidence', 'driver_question_variants']
+  );
+});
+
+test('published answer images map to canonical knowledge records with private storage metadata', () => {
+  const fixtureRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'readyroute-answer-images-'));
+  const imageDir = path.join(fixtureRoot, 'images');
+  fs.mkdirSync(imageDir);
+  const imageBytes = Buffer.alloc(24);
+  Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]).copy(imageBytes);
+  imageBytes.writeUInt32BE(1170, 16);
+  imageBytes.writeUInt32BE(2532, 20);
+  fs.writeFileSync(path.join(imageDir, 'FAQ-FORGE-SETTINGS-P005.png'), imageBytes);
+  const bundlePath = path.join(fixtureRoot, 'bundle.json');
+  fs.writeFileSync(bundlePath, JSON.stringify({
+    bundle_version: '2026-08-13.1',
+    records: [{
+      trace: { source_record_id: 'KNO-FORGE-CAMERA-SCAN-001' },
+      images: [{
+        filename: 'FAQ-FORGE-SETTINGS-P005.png',
+        caption: 'Use Camera to Scan setting'
+      }]
+    }]
+  }));
+  const imageIndex = readAnswerImageIndex(
+    bundlePath,
+    imageDir
+  );
+  const cameraImages = imageIndex.imagesByKnowledgeId.get('KNO-FORGE-CAMERA-SCAN-001');
+
+  assert.equal(imageIndex.bundleVersion, '2026-08-13.1');
+  assert.equal(imageIndex.imagesByKnowledgeId.size, 1);
+  assert.equal(imageIndex.assets.length, 1);
+  assert.equal(cameraImages[0].filename, 'FAQ-FORGE-SETTINGS-P005.png');
+  assert.equal(cameraImages[0].storage_bucket, 'driver-help-images');
+  assert.match(cameraImages[0].storage_path, /^2026-08-13\.1\//);
+  assert.ok(cameraImages[0].width > 0);
+  assert.ok(cameraImages[0].height > 0);
+  assert.match(cameraImages[0].checksum, /^[a-f0-9]{64}$/);
+
+  const payload = buildImport(
+    [canonicalRecord({ knowledge_id: 'KNO-FORGE-CAMERA-SCAN-001' })],
+    '2026-08-14T00:00:00.000Z',
+    [],
+    new Map(),
+    undefined,
+    [],
+    [],
+    imageIndex.imagesByKnowledgeId
+  );
+  assert.deepEqual(payload.knowledgeRows[0].images, cameraImages);
+});
+
+test('PNG validation rejects non-image bytes', () => {
+  assert.throws(() => readPngDimensions(Buffer.from('not a png'), 'bad.png'), /valid PNG/);
+});
+
+test('canonical imports preserve stored image mappings when the private bundle is unavailable', () => {
+  const payload = buildImport([canonicalRecord()], '2026-08-14T00:00:00.000Z');
+  assert.equal(Object.hasOwn(payload.knowledgeRows[0], 'images'), false);
+});
+
+test('semantic driver variations are imported as answer-bearing patterns, not test-only phrases', () => {
+  const answerOverride = {
+    direct_answer: 'No. Reconcile before leaving.',
+    steps: ['Close the pickup on site.'],
+    watch_for: 'Do not reconcile off site.'
+  };
+  const payload = buildImport([canonicalRecord()], '2026-08-14T00:00:00.000Z', [{
+    utterance: 'Can I reconcile after I leave?',
+    semantic_variations: ['I already left can I reconcile now'],
+    expected_knowledge_ids: ['KNO-TEST-001'],
+    response_mode: 'DIRECT_SOURCE_GROUNDED_ANSWER',
+    information_sufficiency: 'SUFFICIENT',
+    must_clarify: [],
+    answer_override: answerOverride
+  }]);
+  const row = payload.knowledgeRows[0];
+  assert.ok(row.driver_question_variants.includes('I already left can I reconcile now'));
+  assert.deepEqual(
+    row.driver_question_patterns.find((pattern) => pattern.utterance === 'I already left can I reconcile now')
+      .answer_override,
+    answerOverride
   );
 });
 
@@ -96,7 +198,7 @@ test('canonical reference definitions import in a separate namespace with status
   assert.equal(payload.evidenceRows.length, 2);
 });
 
-test('the complete canonical reference corpus keeps only verified definitions eligible', () => {
+test('the v2 corpus imports the complete reviewed code-reference dictionary', () => {
   const root = path.resolve(__dirname, '../../..');
   const references = [
     ...readJsonLines(path.join(root, 'knowledge/reference/delivery-status-codes.jsonl')),
@@ -105,12 +207,19 @@ test('the complete canonical reference corpus keeps only verified definitions el
   const cases = readJsonLines(path.join(root, 'knowledge/evaluations/reference-language-cases.jsonl'));
   const payload = buildImport([], '2026-08-10T00:00:00.000Z', [], new Map(), new Map(), references, cases);
 
-  assert.equal(payload.knowledgeRows.length, 57);
-  assert.equal(payload.knowledgeRows.filter((row) => row.is_published).length, 49);
+  const ids = new Set(payload.knowledgeRows.map((row) => row.knowledge_id));
+  assert.equal(payload.knowledgeRows.length, 63);
+  assert.equal(payload.knowledgeRows.filter((row) => row.is_published).length, 63);
+  assert.equal(ids.has('DELIVERY_STATUS:001'), true);
+  assert.equal(ids.has('DELIVERY_STATUS:030'), true);
+  assert.equal(ids.has('DELIVERY_STATUS:364'), true);
+  assert.equal(ids.has('PICKUP_REASON:01'), true);
+  assert.equal(ids.has('PICKUP_REASON:20'), true);
+  assert.equal(ids.has('PICKUP_REASON:26'), true);
   assert.equal(mapReferenceStatus('VERIFIED'), 'SOURCE_VERIFIED');
   assert.equal(mapReferenceStatus('HUMAN_REVIEW_REQUIRED'), 'PENDING_REVIEW');
   assert.equal(mapReferenceStatus('POTENTIALLY_OUTDATED'), 'POTENTIALLY_OUTDATED');
-  assert.equal(toCanonicalReferenceRecord(references[0]).knowledge_id, 'DELIVERY_STATUS:001');
+  assert.equal(references.length, 63);
 });
 
 test('malformed and duplicate canonical reference identities fail import closed', () => {

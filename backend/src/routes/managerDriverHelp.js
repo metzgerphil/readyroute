@@ -1,11 +1,142 @@
 const express = require('express');
 
 const defaultSupabase = require('../lib/supabase');
-const { isMissingTableError } = require('../services/driverHelp');
+const { applyAiInterpretation, createDriverHelpService, isMissingTableError } = require('../services/driverHelp');
 
 function createManagerDriverHelpRouter(options = {}) {
   const router = express.Router();
   const supabase = options.supabase || defaultSupabase;
+  const service = options.service || createDriverHelpService({
+    supabase,
+    now: options.now
+  });
+
+  router.post('/query', async (req, res) => {
+    const question = String(req.body?.question || '').trim();
+    const sessionId = req.body?.session_id ? String(req.body.session_id).trim() : null;
+    if (question.length < 2 || question.length > 500) {
+      return res.status(400).json({ error: 'Question must be between 2 and 500 characters.' });
+    }
+
+    try {
+      const requestedInterpretationMode = String(req.body?.ai_interpretation_mode || '').toUpperCase();
+      const aiInterpretationModeOverride = ['OFF', 'SHADOW', 'ACTIVE'].includes(requestedInterpretationMode)
+        ? requestedInterpretationMode
+        : 'ACTIVE';
+      const result = await service.answerQuestion({
+        accountId: req.account.account_id,
+        driverId: null,
+        actorType: 'manager',
+        actorId: req.account.manager_user_id || req.account.account_id,
+        question,
+        sessionId,
+        includeDiagnostics: true,
+        aiInterpretationModeOverride
+      });
+      return res.status(200).json(result);
+    } catch (error) {
+      console.error('Manager RRA test query failed:', error);
+      return res.status(500).json({ error: 'Ready Route could not check the approved procedures right now.' });
+    }
+  });
+
+  router.post('/interactions/:interaction_id/feedback', async (req, res) => {
+    const rating = String(req.body?.rating || '').trim().toLowerCase();
+    const comment = req.body?.comment == null ? null : String(req.body.comment).trim();
+    if (!['up', 'down'].includes(rating)) {
+      return res.status(400).json({ error: 'Rating must be up or down.' });
+    }
+    if (comment && comment.length > 1000) {
+      return res.status(400).json({ error: 'Feedback comment must be 1000 characters or fewer.' });
+    }
+
+    try {
+      const feedback = await service.saveFeedback({
+        accountId: req.account.account_id,
+        driverId: null,
+        actorType: 'manager',
+        actorId: req.account.manager_user_id || req.account.account_id,
+        interactionId: req.params.interaction_id,
+        rating,
+        comment
+      });
+      if (!feedback) return res.status(404).json({ error: 'Interaction not found.' });
+      return res.status(200).json({ feedback });
+    } catch (error) {
+      console.error('Manager RRA test feedback failed:', error);
+      return res.status(500).json({ error: 'Feedback could not be saved right now.' });
+    }
+  });
+
+  router.get('/answer-memory', async (req, res) => {
+    const limit = Math.min(Math.max(Number(req.query.limit) || 100, 1), 250);
+    const requestedStatus = String(req.query.status || '').trim().toUpperCase();
+    const allowedStatuses = new Set(['CANDIDATE', 'ACTIVE', 'REVIEW_REQUIRED', 'SUSPENDED']);
+    try {
+      let query = supabase
+        .from('driver_help_answer_memory')
+        .select('route_key, normalized_question, knowledge_id, knowledge_version, response_mode, answer_pattern_id, clarification_requirement, risk_tier, status, agreement_count, disagreement_count, reuse_count, negative_feedback_count, audit_count, audit_agreement_count, audit_disagreement_count, audit_error_count, last_audited_at, highest_confidence, activated_at, reviewed_at, first_seen_at, last_seen_at, last_used_at')
+        .order('last_seen_at', { ascending: false })
+        .limit(limit);
+      if (allowedStatuses.has(requestedStatus)) query = query.eq('status', requestedStatus);
+      const { data, error } = await query;
+      if (error) {
+        if (isMissingTableError(error)) return res.status(200).json({ routes: [], setup_required: true });
+        throw error;
+      }
+      const records = await service.loadKnowledgeRecords();
+      const routes = (data || []).map((route) => {
+        const requiredAgreements = route.risk_tier === 'HIGH' || route.response_mode === 'CLARIFY' ? 5 : 3;
+        const previewDecision = applyAiInterpretation({
+          knowledge_id: route.knowledge_id,
+          decision: route.response_mode,
+          answer_pattern_id: route.answer_pattern_id || null,
+          clarification_requirement: route.clarification_requirement || null,
+          confidence: Number(route.highest_confidence || 1)
+        }, route.normalized_question, records, { candidates: [] });
+        return {
+          ...route,
+          required_agreements: requiredAgreements,
+          ready_for_approval: Number(route.agreement_count || 0) >= requiredAgreements,
+          preview: previewDecision ? {
+            response_mode: previewDecision.response_mode,
+            answer: previewDecision.answer || null,
+            answer_structure: previewDecision.answer_structure || null,
+            clarification_prompt: previewDecision.clarification_prompt || null,
+            clarification_options: (previewDecision.clarification_options || []).map((option) => ({
+              label: option.label,
+              query: option.query
+            })),
+            more_info: previewDecision.more_info || null
+          } : null
+        };
+      });
+      return res.status(200).json({ routes, setup_required: false });
+    } catch (error) {
+      console.error('Manager RRA answer-memory list failed:', error);
+      return res.status(500).json({ error: 'Unable to load learned answer routes.' });
+    }
+  });
+
+  router.post('/answer-memory/:route_key/review', async (req, res) => {
+    const action = String(req.body?.action || '').trim().toUpperCase();
+    if (!['APPROVE', 'SUSPEND'].includes(action)) {
+      return res.status(400).json({ error: 'Action must be APPROVE or SUSPEND.' });
+    }
+    try {
+      const { data, error } = await supabase.rpc('review_driver_help_answer_memory', {
+        p_route_key: req.params.route_key,
+        p_action: action,
+        p_reviewed_by: req.account.manager_user_id || req.account.account_id
+      });
+      if (error) throw error;
+      if (!data) return res.status(404).json({ error: 'Learned answer route not found.' });
+      return res.status(200).json({ route: data });
+    } catch (error) {
+      console.error('Manager RRA answer-memory review failed:', error);
+      return res.status(500).json({ error: 'Unable to review this learned answer route.' });
+    }
+  });
 
   router.get('/overview', async (req, res) => {
     const accountId = req.account.account_id;
@@ -15,7 +146,7 @@ function createManagerDriverHelpRouter(options = {}) {
       const [interactionResult, unansweredResult, feedbackResult, activeDriverResult] = await Promise.all([
         supabase
           .from('driver_help_interactions')
-          .select('id, driver_id, question, response_mode, selected_knowledge_ids, selected_knowledge_versions, canonical_trace, retrieval_candidates, confidence, response_latency_ms, created_at')
+          .select('id, driver_id, question, response_mode, selected_knowledge_ids, selected_knowledge_versions, canonical_trace, retrieval_candidates, confidence, interpretation_mode, interpretation_result, response_latency_ms, created_at')
           .eq('account_id', accountId)
           .order('created_at', { ascending: false })
           .limit(limit),
@@ -58,6 +189,19 @@ function createManagerDriverHelpRouter(options = {}) {
               no_verified_answer_rate: 0,
               average_response_latency_ms: null,
               retrieval_failures: 0,
+              ai_shadow_runs: 0,
+              ai_shadow_valid_results: 0,
+              ai_shadow_errors: 0,
+              ai_shadow_usage: {
+                input_tokens: 0,
+                cached_input_tokens: 0,
+                output_tokens: 0,
+                reasoning_tokens: 0,
+                total_tokens: 0,
+                estimated_cost_usd: 0
+              },
+              ai_shadow_record_agreement_rate: null,
+              ai_shadow_response_mode_agreement_rate: null,
               questions_by_category: {}
             },
             recent_interactions: [],
@@ -79,6 +223,29 @@ function createManagerDriverHelpRouter(options = {}) {
       const measuredLatencies = interactions
         .map((row) => Number(row.response_latency_ms))
         .filter((value) => Number.isFinite(value) && value >= 0);
+      const shadowRuns = interactions.filter((row) => (
+        ['AI_SHADOW', 'AI_SHADOW_FALLBACK'].includes(row.interpretation_mode)
+      ));
+      const validShadowResults = shadowRuns.filter((row) => row.interpretation_result?.status === 'VALID');
+      const shadowUsage = shadowRuns.reduce((totals, row) => {
+        const usage = row.interpretation_result?.usage;
+        if (!usage) return totals;
+        totals.input_tokens += Number(usage.input_tokens || 0);
+        totals.cached_input_tokens += Number(usage.cached_input_tokens || 0);
+        totals.output_tokens += Number(usage.output_tokens || 0);
+        totals.reasoning_tokens += Number(usage.reasoning_tokens || 0);
+        totals.total_tokens += Number(usage.total_tokens || 0);
+        totals.estimated_cost_usd += Number(usage.estimated_cost_usd || 0);
+        return totals;
+      }, {
+        input_tokens: 0,
+        cached_input_tokens: 0,
+        output_tokens: 0,
+        reasoning_tokens: 0,
+        total_tokens: 0,
+        estimated_cost_usd: 0
+      });
+      shadowUsage.estimated_cost_usd = Number(shadowUsage.estimated_cost_usd.toFixed(6));
       const questionsByCategory = interactions.reduce((counts, row) => {
         const category = row.canonical_trace?.[0]?.category_paths?.[0] || 'UNMATCHED';
         counts[category] = (counts[category] || 0) + 1;
@@ -111,6 +278,16 @@ function createManagerDriverHelpRouter(options = {}) {
           retrieval_failures: interactions.filter((row) => (
             row.response_mode === 'ESCALATE' && !(row.selected_knowledge_ids || []).length
           )).length,
+          ai_shadow_runs: shadowRuns.length,
+          ai_shadow_valid_results: validShadowResults.length,
+          ai_shadow_errors: shadowRuns.filter((row) => row.interpretation_result?.status === 'ERROR').length,
+          ai_shadow_usage: shadowUsage,
+          ai_shadow_record_agreement_rate: validShadowResults.length
+            ? validShadowResults.filter((row) => row.interpretation_result.record_agreement === true).length / validShadowResults.length
+            : null,
+          ai_shadow_response_mode_agreement_rate: validShadowResults.length
+            ? validShadowResults.filter((row) => row.interpretation_result.response_mode_agreement === true).length / validShadowResults.length
+            : null,
           questions_by_category: questionsByCategory
         },
         recent_interactions: interactions,

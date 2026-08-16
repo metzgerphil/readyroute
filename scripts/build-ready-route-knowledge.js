@@ -17,6 +17,8 @@ const RELEASE = path.join(ROOT, 'knowledge');
 const RECORDS_PATH = path.join(RESEARCH, 'knowledge/records.jsonl');
 const CASES_PATH = path.join(RESEARCH, 'validation/driver_language_cases.jsonl');
 const REFERENCE_CASES_PATH = path.join(RESEARCH, 'validation/reference_language_cases.jsonl');
+const CONVERSATION_SCENARIOS_PATH = path.join(RESEARCH, 'validation/conversation_scenarios.jsonl');
+const OUT_OF_CORPUS_CASES_PATH = path.join(RESEARCH, 'validation/out_of_corpus_cases.jsonl');
 const CANDIDATE_OPERATIONAL_CASES_PATH = path.join(RESEARCH, 'validation/candidate_operational_language_cases.jsonl');
 const CANDIDATE_GAP_CASES_PATH = path.join(RESEARCH, 'validation/candidate_gap_language_cases.jsonl');
 const DELIVERY_STATUS_PATH = path.join(RESEARCH, 'knowledge/status_codes.jsonl');
@@ -134,6 +136,8 @@ function main() {
   const records = readJsonLines(RECORDS_PATH);
   const cases = readJsonLines(CASES_PATH);
   const referenceCases = readJsonLines(REFERENCE_CASES_PATH);
+  const conversationScenarios = readJsonLines(CONVERSATION_SCENARIOS_PATH);
+  const outOfCorpusCases = readJsonLines(OUT_OF_CORPUS_CASES_PATH);
   const candidateOperationalCases = readJsonLines(CANDIDATE_OPERATIONAL_CASES_PATH);
   const candidateGapCases = readJsonLines(CANDIDATE_GAP_CASES_PATH);
   const deliveryStatuses = readJsonLines(DELIVERY_STATUS_PATH);
@@ -310,6 +314,8 @@ function main() {
     source_records: sources.length,
     driver_language_cases: cases.length,
     reference_language_cases: referenceCases.length,
+    conversation_scenarios: conversationScenarios.length,
+    out_of_corpus_cases: outOfCorpusCases.length,
     candidate_operational_language_cases: candidateOperationalCases.length,
     candidate_gap_language_cases: candidateGapCases.length,
     delivery_status_references: deliveryStatuses.length,
@@ -327,6 +333,8 @@ function main() {
   writeJsonLines(path.join(RELEASE, 'sources/registry.jsonl'), sources);
   writeJsonLines(path.join(RELEASE, 'evaluations/driver-language-cases.jsonl'), cases);
   writeJsonLines(path.join(RELEASE, 'evaluations/reference-language-cases.jsonl'), referenceCases);
+  writeJsonLines(path.join(RELEASE, 'evaluations/conversation-scenarios.jsonl'), conversationScenarios);
+  writeJsonLines(path.join(RELEASE, 'evaluations/out-of-corpus-cases.jsonl'), outOfCorpusCases);
   writeJsonLines(path.join(RELEASE, 'evaluations/candidate-operational-language-cases.jsonl'), candidateOperationalCases);
   writeJsonLines(path.join(RELEASE, 'evaluations/candidate-gap-language-cases.jsonl'), candidateGapCases);
   writeJsonLines(path.join(RELEASE, 'history/change-log.jsonl'), changeLog);
@@ -348,6 +356,8 @@ function main() {
     'sources/registry.jsonl',
     'evaluations/driver-language-cases.jsonl',
     'evaluations/reference-language-cases.jsonl',
+    'evaluations/conversation-scenarios.jsonl',
+    'evaluations/out-of-corpus-cases.jsonl',
     'evaluations/candidate-operational-language-cases.jsonl',
     'evaluations/candidate-gap-language-cases.jsonl',
     'history/change-log.jsonl',

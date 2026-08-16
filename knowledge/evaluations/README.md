@@ -1,11 +1,7 @@
 # Evaluations
 
-`driver-language-cases.jsonl` is a generated snapshot of the maintained evaluation suite. Cases cover clear and terse questions, misspellings, shorthand, incorrect terminology, incomplete facts, required clarification, interacting procedures, safety actions, conflicts, outdated material, and insufficient evidence.
+Ready Route Answers uses a closed-loop stability gate before the active corpus can expand.
 
-The maintained suite lives at [`driver_language_cases.jsonl`](../../research/fedex-ground-driver-knowledge/validation/driver_language_cases.jsonl). Any new canonical record must receive language coverage, and any retrieval or answer change must preserve must-clarify and must-not-do expectations.
+The gate covers canonical driver-language cases, harmless wording variations, multi-turn clarification conversations, out-of-corpus safety boundaries, canonical traceability, compact answer formatting, and three consecutive clean runs. Run it with `npm run knowledge:gate` from the repository root.
 
-`reference-language-cases.jsonl` is the separate status-aware suite for delivery-status and pickup-reason questions. It tests code comparisons, missing situation/namespace, verified definitions with incomplete workflows, auto-applied codes, outside-Ground scope, and unknown code tokens. The maintained source is [`reference_language_cases.jsonl`](../../research/fedex-ground-driver-knowledge/validation/reference_language_cases.jsonl). Reference cases must not turn a code definition into unsupported selection authority or a complete procedure.
-
-`candidate-operational-language-cases.jsonl` contains independently reviewed development prompts from the owner-supplied candidate pack. These prompts are not added to record variants or the retrieval index. They measure generalization against canonical IDs, production status gates, clarification requirements, and prohibited behavior while the deterministic holdout remains untouched. The maintained source is [`candidate_operational_language_cases.jsonl`](../../research/fedex-ground-driver-knowledge/validation/candidate_operational_language_cases.jsonl).
-
-`candidate-gap-language-cases.jsonl` preserves reviewed development prompts for which the current corpus cannot authorize a definitive operational answer, or for which the prompt lacks the situation needed to select a procedure. Each case records the gap type, related canonical IDs, safe boundary, required follow-up, and prohibited behavior. The maintained source is [`candidate_gap_language_cases.jsonl`](../../research/fedex-ground-driver-knowledge/validation/candidate_gap_language_cases.jsonl).
+Every new published record must add representative clear, shorthand, incomplete, ambiguous, and safety-sensitive cases. Records with clarification requirements must also add a conversation scenario. Expansion remains blocked whenever the stability report contains a critical failure.

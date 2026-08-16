@@ -24,8 +24,16 @@ function toPublishedRecord(record, extraVariants = [], patterns = [], isPublishe
     canonical_situation: record.canonical_situation,
     normalized_description: record.normalized_description,
     taxonomy_paths: record.category_paths || [],
+    applicability: record.applicability || [],
+    conditions: record.conditions || [],
+    exceptions: record.exceptions || [],
+    related_knowledge_ids: record.related_knowledge_ids || [],
     authoritative_rule: record.authoritative_rule,
     clarification_requirements: record.clarification_requirements || [],
+    required_procedure: record.required_procedure || [],
+    required_documentation: record.required_documentation || [],
+    prohibited_actions: record.prohibited_actions || [],
+    escalation_requirements: record.escalation_requirements || [],
     driver_question_variants: [...new Set([...(record.driver_question_variants || []), ...extraVariants])],
     driver_question_patterns: patterns,
     concise_answer: record.concise_driver_answer,
@@ -61,7 +69,8 @@ function validate() {
         utterance: testCase.utterance,
         response_mode: testCase.response_mode,
         information_sufficiency: testCase.information_sufficiency,
-        must_clarify: testCase.must_clarify || []
+        must_clarify: testCase.must_clarify || [],
+        ...(testCase.answer_override ? { answer_override: testCase.answer_override } : {})
       }]);
     }
   }

@@ -1,0 +1,114 @@
+# Ready Route Answers v1 selective-recovery plan
+
+Date: 2026-08-15
+
+## Purpose
+
+This plan catalogs the preserved v1 knowledge corpus for selective review. Archived answers are never activated merely because they appear here. After the third controlled recovery batch, the active RRA corpus contains 33 records.
+
+## Inventory boundary
+
+| Group | Records | Treatment |
+| --- | ---: | --- |
+| Preserved v1 archive | 150 | Historical recovery source only |
+| Already represented in active v2 | 24 | Do not import again |
+| Remaining archived candidates | 126 | Review selectively |
+| Historically answer-eligible candidates remaining | 80 | Recheck scope and current evidence before reuse |
+| Historically `PENDING_REVIEW` | 26 | Hold until the unresolved issue is decided |
+| Historically `POTENTIALLY_OUTDATED` | 20 | Hold until current applicability is established |
+
+The 33 active v2 records consist of 24 selectively recovered v1 topics and nine newly created or approved v2 topics. The full record-by-record ledger is `v1_selective_recovery_inventory.csv` in this directory.
+
+## Topic map of the remaining candidates
+
+| Topic family | Records | Initial handling |
+| --- | ---: | --- |
+| Delivery | 25 | Recover in tightly related decision families |
+| FORGE | 31 | Defer version-sensitive items; recover stable workflows selectively |
+| Pickup | 23 | Good source for later high-frequency batches |
+| DOT / hours / vehicle / safety | 25 | Higher consequence; require narrower review |
+| Security | 7 | Review separately from ordinary delivery help |
+| Qualification | 6 | Manager/training audience; not an early driver-answer priority |
+| Incident response | 4 | Higher consequence; require exact escalation language |
+| Linehaul | 3 | Different operating context; do not mix into P&D batches |
+| SenseAware | 2 | Specialized workflow; later batch |
+| Appearance, ethics, public communication | 4 | Lower initial driver-answer priority |
+
+## Completed first recovery batch: signature-restricted delivery
+
+This family was selected first because drivers ask these questions frequently, the records share the same decision variables, and the initial test exposed a major alcohol-answer gap.
+
+| Candidate | Driver decision covered | Archive status | Current action |
+| --- | --- | --- | --- |
+| `KNO-DEL-SIG-ISR-001` | What is allowed for ISR and what to do when no approved release path exists | Ready Route approved | Re-authored and activated from reviewed v2 evidence |
+| `KNO-DEL-SIG-DSR-001` | Who may sign for DSR and what to do when nobody can sign | Ready Route approved | Re-authored and activated from reviewed v2 evidence |
+| `KNO-DEL-SIG-ASR-001` | Age, ID, signature, ID-refusal, and ID-scan branches for ASR | Ready Route approved | Re-authored and activated from reviewed v2 evidence |
+| `KNO-DEL-ALCOHOL-001` | Alcohol delivery requirements and unsuccessful-delivery branches | Ready Route approved | Re-authored and activated from reviewed v2 evidence |
+| `KNO-DEL-DOORTAG-001` | Completing, scanning, and placing a door tag | Source verified | Re-authored and activated from reviewed v2 evidence |
+| `KNO-DEL-SRA-001` | Handling a Shipment Release Authorization for ISR | Source verified | Re-authored and activated from reviewed v2 evidence |
+| `KNO-DEL-PPOD-001` | Required delivery and attempt photographs | Source verified | Narrowed, re-authored, and activated from reviewed v2 evidence |
+| `KNO-DEL-ATTEMPT-LIMIT-001` | What happens after three unsuccessful attempts | Source verified | Narrowed, re-authored, and activated from reviewed v2 evidence |
+
+These records were rebuilt rather than copied. The batch passed 3,249 of 3,249 deterministic assertions across three consecutive runs and all 66 grounded-AI shadow cases, including eight out-of-corpus cases with zero unsafe selections.
+
+## Completed second recovery batch: call-tag outcomes
+
+This family was selected because the records share one source section and one clear decision tree. The archived records were rechecked visually against OP-117 pages 52-54 and 81. Two distinct branches were split out during review so Code 024, Code 081, and the hazmat prohibition could not be blended.
+
+| Active record | Driver decision covered | Current action |
+| --- | --- | --- |
+| `KNO-PUP-CALLTAG-SUCCESS-001` | Successful pickup, Code 029, label placement, and recipient receipt | Re-authored and activated |
+| `KNO-PUP-CALLTAG-NOTREADY-001` | Package not ready and no same-day return, Code 024, signatures, and station handoff | Re-authored and activated |
+| `KNO-PUP-CALLTAG-NOTHOME-001` | Residential recipient not home and package not left, Code 007 | Split into a separate active decision |
+| `KNO-PUP-CALLTAG-REFUSED-001` | Recipient refusal, Code 006, signatures, notation, and check-in | Re-authored and activated |
+| `KNO-PUP-CALLTAG-RESTRICTED-001` | Shipping restriction, inadequate packaging, or damage, Code 081 | Narrowed, re-authored, and activated |
+| `KNO-PUP-CALLTAG-HAZMAT-001` | Hazmat prohibition and original-shipper instructions | Split from the restricted-package record without assigning an unsupported code |
+| `KNO-FORGE-CALLTAG-SCOPE-001` | All-tags action versus individual handling | Narrowed, re-authored, and activated; suspected-fraud procedure remains excluded |
+
+The expanded 29-record corpus passed 3,951 of 3,951 deterministic assertions across three consecutive clean runs and all 79 grounded-AI shadow cases, including nine out-of-corpus cases with zero unsafe selections. The AI evaluation was changed to run sequentially with compact routing metadata so expansion does not create burst-related provider failures.
+
+## Completed third recovery batch: ordinary pickup exceptions
+
+This family was selected because the four records share OP-117 pages 65-69 and cover common coordination decisions without introducing higher-risk hazmat or DOT procedures.
+
+| Active record | Driver decision covered | Current action |
+| --- | --- | --- |
+| `KNO-PUP-WINDOW-RISK-001` | Pickup cannot be completed within the customer's pickup window | Re-authored from the current pickup-window and update-message guidance |
+| `KNO-PUP-WRONG-WA-001` | Pickup is on the wrong listing or work area | Re-authored with separate before- and after-dispatch paths |
+| `KNO-PUP-VEHICLE-CAPACITY-001` | All pickup packages will not fit on the vehicle | Narrowed to the source-established AO/BC and CXPC/station notification path |
+| `KNO-PUP-PRR-001` | CXPC requests details about a reported missed pickup | Narrowed to the specific pickup/date and source-defined response scope |
+
+The expanded 33-record corpus passed 32,082 of 32,082 deterministic assertions across three consecutive clean runs and all 89 grounded-AI shadow cases, including nine out-of-corpus cases with zero unsafe selections.
+
+## Required review before activation
+
+1. Recheck every operational claim against the preserved OP-117, MGB-119, and FORGE source pages currently in v2.
+2. Remove any claim that depends only on a source not yet reintroduced, unless the product owner explicitly confirms that claim.
+3. Split each record into the smallest driver decisions needed for a direct answer.
+4. Use the v2 compact format: one direct answer, no more than four short steps, one exception only when needed, and optional More Info.
+5. Use `Code N` terminology and associate the code with the situation whenever the controlling facts are known.
+6. Ask a clarification only when the missing fact changes the action. Never ask again for a fact already stated by the driver.
+
+## Test pack required for this batch
+
+Before any record is active, add tests for:
+
+- a clear direct question for every decision branch;
+- common shorthand such as ISR, DSR, ASR, sig, wine, and alcohol;
+- common misspellings and speech-to-text wording;
+- incomplete questions that genuinely require one clarification;
+- multi-turn answers entered in the same textbox;
+- negative tests that must not select a signature record;
+- confusing neighbors, especially alcohol versus leaking/damaged hazmat;
+- compact formatting, correct `Code N` wording, and no unsupported steps.
+
+The batch can move to activation only after the full stability gate passes three consecutive times, the grounded-AI evaluation has no unsafe out-of-corpus selection, and the product owner approves the displayed answers.
+
+## Suggested later batches
+
+1. Ordinary pickup execution and missed-window situations.
+2. Safe placement, apartments, lockers, and proof photographs.
+3. HAL and transfer workflows.
+4. Hazmat, incident, DOT/HOS, and security families after higher-consequence review.
+
+Code 20 remains outside every batch until the product owner supplies or confirms the intended Code 20 information.

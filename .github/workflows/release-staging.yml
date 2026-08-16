@@ -2,6 +2,11 @@ name: Release Staging Driver Help
 
 on:
   workflow_dispatch:
+    inputs:
+      manager_reset_email:
+        description: Optional active staging manager email needing a one-time reset link
+        required: false
+        type: string
 
 permissions:
   contents: read
@@ -41,7 +46,7 @@ jobs:
           JWT_SECRET: test-secret
           GOOGLE_MAPS_API_KEY: test-google-maps-key
           GOOGLE_CLOUD_PROJECT: ready-route-project
-        run: npm ci && npm run verify:schema && npm run check:launch && npm run test:unit
+        run: npm ci && npm run verify:schema && npm run check:launch && npm run knowledge:gold-gate && npm run test:unit
 
       - name: Apply pending staging migrations
         env:
@@ -62,12 +67,16 @@ jobs:
             if [[ "$version" > "$current_version" ]]; then
               echo "Applying staging migration $version"
               jq -Rs '{query: .}' < "$migration" > /tmp/staging-migration.json
-              curl --fail-with-body --silent --show-error --request POST "${headers[@]}" \
-                --data @/tmp/staging-migration.json "$query_url" >/dev/null
+              migration_response=''
+              if ! migration_response="$(curl --fail-with-body --silent --show-error --request POST "${headers[@]}" \
+                --data @/tmp/staging-migration.json "$query_url")"; then
+                echo "$migration_response" >&2
+                exit 1
+              fi
               current_version="$version"
             fi
           done
-          test "$current_version" = "20260811120000"
+          test "$current_version" = "20260816230000"
 
       - name: Import canonical knowledge into staging
         env:
@@ -83,6 +92,60 @@ jobs:
           test -n "$service_key" && test "$service_key" != "null"
           echo "::add-mask::$service_key"
           SUPABASE_URL="$STAGING_SUPABASE_URL" SUPABASE_SERVICE_KEY="$service_key" npm run knowledge:import
+
+      - name: Prepare an ephemeral staging test credential
+        env:
+          CONFIGURED_STAGING_PASSWORD: ${{ secrets.STAGING_MANAGER_BOOTSTRAP_PASSWORD }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          runtime_password="${CONFIGURED_STAGING_PASSWORD:-$(openssl rand -hex 24)}"
+          echo "::add-mask::$runtime_password"
+          echo "STAGING_MANAGER_RUNTIME_PASSWORD=$runtime_password" >> "$GITHUB_ENV"
+
+      - name: Provision the staging manager
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+        working-directory: backend
+        shell: bash
+        run: |
+          set -euo pipefail
+          keys_url="https://api.supabase.com/v1/projects/${STAGING_SUPABASE_PROJECT_REF}/api-keys"
+          keys_response="$(curl --fail-with-body --silent --show-error \
+            -H "Authorization: Bearer $SUPABASE_ACCESS_TOKEN" "$keys_url")"
+          service_key="$(jq -r '.[] | select(.name == "service_role") | (.api_key // .key)' <<<"$keys_response")"
+          test -n "$service_key" && test "$service_key" != "null"
+          echo "::add-mask::$service_key"
+          SUPABASE_URL="$STAGING_SUPABASE_URL" SUPABASE_SERVICE_KEY="$service_key" \
+            STAGING_MANAGER_BOOTSTRAP_PASSWORD="$STAGING_MANAGER_RUNTIME_PASSWORD" \
+            node src/scripts/provisionStagingManager.js
+
+      - name: Calculate expected staging corpus counts
+        working-directory: backend
+        shell: bash
+        run: |
+          set -euo pipefail
+          summary="$(node src/scripts/importDriverKnowledge.js --dry-run)"
+          echo "EXPECTED_ANSWERS_SOURCES=$(jq -r '.sources' <<<"$summary")" >> "$GITHUB_ENV"
+          echo "EXPECTED_ANSWERS_RECORDS=$(jq -r '.indexed_records' <<<"$summary")" >> "$GITHUB_ENV"
+          echo "EXPECTED_ANSWERS_EVIDENCE=$(jq -r '.evidence_links' <<<"$summary")" >> "$GITHUB_ENV"
+          echo "EXPECTED_ANSWERS_PUBLISHED=$(jq -r '.published_production_eligible_records' <<<"$summary")" >> "$GITHUB_ENV"
+
+      - name: Verify the staging Answers corpus matches the canonical release
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          query_url="https://api.supabase.com/v1/projects/${STAGING_SUPABASE_PROJECT_REF}/database/query"
+          headers=(-H "Authorization: Bearer $SUPABASE_ACCESS_TOKEN" -H "Content-Type: application/json")
+          query='{"query":"select (select count(*) from public.driver_help_knowledge_sources) as sources, (select count(*) from public.driver_help_knowledge_records) as records, (select count(*) from public.driver_help_knowledge_records where is_published = true) as published, (select count(*) from public.driver_help_knowledge_record_sources) as evidence_links, (select count(*) from public.driver_help_interactions) as interactions"}'
+          response="$(curl --fail-with-body --silent --show-error --request POST "${headers[@]}" --data "$query" "$query_url")"
+          test "$(jq -r '.[0].sources' <<<"$response")" -ge "$EXPECTED_ANSWERS_SOURCES"
+          test "$(jq -r '.[0].records' <<<"$response")" -ge "$EXPECTED_ANSWERS_RECORDS"
+          test "$(jq -r '.[0].published' <<<"$response")" = "$EXPECTED_ANSWERS_PUBLISHED"
+          test "$(jq -r '.[0].evidence_links' <<<"$response")" -ge "$EXPECTED_ANSWERS_EVIDENCE"
+          test "$(jq -r '.[0].interactions' <<<"$response")" -ge "0"
 
       - name: Authenticate to Google Cloud
         uses: google-github-actions/auth@v3
@@ -101,6 +164,10 @@ jobs:
           env_vars: |-
             SOURCE_COMMIT=${{ github.sha }}
             NODE_ENV=production
+            READYROUTE_DRIVER_HELP_AI_INTERPRETATION_MODE=ACTIVE
+            READYROUTE_DRIVER_HELP_ANSWER_MEMORY_AUDIT_RATE=0.05
+            READYROUTE_DRIVER_HELP_AI_ENABLED=false
+            MANAGER_PORTAL_URL=https://ready-route-project--rra-test-mlshz0rb.web.app
           env_vars_update_strategy: merge
 
       - name: Verify staging release identity
@@ -110,7 +177,7 @@ jobs:
         run: |
           for attempt in {1..30}; do
             body="$(curl --fail --silent --show-error "$STAGING_BACKEND_URL/health" || true)"
-            if [[ "$body" == *"$EXPECTED_COMMIT"* && "$body" == *'"current":"20260811120000"'* && "$body" == *'"compatible":true'* ]]; then
+            if [[ "$body" == *"$EXPECTED_COMMIT"* && "$body" == *'"current":"20260816230000"'* && "$body" == *'"compatible":true'* ]]; then
               echo "Staging is serving $EXPECTED_COMMIT with current canonical knowledge schema"
               exit 0
             fi
@@ -119,9 +186,74 @@ jobs:
           echo "Staging health did not report the expected release and schema" >&2
           exit 1
 
+      - name: Run the live RRA question loop
+        env:
+          EXPECTED_COMMIT: ${{ github.sha }}
+          STAGING_MANAGER_BOOTSTRAP_EMAIL: rra-staging-automation@readyroute.test
+        working-directory: backend
+        run: >-
+          STAGING_MANAGER_BOOTSTRAP_PASSWORD="$STAGING_MANAGER_RUNTIME_PASSWORD"
+          node src/scripts/runStagingRraStress.js --repeat 3 --output /tmp/rra-live-stress-log.json
+
+      - name: Preserve the live RRA test log
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: rra-live-stress-log-${{ github.run_id }}
+          path: /tmp/rra-live-stress-log.json
+          if-no-files-found: warn
+          retention-days: 30
+
+      - name: Prepare optional manager password reset link
+        if: ${{ inputs.manager_reset_email != '' }}
+        env:
+          TARGET_MANAGER_EMAIL: ${{ inputs.manager_reset_email }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          login_payload="$(jq -n \
+            --arg email 'rra-staging-automation@readyroute.test' \
+            --arg password "$STAGING_MANAGER_RUNTIME_PASSWORD" \
+            '{email: $email, password: $password}')"
+          login_response="$(curl --fail-with-body --silent --show-error \
+            -H 'Content-Type: application/json' \
+            --data "$login_payload" \
+            "$STAGING_BACKEND_URL/auth/manager/login")"
+          manager_token="$(jq -r '.token // empty' <<<"$login_response")"
+          test -n "$manager_token"
+          echo "::add-mask::$manager_token"
+
+          managers_response="$(curl --fail-with-body --silent --show-error \
+            -H "Authorization: Bearer $manager_token" \
+            "$STAGING_BACKEND_URL/manager/manager-users")"
+          manager_id="$(jq -r --arg email "${TARGET_MANAGER_EMAIL,,}" \
+            '.manager_users[] | select((.email | ascii_downcase) == $email) | .id' \
+            <<<"$managers_response" | head -n 1)"
+          test -n "$manager_id" || { echo 'The requested active manager was not found in the staging workspace.' >&2; exit 1; }
+
+          reset_response="$(curl --fail-with-body --silent --show-error \
+            -X POST \
+            -H "Authorization: Bearer $manager_token" \
+            "$STAGING_BACKEND_URL/manager/manager-users/$manager_id/password-reset")"
+          reset_url="$(jq -r '.reset_url // empty' <<<"$reset_response")"
+          test -n "$reset_url" || { echo 'The staging server did not return a reset link.' >&2; exit 1; }
+          echo "::add-mask::$reset_url"
+          printf '%s\n' "$reset_url" > /tmp/readyroute-staging-reset-url.txt
+
+      - name: Preserve optional manager reset link briefly
+        if: ${{ inputs.manager_reset_email != '' }}
+        uses: actions/upload-artifact@v6
+        with:
+          name: readyroute-staging-manager-reset-${{ github.run_id }}
+          path: /tmp/readyroute-staging-reset-url.txt
+          if-no-files-found: error
+          retention-days: 1
+
       - name: Release summary
         run: |
           echo "### ReadyRoute staging driver-help release" >> "$GITHUB_STEP_SUMMARY"
           echo "- Commit: \`${{ github.sha }}\`" >> "$GITHUB_STEP_SUMMARY"
           echo "- Cloud Run URL: ${{ steps.deploy.outputs.url }}" >> "$GITHUB_STEP_SUMMARY"
-          echo "- Canonical knowledge imported after pending staging migrations" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Canonical corpus: $EXPECTED_ANSWERS_RECORDS indexed records, $EXPECTED_ANSWERS_PUBLISHED published" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Database counts verified against the generated v2 release" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Backend remains fail-closed for pending or unmatched questions" >> "$GITHUB_STEP_SUMMARY"

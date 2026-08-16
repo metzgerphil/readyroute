@@ -313,16 +313,22 @@ test('POST /billing/webhook processes Stripe test events', async () => {
 
     assert.deepEqual(updates[0], {
       stripe_subscription_id: 'sub_123',
+      stripe_subscription_item_id: null,
       subscription_status: 'active',
-      vehicle_count: 4
+      billing_activation_status: 'active',
+      billed_driver_count: 4
     });
     assert.deepEqual(updates[1], {
-      plan: 'suspended',
-      subscription_status: 'past_due'
+      subscription_status: 'past_due',
+      billing_activation_status: 'past_due',
+      billing_access_status: 'grace_period'
     });
     assert.deepEqual(updates[2], {
       plan: 'pro',
-      subscription_status: 'active'
+      subscription_status: 'active',
+      billing_activation_status: 'active',
+      billing_access_status: 'provisioned',
+      paid_through_at: null
     });
   } finally {
     await server.close();

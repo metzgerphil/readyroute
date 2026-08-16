@@ -2191,8 +2191,22 @@ function createManagerRouter(options = {}) {
     supabase,
     stripeClient: options.stripeClient,
     stripePriceId: options.stripePriceId,
+    stripeMonthlyPriceId: options.stripeMonthlyPriceId,
+    stripeAnnualPriceId: options.stripeAnnualPriceId,
     trialDays: options.trialDays
   });
+  const driverBillingSyncEnabled = options.driverBillingSyncEnabled ?? (
+    String(process.env.STRIPE_SIGNUP_ENABLED || '').trim().toLowerCase() === 'true'
+  );
+
+  async function syncDriverBilling(accountId) {
+    if (!driverBillingSyncEnabled || typeof billingService.syncActiveDriverQuantity !== 'function') return;
+    try {
+      await billingService.syncActiveDriverQuantity(accountId);
+    } catch (error) {
+      console.error('Active-driver Stripe quantity sync failed:', error);
+    }
+  }
   const routeInvoicingService = options.routeInvoicingService || createRouteInvoicingService({
     supabase,
     stripeClient: options.stripeClient,
@@ -4500,6 +4514,8 @@ function createManagerRouter(options = {}) {
         };
       }
 
+      await syncDriverBilling(req.account.account_id);
+
       return res.status(201).json({
         driver_id: insertQuery.data.id,
         access_status: sendInvite ? 'invited' : 'not_invited',
@@ -4708,6 +4724,10 @@ function createManagerRouter(options = {}) {
         seenEmails.add(email);
         existingEmails.add(email);
         result.created += 1;
+      }
+
+      if (result.created > 0) {
+        await syncDriverBilling(req.account.account_id);
       }
 
       return res.status(200).json(result);
@@ -5006,6 +5026,8 @@ function createManagerRouter(options = {}) {
         console.error('Manager driver status update failed:', updateError);
         return res.status(500).json({ error: 'Failed to update driver status' });
       }
+
+      await syncDriverBilling(req.account.account_id);
 
       return res.status(200).json({ ok: true, is_active: isActive });
     } catch (error) {

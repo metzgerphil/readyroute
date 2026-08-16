@@ -11,6 +11,7 @@
     "check": "HOME=/tmp/readyroute-expo-home expo config --json > /dev/null",
     "check:release": "node ./scripts/check-release-env.js --production",
     "check:testflight": "node ./scripts/check-release-env.js --production --profile testflight",
+    "check:appstore": "node ./scripts/check-release-env.js --production --profile production",
     "build:native": "HOME=/tmp/readyroute-expo-home expo export --platform ios --output-dir dist-native",
     "build:native:production": "NODE_ENV=production HOME=/tmp/readyroute-expo-home expo export --platform ios --output-dir dist-native-production",
     "build:web": "npm run build:native",

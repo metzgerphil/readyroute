@@ -32,10 +32,18 @@
       }
     },
     "production": {
+      "distribution": "store",
+      "environment": "production",
       "ios": {
         "image": "macos-sequoia-15.6-xcode-26.0"
       },
-      "autoIncrement": true
+      "autoIncrement": true,
+      "env": {
+        "EXPO_PUBLIC_APP_VARIANT": "production",
+        "EXPO_PUBLIC_API_URL": "https://api.readyroute.org",
+        "EXPO_PUBLIC_DRIVER_HELP_ONLY": "true",
+        "EXPO_PUBLIC_USE_LOCAL_API": "false"
+      }
     }
   },
   "submit": {

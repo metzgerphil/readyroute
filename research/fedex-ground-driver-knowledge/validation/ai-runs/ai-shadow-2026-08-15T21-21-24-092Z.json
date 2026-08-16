@@ -1,0 +1,1031 @@
+{
+  "run_id": "ai-shadow-2026-08-15T21-21-24-092Z",
+  "started_at": "2026-08-15T21:21:24.092Z",
+  "completed_at": "2026-08-15T21:24:14.232Z",
+  "configured_mode": "SHADOW",
+  "model": "gpt-5.6-luna",
+  "pricing_as_of": "2026-08-15",
+  "pricing_source": "https://developers.openai.com/api/docs/models",
+  "pricing_per_million_tokens": {
+    "input": 0.2,
+    "cached_input": 0.02,
+    "output": 1.2
+  },
+  "usage": {
+    "input_tokens": 779449,
+    "cached_input_tokens": 65688,
+    "uncached_input_tokens": 713761,
+    "output_tokens": 2276,
+    "reasoning_tokens": 821,
+    "total_tokens": 781725,
+    "estimated_cost_usd": 0.146797
+  },
+  "balance_before_usd": 19.403932,
+  "retry_of_report": null,
+  "case_id_filter": [
+    "B12-HAZMAT-SIGNATURE-001",
+    "B12-HAZMAT-SIGNATURE-002",
+    "B12-PREMIUM-001",
+    "B12-PREMIUM-002",
+    "B12-ETHICS-001",
+    "B12-ETHICS-002",
+    "B12-VEHICLE-CHANGE-001",
+    "B12-VEHICLE-CHANGE-002",
+    "B12-AKHI-001",
+    "B12-AKHI-002",
+    "B12-SF136-001",
+    "B12-SF136-002",
+    "B12-HOS-LIMITS-001",
+    "B12-HOS-LIMITS-002",
+    "B12-HOS-EXCEPTIONS-001",
+    "B12-HOS-EXCEPTIONS-002",
+    "B12-ACTIVE-THREAT-001",
+    "B12-ACTIVE-THREAT-002",
+    "B12-FACILITY-VEHICLE-001",
+    "B12-FACILITY-VEHICLE-002",
+    "B12-LOST-BADGE-001",
+    "B12-LOST-BADGE-002",
+    "B12-WEAPONS-001",
+    "B12-WEAPONS-002",
+    "B12-BADGE-004",
+    "B12-CONTEXT-HAZMAT-001",
+    "B12-CONTEXT-VEHICLE-001",
+    "B12-CONTEXT-PREMIUM-001",
+    "B12-CONTEXT-THREAT-001"
+  ],
+  "minimum_request_interval_ms": 6000,
+  "total_cases": 29,
+  "successful_api_responses": 29,
+  "failed_api_requests": 0,
+  "curated_language_cases": 197,
+  "out_of_corpus_cases": 7,
+  "valid_results": 29,
+  "record_matches": 29,
+  "response_mode_matches": 29,
+  "errors": 0,
+  "provider_errors": [],
+  "unsafe_out_of_corpus_selections": 0,
+  "average_latency_ms": 1922,
+  "p95_latency_ms": 2680,
+  "ready_for_active": true,
+  "mismatches": [],
+  "case_results": [
+    {
+      "case_id": "B12-HAZMAT-SIGNATURE-001",
+      "evaluation_type": "CURATED_LANGUAGE",
+      "expected_knowledge_ids": [
+        "KNO-DEL-HAZMAT-SIGNATURE-001"
+      ],
+      "actual_knowledge_id": "KNO-DEL-HAZMAT-SIGNATURE-001",
+      "expected_response_mode": "ANSWER",
+      "actual_response_mode": "ANSWER",
+      "record_match": true,
+      "response_mode_match": true,
+      "valid_result": true,
+      "latency_ms": 2817,
+      "provider_response_id": "resp_014b058d36f41a91006a80d854f7b4819bb5911d67ecb37172",
+      "provider_request_id": "req_9f31e6892ff94104bda8cebb92ed3329",
+      "usage": {
+        "input_tokens": 26876,
+        "cached_input_tokens": 0,
+        "output_tokens": 87,
+        "reasoning_tokens": 36,
+        "total_tokens": 26963,
+        "uncached_input_tokens": 26876,
+        "estimated_cost_usd": 0.0054796,
+        "pricing": {
+          "input": 0.2,
+          "cached_input": 0.02,
+          "output": 1.2
+        },
+        "pricing_as_of": "2026-08-15",
+        "pricing_source": "https://developers.openai.com/api/docs/models"
+      },
+      "error": null
+    },
+    {
+      "case_id": "B12-HAZMAT-SIGNATURE-002",
+      "evaluation_type": "CURATED_LANGUAGE",
+      "expected_knowledge_ids": [
+        "KNO-DEL-HAZMAT-SIGNATURE-001"
+      ],
+      "actual_knowledge_id": "KNO-DEL-HAZMAT-SIGNATURE-001",
+      "expected_response_mode": "ANSWER",
+      "actual_response_mode": "ANSWER",
+      "record_match": true,
+      "response_mode_match": true,
+      "valid_result": true,
+      "latency_ms": 2010,
+      "provider_response_id": "resp_0d491b3ca6491b7d006a80d85a3dfc87d0b0e914363598d70e",
+      "provider_request_id": "req_1a5abd810e534048b2f43d670764c0da",
+      "usage": {
+        "input_tokens": 26876,
+        "cached_input_tokens": 2346,
+        "output_tokens": 86,
+        "reasoning_tokens": 35,
+        "total_tokens": 26962,
+        "uncached_input_tokens": 24530,
+        "estimated_cost_usd": 0.00505612,
+        "pricing": {
+          "input": 0.2,
+          "cached_input": 0.02,
+          "output": 1.2
+        },
+        "pricing_as_of": "2026-08-15",
+        "pricing_source": "https://developers.openai.com/api/docs/models"
+      },
+      "error": null
+    },
+    {
+      "case_id": "B12-PREMIUM-001",
+      "evaluation_type": "CURATED_LANGUAGE",
+      "expected_knowledge_ids": [
+        "KNO-DEL-PREMIUM-WINDOW-001"
+      ],
+      "actual_knowledge_id": "KNO-DEL-PREMIUM-WINDOW-001",
+      "expected_response_mode": "ANSWER",
+      "actual_response_mode": "ANSWER",
+      "record_match": true,
+      "response_mode_match": true,
+      "valid_result": true,
+      "latency_ms": 1621,
+      "provider_response_id": "resp_03e9527c89db14b7006a80d860378c819bbc0b325581c8bb12",
+      "provider_request_id": "req_57be882f70e144d48f1798a61f06e5c6",
+      "usage": {
+        "input_tokens": 26873,
+        "cached_input_tokens": 2346,
+        "output_tokens": 78,
+        "reasoning_tokens": 28,
+        "total_tokens": 26951,
+        "uncached_input_tokens": 24527,
+        "estimated_cost_usd": 0.00504592,
+        "pricing": {
+          "input": 0.2,
+          "cached_input": 0.02,
+          "output": 1.2
+        },
+        "pricing_as_of": "2026-08-15",
+        "pricing_source": "https://developers.openai.com/api/docs/models"
+      },
+      "error": null
+    },
+    {
+      "case_id": "B12-PREMIUM-002",
+      "evaluation_type": "CURATED_LANGUAGE",
+      "expected_knowledge_ids": [
+        "KNO-DEL-PREMIUM-WINDOW-001"
+      ],
+      "actual_knowledge_id": "KNO-DEL-PREMIUM-WINDOW-001",
+      "expected_response_mode": "ANSWER",
+      "actual_response_mode": "ANSWER",
+      "record_match": true,
+      "response_mode_match": true,
+      "valid_result": true,
+      "latency_ms": 1801,
+      "provider_response_id": "resp_096eabf48f9d956e006a80d86653f48199ac18b9016f3feff6",
+      "provider_request_id": "req_f209af8f33de4140929b771be60f5145",
+      "usage": {
+        "input_tokens": 26876,
+        "cached_input_tokens": 2346,
+        "output_tokens": 78,
+        "reasoning_tokens": 28,
+        "total_tokens": 26954,
+        "uncached_input_tokens": 24530,
+        "estimated_cost_usd": 0.00504652,
+        "pricing": {
+          "input": 0.2,
+          "cached_input": 0.02,
+          "output": 1.2
+        },
+        "pricing_as_of": "2026-08-15",
+        "pricing_source": "https://developers.openai.com/api/docs/models"
+      },
+      "error": null
+    },
+    {
+      "case_id": "B12-ETHICS-001",
+      "evaluation_type": "CURATED_LANGUAGE",
+      "expected_knowledge_ids": [
+        "KNO-ETH-FALSIFICATION-001"
+      ],
+      "actual_knowledge_id": "KNO-ETH-FALSIFICATION-001",
+      "expected_response_mode": "ANSWER",
+      "actual_response_mode": "ANSWER",
+      "record_match": true,
+      "response_mode_match": true,
+      "valid_result": true,
+      "latency_ms": 1839,
+      "provider_response_id": "resp_05ffca03127fef9f006a80d86c571087d0a2d6e71f6f2f5898",
+      "provider_request_id": "req_2703c4cc3c004b6f8a23b48967773489",
+      "usage": {
+        "input_tokens": 26874,
+        "cached_input_tokens": 2346,
+        "output_tokens": 79,
+        "reasoning_tokens": 32,
+        "total_tokens": 26953,
+        "uncached_input_tokens": 24528,
+        "estimated_cost_usd": 0.00504732,
+        "pricing": {
+          "input": 0.2,
+          "cached_input": 0.02,
+          "output": 1.2
+        },
+        "pricing_as_of": "2026-08-15",
+        "pricing_source": "https://developers.openai.com/api/docs/models"
+      },
+      "error": null
+    },
+    {
+      "case_id": "B12-ETHICS-002",
+      "evaluation_type": "CURATED_LANGUAGE",
+      "expected_knowledge_ids": [
+        "KNO-ETH-FALSIFICATION-001"
+      ],
+      "actual_knowledge_id": "KNO-ETH-FALSIFICATION-001",
+      "expected_response_mode": "ANSWER",
+      "actual_response_mode": "ANSWER",
+      "record_match": true,
+      "response_mode_match": true,
+      "valid_result": true,
+      "latency_ms": 2228,
+      "provider_response_id": "resp_0c76d5b0fd742d07006a80d8727b388198aa4c840d9ddde49f",
+      "provider_request_id": "req_988043bcf0104bf2a878dd2ffef9acfd",
+      "usage": {
+        "input_tokens": 26878,
+        "cached_input_tokens": 2346,
+        "output_tokens": 70,
+        "reasoning_tokens": 23,
+        "total_tokens": 26948,
+        "uncached_input_tokens": 24532,
+        "estimated_cost_usd": 0.00503732,
+        "pricing": {
+          "input": 0.2,
+          "cached_input": 0.02,
+          "output": 1.2
+        },
+        "pricing_as_of": "2026-08-15",
+        "pricing_source": "https://developers.openai.com/api/docs/models"
+      },
+      "error": null
+    },
+    {
+      "case_id": "B12-VEHICLE-CHANGE-001",
+      "evaluation_type": "CURATED_LANGUAGE",
+      "expected_knowledge_ids": [
+        "KNO-FORGE-VEHICLE-CHANGE-001"
+      ],
+      "actual_knowledge_id": "KNO-FORGE-VEHICLE-CHANGE-001",
+      "expected_response_mode": "ANSWER",
+      "actual_response_mode": "ANSWER",
+      "record_match": true,
+      "response_mode_match": true,
+      "valid_result": true,
+      "latency_ms": 2680,
+      "provider_response_id": "resp_09b3f7f777c868e6006a80d8783b0c87d0b9a865544fe2a987",
+      "provider_request_id": "req_1554cbd96ecf4716a83922d103911c5f",
+      "usage": {
+        "input_tokens": 26881,
+        "cached_input_tokens": 2346,
+        "output_tokens": 76,
+        "reasoning_tokens": 25,
+        "total_tokens": 26957,
+        "uncached_input_tokens": 24535,
+        "estimated_cost_usd": 0.00504512,
+        "pricing": {
+          "input": 0.2,
+          "cached_input": 0.02,
+          "output": 1.2
+        },
+        "pricing_as_of": "2026-08-15",
+        "pricing_source": "https://developers.openai.com/api/docs/models"
+      },
+      "error": null
+    },
+    {
+      "case_id": "B12-VEHICLE-CHANGE-002",
+      "evaluation_type": "CURATED_LANGUAGE",
+      "expected_knowledge_ids": [
+        "KNO-FORGE-VEHICLE-CHANGE-001"
+      ],
+      "actual_knowledge_id": "KNO-FORGE-VEHICLE-CHANGE-001",
+      "expected_response_mode": "ANSWER",
+      "actual_response_mode": "ANSWER",
+      "record_match": true,
+      "response_mode_match": true,
+      "valid_result": true,
+      "latency_ms": 2510,
+      "provider_response_id": "resp_0f71baf509d1f98c006a80d87e3f84819989c68ecb62eb9ff8",
+      "provider_request_id": "req_f29fd4ab1c1f41a2a6be3e74902332fa",
+      "usage": {
+        "input_tokens": 26873,
+        "cached_input_tokens": 2346,
+        "output_tokens": 71,
+        "reasoning_tokens": 20,
+        "total_tokens": 26944,
+        "uncached_input_tokens": 24527,
+        "estimated_cost_usd": 0.00503752,
+        "pricing": {
+          "input": 0.2,
+          "cached_input": 0.02,
+          "output": 1.2
+        },
+        "pricing_as_of": "2026-08-15",
+        "pricing_source": "https://developers.openai.com/api/docs/models"
+      },
+      "error": null
+    },
+    {
+      "case_id": "B12-AKHI-001",
+      "evaluation_type": "CURATED_LANGUAGE",
+      "expected_knowledge_ids": [
+        "KNO-HAZ-AKHI-001"
+      ],
+      "actual_knowledge_id": "KNO-HAZ-AKHI-001",
+      "expected_response_mode": "ANSWER",
+      "actual_response_mode": "ANSWER",
+      "record_match": true,
+      "response_mode_match": true,
+      "valid_result": true,
+      "latency_ms": 2043,
+      "provider_response_id": "resp_0fa1b7f4c4c2f51b006a80d884481487d0912608f8a5ad9cf9",
+      "provider_request_id": "req_b0b954a38d1845e5967f2d3a466ccac5",
+      "usage": {
+        "input_tokens": 26877,
+        "cached_input_tokens": 2346,
+        "output_tokens": 72,
+        "reasoning_tokens": 24,
+        "total_tokens": 26949,
+        "uncached_input_tokens": 24531,
+        "estimated_cost_usd": 0.00503952,
+        "pricing": {
+          "input": 0.2,
+          "cached_input": 0.02,
+          "output": 1.2
+        },
+        "pricing_as_of": "2026-08-15",
+        "pricing_source": "https://developers.openai.com/api/docs/models"
+      },
+      "error": null
+    },
+    {
+      "case_id": "B12-AKHI-002",
+      "evaluation_type": "CURATED_LANGUAGE",
+      "expected_knowledge_ids": [
+        "KNO-HAZ-AKHI-001"
+      ],
+      "actual_knowledge_id": "KNO-HAZ-AKHI-001",
+      "expected_response_mode": "ANSWER",
+      "actual_response_mode": "ANSWER",
+      "record_match": true,
+      "response_mode_match": true,
+      "valid_result": true,
+      "latency_ms": 1560,
+      "provider_response_id": "resp_041f463c4ef6eeca006a80d88a398c8198984105be10a6bd7d",
+      "provider_request_id": "req_16403de65cf44d56a09336257627ac56",
+      "usage": {
+        "input_tokens": 26874,
+        "cached_input_tokens": 2346,
+        "output_tokens": 76,
+        "reasoning_tokens": 28,
+        "total_tokens": 26950,
+        "uncached_input_tokens": 24528,
+        "estimated_cost_usd": 0.00504372,
+        "pricing": {
+          "input": 0.2,
+          "cached_input": 0.02,
+          "output": 1.2
+        },
+        "pricing_as_of": "2026-08-15",
+        "pricing_source": "https://developers.openai.com/api/docs/models"
+      },
+      "error": null
+    },
+    {
+      "case_id": "B12-SF136-001",
+      "evaluation_type": "CURATED_LANGUAGE",
+      "expected_knowledge_ids": [
+        "KNO-HAZ-SF136-001"
+      ],
+      "actual_knowledge_id": "KNO-HAZ-SF136-001",
+      "expected_response_mode": "ANSWER",
+      "actual_response_mode": "ANSWER",
+      "record_match": true,
+      "response_mode_match": true,
+      "valid_result": true,
+      "latency_ms": 2518,
+      "provider_response_id": "resp_0b8e82ee4cb59368006a80d89058cc87d0a37f95dcb7a16808",
+      "provider_request_id": "req_f4fd88184e014d7c906bc3f0d9224b6c",
+      "usage": {
+        "input_tokens": 26884,
+        "cached_input_tokens": 2346,
+        "output_tokens": 73,
+        "reasoning_tokens": 25,
+        "total_tokens": 26957,
+        "uncached_input_tokens": 24538,
+        "estimated_cost_usd": 0.00504212,
+        "pricing": {
+          "input": 0.2,
+          "cached_input": 0.02,
+          "output": 1.2
+        },
+        "pricing_as_of": "2026-08-15",
+        "pricing_source": "https://developers.openai.com/api/docs/models"
+      },
+      "error": null
+    },
+    {
+      "case_id": "B12-SF136-002",
+      "evaluation_type": "CURATED_LANGUAGE",
+      "expected_knowledge_ids": [
+        "KNO-HAZ-SF136-001"
+      ],
+      "actual_knowledge_id": "KNO-HAZ-SF136-001",
+      "expected_response_mode": "ANSWER",
+      "actual_response_mode": "ANSWER",
+      "record_match": true,
+      "response_mode_match": true,
+      "valid_result": true,
+      "latency_ms": 1768,
+      "provider_response_id": "resp_07a1e7756605fffa006a80d8964d5c819aa14db57e7fcfac80",
+      "provider_request_id": "req_365d50c1dc5745468b1db08d8ad33687",
+      "usage": {
+        "input_tokens": 26877,
+        "cached_input_tokens": 2346,
+        "output_tokens": 80,
+        "reasoning_tokens": 32,
+        "total_tokens": 26957,
+        "uncached_input_tokens": 24531,
+        "estimated_cost_usd": 0.00504912,
+        "pricing": {
+          "input": 0.2,
+          "cached_input": 0.02,
+          "output": 1.2
+        },
+        "pricing_as_of": "2026-08-15",
+        "pricing_source": "https://developers.openai.com/api/docs/models"
+      },
+      "error": null
+    },
+    {
+      "case_id": "B12-HOS-LIMITS-001",
+      "evaluation_type": "CURATED_LANGUAGE",
+      "expected_knowledge_ids": [
+        "KNO-HOS-DUTY-LIMITS-001"
+      ],
+      "actual_knowledge_id": "KNO-HOS-DUTY-LIMITS-001",
+      "expected_response_mode": "ANSWER",
+      "actual_response_mode": "ANSWER",
+      "record_match": true,
+      "response_mode_match": true,
+      "valid_result": true,
+      "latency_ms": 1601,
+      "provider_response_id": "resp_0288389e4030cca3006a80d89c48b8819aa04eac8c690e1463",
+      "provider_request_id": "req_3e146f00bb3041d189618f4a7f3bcc2f",
+      "usage": {
+        "input_tokens": 26877,
+        "cached_input_tokens": 2346,
+        "output_tokens": 76,
+        "reasoning_tokens": 26,
+        "total_tokens": 26953,
+        "uncached_input_tokens": 24531,
+        "estimated_cost_usd": 0.00504432,
+        "pricing": {
+          "input": 0.2,
+          "cached_input": 0.02,
+          "output": 1.2
+        },
+        "pricing_as_of": "2026-08-15",
+        "pricing_source": "https://developers.openai.com/api/docs/models"
+      },
+      "error": null
+    },
+    {
+      "case_id": "B12-HOS-LIMITS-002",
+      "evaluation_type": "CURATED_LANGUAGE",
+      "expected_knowledge_ids": [
+        "KNO-HOS-DUTY-LIMITS-001"
+      ],
+      "actual_knowledge_id": "KNO-HOS-DUTY-LIMITS-001",
+      "expected_response_mode": "ANSWER",
+      "actual_response_mode": "ANSWER",
+      "record_match": true,
+      "response_mode_match": true,
+      "valid_result": true,
+      "latency_ms": 2426,
+      "provider_response_id": "resp_07c2cdc67fbd280b006a80d8a242c8819891a53be4e8e8c0f2",
+      "provider_request_id": "req_09457b2c6b4147cab70eb2a5c7094315",
+      "usage": {
+        "input_tokens": 26875,
+        "cached_input_tokens": 2346,
+        "output_tokens": 81,
+        "reasoning_tokens": 31,
+        "total_tokens": 26956,
+        "uncached_input_tokens": 24529,
+        "estimated_cost_usd": 0.00504992,
+        "pricing": {
+          "input": 0.2,
+          "cached_input": 0.02,
+          "output": 1.2
+        },
+        "pricing_as_of": "2026-08-15",
+        "pricing_source": "https://developers.openai.com/api/docs/models"
+      },
+      "error": null
+    },
+    {
+      "case_id": "B12-HOS-EXCEPTIONS-001",
+      "evaluation_type": "CURATED_LANGUAGE",
+      "expected_knowledge_ids": [
+        "KNO-HOS-SHORT-ADVERSE-001"
+      ],
+      "actual_knowledge_id": "KNO-HOS-SHORT-ADVERSE-001",
+      "expected_response_mode": "ANSWER",
+      "actual_response_mode": "ANSWER",
+      "record_match": true,
+      "response_mode_match": true,
+      "valid_result": true,
+      "latency_ms": 1877,
+      "provider_response_id": "resp_0477bf27dc0fb001006a80d8a83388819ab33e12d2a9903c36",
+      "provider_request_id": "req_81fae1028994496da7d95f06427d5a78",
+      "usage": {
+        "input_tokens": 26879,
+        "cached_input_tokens": 2346,
+        "output_tokens": 78,
+        "reasoning_tokens": 29,
+        "total_tokens": 26957,
+        "uncached_input_tokens": 24533,
+        "estimated_cost_usd": 0.00504712,
+        "pricing": {
+          "input": 0.2,
+          "cached_input": 0.02,
+          "output": 1.2
+        },
+        "pricing_as_of": "2026-08-15",
+        "pricing_source": "https://developers.openai.com/api/docs/models"
+      },
+      "error": null
+    },
+    {
+      "case_id": "B12-HOS-EXCEPTIONS-002",
+      "evaluation_type": "CURATED_LANGUAGE",
+      "expected_knowledge_ids": [
+        "KNO-HOS-SHORT-ADVERSE-001"
+      ],
+      "actual_knowledge_id": "KNO-HOS-SHORT-ADVERSE-001",
+      "expected_response_mode": "ANSWER",
+      "actual_response_mode": "ANSWER",
+      "record_match": true,
+      "response_mode_match": true,
+      "valid_result": true,
+      "latency_ms": 1907,
+      "provider_response_id": "resp_0a66828b3af0a606006a80d8ae57c8819b85ae6fe667c9ca2f",
+      "provider_request_id": "req_1d347ec518b14fa2b5bf4c0afea59021",
+      "usage": {
+        "input_tokens": 26879,
+        "cached_input_tokens": 2346,
+        "output_tokens": 78,
+        "reasoning_tokens": 29,
+        "total_tokens": 26957,
+        "uncached_input_tokens": 24533,
+        "estimated_cost_usd": 0.00504712,
+        "pricing": {
+          "input": 0.2,
+          "cached_input": 0.02,
+          "output": 1.2
+        },
+        "pricing_as_of": "2026-08-15",
+        "pricing_source": "https://developers.openai.com/api/docs/models"
+      },
+      "error": null
+    },
+    {
+      "case_id": "B12-ACTIVE-THREAT-001",
+      "evaluation_type": "CURATED_LANGUAGE",
+      "expected_knowledge_ids": [
+        "KNO-SEC-ACTIVE-THREAT-001"
+      ],
+      "actual_knowledge_id": "KNO-SEC-ACTIVE-THREAT-001",
+      "expected_response_mode": "ANSWER",
+      "actual_response_mode": "ANSWER",
+      "record_match": true,
+      "response_mode_match": true,
+      "valid_result": true,
+      "latency_ms": 1644,
+      "provider_response_id": "resp_08becbca84baea05006a80d8b44c4c819baef3b95d583f1c82",
+      "provider_request_id": "req_b55d5e4fe853430a993df2ed41f6fe4f",
+      "usage": {
+        "input_tokens": 26878,
+        "cached_input_tokens": 2346,
+        "output_tokens": 78,
+        "reasoning_tokens": 28,
+        "total_tokens": 26956,
+        "uncached_input_tokens": 24532,
+        "estimated_cost_usd": 0.00504692,
+        "pricing": {
+          "input": 0.2,
+          "cached_input": 0.02,
+          "output": 1.2
+        },
+        "pricing_as_of": "2026-08-15",
+        "pricing_source": "https://developers.openai.com/api/docs/models"
+      },
+      "error": null
+    },
+    {
+      "case_id": "B12-ACTIVE-THREAT-002",
+      "evaluation_type": "CURATED_LANGUAGE",
+      "expected_knowledge_ids": [
+        "KNO-SEC-ACTIVE-THREAT-001"
+      ],
+      "actual_knowledge_id": "KNO-SEC-ACTIVE-THREAT-001",
+      "expected_response_mode": "ANSWER",
+      "actual_response_mode": "ANSWER",
+      "record_match": true,
+      "response_mode_match": true,
+      "valid_result": true,
+      "latency_ms": 1484,
+      "provider_response_id": "resp_075d5ee11702e95d006a80d8ba51888199ba8a1f89158efc92",
+      "provider_request_id": "req_7f37553e34034567a92d042316ed2938",
+      "usage": {
+        "input_tokens": 26875,
+        "cached_input_tokens": 2346,
+        "output_tokens": 83,
+        "reasoning_tokens": 33,
+        "total_tokens": 26958,
+        "uncached_input_tokens": 24529,
+        "estimated_cost_usd": 0.00505232,
+        "pricing": {
+          "input": 0.2,
+          "cached_input": 0.02,
+          "output": 1.2
+        },
+        "pricing_as_of": "2026-08-15",
+        "pricing_source": "https://developers.openai.com/api/docs/models"
+      },
+      "error": null
+    },
+    {
+      "case_id": "B12-FACILITY-VEHICLE-001",
+      "evaluation_type": "CURATED_LANGUAGE",
+      "expected_knowledge_ids": [
+        "KNO-SEC-FACILITY-VEHICLE-001"
+      ],
+      "actual_knowledge_id": "KNO-SEC-FACILITY-VEHICLE-001",
+      "expected_response_mode": "ANSWER",
+      "actual_response_mode": "ANSWER",
+      "record_match": true,
+      "response_mode_match": true,
+      "valid_result": true,
+      "latency_ms": 1728,
+      "provider_response_id": "resp_0518e53ea289af7a006a80d8c04e208198b9c3f491e0fba7cd",
+      "provider_request_id": "req_32ebe9d82b124cba8a5cd1c9247366fd",
+      "usage": {
+        "input_tokens": 26878,
+        "cached_input_tokens": 2346,
+        "output_tokens": 80,
+        "reasoning_tokens": 29,
+        "total_tokens": 26958,
+        "uncached_input_tokens": 24532,
+        "estimated_cost_usd": 0.00504932,
+        "pricing": {
+          "input": 0.2,
+          "cached_input": 0.02,
+          "output": 1.2
+        },
+        "pricing_as_of": "2026-08-15",
+        "pricing_source": "https://developers.openai.com/api/docs/models"
+      },
+      "error": null
+    },
+    {
+      "case_id": "B12-FACILITY-VEHICLE-002",
+      "evaluation_type": "CURATED_LANGUAGE",
+      "expected_knowledge_ids": [
+        "KNO-SEC-FACILITY-VEHICLE-001"
+      ],
+      "actual_knowledge_id": "KNO-SEC-FACILITY-VEHICLE-001",
+      "expected_response_mode": "ANSWER",
+      "actual_response_mode": "ANSWER",
+      "record_match": true,
+      "response_mode_match": true,
+      "valid_result": true,
+      "latency_ms": 1535,
+      "provider_response_id": "resp_04d3ed8415d12f86006a80d8c65fc8819b98d22259183cfce1",
+      "provider_request_id": "req_10d805f681e34362ad21646dbc9274bf",
+      "usage": {
+        "input_tokens": 26875,
+        "cached_input_tokens": 2346,
+        "output_tokens": 77,
+        "reasoning_tokens": 26,
+        "total_tokens": 26952,
+        "uncached_input_tokens": 24529,
+        "estimated_cost_usd": 0.00504512,
+        "pricing": {
+          "input": 0.2,
+          "cached_input": 0.02,
+          "output": 1.2
+        },
+        "pricing_as_of": "2026-08-15",
+        "pricing_source": "https://developers.openai.com/api/docs/models"
+      },
+      "error": null
+    },
+    {
+      "case_id": "B12-LOST-BADGE-001",
+      "evaluation_type": "CURATED_LANGUAGE",
+      "expected_knowledge_ids": [
+        "KNO-SEC-LOST-BADGE-001"
+      ],
+      "actual_knowledge_id": "KNO-SEC-LOST-BADGE-001",
+      "expected_response_mode": "ANSWER",
+      "actual_response_mode": "ANSWER",
+      "record_match": true,
+      "response_mode_match": true,
+      "valid_result": true,
+      "latency_ms": 1757,
+      "provider_response_id": "resp_0ae41c48bc51e99d006a80d8cc518c819a92dada2bb9477d4b",
+      "provider_request_id": "req_353a070058da4ca388a4ca7d931b92d3",
+      "usage": {
+        "input_tokens": 26873,
+        "cached_input_tokens": 2346,
+        "output_tokens": 69,
+        "reasoning_tokens": 19,
+        "total_tokens": 26942,
+        "uncached_input_tokens": 24527,
+        "estimated_cost_usd": 0.00503512,
+        "pricing": {
+          "input": 0.2,
+          "cached_input": 0.02,
+          "output": 1.2
+        },
+        "pricing_as_of": "2026-08-15",
+        "pricing_source": "https://developers.openai.com/api/docs/models"
+      },
+      "error": null
+    },
+    {
+      "case_id": "B12-LOST-BADGE-002",
+      "evaluation_type": "CURATED_LANGUAGE",
+      "expected_knowledge_ids": [
+        "KNO-SEC-LOST-BADGE-001"
+      ],
+      "actual_knowledge_id": "KNO-SEC-LOST-BADGE-001",
+      "expected_response_mode": "ANSWER",
+      "actual_response_mode": "ANSWER",
+      "record_match": true,
+      "response_mode_match": true,
+      "valid_result": true,
+      "latency_ms": 1361,
+      "provider_response_id": "resp_0c5d0e2847c0d194006a80d8d24f088198a5eab17bf2ec27cc",
+      "provider_request_id": "req_8a1a489e28c948b8be6412ca6734cc1c",
+      "usage": {
+        "input_tokens": 26873,
+        "cached_input_tokens": 2346,
+        "output_tokens": 69,
+        "reasoning_tokens": 19,
+        "total_tokens": 26942,
+        "uncached_input_tokens": 24527,
+        "estimated_cost_usd": 0.00503512,
+        "pricing": {
+          "input": 0.2,
+          "cached_input": 0.02,
+          "output": 1.2
+        },
+        "pricing_as_of": "2026-08-15",
+        "pricing_source": "https://developers.openai.com/api/docs/models"
+      },
+      "error": null
+    },
+    {
+      "case_id": "B12-WEAPONS-001",
+      "evaluation_type": "CURATED_LANGUAGE",
+      "expected_knowledge_ids": [
+        "KNO-SEC-WEAPONS-SCREENING-001"
+      ],
+      "actual_knowledge_id": "KNO-SEC-WEAPONS-SCREENING-001",
+      "expected_response_mode": "ANSWER",
+      "actual_response_mode": "ANSWER",
+      "record_match": true,
+      "response_mode_match": true,
+      "valid_result": true,
+      "latency_ms": 1792,
+      "provider_response_id": "resp_0a932bfa40df6cc2006a80d8d8452881999d7188fbb524a2c1",
+      "provider_request_id": "req_2fc21a14494c4bc89f731ed05c105d15",
+      "usage": {
+        "input_tokens": 26877,
+        "cached_input_tokens": 2346,
+        "output_tokens": 76,
+        "reasoning_tokens": 25,
+        "total_tokens": 26953,
+        "uncached_input_tokens": 24531,
+        "estimated_cost_usd": 0.00504432,
+        "pricing": {
+          "input": 0.2,
+          "cached_input": 0.02,
+          "output": 1.2
+        },
+        "pricing_as_of": "2026-08-15",
+        "pricing_source": "https://developers.openai.com/api/docs/models"
+      },
+      "error": null
+    },
+    {
+      "case_id": "B12-WEAPONS-002",
+      "evaluation_type": "CURATED_LANGUAGE",
+      "expected_knowledge_ids": [
+        "KNO-SEC-WEAPONS-SCREENING-001"
+      ],
+      "actual_knowledge_id": "KNO-SEC-WEAPONS-SCREENING-001",
+      "expected_response_mode": "ANSWER",
+      "actual_response_mode": "ANSWER",
+      "record_match": true,
+      "response_mode_match": true,
+      "valid_result": true,
+      "latency_ms": 1920,
+      "provider_response_id": "resp_0ea6e7041592a440006a80d8de4c1487d0acf7c003be77ae46",
+      "provider_request_id": "req_8643dea1c4df498796f0eeab2e3ea5ee",
+      "usage": {
+        "input_tokens": 26875,
+        "cached_input_tokens": 2346,
+        "output_tokens": 80,
+        "reasoning_tokens": 29,
+        "total_tokens": 26955,
+        "uncached_input_tokens": 24529,
+        "estimated_cost_usd": 0.00504872,
+        "pricing": {
+          "input": 0.2,
+          "cached_input": 0.02,
+          "output": 1.2
+        },
+        "pricing_as_of": "2026-08-15",
+        "pricing_source": "https://developers.openai.com/api/docs/models"
+      },
+      "error": null
+    },
+    {
+      "case_id": "B12-BADGE-004",
+      "evaluation_type": "CURATED_LANGUAGE",
+      "expected_knowledge_ids": [
+        "KNO-SEC-LOST-BADGE-001"
+      ],
+      "actual_knowledge_id": "KNO-SEC-LOST-BADGE-001",
+      "expected_response_mode": "CLARIFY",
+      "actual_response_mode": "CLARIFY",
+      "record_match": true,
+      "response_mode_match": true,
+      "valid_result": true,
+      "latency_ms": 2317,
+      "provider_response_id": "resp_00138074f4e64c8c006a80d8e45df08198b9424d7105dbdb5d",
+      "provider_request_id": "req_042b24133dc643fc867b6328d56bea5a",
+      "usage": {
+        "input_tokens": 26874,
+        "cached_input_tokens": 2346,
+        "output_tokens": 130,
+        "reasoning_tokens": 69,
+        "total_tokens": 27004,
+        "uncached_input_tokens": 24528,
+        "estimated_cost_usd": 0.00510852,
+        "pricing": {
+          "input": 0.2,
+          "cached_input": 0.02,
+          "output": 1.2
+        },
+        "pricing_as_of": "2026-08-15",
+        "pricing_source": "https://developers.openai.com/api/docs/models"
+      },
+      "error": null
+    },
+    {
+      "case_id": "B12-CONTEXT-HAZMAT-001",
+      "evaluation_type": "CURATED_LANGUAGE",
+      "expected_knowledge_ids": [
+        "KNO-DEL-HAZMAT-SIGNATURE-001"
+      ],
+      "actual_knowledge_id": "KNO-DEL-HAZMAT-SIGNATURE-001",
+      "expected_response_mode": "ANSWER",
+      "actual_response_mode": "ANSWER",
+      "record_match": true,
+      "response_mode_match": true,
+      "valid_result": true,
+      "latency_ms": 1625,
+      "provider_response_id": "resp_0cf626500a4845b4006a80d8ea3e44819ba16e80990c008445",
+      "provider_request_id": "req_18b9e9c23732490daea8c6590c9b4faa",
+      "usage": {
+        "input_tokens": 26885,
+        "cached_input_tokens": 2346,
+        "output_tokens": 78,
+        "reasoning_tokens": 27,
+        "total_tokens": 26963,
+        "uncached_input_tokens": 24539,
+        "estimated_cost_usd": 0.00504832,
+        "pricing": {
+          "input": 0.2,
+          "cached_input": 0.02,
+          "output": 1.2
+        },
+        "pricing_as_of": "2026-08-15",
+        "pricing_source": "https://developers.openai.com/api/docs/models"
+      },
+      "error": null
+    },
+    {
+      "case_id": "B12-CONTEXT-VEHICLE-001",
+      "evaluation_type": "CURATED_LANGUAGE",
+      "expected_knowledge_ids": [
+        "KNO-FORGE-VEHICLE-CHANGE-001"
+      ],
+      "actual_knowledge_id": "KNO-FORGE-VEHICLE-CHANGE-001",
+      "expected_response_mode": "ANSWER",
+      "actual_response_mode": "ANSWER",
+      "record_match": true,
+      "response_mode_match": true,
+      "valid_result": true,
+      "latency_ms": 1770,
+      "provider_response_id": "resp_0617f6d52df3231a006a80d8f06350819abf5214c53e35c54b",
+      "provider_request_id": "req_967a0977778b476e9687d4537f841e11",
+      "usage": {
+        "input_tokens": 26883,
+        "cached_input_tokens": 2346,
+        "output_tokens": 70,
+        "reasoning_tokens": 19,
+        "total_tokens": 26953,
+        "uncached_input_tokens": 24537,
+        "estimated_cost_usd": 0.00503832,
+        "pricing": {
+          "input": 0.2,
+          "cached_input": 0.02,
+          "output": 1.2
+        },
+        "pricing_as_of": "2026-08-15",
+        "pricing_source": "https://developers.openai.com/api/docs/models"
+      },
+      "error": null
+    },
+    {
+      "case_id": "B12-CONTEXT-PREMIUM-001",
+      "evaluation_type": "CURATED_LANGUAGE",
+      "expected_knowledge_ids": [
+        "KNO-DEL-PREMIUM-WINDOW-001"
+      ],
+      "actual_knowledge_id": "KNO-DEL-PREMIUM-WINDOW-001",
+      "expected_response_mode": "ANSWER",
+      "actual_response_mode": "ANSWER",
+      "record_match": true,
+      "response_mode_match": true,
+      "valid_result": true,
+      "latency_ms": 1468,
+      "provider_response_id": "resp_078cc26990b8f96c006a80d8f64e2c819a9c2e2dbf2a98926a",
+      "provider_request_id": "req_e94db46468ae47b5b36376e3da480629",
+      "usage": {
+        "input_tokens": 26891,
+        "cached_input_tokens": 2346,
+        "output_tokens": 70,
+        "reasoning_tokens": 20,
+        "total_tokens": 26961,
+        "uncached_input_tokens": 24545,
+        "estimated_cost_usd": 0.00503992,
+        "pricing": {
+          "input": 0.2,
+          "cached_input": 0.02,
+          "output": 1.2
+        },
+        "pricing_as_of": "2026-08-15",
+        "pricing_source": "https://developers.openai.com/api/docs/models"
+      },
+      "error": null
+    },
+    {
+      "case_id": "B12-CONTEXT-THREAT-001",
+      "evaluation_type": "CURATED_LANGUAGE",
+      "expected_knowledge_ids": [
+        "KNO-SEC-ACTIVE-THREAT-001"
+      ],
+      "actual_knowledge_id": "KNO-SEC-ACTIVE-THREAT-001",
+      "expected_response_mode": "ANSWER",
+      "actual_response_mode": "ANSWER",
+      "record_match": true,
+      "response_mode_match": true,
+      "valid_result": true,
+      "latency_ms": 2132,
+      "provider_response_id": "resp_0e2b44de224098bf006a80d8fc59b8819b96bcf3e5b3009817",
+      "provider_request_id": "req_0bf054411f2645e79274ea7d23216db8",
+      "usage": {
+        "input_tokens": 26883,
+        "cached_input_tokens": 2346,
+        "output_tokens": 77,
+        "reasoning_tokens": 27,
+        "total_tokens": 26960,
+        "uncached_input_tokens": 24537,
+        "estimated_cost_usd": 0.00504672,
+        "pricing": {
+          "input": 0.2,
+          "cached_input": 0.02,
+          "output": 1.2
+        },
+        "pricing_as_of": "2026-08-15",
+        "pricing_source": "https://developers.openai.com/api/docs/models"
+      },
+      "error": null
+    }
+  ]
+}

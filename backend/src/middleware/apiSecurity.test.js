@@ -49,6 +49,31 @@ test('production CORS rejects unknown origins with a generic response', async ()
   }
 });
 
+test('production CORS accepts the Firebase Hosting origins', async () => {
+  const originalNodeEnv = process.env.NODE_ENV;
+  process.env.NODE_ENV = 'production';
+
+  try {
+    for (const origin of [
+      'https://ready-route-project.web.app',
+      'https://ready-route-project.firebaseapp.com',
+      'https://ready-route-project--rra-test-mlshz0rb.web.app',
+      'https://ready-route-landing.web.app',
+      'https://ready-route-landing.firebaseapp.com'
+    ]) {
+      const response = await request(createTestApp({ rateLimitEnabled: false }))
+        .get('/health')
+        .set('Origin', origin);
+
+      assert.equal(response.status, 200);
+      assert.equal(response.headers['access-control-allow-origin'], origin);
+    }
+  } finally {
+    if (originalNodeEnv == null) delete process.env.NODE_ENV;
+    else process.env.NODE_ENV = originalNodeEnv;
+  }
+});
+
 test('invalid JSON and oversized ordinary payloads fail with bounded client errors', async () => {
   const app = createTestApp({ rateLimitEnabled: false });
   const invalidJson = await request(app)

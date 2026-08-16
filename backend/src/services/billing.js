@@ -12,14 +12,17 @@ function getStripeClient(stripeClient) {
     throw new Error('Missing STRIPE_SECRET_KEY environment variable');
   }
 
-  return new Stripe(process.env.STRIPE_SECRET_KEY);
+  return new Stripe(process.env.STRIPE_SECRET_KEY, {
+    apiVersion: process.env.STRIPE_API_VERSION || '2026-06-24.dahlia',
+    appInfo: { name: 'ReadyRoute', url: 'https://readyroute.org' }
+  });
 }
 
 async function loadAccount(supabase, accountId) {
   const { data, error } = await supabase
     .from('accounts')
     .select(
-      'id, company_name, manager_email, stripe_customer_id, stripe_subscription_id, subscription_status, vehicle_count, plan'
+      'id, company_name, manager_email, stripe_customer_id, stripe_subscription_id, subscription_status, vehicle_count, plan, billing_interval'
     )
     .eq('id', accountId)
     .maybeSingle();
@@ -30,7 +33,8 @@ async function loadAccount(supabase, accountId) {
 function createBillingService(options = {}) {
   const supabase = options.supabase || defaultSupabase;
   const stripeClient = options.stripeClient;
-  const stripePriceId = options.stripePriceId || process.env.STRIPE_PRICE_ID;
+  const stripeMonthlyPriceId = options.stripeMonthlyPriceId || options.stripePriceId || process.env.STRIPE_MONTHLY_PRICE_ID || process.env.STRIPE_PRICE_ID;
+  const stripeAnnualPriceId = options.stripeAnnualPriceId || process.env.STRIPE_ANNUAL_PRICE_ID;
   const trialDays = Number(options.trialDays || process.env.STRIPE_TRIAL_DAYS || 14);
 
   function getStripe() {
@@ -74,9 +78,15 @@ function createBillingService(options = {}) {
     return customer.id;
   }
 
-  async function createSubscription(accountId, vehicleCount) {
+  function getPriceId(billingInterval = 'monthly') {
+    if (billingInterval === 'annual') return stripeAnnualPriceId;
+    return stripeMonthlyPriceId;
+  }
+
+  async function createSubscription(accountId, vehicleCount, { billingInterval = 'monthly' } = {}) {
+    const stripePriceId = getPriceId(billingInterval);
     if (!stripePriceId) {
-      throw new Error('Missing STRIPE_PRICE_ID environment variable');
+      throw new Error(`Missing Stripe ${billingInterval} price ID environment variable`);
     }
 
     const { data: account, error: accountError } = await loadAccount(supabase, accountId);
@@ -114,7 +124,8 @@ function createBillingService(options = {}) {
         stripe_subscription_id: subscription.id,
         subscription_status: subscription.status,
         vehicle_count: vehicleCount,
-        plan: subscription.status === 'active' ? 'pro' : 'starter'
+        plan: subscription.status === 'active' ? 'pro' : 'starter',
+        billing_interval: billingInterval
       })
       .eq('id', accountId);
 
@@ -139,9 +150,10 @@ function createBillingService(options = {}) {
     };
   }
 
-  async function createTrialCheckoutSession(accountId, vehicleCount, { successUrl, cancelUrl } = {}) {
+  async function createTrialCheckoutSession(accountId, vehicleCount, { successUrl, cancelUrl, billingInterval = 'monthly' } = {}) {
+    const stripePriceId = getPriceId(billingInterval);
     if (!stripePriceId) {
-      throw new Error('Missing STRIPE_PRICE_ID environment variable');
+      throw new Error(`Missing Stripe ${billingInterval} price ID environment variable`);
     }
 
     if (!successUrl || !cancelUrl) {
@@ -177,7 +189,8 @@ function createBillingService(options = {}) {
       subscription_data: {
         trial_period_days: trialDays,
         metadata: {
-          account_id: accountId
+          account_id: accountId,
+          billing_interval: billingInterval
         }
       }
     });
@@ -258,6 +271,61 @@ function createBillingService(options = {}) {
       status: subscription.status,
       quantity: subscription.items?.data?.[0]?.quantity ?? null
     };
+  }
+
+  async function syncActiveDriverQuantity(accountId) {
+    const { data: account, error: accountError } = await loadAccount(supabase, accountId);
+    if (accountError) throw accountError;
+    if (!account?.stripe_subscription_id) {
+      return { synced: false, reason: 'subscription_not_created' };
+    }
+
+    const { data: activeDrivers, error: driversError } = await supabase
+      .from('drivers')
+      .select('id')
+      .eq('account_id', accountId)
+      .eq('is_active', true);
+    if (driversError) throw driversError;
+    const quantity = (activeDrivers || []).length;
+    if (quantity < 1) {
+      await supabase.from('accounts').update({
+        next_renewal_driver_count: 0,
+        billing_seat_sync_status: 'reconciliation_required'
+      }).eq('id', accountId);
+      return { synced: false, reason: 'zero_active_drivers', quantity: 0 };
+    }
+
+    const subscription = await getStripe().subscriptions.retrieve(account.stripe_subscription_id);
+    const item = subscription.items?.data?.[0];
+    if (!item?.id) throw new Error('Stripe subscription is missing a price item');
+    const previousQuantity = Number(item.quantity || 0);
+    if (previousQuantity === quantity) {
+      await supabase.from('accounts').update({
+        billed_driver_count: quantity,
+        next_renewal_driver_count: null,
+        billing_seat_sync_status: 'in_sync'
+      }).eq('id', accountId);
+      return { synced: true, quantity, changed: false };
+    }
+
+    await supabase.from('accounts').update({ billing_seat_sync_status: 'update_pending' }).eq('id', accountId);
+    try {
+      await getStripe().subscriptions.update(account.stripe_subscription_id, {
+        items: [{ id: item.id, quantity }],
+        proration_behavior: quantity > previousQuantity ? 'create_prorations' : 'none'
+      }, {
+        idempotencyKey: `readyroute-seat-sync:${accountId}:${quantity}`
+      });
+      await supabase.from('accounts').update({
+        billed_driver_count: quantity,
+        next_renewal_driver_count: null,
+        billing_seat_sync_status: 'in_sync'
+      }).eq('id', accountId);
+      return { synced: true, quantity, previous_quantity: previousQuantity, changed: true };
+    } catch (error) {
+      await supabase.from('accounts').update({ billing_seat_sync_status: 'failed' }).eq('id', accountId);
+      throw error;
+    }
   }
 
   async function scheduleAccountCancellation(accountId, { now = new Date() } = {}) {
@@ -347,6 +415,7 @@ function createBillingService(options = {}) {
     createTrialCheckoutSession,
     updateSubscriptionQuantity,
     getSubscriptionStatus,
+    syncActiveDriverQuantity,
     scheduleAccountCancellation,
     resumeAccountSubscription
   };

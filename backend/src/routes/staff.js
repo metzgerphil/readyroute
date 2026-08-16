@@ -5,7 +5,10 @@ const jwt = require('jsonwebtoken');
 
 const defaultSupabase = require('../lib/supabase');
 const { createBillingService } = require('../services/billing');
-const { buildMetrics: buildDriverHelpMetrics } = require('../services/driverHelpMonthlyReport');
+const {
+  buildDriverMetrics,
+  buildMetrics: buildDriverHelpMetrics
+} = require('../services/driverHelpMonthlyReport');
 const { sendManagerInviteEmail: defaultSendManagerInviteEmail } = require('../services/managerInviteEmail');
 const {
   sendReadyRouteStaffInviteEmail: defaultSendReadyRouteStaffInviteEmail,
@@ -1784,6 +1787,14 @@ function createReadyRouteStaffRouter(options = {}) {
         .maybeSingle();
       if (existing.error) throw existing.error;
 
+      const signupLookup = await supabase
+        .from('early_access_signups')
+        .select('id, stripe_customer_id, stripe_payment_method_id, billing_setup_status, billing_policy_version, billing_consent_at, billing_interval')
+        .eq('email', managerEmail)
+        .maybeSingle();
+      if (signupLookup.error) throw signupLookup.error;
+      const signup = signupLookup.data;
+
       const inaccessiblePasswordHash = await bcrypt.hash(crypto.randomBytes(32).toString('hex'), 10);
       const { data: account, error: accountError } = await supabase
         .from('accounts')
@@ -1793,12 +1804,27 @@ function createReadyRouteStaffRouter(options = {}) {
           manager_password_hash: inaccessiblePasswordHash,
           vehicle_count: 0,
           plan: 'starter',
-          subscription_status: 'incomplete'
+          subscription_status: 'incomplete',
+          stripe_customer_id: signup?.stripe_customer_id || null,
+          stripe_default_payment_method_id: signup?.stripe_payment_method_id || null,
+          billing_setup_status: signup?.billing_setup_status || 'not_started',
+          billing_activation_status: signup?.billing_setup_status === 'succeeded' ? 'ready' : 'not_started',
+          billing_interval: signup?.billing_interval || 'monthly',
+          billing_policy_version: signup?.billing_policy_version || null,
+          billing_consent_at: signup?.billing_consent_at || null
         })
         .select('id, company_name, manager_email, subscription_status, plan, created_at')
         .single();
       if (accountError || !account) throw accountError || new Error('Account was not created');
       createdAccountId = account.id;
+
+      if (signup?.id) {
+        const { error: signupUpdateError } = await supabase
+          .from('early_access_signups')
+          .update({ account_id: account.id, updated_at: now().toISOString() })
+          .eq('id', signup.id);
+        if (signupUpdateError) throw signupUpdateError;
+      }
 
       const invitedAt = now().toISOString();
       const linkedExistingManager = Boolean(existing.data?.password_hash);
@@ -2316,7 +2342,7 @@ function createReadyRouteStaffRouter(options = {}) {
           .limit(25),
         supabase
           .from('driver_help_interactions')
-          .select('id, driver_id, question, response_mode, selected_knowledge_ids, response_latency_ms, created_at')
+          .select('id, session_id, driver_id, question, response_mode, selected_knowledge_ids, response_latency_ms, created_at')
           .eq('account_id', accountId)
           .gte('created_at', getUtcMonthStart(now()))
           .order('created_at', { ascending: false })
@@ -2366,6 +2392,7 @@ function createReadyRouteStaffRouter(options = {}) {
       const feedback = feedbackResult.data || [];
       const minutesPerAnswer = Number(accountResult.data.driver_help_minutes_per_answer_estimate || 5);
       const usageMetrics = buildDriverHelpMetrics(interactions, feedback, minutesPerAnswer);
+      const driverMetrics = buildDriverMetrics(interactions, feedback, driversResult.data || []);
       const account = presentAccountSummary(
         accountResult.data,
         profile,
@@ -2390,6 +2417,7 @@ function createReadyRouteStaffRouter(options = {}) {
         driver_help: {
           month_start: getUtcMonthStart(now()).slice(0, 10),
           metrics: usageMetrics,
+          driver_metrics: driverMetrics,
           recent_interactions: interactions.slice(0, 100),
           recent_feedback: feedback.slice(0, 100),
           unanswered_questions: unansweredResult.data || [],

@@ -37,6 +37,8 @@ function main() {
   const sources = readJsonLines('sources/registry.jsonl');
   const cases = readJsonLines('evaluations/driver-language-cases.jsonl');
   const referenceCases = readJsonLines('evaluations/reference-language-cases.jsonl');
+  const conversationScenarios = readJsonLines('evaluations/conversation-scenarios.jsonl');
+  const outOfCorpusCases = readJsonLines('evaluations/out-of-corpus-cases.jsonl');
   const candidateOperationalCases = readJsonLines('evaluations/candidate-operational-language-cases.jsonl');
   const candidateGapCases = readJsonLines('evaluations/candidate-gap-language-cases.jsonl');
   const deliveryStatuses = readJsonLines('reference/delivery-status-codes.jsonl');
@@ -86,6 +88,46 @@ function main() {
   for (const testCase of cases) {
     for (const knowledgeId of testCase.expected_knowledge_ids || []) {
       if (!recordIds.has(knowledgeId)) errors.push(`${testCase.case_id} references unknown knowledge ${knowledgeId}`);
+    }
+    if (testCase.answer_override) {
+      const override = testCase.answer_override;
+      if (!String(override.direct_answer || '').trim()) errors.push(`${testCase.case_id} answer override is missing direct_answer`);
+      if (!Array.isArray(override.steps) || !override.steps.length || override.steps.length > 4) {
+        errors.push(`${testCase.case_id} answer override must contain one to four steps`);
+      }
+      if (!String(override.watch_for || '').trim()) errors.push(`${testCase.case_id} answer override is missing watch_for`);
+      if (!['DIRECT_SOURCE_GROUNDED_ANSWER', 'ANSWER'].includes(testCase.response_mode)) {
+        errors.push(`${testCase.case_id} answer override requires a direct-answer response mode`);
+      }
+    }
+  }
+  const scenarioIds = new Set();
+  for (const scenario of conversationScenarios) {
+    if (!scenario.scenario_id || scenarioIds.has(scenario.scenario_id)) {
+      errors.push(`Invalid or duplicate conversation scenario ${scenario.scenario_id || '(missing)'}`);
+    }
+    scenarioIds.add(scenario.scenario_id);
+    if (!Array.isArray(scenario.turns) || scenario.turns.length < 2) {
+      errors.push(`${scenario.scenario_id} must contain at least two turns`);
+      continue;
+    }
+    for (const [index, turn] of scenario.turns.entries()) {
+      if (!turn.input || !['ANSWER', 'CLARIFY', 'ESCALATE'].includes(turn.expected_mode)) {
+        errors.push(`${scenario.scenario_id} turn ${index + 1} is incomplete`);
+      }
+      if (turn.expected_knowledge_id && !recordIds.has(turn.expected_knowledge_id)) {
+        errors.push(`${scenario.scenario_id} turn ${index + 1} references unknown knowledge ${turn.expected_knowledge_id}`);
+      }
+    }
+  }
+  const outOfCorpusIds = new Set();
+  for (const testCase of outOfCorpusCases) {
+    if (!testCase.case_id || outOfCorpusIds.has(testCase.case_id) || !testCase.utterance) {
+      errors.push(`Invalid or duplicate out-of-corpus case ${testCase.case_id || '(missing)'}`);
+    }
+    outOfCorpusIds.add(testCase.case_id);
+    if (testCase.expected_mode !== 'ESCALATE') {
+      errors.push(`${testCase.case_id} out-of-corpus case must expect ESCALATE`);
     }
   }
   const referenceCaseIds = new Set();
@@ -182,6 +224,8 @@ function main() {
     sources: sources.length,
     driver_language_cases: cases.length,
     reference_language_cases: referenceCases.length,
+    conversation_scenarios: conversationScenarios.length,
+    out_of_corpus_cases: outOfCorpusCases.length,
     candidate_operational_language_cases: candidateOperationalCases.length,
     candidate_gap_language_cases: candidateGapCases.length,
     delivery_status_references: deliveryStatuses.length,

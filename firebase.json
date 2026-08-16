@@ -1,0 +1,124 @@
+{
+  "hosting": [
+    {
+      "target": "portal",
+      "public": "manager-portal/dist",
+      "ignore": [
+        "firebase.json",
+        "**/.*",
+        "**/node_modules/**"
+      ],
+      "headers": [
+        {
+          "source": "**",
+          "headers": [
+            {
+              "key": "Content-Security-Policy",
+              "value": "default-src 'self'; base-uri 'self'; object-src 'none'; frame-ancestors 'none'; form-action 'self'; script-src 'self' https://maps.googleapis.com https://maps.gstatic.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' data: https://fonts.gstatic.com; img-src 'self' data: blob: https://maps.googleapis.com https://maps.gstatic.com https://*.googleapis.com https://*.gstatic.com https://*.googleusercontent.com; connect-src 'self' https://api.readyroute.org https://maps.googleapis.com https://*.googleapis.com https://*.gstatic.com; worker-src 'self' blob:; upgrade-insecure-requests"
+            },
+            {
+              "key": "Referrer-Policy",
+              "value": "strict-origin-when-cross-origin"
+            },
+            {
+              "key": "Permissions-Policy",
+              "value": "camera=(self), geolocation=(self), microphone=()"
+            },
+            {
+              "key": "X-Content-Type-Options",
+              "value": "nosniff"
+            },
+            {
+              "key": "X-Frame-Options",
+              "value": "DENY"
+            }
+          ]
+        }
+      ],
+      "rewrites": [
+        {
+          "source": "**",
+          "destination": "/index.html"
+        }
+      ]
+    },
+    {
+      "target": "landing",
+      "public": "landing-page",
+      "ignore": [
+        "firebase.json",
+        "vercel.json",
+        "**/.*",
+        "**/node_modules/**"
+      ],
+      "headers": [
+        {
+          "source": "**",
+          "headers": [
+            {
+              "key": "Content-Security-Policy",
+              "value": "default-src 'self'; base-uri 'self'; object-src 'none'; frame-ancestors 'none'; form-action 'self'; script-src 'self' 'unsafe-inline' https://js.stripe.com; style-src 'self' 'unsafe-inline'; font-src 'self' data:; img-src 'self' data: https://*.stripe.com; connect-src 'self' https://api.readyroute.org https://api.stripe.com https://*.stripe.com; frame-src https://js.stripe.com https://hooks.stripe.com; upgrade-insecure-requests"
+            },
+            {
+              "key": "Referrer-Policy",
+              "value": "strict-origin-when-cross-origin"
+            },
+            {
+              "key": "Permissions-Policy",
+              "value": "camera=(), geolocation=(), microphone=()"
+            },
+            {
+              "key": "X-Content-Type-Options",
+              "value": "nosniff"
+            },
+            {
+              "key": "X-Frame-Options",
+              "value": "DENY"
+            }
+          ]
+        }
+      ],
+      "redirects": [
+        {
+          "source": "/staff",
+          "destination": "https://portal.readyroute.org/readyroute/support",
+          "type": 302
+        }
+      ],
+      "rewrites": [
+        {
+          "source": "/mvp",
+          "destination": "/mvp.html"
+        },
+        {
+          "source": "/support",
+          "destination": "/support.html"
+        },
+        {
+          "source": "/signup",
+          "destination": "/signup.html"
+        },
+        {
+          "source": "/about",
+          "destination": "/about.html"
+        },
+        {
+          "source": "/privacy",
+          "destination": "/privacy.html"
+        },
+        {
+          "source": "/terms",
+          "destination": "/terms.html"
+        },
+        {
+          "source": "/account",
+          "destination": "/account.html"
+        },
+        {
+          "source": "**",
+          "destination": "/index.html"
+        }
+      ]
+    }
+  ]
+}

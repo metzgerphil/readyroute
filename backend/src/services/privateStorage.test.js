@@ -45,6 +45,15 @@ test('createSignedStorageUrl refuses unknown buckets', async () => {
   assert.equal(signedUrl, null);
 });
 
+test('createSignedStorageUrl permits private driver-help images', async () => {
+  const signedUrl = await createSignedStorageUrl(createStorageMock(), {
+    bucket: 'driver-help-images',
+    path: '2026-08-13.1/reference.png'
+  });
+
+  assert.match(signedUrl, /^https:\/\/storage\.test\/driver-help-images\//);
+});
+
 test('addDriverDocumentAccessUrl removes the public URL and returns temporary access', async () => {
   const document = await addDriverDocumentAccessUrl(createStorageMock(), {
     id: 'doc-1',

@@ -5,6 +5,7 @@ ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 
 echo "==> Verifying landing page files"
 test -f "$ROOT_DIR/landing-page/index.html"
+test -f "$ROOT_DIR/landing-page/signup.html"
 test -f "$ROOT_DIR/landing-page/vercel.json"
 
 echo "==> Linting manager portal"
