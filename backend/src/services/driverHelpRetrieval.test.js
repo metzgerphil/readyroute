@@ -407,7 +407,8 @@ test('builds the compact driver-answer contract with no more than four steps and
   assert.equal(structure.direct_answer, 'Use Code 004.');
   assert.equal(structure.steps.length, 4);
   assert.match(structure.steps[1], /Code 004/);
-  assert.match(structure.steps[3], /Mark the package.*Return the package/);
+  assert.equal(structure.steps[3], 'Mark the package.');
+  assert.equal(structure.procedure_steps.length, 5);
   assert.equal(structure.watch_for, 'Do not leave the package.');
   assert.equal(structure.prohibited_actions.length, 2);
 });

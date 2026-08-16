@@ -161,6 +161,32 @@ function main() {
           response_mode: decision.response_mode
         });
       }
+      if (decision.response_mode === 'ANSWER') {
+        const structure = decision.answer_structure || {};
+        const directAnswer = String(structure.direct_answer || '');
+        if (directAnswer.length > 180) {
+          failures.push({
+            knowledge_id: record.knowledge_id,
+            family: 'ANSWER_CLARITY',
+            input,
+            reason: 'direct answer exceeds 180 characters',
+            actual_length: directAnswer.length
+          });
+          familyResults.ANSWER_CLARITY = false;
+        }
+        const longStep = (structure.steps || []).find((step) => String(step).length > 180);
+        if (longStep) {
+          failures.push({
+            knowledge_id: record.knowledge_id,
+            family: 'ANSWER_CLARITY',
+            input,
+            reason: 'initial action step exceeds 180 characters',
+            actual_length: String(longStep).length
+          });
+          familyResults.ANSWER_CLARITY = false;
+        }
+        if (familyResults.ANSWER_CLARITY !== false) familyResults.ANSWER_CLARITY = true;
+      }
     }
 
     const ranked = rankKnowledgeRecords(natural, records, {});
@@ -202,7 +228,7 @@ function main() {
     test_families: [
       'curated case', 'authored variants', 'natural question', 'short question',
       'typo', 'shorthand', 'extra detail', 'multi-turn when applicable',
-      'nearest-record collision isolation'
+      'nearest-record collision isolation', 'compact answer clarity'
     ],
     runtime_checks: runtimeChecks,
     failures: failures.length,

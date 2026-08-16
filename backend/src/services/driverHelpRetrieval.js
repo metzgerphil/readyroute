@@ -330,17 +330,21 @@ function compactProcedureSteps(record, maximum = 4) {
     .map((item) => formatDriverCodeTerminology(item?.action || item, record))
     .map((item) => String(item || '').trim())
     .filter(Boolean);
-  if (steps.length <= maximum) return steps;
-
-  const visible = steps.slice(0, maximum - 1);
-  visible.push(steps.slice(maximum - 1).join(' '));
-  return visible;
+  return steps.slice(0, maximum).map((step) => {
+    if (step.length <= 180) return step;
+    const firstSentence = splitSentences(step)[0] || step;
+    if (firstSentence.length <= 180) return firstSentence;
+    const firstClause = firstSentence
+      .split(/,\s+(?:and|but|while)\s+|;\s+|\s+and\s+/i)[0]
+      .trim();
+    return firstClause.length <= 180 ? `${firstClause.replace(/[.!?]+$/, '')}.` : step;
+  });
 }
 
 function buildDirectAnswer(record) {
   const conciseAnswer = formatDriverCodeTerminology(buildPresentedAnswer(record), record);
   const firstSentence = splitSentences(conciseAnswer)[0] || conciseAnswer || null;
-  if (!firstSentence || /\bCode\s+\d{1,3}\b/i.test(firstSentence)) {
+  if (!firstSentence) {
     return firstSentence;
   }
 
@@ -352,7 +356,21 @@ function buildDirectAnswer(record) {
       .match(/\bCode\s+(\d{1,3})\b/gi)
       ?.map((value) => value.match(/\d{1,3}/)[0]) || []
   )];
-  if (codeNumbers.length !== 1) return firstSentence;
+  if (firstSentence.length > 180 && codeNumbers.length === 1) {
+    return `Use Code ${codeNumbers[0]}.`;
+  }
+
+  if (firstSentence.length > 180) {
+    const conciseAction = procedure.find((step) => (
+      step.length <= 180
+      && !/^(?:check|confirm|determine|identify|verify)\b/i.test(step)
+    ));
+    if (conciseAction) return splitSentences(conciseAction)[0] || conciseAction;
+  }
+
+  if (/\bCode\s+\d{1,3}\b/i.test(firstSentence) || codeNumbers.length !== 1) {
+    return firstSentence;
+  }
 
   return procedure.find((step) => (
     new RegExp(`\\bCode\\s+0*${Number(codeNumbers[0])}\\b`, 'i').test(step)
