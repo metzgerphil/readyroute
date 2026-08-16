@@ -175,7 +175,7 @@ revoke all on function public.process_due_driver_account_deletions(timestamptz) 
 grant execute on function public.process_due_driver_account_deletions(timestamptz) to service_role;
 
 insert into public.readyroute_schema_state (id, version, applied_at)
-values (true, '20260816230000', now())
+values (true, '20260816231000', now())
 on conflict (id) do update
 set version = excluded.version,
     applied_at = excluded.applied_at;
