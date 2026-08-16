@@ -3,6 +3,7 @@ const assert = require('node:assert/strict');
 
 const {
   createDriverHelpAiInterpreter,
+  emptyFacts,
   matchesExplicitOutOfCorpusException,
   resolveDriverHelpAiInterpretationMode,
   responseSchema,
@@ -60,7 +61,12 @@ test('AI interpretation sends only constrained routing fields with a strict sche
               selection: 'SELECT',
               knowledge_id: 'KNO-PUP-CANCELED-001',
               decision: 'CLARIFY',
+              answer_pattern_id: null,
               clarification_requirement: 'Was any attempt made at the pickup location?',
+              facts: {
+                ...emptyFacts(),
+                operational_area: 'PICKUP'
+              },
               confidence: 0.91
             }),
             usage: {
@@ -95,6 +101,7 @@ test('AI interpretation sends only constrained routing fields with a strict sche
   assert.equal(requestBody.text.format.strict, true);
   assert.deepEqual(requestBody.text.format.schema, responseSchema(candidates));
   assert.equal(result.decision, 'CLARIFY');
+  assert.equal(result.facts.operational_area, 'PICKUP');
   assert.equal(result.provider_metadata.response_id, 'resp_test_123');
   assert.equal(result.provider_metadata.usage.input_tokens, 120);
 });
@@ -110,7 +117,9 @@ test('interpretation validation accepts only eligible candidates and exact clari
     selection: 'SELECT',
     knowledge_id: 'KNO-PUP-CANCELED-001',
     decision: 'CLARIFY',
+    answer_pattern_id: null,
     clarification_requirement: 'Was any attempt made at the pickup location?',
+    facts: emptyFacts(),
     confidence: 0.9
   });
 

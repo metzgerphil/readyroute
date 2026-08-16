@@ -119,4 +119,14 @@ test('POST /manager/driver-help/query uses manager identity and returns diagnost
     includeDiagnostics: true,
     aiInterpretationModeOverride: 'ACTIVE'
   });
+
+  const deterministicResponse = await request(app)
+    .post('/manager/driver-help/query')
+    .send({
+      question: 'pickup canceled before I went',
+      ai_interpretation_mode: 'OFF'
+    });
+
+  assert.equal(deterministicResponse.status, 200);
+  assert.equal(calls[1].aiInterpretationModeOverride, 'OFF');
 });

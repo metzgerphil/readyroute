@@ -394,12 +394,25 @@ function buildAnswerStructure(record, answerOverride = null) {
   const overrideWatchFor = answerOverride?.watch_for
     ? formatDriverCodeTerminology(answerOverride.watch_for, record)
     : null;
+  const directAnswer = answerOverride?.direct_answer
+    ? formatDriverCodeTerminology(answerOverride.direct_answer, record)
+    : buildDirectAnswer(record);
+  const rawSteps = overrideSteps || compactProcedureSteps(record);
+  const normalizeVisibleText = (value) => String(value || '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim();
+  const normalizedDirectAnswer = normalizeVisibleText(directAnswer);
+  const nonRepeatedSteps = rawSteps.filter((step) => normalizeVisibleText(step) !== normalizedDirectAnswer);
+  const steps = nonRepeatedSteps.length ? nonRepeatedSteps : rawSteps;
+  const driverFacingProhibitions = prohibitedActions.filter((item) => (
+    !/\b(?:this|the) record\b/i.test(item)
+    && !/\broute\b.*\b(?:record|answer|content|procedure)\b/i.test(item)
+  ));
   return {
-    direct_answer: answerOverride?.direct_answer
-      ? formatDriverCodeTerminology(answerOverride.direct_answer, record)
-      : buildDirectAnswer(record),
-    steps: overrideSteps || compactProcedureSteps(record),
-    watch_for: overrideWatchFor || prohibitedActions[0] || null,
+    direct_answer: directAnswer,
+    steps,
+    watch_for: overrideWatchFor || driverFacingProhibitions[0] || null,
     options: [],
     procedure_steps: overrideSteps || (record.required_procedure || [])
       .map((item) => formatDriverCodeTerminology(item?.action || item, record))
@@ -836,6 +849,7 @@ module.exports = {
   GENERIC_DOMAIN_TOKENS,
   buildAnswerStructure,
   buildClarificationPrompt,
+  clarificationOptionsForRequirement,
   buildCriticalIntentDecision,
   buildDirectAnswer,
   buildDriverHelpDecision,

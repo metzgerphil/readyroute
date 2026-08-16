@@ -88,8 +88,40 @@ const CASES = [
   question,
   expected_mode: expectedMode,
   expected_knowledge_id: expectedKnowledgeId,
-  expected_direct_answer: expectedDirectAnswer
+  expected_direct_answer: expectedDirectAnswer,
+  ai_interpretation_mode: 'OFF'
 }));
+
+const AI_PREVIEW_CASES = [
+  {
+    case_id: 'AI_SIGNATURE_CONTEXT',
+    question: 'I have a signature package and nobody is home.',
+    expected_mode: 'CLARIFY',
+    expected_knowledge_id: null,
+    expected_direct_answer: null,
+    expected_clarification: 'What signature service does FORGE show',
+    ai_interpretation_mode: 'ACTIVE'
+  },
+  {
+    case_id: 'AI_CLOSED_PICKUP_CONTEXT',
+    question: 'The pickup location is closed and I got zero packages.',
+    expected_mode: 'ANSWER',
+    expected_knowledge_id: 'KNO-PUP-CANCELED-001',
+    expected_direct_answer: null,
+    ai_interpretation_mode: 'ACTIVE'
+  },
+  {
+    case_id: 'AI_DELIVERY_PHOTO_CONTEXT',
+    question: 'Do I need to take a picture of this delivery?',
+    expected_mode: 'CLARIFY',
+    expected_knowledge_id: null,
+    expected_direct_answer: null,
+    expected_clarification: 'photo',
+    ai_interpretation_mode: 'ACTIVE'
+  }
+];
+
+CASES.push(...AI_PREVIEW_CASES);
 
 function requireEnv(name) {
   const value = String(process.env[name] || '').trim();
@@ -157,7 +189,10 @@ async function main() {
         result = await requestJson(`${baseUrl}/manager/driver-help/query`, {
           method: 'POST',
           headers: { authorization: `Bearer ${login.token}` },
-          body: JSON.stringify({ question: testCase.question })
+          body: JSON.stringify({
+            question: testCase.question,
+            ai_interpretation_mode: testCase.ai_interpretation_mode
+          })
         });
         const actualMode = result?.response_mode || null;
         const actualKnowledgeId = selectedKnowledgeId(result);
@@ -168,6 +203,13 @@ async function main() {
           failure = `Expected ${testCase.expected_knowledge_id}; received ${actualKnowledgeId || 'no knowledge record'}`;
         } else if (testCase.expected_direct_answer && actualDirectAnswer !== testCase.expected_direct_answer) {
           failure = `Expected direct answer ${JSON.stringify(testCase.expected_direct_answer)}; received ${JSON.stringify(actualDirectAnswer)}`;
+        } else if (
+          testCase.expected_clarification
+          && !String(result?.clarification_prompt || '').toLowerCase().includes(
+            testCase.expected_clarification.toLowerCase()
+          )
+        ) {
+          failure = `Expected clarification containing ${JSON.stringify(testCase.expected_clarification)}; received ${JSON.stringify(result?.clarification_prompt || null)}`;
         }
       } catch (error) {
         failure = error.message;
@@ -179,7 +221,8 @@ async function main() {
         expected: {
           response_mode: testCase.expected_mode,
           knowledge_id: testCase.expected_knowledge_id,
-          direct_answer: testCase.expected_direct_answer
+          direct_answer: testCase.expected_direct_answer,
+          clarification_prompt_contains: testCase.expected_clarification || null
         },
         actual: result ? {
           response_mode: result.response_mode || null,

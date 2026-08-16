@@ -61,6 +61,26 @@ test('clarification replies keep the original situation and accumulated answers'
   assert.match(thirdQuestion, /Driver answered: yes/i);
 });
 
+test('structured AI facts are retained for the next turn', () => {
+  const context = buildNextSessionContext({}, 'The business is closed and I got zero packages', {
+    response_mode: 'ANSWER',
+    selected_records: [],
+    candidates: [],
+    interpretation_result: {
+      facts: {
+        operational_area: 'PICKUP',
+        attempt_made: 'YES',
+        location_closed: 'YES',
+        packages_obtained: 'ZERO'
+      }
+    }
+  });
+
+  assert.equal(context.interpretation_facts.attempt_made, 'YES');
+  assert.equal(context.interpretation_facts.location_closed, 'YES');
+  assert.equal(context.interpretation_facts.packages_obtained, 'ZERO');
+});
+
 test('obvious follow-ups retain the answered situation without carrying unrelated questions', () => {
   const context = {
     last_response_mode: 'ANSWER',
@@ -303,7 +323,8 @@ test('grounded AI interpretation may select a record but the answer remains cano
   });
 
   assert.equal(interpretationRequest.candidate_records[0].knowledge_id, record.knowledge_id);
-  assert.equal('driver_question_patterns' in interpretationRequest.candidate_records[0], false);
+  assert.equal('driver_question_patterns' in interpretationRequest.candidate_records[0], true);
+  assert.equal('answer_override' in interpretationRequest.candidate_records[0].driver_question_patterns[0], false);
   assert.match(interpretationRequest.safety_identifier, /^rr_[a-f0-9]+$/);
   assert.equal(interpretationRequest.safety_identifier.length, 64);
   assert.equal(response.response_mode, 'ANSWER');
@@ -312,6 +333,88 @@ test('grounded AI interpretation may select a record but the answer remains cano
   assert.equal(response.interpretation_mode, 'GROUNDED_AI');
   assert.equal(response.interpretation_confidence, 0.93);
   assert.equal(response.trace[0].interpretation_mode, 'GROUNDED_AI');
+});
+
+test('AI may select an approved authored answer branch but cannot supply answer prose', async () => {
+  const record = knowledgeRecord({
+    driver_question_patterns: [{
+      utterance: 'Pickup location is closed and zero packages were obtained',
+      response_mode: 'DIRECT_SOURCE_GROUNDED_ANSWER',
+      must_clarify: [],
+      answer_override: {
+        direct_answer: 'Use Code 11.',
+        steps: ['Open the listed pickup.', 'Choose Close (Zero Pkg).', 'Select Code 11 and tap DONE.'],
+        watch_for: 'Use this only for an attempted pickup at a closed location with zero packages.'
+      }
+    }]
+  });
+  const supabase = fakeSupabase([record]);
+  const service = createDriverHelpService({
+    supabase,
+    now: () => new Date(0),
+    aiInterpretationMode: 'ACTIVE',
+    aiInterpreter: async (request) => ({
+      selection: 'SELECT',
+      knowledge_id: record.knowledge_id,
+      decision: 'ANSWER',
+      answer_pattern_id: request.candidate_records[0].driver_question_patterns[0].pattern_id,
+      clarification_requirement: null,
+      confidence: 0.99
+    })
+  });
+
+  const response = await service.answerQuestion({
+    accountId: '00000000-0000-0000-0000-000000000001',
+    driverId: '00000000-0000-0000-0000-000000000002',
+    question: 'The place is locked and I came away with no boxes',
+    includeDiagnostics: true
+  });
+
+  assert.equal(response.answer, 'Use Code 11.');
+  assert.equal(response.answer_structure.direct_answer, 'Use Code 11.');
+  assert.deepEqual(response.answer_structure.steps, [
+    'Open the listed pickup.',
+    'Choose Close (Zero Pkg).',
+    'Select Code 11 and tap DONE.'
+  ]);
+  assert.equal(response.interpretation_result.proposed_answer_pattern_id, `${record.knowledge_id}::0`);
+});
+
+test('AI-selected signature clarification presents ASR DSR and ISR buttons', async () => {
+  const signatureRequirement = 'What signature service does FORGE show?';
+  const records = [
+    ['KNO-DEL-SIG-ASR-001', 'Adult Signature Required'],
+    ['KNO-DEL-SIG-DSR-001', 'Direct Signature Required'],
+    ['KNO-DEL-SIG-ISR-001', 'Indirect Signature Required']
+  ].map(([knowledgeId, label]) => knowledgeRecord({
+    knowledge_id: knowledgeId,
+    canonical_situation: `Delivering an ${label} package`,
+    taxonomy_paths: ['TAX-DELIVERY', 'TAX-DELIVERY/TAX-SIGNATURE'],
+    clarification_requirements: [signatureRequirement]
+  }));
+  const supabase = fakeSupabase(records);
+  const service = createDriverHelpService({
+    supabase,
+    now: () => new Date(0),
+    aiInterpretationMode: 'ACTIVE',
+    aiInterpreter: async () => ({
+      selection: 'SELECT',
+      knowledge_id: 'KNO-DEL-SIG-DSR-001',
+      decision: 'CLARIFY',
+      clarification_requirement: signatureRequirement,
+      confidence: 0.98
+    })
+  });
+
+  const response = await service.answerQuestion({
+    accountId: '00000000-0000-0000-0000-000000000001',
+    driverId: '00000000-0000-0000-0000-000000000002',
+    question: 'I have a signature package and nobody is home'
+  });
+
+  assert.equal(response.response_mode, 'CLARIFY');
+  assert.match(response.clarification_prompt, /What signature service/);
+  assert.deepEqual(response.clarification_options.map((option) => option.query), ['ASR', 'DSR', 'ISR']);
 });
 
 test('grounded AI receives every published record instead of an alphabetical first-page cutoff', async () => {
@@ -373,14 +476,24 @@ test('invalid or unavailable AI interpretation falls back to deterministic retri
   assert.equal(response.interpretation_mode, 'DETERMINISTIC_FALLBACK');
 });
 
-test('exact data-authored driver wording bypasses AI interpretation', async () => {
+test('active AI interprets exact data-authored wording instead of accepting a keyword match blindly', async () => {
   const record = knowledgeRecord({ clarification_requirements: [] });
   const supabase = fakeSupabase([record]);
   let calls = 0;
   const service = createDriverHelpService({
     supabase,
     now: () => new Date(0),
-    aiInterpreter: async () => { calls += 1; return null; }
+    aiInterpretationMode: 'ACTIVE',
+    aiInterpreter: async () => {
+      calls += 1;
+      return {
+        selection: 'SELECT',
+        knowledge_id: record.knowledge_id,
+        decision: 'ANSWER',
+        clarification_requirement: null,
+        confidence: 0.98
+      };
+    }
   });
 
   const response = await service.answerQuestion({
@@ -390,8 +503,8 @@ test('exact data-authored driver wording bypasses AI interpretation', async () =
   });
 
   assert.equal(response.response_mode, 'ANSWER');
-  assert.equal(response.interpretation_mode, 'DETERMINISTIC');
-  assert.equal(calls, 0);
+  assert.equal(response.interpretation_mode, 'GROUNDED_AI');
+  assert.equal(calls, 1);
 });
 
 test('shadow mode records the AI proposal without changing the deterministic driver answer', async () => {
@@ -479,7 +592,7 @@ test('manager test console may activate grounded interpretation without changing
   assert.equal(response.interpretation_mode, 'GROUNDED_AI');
 });
 
-test('an exact data-authored clarification cannot be overridden by AI', async () => {
+test('active AI can select the approved clarification branch for exact authored wording', async () => {
   const record = knowledgeRecord({
     driver_question_patterns: [{
       utterance: 'Pickup is canceled',
@@ -492,7 +605,17 @@ test('an exact data-authored clarification cannot be overridden by AI', async ()
   const service = createDriverHelpService({
     supabase,
     now: () => new Date(0),
-    aiInterpreter: async () => { calls += 1; return null; }
+    aiInterpretationMode: 'ACTIVE',
+    aiInterpreter: async () => {
+      calls += 1;
+      return {
+        selection: 'SELECT',
+        knowledge_id: record.knowledge_id,
+        decision: 'CLARIFY',
+        clarification_requirement: 'Was any attempt made at the pickup location?',
+        confidence: 0.98
+      };
+    }
   });
 
   const response = await service.answerQuestion({
@@ -503,8 +626,8 @@ test('an exact data-authored clarification cannot be overridden by AI', async ()
 
   assert.equal(response.response_mode, 'CLARIFY');
   assert.match(response.clarification_prompt, /Was any attempt made/);
-  assert.equal(response.interpretation_mode, 'DETERMINISTIC');
-  assert.equal(calls, 0);
+  assert.equal(response.interpretation_mode, 'GROUNDED_AI');
+  assert.equal(calls, 1);
 });
 
 test('actionable choices exclude missing and unpublished records', () => {

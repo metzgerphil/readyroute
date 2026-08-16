@@ -19,6 +19,10 @@ function createManagerDriverHelpRouter(options = {}) {
     }
 
     try {
+      const requestedInterpretationMode = String(req.body?.ai_interpretation_mode || '').toUpperCase();
+      const aiInterpretationModeOverride = ['OFF', 'SHADOW', 'ACTIVE'].includes(requestedInterpretationMode)
+        ? requestedInterpretationMode
+        : 'ACTIVE';
       const result = await service.answerQuestion({
         accountId: req.account.account_id,
         driverId: null,
@@ -27,7 +31,7 @@ function createManagerDriverHelpRouter(options = {}) {
         question,
         sessionId,
         includeDiagnostics: true,
-        aiInterpretationModeOverride: 'ACTIVE'
+        aiInterpretationModeOverride
       });
       return res.status(200).json(result);
     } catch (error) {

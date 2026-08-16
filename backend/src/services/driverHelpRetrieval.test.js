@@ -415,6 +415,29 @@ test('labels pickup reason numbers as Codes in driver-facing structure', () => {
   assert.equal(structure.steps[0], 'Select Code 11 and tap DONE.');
 });
 
+test('visible answer removes repeated steps and internal routing language', () => {
+  const structure = buildAnswerStructure(record({
+    concise_answer: 'Use Code 7.',
+    taxonomy_paths: ['TAX-DELIVERY'],
+    required_procedure: [
+      { step: 1, action: 'Use Code 7.' },
+      { step: 2, action: 'Cross the package with the work area, date, and Code 7.' },
+      { step: 3, action: 'Remove the SID sticker.' }
+    ],
+    prohibited_actions: [
+      'Do not route this record to an unrelated procedure.',
+      'Do not approach an unsafe animal.'
+    ]
+  }));
+
+  assert.deepEqual(structure.steps, [
+    'Cross the package with the work area, date, and Code 7.',
+    'Remove the SID sticker.'
+  ]);
+  assert.equal(structure.watch_for, 'Do not approach an unsafe animal.');
+  assert.equal(structure.prohibited_actions.length, 2);
+});
+
 test('promotes a single applicable status code into the direct answer', () => {
   const structure = buildAnswerStructure(record({
     concise_answer: 'Do not deliver it. Code it 012 and return it to the station.',

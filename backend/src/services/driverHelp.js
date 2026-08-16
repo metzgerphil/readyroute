@@ -4,8 +4,10 @@ const defaultSupabase = require('../lib/supabase');
 const {
   buildAnswerStructure,
   buildClarificationPrompt,
+  clarificationOptionsForRequirement,
   buildDriverHelpDecision,
   buildPresentedAnswer,
+  formatDriverCodeTerminology,
   isProductionEligibleRecord,
   normalizeDriverQuestion,
   requirementMatches,
@@ -240,6 +242,9 @@ function buildNextSessionContext(previousContext = {}, question, decision) {
     last_question: question,
     situation_question: situationQuestion,
     clarification_history: clarificationHistory,
+    interpretation_facts: decision.interpretation_result?.facts
+      || answeredContext.interpretation_facts
+      || null,
     answered_clarification_requirements: nextAnsweredRequirements,
     clarification_plan_active: decision.response_mode === 'CLARIFY'
       ? Boolean(decision.clarification_plan?.length || answeredContext.clarification_plan_active)
@@ -280,28 +285,29 @@ function buildAiCandidateRecords(records) {
   return selectCanonicalRecordVersions(records)
     .filter((record) => !isReferenceRecord(record) && isProductionEligibleRecord(record))
     .sort((left, right) => left.knowledge_id.localeCompare(right.knowledge_id))
-    .map((record) => ({
-      knowledge_id: record.knowledge_id,
-      version: record.version,
-      canonical_situation: record.canonical_situation,
-      normalized_description: record.normalized_description || '',
-      exceptions: record.exceptions || [],
-      clarification_requirements: record.clarification_requirements || []
-    }));
-}
-
-function hasDataAuthoredQuestionMatch(question, records) {
-  const normalized = normalizeDriverQuestion(question);
-  const normalizedPattern = tokenize(question).join(' ');
-  return selectCanonicalRecordVersions(records)
-    .filter((record) => !isReferenceRecord(record) && isProductionEligibleRecord(record))
-    .some((record) => (
-      (record.driver_question_variants || []).some((variant) => (
-        normalizeDriverQuestion(variant) === normalized
-      )) || (record.driver_question_patterns || []).some((pattern) => (
-        tokenize(pattern?.utterance).join(' ') === normalizedPattern
-      ))
-    ));
+    .map((record) => {
+      const patterns = (record.driver_question_patterns || []).map((pattern, index) => ({
+        pattern_id: `${record.knowledge_id}::${index}`,
+        utterance: pattern?.utterance || '',
+        response_mode: pattern?.response_mode || '',
+        must_clarify: pattern?.must_clarify || []
+      })).filter((pattern) => pattern.utterance);
+      const selectedPatterns = patterns.length <= 32
+        ? patterns
+        : [...patterns.slice(0, 16), ...patterns.slice(-16)];
+      return {
+        knowledge_id: record.knowledge_id,
+        version: record.version,
+        canonical_situation: record.canonical_situation,
+        normalized_description: record.normalized_description || '',
+        applicability: record.applicability || [],
+        conditions: record.conditions || [],
+        exceptions: record.exceptions || [],
+        clarification_requirements: record.clarification_requirements || [],
+        driver_question_examples: (record.driver_question_variants || []).slice(0, 12),
+        driver_question_patterns: selectedPatterns
+      };
+    });
 }
 
 function applyAiInterpretation(interpretation, question, records, baseDecision) {
@@ -311,6 +317,13 @@ function applyAiInterpretation(interpretation, question, records, baseDecision) 
     && !isReferenceRecord(record)
   ));
   if (!selectedRecord) return null;
+  const patternPrefix = `${selectedRecord.knowledge_id}::`;
+  const selectedPatternIndex = String(interpretation.answer_pattern_id || '').startsWith(patternPrefix)
+    ? Number(String(interpretation.answer_pattern_id).slice(patternPrefix.length))
+    : NaN;
+  const selectedPattern = Number.isInteger(selectedPatternIndex)
+    ? (selectedRecord.driver_question_patterns || [])[selectedPatternIndex] || null
+    : null;
 
   const selectedCandidate = {
     knowledge_id: selectedRecord.knowledge_id,
@@ -326,6 +339,12 @@ function applyAiInterpretation(interpretation, question, records, baseDecision) 
   ].slice(0, 5);
 
   if (interpretation.decision === 'CLARIFY') {
+    const clarificationRanked = selectCanonicalRecordVersions(records)
+      .filter((record) => !isReferenceRecord(record) && isProductionEligibleRecord(record))
+      .map((record) => ({
+        record,
+        score: record.knowledge_id === selectedRecord.knowledge_id ? 100 : 50
+      }));
     return {
       response_mode: 'CLARIFY',
       confidence: interpretation.confidence,
@@ -334,7 +353,10 @@ function applyAiInterpretation(interpretation, question, records, baseDecision) 
       clarification_prompt: buildClarificationPrompt(interpretation.clarification_requirement),
       clarification_requirement: interpretation.clarification_requirement,
       clarification_plan: [interpretation.clarification_requirement],
-      clarification_options: []
+      clarification_options: clarificationOptionsForRequirement(
+        interpretation.clarification_requirement,
+        clarificationRanked
+      )
     };
   }
 
@@ -343,9 +365,11 @@ function applyAiInterpretation(interpretation, question, records, baseDecision) 
     confidence: interpretation.confidence,
     candidates,
     selected_records: [selectedRecord],
-    answer: buildPresentedAnswer(selectedRecord, question),
+    answer: selectedPattern?.answer_override?.direct_answer
+      ? formatDriverCodeTerminology(selectedPattern.answer_override.direct_answer, selectedRecord)
+      : buildPresentedAnswer(selectedRecord, question),
     more_info: selectedRecord.more_info_answer || null,
-    answer_structure: buildAnswerStructure(selectedRecord, question)
+    answer_structure: buildAnswerStructure(selectedRecord, selectedPattern?.answer_override || null)
   };
 }
 
@@ -366,7 +390,9 @@ function buildInterpretationResult({
     status,
     proposed_knowledge_id: interpretation?.knowledge_id || null,
     proposed_response_mode: interpretation?.decision || null,
+    proposed_answer_pattern_id: interpretation?.answer_pattern_id || null,
     proposed_clarification_requirement: interpretation?.clarification_requirement || null,
+    facts: interpretation?.facts || null,
     confidence: interpretation?.confidence ?? null,
     deterministic_knowledge_id: deterministicKnowledgeId,
     deterministic_response_mode: baseDecision.response_mode,
@@ -679,7 +705,6 @@ function createDriverHelpService({
       && !selectedClarificationRecord
       && !referenceDecision
       && !isProtectedInterpretationRequest(resolvedQuestion)
-      && !hasDataAuthoredQuestionMatch(resolvedQuestion, records)
       && aiCandidates.length
     );
     if (shouldInterpret) {
@@ -693,7 +718,8 @@ function createDriverHelpService({
             clarification_history: decisionContext.clarification_history || [],
             previous_question: decisionContext.last_question || null,
             pending_clarification_prompt: decisionContext.pending_clarification_prompt || null,
-            previous_knowledge_ids: decisionContext.knowledge_ids || []
+            previous_knowledge_ids: decisionContext.knowledge_ids || [],
+            interpreted_facts: decisionContext.interpretation_facts || null
           },
           candidate_records: aiCandidates
         });
