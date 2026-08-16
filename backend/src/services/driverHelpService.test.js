@@ -5,6 +5,8 @@ process.env.SUPABASE_URL = process.env.SUPABASE_URL || 'https://example.supabase
 process.env.SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_KEY || 'test-service-role-key';
 
 const {
+  answerMemoryRiskTier,
+  answerMemoryRouteKey,
   buildContextualQuestion,
   buildDeterministicRuntimeDecision,
   buildNextSessionContext,
@@ -15,6 +17,16 @@ const {
   resolveClarificationFollowUp,
   resolveClarificationSelection
 } = require('./driverHelp');
+
+test('answer memory normalizes equivalent repeated wording and protects high-risk routes', () => {
+  assert.equal(
+    answerMemoryRouteKey('“The business is closed.”'),
+    answerMemoryRouteKey('the business is closed')
+  );
+  assert.equal(answerMemoryRiskTier('KNO-DEL-BUS-CLOSED-001'), 'STANDARD');
+  assert.equal(answerMemoryRiskTier('KNO-DEL-SIG-ASR-001'), 'HIGH');
+  assert.equal(answerMemoryRiskTier('KNO-SEC-ROUTE-001'), 'HIGH');
+});
 
 test('clarification answer validation recognizes common fact types', () => {
   assert.equal(isClarificationAnswerSufficient('actual vehicle number', '2387'), true);
@@ -171,6 +183,26 @@ function fakeSupabase(records = []) {
   };
 }
 
+function memorySupabase(records, memoryRoute) {
+  const base = fakeSupabase(records);
+  const originalFrom = base.from.bind(base);
+  base.rpc = async (name, args) => {
+    base.writes.push({ table: 'rpc', name, args });
+    return { data: null, error: null };
+  };
+  base.from = (table) => {
+    if (table === 'driver_help_answer_memory') {
+      return {
+        select() {
+          return filterChain({ data: memoryRoute, error: null });
+        }
+      };
+    }
+    return originalFrom(table);
+  };
+  return base;
+}
+
 test('database retrieval includes related record links used by clarification branch switching', async () => {
   const supabase = fakeSupabase([]);
   const service = createDriverHelpService({ supabase, now: () => new Date(0) });
@@ -208,6 +240,52 @@ function knowledgeRecord(overrides = {}) {
     ...overrides
   };
 }
+
+test('an active exact answer-memory route bypasses AI and still renders published record content', async () => {
+  const record = knowledgeRecord({
+    knowledge_id: 'KNO-DEL-BUS-CLOSED-001',
+    canonical_situation: 'A business is closed and no recipient is available',
+    concise_answer: 'Use Code 004 when the closed business has no authorized release path.'
+  });
+  const question = 'The business is locked and nobody is there';
+  const supabase = memorySupabase([record], {
+    route_key: answerMemoryRouteKey(question),
+    knowledge_id: record.knowledge_id,
+    knowledge_version: record.version,
+    response_mode: 'ANSWER',
+    answer_pattern_id: null,
+    clarification_requirement: null,
+    interpreted_facts: { operational_area: 'DELIVERY', stop_type: 'NON_RESIDENTIAL' },
+    risk_tier: 'STANDARD',
+    status: 'ACTIVE',
+    agreement_count: 2
+  });
+  let aiCalls = 0;
+  const service = createDriverHelpService({
+    supabase,
+    aiInterpretationMode: 'ACTIVE',
+    aiInterpreter: async () => { aiCalls += 1; return null; }
+  });
+
+  const response = await service.answerQuestion({
+    accountId: '00000000-0000-0000-0000-000000000001',
+    driverId: null,
+    actorType: 'manager',
+    actorId: '00000000-0000-0000-0000-000000000002',
+    question,
+    includeDiagnostics: true
+  });
+
+  assert.equal(aiCalls, 0);
+  assert.equal(response.interpretation_mode, 'LEARNED_ROUTE');
+  assert.equal(response.interpretation_result.ai_bypassed, true);
+  assert.equal(response.interpretation_result.usage.estimated_cost_usd, 0);
+  assert.equal(response.trace[0].knowledge_id, record.knowledge_id);
+  assert.match(response.answer, /Code 004/);
+  assert.ok(supabase.writes.some((write) => (
+    write.name === 'record_driver_help_answer_memory_reuse'
+  )));
+});
 
 function referenceRecord(knowledgeId, conciseAnswer, canonicalSituation) {
   return {

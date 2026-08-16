@@ -68,6 +68,49 @@ function createManagerDriverHelpRouter(options = {}) {
     }
   });
 
+  router.get('/answer-memory', async (req, res) => {
+    const limit = Math.min(Math.max(Number(req.query.limit) || 100, 1), 250);
+    const requestedStatus = String(req.query.status || '').trim().toUpperCase();
+    const allowedStatuses = new Set(['CANDIDATE', 'ACTIVE', 'REVIEW_REQUIRED', 'SUSPENDED']);
+    try {
+      let query = supabase
+        .from('driver_help_answer_memory')
+        .select('route_key, normalized_question, knowledge_id, knowledge_version, response_mode, answer_pattern_id, clarification_requirement, risk_tier, status, agreement_count, disagreement_count, reuse_count, negative_feedback_count, highest_confidence, activated_at, reviewed_at, first_seen_at, last_seen_at, last_used_at')
+        .order('last_seen_at', { ascending: false })
+        .limit(limit);
+      if (allowedStatuses.has(requestedStatus)) query = query.eq('status', requestedStatus);
+      const { data, error } = await query;
+      if (error) {
+        if (isMissingTableError(error)) return res.status(200).json({ routes: [], setup_required: true });
+        throw error;
+      }
+      return res.status(200).json({ routes: data || [], setup_required: false });
+    } catch (error) {
+      console.error('Manager RRA answer-memory list failed:', error);
+      return res.status(500).json({ error: 'Unable to load learned answer routes.' });
+    }
+  });
+
+  router.post('/answer-memory/:route_key/review', async (req, res) => {
+    const action = String(req.body?.action || '').trim().toUpperCase();
+    if (!['APPROVE', 'SUSPEND'].includes(action)) {
+      return res.status(400).json({ error: 'Action must be APPROVE or SUSPEND.' });
+    }
+    try {
+      const { data, error } = await supabase.rpc('review_driver_help_answer_memory', {
+        p_route_key: req.params.route_key,
+        p_action: action,
+        p_reviewed_by: req.account.manager_user_id || req.account.account_id
+      });
+      if (error) throw error;
+      if (!data) return res.status(404).json({ error: 'Learned answer route not found.' });
+      return res.status(200).json({ route: data });
+    } catch (error) {
+      console.error('Manager RRA answer-memory review failed:', error);
+      return res.status(500).json({ error: 'Unable to review this learned answer route.' });
+    }
+  });
+
   router.get('/overview', async (req, res) => {
     const accountId = req.account.account_id;
     const limit = Math.min(Math.max(Number(req.query.limit) || 50, 1), 100);

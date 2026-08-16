@@ -33,12 +33,43 @@ const { estimateUsageCost } = require('./openAiUsageCost');
 
 const MISSING_TABLE_CODES = new Set(['42P01', 'PGRST106', 'PGRST204', 'PGRST205']);
 
+const HIGH_RISK_MEMORY_KNOWLEDGE_IDS = new Set([
+  'KNO-DEL-ALCOHOL-001',
+  'KNO-DEL-ANIMAL-HAZARD-001',
+  'KNO-DEL-HAZMAT-SIGNATURE-001',
+  'KNO-DEL-SIG-ASR-001',
+  'KNO-DEL-SIG-DSR-001',
+  'KNO-DEL-SIG-ISR-001',
+  'KNO-HOS-DUTY-LIMITS-001',
+  'KNO-SEC-ACTIVE-THREAT-001',
+  'KNO-SEC-ROUTE-001'
+]);
+
 function isMissingTableError(error) {
   return Boolean(error && MISSING_TABLE_CODES.has(error.code));
 }
 
 function randomId() {
   return crypto.randomUUID();
+}
+
+function answerMemoryRouteKey(question) {
+  return crypto.createHash('sha256')
+    .update(normalizeDriverQuestion(question))
+    .digest('hex');
+}
+
+function answerMemoryRiskTier(knowledgeId) {
+  return HIGH_RISK_MEMORY_KNOWLEDGE_IDS.has(String(knowledgeId || '')) ? 'HIGH' : 'STANDARD';
+}
+
+function isAnswerMemoryEligibleQuestion(question, context = {}) {
+  const normalized = normalizeDriverQuestion(question);
+  return Boolean(
+    normalized.length >= 4
+    && !context.pending_clarification_prompt
+    && !isProtectedInterpretationRequest(normalized)
+  );
 }
 
 function buildAiSafetyIdentifier(accountId, actorType, actorId) {
@@ -686,6 +717,78 @@ function createDriverHelpService({
   aiInterpreter = createDriverHelpAiInterpreter(),
   aiInterpretationMode = resolveDriverHelpAiInterpretationMode()
 } = {}) {
+  async function loadActiveAnswerMemory(question, records, context = {}) {
+    if (!isAnswerMemoryEligibleQuestion(question, context)) return null;
+    const table = supabase.from('driver_help_answer_memory');
+    if (!table || typeof table.select !== 'function') return null;
+
+    const routeKey = answerMemoryRouteKey(question);
+    const { data, error } = await table
+      .select('route_key, knowledge_id, knowledge_version, response_mode, answer_pattern_id, clarification_requirement, interpreted_facts, risk_tier, status, agreement_count')
+      .eq('route_key', routeKey)
+      .eq('status', 'ACTIVE')
+      .maybeSingle();
+    if (error) {
+      if (isMissingTableError(error)) return null;
+      throw error;
+    }
+    if (!data) return null;
+
+    const currentRecord = selectCanonicalRecordVersions(records).find((record) => (
+      record.knowledge_id === data.knowledge_id
+      && record.version === data.knowledge_version
+      && isProductionEligibleRecord(record)
+      && !isReferenceRecord(record)
+    ));
+    if (!currentRecord) return null;
+
+    return {
+      ...data,
+      route_key: routeKey,
+      interpretation: {
+        knowledge_id: data.knowledge_id,
+        decision: data.response_mode,
+        answer_pattern_id: data.answer_pattern_id || null,
+        clarification_requirement: data.clarification_requirement || null,
+        facts: data.interpreted_facts || {},
+        confidence: 1
+      }
+    };
+  }
+
+  async function observeAnswerMemory({ question, context, interpretation }) {
+    if (!interpretation || !isAnswerMemoryEligibleQuestion(question, context)) return null;
+    if (!['ANSWER', 'CLARIFY'].includes(interpretation.decision)) return null;
+    if (!interpretation.knowledge_id || !Number.isInteger(Number(interpretation.knowledge_version))) return null;
+    if (!supabase || typeof supabase.rpc !== 'function') return null;
+
+    const { data, error } = await supabase.rpc('observe_driver_help_answer_memory', {
+      p_route_key: answerMemoryRouteKey(question),
+      p_normalized_question: normalizeDriverQuestion(question),
+      p_knowledge_id: interpretation.knowledge_id,
+      p_knowledge_version: Number(interpretation.knowledge_version),
+      p_response_mode: interpretation.decision,
+      p_answer_pattern_id: interpretation.answer_pattern_id || null,
+      p_clarification_requirement: interpretation.clarification_requirement || null,
+      p_interpreted_facts: interpretation.facts || {},
+      p_risk_tier: answerMemoryRiskTier(interpretation.knowledge_id),
+      p_confidence: Number(interpretation.confidence || 0)
+    });
+    if (error) {
+      if (isMissingTableError(error)) return null;
+      throw error;
+    }
+    return data || null;
+  }
+
+  async function recordAnswerMemoryReuse(routeKey) {
+    if (!routeKey || !supabase || typeof supabase.rpc !== 'function') return;
+    const { error } = await supabase.rpc('record_driver_help_answer_memory_reuse', {
+      p_route_key: routeKey
+    });
+    if (error && !isMissingTableError(error)) throw error;
+  }
+
   async function loadKnowledgeRecords() {
     const { data, error } = await supabase
       .from('driver_help_knowledge_records')
@@ -916,6 +1019,43 @@ function createDriverHelpService({
     let interpretationMode = 'DETERMINISTIC';
     let interpretationConfidence = null;
     let interpretationResult = {};
+    let validatedAiInterpretation = null;
+    const activeMemory = !selectedClarificationRecord && !referenceDecision
+      ? await loadActiveAnswerMemory(question, records, sessionState.context)
+      : null;
+    if (activeMemory) {
+      interpretedDecision = applyAiInterpretation(
+        activeMemory.interpretation,
+        resolvedQuestion,
+        records,
+        baseDecision
+      );
+      if (interpretedDecision) {
+        interpretationMode = 'LEARNED_ROUTE';
+        interpretationConfidence = 1;
+        interpretationResult = {
+          status: 'VALID',
+          proposed_knowledge_id: activeMemory.knowledge_id,
+          proposed_response_mode: activeMemory.response_mode,
+          proposed_answer_pattern_id: activeMemory.answer_pattern_id || null,
+          proposed_clarification_requirement: activeMemory.clarification_requirement || null,
+          facts: activeMemory.interpreted_facts || {},
+          confidence: 1,
+          memory_route_key: activeMemory.route_key,
+          memory_agreement_count: activeMemory.agreement_count,
+          memory_risk_tier: activeMemory.risk_tier,
+          ai_bypassed: true,
+          usage: {
+            input_tokens: 0,
+            cached_input_tokens: 0,
+            output_tokens: 0,
+            reasoning_tokens: 0,
+            total_tokens: 0,
+            estimated_cost_usd: 0
+          }
+        };
+      }
+    }
     const aiCandidates = buildAiCandidateRecords(records, {
       driverQuestion: resolvedQuestion,
       context: decisionContext,
@@ -929,6 +1069,7 @@ function createDriverHelpService({
       && ['SHADOW', 'ACTIVE'].includes(effectiveAiInterpretationMode)
       && !selectedClarificationRecord
       && !referenceDecision
+      && !interpretedDecision
       && !isProtectedInterpretationRequest(resolvedQuestion)
       && aiCandidates.length
     );
@@ -955,6 +1096,13 @@ function createDriverHelpService({
           resolvedQuestion
         );
         if (interpretation) {
+          const selectedCandidate = aiCandidates.find((candidate) => (
+            candidate.knowledge_id === interpretation.knowledge_id
+          ));
+          validatedAiInterpretation = {
+            ...interpretation,
+            knowledge_version: selectedCandidate?.version || null
+          };
           interpretedDecision = applyAiInterpretation(
             interpretation,
             resolvedQuestion,
@@ -1033,6 +1181,20 @@ function createDriverHelpService({
       interpretation_confidence: interpretationConfidence,
       interpretation_result: interpretationResult
     };
+    if (activeMemory && interpretedDecision && decision.response_mode !== 'ESCALATE') {
+      await recordAnswerMemoryReuse(activeMemory.route_key);
+    } else if (
+      validatedAiInterpretation
+      && interpretationMode === 'GROUNDED_AI'
+      && decision.response_mode !== 'ESCALATE'
+      && !sessionState.context.pending_clarification_prompt
+    ) {
+      await observeAnswerMemory({
+        question,
+        context: sessionState.context,
+        interpretation: validatedAiInterpretation
+      });
+    }
     const effectiveSessionId = await createOrUpdateSession({
       sessionId: sessionState.session_id,
       accountId,
@@ -1092,7 +1254,7 @@ function createDriverHelpService({
   async function saveFeedback({ accountId, driverId, actorType = 'driver', actorId = driverId, interactionId, rating, comment = null }) {
     const { data: interaction, error: interactionError } = await supabase
       .from('driver_help_interactions')
-      .select('id')
+      .select('id, normalized_question, selected_knowledge_ids, interpretation_result')
       .eq('id', interactionId)
       .eq('account_id', accountId)
       .eq('actor_type', actorType)
@@ -1113,6 +1275,18 @@ function createDriverHelpService({
       updated_at: timestamp
     }, { onConflict: 'interaction_id,actor_type,actor_id' });
     if (error) throw error;
+    if (rating === 'down' && supabase && typeof supabase.rpc === 'function') {
+      const knowledgeId = interaction.selected_knowledge_ids?.[0]
+        || interaction.interpretation_result?.proposed_knowledge_id
+        || null;
+      if (knowledgeId && interaction.normalized_question) {
+        const { error: memoryError } = await supabase.rpc('suspend_driver_help_answer_memory', {
+          p_route_key: answerMemoryRouteKey(interaction.normalized_question),
+          p_knowledge_id: knowledgeId
+        });
+        if (memoryError && !isMissingTableError(memoryError)) throw memoryError;
+      }
+    }
     return { interaction_id: interactionId, rating, comment: comment || null };
   }
 
@@ -1124,6 +1298,8 @@ function createDriverHelpService({
 }
 
 module.exports = {
+  answerMemoryRiskTier,
+  answerMemoryRouteKey,
   applyAiInterpretation,
   applyClarificationAnswerToContext,
   buildAiCandidateRecords,
@@ -1137,6 +1313,7 @@ module.exports = {
   filterActionableClarificationOptions,
   isMissingTableError,
   isClarificationAnswerSufficient,
+  isAnswerMemoryEligibleQuestion,
   isRepeatedClarification,
   resolveClarificationFollowUp,
   resolveClarificationSelection
