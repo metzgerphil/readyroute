@@ -48,6 +48,7 @@ function createBillingRouter(options = {}) {
     monthlyPriceId: options.stripeMonthlyPriceId,
     annualPriceId: options.stripeAnnualPriceId,
     signupEnabled: options.stripeSignupEnabled,
+    liveBillingApproved: options.liveBillingApproved,
     taxEnabled: options.stripeTaxEnabled,
     taxRegistrationsConfirmed: options.stripeTaxRegistrationsConfirmed
   });
@@ -62,6 +63,41 @@ function createBillingRouter(options = {}) {
 
   router.get('/signup/config', (_req, res) => {
     return res.status(200).json(signupBillingService.getSignupConfig());
+  });
+
+  router.get('/subscription-summary', requireManager, async (req, res) => {
+    try {
+      const { data: account, error: accountError } = await supabase
+        .from('accounts')
+        .select('id, billing_setup_status, billing_activation_status, billing_access_status, billing_interval, billed_driver_count, subscription_status, stripe_customer_id, stripe_default_payment_method_id, stripe_subscription_id')
+        .eq('id', req.account.account_id)
+        .maybeSingle();
+      if (accountError) throw accountError;
+      if (!account) return res.status(404).json({ error: 'Account not found.' });
+
+      const activeDriverCount = await signupBillingService.countActiveDrivers(account.id);
+      const interval = normalizeBillingInterval(account.billing_interval) || 'monthly';
+      const price = signupBillingService.getSignupConfig().prices[interval];
+      return res.status(200).json({
+        billing: {
+          billing_interval: interval,
+          billing_setup_status: account.billing_setup_status || 'not_started',
+          billing_activation_status: account.billing_activation_status || 'not_started',
+          billing_access_status: account.billing_access_status || 'not_provisioned',
+          subscription_status: account.subscription_status || null,
+          active_driver_count: activeDriverCount,
+          billed_driver_count: Number(account.billed_driver_count || 0),
+          payment_method_ready: Boolean(account.stripe_customer_id && account.stripe_default_payment_method_id && account.billing_setup_status === 'succeeded'),
+          subscription_active: Boolean(account.stripe_subscription_id),
+          unit_amount_cents: price.unit_amount_cents,
+          estimated_total_cents: activeDriverCount * price.unit_amount_cents,
+          currency: 'usd'
+        }
+      });
+    } catch (error) {
+      console.error('Driver subscription summary failed:', error);
+      return res.status(500).json({ error: 'Unable to load subscription details.' });
+    }
   });
 
   router.post('/signup/setup-intent', express.json(), publicFormLimiter, async (req, res) => {
@@ -117,22 +153,6 @@ function createBillingRouter(options = {}) {
     } catch (error) {
       console.error('Stripe signup payment setup failed:', error);
       return res.status(500).json({ error: 'Unable to prepare secure payment setup.' });
-    }
-  });
-
-  router.post('/activate', express.json(), requireManager, async (req, res) => {
-    try {
-      const result = await signupBillingService.activateSubscription(req.account.account_id);
-      return res.status(result.already_exists ? 200 : 201).json(result);
-    } catch (error) {
-      if (error.code === 'PAYMENT_SETUP_REQUIRED' || error.code === 'ACTIVE_DRIVER_REQUIRED') {
-        return res.status(409).json({ error: error.message, code: error.code });
-      }
-      if (error.code === 'STRIPE_ACTIVATION_DISABLED' || error.code === 'STRIPE_TAX_NOT_READY') {
-        return res.status(503).json({ error: error.message, code: error.code });
-      }
-      console.error('Stripe subscription activation failed:', error);
-      return res.status(500).json({ error: 'Unable to activate billing.' });
     }
   });
 

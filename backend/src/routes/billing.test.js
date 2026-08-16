@@ -139,6 +139,52 @@ async function startTestServer({ supabase, stripeClient, webhookSecret, stripePr
   };
 }
 
+test('GET /billing/subscription-summary reports active-driver pricing without route billing', async () => {
+  const supabase = new MockSupabase((query) => {
+    if (query.table === 'accounts' && query.operation === 'select') {
+      return { data: {
+        id: 'acct-1', billing_setup_status: 'succeeded', billing_activation_status: 'ready',
+        billing_access_status: 'not_provisioned', billing_interval: 'annual', billed_driver_count: 0,
+        subscription_status: 'incomplete', stripe_customer_id: 'cus-1', stripe_default_payment_method_id: 'pm-1',
+        stripe_subscription_id: null
+      }, error: null };
+    }
+    if (query.table === 'drivers' && query.operation === 'select') {
+      return { data: [{ id: 'driver-1' }, { id: 'driver-2' }, { id: 'driver-3' }], error: null };
+    }
+    throw new Error(`Unexpected query ${query.table}:${query.operation}`);
+  });
+  const server = await startTestServer({ supabase });
+  try {
+    const response = await fetch(`${server.baseUrl}/billing/subscription-summary`, {
+      headers: { Authorization: `Bearer ${signManagerToken()}` }
+    });
+    const payload = await response.json();
+    assert.equal(response.status, 200);
+    assert.equal(payload.billing.active_driver_count, 3);
+    assert.equal(payload.billing.billing_interval, 'annual');
+    assert.equal(payload.billing.unit_amount_cents, 10000);
+    assert.equal(payload.billing.estimated_total_cents, 30000);
+    assert.equal(payload.billing.payment_method_ready, true);
+  } finally {
+    await server.close();
+  }
+});
+
+test('company managers cannot activate the first live subscription', async () => {
+  const server = await startTestServer({ supabase: new MockSupabase(() => ({ data: null, error: null })) });
+  try {
+    const response = await fetch(`${server.baseUrl}/billing/activate`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${signManagerToken()}`, 'Content-Type': 'application/json' },
+      body: '{}'
+    });
+    assert.equal(response.status, 404);
+  } finally {
+    await server.close();
+  }
+});
+
 test('POST /billing/setup creates a Stripe customer and subscription', async () => {
   let accountSelectCount = 0;
   const supabase = new MockSupabase((query) => {

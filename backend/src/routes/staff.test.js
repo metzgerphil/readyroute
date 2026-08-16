@@ -144,7 +144,8 @@ async function startTestServer({
   sendManagerInviteEmail,
   sendReadyRouteStaffInviteEmail,
   sendReadyRouteStaffPasswordResetEmail,
-  staffBillingService
+  staffBillingService,
+  staffSubscriptionActivationService
 }) {
   const app = createApp({
     supabase,
@@ -152,6 +153,7 @@ async function startTestServer({
     now: () => new Date('2026-07-05T16:00:00.000Z'),
     enforceBilling: false,
     staffBillingService,
+    staffSubscriptionActivationService,
     sendManagerInviteEmail,
     sendReadyRouteStaffInviteEmail,
     sendReadyRouteStaffPasswordResetEmail
@@ -673,6 +675,70 @@ test('GET /staff/accounts rejects customer manager tokens', async () => {
     assert.equal(response.status, 403);
     assert.equal(payload.error, 'ReadyRoute staff access required');
     assert.equal(supabase.calls.length, 0);
+  } finally {
+    await server.close();
+  }
+});
+
+test('GET /staff/company-signups returns pending public signups newest first', async () => {
+  const supabase = new MockSupabase((query) => {
+    if (query.table === 'early_access_signups' && query.operation === 'select') {
+      assert.equal(query.order.column, 'created_at');
+      assert.equal(query.order.options.ascending, false);
+      return { data: [
+        { id: 'signup-new', name: 'Taylor Manager', email: 'TAYLOR@example.com', company_csa: 'Taylor Transport', driver_count: 18, billing_interval: 'annual', billing_setup_status: 'succeeded', account_id: null, created_at: '2026-08-16T12:00:00.000Z' },
+        { id: 'signup-onboarded', name: 'Morgan Manager', email: 'morgan@example.com', company_csa: 'Morgan Delivery', driver_count: 7, account_id: 'acct-existing', created_at: '2026-08-15T12:00:00.000Z' }
+      ], error: null };
+    }
+    return { data: null, error: null };
+  });
+  const server = await startTestServer({ supabase });
+  try {
+    const response = await fetch(`${server.baseUrl}/staff/company-signups`, { headers: { Authorization: `Bearer ${signStaffToken({ staff_role: 'support' })}` } });
+    const payload = await response.json();
+    assert.equal(response.status, 200);
+    assert.equal(payload.signups.length, 2);
+    assert.equal(payload.pending_signups.length, 1);
+    assert.equal(payload.pending_signups[0].company_name, 'Taylor Transport');
+    assert.equal(payload.pending_signups[0].email, 'taylor@example.com');
+  } finally {
+    await server.close();
+  }
+});
+
+test('POST /staff/accounts/:accountId/billing/activate requires an owner or admin and exact company confirmation', async () => {
+  const activations = [];
+  const supabase = new MockSupabase((query) => {
+    if (query.table === 'accounts' && query.operation === 'select') {
+      return { data: { id: 'acct-1', company_name: 'Taylor Transport' }, error: null };
+    }
+    if (query.table === 'readyroute_staff_audit_log' && query.operation === 'insert') {
+      assert.equal(query.payload.action, 'company.billing_activated');
+      return { data: null, error: null };
+    }
+    return { data: null, error: null };
+  });
+  const staffSubscriptionActivationService = {
+    activateSubscription: async (accountId) => {
+      activations.push(accountId);
+      return { subscription_id: 'sub-1', status: 'active', billing_interval: 'monthly', active_driver_count: 3, already_exists: false };
+    }
+  };
+  const server = await startTestServer({ supabase, staffSubscriptionActivationService });
+  try {
+    const forbidden = await fetch(`${server.baseUrl}/staff/accounts/acct-1/billing/activate`, {
+      method: 'POST', headers: { Authorization: `Bearer ${signStaffToken({ staff_role: 'support' })}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ confirm_company_name: 'Taylor Transport' })
+    });
+    assert.equal(forbidden.status, 403);
+    const mismatch = await fetch(`${server.baseUrl}/staff/accounts/acct-1/billing/activate`, {
+      method: 'POST', headers: { Authorization: `Bearer ${signStaffToken()}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ confirm_company_name: 'Wrong name' })
+    });
+    assert.equal(mismatch.status, 400);
+    const response = await fetch(`${server.baseUrl}/staff/accounts/acct-1/billing/activate`, {
+      method: 'POST', headers: { Authorization: `Bearer ${signStaffToken()}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ confirm_company_name: 'Taylor Transport' })
+    });
+    assert.equal(response.status, 201);
+    assert.deepEqual(activations, ['acct-1']);
   } finally {
     await server.close();
   }

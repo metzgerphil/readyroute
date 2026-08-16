@@ -44,6 +44,7 @@ function createStripeSignupBillingService(options = {}) {
   const monthlyPriceId = options.monthlyPriceId || options.priceId || process.env.STRIPE_MONTHLY_PRICE_ID || process.env.STRIPE_PRICE_ID;
   const annualPriceId = options.annualPriceId || process.env.STRIPE_ANNUAL_PRICE_ID;
   const signupEnabled = options.signupEnabled ?? isEnabled(process.env.STRIPE_SIGNUP_ENABLED);
+  const liveBillingApproved = options.liveBillingApproved ?? isEnabled(process.env.READYROUTE_LIVE_BILLING_APPROVED);
   const taxEnabled = options.taxEnabled ?? isEnabled(process.env.STRIPE_TAX_ENABLED);
   const taxRegistrationsConfirmed = options.taxRegistrationsConfirmed ?? isEnabled(process.env.STRIPE_TAX_REGISTRATIONS_CONFIRMED);
 
@@ -56,6 +57,7 @@ function createStripeSignupBillingService(options = {}) {
       currency: 'usd',
       billing_policy_version: BILLING_POLICY_VERSION,
       charges_begin_at_activation: true,
+      live_billing_approved: Boolean(liveBillingApproved),
       automatic_tax_enabled: Boolean(taxEnabled && taxRegistrationsConfirmed)
     };
   }
@@ -140,6 +142,11 @@ function createStripeSignupBillingService(options = {}) {
   }
 
   async function activateSubscription(accountId) {
+    if (!liveBillingApproved) {
+      const error = new Error('Live billing has not been approved for activation');
+      error.code = 'LIVE_BILLING_NOT_APPROVED';
+      throw error;
+    }
     if (!stripe || !monthlyPriceId || !annualPriceId) {
       const error = new Error('Stripe subscription activation is not configured');
       error.code = 'STRIPE_ACTIVATION_DISABLED';

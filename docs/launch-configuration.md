@@ -9,6 +9,7 @@ The production backend reports launch modes and capability presence on `/health`
 - `GOOGLE_MAPS_API_KEY` must be present for manifest geocoding.
 - Route Optimization uses the Cloud Run runtime service account through Google Application Default Credentials. No downloaded service-account JSON is required in production.
 - `STRIPE_SECRET_KEY` may be configured during shadow mode, but no overage can be charged unless the account has current consent, staff explicitly enables billing, and the global live-billing approval gate is enabled.
+- `READYROUTE_LIVE_BILLING_APPROVED=false` is the independent kill switch for first-time active-driver subscriptions. Set it to `true` only after Stripe products, webhooks, tax configuration, and a live acceptance test have been reviewed and the product owner explicitly approves charging.
 
 Run `npm run check:launch` in `backend` before a production backend release. Run `npm run check:release` in `driver-app` before any TestFlight or App Store build.
 

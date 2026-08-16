@@ -129,6 +129,7 @@ test('activateSubscription bills only active drivers and leaves Tax off by defau
     } } },
     monthlyPriceId: 'price_monthly_1000',
     annualPriceId: 'price_annual_10000',
+    liveBillingApproved: true,
     taxEnabled: false
   });
 
@@ -139,12 +140,24 @@ test('activateSubscription bills only active drivers and leaves Tax off by defau
   assert.equal(updates.at(-1).billed_driver_count, 2);
 });
 
+test('activateSubscription cannot charge until live billing is explicitly approved', async () => {
+  const service = createStripeSignupBillingService({
+    supabase: createDb(() => { throw new Error('Database must not be called'); }),
+    stripeClient: { subscriptions: { create: async () => ({}) } },
+    monthlyPriceId: 'price_monthly_1000',
+    annualPriceId: 'price_annual_10000',
+    liveBillingApproved: false
+  });
+  await assert.rejects(() => service.activateSubscription('acct-1'), { code: 'LIVE_BILLING_NOT_APPROVED' });
+});
+
 test('activateSubscription refuses Tax before registrations are confirmed', async () => {
   const service = createStripeSignupBillingService({
     supabase: createDb(() => { throw new Error('Database must not be called'); }),
     stripeClient: { subscriptions: { create: async () => ({}) } },
     monthlyPriceId: 'price_monthly_1000',
     annualPriceId: 'price_annual_10000',
+    liveBillingApproved: true,
     taxEnabled: true,
     taxRegistrationsConfirmed: false
   });
