@@ -63,6 +63,20 @@ function answerMemoryRiskTier(knowledgeId) {
   return HIGH_RISK_MEMORY_KNOWLEDGE_IDS.has(String(knowledgeId || '')) ? 'HIGH' : 'STANDARD';
 }
 
+function resolveAnswerMemoryAuditRate(env = process.env) {
+  const configured = Number(env.READYROUTE_DRIVER_HELP_ANSWER_MEMORY_AUDIT_RATE);
+  if (!Number.isFinite(configured)) return 0;
+  return Math.min(Math.max(configured, 0), 1);
+}
+
+function answerMemoryInterpretationAgrees(memory, interpretation) {
+  return Boolean(memory && interpretation
+    && memory.knowledge_id === interpretation.knowledge_id
+    && memory.response_mode === interpretation.decision
+    && String(memory.answer_pattern_id || '') === String(interpretation.answer_pattern_id || '')
+    && String(memory.clarification_requirement || '') === String(interpretation.clarification_requirement || ''));
+}
+
 function isAnswerMemoryEligibleQuestion(question, context = {}) {
   const normalized = normalizeDriverQuestion(question);
   return Boolean(
@@ -715,7 +729,9 @@ function createDriverHelpService({
   supabase = defaultSupabase,
   now = () => new Date(),
   aiInterpreter = createDriverHelpAiInterpreter(),
-  aiInterpretationMode = resolveDriverHelpAiInterpretationMode()
+  aiInterpretationMode = resolveDriverHelpAiInterpretationMode(),
+  answerMemoryAuditRate = resolveAnswerMemoryAuditRate(),
+  random = Math.random
 } = {}) {
   async function loadActiveAnswerMemory(question, records, context = {}) {
     if (!isAnswerMemoryEligibleQuestion(question, context)) return null;
@@ -785,6 +801,15 @@ function createDriverHelpService({
     if (!routeKey || !supabase || typeof supabase.rpc !== 'function') return;
     const { error } = await supabase.rpc('record_driver_help_answer_memory_reuse', {
       p_route_key: routeKey
+    });
+    if (error && !isMissingTableError(error)) throw error;
+  }
+
+  async function recordAnswerMemoryAudit(routeKey, outcome) {
+    if (!routeKey || !supabase || typeof supabase.rpc !== 'function') return;
+    const { error } = await supabase.rpc('record_driver_help_answer_memory_audit', {
+      p_route_key: routeKey,
+      p_outcome: outcome
     });
     if (error && !isMissingTableError(error)) throw error;
   }
@@ -1023,6 +1048,7 @@ function createDriverHelpService({
     const activeMemory = !selectedClarificationRecord && !referenceDecision
       ? await loadActiveAnswerMemory(question, records, sessionState.context)
       : null;
+    let memoryRouteAccepted = Boolean(activeMemory);
     if (activeMemory) {
       interpretedDecision = applyAiInterpretation(
         activeMemory.interpretation,
@@ -1064,12 +1090,106 @@ function createDriverHelpService({
         ...(decisionContext.knowledge_ids || [])
       ]
     });
+    const shouldAuditMemory = Boolean(
+      activeMemory
+      && interpretedDecision
+      && aiInterpreter
+      && effectiveAiInterpretationMode === 'ACTIVE'
+      && aiCandidates.length
+      && Number(answerMemoryAuditRate) > 0
+      && random() < Number(answerMemoryAuditRate)
+    );
+    if (shouldAuditMemory) {
+      const auditStartedAt = Date.now();
+      try {
+        const rawAudit = await aiInterpreter({
+          safety_identifier: buildAiSafetyIdentifier(accountId, actorType, actorId),
+          driver_question: resolvedQuestion,
+          conversation_context: {
+            original_situation: decisionContext.situation_question || null,
+            clarification_history: decisionContext.clarification_history || [],
+            previous_question: decisionContext.last_question || null,
+            pending_clarification_prompt: decisionContext.pending_clarification_prompt || null,
+            previous_knowledge_ids: decisionContext.knowledge_ids || [],
+            interpreted_facts: decisionContext.interpretation_facts || null
+          },
+          candidate_records: aiCandidates
+        });
+        const auditInterpretation = validateInterpretation(
+          rawAudit,
+          aiCandidates,
+          undefined,
+          resolvedQuestion
+        );
+        if (!auditInterpretation) {
+          await recordAnswerMemoryAudit(activeMemory.route_key, 'ERROR');
+          interpretationResult = {
+            ...interpretationResult,
+            ai_bypassed: false,
+            memory_audit: { outcome: 'ERROR', latency_ms: Date.now() - auditStartedAt }
+          };
+        } else if (answerMemoryInterpretationAgrees(activeMemory, auditInterpretation)) {
+          await recordAnswerMemoryAudit(activeMemory.route_key, 'AGREE');
+          interpretationResult = {
+            ...interpretationResult,
+            ai_bypassed: false,
+            memory_audit: {
+              outcome: 'AGREE',
+              latency_ms: Date.now() - auditStartedAt,
+              provider_model: rawAudit?.provider_metadata?.provider_model || null
+            },
+            usage: rawAudit?.provider_metadata?.usage || interpretationResult.usage
+          };
+        } else {
+          await recordAnswerMemoryAudit(activeMemory.route_key, 'DISAGREE');
+          memoryRouteAccepted = false;
+          const selectedCandidate = aiCandidates.find((candidate) => (
+            candidate.knowledge_id === auditInterpretation.knowledge_id
+          ));
+          validatedAiInterpretation = {
+            ...auditInterpretation,
+            knowledge_version: selectedCandidate?.version || null
+          };
+          interpretedDecision = applyAiInterpretation(
+            auditInterpretation,
+            resolvedQuestion,
+            records,
+            baseDecision
+          );
+          interpretationMode = interpretedDecision ? 'GROUNDED_AI' : 'DETERMINISTIC_FALLBACK';
+          interpretationConfidence = interpretedDecision ? auditInterpretation.confidence : null;
+          interpretationResult = {
+            ...buildInterpretationResult({
+              status: interpretedDecision ? 'VALID' : 'REJECTED',
+              baseDecision,
+              interpretation: interpretedDecision ? auditInterpretation : null,
+              latencyMs: Date.now() - auditStartedAt,
+              providerMetadata: rawAudit?.provider_metadata || null,
+              candidateRecords: aiCandidates
+            }),
+            memory_audit: {
+              outcome: 'DISAGREE',
+              suspended_route_key: activeMemory.route_key,
+              remembered_knowledge_id: activeMemory.knowledge_id
+            }
+          };
+        }
+      } catch (_error) {
+        await recordAnswerMemoryAudit(activeMemory.route_key, 'ERROR');
+        interpretationResult = {
+          ...interpretationResult,
+          ai_bypassed: false,
+          memory_audit: { outcome: 'ERROR', latency_ms: Date.now() - auditStartedAt }
+        };
+      }
+    }
     const shouldInterpret = Boolean(
       aiInterpreter
       && ['SHADOW', 'ACTIVE'].includes(effectiveAiInterpretationMode)
       && !selectedClarificationRecord
       && !referenceDecision
       && !interpretedDecision
+      && !shouldAuditMemory
       && !isProtectedInterpretationRequest(resolvedQuestion)
       && aiCandidates.length
     );
@@ -1181,10 +1301,11 @@ function createDriverHelpService({
       interpretation_confidence: interpretationConfidence,
       interpretation_result: interpretationResult
     };
-    if (activeMemory && interpretedDecision && decision.response_mode !== 'ESCALATE') {
+    if (activeMemory && memoryRouteAccepted && interpretedDecision && decision.response_mode !== 'ESCALATE') {
       await recordAnswerMemoryReuse(activeMemory.route_key);
     } else if (
       validatedAiInterpretation
+      && !activeMemory
       && interpretationMode === 'GROUNDED_AI'
       && decision.response_mode !== 'ESCALATE'
       && !sessionState.context.pending_clarification_prompt
@@ -1300,6 +1421,7 @@ function createDriverHelpService({
 module.exports = {
   answerMemoryRiskTier,
   answerMemoryRouteKey,
+  answerMemoryInterpretationAgrees,
   applyAiInterpretation,
   applyClarificationAnswerToContext,
   buildAiCandidateRecords,
@@ -1316,5 +1438,6 @@ module.exports = {
   isAnswerMemoryEligibleQuestion,
   isRepeatedClarification,
   resolveClarificationFollowUp,
+  resolveAnswerMemoryAuditRate,
   resolveClarificationSelection
 };

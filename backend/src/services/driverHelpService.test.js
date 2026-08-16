@@ -287,6 +287,122 @@ test('an active exact answer-memory route bypasses AI and still renders publishe
   )));
 });
 
+test('a sampled answer-memory audit keeps an agreeing route active and records the audit', async () => {
+  const record = knowledgeRecord({
+    knowledge_id: 'KNO-DEL-BUS-CLOSED-001',
+    canonical_situation: 'A business is closed and no recipient is available',
+    driver_question_variants: ['The business is locked and nobody is there'],
+    clarification_requirements: [],
+    concise_answer: 'Use Code 004 when the closed business has no authorized release path.'
+  });
+  const question = 'The business is locked and nobody is there';
+  const supabase = memorySupabase([record], {
+    route_key: answerMemoryRouteKey(question),
+    knowledge_id: record.knowledge_id,
+    knowledge_version: record.version,
+    response_mode: 'ANSWER',
+    answer_pattern_id: null,
+    clarification_requirement: null,
+    interpreted_facts: {},
+    risk_tier: 'STANDARD',
+    status: 'ACTIVE',
+    agreement_count: 3
+  });
+  const service = createDriverHelpService({
+    supabase,
+    aiInterpretationMode: 'ACTIVE',
+    answerMemoryAuditRate: 0.05,
+    random: () => 0,
+    aiInterpreter: async () => ({
+      selection: 'SELECT',
+      knowledge_id: record.knowledge_id,
+      decision: 'ANSWER',
+      clarification_requirement: null,
+      confidence: 0.99
+    })
+  });
+
+  const response = await service.answerQuestion({
+    accountId: '00000000-0000-0000-0000-000000000001',
+    driverId: null,
+    actorType: 'manager',
+    actorId: '00000000-0000-0000-0000-000000000002',
+    question,
+    includeDiagnostics: true
+  });
+
+  assert.equal(response.interpretation_mode, 'LEARNED_ROUTE');
+  assert.equal(response.interpretation_result.ai_bypassed, false);
+  assert.equal(response.interpretation_result.memory_audit.outcome, 'AGREE');
+  assert.ok(supabase.writes.some((write) => (
+    write.name === 'record_driver_help_answer_memory_audit'
+    && write.args.p_outcome === 'AGREE'
+  )));
+  assert.ok(supabase.writes.some((write) => write.name === 'record_driver_help_answer_memory_reuse'));
+});
+
+test('a sampled answer-memory disagreement suspends memory and serves the AI-selected published record', async () => {
+  const rememberedRecord = knowledgeRecord({
+    knowledge_id: 'KNO-DEL-BUS-CLOSED-001',
+    canonical_situation: 'A business is closed and no recipient is available',
+    driver_question_variants: ['The stop is closed'],
+    clarification_requirements: [],
+    concise_answer: 'Use Code 004.'
+  });
+  const correctedRecord = knowledgeRecord({
+    knowledge_id: 'KNO-PUP-CANCELED-001',
+    canonical_situation: 'A pickup was canceled before an attempt',
+    driver_question_variants: ['The stop is closed'],
+    clarification_requirements: [],
+    concise_answer: 'Use Code 24.'
+  });
+  const question = 'The stop is closed';
+  const supabase = memorySupabase([rememberedRecord, correctedRecord], {
+    route_key: answerMemoryRouteKey(question),
+    knowledge_id: rememberedRecord.knowledge_id,
+    knowledge_version: rememberedRecord.version,
+    response_mode: 'ANSWER',
+    answer_pattern_id: null,
+    clarification_requirement: null,
+    interpreted_facts: {},
+    risk_tier: 'STANDARD',
+    status: 'ACTIVE',
+    agreement_count: 3
+  });
+  const service = createDriverHelpService({
+    supabase,
+    aiInterpretationMode: 'ACTIVE',
+    answerMemoryAuditRate: 0.05,
+    random: () => 0,
+    aiInterpreter: async () => ({
+      selection: 'SELECT',
+      knowledge_id: correctedRecord.knowledge_id,
+      decision: 'ANSWER',
+      clarification_requirement: null,
+      confidence: 0.97
+    })
+  });
+
+  const response = await service.answerQuestion({
+    accountId: '00000000-0000-0000-0000-000000000001',
+    driverId: null,
+    actorType: 'manager',
+    actorId: '00000000-0000-0000-0000-000000000002',
+    question,
+    includeDiagnostics: true
+  });
+
+  assert.equal(response.interpretation_mode, 'GROUNDED_AI');
+  assert.equal(response.trace[0].knowledge_id, correctedRecord.knowledge_id);
+  assert.equal(response.interpretation_result.memory_audit.outcome, 'DISAGREE');
+  assert.ok(supabase.writes.some((write) => (
+    write.name === 'record_driver_help_answer_memory_audit'
+    && write.args.p_outcome === 'DISAGREE'
+  )));
+  assert.equal(supabase.writes.some((write) => write.name === 'record_driver_help_answer_memory_reuse'), false);
+  assert.equal(supabase.writes.some((write) => write.name === 'observe_driver_help_answer_memory'), false);
+});
+
 function referenceRecord(knowledgeId, conciseAnswer, canonicalSituation) {
   return {
     knowledge_id: knowledgeId,

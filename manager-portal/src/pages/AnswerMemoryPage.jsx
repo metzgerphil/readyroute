@@ -112,7 +112,7 @@ export default function AnswerMemoryPage() {
 
       <section className="page-card answer-memory-guidance">
         <h2>How it works</h2>
-        <p><strong>Active</strong> routes can bypass AI for that same question. Direct standard answers require three matching AI confirmations. Clarifications and high-risk routes require five; high-risk routes also require manager approval. Any disagreement or negative feedback suspends the route.</p>
+        <p><strong>Active</strong> routes can bypass AI for that same question. Direct standard answers require three matching AI confirmations. Clarifications and high-risk routes require five; high-risk routes also require manager approval. RRA continues checking about 5% of remembered answers with AI. Any disagreement or negative feedback suspends the route.</p>
       </section>
 
       <section className="page-card">
@@ -164,7 +164,11 @@ export default function AnswerMemoryPage() {
                         <td><strong>{route.normalized_question}</strong><small>{route.response_mode === 'CLARIFY' ? 'Asks a clarification' : 'Gives an answer'} · {route.risk_tier === 'HIGH' ? 'High-risk topic' : 'Standard topic'}</small></td>
                         <td><strong>{formatKnowledgeId(route.knowledge_id)}</strong><small>{route.knowledge_id} · version {route.knowledge_version}</small></td>
                         <td><span className={`answer-memory-status ${meta.tone}`}>{meta.label}</span></td>
-                        <td><strong>{route.agreement_count || 0} of {route.required_agreements || (route.response_mode === 'CLARIFY' || route.risk_tier === 'HIGH' ? 5 : 3)} confirmations</strong><small>{route.reuse_count || 0} AI calls avoided · {route.disagreement_count || 0} disagreements</small></td>
+                        <td>
+                          <strong>{route.agreement_count || 0} of {route.required_agreements || (route.response_mode === 'CLARIFY' || route.risk_tier === 'HIGH' ? 5 : 3)} confirmations</strong>
+                          <small>{route.reuse_count || 0} AI calls avoided · {route.audit_agreement_count || 0} audits passed · {route.audit_disagreement_count || 0} audit disagreements</small>
+                          {route.audit_error_count ? <small>{route.audit_error_count} audit provider errors · last audit {formatDate(route.last_audited_at)}</small> : null}
+                        </td>
                         <td>{formatDate(route.last_seen_at)}</td>
                         <td>
                           <div className="answer-memory-actions">

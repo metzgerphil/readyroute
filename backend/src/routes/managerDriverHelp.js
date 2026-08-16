@@ -75,7 +75,7 @@ function createManagerDriverHelpRouter(options = {}) {
     try {
       let query = supabase
         .from('driver_help_answer_memory')
-        .select('route_key, normalized_question, knowledge_id, knowledge_version, response_mode, answer_pattern_id, clarification_requirement, risk_tier, status, agreement_count, disagreement_count, reuse_count, negative_feedback_count, highest_confidence, activated_at, reviewed_at, first_seen_at, last_seen_at, last_used_at')
+        .select('route_key, normalized_question, knowledge_id, knowledge_version, response_mode, answer_pattern_id, clarification_requirement, risk_tier, status, agreement_count, disagreement_count, reuse_count, negative_feedback_count, audit_count, audit_agreement_count, audit_disagreement_count, audit_error_count, last_audited_at, highest_confidence, activated_at, reviewed_at, first_seen_at, last_seen_at, last_used_at')
         .order('last_seen_at', { ascending: false })
         .limit(limit);
       if (allowedStatuses.has(requestedStatus)) query = query.eq('status', requestedStatus);
