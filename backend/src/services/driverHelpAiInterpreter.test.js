@@ -3,6 +3,7 @@ const assert = require('node:assert/strict');
 
 const {
   createDriverHelpAiInterpreter,
+  matchesExplicitOutOfCorpusException,
   resolveDriverHelpAiInterpretationMode,
   responseSchema,
   validateInterpretation
@@ -134,6 +135,23 @@ test('interpretation validation accepts only eligible candidates and exact clari
     clarification_requirement: null,
     confidence: 0.74
   }, candidates), null);
+});
+
+test('explicit out-of-corpus exceptions reject a model selection that crosses the boundary', () => {
+  const placementCandidates = [{
+    knowledge_id: 'KNO-DEL-PLACEMENT-HAZARD-001',
+    exceptions: ['[OUT_OF_CORPUS] package inside customer garage'],
+    clarification_requirements: ['Is the package eligible for driver release?']
+  }];
+  const question = "Can I leave this package inside a customer's garage?";
+  assert.equal(matchesExplicitOutOfCorpusException(question, placementCandidates[0]), true);
+  assert.equal(validateInterpretation({
+    selection: 'SELECT',
+    knowledge_id: 'KNO-DEL-PLACEMENT-HAZARD-001',
+    decision: 'CLARIFY',
+    clarification_requirement: 'Is the package eligible for driver release?',
+    confidence: 0.99
+  }, placementCandidates, undefined, question), null);
 });
 
 test('provider failures remain catchable for deterministic fallback', async () => {

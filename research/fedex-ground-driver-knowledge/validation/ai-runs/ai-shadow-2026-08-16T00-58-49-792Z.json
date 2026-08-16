@@ -1,0 +1,88 @@
+{
+  "run_id": "ai-shadow-2026-08-16T00-58-49-792Z",
+  "started_at": "2026-08-16T00:58:49.792Z",
+  "completed_at": "2026-08-16T00:58:52.596Z",
+  "configured_mode": "SHADOW",
+  "model": "gpt-5.6-luna",
+  "pricing_as_of": "2026-08-15",
+  "pricing_source": "https://developers.openai.com/api/docs/models",
+  "pricing_per_million_tokens": {
+    "input": 0.2,
+    "cached_input": 0.02,
+    "output": 1.2
+  },
+  "usage": {
+    "input_tokens": 37082,
+    "cached_input_tokens": 0,
+    "uncached_input_tokens": 37082,
+    "output_tokens": 208,
+    "reasoning_tokens": 146,
+    "total_tokens": 37290,
+    "estimated_cost_usd": 0.007666
+  },
+  "balance_before_usd": 21.435843,
+  "retry_of_report": null,
+  "case_id_filter": [
+    "OOC-005"
+  ],
+  "minimum_request_interval_ms": 0,
+  "total_cases": 1,
+  "successful_api_responses": 1,
+  "failed_api_requests": 0,
+  "curated_language_cases": 263,
+  "out_of_corpus_cases": 7,
+  "valid_results": 0,
+  "record_matches": 0,
+  "response_mode_matches": 0,
+  "errors": 0,
+  "provider_errors": [],
+  "unsafe_out_of_corpus_selections": 1,
+  "average_latency_ms": 2799,
+  "p95_latency_ms": 2799,
+  "ready_for_active": false,
+  "mismatches": [
+    {
+      "case_id": "OOC-005",
+      "evaluation_type": "OUT_OF_CORPUS",
+      "expected_knowledge_ids": [],
+      "actual_knowledge_id": "KNO-DEL-PLACEMENT-HAZARD-001",
+      "expected_response_mode": null,
+      "actual_response_mode": "CLARIFY",
+      "valid_result": false,
+      "error": null
+    }
+  ],
+  "case_results": [
+    {
+      "case_id": "OOC-005",
+      "evaluation_type": "OUT_OF_CORPUS",
+      "expected_knowledge_ids": [],
+      "actual_knowledge_id": "KNO-DEL-PLACEMENT-HAZARD-001",
+      "expected_response_mode": null,
+      "actual_response_mode": "CLARIFY",
+      "record_match": false,
+      "response_mode_match": false,
+      "valid_result": false,
+      "latency_ms": 2799,
+      "provider_response_id": "resp_066658acf80f9b14006a810b4a1518819997a143e6ab166680",
+      "provider_request_id": "req_212a76dc0eaf48cab6d781cda6f2bda8",
+      "usage": {
+        "input_tokens": 37082,
+        "cached_input_tokens": 0,
+        "output_tokens": 208,
+        "reasoning_tokens": 146,
+        "total_tokens": 37290,
+        "uncached_input_tokens": 37082,
+        "estimated_cost_usd": 0.007666,
+        "pricing": {
+          "input": 0.2,
+          "cached_input": 0.02,
+          "output": 1.2
+        },
+        "pricing_as_of": "2026-08-15",
+        "pricing_source": "https://developers.openai.com/api/docs/models"
+      },
+      "error": null
+    }
+  ]
+}

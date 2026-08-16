@@ -367,7 +367,7 @@ test('all controlled records satisfy the compact initial-answer contract', () =>
     .split('\n')
     .map(JSON.parse);
 
-  assert.equal(records.length, 71);
+  assert.equal(records.length, 87);
   for (const canonical of records) {
     const structure = buildAnswerStructure({
       ...canonical,

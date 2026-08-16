@@ -703,7 +703,12 @@ function createDriverHelpService({
           },
           candidate_records: aiCandidates
         });
-        const interpretation = validateInterpretation(rawInterpretation, aiCandidates);
+        const interpretation = validateInterpretation(
+          rawInterpretation,
+          aiCandidates,
+          undefined,
+          resolvedQuestion
+        );
         if (interpretation) {
           interpretedDecision = applyAiInterpretation(
             interpretation,

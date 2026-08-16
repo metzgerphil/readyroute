@@ -1,0 +1,77 @@
+{
+  "run_id": "ai-shadow-2026-08-16T00-59-47-693Z",
+  "started_at": "2026-08-16T00:59:47.693Z",
+  "completed_at": "2026-08-16T00:59:49.712Z",
+  "configured_mode": "SHADOW",
+  "model": "gpt-5.6-luna",
+  "pricing_as_of": "2026-08-15",
+  "pricing_source": "https://developers.openai.com/api/docs/models",
+  "pricing_per_million_tokens": {
+    "input": 0.2,
+    "cached_input": 0.02,
+    "output": 1.2
+  },
+  "usage": {
+    "input_tokens": 37106,
+    "cached_input_tokens": 0,
+    "uncached_input_tokens": 37106,
+    "output_tokens": 81,
+    "reasoning_tokens": 42,
+    "total_tokens": 37187,
+    "estimated_cost_usd": 0.007518
+  },
+  "balance_before_usd": 21.428177,
+  "retry_of_report": null,
+  "case_id_filter": [
+    "OOC-005"
+  ],
+  "minimum_request_interval_ms": 0,
+  "total_cases": 1,
+  "successful_api_responses": 1,
+  "failed_api_requests": 0,
+  "curated_language_cases": 263,
+  "out_of_corpus_cases": 7,
+  "valid_results": 1,
+  "record_matches": 1,
+  "response_mode_matches": 1,
+  "errors": 0,
+  "provider_errors": [],
+  "unsafe_out_of_corpus_selections": 0,
+  "average_latency_ms": 2014,
+  "p95_latency_ms": 2014,
+  "ready_for_active": true,
+  "mismatches": [],
+  "case_results": [
+    {
+      "case_id": "OOC-005",
+      "evaluation_type": "OUT_OF_CORPUS",
+      "expected_knowledge_ids": [],
+      "actual_knowledge_id": null,
+      "expected_response_mode": null,
+      "actual_response_mode": null,
+      "record_match": true,
+      "response_mode_match": true,
+      "valid_result": true,
+      "latency_ms": 2014,
+      "provider_response_id": "resp_0230d4dbc5b64c14006a810b841e80819991626c0ccad80f3c",
+      "provider_request_id": "req_29fd970e97db4c5abbeed74301627318",
+      "usage": {
+        "input_tokens": 37106,
+        "cached_input_tokens": 0,
+        "output_tokens": 81,
+        "reasoning_tokens": 42,
+        "total_tokens": 37187,
+        "uncached_input_tokens": 37106,
+        "estimated_cost_usd": 0.0075184,
+        "pricing": {
+          "input": 0.2,
+          "cached_input": 0.02,
+          "output": 1.2
+        },
+        "pricing_as_of": "2026-08-15",
+        "pricing_source": "https://developers.openai.com/api/docs/models"
+      },
+      "error": null
+    }
+  ]
+}

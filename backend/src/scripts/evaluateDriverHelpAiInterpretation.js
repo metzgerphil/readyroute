@@ -131,7 +131,7 @@ async function main() {
           conversation_context: {},
           candidate_records: candidates
         });
-        const interpretation = validateInterpretation(raw, candidates);
+        const interpretation = validateInterpretation(raw, candidates, undefined, testCase.utterance);
         const usage = estimateUsageCost(
           process.env.READYROUTE_DRIVER_HELP_MODEL,
           raw?.provider_metadata?.usage || {}
