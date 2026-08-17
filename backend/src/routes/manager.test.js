@@ -5094,7 +5094,7 @@ test('POST /manager/manager-users/invite returns a self-serve invite link', asyn
     assert.equal(insertedManagerUser.email, 'vlad@example.com');
     assert.equal(sentInvites.length, 1);
     assert.equal(sentInvites[0].to, 'vlad@example.com');
-    assert.match(sentInvites[0].inviteUrl, /mode=invite/);
+    assert.match(sentInvites[0].inviteUrl, /\?invite=/);
   } finally {
     await server.close();
   }
@@ -5164,7 +5164,7 @@ test('POST /manager/manager-users/invite falls back to a shareable link when inv
     const body = await response.json();
     assert.equal(body.email_delivery, 'failed');
     assert.match(body.message, /Email delivery failed/i);
-    assert.match(body.invite_url, /mode=invite/);
+    assert.match(body.invite_url, /\?invite=/);
     assert.equal(body.manager_user.email, 'ignacioservin94@yahoo.com');
     assert.equal(body.manager_user.status, 'pending_invite');
   } finally {
@@ -5550,7 +5550,7 @@ test('POST /manager/manager-users/:id/password-reset sends a manager reset link'
     assert.match(body.message, /Password reset email sent/i);
     assert.equal(sentResets.length, 1);
     assert.equal(sentResets[0].to, 'vladfed0801@gmail.com');
-    assert.match(sentResets[0].resetUrl, /\/reset-password\?token=/);
+    assert.match(sentResets[0].resetUrl, /\?reset=/);
   } finally {
     await server.close();
   }
@@ -5609,7 +5609,7 @@ test('POST /manager/manager-users/:id/password-reset falls back to a shareable l
     assert.equal(response.status, 200);
     const body = await response.json();
     assert.equal(body.email_delivery, 'not_configured');
-    assert.match(body.reset_url, /\/reset-password\?token=/);
+    assert.match(body.reset_url, /\?reset=/);
     assert.equal(body.manager_user.email, 'vladfed0801@gmail.com');
   } finally {
     await server.close();

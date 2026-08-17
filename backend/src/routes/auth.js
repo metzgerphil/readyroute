@@ -51,18 +51,22 @@ function createAuthRouter(options = {}) {
     );
   }
 
+  function getCompanyPortalBaseUrl() {
+    return process.env.RRA_COMPANY_PORTAL_URL || getManagerPortalBaseUrl();
+  }
+
   function getPasswordVersion(hash) {
     return crypto.createHash('sha256').update(String(hash || '')).digest('hex').slice(0, 16);
   }
 
   function buildPasswordResetUrl(token) {
-    const baseUrl = getManagerPortalBaseUrl().replace(/\/$/, '');
-    return `${baseUrl}/reset-password?token=${encodeURIComponent(token)}`;
+    const baseUrl = getCompanyPortalBaseUrl().replace(/\/$/, '');
+    return `${baseUrl}?reset=${encodeURIComponent(token)}`;
   }
 
   function buildManagerInviteUrl(token) {
-    const baseUrl = getManagerPortalBaseUrl().replace(/\/$/, '');
-    return `${baseUrl}/reset-password?token=${encodeURIComponent(token)}&mode=invite`;
+    const baseUrl = getCompanyPortalBaseUrl().replace(/\/$/, '');
+    return `${baseUrl}?invite=${encodeURIComponent(token)}`;
   }
 
   function buildTrialActivationUrl(token) {

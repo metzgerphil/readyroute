@@ -642,7 +642,7 @@ test('manager password reset request returns a reset URL in non-production', asy
 
   assert.equal(response.status, 200);
   assert.match(response.body.message, /password reset email sent/i);
-  assert.match(response.body.reset_url, /\/reset-password\?token=/);
+  assert.match(response.body.reset_url, /\?reset=/);
   assert.equal(sentEmails.length, 1);
   assert.equal(sentEmails[0].to, 'phillovesjoy@gmail.com');
   assert.equal(sentEmails[0].companyName, 'Bridge Transportation');
@@ -694,7 +694,7 @@ test('manager password reset ignores inactive duplicate manager users', async ()
   assert.equal(sentEmails.length, 1);
   assert.equal(sentEmails[0].to, 'phillovesjoy@gmail.com');
 
-  const token = new URL(response.body.reset_url).searchParams.get('token');
+  const token = new URL(response.body.reset_url).searchParams.get('reset');
   const tokenPayload = jwt.verify(token, 'test-secret');
   assert.equal(tokenPayload.manager_user_id, 'active-manager-user');
   assert.equal(tokenPayload.account_id, 'bridge-account');
@@ -772,7 +772,7 @@ test('manager password reset updates the password and invalidates the old one', 
     .send({ email: 'phillovesjoy@gmail.com' });
 
   const resetUrl = requestResetResponse.body.reset_url;
-  const token = new URL(resetUrl).searchParams.get('token');
+  const token = new URL(resetUrl).searchParams.get('reset');
   assert.ok(token);
 
   const resetResponse = await request(app)
@@ -871,7 +871,7 @@ test('manager password reset rejects short passwords', async () => {
     .send({ email: 'phillovesjoy@gmail.com' });
 
   const resetUrl = requestResetResponse.body.reset_url;
-  const token = new URL(resetUrl).searchParams.get('token');
+  const token = new URL(resetUrl).searchParams.get('reset');
 
   const resetResponse = await request(app)
     .post('/auth/manager/reset-password')
@@ -904,7 +904,7 @@ test('manager password reset updates manager_users passwords', async () => {
     .send({ email: 'vlad@example.com' });
 
   const resetUrl = requestResetResponse.body.reset_url;
-  const token = new URL(resetUrl).searchParams.get('token');
+  const token = new URL(resetUrl).searchParams.get('reset');
   assert.ok(token);
 
   const resetResponse = await request(app)

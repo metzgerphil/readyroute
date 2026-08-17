@@ -1,4 +1,4 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="utf-8">
@@ -67,6 +67,15 @@
         <button class="secondary" id="logout-button" type="button">Sign out</button>
       </div>
 
+      <nav class="portal-tabs" aria-label="Company portal sections">
+        <button class="active" data-view="overview" type="button">Overview</button>
+        <button data-view="drivers" type="button">Drivers</button>
+        <button data-view="managers" type="button">Managers</button>
+        <button data-view="billing" type="button">Billing</button>
+        <button data-view="settings" type="button">Password &amp; settings</button>
+      </nav>
+
+      <section class="portal-panel" data-panel="overview">
       <div class="summary-grid">
         <article class="card summary-card"><strong id="active-count">0</strong><span>Active drivers</span></article>
         <article class="card summary-card"><strong id="pending-count">0</strong><span>Invitations pending</span></article>
@@ -78,7 +87,10 @@
           <a href="mailto:info@readyroute.org">Contact ReadyRoute</a>
         </article>
       </div>
+      <article class="card welcome-card"><p class="eyebrow">Company access</p><h2>Everything your company needs for RRA</h2><p class="muted">Add authorized drivers, invite additional managers, update passwords, and review billing from this portal. ReadyRoute staff retain the detailed reporting needed for your monthly value email.</p></article>
+      </section>
 
+      <section class="portal-panel" data-panel="drivers" hidden>
       <div class="portal-grid">
         <section class="card">
           <div class="section-heading">
@@ -89,7 +101,7 @@
           <div class="driver-list" id="driver-list" aria-live="polite"></div>
         </section>
 
-        <aside class="card add-driver-card" id="add-driver-card" hidden>
+        <aside aria-label="Add a driver" class="card add-driver-card" id="add-driver-card" hidden>
           <div class="section-heading">
             <div><p class="eyebrow">New access</p><h2>Add a driver</h2></div>
             <button class="close-button" id="close-driver-form" aria-label="Close" type="button">×</button>
@@ -97,22 +109,68 @@
           <p class="muted">The driver will receive an email to choose a private password and username.</p>
           <form id="driver-form">
             <label for="driver-name">Full name</label>
-            <input id="driver-name" name="driver-name" required>
+            <input id="driver-name" name="driver-name" required type="text">
             <label for="driver-email">Email</label>
             <input id="driver-email" name="driver-email" required type="email">
             <label for="driver-username">Username <span class="optional">optional</span></label>
-            <input id="driver-username" name="driver-username" pattern="[A-Za-z0-9._-]{3,40}" placeholder="3–40 letters or numbers">
+            <input id="driver-username" name="driver-username" pattern="[A-Za-z0-9._-]{3,40}" placeholder="3–40 letters or numbers" type="text">
             <div class="message error" id="driver-form-error" role="alert" hidden></div>
             <button class="primary" id="add-driver-button" type="submit">Add and send invitation</button>
           </form>
         </aside>
       </div>
+      </section>
+
+      <section class="portal-panel" data-panel="managers" hidden>
+        <div class="portal-grid manager-grid">
+          <section class="card portal-section-card">
+            <div class="section-heading"><div><p class="eyebrow">Company access</p><h2>Managers</h2></div><button class="primary compact" id="open-manager-form" type="button">Add manager</button></div>
+            <p class="muted">Managers can add drivers, manage access, change billing details, and update their own password.</p>
+            <div class="message" id="managers-message" role="status" hidden></div>
+            <div class="message error" id="managers-error" role="alert" hidden></div>
+            <div class="driver-list" id="manager-list" aria-live="polite"></div>
+          </section>
+          <aside aria-label="Invite a manager" class="card add-driver-card" id="add-manager-card" hidden>
+            <div class="section-heading"><div><p class="eyebrow">New access</p><h2>Invite a manager</h2></div><button class="close-button" id="close-manager-form" aria-label="Close" type="button">×</button></div>
+            <form id="manager-form">
+              <label for="manager-name">Full name</label><input id="manager-name" required type="text">
+              <label for="manager-email">Email</label><input id="manager-email" required type="email">
+              <div class="message error" id="manager-form-error" role="alert" hidden></div>
+              <button class="primary" id="add-manager-button" type="submit">Send manager invitation</button>
+            </form>
+          </aside>
+        </div>
+      </section>
+
+      <section class="portal-panel" data-panel="billing" hidden>
+        <article class="card portal-section-card billing-card">
+          <div><p class="eyebrow">Account</p><h2 id="billing-title">Billing status</h2><p class="muted" id="billing-description">Loading your company billing status…</p></div>
+          <button class="primary compact" id="manage-billing-button" type="button" hidden>Manage payment and invoices</button>
+          <div class="message error" id="billing-error" role="alert" hidden></div>
+        </article>
+      </section>
+
+      <section class="portal-panel" data-panel="settings" hidden>
+        <div class="settings-grid">
+          <article class="card portal-section-card">
+            <p class="eyebrow">Security</p><h2>Change your password</h2><p class="muted">Update the password for the manager account currently signed in.</p>
+            <form id="password-form">
+              <label for="current-password">Current password</label><input autocomplete="current-password" id="current-password" required type="password">
+              <label for="new-password">New password</label><input autocomplete="new-password" id="new-password" minlength="10" required type="password">
+              <label for="confirm-new-password">Confirm new password</label><input autocomplete="new-password" id="confirm-new-password" minlength="10" required type="password">
+              <div class="message" id="password-message" role="status" hidden></div>
+              <button class="primary" id="change-password-button" type="submit">Update password</button>
+            </form>
+          </article>
+          <article class="card portal-section-card"><p class="eyebrow">Support</p><h2>Need help?</h2><p class="muted">Email ReadyRoute for company-access or account questions.</p><a class="support-action" href="mailto:info@readyroute.org">info@readyroute.org</a></article>
+        </div>
+      </section>
     </section>
   </main>
 
   <footer>
     <span>ReadyRoute Answers is an operational reference for trained drivers. It does not replace required training.</span>
-    <nav><a href="/privacy">Privacy</a><a href="/terms">Terms</a><a href="/account">Driver account deletion</a></nav>
+    <nav aria-label="Legal links"><a href="/privacy">Privacy</a><a href="/terms">Terms</a><a href="/account">Driver account deletion</a></nav>
   </footer>
   <script src="/portal.js" defer></script>
 </body>

@@ -813,7 +813,7 @@ test('POST /staff/accounts/:accountId/managers/:managerId/invite resends a pendi
     assert.equal(payload.email_delivery.delivered, true);
     assert.equal(payload.manager.access_status, 'invited');
     assert.equal(sentInvites[0].to, 'vlad@example.com');
-    assert.match(sentInvites[0].inviteUrl, /mode=invite/);
+    assert.match(sentInvites[0].inviteUrl, /\?invite=/);
   } finally {
     await server.close();
   }

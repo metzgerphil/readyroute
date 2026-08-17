@@ -445,7 +445,7 @@ function createBillingRouter(options = {}) {
       }
       const session = await getStripe().billingPortal.sessions.create({
         customer: account.stripe_customer_id,
-        return_url: process.env.STRIPE_PORTAL_RETURN_URL || 'https://portal.readyroute.org/settings/billing'
+        return_url: process.env.STRIPE_PORTAL_RETURN_URL || 'https://readyroute.org/portal?view=billing'
       });
       return res.status(201).json({ url: session.url });
     } catch (error) {

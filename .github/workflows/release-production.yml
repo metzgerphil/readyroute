@@ -202,6 +202,8 @@ jobs:
             STRIPE_ANNUAL_PRICE_ID=${{ vars.STRIPE_ANNUAL_PRICE_ID }}
             STRIPE_SIGNUP_ENABLED=${{ vars.STRIPE_SIGNUP_ENABLED || 'false' }}
             STRIPE_SIGNUP_RETURN_URL=${{ vars.STRIPE_SIGNUP_RETURN_URL || 'https://readyroute.org/signup' }}
+            RRA_COMPANY_PORTAL_URL=https://readyroute.org/portal
+            STRIPE_PORTAL_RETURN_URL=https://readyroute.org/portal?view=billing
             READYROUTE_LIVE_BILLING_APPROVED=${{ vars.READYROUTE_LIVE_BILLING_APPROVED || 'false' }}
             STRIPE_TAX_ENABLED=${{ vars.STRIPE_TAX_ENABLED || 'false' }}
             STRIPE_TAX_REGISTRATIONS_CONFIRMED=${{ vars.STRIPE_TAX_REGISTRATIONS_CONFIRMED || 'false' }}
