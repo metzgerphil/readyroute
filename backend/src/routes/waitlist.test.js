@@ -49,18 +49,7 @@ async function startTestServer(supabase, options = {}) {
   };
 }
 
-test('POST /waitlist/early-access stores signup details and automatically creates the company', async () => {
-  const onboarded = [];
-  const signup = {
-    id: 'signup-1',
-    name: 'Phillip',
-    email: 'phil@example.com',
-    company_csa: 'Ready Route CSA',
-    role: 'Owner',
-    driver_count: 12,
-    account_id: null,
-    billing_interval: 'annual'
-  };
+test('POST /waitlist/early-access stores company details without bypassing Stripe checkout', async () => {
   const supabase = new MockSupabase((query) => {
     assert.equal(query.table, 'early_access_signups');
     assert.equal(query.operation, 'upsert');
@@ -76,16 +65,9 @@ test('POST /waitlist/early-access stores signup details and automatically create
     assert.equal(query.payload.current_routing_tool, 'GroundCloud');
     assert.equal(query.payload.interested_in_beta, true);
     assert.equal(query.payload.billing_interval, 'annual');
-    return { data: signup, error: null };
+    return { data: { id: 'signup-1' }, error: null };
   });
-  const server = await startTestServer(supabase, {
-    companySignupOnboarding: {
-      onboardSignup: async (row) => {
-        onboarded.push(row);
-        return { account: { id: 'acct-1' }, already_onboarded: false, invitation: { email_delivery: 'sent' } };
-      }
-    }
-  });
+  const server = await startTestServer(supabase);
 
   try {
     const response = await fetch(`${server.baseUrl}/waitlist/early-access`, {
@@ -97,14 +79,7 @@ test('POST /waitlist/early-access stores signup details and automatically create
       })
     });
     assert.equal(response.status, 201);
-    assert.deepEqual(await response.json(), {
-      ok: true,
-      account_created: true,
-      account_id: 'acct-1',
-      already_onboarded: false,
-      invitation: { email_delivery: 'sent' }
-    });
-    assert.deepEqual(onboarded, [signup]);
+    assert.deepEqual(await response.json(), { ok: true, awaiting_payment: true });
   } finally {
     await server.close();
   }
@@ -112,9 +87,7 @@ test('POST /waitlist/early-access stores signup details and automatically create
 
 test('POST /waitlist/early-access validates required fields', async () => {
   const supabase = new MockSupabase(() => { throw new Error('Supabase should not be called for invalid payloads'); });
-  const server = await startTestServer(supabase, {
-    companySignupOnboarding: { onboardSignup: async () => { throw new Error('Onboarding should not run'); } }
-  });
+  const server = await startTestServer(supabase);
   try {
     const response = await fetch(`${server.baseUrl}/waitlist/early-access`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: '', email: 'bad-email' })
@@ -128,9 +101,7 @@ test('POST /waitlist/early-access validates required fields', async () => {
 
 test('POST /waitlist/early-access permits only owner or business contact roles', async () => {
   const supabase = new MockSupabase(() => { throw new Error('Supabase should not be called for a disallowed role'); });
-  const server = await startTestServer(supabase, {
-    companySignupOnboarding: { onboardSignup: async () => { throw new Error('Onboarding should not run'); } }
-  });
+  const server = await startTestServer(supabase);
   try {
     const response = await fetch(`${server.baseUrl}/waitlist/early-access`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -147,7 +118,6 @@ test('POST /waitlist/feedback sends contractor feedback to ReadyRoute', async ()
   const supabase = new MockSupabase(() => { throw new Error('Supabase should not be called for feedback emails'); });
   const sentFeedback = [];
   const server = await startTestServer(supabase, {
-    companySignupOnboarding: { onboardSignup: async () => ({}) },
     sendFeedbackEmail: async (payload) => {
       sentFeedback.push(payload);
       return { delivered: true, skipped: false, provider_id: 'email-1' };
@@ -176,7 +146,6 @@ test('POST /waitlist/feedback sends contractor feedback to ReadyRoute', async ()
 test('POST /waitlist/feedback validates required fields', async () => {
   const supabase = new MockSupabase(() => { throw new Error('Supabase should not be called for invalid feedback'); });
   const server = await startTestServer(supabase, {
-    companySignupOnboarding: { onboardSignup: async () => ({}) },
     sendFeedbackEmail: async () => { throw new Error('Email should not be sent for invalid feedback'); }
   });
   try {

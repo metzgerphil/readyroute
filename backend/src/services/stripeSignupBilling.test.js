@@ -98,6 +98,55 @@ test('prepareSignupPayment creates a customer and off-session SetupIntent withou
   assert.equal(calls[1].payload.metadata.billing_interval, 'annual');
 });
 
+test('createSignupCheckoutSession opens hosted Stripe setup and records the pending enrollment', async () => {
+  const updates = [];
+  let checkoutPayload;
+  const db = createDb((query) => {
+    if (query.table === 'early_access_signups' && query.operation === 'update') {
+      updates.push(query.payload);
+      return { data: null, error: null };
+    }
+    throw new Error(`Unexpected ${query.table}:${query.operation}`);
+  });
+  const stripe = {
+    customers: {
+      create: async () => ({ id: 'cus_checkout' }),
+      update: async () => { throw new Error('Existing customer should not be updated'); }
+    },
+    checkout: {
+      sessions: {
+        create: async (payload) => {
+          checkoutPayload = payload;
+          return { id: 'cs_test_signup', url: 'https://checkout.stripe.test/signup' };
+        }
+      }
+    }
+  };
+  const service = createStripeSignupBillingService({
+    supabase: db,
+    stripeClient: stripe,
+    monthlyPriceId: 'price_monthly_1000',
+    annualPriceId: 'price_annual_10000',
+    signupEnabled: true
+  });
+
+  const result = await service.createSignupCheckoutSession({
+    signup: { id: 'signup-1', email: 'owner@example.com', company_csa: 'RRA Company', stripe_customer_id: null },
+    requestId: '00000000-0000-4000-8000-000000000001',
+    ip: '127.0.0.1',
+    billingInterval: 'monthly',
+    successUrl: 'https://readyroute.org/signup?checkout=success',
+    cancelUrl: 'https://readyroute.org/signup?checkout=canceled'
+  });
+
+  assert.equal(result.checkout_url, 'https://checkout.stripe.test/signup');
+  assert.equal(checkoutPayload.mode, 'setup');
+  assert.equal(checkoutPayload.billing_address_collection, 'required');
+  assert.equal(checkoutPayload.metadata.readyroute_signup_id, 'signup-1');
+  assert.equal(updates[0].stripe_checkout_session_id, 'cs_test_signup');
+  assert.equal(updates[0].onboarding_status, 'pending_payment');
+});
+
 test('activateSubscription bills only active drivers and leaves Tax off by default', async () => {
   const updates = [];
   const db = createDb((query) => {

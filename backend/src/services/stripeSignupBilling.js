@@ -49,9 +49,11 @@ function createStripeSignupBillingService(options = {}) {
   const taxRegistrationsConfirmed = options.taxRegistrationsConfirmed ?? isEnabled(process.env.STRIPE_TAX_REGISTRATIONS_CONFIRMED);
 
   function getSignupConfig() {
+    const enabled = Boolean(signupEnabled && stripe && monthlyPriceId && annualPriceId);
     return {
-      enabled: Boolean(signupEnabled && stripe && publishableKey && monthlyPriceId && annualPriceId),
-      publishable_key: signupEnabled && stripe && publishableKey && monthlyPriceId && annualPriceId ? publishableKey : null,
+      enabled,
+      checkout_mode: 'hosted',
+      publishable_key: enabled && publishableKey ? publishableKey : null,
       unit_amount_cents: BILLING_INTERVALS.monthly.unit_amount_cents,
       prices: BILLING_INTERVALS,
       currency: 'usd',
@@ -59,6 +61,87 @@ function createStripeSignupBillingService(options = {}) {
       charges_begin_at_activation: true,
       live_billing_approved: Boolean(liveBillingApproved),
       automatic_tax_enabled: Boolean(taxEnabled && taxRegistrationsConfirmed)
+    };
+  }
+
+  async function createSignupCheckoutSession({ signup, requestId, ip, billingInterval, successUrl, cancelUrl }) {
+    if (!getSignupConfig().enabled) {
+      const error = new Error('Stripe signup is not enabled');
+      error.code = 'STRIPE_SIGNUP_DISABLED';
+      throw error;
+    }
+
+    const normalizedInterval = normalizeBillingInterval(billingInterval);
+    if (!normalizedInterval) {
+      const error = new Error('Choose monthly or annual billing.');
+      error.code = 'INVALID_BILLING_INTERVAL';
+      throw error;
+    }
+    if (!successUrl || !cancelUrl) {
+      throw new Error('Signup checkout return URLs are required');
+    }
+
+    let customerId = signup.stripe_customer_id;
+    const customerPayload = {
+      email: signup.email,
+      name: signup.company_csa,
+      metadata: { readyroute_signup_id: signup.id }
+    };
+    if (customerId) {
+      await stripe.customers.update(customerId, customerPayload);
+    } else {
+      const customer = await stripe.customers.create(customerPayload, {
+        idempotencyKey: `readyroute-signup-customer:${signup.id}`
+      });
+      customerId = customer.id;
+    }
+
+    const session = await stripe.checkout.sessions.create({
+      mode: 'setup',
+      customer: customerId,
+      billing_address_collection: 'required',
+      customer_update: { address: 'auto', name: 'auto' },
+      success_url: successUrl,
+      cancel_url: cancelUrl,
+      metadata: {
+        readyroute_signup_id: signup.id,
+        billing_policy_version: BILLING_POLICY_VERSION,
+        billing_interval: normalizedInterval
+      },
+      setup_intent_data: {
+        metadata: {
+          readyroute_signup_id: signup.id,
+          billing_policy_version: BILLING_POLICY_VERSION,
+          billing_interval: normalizedInterval
+        }
+      }
+    }, {
+      idempotencyKey: `readyroute-signup-checkout:${signup.id}:${requestId}`
+    });
+
+    const consentAt = new Date().toISOString();
+    const { error: updateError } = await supabase
+      .from('early_access_signups')
+      .update({
+        stripe_customer_id: customerId,
+        stripe_checkout_session_id: session.id,
+        billing_setup_status: 'processing',
+        onboarding_status: 'pending_payment',
+        billing_policy_version: BILLING_POLICY_VERSION,
+        billing_interval: normalizedInterval,
+        billing_consent_at: consentAt,
+        billing_consent_ip_hash: hashConsentIp(ip),
+        onboarding_error: null,
+        updated_at: consentAt
+      })
+      .eq('id', signup.id);
+    if (updateError) throw updateError;
+
+    return {
+      checkout_url: session.url,
+      checkout_session_id: session.id,
+      billing_policy_version: BILLING_POLICY_VERSION,
+      billing_interval: normalizedInterval
     };
   }
 
@@ -239,6 +322,7 @@ function createStripeSignupBillingService(options = {}) {
   return {
     activateSubscription,
     countActiveDrivers,
+    createSignupCheckoutSession,
     getSignupConfig,
     prepareSignupPayment
   };

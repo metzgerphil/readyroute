@@ -22,7 +22,7 @@
   <nav class="site-nav" aria-label="Signup navigation">
     <div class="container nav-inner">
       <a class="brand" href="/" aria-label="ReadyRoute home">ready<span>Route</span></a>
-      <div class="nav-actions"><a class="back-link" href="/">Back to ReadyRoute</a><a class="portal-link" href="https://portal.readyroute.org/login">Portal login</a></div>
+      <div class="nav-actions"><a class="back-link" href="/">Back to ReadyRoute</a><a class="portal-link" href="/portal">Company portal</a></div>
     </div>
   </nav>
   <main>
@@ -30,15 +30,15 @@
       <section class="intro" aria-labelledby="signup-title">
         <p class="eyebrow">Company signup</p>
         <h1 id="signup-title">Bring ReadyRoute to <span>your drivers.</span></h1>
-        <p class="intro-copy">Tell us about your company and primary administrator. We’ll create your ReadyRoute company account immediately and email your secure password link.</p>
+        <p class="intro-copy">Tell us about your company, continue to Stripe to save payment information securely, and receive your private Ready Route Answers sign-in link.</p>
         <div class="price-card">
           <div class="price-line"><strong>$10</strong><span>per driver monthly</span></div>
           <p>Or save with annual billing at $100 per driver per year.</p>
         </div>
         <ul class="benefits" aria-label="What happens after signup">
-          <li><span class="check">1</span><span>Your company workspace is created immediately.</span></li>
-          <li><span class="check">2</span><span>You configure staff and driver access.</span></li>
-          <li><span class="check">3</span><span>Your team begins using ReadyRoute.</span></li>
+          <li><span class="check">1</span><span>Enter company and administrator details.</span></li>
+          <li><span class="check">2</span><span>Save payment information securely with Stripe.</span></li>
+          <li><span class="check">3</span><span>Open your email and sign in to add drivers.</span></li>
         </ul>
       </section>
 
@@ -95,45 +95,28 @@
               <div class="estimate-copy"><strong id="estimate-label">Estimated monthly price</strong><span>Based on the active driver count above.</span></div>
               <div class="estimate-total" id="price-estimate">$0 <small>/ month</small></div>
             </div>
-            <section class="billing-fields" id="billing-fields" aria-labelledby="billing-title">
-              <div class="billing-heading"><strong id="billing-title">Billing information</strong><span>Your payment method is saved securely by Stripe. You are not charged until your ReadyRoute workspace is activated.</span></div>
-              <div class="form-grid">
-                <div class="field full"><label for="billing-legal-name">Legal company name <span class="required" aria-hidden="true">*</span></label><input id="billing-legal-name" name="billing_legal_name" autocomplete="organization"></div>
-                <div class="field full"><label for="billing-line1">Billing address <span class="required" aria-hidden="true">*</span></label><input id="billing-line1" name="billing_address_line1" autocomplete="billing address-line1"></div>
-                <div class="field full"><label for="billing-line2">Address line 2</label><input id="billing-line2" name="billing_address_line2" autocomplete="billing address-line2"></div>
-                <div class="field"><label for="billing-city">City <span class="required" aria-hidden="true">*</span></label><input id="billing-city" name="billing_address_city" autocomplete="billing address-level2"></div>
-                <div class="field"><label for="billing-state">State <span class="required" aria-hidden="true">*</span></label><input id="billing-state" name="billing_address_state" maxlength="2" autocomplete="billing address-level1" placeholder="CA"></div>
-                <div class="field"><label for="billing-postal">ZIP code <span class="required" aria-hidden="true">*</span></label><input id="billing-postal" name="billing_address_postal_code" inputmode="numeric" autocomplete="billing postal-code"></div>
-                <div class="field"><label for="billing-country">Country</label><select id="billing-country" name="billing_address_country" autocomplete="billing country"><option value="US">United States</option></select></div>
-              </div>
-              <label class="consent"><input id="billing-consent" name="billing_consent" type="checkbox"><span>I authorize ReadyRoute to save this payment method and, when my company workspace is activated, charge <strong>$10 per active driver monthly or $100 per active driver annually, according to the billing schedule selected above</strong>, plus any applicable tax. An active driver is a driver whose ReadyRoute access is turned on. Driver-count changes adjust future billing.</span></label>
-            </section>
-            <section class="payment-element-wrap" id="payment-element-wrap" aria-labelledby="payment-title">
-              <div class="billing-heading"><strong id="payment-title">Secure payment method</strong><span>Card and bank information goes directly to Stripe and is never stored by ReadyRoute.</span></div>
-              <div id="payment-element"></div>
-            </section>
-            <button class="submit" id="submit-button" type="submit">Submit company signup</button>
-            <p class="legal">By submitting, you agree that ReadyRoute may contact you about company setup. If secure payment setup is available, the billing authorization shown on this page also applies. See our <a href="/privacy">Privacy Policy</a> and <a href="/terms">Terms</a>.</p>
+            <label class="consent"><input id="billing-consent" name="billing_consent" required type="checkbox"><span>I authorize ReadyRoute to save a payment method through Stripe and, when billing is activated, charge <strong>$10 per active driver monthly or $100 per active driver annually</strong>, according to the schedule selected above, plus applicable tax. Driver-count changes adjust future billing.</span></label>
+            <button class="submit" id="submit-button" type="submit">Continue to secure Stripe checkout</button>
+            <p class="legal">Payment information is entered on Stripe’s secure website and is not stored by ReadyRoute. By continuing, you agree to our <a href="/privacy">Privacy Policy</a> and <a href="/terms">Terms</a>.</p>
             <p class="message error" id="signup-error" role="alert"></p>
           </form>
         </div>
 
         <div class="success-panel" id="signup-success" role="status" tabindex="-1">
           <div class="success-icon" aria-hidden="true">✓</div>
-          <h2>Your company is ready.</h2>
-          <p id="success-message">Thanks, <span id="success-name">we have your information</span>. We created your ReadyRoute company and sent a secure password link to <strong id="success-email"></strong>. If payment setup was available, your method has been saved securely and no charge has been made.</p>
+          <h2>Your RRA company account is ready.</h2>
+          <p id="success-copy">Stripe received your payment information securely. We sent a private Ready Route Answers sign-in link to <strong id="success-email"></strong>.</p>
           <ol class="next-steps">
-            <li><span>1</span><div><strong>Check your email</strong><p>Open the secure link and create your manager password.</p></div></li>
-            <li><span>2</span><div><strong>Add your drivers</strong><p>Sign in to the portal and create driver access.</p></div></li>
-            <li><span>3</span><div><strong>Begin using ReadyRoute</strong><p>Your drivers can start getting verified operational guidance.</p></div></li>
+            <li><span>1</span><div><strong>Open the email</strong><p>Create your password and sign in to the RRA company portal.</p></div></li>
+            <li><span>2</span><div><strong>Add authorized drivers</strong><p>Send each driver their private app invitation.</p></div></li>
+            <li><span>3</span><div><strong>Track RRA value</strong><p>Questions and outcomes are recorded for your monthly company report.</p></div></li>
           </ol>
-          <a class="home-button" href="/">Return to ReadyRoute</a>
+          <a class="home-button" href="/portal">Open company portal</a>
         </div>
       </section>
     </div>
   </main>
   <footer><div class="container footer-inner"><span>&copy; 2026 ReadyRoute. All rights reserved.</span><div class="footer-links"><a href="/privacy">Privacy</a><a href="/terms">Terms</a><a href="mailto:info@readyroute.org">Contact us</a></div></div></footer>
-  <script src="https://js.stripe.com/v3/"></script>
   <script>
     const form = document.getElementById('signup-form');
     const driversField = document.getElementById('drivers');
@@ -144,14 +127,7 @@
     const errorMessage = document.getElementById('signup-error');
     const formContent = document.getElementById('form-content');
     const successPanel = document.getElementById('signup-success');
-    const billingFields = document.getElementById('billing-fields');
-    const paymentElementWrap = document.getElementById('payment-element-wrap');
     let stripeConfig = {enabled:false};
-    let stripe = null;
-    let elements = null;
-    let paymentElement = null;
-    let paymentStage = 'details';
-    let submittedPayload = null;
 
     function getApiBase() {
       const host = window.location.hostname;
@@ -187,58 +163,51 @@
         name: formData.get('name'), email: formData.get('email'), phone: formData.get('phone'),
         company: formData.get('company'), role: formData.get('role'), drivers: formData.get('drivers'),
         billing_interval: formData.get('billing_interval'),
-        billing_legal_name: formData.get('billing_legal_name'),
-        billing_address_line1: formData.get('billing_address_line1'),
-        billing_address_line2: formData.get('billing_address_line2'),
-        billing_address_city: formData.get('billing_address_city'),
-        billing_address_state: formData.get('billing_address_state'),
-        billing_address_postal_code: formData.get('billing_address_postal_code'),
-        billing_address_country: formData.get('billing_address_country'),
         billing_consent: formData.get('billing_consent') === 'on',
         request_id: createRequestId(), source_page: window.location.href
       };
     }
 
-    function showSuccess(payload, onboarding = {}) {
-      document.getElementById('success-name').textContent = String(payload.name).split(/\s+/)[0] || 'we have your information';
-      document.getElementById('success-email').textContent = payload.email;
-      const delivery = onboarding.invitation?.email_delivery;
-      if (delivery === 'not_required') {
-        document.getElementById('success-message').textContent = `Your ReadyRoute company is ready. ${payload.email} can sign in with its existing ReadyRoute password. No charge has been made.`;
-      } else if (delivery === 'already_created') {
-        document.getElementById('success-message').textContent = `This ReadyRoute company was already created for ${payload.email}. Use the password email previously sent, or sign in if your password is already set. No charge has been made.`;
-      } else if (delivery && delivery !== 'sent') {
-        document.getElementById('success-message').textContent = `Your ReadyRoute company was created, but we could not send the password email. Contact Ready Route support for a new secure link. No charge has been made.`;
+    function showSuccess(payload = {}) {
+      if (payload.email_delivered === false) {
+        successPanel.querySelector('h2').textContent = 'Your RRA company account is ready — email help needed.';
+        document.getElementById('success-copy').innerHTML =
+          'Your account was created, but we could not deliver the sign-in email. Please contact <a href="mailto:info@readyroute.org">info@readyroute.org</a> and we will send your access link.';
+      } else {
+        document.getElementById('success-email').textContent = payload.email || 'your company-contact email';
       }
       formContent.style.display = 'none';
       successPanel.classList.add('show');
       successPanel.focus();
     }
 
-    async function createCompanyAccount(payload) {
-      const response = await fetch(`${getApiBase()}/waitlist/early-access`, {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
-      const result = await response.json().catch(() => ({}));
-      if (!response.ok) throw new Error(result.error || 'We could not create your Ready Route company. Please try again.');
-      return result;
-    }
-
-    async function finishReturnedPayment() {
-      const params = new URLSearchParams(window.location.search);
-      if (params.get('payment') !== 'complete') return;
-      const savedPayload = sessionStorage.getItem('readyroutePendingSignup');
-      if (!savedPayload) return;
-      try {
-        const payload = JSON.parse(savedPayload);
-        submitButton.disabled = true;
-        submitButton.textContent = 'Creating company…';
-        const onboarding = await createCompanyAccount(payload);
-        sessionStorage.removeItem('readyroutePendingSignup');
-        showSuccess(payload, onboarding);
-      } catch (error) {
-        errorMessage.textContent = error.message || 'We could not finish creating your company. Please try again.';
+    async function completeReturnedCheckout() {
+      const parameters = new URLSearchParams(window.location.search);
+      const checkoutState = parameters.get('checkout');
+      const sessionId = parameters.get('session_id');
+      if (checkoutState === 'canceled') {
+        errorMessage.textContent = 'Stripe checkout was canceled. Your company account has not been opened.';
         errorMessage.classList.add('show');
-      } finally {
-        submitButton.disabled = false;
+        return;
+      }
+      if (checkoutState !== 'success' || !sessionId) return;
+      formContent.style.display = 'block';
+      form.style.display = 'none';
+      document.getElementById('form-title').textContent = 'Finishing your company setup…';
+      try {
+        const response = await fetch(`${getApiBase()}/billing/signup/complete`, {
+          method: 'POST',
+          headers: {'Content-Type':'application/json'},
+          body: JSON.stringify({session_id: sessionId})
+        });
+        const result = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(result.error || 'Company setup could not be completed.');
+        showSuccess(result);
+        window.history.replaceState({}, '', '/signup?checkout=complete');
+      } catch (error) {
+        form.style.display = 'block';
+        errorMessage.textContent = error.message || 'Payment was received, but company setup needs attention. Email info@readyroute.org.';
+        errorMessage.classList.add('show');
       }
     }
 
@@ -247,12 +216,22 @@
       .then((config) => {
         stripeConfig = config;
         updateEstimate();
-        if (!config.enabled) return;
-        billingFields.classList.add('show');
-        billingFields.querySelectorAll('input,select').forEach((field) => { field.required = field.id !== 'billing-line2'; });
-        submitButton.textContent = 'Continue to secure payment';
+        if (!config.enabled && !new URLSearchParams(window.location.search).get('session_id')) {
+          submitButton.disabled = true;
+          submitButton.textContent = 'Secure enrollment opening soon';
+          errorMessage.innerHTML = 'Online enrollment is not available yet. Email <a href="mailto:info@readyroute.org">info@readyroute.org</a> and we will help open your RRA company account.';
+          errorMessage.classList.add('show');
+        }
       })
-      .catch(() => { stripeConfig = {enabled:false}; });
+      .catch(() => {
+        stripeConfig = {enabled:false};
+        submitButton.disabled = true;
+        submitButton.textContent = 'Secure enrollment opening soon';
+        errorMessage.innerHTML = 'Online enrollment is not available yet. Email <a href="mailto:info@readyroute.org">info@readyroute.org</a> and we will help open your RRA company account.';
+        errorMessage.classList.add('show');
+      });
+
+    completeReturnedCheckout();
 
     form.addEventListener('submit', async (event) => {
       event.preventDefault();
@@ -261,66 +240,27 @@
       if (!form.reportValidity()) return;
       const formData = new FormData(form);
       if (formData.get('website')) return;
-      const payload = submittedPayload || buildPayload();
+      const payload = buildPayload();
 
       submitButton.disabled = true;
-      submitButton.textContent = 'Submitting signup…';
+      submitButton.textContent = 'Opening Stripe…';
 
       try {
         if (!stripeConfig.enabled) {
-          const onboarding = await createCompanyAccount(payload);
-          showSuccess(payload, onboarding);
-          return;
+          throw new Error('Secure company enrollment is not available yet. Please email info@readyroute.org.');
         }
-
-        if (paymentStage === 'details') {
-          const response = await fetch(`${getApiBase()}/billing/signup/setup-intent`, {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
-          const result = await response.json().catch(() => ({}));
-          if (!response.ok) throw new Error(result.error || 'We could not prepare secure payment setup.');
-          submittedPayload = payload;
-          stripe = Stripe(result.publishable_key);
-          elements = stripe.elements({clientSecret:result.client_secret,appearance:{theme:'stripe',variables:{colorPrimary:'#ff6200',colorText:'#071d2b',borderRadius:'12px'}}});
-          paymentElement = elements.create('payment', {layout:'tabs'});
-          paymentElement.mount('#payment-element');
-          paymentElementWrap.classList.add('show');
-          form.querySelectorAll('.form-grid input,.form-grid select,#billing-consent').forEach((field) => { field.disabled = true; field.classList.add('locked-field'); });
-          paymentStage = 'payment';
-          submitButton.textContent = 'Save payment method and sign up';
-          paymentElementWrap.scrollIntoView({behavior:'smooth',block:'center'});
-          return;
-        }
-
-        const submission = await elements.submit();
-        if (submission.error) throw new Error(submission.error.message);
-        sessionStorage.setItem('readyroutePendingSignup', JSON.stringify({
-          name: payload.name,
-          email: payload.email,
-          phone: payload.phone,
-          company: payload.company,
-          role: payload.role,
-          drivers: payload.drivers,
-          billing_interval: payload.billing_interval,
-          source_page: payload.source_page
-        }));
-        const confirmation = await stripe.confirmSetup({elements,redirect:'if_required',confirmParams:{return_url:`${window.location.origin}/signup?payment=complete`}});
-        if (confirmation.error) throw new Error(confirmation.error.message);
-        if (!confirmation.setupIntent || confirmation.setupIntent.status !== 'succeeded') {
-          throw new Error('Stripe is still processing the payment method. Please wait and try again.');
-        }
-        const onboarding = await createCompanyAccount(payload);
-        sessionStorage.removeItem('readyroutePendingSignup');
-        showSuccess(payload, onboarding);
+        const response = await fetch(`${getApiBase()}/billing/signup/checkout-session`, {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
+        const result = await response.json().catch(() => ({}));
+        if (!response.ok || !result.checkout_url) throw new Error(result.error || 'We could not open secure Stripe checkout.');
+        window.location.assign(result.checkout_url);
       } catch (error) {
         errorMessage.textContent = error.message || 'We could not save your signup. Please try again.';
         errorMessage.classList.add('show');
       } finally {
         submitButton.disabled = false;
-        submitButton.textContent = stripeConfig.enabled
-          ? paymentStage === 'payment' ? 'Save payment method and sign up' : 'Continue to secure payment'
-          : 'Submit company signup';
+        submitButton.textContent = stripeConfig.enabled ? 'Continue to secure Stripe checkout' : 'Secure enrollment opening soon';
       }
     });
-    finishReturnedPayment();
   </script>
 </body>
 </html>

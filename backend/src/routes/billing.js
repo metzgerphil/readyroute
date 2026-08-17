@@ -1,9 +1,13 @@
 const express = require('express');
 const Stripe = require('stripe');
+const bcrypt = require('bcrypt');
+const crypto = require('crypto');
+const jwt = require('jsonwebtoken');
 
 const defaultSupabase = require('../lib/supabase');
 const { requireManager: defaultRequireManager } = require('../middleware/auth');
 const { createBillingService } = require('../services/billing');
+const { sendRraCompanyReadyEmail: defaultSendRraCompanyReadyEmail } = require('../services/managerInviteEmail');
 const { buildSignupPayload } = require('./waitlist');
 const {
   createStripeSignupBillingService,
@@ -39,6 +43,9 @@ function createBillingRouter(options = {}) {
     stripeAnnualPriceId: options.stripeAnnualPriceId
   });
   const webhookSecret = options.webhookSecret || process.env.STRIPE_WEBHOOK_SECRET;
+  const jwtSecret = options.jwtSecret || process.env.JWT_SECRET;
+  const now = options.now || (() => new Date());
+  const sendRraCompanyReadyEmail = options.sendRraCompanyReadyEmail || defaultSendRraCompanyReadyEmail;
   const publicFormLimiter = options.publicFormLimiter || ((_req, _res, next) => next());
   const signupBillingService = createStripeSignupBillingService({
     supabase,
@@ -57,12 +64,281 @@ function createBillingRouter(options = {}) {
     return getStripeClient(stripeClient);
   }
 
+  function getSignupReturnBaseUrl() {
+    return String(options.signupReturnUrl || process.env.STRIPE_SIGNUP_RETURN_URL || 'https://readyroute.org/signup').replace(/[?#].*$/, '');
+  }
+
+  function buildRraManagerAccessUrl({ accountId, manager, needsPassword }) {
+    if (!needsPassword) return 'https://readyroute.org/portal';
+    if (!jwtSecret) throw new Error('Manager invite signing is not configured');
+    const token = jwt.sign({
+      account_id: accountId,
+      manager_user_id: manager.id,
+      email: manager.email,
+      purpose: 'manager_invite'
+    }, jwtSecret, { expiresIn: '7d' });
+    return `https://readyroute.org/portal?invite=${encodeURIComponent(token)}`;
+  }
+
+  async function finalizeSignupCheckout(sessionOrId) {
+    const stripe = getStripe();
+    const session = typeof sessionOrId === 'string'
+      ? await stripe.checkout.sessions.retrieve(sessionOrId, { expand: ['setup_intent', 'setup_intent.payment_method'] })
+      : sessionOrId;
+    if (!session || session.mode !== 'setup' || session.status !== 'complete') {
+      const error = new Error('Stripe checkout is not complete yet.');
+      error.code = 'CHECKOUT_INCOMPLETE';
+      throw error;
+    }
+
+    const signupId = String(session.metadata?.readyroute_signup_id || '').trim();
+    if (!signupId) throw new Error('Stripe checkout is missing the ReadyRoute signup reference');
+    const customerId = typeof session.customer === 'string' ? session.customer : session.customer?.id;
+    let setupIntent = session.setup_intent;
+    if (typeof setupIntent === 'string') {
+      setupIntent = await stripe.setupIntents.retrieve(setupIntent, { expand: ['payment_method'] });
+    }
+    const paymentMethodId = typeof setupIntent?.payment_method === 'string'
+      ? setupIntent.payment_method
+      : setupIntent?.payment_method?.id || null;
+    if (!customerId || !paymentMethodId) throw new Error('Stripe checkout did not return a saved payment method');
+
+    const { data: signup, error: signupError } = await supabase
+      .from('early_access_signups')
+      .select('id, name, email, phone_number, company_csa, role, driver_count, billing_interval, billing_policy_version, billing_consent_at, account_id, onboarding_status')
+      .eq('id', signupId)
+      .maybeSingle();
+    if (signupError) throw signupError;
+    if (!signup) throw new Error('ReadyRoute signup not found');
+
+    const timestamp = now().toISOString();
+    const setupUpdate = await supabase
+      .from('early_access_signups')
+      .update({
+        stripe_customer_id: customerId,
+        stripe_checkout_session_id: session.id,
+        stripe_setup_intent_id: setupIntent?.id || null,
+        stripe_payment_method_id: paymentMethodId,
+        billing_setup_status: 'succeeded',
+        onboarding_status: signup.account_id ? signup.onboarding_status : 'payment_complete',
+        onboarding_error: null,
+        updated_at: timestamp
+      })
+      .eq('id', signup.id);
+    if (setupUpdate.error) throw setupUpdate.error;
+
+    let account = null;
+    if (signup.account_id) {
+      const accountLookup = await supabase.from('accounts').select('id, company_name').eq('id', signup.account_id).maybeSingle();
+      if (accountLookup.error) throw accountLookup.error;
+      account = accountLookup.data;
+    }
+    if (!account) {
+      const customerLookup = await supabase.from('accounts').select('id, company_name').eq('stripe_customer_id', customerId).maybeSingle();
+      if (customerLookup.error) throw customerLookup.error;
+      account = customerLookup.data;
+    }
+
+    let manager = null;
+    let needsPassword = true;
+    if (!account) {
+      const existingManager = await supabase
+        .from('manager_users')
+        .select('password_hash')
+        .eq('email', signup.email)
+        .eq('is_active', true)
+        .limit(1)
+        .maybeSingle();
+      if (existingManager.error) throw existingManager.error;
+      const inaccessiblePasswordHash = await bcrypt.hash(crypto.randomBytes(32).toString('hex'), 10);
+      const accountInsert = await supabase
+        .from('accounts')
+        .insert({
+          company_name: signup.company_csa,
+          manager_email: signup.email,
+          manager_password_hash: inaccessiblePasswordHash,
+          vehicle_count: 0,
+          plan: 'starter',
+          subscription_status: 'incomplete',
+          stripe_customer_id: customerId,
+          stripe_default_payment_method_id: paymentMethodId,
+          billing_setup_status: 'succeeded',
+          billing_activation_status: 'ready',
+          billing_access_status: 'not_provisioned',
+          billing_interval: signup.billing_interval || 'monthly',
+          billing_policy_version: signup.billing_policy_version || null,
+          billing_consent_at: signup.billing_consent_at || null,
+          rra_billing_treatment: 'standard'
+        })
+        .select('id, company_name')
+        .single();
+      if (accountInsert.error || !accountInsert.data) throw accountInsert.error || new Error('Company account was not created');
+      account = accountInsert.data;
+      needsPassword = !existingManager.data?.password_hash;
+      const managerInsert = await supabase
+        .from('manager_users')
+        .insert({
+          account_id: account.id,
+          email: signup.email,
+          full_name: signup.name,
+          password_hash: existingManager.data?.password_hash || null,
+          is_active: true,
+          invited_at: timestamp,
+          accepted_at: needsPassword ? null : timestamp
+        })
+        .select('id, email, full_name, password_hash')
+        .single();
+      if (managerInsert.error || !managerInsert.data) {
+        await supabase.from('accounts').delete().eq('id', account.id);
+        throw managerInsert.error || new Error('Company manager was not created');
+      }
+      manager = managerInsert.data;
+      const profileResult = await supabase.from('account_internal_profiles').upsert({
+        account_id: account.id,
+        lifecycle_status: 'onboarding',
+        onboarding_stage: 'manager_invited',
+        updated_at: timestamp
+      }, { onConflict: 'account_id' });
+      if (profileResult.error) throw profileResult.error;
+      const signupLink = await supabase.from('early_access_signups').update({
+        account_id: account.id,
+        onboarding_status: 'provisioned',
+        updated_at: timestamp
+      }).eq('id', signup.id);
+      if (signupLink.error) throw signupLink.error;
+    } else {
+      const managerLookup = await supabase
+        .from('manager_users')
+        .select('id, email, full_name, password_hash')
+        .eq('account_id', account.id)
+        .eq('email', signup.email)
+        .maybeSingle();
+      if (managerLookup.error) throw managerLookup.error;
+      manager = managerLookup.data;
+      if (!manager) throw new Error('ReadyRoute manager account not found');
+      needsPassword = !manager.password_hash;
+
+      if (!signup.account_id) {
+        const signupLink = await supabase.from('early_access_signups').update({
+          account_id: account.id,
+          onboarding_status: 'provisioned',
+          onboarding_error: null,
+          updated_at: timestamp
+        }).eq('id', signup.id);
+        if (signupLink.error) throw signupLink.error;
+        signup.account_id = account.id;
+        signup.onboarding_status = 'provisioned';
+      }
+    }
+
+    let delivery = { delivered: signup.onboarding_status === 'email_sent', skipped: signup.onboarding_status === 'email_sent' };
+    if (signup.onboarding_status !== 'email_sent') {
+      const accessUrl = buildRraManagerAccessUrl({ accountId: account.id, manager, needsPassword });
+      try {
+        delivery = await sendRraCompanyReadyEmail({
+          to: manager.email,
+          fullName: manager.full_name,
+          companyName: account.company_name,
+          accessUrl,
+          needsPassword
+        });
+        const delivered = Boolean(delivery?.delivered);
+        await supabase.from('early_access_signups').update({
+          onboarding_status: delivered ? 'email_sent' : 'email_failed',
+          onboarding_invite_sent_at: delivered ? timestamp : null,
+          onboarding_email_provider_id: delivery?.provider_id || null,
+          onboarding_error: delivered ? null : delivery?.reason || 'Email was not accepted for delivery',
+          updated_at: timestamp
+        }).eq('id', signup.id);
+      } catch (emailError) {
+        await supabase.from('early_access_signups').update({
+          onboarding_status: 'email_failed',
+          onboarding_error: String(emailError.message || emailError).slice(0, 1000),
+          updated_at: timestamp
+        }).eq('id', signup.id);
+        delivery = { delivered: false, skipped: false };
+      }
+    }
+
+    return {
+      ok: true,
+      account_id: account.id,
+      company_name: account.company_name,
+      email: manager.email,
+      onboarding_status: delivery.delivered ? 'email_sent' : 'email_failed',
+      email_delivered: Boolean(delivery.delivered)
+    };
+  }
+
   function getRequestedRouteCommitment(body = {}) {
     return Number(body.route_count ?? body.routes ?? body.vehicle_count);
   }
 
   router.get('/signup/config', (_req, res) => {
     return res.status(200).json(signupBillingService.getSignupConfig());
+  });
+
+  router.post('/signup/checkout-session', express.json(), publicFormLimiter, async (req, res) => {
+    const config = signupBillingService.getSignupConfig();
+    if (!config.enabled) {
+      return res.status(503).json({ error: 'Secure company enrollment is not available yet.', code: 'STRIPE_SIGNUP_DISABLED' });
+    }
+    const { payload, error: signupError } = buildSignupPayload(req.body, req);
+    if (signupError) return res.status(400).json({ error: signupError });
+    if (!payload.company_csa || !payload.phone_number || !payload.role || !Number.isInteger(payload.driver_count) || payload.driver_count < 1) {
+      return res.status(400).json({ error: 'Company, phone, role, and at least one expected active driver are required.' });
+    }
+    if (!['owner', 'business contact'].includes(String(payload.role).toLowerCase())) {
+      return res.status(400).json({ error: 'Company signup must be completed by an owner or authorized business contact.' });
+    }
+    if (req.body?.billing_consent !== true) {
+      return res.status(400).json({ error: 'Billing authorization is required before opening secure checkout.' });
+    }
+    const requestId = String(req.body?.request_id || '').trim();
+    if (!/^[0-9a-f-]{36}$/i.test(requestId)) {
+      return res.status(400).json({ error: 'A valid signup request ID is required.' });
+    }
+    const billingInterval = normalizeBillingInterval(req.body?.billing_interval);
+    if (!billingInterval) return res.status(400).json({ error: 'Choose monthly or annual billing.' });
+
+    try {
+      const signupRecord = { ...payload, billing_interval: billingInterval, onboarding_status: 'pending_payment' };
+      const { data: signup, error: upsertError } = await supabase
+        .from('early_access_signups')
+        .upsert(signupRecord, { onConflict: 'email' })
+        .select('id, name, email, company_csa, stripe_customer_id')
+        .single();
+      if (upsertError || !signup) throw upsertError || new Error('Signup was not saved');
+      const returnBase = getSignupReturnBaseUrl();
+      const checkout = await signupBillingService.createSignupCheckoutSession({
+        signup,
+        requestId,
+        ip: req.ip,
+        billingInterval,
+        successUrl: `${returnBase}?checkout=success&session_id={CHECKOUT_SESSION_ID}`,
+        cancelUrl: `${returnBase}?checkout=canceled`
+      });
+      return res.status(201).json(checkout);
+    } catch (error) {
+      console.error('Hosted Stripe signup checkout failed:', error);
+      return res.status(500).json({ error: 'Unable to open secure Stripe checkout.' });
+    }
+  });
+
+  router.post('/signup/complete', express.json(), publicFormLimiter, async (req, res) => {
+    const sessionId = String(req.body?.session_id || '').trim();
+    if (!/^cs_[A-Za-z0-9_]+$/.test(sessionId)) {
+      return res.status(400).json({ error: 'A valid Stripe checkout session is required.' });
+    }
+    try {
+      return res.status(200).json(await finalizeSignupCheckout(sessionId));
+    } catch (error) {
+      if (error.code === 'CHECKOUT_INCOMPLETE') {
+        return res.status(409).json({ error: error.message });
+      }
+      console.error('Ready Route Answers signup completion failed:', error);
+      return res.status(500).json({ error: 'Payment was received, but company setup needs attention. Contact info@readyroute.org.' });
+    }
   });
 
   router.get('/subscription-summary', requireManager, async (req, res) => {
@@ -253,6 +529,10 @@ function createBillingRouter(options = {}) {
       }
       if (eventRecord.error) {
         throw eventRecord.error;
+      }
+
+      if (event.type === 'checkout.session.completed' && object.mode === 'setup' && object.metadata?.readyroute_signup_id) {
+        await finalizeSignupCheckout(object);
       }
 
       if (event.type === 'setup_intent.succeeded') {

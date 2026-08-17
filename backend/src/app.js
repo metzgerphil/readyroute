@@ -119,6 +119,8 @@ function createApp(options = {}) {
   });
   const billingRouter = createBillingRouter({
     supabase: options.supabase,
+    jwtSecret: options.jwtSecret,
+    now: options.now,
     requireManager,
     stripeClient: options.stripeClient,
     webhookSecret: options.webhookSecret,
@@ -130,6 +132,8 @@ function createApp(options = {}) {
     liveBillingApproved: options.liveBillingApproved,
     stripeTaxEnabled: options.stripeTaxEnabled,
     stripeTaxRegistrationsConfirmed: options.stripeTaxRegistrationsConfirmed,
+    signupReturnUrl: options.signupReturnUrl,
+    sendRraCompanyReadyEmail: options.sendRraCompanyReadyEmail,
     publicFormLimiter: rateLimiters.publicForm
   });
   const requireActiveSubscription = options.enforceBilling === false || (Boolean(options.supabase) && options.enforceBilling !== true)
@@ -204,15 +208,7 @@ function createApp(options = {}) {
     stripeClient: options.stripeClient
   });
   const waitlistRouter = options.supabase
-    ? createWaitlistRouter({
-        supabase: options.supabase,
-        jwtSecret: options.jwtSecret,
-        now: options.now,
-        managerPortalUrl: options.managerPortalUrl,
-        sendFeedbackEmail: options.sendFeedbackEmail,
-        sendManagerInviteEmail: options.sendManagerInviteEmail,
-        companyOnboarding: options.companySignupOnboarding
-      })
+    ? createWaitlistRouter({ supabase: options.supabase, sendFeedbackEmail: options.sendFeedbackEmail })
     : waitlistRoutes;
   const supportRouter = options.supabase || options.jwtSecret
     ? createSupportRouter({
