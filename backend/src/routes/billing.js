@@ -288,6 +288,9 @@ function createBillingRouter(options = {}) {
     if (!payload.company_csa || !payload.phone_number || !payload.role || !Number.isInteger(payload.driver_count) || payload.driver_count < 1) {
       return res.status(400).json({ error: 'Company, phone, role, and at least one expected active driver are required.' });
     }
+    if (!['owner', 'business contact'].includes(String(payload.role).toLowerCase())) {
+      return res.status(400).json({ error: 'Company signup must be completed by an owner or authorized business contact.' });
+    }
     if (req.body?.billing_consent !== true) {
       return res.status(400).json({ error: 'Billing authorization is required before opening secure checkout.' });
     }

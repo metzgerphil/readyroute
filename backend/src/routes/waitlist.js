@@ -54,6 +54,7 @@ function buildSignupPayload(body = {}, req) {
   const routeCount = normalizeInteger(body.routes ?? body.route_count);
   const driverCount = normalizeInteger(body.drivers ?? body.driver_count);
   const csaCount = normalizeInteger(body.csas ?? body.csa_count);
+  const requestedBillingInterval = String(body.billing_interval || 'monthly').trim().toLowerCase();
 
   if ((body.routes ?? body.route_count) && routeCount === null) {
     return { error: 'Number of routes must be a whole number.' };
@@ -79,6 +80,7 @@ function buildSignupPayload(body = {}, req) {
       csa_count: csaCount,
       current_routing_tool: normalizeText(body.tool ?? body.current_routing_tool, 160),
       interested_in_beta: normalizeBetaInterest(body.beta ?? body.interested_in_beta),
+      billing_interval: ['monthly', 'annual'].includes(requestedBillingInterval) ? requestedBillingInterval : 'monthly',
       source_page: normalizeText(body.source_page, 500),
       user_agent: normalizeText(req.get('user-agent'), 500),
       updated_at: new Date().toISOString()
@@ -133,6 +135,10 @@ function createWaitlistRouter(options = {}) {
         return res.status(400).json({ error });
       }
 
+      if (!payload.company_csa || !payload.phone_number || !['owner', 'business contact'].includes(String(payload.role || '').toLowerCase()) || !Number.isInteger(payload.driver_count) || payload.driver_count < 1) {
+        return res.status(400).json({ error: 'Company, phone, Owner or Business contact role, and at least one expected active driver are required.' });
+      }
+
       const { error: upsertError } = await supabase
         .from('early_access_signups')
         .upsert(payload, { onConflict: 'email' })
@@ -144,10 +150,10 @@ function createWaitlistRouter(options = {}) {
         return res.status(500).json({ error: 'Unable to save early access signup.' });
       }
 
-      return res.status(201).json({ ok: true });
+      return res.status(201).json({ ok: true, awaiting_payment: true });
     } catch (error) {
       console.error('Early access endpoint failed:', error);
-      return res.status(500).json({ error: 'Unable to save early access signup.' });
+      return res.status(500).json({ error: 'Unable to save company details.' });
     }
   });
 

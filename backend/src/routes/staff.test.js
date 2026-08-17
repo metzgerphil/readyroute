@@ -834,6 +834,19 @@ test('GET /staff/accounts returns CRM account summaries for staff', async () => 
             stripe_customer_id: 'cus_123',
             stripe_subscription_id: 'sub_123',
             created_at: '2026-07-01T12:00:00.000Z'
+          },
+          {
+            id: 'acct-smoke',
+            company_name: 'Smoke Test ReadyRoute Account',
+            manager_email: 'production-smoke@readyroute.test',
+            subscription_status: 'smoke_test',
+            created_at: '2026-07-01T12:00:00.000Z'
+          },
+          {
+            id: 'acct-review',
+            company_name: 'ReadyRoute App Review',
+            subscription_status: 'app_review',
+            created_at: '2026-07-01T12:00:00.000Z'
           }
         ],
         error: null
