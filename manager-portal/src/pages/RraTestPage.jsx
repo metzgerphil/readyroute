@@ -55,10 +55,11 @@ async function copyTextToClipboard(text) {
   document.body.removeChild(textArea);
 }
 
-export default function RraTestPage() {
+export default function RraTestPage({ apiBase = '/manager/driver-help', allowFeedback = true }) {
   const [question, setQuestion] = useState('');
   const [situationQuestion, setSituationQuestion] = useState('');
   const [sessionId, setSessionId] = useState(null);
+  const [sessionContext, setSessionContext] = useState(null);
   const [result, setResult] = useState(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [showMore, setShowMore] = useState(false);
@@ -86,12 +87,14 @@ export default function RraTestPage() {
     setFeedback(null);
     setShowMore(false);
     try {
-      const response = await api.post('/manager/driver-help/query', {
+      const response = await api.post(`${apiBase}/query`, {
         question: nextQuestion,
-        ...(sessionId ? { session_id: sessionId } : {})
+        ...(sessionId ? { session_id: sessionId } : {}),
+        ...(sessionContext ? { session_context: sessionContext } : {})
       });
       setResult(response.data || null);
       setSessionId(response.data?.session_id || sessionId);
+      setSessionContext(response.data?.session_context || sessionContext);
       setTestHistory((entries) => appendRraTestLogEntry(
         entries,
         buildRraTestLogEntry(nextQuestion, response.data || {})
@@ -109,7 +112,7 @@ export default function RraTestPage() {
     if (!result?.interaction_id || feedback || isSubmitting) return;
     setFeedback(rating);
     try {
-      await api.post(`/manager/driver-help/interactions/${result.interaction_id}/feedback`, { rating });
+      await api.post(`${apiBase}/interactions/${result.interaction_id}/feedback`, { rating });
     } catch {
       setFeedback(null);
       setError('Feedback could not be saved. The test answer is still available.');
@@ -120,6 +123,7 @@ export default function RraTestPage() {
     setQuestion('');
     setSituationQuestion('');
     setSessionId(null);
+    setSessionContext(null);
     setResult(null);
     setShowMore(false);
     setFeedback(null);
@@ -224,11 +228,11 @@ export default function RraTestPage() {
                 </div>
               ) : null}
 
-            <div className="rra-feedback-row">
+            {allowFeedback && result.interaction_id ? <div className="rra-feedback-row">
               <span>Was this the right driver answer?</span>
               <button className={feedback === 'up' ? 'selected' : ''} disabled={Boolean(feedback)} onClick={() => sendFeedback('up')} type="button">Yes</button>
               <button className={feedback === 'down' ? 'selected' : ''} disabled={Boolean(feedback)} onClick={() => sendFeedback('down')} type="button">No</button>
-            </div>
+            </div> : null}
           </section>
 
           <section className="page-card rra-shadow-card">

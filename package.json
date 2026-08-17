@@ -9,6 +9,7 @@
     "knowledge:gold-gate": "npm --prefix backend run knowledge:gold-gate",
     "knowledge:gate": "npm run knowledge:release && npm run knowledge:gold-gate && npm run knowledge:stability",
     "verify": "bash ./scripts/verify.sh",
+    "build:unified-hosting": "npm --prefix manager-portal run build && node ./scripts/build-unified-firebase-hosting.mjs",
     "deploy:backend": "bash ./scripts/release-backend.sh",
     "deploy:landing": "bash ./scripts/release-landing.sh",
     "deploy:portal": "bash ./scripts/release-portal.sh",

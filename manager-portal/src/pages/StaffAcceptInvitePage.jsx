@@ -4,7 +4,7 @@ import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import api from '../services/api';
 import { saveReadyRouteStaffToken } from '../services/auth';
 
-export default function StaffAcceptInvitePage() {
+export default function StaffAcceptInvitePage({ basePath = '/readyroute' }) {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const token = useMemo(() => searchParams.get('token') || '', [searchParams]);
@@ -40,7 +40,7 @@ export default function StaffAcceptInvitePage() {
         password
       });
       saveReadyRouteStaffToken(response.data?.token || '');
-      navigate('/readyroute/support', { replace: true });
+      navigate(`${basePath}/support`, { replace: true });
     } catch (error) {
       if (!error.response) {
         setErrorMessage('ReadyRoute is temporarily unavailable. Please try again.');
@@ -100,7 +100,7 @@ export default function StaffAcceptInvitePage() {
         ) : null}
 
         <div className="login-helper-note">
-          <Link to="/readyroute/login">Back to staff sign in</Link>
+          <Link to={`${basePath}/login`}>Back to staff sign in</Link>
         </div>
       </form>
     </div>

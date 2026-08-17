@@ -50,4 +50,5 @@ yarn-error.log*
 tmp_*.txt
 .vercel
 .firebase/
+.firebase-hosting-dist/
 firebase-debug.log*

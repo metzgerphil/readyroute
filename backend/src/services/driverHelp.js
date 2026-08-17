@@ -1025,7 +1025,9 @@ function createDriverHelpService({
     sessionId = null,
     includeDiagnostics = false,
     aiInterpretationModeOverride = null,
-    allowAiProcessing = true
+    allowAiProcessing = true,
+    persist = true,
+    sessionContext = null
   }) {
     const startedAt = Date.now();
     const effectiveAiInterpretationMode = allowAiProcessing && ['OFF', 'SHADOW', 'ACTIVE'].includes(
@@ -1035,7 +1037,9 @@ function createDriverHelpService({
       : (allowAiProcessing ? aiInterpretationMode : 'OFF');
     const [records, sessionState] = await Promise.all([
       loadKnowledgeRecords(),
-      loadSessionContext(sessionId, accountId, actorType, actorId)
+      persist
+        ? loadSessionContext(sessionId, accountId, actorType, actorId)
+        : Promise.resolve({ session_id: sessionId || null, context: sessionContext || {} })
     ]);
     const runtime = buildDeterministicRuntimeDecision(question, records, sessionState.context);
     const {
@@ -1097,7 +1101,8 @@ function createDriverHelpService({
       ]
     });
     const shouldAuditMemory = Boolean(
-      activeMemory
+      persist
+      && activeMemory
       && interpretedDecision
       && aiInterpreter
       && effectiveAiInterpretationMode === 'ACTIVE'
@@ -1307,10 +1312,11 @@ function createDriverHelpService({
       interpretation_confidence: interpretationConfidence,
       interpretation_result: interpretationResult
     };
-    if (activeMemory && memoryRouteAccepted && interpretedDecision && decision.response_mode !== 'ESCALATE') {
+    if (persist && activeMemory && memoryRouteAccepted && interpretedDecision && decision.response_mode !== 'ESCALATE') {
       await recordAnswerMemoryReuse(activeMemory.route_key);
     } else if (
-      validatedAiInterpretation
+      persist
+      && validatedAiInterpretation
       && !activeMemory
       && interpretationMode === 'GROUNDED_AI'
       && decision.response_mode !== 'ESCALATE'
@@ -1322,26 +1328,31 @@ function createDriverHelpService({
         interpretation: validatedAiInterpretation
       });
     }
-    const effectiveSessionId = await createOrUpdateSession({
-      sessionId: sessionState.session_id,
-      accountId,
-      driverId,
-      actorType,
-      actorId,
-      question,
-      decision,
-      previousContext: decisionContext
-    });
-    const interactionId = await recordInteraction({
-      sessionId: effectiveSessionId,
-      accountId,
-      driverId,
-      actorType,
-      actorId,
-      question,
-      decision,
-      responseLatencyMs: Math.max(0, Date.now() - startedAt)
-    });
+    const nextSessionContext = buildNextSessionContext(decisionContext, question, decision);
+    const effectiveSessionId = persist
+      ? await createOrUpdateSession({
+          sessionId: sessionState.session_id,
+          accountId,
+          driverId,
+          actorType,
+          actorId,
+          question,
+          decision,
+          previousContext: decisionContext
+        })
+      : (sessionState.session_id || randomId());
+    const interactionId = persist
+      ? await recordInteraction({
+          sessionId: effectiveSessionId,
+          accountId,
+          driverId,
+          actorType,
+          actorId,
+          question,
+          decision,
+          responseLatencyMs: Math.max(0, Date.now() - startedAt)
+        })
+      : null;
     const images = decision.response_mode === 'ANSWER'
       ? await getAnswerImages(decision.selected_records)
       : [];
@@ -1349,6 +1360,7 @@ function createDriverHelpService({
     return {
       session_id: effectiveSessionId,
       interaction_id: interactionId,
+      ...(!persist ? { session_context: nextSessionContext, test_mode: true } : {}),
       response_mode: decision.response_mode,
       answer_type: decision.answer_type || 'OPERATIONAL',
       answer: decision.answer || null,

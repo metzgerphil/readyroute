@@ -380,7 +380,7 @@ test('POST /staff/request-password-reset sends a reset link for active staff', a
 
     assert.equal(response.status, 200);
     assert.match(payload.message, /password reset email sent/i);
-    assert.match(payload.reset_url, /\/readyroute\/reset-password\?token=/);
+    assert.match(payload.reset_url, /\/staff\/reset-password\?token=/);
     assert.equal(sentEmails.length, 1);
     assert.equal(sentEmails[0].to, 'admin@readyroute.org');
     assert.equal(decoded.purpose, 'readyroute_staff_password_reset');
@@ -528,7 +528,7 @@ test('POST /staff/invites creates an invite and sends the invite email', async (
     assert.equal(payload.invite.email_provider_id, 'email-invite-1');
     assert.equal(sentInvites.length, 1);
     assert.equal(sentInvites[0].to, 'support@readyroute.org');
-    assert.match(sentInvites[0].inviteUrl, /\/readyroute\/accept-invite\?token=/);
+    assert.match(sentInvites[0].inviteUrl, /\/staff\/accept-invite\?token=/);
   } finally {
     await server.close();
   }

@@ -12,11 +12,11 @@ function formatPercent(value) {
   return Number.isFinite(Number(value)) ? `${Math.round(Number(value) * 100)}%` : '—';
 }
 
-export default function KnowledgeActivityPage() {
+export default function KnowledgeActivityPage({ apiBase = '/manager/driver-help' }) {
   const activityQuery = useQuery({
-    queryKey: ['driver-help-overview'],
+    queryKey: ['driver-help-overview', apiBase],
     queryFn: async () => {
-      const response = await api.get('/manager/driver-help/overview');
+      const response = await api.get(`${apiBase}/overview`);
       return response.data;
     },
     refetchInterval: 60000

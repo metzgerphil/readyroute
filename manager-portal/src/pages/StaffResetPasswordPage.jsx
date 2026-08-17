@@ -3,7 +3,7 @@ import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 
 import api from '../services/api';
 
-export default function StaffResetPasswordPage() {
+export default function StaffResetPasswordPage({ basePath = '/readyroute' }) {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const token = useMemo(() => searchParams.get('token') || '', [searchParams]);
@@ -38,7 +38,7 @@ export default function StaffResetPasswordPage() {
         token: token.trim(),
         password
       });
-      navigate('/readyroute/login?reset=success', { replace: true });
+      navigate(`${basePath}/login?reset=success`, { replace: true });
     } catch (error) {
       if (!error.response) {
         setErrorMessage('ReadyRoute is temporarily unavailable. Please try again.');
@@ -98,7 +98,7 @@ export default function StaffResetPasswordPage() {
         ) : null}
 
         <div className="login-helper-note">
-          <Link to="/readyroute/login">Back to staff sign in</Link>
+          <Link to={`${basePath}/login`}>Back to staff sign in</Link>
         </div>
       </form>
     </div>
