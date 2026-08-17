@@ -49,6 +49,20 @@ function escapeHtml(value) {
     .replaceAll("'", '&#39;');
 }
 
+const DEFAULT_IOS_APP_URL = 'https://apps.apple.com/us/app/ready-route/id6762488881';
+
+function getHttpsUrl(value, fallback = '') {
+  const candidate = String(value || fallback || '').trim();
+  if (!candidate) return '';
+
+  try {
+    const url = new URL(candidate);
+    return url.protocol === 'https:' ? url.toString() : '';
+  } catch (_error) {
+    return '';
+  }
+}
+
 async function sendManagerInviteEmail({
   to,
   fullName,
@@ -158,21 +172,54 @@ async function sendManagerPasswordResetEmail({
 }
 
 async function sendDriverInviteEmail({ to, fullName, inviteUrl, companyName }) {
-  const safeName = String(fullName || '').trim() || 'there';
-  const safeCompanyName = String(companyName || 'your company').trim();
+  const companyLabel = String(companyName || 'your company').trim();
+  const inviteLink = getHttpsUrl(inviteUrl);
+  if (!inviteLink) {
+    throw new Error('A secure HTTPS driver invitation URL is required');
+  }
+  const safeName = escapeHtml(String(fullName || '').trim() || 'there');
+  const safeCompanyName = escapeHtml(companyLabel);
+  const safeLoginEmail = escapeHtml(String(to || '').trim().toLowerCase());
+  const safeInviteUrl = escapeHtml(inviteLink);
+  const iosAppUrl = escapeHtml(getHttpsUrl(process.env.RRA_IOS_APP_URL, DEFAULT_IOS_APP_URL));
+  const androidAppUrl = escapeHtml(getHttpsUrl(process.env.RRA_ANDROID_APP_URL));
+  const androidDownload = androidAppUrl
+    ? `
+      <a href="${androidAppUrl}" style="background:#173042;color:#ffffff;text-decoration:none;padding:12px 18px;border-radius:12px;font-weight:700;display:inline-block;margin:0 8px 8px 0;">
+        Download for Android
+      </a>
+    `
+    : '<p style="margin:8px 0;color:#5f6f7a;">Android download: coming soon.</p>';
   const html = `
     <div style="font-family:Arial,Helvetica,sans-serif;line-height:1.6;color:#173042;">
-      <h2>You're invited to ReadyRoute</h2>
+      <div style="color:#ff6200;font-size:14px;font-weight:800;letter-spacing:1px;text-transform:uppercase;">Ready Route Answers</div>
+      <h2 style="margin:10px 0 12px;">Your ReadyRoute driver access is ready</h2>
       <p>Hi ${safeName},</p>
       <p>${safeCompanyName} created a ReadyRoute driver account for you.</p>
-      <p>Open the secure link below to establish your own password. Do not share the link.</p>
-      <p><a href="${inviteUrl}">Set your ReadyRoute driver password</a></p>
-      <p>This single-use link expires automatically.</p>
+      <p><strong>Your login email:</strong> ${safeLoginEmail}</p>
+      <p><strong>1. Create your private password.</strong> This secure link is only for you and expires automatically.</p>
+      <p style="margin:24px 0;">
+        <a href="${safeInviteUrl}" style="background:#ff6200;color:#ffffff;text-decoration:none;padding:12px 18px;border-radius:12px;font-weight:700;display:inline-block;">
+          Create my password
+        </a>
+      </p>
+      <p><strong>2. Download ReadyRoute on your phone.</strong></p>
+      <p style="margin:16px 0;">
+        <a href="${iosAppUrl}" style="background:#173042;color:#ffffff;text-decoration:none;padding:12px 18px;border-radius:12px;font-weight:700;display:inline-block;margin:0 8px 8px 0;">
+          Download for iPhone
+        </a>
+        ${androidDownload}
+      </p>
+      <p><strong>3. Sign in</strong> with the login email above and the password you created.</p>
+      <p>Only one phone can use this driver account at a time. Signing in on a new phone signs the previous phone out.</p>
+      <p>If the password button does not work, open this link:</p>
+      <p><a href="${safeInviteUrl}">${safeInviteUrl}</a></p>
+      <p>This single invitation email contains everything you need to get started. Do not forward it or share your password.</p>
     </div>
   `;
   return sendResendEmail({
     to,
-    subject: `${safeCompanyName} invited you to ReadyRoute`,
+    subject: `${companyLabel} invited you to ReadyRoute`,
     html
   });
 }

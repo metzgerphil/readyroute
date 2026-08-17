@@ -97,6 +97,7 @@
             <div><p class="eyebrow">Driver access</p><h2>Authorized drivers</h2></div>
             <button class="primary compact" id="open-driver-form" type="button">Add driver</button>
           </div>
+          <div class="message" id="drivers-message" role="status" hidden></div>
           <div class="message error" id="drivers-error" role="alert" hidden></div>
           <div class="driver-list" id="driver-list" aria-live="polite"></div>
         </section>
@@ -106,14 +107,12 @@
             <div><p class="eyebrow">New access</p><h2>Add a driver</h2></div>
             <button class="close-button" id="close-driver-form" aria-label="Close" type="button">×</button>
           </div>
-          <p class="muted">The driver will receive an email to choose a private password and username.</p>
+          <p class="muted">The driver will receive one email with the iPhone app, their login email, and a secure link to create a private password.</p>
           <form id="driver-form">
             <label for="driver-name">Full name</label>
             <input id="driver-name" name="driver-name" required type="text">
             <label for="driver-email">Email</label>
             <input id="driver-email" name="driver-email" required type="email">
-            <label for="driver-username">Username <span class="optional">optional</span></label>
-            <input id="driver-username" name="driver-username" pattern="[A-Za-z0-9._-]{3,40}" placeholder="3–40 letters or numbers" type="text">
             <div class="message error" id="driver-form-error" role="alert" hidden></div>
             <button class="primary" id="add-driver-button" type="submit">Add and send invitation</button>
           </form>
