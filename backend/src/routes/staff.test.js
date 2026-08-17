@@ -105,6 +105,15 @@ class MockSupabase {
     return new MockQueryBuilder(this, table);
   }
 
+  rpc(functionName, payload) {
+    return Promise.resolve(this.execute({
+      table: functionName,
+      operation: 'rpc',
+      payload,
+      filters: []
+    }));
+  }
+
   execute(query) {
     this.calls.push(query);
     return this.handler(query, this.calls);
@@ -1015,6 +1024,113 @@ test('GET /staff/accounts/:accountId returns detail, usage, and timeline', async
     assert.equal(payload.driver_help.driver_metrics[0].total_questions, 2);
     assert.equal(payload.driver_help.recent_interactions[0].question, 'sig pkg nobody home');
     assert.equal(payload.driver_help.monthly_reports[0].delivery_status, 'sent');
+  } finally {
+    await server.close();
+  }
+});
+
+test('PATCH /staff/accounts/:accountId/rra-billing-treatment makes an account complimentary', async () => {
+  const rpcCalls = [];
+  const audits = [];
+  const supabase = new MockSupabase((query) => {
+    if (query.table === 'accounts' && query.operation === 'select') {
+      return {
+        data: {
+          id: 'acct-1',
+          company_name: 'Owner Transportation',
+          rra_billing_treatment: 'standard',
+          stripe_subscription_id: null
+        },
+        error: null
+      };
+    }
+    if (query.table === 'readyroute_set_rra_billing_treatment' && query.operation === 'rpc') {
+      rpcCalls.push(query.payload);
+      return { data: null, error: null };
+    }
+    if (query.table === 'readyroute_staff_audit_log' && query.operation === 'insert') {
+      audits.push(query.payload);
+      return { data: query.payload, error: null };
+    }
+    return { data: null, error: null };
+  });
+  const server = await startTestServer({ supabase });
+
+  try {
+    const response = await fetch(`${server.baseUrl}/staff/accounts/acct-1/rra-billing-treatment`, {
+      method: 'PATCH',
+      headers: {
+        Authorization: `Bearer ${signStaffToken({ staff_role: 'owner' })}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({ treatment: 'complimentary', reason: 'Owner-operated company' })
+    });
+    const payload = await response.json();
+
+    assert.equal(response.status, 200);
+    assert.equal(payload.account.rra_billing_treatment, 'complimentary');
+    assert.equal(payload.account.rra_complimentary_reason, 'Owner-operated company');
+    assert.equal(rpcCalls.length, 1);
+    assert.equal(rpcCalls[0].p_account_id, 'acct-1');
+    assert.equal(rpcCalls[0].p_treatment, 'complimentary');
+    assert.equal(audits[0].action, 'account.rra_billing_treatment_updated');
+  } finally {
+    await server.close();
+  }
+});
+
+test('PATCH /staff/accounts/:accountId/rra-billing-treatment requires a complimentary reason', async () => {
+  const supabase = new MockSupabase(() => ({ data: null, error: null }));
+  const server = await startTestServer({ supabase });
+
+  try {
+    const response = await fetch(`${server.baseUrl}/staff/accounts/acct-1/rra-billing-treatment`, {
+      method: 'PATCH',
+      headers: {
+        Authorization: `Bearer ${signStaffToken({ staff_role: 'owner' })}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({ treatment: 'complimentary', reason: '' })
+    });
+    const payload = await response.json();
+
+    assert.equal(response.status, 400);
+    assert.match(payload.error, /internal reason/i);
+  } finally {
+    await server.close();
+  }
+});
+
+test('PATCH /staff/accounts/:accountId/rra-billing-treatment will not waive an active subscription', async () => {
+  const supabase = new MockSupabase((query) => {
+    if (query.table === 'accounts') {
+      return {
+        data: {
+          id: 'acct-1',
+          company_name: 'Paid Transportation',
+          rra_billing_treatment: 'standard',
+          stripe_subscription_id: 'sub_active'
+        },
+        error: null
+      };
+    }
+    return { data: null, error: null };
+  });
+  const server = await startTestServer({ supabase });
+
+  try {
+    const response = await fetch(`${server.baseUrl}/staff/accounts/acct-1/rra-billing-treatment`, {
+      method: 'PATCH',
+      headers: {
+        Authorization: `Bearer ${signStaffToken({ staff_role: 'owner' })}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({ treatment: 'complimentary', reason: 'Owner-operated company' })
+    });
+    const payload = await response.json();
+
+    assert.equal(response.status, 409);
+    assert.match(payload.error, /end the active paid subscription/i);
   } finally {
     await server.close();
   }

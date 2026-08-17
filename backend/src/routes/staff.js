@@ -249,6 +249,9 @@ function presentAccountSummary(account, profile, counts = {}, latestTicket = nul
     billing_access_status: account.billing_access_status || 'not_provisioned',
     billing_interval: account.billing_interval || 'monthly',
     billed_driver_count: Number(account.billed_driver_count || 0),
+    rra_billing_treatment: account.rra_billing_treatment || 'standard',
+    rra_complimentary_reason: account.rra_complimentary_reason || null,
+    rra_billing_treatment_updated_at: account.rra_billing_treatment_updated_at || null,
     account_status: account.account_status || 'active',
     cancellation_requested_at: account.cancellation_requested_at || null,
     service_ends_at: account.service_ends_at || null,
@@ -1961,11 +1964,14 @@ function createReadyRouteStaffRouter(options = {}) {
       const companyName = normalizeText(req.body?.confirm_company_name, 180);
       const { data: account, error: accountError } = await supabase
         .from('accounts')
-        .select('id, company_name')
+        .select('id, company_name, rra_billing_treatment, billing_activation_status, stripe_subscription_id')
         .eq('id', accountId)
         .maybeSingle();
       if (accountError) throw accountError;
       if (!account) return res.status(404).json({ error: 'Account not found.' });
+      if (account.rra_billing_treatment === 'complimentary') {
+        return res.status(409).json({ error: 'Complimentary accounts do not require billing activation.' });
+      }
       if (companyName !== account.company_name) {
         return res.status(400).json({ error: 'Type the company name exactly to confirm live billing.' });
       }
@@ -2088,7 +2094,7 @@ function createReadyRouteStaffRouter(options = {}) {
       const [accountsResult, profilesResult, managersResult, driversResult, ticketsResult] = await Promise.all([
         supabase
           .from('accounts')
-          .select('id, company_name, manager_email, subscription_status, plan, vehicle_count, stripe_customer_id, stripe_subscription_id, billing_setup_status, billing_activation_status, billing_access_status, billing_interval, billed_driver_count, account_status, cancellation_requested_at, service_ends_at, retention_ends_at, canceled_at, cancellation_reason, created_at')
+          .select('id, company_name, manager_email, subscription_status, plan, vehicle_count, stripe_customer_id, stripe_subscription_id, billing_setup_status, billing_activation_status, billing_access_status, billing_interval, billed_driver_count, rra_billing_treatment, rra_complimentary_reason, rra_billing_treatment_updated_at, account_status, cancellation_requested_at, service_ends_at, retention_ends_at, canceled_at, cancellation_reason, created_at')
           .order('created_at', { ascending: false }),
         supabase
           .from('account_internal_profiles')
@@ -2370,7 +2376,7 @@ function createReadyRouteStaffRouter(options = {}) {
 
       const accountResult = await supabase
         .from('accounts')
-        .select('id, company_name, manager_email, subscription_status, plan, stripe_customer_id, stripe_subscription_id, billing_setup_status, billing_activation_status, billing_access_status, billing_interval, billed_driver_count, account_status, driver_help_monthly_report_enabled, driver_help_minutes_per_answer_estimate, created_at')
+        .select('id, company_name, manager_email, subscription_status, plan, stripe_customer_id, stripe_subscription_id, billing_setup_status, billing_activation_status, billing_access_status, billing_interval, billed_driver_count, rra_billing_treatment, rra_complimentary_reason, rra_billing_treatment_updated_at, account_status, driver_help_monthly_report_enabled, driver_help_minutes_per_answer_estimate, created_at')
         .eq('id', accountId)
         .maybeSingle();
 
@@ -2535,6 +2541,73 @@ function createReadyRouteStaffRouter(options = {}) {
 
       console.error('ReadyRoute staff account detail failed:', error);
       return res.status(500).json({ error: 'Unable to load ReadyRoute account.' });
+    }
+  });
+
+  router.patch('/accounts/:accountId/rra-billing-treatment', async (req, res) => {
+    try {
+      const staff = await getRequestStaff(req, jwtSecret, READYROUTE_STAFF_WRITE_ROLES, supabase);
+      const accountId = normalizeText(req.params.accountId, 120);
+      const treatment = normalizeText(req.body?.treatment, 40).toLowerCase();
+      const reason = normalizeText(req.body?.reason, 1000);
+
+      if (!['standard', 'complimentary'].includes(treatment)) {
+        return res.status(400).json({ error: 'Choose standard or complimentary billing.' });
+      }
+
+      if (treatment === 'complimentary' && !reason) {
+        return res.status(400).json({ error: 'Add an internal reason for complimentary service.' });
+      }
+
+      const { data: existingAccount, error: accountLookupError } = await supabase
+        .from('accounts')
+        .select('id, company_name, rra_billing_treatment, billing_activation_status, stripe_subscription_id')
+        .eq('id', accountId)
+        .maybeSingle();
+      if (accountLookupError) throw accountLookupError;
+      if (!existingAccount) {
+        return res.status(404).json({ error: 'Account not found.' });
+      }
+      if (treatment === 'complimentary' && existingAccount.stripe_subscription_id) {
+        return res.status(409).json({ error: 'End the active paid subscription before changing this company to complimentary.' });
+      }
+
+      const updatedAt = now().toISOString();
+      const { error: updateError } = await supabase.rpc('readyroute_set_rra_billing_treatment', {
+        p_account_id: accountId,
+        p_treatment: treatment,
+        p_reason: treatment === 'complimentary' ? reason : null,
+        p_updated_at: updatedAt
+      });
+      if (updateError) throw updateError;
+
+      await writeAuditLog({
+        staff,
+        action: 'account.rra_billing_treatment_updated',
+        targetType: 'account',
+        targetId: accountId,
+        accountId,
+        metadata: {
+          previous_treatment: existingAccount.rra_billing_treatment || 'standard',
+          treatment,
+          reason: treatment === 'complimentary' ? reason : null
+        }
+      });
+
+      return res.status(200).json({
+        account: {
+          id: accountId,
+          company_name: existingAccount.company_name,
+          rra_billing_treatment: treatment,
+          rra_complimentary_reason: treatment === 'complimentary' ? reason : null,
+          rra_billing_treatment_updated_at: updatedAt
+        }
+      });
+    } catch (error) {
+      const authResponse = sendAuthError(res, error);
+      if (authResponse) return authResponse;
+      console.error('ReadyRoute Answers billing treatment update failed:', error);
+      return res.status(500).json({ error: 'Unable to update Ready Route Answers billing treatment.' });
     }
   });
 

@@ -160,11 +160,16 @@ function createStripeSignupBillingService(options = {}) {
 
     const { data: account, error: accountError } = await supabase
       .from('accounts')
-      .select('id, stripe_customer_id, stripe_subscription_id, stripe_default_payment_method_id, billing_setup_status, billing_interval')
+      .select('id, stripe_customer_id, stripe_subscription_id, stripe_default_payment_method_id, billing_setup_status, billing_interval, rra_billing_treatment')
       .eq('id', accountId)
       .maybeSingle();
     if (accountError) throw accountError;
     if (!account) throw new Error('Account not found');
+    if (account.rra_billing_treatment === 'complimentary') {
+      const error = new Error('Complimentary accounts do not require billing activation');
+      error.code = 'COMPLIMENTARY_ACCOUNT';
+      throw error;
+    }
     if (account.stripe_subscription_id) {
       return { subscription_id: account.stripe_subscription_id, already_exists: true };
     }

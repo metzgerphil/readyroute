@@ -140,6 +140,35 @@ test('activateSubscription bills only active drivers and leaves Tax off by defau
   assert.equal(updates.at(-1).billed_driver_count, 2);
 });
 
+test('activateSubscription refuses to bill a complimentary account', async () => {
+  const db = createDb((query) => {
+    if (query.table === 'accounts' && query.operation === 'select') {
+      return {
+        data: {
+          id: 'acct-1',
+          rra_billing_treatment: 'complimentary',
+          stripe_customer_id: 'cus_test',
+          stripe_subscription_id: null,
+          stripe_default_payment_method_id: 'pm_test',
+          billing_setup_status: 'succeeded',
+          billing_interval: 'monthly'
+        },
+        error: null
+      };
+    }
+    throw new Error(`Unexpected ${query.table}:${query.operation}`);
+  });
+  const service = createStripeSignupBillingService({
+    supabase: db,
+    stripeClient: { subscriptions: { create: async () => { throw new Error('Stripe must not be called'); } } },
+    monthlyPriceId: 'price_monthly_1000',
+    annualPriceId: 'price_annual_10000',
+    liveBillingApproved: true
+  });
+
+  await assert.rejects(() => service.activateSubscription('acct-1'), { code: 'COMPLIMENTARY_ACCOUNT' });
+});
+
 test('activateSubscription cannot charge until live billing is explicitly approved', async () => {
   const service = createStripeSignupBillingService({
     supabase: createDb(() => { throw new Error('Database must not be called'); }),
