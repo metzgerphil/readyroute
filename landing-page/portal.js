@@ -392,7 +392,7 @@ driverForm.addEventListener('submit', async (event) => {
   setMessage(driversMessage);
   setMessage(errorElement);
   try {
-    await request('/manager/drivers', {
+    const payload = await request('/manager/drivers', {
       method: 'POST',
       body: JSON.stringify({
         name: driverForm['driver-name'].value.trim(),
@@ -403,7 +403,11 @@ driverForm.addEventListener('submit', async (event) => {
     driverForm.reset();
     addDriverCard.hidden = true;
     await loadDrivers();
-    setMessage(driversMessage, 'Driver added. One setup email was sent with the app and password instructions.');
+    if (payload.invitation?.email_delivery === 'sent') {
+      setMessage(driversMessage, 'Driver added. One setup email was sent with the app and password instructions.');
+    } else {
+      setMessage(driversError, 'Driver added, but the setup email could not be delivered. Select Resend invite beside the driver to try again.');
+    }
   } catch (error) {
     setMessage(errorElement, error.message);
   } finally {
