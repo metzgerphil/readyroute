@@ -195,6 +195,16 @@ jobs:
           env_vars: |-
             SOURCE_COMMIT=${{ github.sha }}
             NODE_ENV=production
+            STRIPE_SECRET_KEY=${{ secrets.STRIPE_SECRET_KEY }}
+            STRIPE_PUBLISHABLE_KEY=${{ secrets.STRIPE_PUBLISHABLE_KEY }}
+            STRIPE_WEBHOOK_SECRET=${{ secrets.STRIPE_WEBHOOK_SECRET }}
+            STRIPE_MONTHLY_PRICE_ID=${{ vars.STRIPE_MONTHLY_PRICE_ID }}
+            STRIPE_ANNUAL_PRICE_ID=${{ vars.STRIPE_ANNUAL_PRICE_ID }}
+            STRIPE_SIGNUP_ENABLED=${{ vars.STRIPE_SIGNUP_ENABLED || 'false' }}
+            STRIPE_SIGNUP_RETURN_URL=${{ vars.STRIPE_SIGNUP_RETURN_URL || 'https://readyroute.org/signup' }}
+            READYROUTE_LIVE_BILLING_APPROVED=${{ vars.READYROUTE_LIVE_BILLING_APPROVED || 'false' }}
+            STRIPE_TAX_ENABLED=${{ vars.STRIPE_TAX_ENABLED || 'false' }}
+            STRIPE_TAX_REGISTRATIONS_CONFIRMED=${{ vars.STRIPE_TAX_REGISTRATIONS_CONFIRMED || 'false' }}
           env_vars_update_strategy: merge
 
       - name: Verify production release identity
