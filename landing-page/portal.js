@@ -16,6 +16,14 @@ const driverList = document.querySelector('#driver-list');
 const driversError = document.querySelector('#drivers-error');
 const driverForm = document.querySelector('#driver-form');
 const addDriverCard = document.querySelector('#add-driver-card');
+const managerList = document.querySelector('#manager-list');
+const managersMessage = document.querySelector('#managers-message');
+const managersError = document.querySelector('#managers-error');
+const managerForm = document.querySelector('#manager-form');
+const addManagerCard = document.querySelector('#add-manager-card');
+const billingError = document.querySelector('#billing-error');
+const manageBillingButton = document.querySelector('#manage-billing-button');
+const passwordForm = document.querySelector('#password-form');
 
 function setMessage(element, message = '') {
   element.textContent = message;
@@ -40,6 +48,17 @@ function clearSession() {
   portalView.hidden = true;
   loginView.hidden = false;
   driverList.replaceChildren();
+  managerList.replaceChildren();
+}
+
+function showPortalView(view = 'overview') {
+  const resolvedView = ['overview', 'drivers', 'managers', 'billing', 'settings'].includes(view) ? view : 'overview';
+  document.querySelectorAll('[data-panel]').forEach((panel) => { panel.hidden = panel.dataset.panel !== resolvedView; });
+  document.querySelectorAll('[data-view]').forEach((button) => { button.classList.toggle('active', button.dataset.view === resolvedView); });
+  const url = new URL(window.location.href);
+  if (resolvedView === 'overview') url.searchParams.delete('view');
+  else url.searchParams.set('view', resolvedView);
+  window.history.replaceState({}, '', `${url.pathname}${url.search}`);
 }
 
 async function request(path, options = {}) {
@@ -128,6 +147,97 @@ async function loadDrivers() {
   }
 }
 
+function renderManagers(managers) {
+  managerList.replaceChildren();
+  if (!managers.length) {
+    managerList.innerHTML = '<div class="empty-state">No managers are listed for this company.</div>';
+    return;
+  }
+  managers.forEach((manager) => {
+    const status = manager.is_active === false ? 'inactive' : manager.accepted_at || manager.status === 'active' ? 'active' : 'pending';
+    const row = document.createElement('article');
+    row.className = 'driver-row manager-row';
+    const identity = document.createElement('div');
+    identity.className = 'driver-name';
+    const name = document.createElement('strong');
+    name.textContent = manager.full_name || manager.email;
+    const role = document.createElement('span');
+    role.textContent = manager.is_primary ? 'Company owner' : 'Manager';
+    identity.append(name, role);
+    const email = document.createElement('div');
+    email.className = 'driver-email';
+    email.textContent = manager.email;
+    const badge = document.createElement('span');
+    badge.className = `status ${status}`;
+    badge.textContent = status;
+    const actions = document.createElement('div');
+    actions.className = 'row-actions';
+    if (!manager.is_primary && status === 'pending') {
+      const resend = document.createElement('button');
+      resend.type = 'button';
+      resend.textContent = 'Resend invite';
+      resend.addEventListener('click', () => managerAccessAction(manager.id, 'invite', resend));
+      actions.append(resend);
+    }
+    if (status === 'active') {
+      const reset = document.createElement('button');
+      reset.type = 'button';
+      reset.textContent = 'Send password reset';
+      reset.addEventListener('click', () => managerAccessAction(manager.id, 'password-reset', reset));
+      actions.append(reset);
+    }
+    row.append(identity, email, badge, actions);
+    managerList.append(row);
+  });
+}
+
+async function loadManagers() {
+  setMessage(managersError);
+  managerList.innerHTML = '<div class="empty-state">Loading managers…</div>';
+  try {
+    const payload = await request('/manager/manager-users');
+    renderManagers(payload.manager_users || []);
+  } catch (error) {
+    setMessage(managersError, error.message);
+    managerList.replaceChildren();
+  }
+}
+
+async function managerAccessAction(managerId, action, button) {
+  if (!managerId) return;
+  button.disabled = true;
+  setMessage(managersMessage);
+  setMessage(managersError);
+  try {
+    const payload = await request(`/manager/manager-users/${encodeURIComponent(managerId)}/${action}`, { method: 'POST' });
+    await loadManagers();
+    setMessage(managersMessage, payload.message || 'Manager access updated.');
+  } catch (error) {
+    setMessage(managersError, error.message);
+  } finally {
+    button.disabled = false;
+  }
+}
+
+async function loadBilling() {
+  setMessage(billingError);
+  manageBillingButton.hidden = true;
+  try {
+    const payload = await request('/manager/account/lifecycle');
+    const account = payload.account || {};
+    const complimentary = account.rra_billing_treatment === 'complimentary';
+    document.querySelector('#billing-title').textContent = complimentary ? 'Complimentary RRA access' : 'Ready Route Answers billing';
+    document.querySelector('#billing-description').textContent = complimentary
+      ? 'Your company has full RRA access at no charge. Driver activity and monthly value are still tracked normally.'
+      : account.has_stripe_customer
+        ? 'Payment details and invoices are handled securely by Stripe.'
+        : 'Payment setup is not complete. No charge can occur until payment setup and billing activation are complete.';
+    manageBillingButton.hidden = complimentary || !account.has_stripe_customer;
+  } catch (error) {
+    setMessage(billingError, error.message);
+  }
+}
+
 async function openPortal() {
   const payload = decodeToken(getToken());
   if (!payload || payload.role !== 'manager') {
@@ -137,7 +247,8 @@ async function openPortal() {
   document.querySelector('#company-name').textContent = payload.company_name || 'Your company';
   loginView.hidden = true;
   portalView.hidden = false;
-  await loadDrivers();
+  await Promise.all([loadDrivers(), loadManagers(), loadBilling()]);
+  showPortalView(new URLSearchParams(window.location.search).get('view') || 'overview');
 }
 
 async function sendInvite(driverId, button) {
@@ -169,9 +280,11 @@ async function updateDriverStatus(driverId, isActive, button) {
   }
 }
 
-const inviteToken = new URLSearchParams(window.location.search).get('invite') || '';
+const credentialParams = new URLSearchParams(window.location.search);
+const inviteToken = credentialParams.get('invite') || credentialParams.get('reset') || '';
+const isPasswordReset = Boolean(credentialParams.get('reset'));
 if (inviteToken) {
-  document.querySelector('.login-card > h2').textContent = 'Create your company-portal password';
+  document.querySelector('.login-card > h2').textContent = isPasswordReset ? 'Reset your company-portal password' : 'Create your company-portal password';
   document.querySelector('.login-card > .muted').hidden = true;
   loginForm.hidden = true;
   showResetButton.hidden = true;
@@ -275,6 +388,7 @@ driverForm.addEventListener('submit', async (event) => {
   const button = document.querySelector('#add-driver-button');
   const errorElement = document.querySelector('#driver-form-error');
   button.disabled = true;
+  setMessage(managersMessage);
   setMessage(errorElement);
   try {
     await request('/manager/drivers', {
@@ -291,6 +405,94 @@ driverForm.addEventListener('submit', async (event) => {
     await loadDrivers();
   } catch (error) {
     setMessage(errorElement, error.message);
+  } finally {
+    button.disabled = false;
+  }
+});
+
+document.querySelectorAll('[data-view]').forEach((button) => {
+  button.addEventListener('click', () => showPortalView(button.dataset.view));
+});
+
+document.querySelector('#open-manager-form').addEventListener('click', () => {
+  addManagerCard.hidden = false;
+  document.querySelector('#manager-name').focus();
+});
+document.querySelector('#close-manager-form').addEventListener('click', () => {
+  addManagerCard.hidden = true;
+  managerForm.reset();
+  setMessage(document.querySelector('#manager-form-error'));
+});
+
+managerForm.addEventListener('submit', async (event) => {
+  event.preventDefault();
+  const button = document.querySelector('#add-manager-button');
+  const errorElement = document.querySelector('#manager-form-error');
+  button.disabled = true;
+  setMessage(errorElement);
+  try {
+    const payload = await request('/manager/manager-users/invite', {
+      method: 'POST',
+      body: JSON.stringify({
+        full_name: document.querySelector('#manager-name').value.trim(),
+        email: document.querySelector('#manager-email').value.trim()
+      })
+    });
+    managerForm.reset();
+    addManagerCard.hidden = true;
+    await loadManagers();
+    setMessage(managersMessage, payload.message || 'Manager invitation sent.');
+  } catch (error) {
+    setMessage(errorElement, error.message);
+  } finally {
+    button.disabled = false;
+  }
+});
+
+manageBillingButton.addEventListener('click', async () => {
+  manageBillingButton.disabled = true;
+  setMessage(billingError);
+  try {
+    const payload = await request('/billing/portal', { method: 'POST' });
+    if (!payload.url) throw new Error('Stripe did not return a billing-management link.');
+    window.location.assign(payload.url);
+  } catch (error) {
+    setMessage(billingError, error.message);
+    manageBillingButton.disabled = false;
+  }
+});
+
+passwordForm.addEventListener('submit', async (event) => {
+  event.preventDefault();
+  const button = document.querySelector('#change-password-button');
+  const messageElement = document.querySelector('#password-message');
+  const currentPassword = document.querySelector('#current-password').value;
+  const newPassword = document.querySelector('#new-password').value;
+  const confirmation = document.querySelector('#confirm-new-password').value;
+  setMessage(messageElement);
+  messageElement.classList.remove('error');
+  if (newPassword.length < 10) {
+    messageElement.classList.add('error');
+    setMessage(messageElement, 'Password must be at least 10 characters.');
+    return;
+  }
+  if (newPassword !== confirmation) {
+    messageElement.classList.add('error');
+    setMessage(messageElement, 'Passwords do not match.');
+    return;
+  }
+  button.disabled = true;
+  try {
+    await request('/auth/manager/change-password', {
+      method: 'POST',
+      body: JSON.stringify({ current_password: currentPassword, new_password: newPassword })
+    });
+    passwordForm.reset();
+    clearSession();
+    setMessage(loginError, 'Password updated. Sign in with your new password.');
+  } catch (error) {
+    messageElement.classList.add('error');
+    setMessage(messageElement, error.message);
   } finally {
     button.disabled = false;
   }

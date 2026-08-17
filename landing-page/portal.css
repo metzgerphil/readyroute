@@ -53,6 +53,10 @@ input:focus { outline: 3px solid rgba(243, 111, 33, .18); border-color: var(--or
 .portal-view { padding: 42px 0 80px; }
 .portal-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 24px; margin-bottom: 28px; }
 .portal-heading h1 { margin-bottom: 7px; font-size: clamp(2.1rem, 4vw, 3.7rem); }
+.portal-tabs { display: flex; gap: 7px; margin: -4px 0 22px; overflow-x: auto; padding-bottom: 4px; }
+.portal-tabs button { flex: 0 0 auto; border: 1px solid var(--line); border-radius: 999px; padding: 9px 14px; color: var(--navy); background: white; font-size: .82rem; font-weight: 800; }
+.portal-tabs button.active { border-color: var(--navy); color: white; background: var(--navy); }
+.portal-panel { display: block; }
 .summary-grid { display: grid; grid-template-columns: 180px 180px 1fr; gap: 15px; margin-bottom: 18px; }
 .summary-card { display: grid; gap: 5px; padding: 22px; }
 .summary-card strong { color: var(--navy); font-size: 2rem; }
@@ -60,6 +64,8 @@ input:focus { outline: 3px solid rgba(243, 111, 33, .18); border-color: var(--or
 .report-card { display: flex; align-items: center; justify-content: space-between; gap: 18px; padding: 20px 24px; }
 .report-card p { margin: 5px 0 0; color: var(--muted); }
 .report-card a { flex: 0 0 auto; font-weight: 750; }
+.welcome-card { padding: 25px; }
+.welcome-card p:last-child { max-width: 780px; margin-bottom: 0; }
 .portal-grid { display: grid; grid-template-columns: minmax(0, 1fr) 370px; align-items: start; gap: 18px; }
 .portal-grid > .card { padding: 25px; }
 .portal-grid:not(:has(.add-driver-card:not([hidden]))) { grid-template-columns: 1fr; }
@@ -78,6 +84,14 @@ input:focus { outline: 3px solid rgba(243, 111, 33, .18); border-color: var(--or
 .empty-state { border: 1px dashed #bdc7cd; border-radius: 12px; padding: 28px; color: var(--muted); text-align: center; }
 .close-button { border: 0; color: var(--muted); background: transparent; font-size: 1.7rem; }
 .optional { color: var(--muted); font-size: .75rem; font-weight: 500; }
+.portal-section-card { padding: 26px; }
+.manager-grid:not(:has(.add-driver-card:not([hidden]))) { grid-template-columns: 1fr; }
+.manager-row { grid-template-columns: minmax(180px, 1.2fr) minmax(190px, 1fr) 125px auto; }
+.billing-card { display: flex; align-items: center; justify-content: space-between; gap: 28px; }
+.billing-card > div:first-child { max-width: 760px; }
+.billing-card .message { width: 100%; }
+.settings-grid { display: grid; grid-template-columns: minmax(0, 1.3fr) minmax(260px, .7fr); align-items: start; gap: 18px; }
+.support-action { display: inline-flex; margin-top: 15px; font-weight: 800; }
 
 footer { display: flex; justify-content: space-between; gap: 24px; border-top: 1px solid var(--line); padding: 26px 0 35px; color: var(--muted); font-size: .8rem; }
 footer nav { display: flex; gap: 16px; flex: 0 0 auto; }
@@ -86,7 +100,7 @@ footer nav { display: flex; gap: 16px; flex: 0 0 auto; }
 button:disabled { cursor: wait; opacity: .62; }
 
 @media (max-width: 880px) {
-  .login-view, .portal-grid { grid-template-columns: 1fr; }
+  .login-view, .portal-grid, .settings-grid { grid-template-columns: 1fr; }
   .login-view { padding-top: 30px; }
   .summary-grid { grid-template-columns: 1fr 1fr; }
   .report-card { grid-column: 1 / -1; }
@@ -99,5 +113,6 @@ button:disabled { cursor: wait; opacity: .62; }
   .summary-grid { grid-template-columns: 1fr; }
   .report-card { grid-column: auto; align-items: flex-start; flex-direction: column; }
   .portal-heading, footer { align-items: flex-start; flex-direction: column; }
-  .driver-row { grid-template-columns: 1fr; }
+  .driver-row, .manager-row { grid-template-columns: 1fr; }
+  .billing-card { align-items: flex-start; flex-direction: column; }
 }

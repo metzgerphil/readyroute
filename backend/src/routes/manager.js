@@ -1026,14 +1026,18 @@ function getManagerPortalBaseUrl() {
   );
 }
 
+function getCompanyPortalBaseUrl() {
+  return process.env.RRA_COMPANY_PORTAL_URL || getManagerPortalBaseUrl();
+}
+
 function buildManagerInviteUrl(token) {
-  const baseUrl = getManagerPortalBaseUrl().replace(/\/$/, '');
-  return `${baseUrl}/reset-password?token=${encodeURIComponent(token)}&mode=invite`;
+  const baseUrl = getCompanyPortalBaseUrl().replace(/\/$/, '');
+  return `${baseUrl}?invite=${encodeURIComponent(token)}`;
 }
 
 function buildManagerPasswordResetUrl(token) {
-  const baseUrl = getManagerPortalBaseUrl().replace(/\/$/, '');
-  return `${baseUrl}/reset-password?token=${encodeURIComponent(token)}`;
+  const baseUrl = getCompanyPortalBaseUrl().replace(/\/$/, '');
+  return `${baseUrl}?reset=${encodeURIComponent(token)}`;
 }
 
 function buildDriverInviteUrl(token) {
@@ -1284,7 +1288,7 @@ function toManagerAccessRecord(managerUser, primaryManagerEmail) {
 async function getAccountManagerContext(supabase, accountId) {
   const accountQuery = await supabase
     .from('accounts')
-    .select('id, company_name, manager_email, driver_starter_pin, account_status, cancellation_requested_at, service_ends_at, retention_ends_at, canceled_at, cancellation_reason')
+    .select('id, company_name, manager_email, driver_starter_pin, account_status, cancellation_requested_at, service_ends_at, retention_ends_at, canceled_at, cancellation_reason, rra_billing_treatment, billing_interval, subscription_status, stripe_customer_id')
     .eq('id', accountId)
     .maybeSingle();
 
@@ -1295,7 +1299,7 @@ async function getAccountManagerContext(supabase, accountId) {
 
     const fallbackQuery = await supabase
       .from('accounts')
-      .select('id, company_name, manager_email, account_status, cancellation_requested_at, service_ends_at, retention_ends_at, canceled_at, cancellation_reason')
+      .select('id, company_name, manager_email, account_status, cancellation_requested_at, service_ends_at, retention_ends_at, canceled_at, cancellation_reason, rra_billing_treatment, billing_interval, subscription_status, stripe_customer_id')
       .eq('id', accountId)
       .maybeSingle();
 
@@ -2727,6 +2731,10 @@ function createManagerRouter(options = {}) {
           service_ends_at: account.service_ends_at || null,
           retention_ends_at: account.retention_ends_at || null,
           cancellation_reason: account.cancellation_reason || null,
+          rra_billing_treatment: account.rra_billing_treatment || 'standard',
+          billing_interval: account.billing_interval || 'monthly',
+          subscription_status: account.subscription_status || 'incomplete',
+          has_stripe_customer: Boolean(account.stripe_customer_id),
           can_cancel: normalizeEmail(req.account.manager_email) === normalizeEmail(account.manager_email)
         }
       });

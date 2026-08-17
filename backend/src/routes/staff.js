@@ -495,6 +495,10 @@ function createReadyRouteStaffRouter(options = {}) {
     );
   }
 
+  function getCompanyPortalBaseUrl() {
+    return process.env.RRA_COMPANY_PORTAL_URL || getManagerPortalBaseUrl();
+  }
+
   function getStaffPortalBaseUrl() {
     if (process.env.READYROUTE_STAFF_PORTAL_URL) {
       return process.env.READYROUTE_STAFF_PORTAL_URL;
@@ -530,8 +534,8 @@ function createReadyRouteStaffRouter(options = {}) {
   }
 
   function buildManagerInviteUrl(token) {
-    const baseUrl = getManagerPortalBaseUrl().replace(/\/$/, '');
-    return `${baseUrl}/reset-password?token=${encodeURIComponent(token)}&mode=invite`;
+    const baseUrl = getCompanyPortalBaseUrl().replace(/\/$/, '');
+    return `${baseUrl}?invite=${encodeURIComponent(token)}`;
   }
 
   async function writeAuditLog({
