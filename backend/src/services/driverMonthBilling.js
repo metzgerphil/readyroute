@@ -47,17 +47,44 @@ function createDriverMonthBillingService({ supabase, stripeClient, now = () => n
     const results = [];
     for (const [accountId, accountRows] of Object.entries(byAccount)) {
       const amount = accountRows.length * DRIVER_MONTH_PRICE_CENTS;
-      if (billingMode !== 'live') {
-        results.push({ account_id: accountId, billing_month: billingMonth, drivers: accountRows.length, amount_cents: amount, status: 'shadow' });
-        continue;
-      }
-      if (!stripeClient) throw new Error('Stripe is required when driver-month billing is live');
       const { data: account, error: accountError } = await supabase
         .from('accounts')
-        .select('id, stripe_customer_id')
+        .select('id, stripe_customer_id, rra_billing_treatment')
         .eq('id', accountId)
         .maybeSingle();
       if (accountError) throw accountError;
+
+      if (account?.rra_billing_treatment === 'complimentary') {
+        const { error: voidError } = await supabase
+          .from('driver_month_activation_charges')
+          .update({ charge_status: 'voided', updated_at: now().toISOString() })
+          .eq('account_id', accountId)
+          .eq('billing_month', billingMonth)
+          .eq('charge_status', 'accrued');
+        if (voidError) throw voidError;
+        results.push({
+          account_id: accountId,
+          billing_month: billingMonth,
+          drivers: accountRows.length,
+          regular_value_cents: amount,
+          amount_cents: 0,
+          status: 'complimentary'
+        });
+        continue;
+      }
+
+      if (billingMode !== 'live') {
+        results.push({
+          account_id: accountId,
+          billing_month: billingMonth,
+          drivers: accountRows.length,
+          regular_value_cents: amount,
+          amount_cents: amount,
+          status: 'shadow'
+        });
+        continue;
+      }
+      if (!stripeClient) throw new Error('Stripe is required when driver-month billing is live');
       if (!account?.stripe_customer_id) {
         results.push({ account_id: accountId, status: 'payment_setup_required' });
         continue;
@@ -80,7 +107,15 @@ function createDriverMonthBillingService({ supabase, stripeClient, now = () => n
         .update({ charge_status: 'invoiced', provider_invoice_item_id: item.id, updated_at: now().toISOString() })
         .in('id', accountRows.map((row) => row.id));
       if (updateError) throw updateError;
-      results.push({ account_id: accountId, billing_month: billingMonth, drivers: accountRows.length, amount_cents: amount, status: 'invoiced', invoice_id: invoice.id });
+      results.push({
+        account_id: accountId,
+        billing_month: billingMonth,
+        drivers: accountRows.length,
+        regular_value_cents: amount,
+        amount_cents: amount,
+        status: 'invoiced',
+        invoice_id: invoice.id
+      });
     }
     return { billing_mode: billingMode, billing_month: billingMonth, active_month: currentMonth, results };
   }

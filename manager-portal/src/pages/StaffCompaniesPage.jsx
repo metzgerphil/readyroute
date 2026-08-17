@@ -44,6 +44,86 @@ function responseTone(mode) {
   return 'neutral';
 }
 
+function RraBillingControl({ account }) {
+  const queryClient = useQueryClient();
+  const [billingDraft, setBillingDraft] = useState({
+    treatment: account?.rra_billing_treatment || 'standard',
+    reason: account?.rra_complimentary_reason || ''
+  });
+  const [billingMessage, setBillingMessage] = useState('');
+  const updateBillingTreatmentMutation = useMutation({
+    mutationFn: async () => {
+      const response = await api.patch(`/staff/accounts/${account.id}/rra-billing-treatment`, billingDraft);
+      return response.data;
+    },
+    onSuccess: async () => {
+      setBillingMessage(
+        billingDraft.treatment === 'complimentary'
+          ? 'Complimentary service is active. Usage remains tracked and accrued RRA charges have been waived.'
+          : 'Standard RRA billing is active for future driver-month charges.'
+      );
+      await queryClient.invalidateQueries({ queryKey: ['staff-accounts'] });
+      await queryClient.invalidateQueries({ queryKey: ['staff-account-detail', account.id] });
+    },
+    onError: (error) => setBillingMessage(error.response?.data?.error || 'Unable to update RRA billing.')
+  });
+
+  return (
+    <section className="staff-simple-section" aria-label="RRA billing treatment">
+      <div className="staff-simple-section-header">
+        <div>
+          <h3>RRA billing treatment</h3>
+          <p>Complimentary companies use the full product and remain in all usage and monthly value reports.</p>
+        </div>
+        <StatusBadge tone={account.rra_billing_treatment === 'complimentary' ? 'active' : 'neutral'}>
+          {account.rra_billing_treatment === 'complimentary' ? 'Complimentary' : 'Standard'}
+        </StatusBadge>
+      </div>
+      <div className="staff-company-finder-grid staff-company-create-grid">
+        <label>
+          Billing treatment
+          <select
+            value={billingDraft.treatment}
+            onChange={(event) => {
+              const treatment = event.target.value;
+              setBillingDraft((current) => ({
+                treatment,
+                reason: treatment === 'complimentary' ? current.reason : ''
+              }));
+              setBillingMessage('');
+            }}
+          >
+            <option value="standard">Standard</option>
+            <option value="complimentary">Complimentary</option>
+          </select>
+        </label>
+        {billingDraft.treatment === 'complimentary' ? (
+          <label>
+            Internal reason
+            <input
+              placeholder="For example: Owner-operated company"
+              value={billingDraft.reason}
+              onChange={(event) => {
+                setBillingDraft((current) => ({ ...current, reason: event.target.value }));
+                setBillingMessage('');
+              }}
+            />
+          </label>
+        ) : null}
+      </div>
+      {billingMessage ? <p className="form-success-message" role="status">{billingMessage}</p> : null}
+      <button
+        className="primary-button"
+        disabled={updateBillingTreatmentMutation.isPending || (billingDraft.treatment === 'complimentary' && !billingDraft.reason.trim())}
+        onClick={() => updateBillingTreatmentMutation.mutate()}
+        type="button"
+      >
+        {updateBillingTreatmentMutation.isPending ? 'Saving…' : 'Save RRA billing'}
+      </button>
+    </section>
+  );
+}
+
 export default function StaffCompaniesPage() {
   const queryClient = useQueryClient();
   const [selectedAccountId, setSelectedAccountId] = useState('');
@@ -311,25 +391,31 @@ export default function StaffCompaniesPage() {
                 A question is one driver-help situation, even when Ready Route asks a follow-up. Success means the situation reached at least one verified answer. Helpful rate includes rated answers only; feedback coverage shows how many verified answers received a rating. Time saved remains an estimate: {metrics.minutes_per_answer_estimate || account.driver_help_minutes_per_answer_estimate || 5} minutes per successful situation.
               </p>
 
+              <RraBillingControl
+                account={account}
+                key={`${account.id}:${account.rra_billing_treatment_updated_at || 'initial'}`}
+              />
+
               <section className="staff-simple-section">
                 <div className="staff-simple-section-header">
                   <div><h3>Subscription activation</h3><p>$10 per active driver monthly or $100 per active driver annually.</p></div>
-                  <StatusBadge tone={account.billing_activation_status === 'active' ? 'active' : account.billing_setup_status === 'succeeded' ? 'warning' : 'neutral'}>{account.billing_activation_status === 'active' ? 'Billing active' : account.billing_setup_status === 'succeeded' ? 'Ready to activate' : 'Payment method needed'}</StatusBadge>
+                  <StatusBadge tone={account.rra_billing_treatment === 'complimentary' ? 'neutral' : account.billing_activation_status === 'active' ? 'active' : account.billing_setup_status === 'succeeded' ? 'warning' : 'neutral'}>{account.rra_billing_treatment === 'complimentary' ? 'No charge' : account.billing_activation_status === 'active' ? 'Billing active' : account.billing_setup_status === 'succeeded' ? 'Ready to activate' : 'Payment method needed'}</StatusBadge>
                 </div>
                 <div className="staff-company-finder-grid staff-company-create-grid">
                   <div><span className="field-label">Plan</span><strong>{account.billing_interval === 'annual' ? '$100/year' : '$10/month'} per active driver</strong></div>
                   <div><span className="field-label">Active drivers</span><strong>{account.counts?.active_drivers || 0}</strong></div>
-                  <div><span className="field-label">Estimated total</span><strong>${(account.counts?.active_drivers || 0) * (account.billing_interval === 'annual' ? 100 : 10)}/{account.billing_interval === 'annual' ? 'year' : 'month'}</strong></div>
+                  <div><span className="field-label">Estimated total</span><strong>{account.rra_billing_treatment === 'complimentary' ? '$0 due' : `$${(account.counts?.active_drivers || 0) * (account.billing_interval === 'annual' ? 100 : 10)}/${account.billing_interval === 'annual' ? 'year' : 'month'}`}</strong></div>
                 </div>
-                {account.billing_activation_status !== 'active' ? (
+                {account.billing_activation_status !== 'active' && account.rra_billing_treatment !== 'complimentary' ? (
                   <div className="billing-cancellation-form">
                     <label>Type {account.company_name} to confirm the first live charge<input className="text-field" onChange={(event) => { setBillingConfirmation(event.target.value); setBillingActivationMessage(''); }} value={billingConfirmation} /></label>
                     <button className="primary-button" disabled={activateBillingMutation.isPending || account.billing_setup_status !== 'succeeded' || !(account.counts?.active_drivers > 0) || billingConfirmation !== account.company_name} onClick={() => activateBillingMutation.mutate({ accountId: account.id, companyName: billingConfirmation })} type="button">{activateBillingMutation.isPending ? 'Activating…' : 'Activate live billing'}</button>
                   </div>
                 ) : null}
                 {billingActivationMessage ? <p className={activateBillingMutation.isError ? 'support-ticket-save-error' : 'form-success-message'} role="status">{billingActivationMessage}</p> : null}
-                {account.billing_setup_status !== 'succeeded' ? <p className="staff-usage-estimate-note">This company must securely save a payment method before billing can be activated.</p> : null}
-                {account.billing_setup_status === 'succeeded' && !(account.counts?.active_drivers > 0) ? <p className="staff-usage-estimate-note">Add at least one active driver before billing can be activated.</p> : null}
+                {account.rra_billing_treatment === 'complimentary' ? <p className="staff-usage-estimate-note">Regular service value is still tracked, but no payment method or subscription activation is required.</p> : null}
+                {account.rra_billing_treatment !== 'complimentary' && account.billing_setup_status !== 'succeeded' ? <p className="staff-usage-estimate-note">This company must securely save a payment method before billing can be activated.</p> : null}
+                {account.rra_billing_treatment !== 'complimentary' && account.billing_setup_status === 'succeeded' && !(account.counts?.active_drivers > 0) ? <p className="staff-usage-estimate-note">Add at least one active driver before billing can be activated.</p> : null}
               </section>
 
               <section className="staff-simple-section">
