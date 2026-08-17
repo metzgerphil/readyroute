@@ -127,6 +127,7 @@ function createApp(options = {}) {
     stripeAnnualPriceId: options.stripeAnnualPriceId,
     stripePublishableKey: options.stripePublishableKey,
     stripeSignupEnabled: options.stripeSignupEnabled,
+    liveBillingApproved: options.liveBillingApproved,
     stripeTaxEnabled: options.stripeTaxEnabled,
     stripeTaxRegistrationsConfirmed: options.stripeTaxRegistrationsConfirmed,
     publicFormLimiter: rateLimiters.publicForm
@@ -222,6 +223,10 @@ function createApp(options = {}) {
         now: options.now,
         stripeClient: options.stripeClient,
         billingService: options.staffBillingService,
+        subscriptionActivationService: options.staffSubscriptionActivationService,
+        stripeMonthlyPriceId: options.stripeMonthlyPriceId,
+        stripeAnnualPriceId: options.stripeAnnualPriceId,
+        liveBillingApproved: options.liveBillingApproved,
         sendReadyRouteStaffInviteEmail: options.sendReadyRouteStaffInviteEmail,
         sendReadyRouteStaffPasswordResetEmail: options.sendReadyRouteStaffPasswordResetEmail,
         sendManagerInviteEmail: options.sendManagerInviteEmail

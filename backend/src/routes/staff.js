@@ -2,9 +2,11 @@ const express = require('express');
 const bcrypt = require('bcrypt');
 const crypto = require('crypto');
 const jwt = require('jsonwebtoken');
+const Stripe = require('stripe');
 
 const defaultSupabase = require('../lib/supabase');
 const { createBillingService } = require('../services/billing');
+const { createStripeSignupBillingService } = require('../services/stripeSignupBilling');
 const {
   buildDriverMetrics,
   buildMetrics: buildDriverHelpMetrics
@@ -242,6 +244,11 @@ function presentAccountSummary(account, profile, counts = {}, latestTicket = nul
     vehicle_count: account.vehicle_count || 0,
     stripe_customer_id: account.stripe_customer_id || null,
     stripe_subscription_id: account.stripe_subscription_id || null,
+    billing_setup_status: account.billing_setup_status || 'not_started',
+    billing_activation_status: account.billing_activation_status || 'not_started',
+    billing_access_status: account.billing_access_status || 'not_provisioned',
+    billing_interval: account.billing_interval || 'monthly',
+    billed_driver_count: Number(account.billed_driver_count || 0),
     account_status: account.account_status || 'active',
     cancellation_requested_at: account.cancellation_requested_at || null,
     service_ends_at: account.service_ends_at || null,
@@ -272,6 +279,23 @@ function presentAccountSummary(account, profile, counts = {}, latestTicket = nul
       priority: latestTicket.priority,
       created_at: latestTicket.created_at
     } : null
+  };
+}
+
+function presentCompanySignup(row = {}) {
+  return {
+    id: row.id,
+    name: row.name || '',
+    email: normalizeEmail(row.email),
+    phone_number: row.phone_number || null,
+    company_name: row.company_csa || '',
+    role: row.role || null,
+    driver_count: Number(row.driver_count || 0),
+    billing_interval: row.billing_interval || null,
+    billing_setup_status: row.billing_setup_status || 'not_started',
+    account_id: row.account_id || null,
+    created_at: row.created_at || null,
+    updated_at: row.updated_at || null
   };
 }
 
@@ -447,6 +471,16 @@ function createReadyRouteStaffRouter(options = {}) {
   const billingService = options.billingService || createBillingService({
     supabase,
     stripeClient: options.stripeClient
+  });
+  const activationStripeClient = options.stripeClient || (process.env.STRIPE_SECRET_KEY
+    ? new Stripe(process.env.STRIPE_SECRET_KEY, { apiVersion: process.env.STRIPE_API_VERSION || '2026-06-24.dahlia' })
+    : null);
+  const subscriptionActivationService = options.subscriptionActivationService || createStripeSignupBillingService({
+    supabase,
+    stripeClient: activationStripeClient,
+    monthlyPriceId: options.stripeMonthlyPriceId,
+    annualPriceId: options.stripeAnnualPriceId,
+    liveBillingApproved: options.liveBillingApproved
   });
 
   function getManagerPortalBaseUrl() {
@@ -1766,6 +1800,24 @@ function createReadyRouteStaffRouter(options = {}) {
     }
   });
 
+  router.get('/company-signups', async (req, res) => {
+    try {
+      await getRequestStaff(req, jwtSecret, READYROUTE_STAFF_ROLES, supabase);
+      const { data, error } = await supabase
+        .from('early_access_signups')
+        .select('id, name, email, phone_number, company_csa, role, driver_count, billing_interval, billing_setup_status, account_id, created_at, updated_at')
+        .order('created_at', { ascending: false });
+      if (error) throw error;
+      const signups = (data || []).map(presentCompanySignup);
+      return res.status(200).json({ signups, pending_signups: signups.filter((signup) => !signup.account_id) });
+    } catch (error) {
+      const authResponse = sendAuthError(res, error);
+      if (authResponse) return authResponse;
+      console.error('ReadyRoute company signup queue failed:', error);
+      return res.status(500).json({ error: 'Unable to load company signups.' });
+    }
+  });
+
   router.post('/accounts', async (req, res) => {
     let createdAccountId = null;
     try {
@@ -1902,6 +1954,50 @@ function createReadyRouteStaffRouter(options = {}) {
     }
   });
 
+  router.post('/accounts/:accountId/billing/activate', async (req, res) => {
+    try {
+      const staff = await getRequestStaff(req, jwtSecret, READYROUTE_STAFF_ADMIN_ROLES, supabase);
+      const accountId = normalizeText(req.params.accountId, 120);
+      const companyName = normalizeText(req.body?.confirm_company_name, 180);
+      const { data: account, error: accountError } = await supabase
+        .from('accounts')
+        .select('id, company_name')
+        .eq('id', accountId)
+        .maybeSingle();
+      if (accountError) throw accountError;
+      if (!account) return res.status(404).json({ error: 'Account not found.' });
+      if (companyName !== account.company_name) {
+        return res.status(400).json({ error: 'Type the company name exactly to confirm live billing.' });
+      }
+
+      const result = await subscriptionActivationService.activateSubscription(accountId);
+      await writeAuditLog({
+        staff,
+        action: 'company.billing_activated',
+        targetType: 'account',
+        targetId: accountId,
+        accountId,
+        metadata: {
+          subscription_id: result.subscription_id,
+          active_driver_count: result.active_driver_count,
+          billing_interval: result.billing_interval
+        }
+      });
+      return res.status(result.already_exists ? 200 : 201).json(result);
+    } catch (error) {
+      const authResponse = sendAuthError(res, error);
+      if (authResponse) return authResponse;
+      if (['PAYMENT_SETUP_REQUIRED', 'ACTIVE_DRIVER_REQUIRED'].includes(error.code)) {
+        return res.status(409).json({ error: error.message, code: error.code });
+      }
+      if (['STRIPE_ACTIVATION_DISABLED', 'STRIPE_TAX_NOT_READY', 'LIVE_BILLING_NOT_APPROVED'].includes(error.code)) {
+        return res.status(503).json({ error: error.message, code: error.code });
+      }
+      console.error('ReadyRoute staff billing activation failed:', error);
+      return res.status(500).json({ error: 'Unable to activate company billing.' });
+    }
+  });
+
   router.post('/accounts/:accountId/managers/:managerId/invite', async (req, res) => {
     try {
       const staff = await getRequestStaff(req, jwtSecret, READYROUTE_STAFF_WRITE_ROLES, supabase);
@@ -1992,7 +2088,7 @@ function createReadyRouteStaffRouter(options = {}) {
       const [accountsResult, profilesResult, managersResult, driversResult, ticketsResult] = await Promise.all([
         supabase
           .from('accounts')
-          .select('id, company_name, manager_email, subscription_status, plan, vehicle_count, stripe_customer_id, stripe_subscription_id, account_status, cancellation_requested_at, service_ends_at, retention_ends_at, canceled_at, cancellation_reason, created_at')
+          .select('id, company_name, manager_email, subscription_status, plan, vehicle_count, stripe_customer_id, stripe_subscription_id, billing_setup_status, billing_activation_status, billing_access_status, billing_interval, billed_driver_count, account_status, cancellation_requested_at, service_ends_at, retention_ends_at, canceled_at, cancellation_reason, created_at')
           .order('created_at', { ascending: false }),
         supabase
           .from('account_internal_profiles')
@@ -2274,7 +2370,7 @@ function createReadyRouteStaffRouter(options = {}) {
 
       const accountResult = await supabase
         .from('accounts')
-        .select('id, company_name, manager_email, subscription_status, plan, account_status, driver_help_monthly_report_enabled, driver_help_minutes_per_answer_estimate, created_at')
+        .select('id, company_name, manager_email, subscription_status, plan, stripe_customer_id, stripe_subscription_id, billing_setup_status, billing_activation_status, billing_access_status, billing_interval, billed_driver_count, account_status, driver_help_monthly_report_enabled, driver_help_minutes_per_answer_estimate, created_at')
         .eq('id', accountId)
         .maybeSingle();
 

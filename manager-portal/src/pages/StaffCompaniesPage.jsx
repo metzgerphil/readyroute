@@ -52,6 +52,8 @@ export default function StaffCompaniesPage() {
   const [companyDraft, setCompanyDraft] = useState({ company_name: '', manager_name: '', manager_email: '' });
   const [companyCreateMessage, setCompanyCreateMessage] = useState('');
   const [managerInviteStatus, setManagerInviteStatus] = useState({});
+  const [billingConfirmation, setBillingConfirmation] = useState('');
+  const [billingActivationMessage, setBillingActivationMessage] = useState('');
 
   const accountsQuery = useQuery({
     queryKey: ['staff-accounts'],
@@ -59,6 +61,11 @@ export default function StaffCompaniesPage() {
       const response = await api.get('/staff/accounts');
       return response.data?.accounts || [];
     }
+  });
+
+  const companySignupsQuery = useQuery({
+    queryKey: ['staff-company-signups'],
+    queryFn: async () => (await api.get('/staff/company-signups')).data?.pending_signups || []
   });
 
   const accounts = useMemo(
@@ -106,6 +113,7 @@ export default function StaffCompaniesPage() {
             : 'Company created, but email delivery needs attention.'
       );
       await queryClient.invalidateQueries({ queryKey: ['staff-accounts'] });
+      await queryClient.invalidateQueries({ queryKey: ['staff-company-signups'] });
       if (result?.account?.id) setSelectedAccountId(result.account.id);
     },
     onError: (error) => setCompanyCreateMessage(error.response?.data?.error || 'Unable to create this company.')
@@ -141,6 +149,17 @@ export default function StaffCompaniesPage() {
     }
   });
 
+  const activateBillingMutation = useMutation({
+    mutationFn: async ({ accountId, companyName }) => (await api.post(`/staff/accounts/${accountId}/billing/activate`, { confirm_company_name: companyName })).data,
+    onSuccess: async (result, variables) => {
+      setBillingActivationMessage(`Billing activated for ${result.active_driver_count || 0} active drivers.`);
+      setBillingConfirmation('');
+      await queryClient.invalidateQueries({ queryKey: ['staff-account-detail', variables.accountId] });
+      await queryClient.invalidateQueries({ queryKey: ['staff-accounts'] });
+    },
+    onError: (error) => setBillingActivationMessage(error.response?.data?.error || 'Billing could not be activated.')
+  });
+
   const detail = accountDetailQuery.data || {};
   const account = detail.account || selectedAccount;
   const driverHelp = detail.driver_help || {};
@@ -159,6 +178,13 @@ export default function StaffCompaniesPage() {
     setCompanyCreateMessage('');
   }
 
+  function prepareCompanyFromSignup(signup) {
+    setCompanyDraft({ company_name: signup.company_name || '', manager_name: signup.name || '', manager_email: signup.email || '' });
+    setCompanyCreateMessage('Review the signup details, then create the company and send the manager invitation.');
+    setIsCreateCompanyOpen(true);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }
+
   return (
     <section className="staff-page staff-companies-page">
       <PageHeader
@@ -173,6 +199,33 @@ export default function StaffCompaniesPage() {
       />
 
       {companyCreateMessage ? <p className="form-success-message" role="status">{companyCreateMessage}</p> : null}
+
+      {companySignupsQuery.isLoading ? (
+        <LoadingState title="Loading new company signups" variant="card" />
+      ) : companySignupsQuery.isError ? (
+        <ErrorState title="Unable to load new company signups" description="Company accounts are still available below. Refresh this queue before onboarding a new request." onRetry={() => companySignupsQuery.refetch()} />
+      ) : companySignupsQuery.data?.length ? (
+        <section className="staff-account-detail staff-signup-queue" aria-label="New company signups">
+          <header className="staff-account-detail-header"><h2>New company signups</h2><p>Open the company account and email the manager their secure password link.</p></header>
+          <div className="staff-compact-list">
+            {companySignupsQuery.data.map((signup) => (
+              <article key={signup.id}>
+                <div>
+                  <strong>{signup.company_name || 'Company name not provided'}</strong>
+                  <span>{signup.name || 'Manager name not provided'} · {signup.email}</span>
+                  <span>{signup.driver_count || 'No'} expected driver{signup.driver_count === 1 ? '' : 's'}{signup.billing_interval ? ` · ${signup.billing_interval} billing requested` : ''}{signup.created_at ? ` · Signed up ${formatDateTime(signup.created_at, true)}` : ''}</span>
+                </div>
+                <div className="staff-user-row-badges">
+                  <StatusBadge tone={signup.billing_setup_status === 'succeeded' ? 'active' : 'warning'}>{signup.billing_setup_status === 'succeeded' ? 'Payment method ready' : 'Payment not collected'}</StatusBadge>
+                  <button className="primary-button" onClick={() => prepareCompanyFromSignup(signup)} type="button">Review and onboard</button>
+                </div>
+              </article>
+            ))}
+          </div>
+        </section>
+      ) : (
+        <section className="staff-account-detail staff-signup-queue" aria-label="New company signups"><EmptyState title="No pending company signups" description="New requests from readyroute.org/signup will appear here." variant="inline" /></section>
+      )}
 
       {isCreateCompanyOpen ? (
         <section className="staff-account-detail staff-create-company-card" aria-label="Create company">
@@ -257,6 +310,27 @@ export default function StaffCompaniesPage() {
               <p className="staff-usage-estimate-note">
                 A question is one driver-help situation, even when Ready Route asks a follow-up. Success means the situation reached at least one verified answer. Helpful rate includes rated answers only; feedback coverage shows how many verified answers received a rating. Time saved remains an estimate: {metrics.minutes_per_answer_estimate || account.driver_help_minutes_per_answer_estimate || 5} minutes per successful situation.
               </p>
+
+              <section className="staff-simple-section">
+                <div className="staff-simple-section-header">
+                  <div><h3>Subscription activation</h3><p>$10 per active driver monthly or $100 per active driver annually.</p></div>
+                  <StatusBadge tone={account.billing_activation_status === 'active' ? 'active' : account.billing_setup_status === 'succeeded' ? 'warning' : 'neutral'}>{account.billing_activation_status === 'active' ? 'Billing active' : account.billing_setup_status === 'succeeded' ? 'Ready to activate' : 'Payment method needed'}</StatusBadge>
+                </div>
+                <div className="staff-company-finder-grid staff-company-create-grid">
+                  <div><span className="field-label">Plan</span><strong>{account.billing_interval === 'annual' ? '$100/year' : '$10/month'} per active driver</strong></div>
+                  <div><span className="field-label">Active drivers</span><strong>{account.counts?.active_drivers || 0}</strong></div>
+                  <div><span className="field-label">Estimated total</span><strong>${(account.counts?.active_drivers || 0) * (account.billing_interval === 'annual' ? 100 : 10)}/{account.billing_interval === 'annual' ? 'year' : 'month'}</strong></div>
+                </div>
+                {account.billing_activation_status !== 'active' ? (
+                  <div className="billing-cancellation-form">
+                    <label>Type {account.company_name} to confirm the first live charge<input className="text-field" onChange={(event) => { setBillingConfirmation(event.target.value); setBillingActivationMessage(''); }} value={billingConfirmation} /></label>
+                    <button className="primary-button" disabled={activateBillingMutation.isPending || account.billing_setup_status !== 'succeeded' || !(account.counts?.active_drivers > 0) || billingConfirmation !== account.company_name} onClick={() => activateBillingMutation.mutate({ accountId: account.id, companyName: billingConfirmation })} type="button">{activateBillingMutation.isPending ? 'Activating…' : 'Activate live billing'}</button>
+                  </div>
+                ) : null}
+                {billingActivationMessage ? <p className={activateBillingMutation.isError ? 'support-ticket-save-error' : 'form-success-message'} role="status">{billingActivationMessage}</p> : null}
+                {account.billing_setup_status !== 'succeeded' ? <p className="staff-usage-estimate-note">This company must securely save a payment method before billing can be activated.</p> : null}
+                {account.billing_setup_status === 'succeeded' && !(account.counts?.active_drivers > 0) ? <p className="staff-usage-estimate-note">Add at least one active driver before billing can be activated.</p> : null}
+              </section>
 
               <section className="staff-simple-section">
                 <div className="staff-simple-section-header">
