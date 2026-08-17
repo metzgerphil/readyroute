@@ -13,6 +13,7 @@ const inviteButton = document.querySelector('#invite-button');
 const inviteError = document.querySelector('#invite-error');
 const showResetButton = document.querySelector('#show-reset-button');
 const driverList = document.querySelector('#driver-list');
+const driversMessage = document.querySelector('#drivers-message');
 const driversError = document.querySelector('#drivers-error');
 const driverForm = document.querySelector('#driver-form');
 const addDriverCard = document.querySelector('#add-driver-card');
@@ -388,7 +389,7 @@ driverForm.addEventListener('submit', async (event) => {
   const button = document.querySelector('#add-driver-button');
   const errorElement = document.querySelector('#driver-form-error');
   button.disabled = true;
-  setMessage(managersMessage);
+  setMessage(driversMessage);
   setMessage(errorElement);
   try {
     await request('/manager/drivers', {
@@ -396,13 +397,13 @@ driverForm.addEventListener('submit', async (event) => {
       body: JSON.stringify({
         name: driverForm['driver-name'].value.trim(),
         email: driverForm['driver-email'].value.trim(),
-        username: driverForm['driver-username'].value.trim() || null,
         send_invite: true
       })
     });
     driverForm.reset();
     addDriverCard.hidden = true;
     await loadDrivers();
+    setMessage(driversMessage, 'Driver added. One setup email was sent with the app and password instructions.');
   } catch (error) {
     setMessage(errorElement, error.message);
   } finally {

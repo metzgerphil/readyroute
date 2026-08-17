@@ -146,7 +146,10 @@ export default function LoginScreen({ onAuthenticated }) {
 
               <View style={styles.form}>
                 <Text style={styles.helperText}>
-                  Sign in with your ReadyRoute email and either your 4-digit driver PIN or your manager password.
+                  Sign in with your ReadyRoute email and password.
+                </Text>
+                <Text style={styles.helperText}>
+                  First time here? Use the secure link in your driver invitation email to create your password first.
                 </Text>
                 <TextInput
                   autoCapitalize="none"
@@ -171,7 +174,7 @@ export default function LoginScreen({ onAuthenticated }) {
                       setErrorMessage('');
                     }
                   }}
-                  placeholder="4-digit PIN or password"
+                  placeholder="Password"
                   placeholderTextColor="#8b8b8b"
                   secureTextEntry
                   style={styles.input}
