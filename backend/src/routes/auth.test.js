@@ -32,6 +32,10 @@ function createSupabaseStub(initialAccount = {}) {
           this[column] = value;
           return this;
         },
+        ilike(column, value) {
+          this[`ilike_${column}`] = value;
+          return this;
+        },
         limit() {
           return this;
         },
@@ -39,6 +43,16 @@ function createSupabaseStub(initialAccount = {}) {
           return this;
         },
         then(resolve, reject) {
+          if (table === 'drivers') {
+            const rows = driver && (
+              (!this.email || this.email === driver.email) &&
+              (!this.ilike_username || String(this.ilike_username).toLowerCase() === String(driver.username || '').toLowerCase()) &&
+              (!this.id || this.id === driver.id)
+            ) ? [{ ...driver }] : [];
+
+            return Promise.resolve({ data: rows, error: null }).then(resolve, reject);
+          }
+
           if (table !== 'manager_users') {
             return Promise.resolve({ data: null, error: null }).then(resolve, reject);
           }
@@ -376,6 +390,44 @@ test('legacy driver login accepts an established password as well as a four-digi
   assert.equal(response.status, 200);
   assert.equal(response.body.user.driver_id, 'driver-password-1');
   assert.equal(jwt.verify(response.body.token, 'test-secret').device_session_id, 'device-session-password-1');
+});
+
+test('legacy driver login accepts the username established from the invitation', async () => {
+  const password = 'SecureDriverPassword!2026';
+  const passwordHash = await bcrypt.hash(password, 10);
+  const supabase = createSupabaseStub({
+    driver: {
+      id: 'driver-username-1',
+      account_id: 'account-1',
+      name: 'Phil Metzger',
+      email: 'phillovesjoy@gmail.com',
+      username: 'metzgerphil',
+      password_hash: passwordHash,
+      is_active: true
+    }
+  });
+  const app = createApp({
+    supabase,
+    jwtSecret: 'test-secret',
+    enforceBilling: false,
+    requireDriverDeviceId: true,
+    authorizeDriverDevice: async () => ({
+      id: 'device-session-username-1',
+      device_hash: 'device-hash-username-1'
+    })
+  });
+
+  const response = await request(app)
+    .post('/auth/driver/login')
+    .send({
+      identifier: 'metzgerphil',
+      password,
+      device_id: '12345678-1234-1234-1234-123456789012'
+    });
+
+  assert.equal(response.status, 200);
+  assert.equal(response.body.user.driver_id, 'driver-username-1');
+  assert.equal(response.body.user.email, 'phillovesjoy@gmail.com');
 });
 
 test('public manager trial signup is disabled unless explicitly enabled', async () => {

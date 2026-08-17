@@ -262,6 +262,45 @@ function createAuthRouter(options = {}) {
     return data || null;
   }
 
+  async function findDriversByIdentifier(identifier) {
+    const normalizedIdentifier = String(identifier || '').trim().toLowerCase();
+    if (!normalizedIdentifier) return [];
+
+    if (normalizedIdentifier.includes('@')) {
+      const driver = await findDriverByEmail(normalizedIdentifier);
+      return driver ? [driver] : [];
+    }
+
+    if (!/^[a-z0-9._-]{3,40}$/i.test(normalizedIdentifier)) return [];
+
+    const { data, error } = await supabase
+      .from('drivers')
+      .select('id, account_id, name, email, username, pin, password_hash, invited_at, invite_accepted_at, is_active')
+      .ilike('username', normalizedIdentifier)
+      .limit(20);
+
+    if (error) throw error;
+    return data || [];
+  }
+
+  async function findDriverCredentialMatch(identifier, credential) {
+    const candidates = await findDriversByIdentifier(identifier);
+    const matches = [];
+
+    for (const candidate of candidates) {
+      const credentialHash = candidate?.password_hash || candidate?.pin;
+      if (
+        candidate?.is_active !== false &&
+        credentialHash &&
+        await bcrypt.compare(credential, credentialHash)
+      ) {
+        matches.push(candidate);
+      }
+    }
+
+    return matches.length === 1 ? matches[0] : null;
+  }
+
   async function getAccountSummary(accountId) {
     if (!accountId) {
       return null;
@@ -609,11 +648,12 @@ function createAuthRouter(options = {}) {
   });
 
   router.post('/driver/login', async (req, res) => {
-    const { email, password, pin, device_id: deviceId, device_name: deviceName } = req.body || {};
+    const { email, identifier, password, pin, device_id: deviceId, device_name: deviceName } = req.body || {};
+    const loginIdentifier = String(identifier || email || '').trim();
     const credential = String(password ?? pin ?? '');
 
-    if (!email || !credential) {
-      return res.status(400).json({ error: 'Email and password or PIN are required' });
+    if (!loginIdentifier || !credential) {
+      return res.status(400).json({ error: 'Username or email and password or PIN are required' });
     }
 
     if (credential.length > 200) {
@@ -624,17 +664,11 @@ function createAuthRouter(options = {}) {
     }
 
     try {
-      const driver = await findDriverByEmail(email);
+      const driver = await findDriverCredentialMatch(loginIdentifier, credential);
       const accountSummary = await getAccountSummary(driver?.account_id);
 
       const credentialHash = driver?.password_hash || driver?.pin;
       if (!driver || driver.is_active === false || !credentialHash) {
-        return res.status(401).json({ error: 'Invalid credentials' });
-      }
-
-      const isValidCredential = await bcrypt.compare(credential, credentialHash);
-
-      if (!isValidCredential) {
         return res.status(401).json({ error: 'Invalid credentials' });
       }
 
