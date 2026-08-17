@@ -29,6 +29,7 @@ const { createApiRateLimiters } = require('./middleware/apiSecurity');
 const defaultSupabase = require('./lib/supabase');
 const { createHealthService } = require('./services/health');
 const { createRequestObservability, logUnhandledRequestError } = require('./middleware/observability');
+const { READYROUTE_STAFF_ROLES, readRequiredStaffContext } = require('./services/readyRouteStaffAuth');
 
 const PHOTO_JSON_PATHS = [
   '/routes/inspection-photo',
@@ -178,6 +179,35 @@ function createApp(options = {}) {
     now: options.now,
     service: options.driverHelpService
   });
+  const requireReadyRouteStaff = async (req, res, next) => {
+    try {
+      await readRequiredStaffContext(req, options.jwtSecret || process.env.JWT_SECRET, READYROUTE_STAFF_ROLES, {
+        supabase: options.supabase || defaultSupabase,
+        enforceSessionValidation: options.enforceSessionValidation
+      });
+      return next();
+    } catch (error) {
+      if (error.status === 401 || error.status === 403) {
+        return res.status(error.status).json({ error: error.message });
+      }
+      console.error('ReadyRoute staff authorization failed:', error);
+      return res.status(500).json({ error: 'Unable to verify ReadyRoute staff access.' });
+    }
+  };
+  const staffDriverHelpRouter = createManagerDriverHelpRouter({
+    supabase: options.supabase,
+    now: options.now,
+    service: options.driverHelpService,
+    globalOverview: true,
+    authorizeReview: (req) => req.readyrouteStaff.staff_role !== 'read_only',
+    getRequestContext: (req) => ({
+      accountId: null,
+      actorType: 'manager',
+      actorId: req.readyrouteStaff.staff_user_id,
+      persist: false,
+      sessionContext: req.body?.session_context || null
+    })
+  });
   const propertyIntelManagerRouter = options.supabase
     ? createPropertyIntelManagerRouter({ supabase: options.supabase })
     : propertyIntelManagerRoutes;
@@ -305,6 +335,7 @@ function createApp(options = {}) {
   app.use('/account', publicAccountRouter);
   app.use('/waitlist', waitlistRouter);
   app.use('/support', supportRouter);
+  app.use('/staff/driver-help', requireReadyRouteStaff, staffDriverHelpRouter);
   app.use('/staff', staffRouter);
   app.use('/internal', internalSyncRouter);
   app.use('/manager/property-intel', requireManager, requireActiveSubscription, propertyIntelManagerRouter);

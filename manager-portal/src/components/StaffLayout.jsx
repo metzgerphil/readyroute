@@ -4,11 +4,14 @@ import { NavLink, useNavigate } from 'react-router-dom';
 import { clearReadyRouteStaffToken, getReadyRouteStaffTokenPayload } from '../services/auth';
 
 const staffNavLinks = [
-  { to: '/readyroute/support', label: 'Support' },
-  { to: '/readyroute/companies', label: 'Companies' },
-  { to: '/readyroute/costs', label: 'Costs' },
-  { to: '/readyroute/staff', label: 'Staff' },
-  { to: '/readyroute/settings', label: 'Settings' }
+  { path: 'support', label: 'Support' },
+  { path: 'companies', label: 'Companies' },
+  { path: 'knowledge', label: 'Knowledge Activity' },
+  { path: 'memory', label: 'Answer Memory' },
+  { path: 'rra-test', label: 'RRA Test Console' },
+  { path: 'costs', label: 'Costs' },
+  { path: 'staff', label: 'Staff' },
+  { path: 'settings', label: 'Settings' }
 ];
 
 function formatStaffRole(role) {
@@ -19,7 +22,7 @@ function formatStaffRole(role) {
     .join(' ');
 }
 
-export default function StaffLayout({ children }) {
+export default function StaffLayout({ children, basePath = '/staff' }) {
   const navigate = useNavigate();
   const [isSidebarHidden, setIsSidebarHidden] = useState(false);
   const staffPayload = getReadyRouteStaffTokenPayload() || {};
@@ -27,7 +30,7 @@ export default function StaffLayout({ children }) {
 
   function handleLogout() {
     clearReadyRouteStaffToken();
-    navigate('/readyroute/login', { replace: true });
+    navigate(`${basePath}/login`, { replace: true });
   }
 
   return (
@@ -51,8 +54,8 @@ export default function StaffLayout({ children }) {
             {staffNavLinks.map((link) => (
               <NavLink
                 className={({ isActive }) => `staff-nav-link${isActive ? ' active' : ''}`}
-                key={link.to}
-                to={link.to}
+                key={link.path}
+                to={`${basePath}/${link.path}`}
               >
                 {link.label}
               </NavLink>

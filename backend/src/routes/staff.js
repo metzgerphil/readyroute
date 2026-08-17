@@ -495,6 +495,18 @@ function createReadyRouteStaffRouter(options = {}) {
     );
   }
 
+  function getStaffPortalBaseUrl() {
+    if (process.env.READYROUTE_STAFF_PORTAL_URL) {
+      return process.env.READYROUTE_STAFF_PORTAL_URL;
+    }
+
+    if (process.env.NODE_ENV === 'production') {
+      return 'https://readyroute.org/staff';
+    }
+
+    return `${getManagerPortalBaseUrl().replace(/\/$/, '')}/staff`;
+  }
+
   function getPasswordVersion(hash) {
     return crypto.createHash('sha256').update(String(hash || '')).digest('hex').slice(0, 16);
   }
@@ -508,13 +520,13 @@ function createReadyRouteStaffRouter(options = {}) {
   }
 
   function buildStaffPasswordResetUrl(token) {
-    const baseUrl = getManagerPortalBaseUrl().replace(/\/$/, '');
-    return `${baseUrl}/readyroute/reset-password?token=${encodeURIComponent(token)}`;
+    const baseUrl = getStaffPortalBaseUrl().replace(/\/$/, '');
+    return `${baseUrl}/reset-password?token=${encodeURIComponent(token)}`;
   }
 
   function buildStaffInviteUrl(token) {
-    const baseUrl = getManagerPortalBaseUrl().replace(/\/$/, '');
-    return `${baseUrl}/readyroute/accept-invite?token=${encodeURIComponent(token)}`;
+    const baseUrl = getStaffPortalBaseUrl().replace(/\/$/, '');
+    return `${baseUrl}/accept-invite?token=${encodeURIComponent(token)}`;
   }
 
   function buildManagerInviteUrl(token) {

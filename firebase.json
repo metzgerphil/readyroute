@@ -44,7 +44,7 @@
     },
     {
       "target": "landing",
-      "public": "landing-page",
+      "public": ".firebase-hosting-dist",
       "ignore": [
         "firebase.json",
         "vercel.json",
@@ -78,14 +78,15 @@
           ]
         }
       ],
-      "redirects": [
+      "rewrites": [
         {
           "source": "/staff",
-          "destination": "https://portal.readyroute.org/readyroute/support",
-          "type": 302
-        }
-      ],
-      "rewrites": [
+          "destination": "/staff/index.html"
+        },
+        {
+          "source": "/staff/**",
+          "destination": "/staff/index.html"
+        },
         {
           "source": "/mvp",
           "destination": "/mvp.html"

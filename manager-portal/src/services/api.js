@@ -58,8 +58,11 @@ api.interceptors.response.use(
 
       if (isReadyRouteStaffRequest) {
         clearReadyRouteStaffToken();
-        if (window.location.pathname !== '/readyroute/login') {
-          window.location.assign('/readyroute/login');
+        const staffLoginPath = window.location.pathname.startsWith('/staff')
+          ? '/staff/login'
+          : '/readyroute/login';
+        if (window.location.pathname !== staffLoginPath) {
+          window.location.assign(staffLoginPath);
         }
       } else {
         clearManagerToken();

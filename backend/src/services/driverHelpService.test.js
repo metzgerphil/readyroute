@@ -241,6 +241,32 @@ function knowledgeRecord(overrides = {}) {
   };
 }
 
+test('staff test mode returns reusable conversation context without writing customer data', async () => {
+  const record = knowledgeRecord();
+  const supabase = memorySupabase([record], null);
+  const service = createDriverHelpService({
+    supabase,
+    now: () => new Date(0),
+    aiInterpretationMode: 'OFF'
+  });
+
+  const result = await service.answerQuestion({
+    accountId: null,
+    driverId: null,
+    actorType: 'manager',
+    actorId: '00000000-0000-0000-0000-000000000099',
+    question: 'Pickup got canceled',
+    includeDiagnostics: true,
+    persist: false
+  });
+
+  assert.equal(result.test_mode, true);
+  assert.equal(result.interaction_id, null);
+  assert.ok(result.session_id);
+  assert.equal(result.session_context.situation_question, 'Pickup got canceled');
+  assert.deepEqual(supabase.writes, []);
+});
+
 test('an active exact answer-memory route bypasses AI and still renders published record content', async () => {
   const record = knowledgeRecord({
     knowledge_id: 'KNO-DEL-BUS-CLOSED-001',

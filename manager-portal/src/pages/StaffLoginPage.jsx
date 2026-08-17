@@ -4,7 +4,7 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import api from '../services/api';
 import { saveReadyRouteStaffToken } from '../services/auth';
 
-export default function StaffLoginPage() {
+export default function StaffLoginPage({ basePath = '/readyroute' }) {
   const navigate = useNavigate();
   const location = useLocation();
   const [email, setEmail] = useState('');
@@ -21,7 +21,7 @@ export default function StaffLoginPage() {
   const [resetMessage, setResetMessage] = useState('');
   const [resetErrorMessage, setResetErrorMessage] = useState('');
   const [isRequestingReset, setIsRequestingReset] = useState(false);
-  const destination = location.state?.from || '/readyroute/support';
+  const destination = location.state?.from || `${basePath}/support`;
 
   async function handleSubmit(event) {
     event.preventDefault();

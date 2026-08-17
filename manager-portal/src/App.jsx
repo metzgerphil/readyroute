@@ -64,12 +64,12 @@ function RequireAuth({ children }) {
   return children;
 }
 
-function RequireStaffAuth({ children }) {
+function RequireStaffAuth({ children, loginPath = '/staff/login' }) {
   const location = useLocation();
   const token = getReadyRouteStaffToken();
 
   if (!token) {
-    return <Navigate replace state={{ from: location.pathname }} to="/readyroute/login" />;
+    return <Navigate replace state={{ from: location.pathname }} to={loginPath} />;
   }
 
   return children;
@@ -89,9 +89,6 @@ function ProtectedApp() {
               <Route element={<NotificationsPage />} path="/notifications" />
               <Route element={<RecordsPage />} path="/records" />
               <Route element={<DriversPage />} path="/drivers" />
-              <Route element={<KnowledgeActivityPage />} path="/knowledge-activity" />
-              <Route element={<AnswerMemoryPage />} path="/answer-memory" />
-              <Route element={<RraTestPage />} path="/rra-test" />
               <Route element={<VehiclesPage />} path="/vehicles" />
               <Route element={<AccessCodesPage />} path="/access-codes" />
               <Route element={<BillingPage />} path="/billing" />
@@ -111,16 +108,19 @@ function ProtectedApp() {
   );
 }
 
-function ReadyRouteStaffApp() {
+function ReadyRouteStaffApp({ basePath = '/staff' }) {
   return (
     <ErrorBoundary>
-      <StaffLayout>
+      <StaffLayout basePath={basePath}>
         <Suspense fallback={<RouteLoadingFallback />}>
           <Routes>
-            <Route element={<Navigate replace to="/readyroute/support" />} index />
+            <Route element={<Navigate replace to={`${basePath}/support`} />} index />
             <Route element={<AdminSupportPage />} path="support" />
             <Route element={<StaffCompaniesPage />} path="companies" />
             <Route element={<StaffCompanySupportViewPage />} path="companies/:accountId/view" />
+            <Route element={<KnowledgeActivityPage apiBase="/staff/driver-help" />} path="knowledge" />
+            <Route element={<AnswerMemoryPage apiBase="/staff/driver-help" />} path="memory" />
+            <Route element={<RraTestPage allowFeedback={false} apiBase="/staff/driver-help" />} path="rra-test" />
             <Route element={<StaffOperatingCostsPage />} path="costs" />
             <Route element={<StaffUsersPage />} path="staff" />
             <Route element={<StaffSettingsPage />} path="settings" />
@@ -137,6 +137,9 @@ export default function App() {
       <Suspense fallback={<RouteLoadingFallback />}>
         <Routes>
           <Route element={<LoginPage />} path="/login" />
+          <Route element={<StaffLoginPage basePath="/staff" />} path="/staff/login" />
+          <Route element={<StaffAcceptInvitePage basePath="/staff" />} path="/staff/accept-invite" />
+          <Route element={<StaffResetPasswordPage basePath="/staff" />} path="/staff/reset-password" />
           <Route element={<StaffLoginPage />} path="/readyroute/login" />
           <Route element={<StaffAcceptInvitePage />} path="/readyroute/accept-invite" />
           <Route element={<StaffResetPasswordPage />} path="/readyroute/reset-password" />
@@ -147,8 +150,16 @@ export default function App() {
           <Route element={<DriverInvitePage />} path="/driver-invite" />
           <Route
             element={
-              <RequireStaffAuth>
-                <ReadyRouteStaffApp />
+              <RequireStaffAuth loginPath="/staff/login">
+                <ReadyRouteStaffApp basePath="/staff" />
+              </RequireStaffAuth>
+            }
+            path="/staff/*"
+          />
+          <Route
+            element={
+              <RequireStaffAuth loginPath="/readyroute/login">
+                <ReadyRouteStaffApp basePath="/readyroute" />
               </RequireStaffAuth>
             }
             path="/readyroute/*"
