@@ -8,6 +8,10 @@ const loginButton = document.querySelector('#login-button');
 const loginError = document.querySelector('#login-error');
 const resetForm = document.querySelector('#reset-form');
 const resetMessage = document.querySelector('#reset-message');
+const inviteForm = document.querySelector('#invite-form');
+const inviteButton = document.querySelector('#invite-button');
+const inviteError = document.querySelector('#invite-error');
+const showResetButton = document.querySelector('#show-reset-button');
 const driverList = document.querySelector('#driver-list');
 const driversError = document.querySelector('#drivers-error');
 const driverForm = document.querySelector('#driver-form');
@@ -165,6 +169,50 @@ async function updateDriverStatus(driverId, isActive, button) {
   }
 }
 
+const inviteToken = new URLSearchParams(window.location.search).get('invite') || '';
+if (inviteToken) {
+  document.querySelector('.login-card > h2').textContent = 'Create your company-portal password';
+  document.querySelector('.login-card > .muted').hidden = true;
+  loginForm.hidden = true;
+  showResetButton.hidden = true;
+  resetForm.hidden = true;
+  inviteForm.hidden = false;
+}
+
+inviteForm.addEventListener('submit', async (event) => {
+  event.preventDefault();
+  setMessage(inviteError);
+  const password = document.querySelector('#invite-password').value;
+  const confirmation = document.querySelector('#invite-password-confirm').value;
+  if (password.length < 10) {
+    setMessage(inviteError, 'Password must be at least 10 characters.');
+    return;
+  }
+  if (password !== confirmation) {
+    setMessage(inviteError, 'Passwords do not match.');
+    return;
+  }
+  inviteButton.disabled = true;
+  try {
+    await request('/auth/manager/reset-password', {
+      method: 'POST',
+      body: JSON.stringify({ token: inviteToken, password })
+    });
+    window.history.replaceState({}, '', '/portal');
+    inviteForm.hidden = true;
+    loginForm.hidden = false;
+    showResetButton.hidden = false;
+    document.querySelector('.login-card > h2').textContent = 'Your password is ready';
+    document.querySelector('.login-card > .muted').textContent = 'Sign in with your company-contact email and the password you just created.';
+    document.querySelector('.login-card > .muted').hidden = false;
+    loginForm.email.focus();
+  } catch (error) {
+    setMessage(inviteError, error.message);
+  } finally {
+    inviteButton.disabled = false;
+  }
+});
+
 loginForm.addEventListener('submit', async (event) => {
   event.preventDefault();
   loginButton.disabled = true;
@@ -188,7 +236,7 @@ loginForm.addEventListener('submit', async (event) => {
   }
 });
 
-document.querySelector('#show-reset-button').addEventListener('click', () => {
+showResetButton.addEventListener('click', () => {
   resetForm.hidden = !resetForm.hidden;
   resetForm['reset-email'].value = loginForm.email.value;
 });

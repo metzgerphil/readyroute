@@ -54,6 +54,11 @@ class MockQueryBuilder {
     return this;
   }
 
+  limit(value) {
+    this.state.limit = value;
+    return this;
+  }
+
   maybeSingle() {
     return this.execute('maybeSingle');
   }
@@ -105,12 +110,28 @@ function signManagerToken(overrides = {}) {
   );
 }
 
-async function startTestServer({ supabase, stripeClient, webhookSecret, stripePriceId, enforceBilling = false }) {
+async function startTestServer({
+  supabase,
+  stripeClient,
+  webhookSecret,
+  stripePriceId,
+  stripeMonthlyPriceId,
+  stripeAnnualPriceId,
+  stripeSignupEnabled,
+  signupReturnUrl,
+  sendRraCompanyReadyEmail,
+  enforceBilling = false
+}) {
   const app = createApp({
     supabase,
     stripeClient,
     webhookSecret,
     stripePriceId,
+    stripeMonthlyPriceId,
+    stripeAnnualPriceId,
+    stripeSignupEnabled,
+    signupReturnUrl,
+    sendRraCompanyReadyEmail,
     jwtSecret: process.env.JWT_SECRET,
     enforceBilling
   });
@@ -180,6 +201,130 @@ test('company managers cannot activate the first live subscription', async () =>
       body: '{}'
     });
     assert.equal(response.status, 404);
+  } finally {
+    await server.close();
+  }
+});
+
+test('POST /billing/signup/checkout-session redirects a valid RRA company signup to hosted Stripe', async () => {
+  const updates = [];
+  const supabase = new MockSupabase((query) => {
+    if (query.table === 'early_access_signups' && query.operation === 'upsert') {
+      return {
+        data: { id: 'signup-1', name: 'Taylor Owner', email: 'owner@example.com', company_csa: 'Taylor Transport', stripe_customer_id: null },
+        error: null
+      };
+    }
+    if (query.table === 'early_access_signups' && query.operation === 'update') {
+      updates.push(query.payload);
+      return { data: null, error: null };
+    }
+    throw new Error(`Unexpected query ${query.table}:${query.operation}`);
+  });
+  let checkoutPayload;
+  const stripeClient = {
+    customers: { create: async () => ({ id: 'cus_signup' }) },
+    checkout: { sessions: { create: async (payload) => {
+      checkoutPayload = payload;
+      return { id: 'cs_signup', url: 'https://checkout.stripe.test/cs_signup' };
+    } } }
+  };
+  const server = await startTestServer({
+    supabase,
+    stripeClient,
+    stripeMonthlyPriceId: 'price_monthly',
+    stripeAnnualPriceId: 'price_annual',
+    stripeSignupEnabled: true,
+    signupReturnUrl: 'https://readyroute.org/signup'
+  });
+
+  try {
+    const response = await fetch(`${server.baseUrl}/billing/signup/checkout-session`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        name: 'Taylor Owner',
+        email: 'owner@example.com',
+        phone: '555-0100',
+        company: 'Taylor Transport',
+        role: 'Owner',
+        drivers: 5,
+        billing_interval: 'monthly',
+        billing_consent: true,
+        request_id: '00000000-0000-4000-8000-000000000001'
+      })
+    });
+    const payload = await response.json();
+
+    assert.equal(response.status, 201);
+    assert.equal(payload.checkout_url, 'https://checkout.stripe.test/cs_signup');
+    assert.match(checkoutPayload.success_url, /session_id=\{CHECKOUT_SESSION_ID\}/);
+    assert.equal(updates[0].onboarding_status, 'pending_payment');
+  } finally {
+    await server.close();
+  }
+});
+
+test('POST /billing/signup/complete provisions the company and sends the RRA portal link', async () => {
+  const inserts = [];
+  const updates = [];
+  let sentEmail;
+  const supabase = new MockSupabase((query) => {
+    if (query.table === 'early_access_signups' && query.operation === 'select') {
+      return { data: {
+        id: 'signup-1', name: 'Taylor Owner', email: 'owner@example.com', phone_number: '555-0100',
+        company_csa: 'Taylor Transport', role: 'Owner', driver_count: 5, billing_interval: 'monthly',
+        billing_policy_version: '2026-08-15-v2', billing_consent_at: '2026-08-16T12:00:00.000Z',
+        account_id: null, onboarding_status: 'pending_payment'
+      }, error: null };
+    }
+    if (query.table === 'early_access_signups' && query.operation === 'update') {
+      updates.push(query.payload);
+      return { data: null, error: null };
+    }
+    if (query.table === 'accounts' && query.operation === 'select') return { data: null, error: null };
+    if (query.table === 'manager_users' && query.operation === 'select') return { data: null, error: null };
+    if (query.table === 'accounts' && query.operation === 'insert') {
+      inserts.push(query.payload);
+      return { data: { id: 'acct-new', company_name: 'Taylor Transport' }, error: null };
+    }
+    if (query.table === 'manager_users' && query.operation === 'insert') {
+      inserts.push(query.payload);
+      return { data: { id: 'manager-new', email: 'owner@example.com', full_name: 'Taylor Owner', password_hash: null }, error: null };
+    }
+    if (query.table === 'account_internal_profiles' && query.operation === 'upsert') return { data: null, error: null };
+    throw new Error(`Unexpected query ${query.table}:${query.operation}`);
+  });
+  const stripeClient = {
+    checkout: { sessions: { retrieve: async () => ({
+      id: 'cs_signup', mode: 'setup', status: 'complete', customer: 'cus_signup',
+      metadata: { readyroute_signup_id: 'signup-1' },
+      setup_intent: { id: 'seti_signup', payment_method: { id: 'pm_signup' } }
+    }) } }
+  };
+  const server = await startTestServer({
+    supabase,
+    stripeClient,
+    sendRraCompanyReadyEmail: async (message) => {
+      sentEmail = message;
+      return { delivered: true, provider_id: 'email-1' };
+    }
+  });
+
+  try {
+    const response = await fetch(`${server.baseUrl}/billing/signup/complete`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ session_id: 'cs_signup' })
+    });
+    const payload = await response.json();
+
+    assert.equal(response.status, 200);
+    assert.equal(payload.account_id, 'acct-new');
+    assert.equal(payload.email_delivered, true);
+    assert.equal(inserts[0].rra_billing_treatment, 'standard');
+    assert.match(sentEmail.accessUrl, /^https:\/\/readyroute\.org\/portal\?invite=/);
+    assert.equal(updates.at(-1).onboarding_status, 'email_sent');
   } finally {
     await server.close();
   }

@@ -30,6 +30,15 @@
         <p class="eyebrow">Company portal</p>
         <h2>Sign in</h2>
         <p class="muted">Use the company-contact email and password supplied by ReadyRoute.</p>
+        <form id="invite-form" hidden>
+          <p class="muted">Create your private password to activate the Ready Route Answers company portal.</p>
+          <label for="invite-password">New password</label>
+          <input autocomplete="new-password" id="invite-password" minlength="10" required type="password">
+          <label for="invite-password-confirm">Confirm password</label>
+          <input autocomplete="new-password" id="invite-password-confirm" minlength="10" required type="password">
+          <div class="message error" id="invite-error" role="alert" hidden></div>
+          <button class="primary" id="invite-button" type="submit">Create password and continue</button>
+        </form>
         <form id="login-form">
           <label for="email">Email</label>
           <input autocomplete="username" id="email" name="email" required type="email">

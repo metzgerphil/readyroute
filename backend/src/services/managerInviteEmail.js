@@ -40,6 +40,15 @@ async function sendResendEmail({ to, subject, html }) {
   };
 }
 
+function escapeHtml(value) {
+  return String(value || '')
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;')
+    .replaceAll("'", '&#39;');
+}
+
 async function sendManagerInviteEmail({
   to,
   fullName,
@@ -72,6 +81,45 @@ async function sendManagerInviteEmail({
     to,
     subject: `You're invited to ${safeCompanyName} on ReadyRoute`,
     html
+  });
+}
+
+async function sendRraCompanyReadyEmail({
+  to,
+  fullName,
+  companyName,
+  accessUrl,
+  needsPassword = true
+}) {
+  const companyLabel = String(companyName || 'your company').trim();
+  const safeName = escapeHtml(String(fullName || '').trim() || 'there');
+  const safeCompanyName = escapeHtml(companyLabel);
+  const safeAccessUrl = String(accessUrl || 'https://readyroute.org/portal').trim();
+  const action = needsPassword ? 'Create password and sign in' : 'Sign in to company portal';
+  const accessCopy = needsPassword
+    ? 'Create your private password, then sign in to your Ready Route Answers company portal.'
+    : 'Your existing ReadyRoute password now opens this company in the Ready Route Answers company portal.';
+
+  return sendResendEmail({
+    to,
+    subject: `Your Ready Route Answers portal is ready for ${companyLabel}`,
+    html: `
+      <div style="font-family:Arial,Helvetica,sans-serif;line-height:1.6;color:#173042;">
+        <div style="color:#ff6200;font-size:14px;font-weight:800;letter-spacing:1px;text-transform:uppercase;">Ready Route Answers</div>
+        <h2 style="margin:10px 0 12px;">Your company portal is ready</h2>
+        <p>Hi ${safeName},</p>
+        <p>Payment information was received securely by Stripe and the Ready Route Answers workspace for <strong>${safeCompanyName}</strong> is ready.</p>
+        <p>${accessCopy}</p>
+        <p style="margin:24px 0;">
+          <a href="${safeAccessUrl}" style="background:#ff6200;color:#ffffff;text-decoration:none;padding:12px 18px;border-radius:12px;font-weight:700;display:inline-block;">${action}</a>
+        </p>
+        <p>From the company portal, you can add authorized drivers and send each driver their private app invitation.</p>
+        <p>If the button does not work, open this link:</p>
+        <p><a href="${safeAccessUrl}">${safeAccessUrl}</a></p>
+        ${needsPassword ? '<p>This secure setup link expires automatically.</p>' : ''}
+        <p>Questions? Email <a href="mailto:info@readyroute.org">info@readyroute.org</a>.</p>
+      </div>
+    `
   });
 }
 
@@ -152,5 +200,6 @@ module.exports = {
   sendDriverInviteEmail,
   sendDriverPasswordResetEmail,
   sendManagerInviteEmail,
+  sendRraCompanyReadyEmail,
   sendManagerPasswordResetEmail
 };
