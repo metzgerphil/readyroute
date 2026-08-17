@@ -26,7 +26,7 @@
       },
       "env": {
         "EXPO_PUBLIC_APP_VARIANT": "production",
-        "EXPO_PUBLIC_API_URL": "https://readyroute-api-staging-201632321692.us-west1.run.app",
+        "EXPO_PUBLIC_API_URL": "https://api.readyroute.org",
         "EXPO_PUBLIC_DRIVER_HELP_ONLY": "true",
         "EXPO_PUBLIC_USE_LOCAL_API": "false"
       }

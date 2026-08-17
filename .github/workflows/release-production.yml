@@ -205,6 +205,7 @@ jobs:
             RRA_COMPANY_PORTAL_URL=https://readyroute.org/portal
             RRA_IOS_APP_URL=https://apps.apple.com/us/app/ready-route/id6762488881
             STRIPE_PORTAL_RETURN_URL=https://readyroute.org/portal?view=billing
+            READYROUTE_DRIVER_HELP_AI_INTERPRETATION_MODE=ACTIVE
             READYROUTE_LIVE_BILLING_APPROVED=${{ vars.READYROUTE_LIVE_BILLING_APPROVED || 'false' }}
             STRIPE_TAX_ENABLED=${{ vars.STRIPE_TAX_ENABLED || 'false' }}
             STRIPE_TAX_REGISTRATIONS_CONFIRMED=${{ vars.STRIPE_TAX_REGISTRATIONS_CONFIRMED || 'false' }}

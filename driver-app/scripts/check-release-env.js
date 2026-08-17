@@ -140,6 +140,9 @@ function main() {
       if (!appConfig?.extra?.eas?.projectId) {
         errors.push('Expo projectId is missing.');
       }
+      if (apiUrl !== 'https://api.readyroute.org') {
+        errors.push(`${profileName} profile must use the production ReadyRoute API.`);
+      }
     }
   }
 
