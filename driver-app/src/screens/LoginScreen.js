@@ -35,7 +35,7 @@ export default function LoginScreen({ onAuthenticated }) {
 
   async function handleLogin() {
     if (!email.trim() || !secret.trim()) {
-      setErrorMessage('Incorrect email or password. Try again.');
+      setErrorMessage('Incorrect username, email, or password. Try again.');
       return;
     }
 
@@ -83,7 +83,7 @@ export default function LoginScreen({ onAuthenticated }) {
         const networkUnavailable = !(_mobileError?.response || legacyError?.response);
         setErrorMessage(networkUnavailable
           ? 'Could not reach ReadyRoute. Check your connection and try again.'
-          : 'Incorrect email or password. Try again.');
+          : 'Incorrect username, email, or password. Try again.');
       }
     } finally {
       setLoading(false);
@@ -146,7 +146,7 @@ export default function LoginScreen({ onAuthenticated }) {
 
               <View style={styles.form}>
                 <Text style={styles.helperText}>
-                  Sign in with your ReadyRoute email and password.
+                  Sign in with your ReadyRoute username or email and password.
                 </Text>
                 <Text style={styles.helperText}>
                   First time here? Use the secure link in your driver invitation email to create your password first.
@@ -154,14 +154,14 @@ export default function LoginScreen({ onAuthenticated }) {
                 <TextInput
                   autoCapitalize="none"
                   autoCorrect={false}
-                  keyboardType="email-address"
+                  keyboardType="default"
                   onChangeText={(value) => {
                     setEmail(value);
                     if (errorMessage) {
                       setErrorMessage('');
                     }
                   }}
-                  placeholder="Email"
+                  placeholder="Username or email"
                   placeholderTextColor="#8b8b8b"
                   returnKeyType="next"
                   style={styles.input}
