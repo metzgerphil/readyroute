@@ -1,0 +1,110 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="ReadyRoute Answers company portal for managing authorized driver access.">
+  <title>Company Portal | ReadyRoute Answers</title>
+  <link rel="stylesheet" href="/portal.css">
+</head>
+<body>
+  <header class="site-header">
+    <a class="brand" href="/" aria-label="ReadyRoute home"><span>ready</span>Route</a>
+    <a class="support-link" href="mailto:info@readyroute.org">Support</a>
+  </header>
+
+  <main>
+    <section class="login-view" id="login-view">
+      <div class="intro-panel">
+        <p class="eyebrow">ReadyRoute Answers</p>
+        <h1>Manage driver access without the dispatch clutter.</h1>
+        <p>This portal is for company owners and authorized business contacts. Add drivers, send their login invitation, and keep access current.</p>
+        <ul>
+          <li>One company account</li>
+          <li>Only authorized drivers receive access</li>
+          <li>Monthly value summaries are delivered by ReadyRoute</li>
+        </ul>
+      </div>
+
+      <div class="card login-card">
+        <p class="eyebrow">Company portal</p>
+        <h2>Sign in</h2>
+        <p class="muted">Use the company-contact email and password supplied by ReadyRoute.</p>
+        <form id="login-form">
+          <label for="email">Email</label>
+          <input autocomplete="username" id="email" name="email" required type="email">
+          <label for="password">Password</label>
+          <input autocomplete="current-password" id="password" name="password" required type="password">
+          <div class="message error" id="login-error" role="alert" hidden></div>
+          <button class="primary" id="login-button" type="submit">Sign in</button>
+        </form>
+        <button class="text-button" id="show-reset-button" type="button">Forgot password?</button>
+        <form class="reset-form" id="reset-form" hidden>
+          <label for="reset-email">Company-contact email</label>
+          <input id="reset-email" name="reset-email" required type="email">
+          <button class="secondary" id="reset-button" type="submit">Send reset link</button>
+          <div class="message" id="reset-message" role="status" hidden></div>
+        </form>
+      </div>
+    </section>
+
+    <section class="portal-view" id="portal-view" hidden>
+      <div class="portal-heading">
+        <div>
+          <p class="eyebrow">ReadyRoute Answers company portal</p>
+          <h1 id="company-name">Your company</h1>
+          <p class="muted">Manage the drivers who may sign in to the ReadyRoute app.</p>
+        </div>
+        <button class="secondary" id="logout-button" type="button">Sign out</button>
+      </div>
+
+      <div class="summary-grid">
+        <article class="card summary-card"><strong id="active-count">0</strong><span>Active drivers</span></article>
+        <article class="card summary-card"><strong id="pending-count">0</strong><span>Invitations pending</span></article>
+        <article class="card report-card">
+          <div>
+            <strong>Monthly value report</strong>
+            <p>ReadyRoute personnel will email your company’s monthly RRA usage and value summary.</p>
+          </div>
+          <a href="mailto:info@readyroute.org">Contact ReadyRoute</a>
+        </article>
+      </div>
+
+      <div class="portal-grid">
+        <section class="card">
+          <div class="section-heading">
+            <div><p class="eyebrow">Driver access</p><h2>Authorized drivers</h2></div>
+            <button class="primary compact" id="open-driver-form" type="button">Add driver</button>
+          </div>
+          <div class="message error" id="drivers-error" role="alert" hidden></div>
+          <div class="driver-list" id="driver-list" aria-live="polite"></div>
+        </section>
+
+        <aside class="card add-driver-card" id="add-driver-card" hidden>
+          <div class="section-heading">
+            <div><p class="eyebrow">New access</p><h2>Add a driver</h2></div>
+            <button class="close-button" id="close-driver-form" aria-label="Close" type="button">×</button>
+          </div>
+          <p class="muted">The driver will receive an email to choose a private password and username.</p>
+          <form id="driver-form">
+            <label for="driver-name">Full name</label>
+            <input id="driver-name" name="driver-name" required>
+            <label for="driver-email">Email</label>
+            <input id="driver-email" name="driver-email" required type="email">
+            <label for="driver-username">Username <span class="optional">optional</span></label>
+            <input id="driver-username" name="driver-username" pattern="[A-Za-z0-9._-]{3,40}" placeholder="3–40 letters or numbers">
+            <div class="message error" id="driver-form-error" role="alert" hidden></div>
+            <button class="primary" id="add-driver-button" type="submit">Add and send invitation</button>
+          </form>
+        </aside>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    <span>ReadyRoute Answers is an operational reference for trained drivers. It does not replace required training.</span>
+    <nav><a href="/privacy">Privacy</a><a href="/terms">Terms</a><a href="/account">Driver account deletion</a></nav>
+  </footer>
+  <script src="/portal.js" defer></script>
+</body>
+</html>

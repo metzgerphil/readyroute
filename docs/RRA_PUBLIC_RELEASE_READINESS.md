@@ -12,6 +12,14 @@ Status: implementation started August 16, 2026. This package is scoped to the RR
 - Authenticated driver account-deletion request and cancellation page, with a 30-day completion window.
 - Automated 90-day raw-content cleanup, 24-month metric cleanup, and due account-deletion processing.
 - RRA-specific public privacy and terms drafts.
+- RRA-only company portal at `https://readyroute.org/portal` for company-contact sign-in and authorized driver access management.
+
+## Portal separation
+
+- Company owners and authorized business contacts use `https://readyroute.org/portal` to add, invite, activate, and deactivate RRA drivers.
+- ReadyRoute personnel use the separate internal console at `https://portal.readyroute.org/readyroute/login`.
+- The legacy manager portal remains available for preserved ReadyRoute work but is not linked from the public RRA customer journey.
+- Both portals use the same production backend and Supabase project. Driver and company records are not duplicated.
 
 ## App Store listing draft
 
@@ -82,9 +90,9 @@ The app checks approved ReadyRoute records. OpenAI may be used only to interpret
 
 Provide App Review with a stable demo driver account and keep the production API and demo data available throughout review.
 
-**Review username:** `[CREATE BEFORE SUBMISSION]`
+**Review username:** `apple-review`
 
-**Review password:** `[CREATE BEFORE SUBMISSION]`
+**Review password:** stored in the protected App Review credential secret and owner Keychain.
 
 **Review contact:** `info@readyroute.org`
 
@@ -112,4 +120,4 @@ npx eas-cli build --platform ios --profile production
 npx eas-cli submit --platform ios --profile production
 ```
 
-Submission is a deliberate owner action after the production migration, deployments, legal review, demo login, and screenshots are complete.
+Submission is a deliberate owner action after the production migration, deployments, owner policy approval, demo login, and screenshots are complete.
