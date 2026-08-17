@@ -63,11 +63,6 @@ export default function StaffCompaniesPage() {
     }
   });
 
-  const companySignupsQuery = useQuery({
-    queryKey: ['staff-company-signups'],
-    queryFn: async () => (await api.get('/staff/company-signups')).data?.pending_signups || []
-  });
-
   const accounts = useMemo(
     () => (Array.isArray(accountsQuery.data) ? accountsQuery.data : []),
     [accountsQuery.data]
@@ -113,7 +108,6 @@ export default function StaffCompaniesPage() {
             : 'Company created, but email delivery needs attention.'
       );
       await queryClient.invalidateQueries({ queryKey: ['staff-accounts'] });
-      await queryClient.invalidateQueries({ queryKey: ['staff-company-signups'] });
       if (result?.account?.id) setSelectedAccountId(result.account.id);
     },
     onError: (error) => setCompanyCreateMessage(error.response?.data?.error || 'Unable to create this company.')
@@ -178,19 +172,12 @@ export default function StaffCompaniesPage() {
     setCompanyCreateMessage('');
   }
 
-  function prepareCompanyFromSignup(signup) {
-    setCompanyDraft({ company_name: signup.company_name || '', manager_name: signup.name || '', manager_email: signup.email || '' });
-    setCompanyCreateMessage('Review the signup details, then create the company and send the manager invitation.');
-    setIsCreateCompanyOpen(true);
-    window.scrollTo({ top: 0, behavior: 'smooth' });
-  }
-
   return (
     <section className="staff-page staff-companies-page">
       <PageHeader
         eyebrow="Ready Route Staff"
         title="Companies"
-        description="Open company accounts and review how drivers use Ready Route."
+        description="Company signups are created automatically. Review access, drivers, usage, and billing here."
         actions={(
           <button className="primary-button" onClick={() => { setCompanyCreateMessage(''); setIsCreateCompanyOpen(true); }} type="button">
             Add company
@@ -199,33 +186,6 @@ export default function StaffCompaniesPage() {
       />
 
       {companyCreateMessage ? <p className="form-success-message" role="status">{companyCreateMessage}</p> : null}
-
-      {companySignupsQuery.isLoading ? (
-        <LoadingState title="Loading new company signups" variant="card" />
-      ) : companySignupsQuery.isError ? (
-        <ErrorState title="Unable to load new company signups" description="Company accounts are still available below. Refresh this queue before onboarding a new request." onRetry={() => companySignupsQuery.refetch()} />
-      ) : companySignupsQuery.data?.length ? (
-        <section className="staff-account-detail staff-signup-queue" aria-label="New company signups">
-          <header className="staff-account-detail-header"><h2>New company signups</h2><p>Open the company account and email the manager their secure password link.</p></header>
-          <div className="staff-compact-list">
-            {companySignupsQuery.data.map((signup) => (
-              <article key={signup.id}>
-                <div>
-                  <strong>{signup.company_name || 'Company name not provided'}</strong>
-                  <span>{signup.name || 'Manager name not provided'} · {signup.email}</span>
-                  <span>{signup.driver_count || 'No'} expected driver{signup.driver_count === 1 ? '' : 's'}{signup.billing_interval ? ` · ${signup.billing_interval} billing requested` : ''}{signup.created_at ? ` · Signed up ${formatDateTime(signup.created_at, true)}` : ''}</span>
-                </div>
-                <div className="staff-user-row-badges">
-                  <StatusBadge tone={signup.billing_setup_status === 'succeeded' ? 'active' : 'warning'}>{signup.billing_setup_status === 'succeeded' ? 'Payment method ready' : 'Payment not collected'}</StatusBadge>
-                  <button className="primary-button" onClick={() => prepareCompanyFromSignup(signup)} type="button">Review and onboard</button>
-                </div>
-              </article>
-            ))}
-          </div>
-        </section>
-      ) : (
-        <section className="staff-account-detail staff-signup-queue" aria-label="New company signups"><EmptyState title="No pending company signups" description="New requests from readyroute.org/signup will appear here." variant="inline" /></section>
-      )}
 
       {isCreateCompanyOpen ? (
         <section className="staff-account-detail staff-create-company-card" aria-label="Create company">

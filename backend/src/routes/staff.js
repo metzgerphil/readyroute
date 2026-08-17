@@ -7,6 +7,7 @@ const Stripe = require('stripe');
 const defaultSupabase = require('../lib/supabase');
 const { createBillingService } = require('../services/billing');
 const { createStripeSignupBillingService } = require('../services/stripeSignupBilling');
+const { filterProductionRows } = require('../services/testDataFilter');
 const {
   buildDriverMetrics,
   buildMetrics: buildDriverHelpMetrics
@@ -2120,7 +2121,9 @@ function createReadyRouteStaffRouter(options = {}) {
       const urgentTicketsByAccount = countByAccount(ticketsResult.data || [], (ticket) => ['urgent', 'high'].includes(ticket.priority) && !['resolved', 'closed'].includes(ticket.status));
       const latestTicketByAccount = latestByAccount(ticketsResult.data || []);
 
-      const accounts = (accountsResult.data || []).map((account) => presentAccountSummary(
+      const accounts = filterProductionRows(accountsResult.data || [], ['company_name', 'manager_email'])
+        .filter((account) => !['smoke_test', 'app_review'].includes(account.subscription_status))
+        .map((account) => presentAccountSummary(
         account,
         profilesByAccount[account.id],
         {
@@ -2130,7 +2133,7 @@ function createReadyRouteStaffRouter(options = {}) {
           urgentTickets: urgentTicketsByAccount[account.id]
         },
         latestTicketByAccount[account.id]
-      ));
+        ));
 
       return res.status(200).json({ accounts });
     } catch (error) {

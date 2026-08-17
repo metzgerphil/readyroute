@@ -30,13 +30,13 @@
       <section class="intro" aria-labelledby="signup-title">
         <p class="eyebrow">Company signup</p>
         <h1 id="signup-title">Bring ReadyRoute to <span>your drivers.</span></h1>
-        <p class="intro-copy">Tell us about your company and primary administrator. We’ll prepare your ReadyRoute company account so you can add staff and drivers.</p>
+        <p class="intro-copy">Tell us about your company and primary administrator. We’ll create your ReadyRoute company account immediately and email your secure password link.</p>
         <div class="price-card">
           <div class="price-line"><strong>$10</strong><span>per driver monthly</span></div>
           <p>Or save with annual billing at $100 per driver per year.</p>
         </div>
         <ul class="benefits" aria-label="What happens after signup">
-          <li><span class="check">1</span><span>We create your company workspace.</span></li>
+          <li><span class="check">1</span><span>Your company workspace is created immediately.</span></li>
           <li><span class="check">2</span><span>You configure staff and driver access.</span></li>
           <li><span class="check">3</span><span>Your team begins using ReadyRoute.</span></li>
         </ul>
@@ -69,9 +69,6 @@
                   <option value="">Select your role</option>
                   <option>Owner</option>
                   <option>Business contact</option>
-                  <option>Manager</option>
-                  <option>Dispatcher</option>
-                  <option>Other</option>
                 </select>
               </div>
               <div class="field full">
@@ -123,11 +120,11 @@
 
         <div class="success-panel" id="signup-success" role="status" tabindex="-1">
           <div class="success-icon" aria-hidden="true">✓</div>
-          <h2>We received your signup.</h2>
-          <p>Thanks, <span id="success-name">we have your information</span>. ReadyRoute will contact you at <strong id="success-email"></strong> to complete company setup. If payment setup was available, your method has been saved securely and no charge has been made.</p>
+          <h2>Your company is ready.</h2>
+          <p id="success-message">Thanks, <span id="success-name">we have your information</span>. We created your ReadyRoute company and sent a secure password link to <strong id="success-email"></strong>. If payment setup was available, your method has been saved securely and no charge has been made.</p>
           <ol class="next-steps">
-            <li><span>1</span><div><strong>Company workspace</strong><p>We prepare your ReadyRoute company account.</p></div></li>
-            <li><span>2</span><div><strong>Staff and drivers</strong><p>You add the people who need access.</p></div></li>
+            <li><span>1</span><div><strong>Check your email</strong><p>Open the secure link and create your manager password.</p></div></li>
+            <li><span>2</span><div><strong>Add your drivers</strong><p>Sign in to the portal and create driver access.</p></div></li>
             <li><span>3</span><div><strong>Begin using ReadyRoute</strong><p>Your drivers can start getting verified operational guidance.</p></div></li>
           </ol>
           <a class="home-button" href="/">Return to ReadyRoute</a>
@@ -202,12 +199,47 @@
       };
     }
 
-    function showSuccess(payload) {
+    function showSuccess(payload, onboarding = {}) {
       document.getElementById('success-name').textContent = String(payload.name).split(/\s+/)[0] || 'we have your information';
       document.getElementById('success-email').textContent = payload.email;
+      const delivery = onboarding.invitation?.email_delivery;
+      if (delivery === 'not_required') {
+        document.getElementById('success-message').textContent = `Your ReadyRoute company is ready. ${payload.email} can sign in with its existing ReadyRoute password. No charge has been made.`;
+      } else if (delivery === 'already_created') {
+        document.getElementById('success-message').textContent = `This ReadyRoute company was already created for ${payload.email}. Use the password email previously sent, or sign in if your password is already set. No charge has been made.`;
+      } else if (delivery && delivery !== 'sent') {
+        document.getElementById('success-message').textContent = `Your ReadyRoute company was created, but we could not send the password email. Contact Ready Route support for a new secure link. No charge has been made.`;
+      }
       formContent.style.display = 'none';
       successPanel.classList.add('show');
       successPanel.focus();
+    }
+
+    async function createCompanyAccount(payload) {
+      const response = await fetch(`${getApiBase()}/waitlist/early-access`, {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(result.error || 'We could not create your Ready Route company. Please try again.');
+      return result;
+    }
+
+    async function finishReturnedPayment() {
+      const params = new URLSearchParams(window.location.search);
+      if (params.get('payment') !== 'complete') return;
+      const savedPayload = sessionStorage.getItem('readyroutePendingSignup');
+      if (!savedPayload) return;
+      try {
+        const payload = JSON.parse(savedPayload);
+        submitButton.disabled = true;
+        submitButton.textContent = 'Creating company…';
+        const onboarding = await createCompanyAccount(payload);
+        sessionStorage.removeItem('readyroutePendingSignup');
+        showSuccess(payload, onboarding);
+      } catch (error) {
+        errorMessage.textContent = error.message || 'We could not finish creating your company. Please try again.';
+        errorMessage.classList.add('show');
+      } finally {
+        submitButton.disabled = false;
+      }
     }
 
     fetch(`${getApiBase()}/billing/signup/config`)
@@ -236,10 +268,8 @@
 
       try {
         if (!stripeConfig.enabled) {
-          const response = await fetch(`${getApiBase()}/waitlist/early-access`, {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
-          const result = await response.json().catch(() => ({}));
-          if (!response.ok) throw new Error(result.error || 'We could not save your signup. Please try again.');
-          showSuccess(payload);
+          const onboarding = await createCompanyAccount(payload);
+          showSuccess(payload, onboarding);
           return;
         }
 
@@ -262,12 +292,24 @@
 
         const submission = await elements.submit();
         if (submission.error) throw new Error(submission.error.message);
+        sessionStorage.setItem('readyroutePendingSignup', JSON.stringify({
+          name: payload.name,
+          email: payload.email,
+          phone: payload.phone,
+          company: payload.company,
+          role: payload.role,
+          drivers: payload.drivers,
+          billing_interval: payload.billing_interval,
+          source_page: payload.source_page
+        }));
         const confirmation = await stripe.confirmSetup({elements,redirect:'if_required',confirmParams:{return_url:`${window.location.origin}/signup?payment=complete`}});
         if (confirmation.error) throw new Error(confirmation.error.message);
         if (!confirmation.setupIntent || confirmation.setupIntent.status !== 'succeeded') {
           throw new Error('Stripe is still processing the payment method. Please wait and try again.');
         }
-        showSuccess(payload);
+        const onboarding = await createCompanyAccount(payload);
+        sessionStorage.removeItem('readyroutePendingSignup');
+        showSuccess(payload, onboarding);
       } catch (error) {
         errorMessage.textContent = error.message || 'We could not save your signup. Please try again.';
         errorMessage.classList.add('show');
@@ -278,6 +320,7 @@
           : 'Submit company signup';
       }
     });
+    finishReturnedPayment();
   </script>
 </body>
 </html>

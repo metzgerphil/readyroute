@@ -204,7 +204,15 @@ function createApp(options = {}) {
     stripeClient: options.stripeClient
   });
   const waitlistRouter = options.supabase
-    ? createWaitlistRouter({ supabase: options.supabase, sendFeedbackEmail: options.sendFeedbackEmail })
+    ? createWaitlistRouter({
+        supabase: options.supabase,
+        jwtSecret: options.jwtSecret,
+        now: options.now,
+        managerPortalUrl: options.managerPortalUrl,
+        sendFeedbackEmail: options.sendFeedbackEmail,
+        sendManagerInviteEmail: options.sendManagerInviteEmail,
+        companyOnboarding: options.companySignupOnboarding
+      })
     : waitlistRoutes;
   const supportRouter = options.supabase || options.jwtSecret
     ? createSupportRouter({

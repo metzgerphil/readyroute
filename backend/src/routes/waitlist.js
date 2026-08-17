@@ -1,6 +1,8 @@
 const express = require('express');
 
 const defaultSupabase = require('../lib/supabase');
+const { createCompanySignupOnboardingService } = require('../services/companySignupOnboarding');
+const { sendManagerInviteEmail: defaultSendManagerInviteEmail } = require('../services/managerInviteEmail');
 const { sendFeedbackEmail: defaultSendFeedbackEmail } = require('../services/waitlistEmail');
 
 function normalizeText(value, maxLength = 240) {
@@ -54,6 +56,7 @@ function buildSignupPayload(body = {}, req) {
   const routeCount = normalizeInteger(body.routes ?? body.route_count);
   const driverCount = normalizeInteger(body.drivers ?? body.driver_count);
   const csaCount = normalizeInteger(body.csas ?? body.csa_count);
+  const requestedBillingInterval = String(body.billing_interval || 'monthly').trim().toLowerCase();
 
   if ((body.routes ?? body.route_count) && routeCount === null) {
     return { error: 'Number of routes must be a whole number.' };
@@ -79,6 +82,7 @@ function buildSignupPayload(body = {}, req) {
       csa_count: csaCount,
       current_routing_tool: normalizeText(body.tool ?? body.current_routing_tool, 160),
       interested_in_beta: normalizeBetaInterest(body.beta ?? body.interested_in_beta),
+      billing_interval: ['monthly', 'annual'].includes(requestedBillingInterval) ? requestedBillingInterval : 'monthly',
       source_page: normalizeText(body.source_page, 500),
       user_agent: normalizeText(req.get('user-agent'), 500),
       updated_at: new Date().toISOString()
@@ -124,6 +128,13 @@ function createWaitlistRouter(options = {}) {
   const router = express.Router();
   const supabase = options.supabase || defaultSupabase;
   const sendFeedbackEmail = options.sendFeedbackEmail || defaultSendFeedbackEmail;
+  const companyOnboarding = options.companyOnboarding || createCompanySignupOnboardingService({
+    supabase,
+    jwtSecret: options.jwtSecret,
+    now: options.now,
+    managerPortalUrl: options.managerPortalUrl,
+    sendManagerInviteEmail: options.sendManagerInviteEmail || defaultSendManagerInviteEmail
+  });
 
   router.post('/early-access', async (req, res) => {
     try {
@@ -133,10 +144,14 @@ function createWaitlistRouter(options = {}) {
         return res.status(400).json({ error });
       }
 
-      const { error: upsertError } = await supabase
+      if (!payload.company_csa || !payload.phone_number || !['owner', 'business contact'].includes(String(payload.role || '').toLowerCase()) || !Number.isInteger(payload.driver_count) || payload.driver_count < 1) {
+        return res.status(400).json({ error: 'Company, phone, Owner or Business contact role, and at least one expected active driver are required.' });
+      }
+
+      const { data: signup, error: upsertError } = await supabase
         .from('early_access_signups')
         .upsert(payload, { onConflict: 'email' })
-        .select('id')
+        .select('id, name, email, company_csa, role, driver_count, account_id, stripe_customer_id, stripe_payment_method_id, billing_setup_status, billing_policy_version, billing_consent_at, billing_interval')
         .single();
 
       if (upsertError) {
@@ -144,10 +159,17 @@ function createWaitlistRouter(options = {}) {
         return res.status(500).json({ error: 'Unable to save early access signup.' });
       }
 
-      return res.status(201).json({ ok: true });
+      const onboarding = await companyOnboarding.onboardSignup(signup);
+      return res.status(onboarding.already_onboarded ? 200 : 201).json({
+        ok: true,
+        account_created: true,
+        account_id: onboarding.account.id,
+        already_onboarded: onboarding.already_onboarded,
+        invitation: onboarding.invitation
+      });
     } catch (error) {
       console.error('Early access endpoint failed:', error);
-      return res.status(500).json({ error: 'Unable to save early access signup.' });
+      return res.status(500).json({ error: 'Unable to create your Ready Route company. Please try again.' });
     }
   });
 
