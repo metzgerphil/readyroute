@@ -39,7 +39,10 @@ function explicitCodeTokens(question) {
   if (/\b(?:can|could|do|should|would) i (?:apply|choose|select|use) code \d{1,4}\b/.test(normalized)) {
     return [];
   }
+  const comparesCodeDefinitions = /\b(?:difference|distinction)\b.*\bbetwe{1,2}n (?:a )?code \d{1,4} and (?:a )?code \d{1,4}\b/.test(normalized);
   const hasReferenceIntent = (
+    comparesCodeDefinitions
+    ||
     /^(?:(?:what|which) (?:is |are )?)?(?:delivery |pickup |status |reason |reference )?code \d/.test(normalized)
     || /\b(?:delivery|pickup|status|reason|reference|p u|pu) code \d/.test(normalized)
     || /\bcode \d{1,4} (?:for )?(?:(?:at|on) (?:a |the )?)?(?:delivery|pickup|status|reason|p u|pu)\b/.test(normalized)

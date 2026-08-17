@@ -74,6 +74,31 @@ test('matches delivery codes whether or not the driver says leading zeroes', () 
   assert.equal(decision.selected_records[0].knowledge_id, 'DELIVERY_STATUS:011');
 });
 
+test('answers a plain-language comparison between two verified delivery codes', () => {
+  const records = [
+    reference({
+      knowledge_id: 'DELIVERY_STATUS:002',
+      concise_answer: 'Code 002 — Incorrect Recipient Address: the label address is wrong or invalid.'
+    }),
+    reference({
+      knowledge_id: 'DELIVERY_STATUS:003',
+      concise_answer: 'Code 003 — Unable to Locate: the listed address cannot physically be located.'
+    })
+  ];
+
+  const question = "what's the difference betwen a code 2 and a code 3?";
+  assert.deepEqual(explicitCodeTokens(question), ['2', '3']);
+
+  const decision = buildDriverHelpReferenceDecision(question, records);
+  assert.equal(decision.response_mode, 'ANSWER');
+  assert.deepEqual(
+    decision.selected_records.map((record) => record.knowledge_id),
+    ['DELIVERY_STATUS:002', 'DELIVERY_STATUS:003']
+  );
+  assert.match(decision.answer, /Incorrect Recipient Address/);
+  assert.match(decision.answer, /Unable to Locate/);
+});
+
 test('uses an explicit pickup or delivery category to resolve duplicate numbers', () => {
   const records = [
     reference({ knowledge_id: 'DELIVERY_STATUS:024', concise_answer: 'Code 024: call tag not ready.' }),
