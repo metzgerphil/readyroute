@@ -46,36 +46,37 @@
         <div id="form-content">
           <header class="form-heading">
             <p class="step-label" id="step-label">Step 1 of 3</p>
-            <h2 id="form-title">Create your company</h2>
-            <p id="form-description">Start with the person who will manage ReadyRoute.</p>
+            <h2 id="form-title">Tell us who is creating the account</h2>
+            <p id="form-description">Use your own information. You do not have to be the person who manages ReadyRoute day to day.</p>
           </header>
           <div class="progress" aria-hidden="true"><span class="active"></span><span></span><span></span></div>
           <form id="signup-form" novalidate>
             <section class="form-step active" data-step="1">
               <div class="form-grid">
               <div class="field">
-                <label for="name">Manager name <span class="required" aria-hidden="true">*</span></label>
+                <label for="name">Name <span class="required" aria-hidden="true">*</span></label>
                 <input id="name" name="name" autocomplete="name" required>
               </div>
               <div class="field">
-                <label for="email">Work email <span class="required" aria-hidden="true">*</span></label>
+                <label for="email">Email <span class="required" aria-hidden="true">*</span></label>
                 <input id="email" name="email" type="email" inputmode="email" autocomplete="email" required>
               </div>
               <div class="field">
-                <label for="phone">Manager phone number <span class="required" aria-hidden="true">*</span></label>
+                <label for="phone">Phone number <span class="required" aria-hidden="true">*</span></label>
                 <input id="phone" name="phone" type="tel" inputmode="tel" autocomplete="tel" required>
               </div>
               <div class="field">
                 <label for="role">Your role <span class="required" aria-hidden="true">*</span></label>
                 <select id="role" name="role" required>
                   <option value="">Select your role</option>
-                  <option>Owner</option>
-                  <option value="Business contact">Authorized company manager</option>
+                  <option value="Authorized officer">Authorized officer (AO)</option>
+                  <option value="Business contact">Business contact (BC)</option>
                 </select>
               </div>
                 <div class="field full">
-                <label for="company">Company / CSA name <span class="required" aria-hidden="true">*</span></label>
+                <label for="company">CSA name <span class="required" aria-hidden="true">*</span></label>
                 <input id="company" name="company" autocomplete="organization" required>
+                <p class="field-hint">The contracted service area this ReadyRoute account belongs to.</p>
               </div>
               </div>
             </section>
@@ -90,6 +91,16 @@
                 <label for="csa-phone">Local CSA phone number <span class="required" aria-hidden="true">*</span></label>
                 <input id="csa-phone" name="csa_phone_number" type="tel" inputmode="tel" required>
                 <p class="field-hint">RRA can show this number when a driver needs the CSA.</p>
+              </div>
+                <div class="field">
+                <label for="manager-name">Day-to-day manager name <span class="required" aria-hidden="true">*</span></label>
+                <input id="manager-name" name="manager_name" autocomplete="name" required>
+                <p class="field-hint">The person drivers should contact for regular operational help. This may be you or someone else.</p>
+              </div>
+                <div class="field">
+                <label for="manager-phone">Day-to-day manager phone number <span class="required" aria-hidden="true">*</span></label>
+                <input id="manager-phone" name="manager_phone_number" type="tel" inputmode="tel" autocomplete="tel" required>
+                <p class="field-hint">RRA can show this number when a driver needs the manager.</p>
               </div>
                 <div class="field full">
                 <label for="drivers">Number of drivers <span class="required" aria-hidden="true">*</span></label>
@@ -166,8 +177,8 @@
     let stripeConfig = {enabled:false};
     let currentStep = 1;
     const stepCopy = {
-      1: ['Create your company', 'Start with the person who will manage ReadyRoute.'],
-      2: ['Add local contacts', 'Drivers can ask RRA for these numbers whenever they need help.'],
+      1: ['Tell us who is creating the account', 'Use your own information. You do not have to be the person who manages ReadyRoute day to day.'],
+      2: ['Add driver support contacts', 'Tell RRA who drivers should call locally. The day-to-day manager may be the account creator or someone else.'],
       3: ['Choose your plan', 'Review the two company authorizations, then continue securely to Stripe.']
     };
 
@@ -203,7 +214,8 @@
       const formData = new FormData(form);
       return {
         name: formData.get('name'), email: formData.get('email'), phone: formData.get('phone'),
-        manager_phone_number: formData.get('phone'),
+        manager_name: formData.get('manager_name'),
+        manager_phone_number: formData.get('manager_phone_number'),
         cxpc_phone_number: formData.get('cxpc_phone_number'),
         csa_phone_number: formData.get('csa_phone_number'),
         company: formData.get('company'), role: formData.get('role'), drivers: formData.get('drivers'),
