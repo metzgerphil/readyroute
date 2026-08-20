@@ -607,6 +607,99 @@ test('grounded AI interpretation may select a record but the answer remains cano
   assert.equal(response.trace[0].interpretation_mode, 'GROUNDED_AI');
 });
 
+test('grounded AI composition tailors the direct response but preserves verified steps', async () => {
+  const record = knowledgeRecord({
+    clarification_requirements: [],
+    required_procedure: [
+      { step: 1, action: 'Confirm no pickup attempt occurred.' },
+      { step: 2, action: 'Apply Code 24.' }
+    ]
+  });
+  const supabase = fakeSupabase([record]);
+  let compositionRequest = null;
+  const service = createDriverHelpService({
+    supabase,
+    now: () => new Date(0),
+    aiInterpretationMode: 'ACTIVE',
+    aiInterpreter: async () => ({
+      selection: 'SELECT',
+      knowledge_id: record.knowledge_id,
+      decision: 'ANSWER',
+      answer_pattern_id: null,
+      clarification_requirement: null,
+      facts: {},
+      confidence: 0.96
+    }),
+    aiComposer: async (request) => {
+      compositionRequest = request;
+      return {
+        selection: 'COMPOSED',
+        answer: 'Since you did not attempt the pickup, use Code 24.',
+        more_info: null,
+        answer_structure: null,
+        grounding: [{
+          output_path: 'answer',
+          knowledge_id: record.knowledge_id,
+          source_paths: ['concise_answer', 'required_procedure']
+        }]
+      };
+    }
+  });
+
+  const response = await service.answerQuestion({
+    accountId: '00000000-0000-0000-0000-000000000001',
+    driverId: '00000000-0000-0000-0000-000000000002',
+    question: 'The shipper canceled before I headed to the pickup',
+    includeDiagnostics: true
+  });
+
+  assert.equal(response.composition_mode, 'GROUNDED_AI');
+  assert.equal(response.answer, 'Since you did not attempt the pickup, use Code 24.');
+  assert.equal(response.answer_structure.direct_answer, response.answer);
+  assert.deepEqual(response.answer_structure.steps, [
+    'Confirm no pickup attempt occurred.',
+    'Apply Code 24.'
+  ]);
+  assert.equal(compositionRequest.driver_question, 'The shipper canceled before I headed to the pickup');
+  assert.match(compositionRequest.safety_identifier, /^rr_[a-f0-9]+$/);
+  assert.equal(response.composition_validation.valid, true);
+});
+
+test('exact approved answer patterns remain locked and bypass AI composition', async () => {
+  const record = knowledgeRecord({
+    driver_question_patterns: [{
+      utterance: 'Pickup canceled before attempt',
+      response_mode: 'DIRECT_SOURCE_GROUNDED_ANSWER',
+      must_clarify: [],
+      answer_override: { direct_answer: 'Use Code 24.' }
+    }]
+  });
+  const supabase = fakeSupabase([record]);
+  let composerCalls = 0;
+  const service = createDriverHelpService({
+    supabase,
+    now: () => new Date(0),
+    aiInterpretationMode: 'ACTIVE',
+    aiInterpreter: async () => {
+      throw new Error('Locked answer should not call the interpreter');
+    },
+    aiComposer: async () => {
+      composerCalls += 1;
+      throw new Error('Locked answer should not call the composer');
+    }
+  });
+
+  const response = await service.answerQuestion({
+    accountId: '00000000-0000-0000-0000-000000000001',
+    driverId: '00000000-0000-0000-0000-000000000002',
+    question: 'Pickup canceled before attempt'
+  });
+
+  assert.equal(composerCalls, 0);
+  assert.equal(response.answer_structure.direct_answer, 'Use Code 24.');
+  assert.equal(response.composition_mode, 'DETERMINISTIC');
+});
+
 test('AI may select an approved authored answer branch but cannot supply answer prose', async () => {
   const record = knowledgeRecord({
     driver_question_patterns: [{

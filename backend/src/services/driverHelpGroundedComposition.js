@@ -130,7 +130,7 @@ function deterministicFallback(decision, reason = null) {
   };
 }
 
-async function composeGroundedDecision(decision, composer) {
+async function composeGroundedDecision(decision, composer, options = {}) {
   if (
     typeof composer !== 'function'
     || decision?.response_mode !== 'ANSWER'
@@ -144,9 +144,15 @@ async function composeGroundedDecision(decision, composer) {
   }
 
   const request = {
-    task: 'Compose a concise driver-facing answer using only the supplied canonical records.',
+    task: 'Answer the driver\'s precise question naturally and concisely using only the supplied canonical records.',
+    safety_identifier: options.safetyIdentifier || null,
+    driver_question: options.driverQuestion || null,
+    conversation_context: options.conversationContext || {},
     rules: [
       'Do not add operational facts, steps, codes, numbers, conditions, exceptions, or escalation instructions that are absent from the supplied records.',
+      'Lead with a direct response to the actual question in one or two short sentences.',
+      'Use the deterministic answer as the preferred factual baseline and do not weaken its prohibitions or required actions.',
+      'Do not repeat the full ordered procedure; the application presents verified procedure steps separately.',
       'You may paraphrase, organize, and combine supported material for clarity.',
       'Return JSON only with answer, more_info, answer_structure, and grounding.',
       'Ground every populated output section to a selected knowledge_id and one or more exact source field paths.',
@@ -188,9 +194,12 @@ async function composeGroundedDecision(decision, composer) {
     ...decision,
     answer: payload.answer.trim(),
     more_info: hasContent(payload.more_info) ? payload.more_info : null,
-    answer_structure: isPlainObject(payload.answer_structure)
-      ? payload.answer_structure
-      : (decision.answer_structure || null),
+    answer_structure: isPlainObject(decision.answer_structure)
+      ? {
+          ...decision.answer_structure,
+          direct_answer: payload.answer.trim()
+        }
+      : (isPlainObject(payload.answer_structure) ? payload.answer_structure : null),
     composition_mode: 'GROUNDED_AI',
     composition_grounding: payload.grounding,
     composition_validation: validation

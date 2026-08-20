@@ -173,7 +173,7 @@ jobs:
             NODE_ENV=production
             READYROUTE_DRIVER_HELP_AI_INTERPRETATION_MODE=ACTIVE
             READYROUTE_DRIVER_HELP_ANSWER_MEMORY_AUDIT_RATE=0.05
-            READYROUTE_DRIVER_HELP_AI_ENABLED=false
+            READYROUTE_DRIVER_HELP_AI_ENABLED=true
             MANAGER_PORTAL_URL=https://ready-route-project--rra-test-mlshz0rb.web.app
           env_vars_update_strategy: merge
 

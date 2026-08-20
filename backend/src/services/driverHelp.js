@@ -25,6 +25,8 @@ const {
   resolveDriverHelpAiInterpretationMode,
   validateInterpretation
 } = require('./driverHelpAiInterpreter');
+const { createDriverHelpAiComposer } = require('./driverHelpAiComposer');
+const { composeGroundedDecision } = require('./driverHelpGroundedComposition');
 const {
   createSignedStorageUrl,
   getSignedUrlTtlSeconds
@@ -855,6 +857,7 @@ function createDriverHelpService({
   supabase = defaultSupabase,
   now = () => new Date(),
   aiInterpreter = createDriverHelpAiInterpreter(),
+  aiComposer = createDriverHelpAiComposer(),
   aiInterpretationMode = resolveDriverHelpAiInterpretationMode(),
   answerMemoryAuditRate = resolveAnswerMemoryAuditRate(),
   random = Math.random
@@ -1398,8 +1401,9 @@ function createDriverHelpService({
       }
     }
 
-    // AI interprets language only. Published record content remains the sole
-    // source of every driver-facing answer, step, code, warning, and More Info.
+    // AI may select a published record and tailor its concise presentation.
+    // Published record content remains the sole authority for every answer,
+    // step, code, warning, restriction, and escalation.
     const controlledFallbackDecision = !workflowDecision
       && !lockedDecision
       && effectiveAiInterpretationMode === 'ACTIVE'
@@ -1421,7 +1425,7 @@ function createDriverHelpService({
       sessionState.context,
       clarificationSelection
     );
-    const decision = {
+    let decision = {
       ...(loopDetected ? {
         response_mode: 'ESCALATE',
         confidence: actionableBaseDecision.confidence,
@@ -1436,6 +1440,33 @@ function createDriverHelpService({
       interpretation_confidence: interpretationConfidence,
       interpretation_result: interpretationResult
     };
+
+    const shouldCompose = Boolean(
+      allowAiProcessing
+      && aiComposer
+      && effectiveAiInterpretationMode === 'ACTIVE'
+      && !lockedDecision
+      && !workflowDecision
+      && !referenceDecision
+      && !selectedClarificationRecord
+      && decision.response_mode === 'ANSWER'
+      && decision.selected_records?.length
+      && ['GROUNDED_AI', 'LEARNED_ROUTE'].includes(interpretationMode)
+    );
+    if (shouldCompose) {
+      decision = await composeGroundedDecision(decision, aiComposer, {
+        safetyIdentifier: buildAiSafetyIdentifier(accountId, actorType, actorId),
+        driverQuestion: redactTextForAi(resolvedQuestion),
+        conversationContext: redactConversationContextForAi({
+          original_situation: decisionContext.situation_question || null,
+          clarification_history: decisionContext.clarification_history || [],
+          previous_question: decisionContext.last_question || null,
+          pending_clarification_prompt: decisionContext.pending_clarification_prompt || null,
+          previous_knowledge_ids: decisionContext.knowledge_ids || [],
+          interpreted_facts: decisionContext.interpretation_facts || null
+        })
+      });
+    }
     if (activeMemory && memoryRouteAccepted && interpretedDecision && decision.response_mode !== 'ESCALATE') {
       await recordAnswerMemoryReuse(activeMemory.route_key);
     } else if (
@@ -1488,7 +1519,10 @@ function createDriverHelpService({
       composition_mode: decision.composition_mode || 'DETERMINISTIC',
       interpretation_mode: decision.interpretation_mode || 'DETERMINISTIC',
       interpretation_confidence: decision.interpretation_confidence,
-      ...(includeDiagnostics ? { interpretation_result: decision.interpretation_result || {} } : {}),
+      ...(includeDiagnostics ? {
+        interpretation_result: decision.interpretation_result || {},
+        composition_validation: decision.composition_validation || null
+      } : {}),
       clarification_prompt: decision.clarification_prompt || null,
       clarification_options: decision.clarification_options || [],
       escalation_message: decision.escalation_message || null,
