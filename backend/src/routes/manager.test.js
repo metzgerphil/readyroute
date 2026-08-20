@@ -778,8 +778,9 @@ test('GET /manager/drivers falls back when FedEx Driver ID column is missing', a
             account_id: 'acct-1',
             name: 'Alex Driver',
             email: 'alex@example.com',
-            phone: null,
-            hourly_rate: 0,
+            invited_at: '2026-04-01T12:00:00.000Z',
+            invite_accepted_at: '2026-04-01T12:05:00.000Z',
+            password_hash: 'established-password-hash',
             is_active: true
           }
         ],
@@ -802,6 +803,8 @@ test('GET /manager/drivers falls back when FedEx Driver ID column is missing', a
     assert.equal(response.status, 200);
     const body = await response.json();
     assert.equal(body.drivers[0].fedex_driver_id, null);
+    assert.equal(body.drivers[0].has_password, true);
+    assert.equal(body.drivers[0].access_status, 'active');
     assert.equal(selectAttempts, 2);
   } finally {
     await server.close();

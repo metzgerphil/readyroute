@@ -2573,7 +2573,7 @@ function createManagerRouter(options = {}) {
       if (driversQuery.error && (isMissingFedexDriverIdColumn(driversQuery.error) || isMissingDriverProfileColumn(driversQuery.error) || isMissingTestDataColumn(driversQuery.error))) {
         driversQuery = await supabase
           .from('drivers')
-          .select('id, account_id, name, email, phone, hourly_rate, is_active')
+          .select('id, account_id, name, email, is_active, invited_at, invite_accepted_at, password_hash')
           .eq('account_id', req.account.account_id)
           .order('name');
       }
