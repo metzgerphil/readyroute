@@ -83,12 +83,6 @@ function createAuthRouter(options = {}) {
     return String(email || '').trim().toLowerCase();
   }
 
-  function timestampsMatch(left, right) {
-    const leftTime = Date.parse(String(left || ''));
-    const rightTime = Date.parse(String(right || ''));
-    return Number.isFinite(leftTime) && Number.isFinite(rightTime) && leftTime === rightTime;
-  }
-
   function isValidEmail(email) {
     return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizeEmail(email));
   }
@@ -668,7 +662,7 @@ function createAuthRouter(options = {}) {
 
   router.post('/driver/accept-invite', async (req, res) => {
     const token = String(req.body?.token || '');
-    const password = String(req.body?.password || '');
+    const password = String(req.body?.password || '').trim();
     const username = String(req.body?.username || '').trim() || null;
 
     if (!token || !password) {
@@ -706,9 +700,7 @@ function createAuthRouter(options = {}) {
       ) {
         return res.status(400).json({ error: 'Invite link is invalid or expired' });
       }
-      if (payload.purpose === 'driver_invite' && (
-        driver.invite_accepted_at || !timestampsMatch(driver.invited_at, payload.invited_at)
-      )) {
+      if (payload.purpose === 'driver_invite' && driver.invite_accepted_at) {
         return res.status(400).json({ error: 'Invite link is invalid or expired' });
       }
       if (payload.purpose === 'driver_password_reset' && (

@@ -341,6 +341,47 @@ test('mobile login returns both portal tokens for a linked manager-driver identi
   assert.equal(managerPayload.role, 'manager');
 });
 
+test('an unexpired driver invitation remains usable after a resend', async () => {
+  const originalInvitedAt = '2026-08-19T20:00:00.000Z';
+  const latestInvitedAt = '2026-08-19T21:00:00.000Z';
+  let passwordUpdate = null;
+  const driver = {
+    id: 'driver-resent-invite',
+    account_id: 'account-1',
+    email: 'resent-driver@example.com',
+    password_hash: null,
+    invited_at: latestInvitedAt,
+    invite_accepted_at: null,
+    is_active: true
+  };
+  const supabase = new AuthRouteMockSupabase((query) => {
+    if (query.table === 'drivers' && query.operation === 'select') {
+      return { data: { ...driver }, error: null };
+    }
+    if (query.table === 'drivers' && query.operation === 'update') {
+      passwordUpdate = query.payload;
+      return { data: null, error: null };
+    }
+    throw new Error(`Unexpected query ${query.table}:${query.operation}`);
+  });
+  const app = createApp({ supabase, jwtSecret: 'test-secret', enforceBilling: false });
+  const token = jwt.sign({
+    purpose: 'driver_invite',
+    driver_id: driver.id,
+    account_id: driver.account_id,
+    email: driver.email,
+    invited_at: originalInvitedAt
+  }, 'test-secret', { expiresIn: '7d' });
+
+  const response = await request(app)
+    .post('/auth/driver/accept-invite')
+    .send({ token, password: ' ReadyRoutePass!2026 ' });
+
+  assert.equal(response.status, 200);
+  assert.ok(passwordUpdate?.invite_accepted_at);
+  assert.equal(await bcrypt.compare('ReadyRoutePass!2026', passwordUpdate.password_hash), true);
+});
+
 test('legacy driver login accepts an established password as well as a four-digit PIN', async () => {
   const password = 'SecureDriverPassword!2026';
   const passwordHash = await bcrypt.hash(password, 10);
