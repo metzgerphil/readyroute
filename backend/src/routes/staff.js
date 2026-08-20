@@ -8,6 +8,7 @@ const defaultSupabase = require('../lib/supabase');
 const { createBillingService } = require('../services/billing');
 const { createStripeSignupBillingService } = require('../services/stripeSignupBilling');
 const { filterProductionRows } = require('../services/testDataFilter');
+const { recordEmailDelivery } = require('../services/emailDeliveryTracking');
 const {
   buildDriverMetrics,
   buildMetrics: buildDriverHelpMetrics
@@ -261,6 +262,9 @@ function presentAccountSummary(account, profile, counts = {}, latestTicket = nul
     cancellation_reason: account.cancellation_reason || null,
     driver_help_monthly_report_enabled: account.driver_help_monthly_report_enabled !== false,
     driver_help_minutes_per_answer_estimate: Number(account.driver_help_minutes_per_answer_estimate || 5),
+    rra_ai_processing_authorized: account.rra_ai_processing_authorized === true,
+    rra_ai_processing_policy_version: account.rra_ai_processing_policy_version || null,
+    rra_ai_processing_authorized_at: account.rra_ai_processing_authorized_at || null,
     created_at: account.created_at || null,
     internal_profile: {
       lifecycle_status: profile?.lifecycle_status || 'lead',
@@ -472,6 +476,22 @@ function createReadyRouteStaffRouter(options = {}) {
   const sendReadyRouteStaffPasswordResetEmail =
     options.sendReadyRouteStaffPasswordResetEmail || defaultSendReadyRouteStaffPasswordResetEmail;
   const sendManagerInviteEmail = options.sendManagerInviteEmail || defaultSendManagerInviteEmail;
+
+  async function trackStaffPasswordEmail({ staffUser, delivery }) {
+    try {
+      await recordEmailDelivery({
+        supabase,
+        recipientEmail: staffUser.email,
+        recipientType: 'staff',
+        recipientId: staffUser.id,
+        messageType: 'staff_password_reset',
+        delivery,
+        now
+      });
+    } catch (error) {
+      console.error('ReadyRoute staff password email tracking failed:', error);
+    }
+  }
   const billingService = options.billingService || createBillingService({
     supabase,
     stripeClient: options.stripeClient
@@ -736,6 +756,8 @@ function createReadyRouteStaffRouter(options = {}) {
           reason: 'Email delivery failed'
         };
       }
+
+      await trackStaffPasswordEmail({ staffUser, delivery: emailDelivery });
 
       if (process.env.NODE_ENV === 'production' && emailDelivery?.skipped) {
         return res.status(503).json({ error: 'Staff password reset email service is not configured yet.' });
@@ -2395,7 +2417,7 @@ function createReadyRouteStaffRouter(options = {}) {
 
       const accountResult = await supabase
         .from('accounts')
-        .select('id, company_name, manager_email, subscription_status, plan, stripe_customer_id, stripe_subscription_id, billing_setup_status, billing_activation_status, billing_access_status, billing_interval, billed_driver_count, rra_billing_treatment, rra_complimentary_reason, rra_billing_treatment_updated_at, account_status, driver_help_monthly_report_enabled, driver_help_minutes_per_answer_estimate, created_at')
+        .select('id, company_name, manager_email, subscription_status, plan, stripe_customer_id, stripe_subscription_id, billing_setup_status, billing_activation_status, billing_access_status, billing_interval, billed_driver_count, rra_billing_treatment, rra_complimentary_reason, rra_billing_treatment_updated_at, account_status, driver_help_monthly_report_enabled, driver_help_minutes_per_answer_estimate, rra_ai_processing_authorized, rra_ai_processing_policy_version, rra_ai_processing_authorized_at, created_at')
         .eq('id', accountId)
         .maybeSingle();
 
@@ -2419,7 +2441,8 @@ function createReadyRouteStaffRouter(options = {}) {
         interactionsResult,
         feedbackResult,
         unansweredResult,
-        monthlyReportsResult
+        monthlyReportsResult,
+        emailDeliveriesResult
       ] = await Promise.all([
         loadAccountInternalProfile(accountId),
         supabase
@@ -2486,7 +2509,13 @@ function createReadyRouteStaffRouter(options = {}) {
           .select('id, report_month, recipient_email, metrics, delivery_status, delivered_at, created_at')
           .eq('account_id', accountId)
           .order('report_month', { ascending: false })
-          .limit(24)
+          .limit(24),
+        supabase
+          .from('rra_email_deliveries')
+          .select('id, recipient_email, recipient_type, message_type, delivery_status, failure_reason, requested_at, delivered_at, updated_at')
+          .eq('account_id', accountId)
+          .order('requested_at', { ascending: false })
+          .limit(25)
       ]);
 
       const firstError = [
@@ -2500,7 +2529,8 @@ function createReadyRouteStaffRouter(options = {}) {
         interactionsResult,
         feedbackResult,
         unansweredResult,
-        monthlyReportsResult
+        monthlyReportsResult,
+        emailDeliveriesResult
       ].find((result) => result.error)?.error;
 
       if (firstError) {
@@ -2535,6 +2565,7 @@ function createReadyRouteStaffRouter(options = {}) {
         billing_routes: billingRoutesResult.data || [],
         routes: routesResult.data || [],
         audit_logs: auditLogs,
+        email_deliveries: emailDeliveriesResult.data || [],
         driver_help: {
           month_start: getUtcMonthStart(now()).slice(0, 10),
           metrics: usageMetrics,

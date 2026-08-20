@@ -32,6 +32,10 @@ function hashConsentIp(ip, salt = process.env.BILLING_CONSENT_HASH_SALT || proce
   return crypto.createHmac('sha256', salt).update(String(ip)).digest('hex');
 }
 
+function hashSignupAccessNonce(value) {
+  return crypto.createHash('sha256').update(String(value || '')).digest('hex');
+}
+
 function normalizeBillingInterval(value) {
   const interval = String(value || 'monthly').trim().toLowerCase();
   return Object.hasOwn(BILLING_INTERVALS, interval) ? interval : null;
@@ -106,7 +110,8 @@ function createStripeSignupBillingService(options = {}) {
       metadata: {
         readyroute_signup_id: signup.id,
         billing_policy_version: BILLING_POLICY_VERSION,
-        billing_interval: normalizedInterval
+        billing_interval: normalizedInterval,
+        readyroute_access_nonce_hash: hashSignupAccessNonce(requestId)
       },
       setup_intent_data: {
         metadata: {
@@ -333,6 +338,7 @@ module.exports = {
   BILLING_INTERVALS,
   createStripeSignupBillingService,
   hashConsentIp,
+  hashSignupAccessNonce,
   isEnabled,
   normalizeBillingInterval,
   normalizeBillingAddress

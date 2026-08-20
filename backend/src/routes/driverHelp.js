@@ -8,6 +8,7 @@ const {
 
 function createDriverHelpRouter(options = {}) {
   const router = express.Router();
+  const supabase = options.supabase;
   const service = options.service || createDriverHelpService({
     supabase: options.supabase,
     now: options.now
@@ -22,6 +23,76 @@ function createDriverHelpRouter(options = {}) {
       driverId: req.driver.driver_id,
       actorId: req.driver.auth_subject_id || req.driver.driver_id,
       actorType: req.driver.driver_mode_source === 'manager' ? 'manager' : 'driver'
+    };
+  }
+
+  function requestedCompanyContact(question) {
+    const normalized = question.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+    const asksForContact = /\b(call|contact|number|phone|reach|get ahold|talk to)\b/.test(normalized);
+    if (!asksForContact) return null;
+    if (/\bcxpc\b|customer service pickup coordinator/.test(normalized)) return 'cxpc';
+    if (/\bcsa\b|customer service agent/.test(normalized)) return 'csa';
+    if (/\b(my|our|the) manager\b|\bmanager(?: s)? (number|phone|contact)\b/.test(normalized)) return 'manager';
+    return null;
+  }
+
+  async function answerCompanyContactQuestion({ req, question, contactType }) {
+    if (!supabase) return null;
+    const { data: account, error } = await supabase
+      .from('accounts')
+      .select('rra_cxpc_phone_number, rra_csa_phone_number, rra_primary_manager_name, rra_primary_manager_phone_number')
+      .eq('id', req.driver.account_id)
+      .maybeSingle();
+    if (error) throw error;
+
+    const contact = contactType === 'cxpc'
+      ? { label: 'local CXPC', name: null, phone: account?.rra_cxpc_phone_number }
+      : contactType === 'csa'
+        ? { label: 'local CSA', name: null, phone: account?.rra_csa_phone_number }
+        : { label: 'manager', name: account?.rra_primary_manager_name, phone: account?.rra_primary_manager_phone_number };
+    const hasContact = Boolean(contact.phone);
+    const answer = hasContact
+      ? `${contact.name ? `${contact.name}, your ${contact.label},` : `Your ${contact.label} number`} is ${contact.phone}.`
+      : `RRA does not have your company's ${contact.label} phone number yet.`;
+    const actor = getActor(req);
+    const responseMode = hasContact ? 'ANSWER' : 'ESCALATE';
+    const interactionInsert = await supabase.from('driver_help_interactions').insert({
+      account_id: actor.accountId,
+      driver_id: actor.actorType === 'driver' ? actor.driverId : null,
+      actor_type: actor.actorType,
+      actor_id: actor.actorId,
+      question,
+      normalized_question: question.toLowerCase().replace(/\s+/g, ' ').trim(),
+      response_mode: responseMode,
+      selected_knowledge_ids: [],
+      selected_knowledge_versions: [],
+      retrieval_candidates: [],
+      answer_snapshot: hasContact ? answer : null,
+      more_info_snapshot: 'This contact is maintained by your company in ReadyRoute settings.',
+      clarification_options: [],
+      escalation_message: hasContact ? null : 'Ask your manager to add the required local contact in Company settings.'
+    }).select('id').single();
+    if (interactionInsert.error) throw interactionInsert.error;
+
+    return {
+      session_id: null,
+      interaction_id: interactionInsert.data?.id || null,
+      response_mode: responseMode,
+      answer_type: 'COMPANY_CONTACT',
+      answer: hasContact ? answer : null,
+      more_info: 'This contact is maintained by your company in ReadyRoute settings.',
+      answer_structure: hasContact ? {
+        direct_answer: answer,
+        steps: [`Call ${contact.phone}.`],
+        watch_for: 'Use this number for your current ReadyRoute company account.'
+      } : null,
+      images: [],
+      composition_mode: 'COMPANY_ACCOUNT',
+      interpretation_mode: 'DETERMINISTIC',
+      clarification_prompt: null,
+      clarification_options: [],
+      escalation_message: hasContact ? null : 'Ask your manager to add the required local contact in Company settings.',
+      trace: []
     };
   }
 
@@ -41,13 +112,12 @@ function createDriverHelpRouter(options = {}) {
   });
 
   router.put('/privacy-preferences', async (req, res) => {
-    if (typeof req.body?.ai_processing_consent !== 'boolean') {
-      return res.status(400).json({ error: 'ai_processing_consent must be true or false.' });
+    if (req.body?.notice_seen !== true) {
+      return res.status(400).json({ error: 'notice_seen must be true.' });
     }
     try {
-      const preference = await privacyService.setPreference({
+      const preference = await privacyService.acknowledgeNotice({
         ...getActor(req),
-        consent: req.body.ai_processing_consent,
         policyVersion: String(req.body?.policy_version || '')
       });
       return res.status(200).json({
@@ -72,6 +142,11 @@ function createDriverHelpRouter(options = {}) {
     }
 
     try {
+      const contactType = requestedCompanyContact(question);
+      if (contactType) {
+        const contactAnswer = await answerCompanyContactQuestion({ req, question, contactType });
+        if (contactAnswer) return res.status(200).json(contactAnswer);
+      }
       const actor = getActor(req);
       const preference = privacyService
         ? await privacyService.getPreference(actor)

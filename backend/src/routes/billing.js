@@ -8,9 +8,11 @@ const defaultSupabase = require('../lib/supabase');
 const { requireManager: defaultRequireManager } = require('../middleware/auth');
 const { createBillingService } = require('../services/billing');
 const { sendRraCompanyReadyEmail: defaultSendRraCompanyReadyEmail } = require('../services/managerInviteEmail');
+const { AI_CONSENT_POLICY_VERSION } = require('../services/driverHelpPrivacy');
 const { buildSignupPayload } = require('./waitlist');
 const {
   createStripeSignupBillingService,
+  hashSignupAccessNonce,
   normalizeBillingAddress,
   normalizeBillingInterval
 } = require('../services/stripeSignupBilling');
@@ -80,7 +82,14 @@ function createBillingRouter(options = {}) {
     return `https://readyroute.org/portal?invite=${encodeURIComponent(token)}`;
   }
 
-  async function finalizeSignupCheckout(sessionOrId) {
+  function signupAccessNonceMatches(session, accessNonce) {
+    const expectedHash = String(session?.metadata?.readyroute_access_nonce_hash || '');
+    const actualHash = hashSignupAccessNonce(accessNonce);
+    if (!/^[0-9a-f]{64}$/.test(expectedHash) || !/^[0-9a-f]{64}$/.test(actualHash)) return false;
+    return crypto.timingSafeEqual(Buffer.from(expectedHash, 'hex'), Buffer.from(actualHash, 'hex'));
+  }
+
+  async function finalizeSignupCheckout(sessionOrId, { password = null, accessNonce = null } = {}) {
     const stripe = getStripe();
     const session = typeof sessionOrId === 'string'
       ? await stripe.checkout.sessions.retrieve(sessionOrId, { expand: ['setup_intent', 'setup_intent.payment_method'] })
@@ -90,6 +99,14 @@ function createBillingRouter(options = {}) {
       error.code = 'CHECKOUT_INCOMPLETE';
       throw error;
     }
+
+    const requestedPassword = typeof password === 'string' ? password : '';
+    if (requestedPassword && !signupAccessNonceMatches(session, accessNonce)) {
+      const error = new Error('This secure password-setup session is no longer available. Use the password email or request a new link.');
+      error.code = 'INVALID_SIGNUP_ACCESS';
+      throw error;
+    }
+    const requestedPasswordHash = requestedPassword ? await bcrypt.hash(requestedPassword, 10) : null;
 
     const signupId = String(session.metadata?.readyroute_signup_id || '').trim();
     if (!signupId) throw new Error('Stripe checkout is missing the ReadyRoute signup reference');
@@ -105,7 +122,7 @@ function createBillingRouter(options = {}) {
 
     const { data: signup, error: signupError } = await supabase
       .from('early_access_signups')
-      .select('id, name, email, phone_number, company_csa, role, driver_count, billing_interval, billing_policy_version, billing_consent_at, account_id, onboarding_status')
+      .select('id, name, email, phone_number, manager_phone_number, cxpc_phone_number, csa_phone_number, company_csa, role, driver_count, billing_interval, billing_policy_version, billing_consent_at, ai_processing_authorized, ai_processing_policy_version, ai_processing_authorized_at, account_id, onboarding_status')
       .eq('id', signupId)
       .maybeSingle();
     if (signupError) throw signupError;
@@ -141,6 +158,7 @@ function createBillingRouter(options = {}) {
 
     let manager = null;
     let needsPassword = true;
+    let passwordCreated = false;
     if (!account) {
       const existingManager = await supabase
         .from('manager_users')
@@ -150,7 +168,8 @@ function createBillingRouter(options = {}) {
         .limit(1)
         .maybeSingle();
       if (existingManager.error) throw existingManager.error;
-      const inaccessiblePasswordHash = await bcrypt.hash(crypto.randomBytes(32).toString('hex'), 10);
+      const managerPasswordHash = existingManager.data?.password_hash || requestedPasswordHash;
+      const inaccessiblePasswordHash = managerPasswordHash || await bcrypt.hash(crypto.randomBytes(32).toString('hex'), 10);
       const accountInsert = await supabase
         .from('accounts')
         .insert({
@@ -168,20 +187,29 @@ function createBillingRouter(options = {}) {
           billing_interval: signup.billing_interval || 'monthly',
           billing_policy_version: signup.billing_policy_version || null,
           billing_consent_at: signup.billing_consent_at || null,
+          rra_ai_processing_authorized: signup.ai_processing_authorized === true
+            && signup.ai_processing_policy_version === AI_CONSENT_POLICY_VERSION,
+          rra_ai_processing_policy_version: signup.ai_processing_policy_version || null,
+          rra_ai_processing_authorized_at: signup.ai_processing_authorized_at || null,
+          rra_cxpc_phone_number: signup.cxpc_phone_number,
+          rra_csa_phone_number: signup.csa_phone_number,
+          rra_primary_manager_name: signup.name,
+          rra_primary_manager_phone_number: signup.manager_phone_number || signup.phone_number,
           rra_billing_treatment: 'standard'
         })
         .select('id, company_name')
         .single();
       if (accountInsert.error || !accountInsert.data) throw accountInsert.error || new Error('Company account was not created');
       account = accountInsert.data;
-      needsPassword = !existingManager.data?.password_hash;
+      needsPassword = !managerPasswordHash;
+      passwordCreated = Boolean(requestedPasswordHash && !existingManager.data?.password_hash);
       const managerInsert = await supabase
         .from('manager_users')
         .insert({
           account_id: account.id,
           email: signup.email,
           full_name: signup.name,
-          password_hash: existingManager.data?.password_hash || null,
+          password_hash: managerPasswordHash || null,
           is_active: true,
           invited_at: timestamp,
           accepted_at: needsPassword ? null : timestamp
@@ -193,10 +221,17 @@ function createBillingRouter(options = {}) {
         throw managerInsert.error || new Error('Company manager was not created');
       }
       manager = managerInsert.data;
+      if (signup.ai_processing_authorized === true && signup.ai_processing_policy_version === AI_CONSENT_POLICY_VERSION) {
+        const authorizationActorUpdate = await supabase
+          .from('accounts')
+          .update({ rra_ai_processing_authorized_by: manager.id })
+          .eq('id', account.id);
+        if (authorizationActorUpdate.error) throw authorizationActorUpdate.error;
+      }
       const profileResult = await supabase.from('account_internal_profiles').upsert({
         account_id: account.id,
         lifecycle_status: 'onboarding',
-        onboarding_stage: 'manager_invited',
+        onboarding_stage: needsPassword ? 'manager_invited' : 'manager_active',
         updated_at: timestamp
       }, { onConflict: 'account_id' });
       if (profileResult.error) throw profileResult.error;
@@ -217,6 +252,29 @@ function createBillingRouter(options = {}) {
       manager = managerLookup.data;
       if (!manager) throw new Error('ReadyRoute manager account not found');
       needsPassword = !manager.password_hash;
+
+      if (needsPassword && requestedPasswordHash) {
+        const managerPasswordUpdate = await supabase
+          .from('manager_users')
+          .update({ password_hash: requestedPasswordHash, accepted_at: timestamp })
+          .eq('id', manager.id);
+        if (managerPasswordUpdate.error) throw managerPasswordUpdate.error;
+        const legacyPasswordUpdate = await supabase
+          .from('accounts')
+          .update({ manager_password_hash: requestedPasswordHash })
+          .eq('id', account.id);
+        if (legacyPasswordUpdate.error) throw legacyPasswordUpdate.error;
+        manager.password_hash = requestedPasswordHash;
+        needsPassword = false;
+        passwordCreated = true;
+        const profileUpdate = await supabase.from('account_internal_profiles').upsert({
+          account_id: account.id,
+          lifecycle_status: 'onboarding',
+          onboarding_stage: 'manager_active',
+          updated_at: timestamp
+        }, { onConflict: 'account_id' });
+        if (profileUpdate.error) throw profileUpdate.error;
+      }
 
       if (!signup.account_id) {
         const signupLink = await supabase.from('early_access_signups').update({
@@ -265,6 +323,8 @@ function createBillingRouter(options = {}) {
       account_id: account.id,
       company_name: account.company_name,
       email: manager.email,
+      password_created: passwordCreated,
+      password_already_set: Boolean(requestedPassword && !passwordCreated && manager.password_hash),
       onboarding_status: delivery.delivered ? 'email_sent' : 'email_failed',
       email_delivered: Boolean(delivery.delivered)
     };
@@ -285,14 +345,20 @@ function createBillingRouter(options = {}) {
     }
     const { payload, error: signupError } = buildSignupPayload(req.body, req);
     if (signupError) return res.status(400).json({ error: signupError });
-    if (!payload.company_csa || !payload.phone_number || !payload.role || !Number.isInteger(payload.driver_count) || payload.driver_count < 1) {
-      return res.status(400).json({ error: 'Company, phone, role, and at least one expected active driver are required.' });
+    if (!payload.company_csa || !payload.manager_phone_number || !payload.cxpc_phone_number || !payload.csa_phone_number || !payload.role || !Number.isInteger(payload.driver_count) || payload.driver_count < 1) {
+      return res.status(400).json({ error: 'Company, manager phone, CXPC phone, CSA phone, role, and at least one expected active driver are required.' });
     }
     if (!['owner', 'business contact'].includes(String(payload.role).toLowerCase())) {
       return res.status(400).json({ error: 'Company signup must be completed by an owner or authorized business contact.' });
     }
     if (req.body?.billing_consent !== true) {
       return res.status(400).json({ error: 'Billing authorization is required before opening secure checkout.' });
+    }
+    if (req.body?.ai_processing_authorized !== true || req.body?.ai_processing_policy_version !== AI_CONSENT_POLICY_VERSION) {
+      return res.status(400).json({
+        error: 'Company AI-processing authorization is required before opening secure checkout.',
+        current_policy_version: AI_CONSENT_POLICY_VERSION
+      });
     }
     const requestId = String(req.body?.request_id || '').trim();
     if (!/^[0-9a-f-]{36}$/i.test(requestId)) {
@@ -330,11 +396,22 @@ function createBillingRouter(options = {}) {
     if (!/^cs_[A-Za-z0-9_]+$/.test(sessionId)) {
       return res.status(400).json({ error: 'A valid Stripe checkout session is required.' });
     }
+    const password = String(req.body?.password || '');
+    const accessNonce = String(req.body?.access_nonce || '');
+    if (password && password.length < 10) {
+      return res.status(400).json({ error: 'Password must be at least 10 characters.' });
+    }
     try {
-      return res.status(200).json(await finalizeSignupCheckout(sessionId));
+      return res.status(200).json(await finalizeSignupCheckout(sessionId, {
+        password: password || null,
+        accessNonce: accessNonce || null
+      }));
     } catch (error) {
       if (error.code === 'CHECKOUT_INCOMPLETE') {
         return res.status(409).json({ error: error.message });
+      }
+      if (error.code === 'INVALID_SIGNUP_ACCESS') {
+        return res.status(403).json({ error: error.message });
       }
       console.error('Ready Route Answers signup completion failed:', error);
       return res.status(500).json({ error: 'Payment was received, but company setup needs attention. Contact info@readyroute.org.' });
@@ -384,11 +461,17 @@ function createBillingRouter(options = {}) {
 
     const { payload, error: signupError } = buildSignupPayload(req.body, req);
     if (signupError) return res.status(400).json({ error: signupError });
-    if (!payload.company_csa || !payload.phone_number || !payload.role || !Number.isInteger(payload.driver_count) || payload.driver_count < 1) {
-      return res.status(400).json({ error: 'Company, phone, role, and at least one expected active driver are required.' });
+    if (!payload.company_csa || !payload.manager_phone_number || !payload.cxpc_phone_number || !payload.csa_phone_number || !payload.role || !Number.isInteger(payload.driver_count) || payload.driver_count < 1) {
+      return res.status(400).json({ error: 'Company, manager phone, CXPC phone, CSA phone, role, and at least one expected active driver are required.' });
     }
     if (req.body?.billing_consent !== true) {
       return res.status(400).json({ error: 'Billing authorization is required before saving a payment method.' });
+    }
+    if (req.body?.ai_processing_authorized !== true || req.body?.ai_processing_policy_version !== AI_CONSENT_POLICY_VERSION) {
+      return res.status(400).json({
+        error: 'Company AI-processing authorization is required before saving a payment method.',
+        current_policy_version: AI_CONSENT_POLICY_VERSION
+      });
     }
     const requestId = String(req.body?.request_id || '').trim();
     if (!/^[0-9a-f-]{36}$/i.test(requestId)) {

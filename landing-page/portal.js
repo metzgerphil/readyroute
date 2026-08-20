@@ -25,6 +25,14 @@ const addManagerCard = document.querySelector('#add-manager-card');
 const billingError = document.querySelector('#billing-error');
 const manageBillingButton = document.querySelector('#manage-billing-button');
 const passwordForm = document.querySelector('#password-form');
+const aiAuthorizationCheckbox = document.querySelector('#ai-authorization-checkbox');
+const aiAuthorizationStatus = document.querySelector('#ai-authorization-status');
+const aiAuthorizationMessage = document.querySelector('#ai-authorization-message');
+const saveAiAuthorizationButton = document.querySelector('#save-ai-authorization-button');
+const localContactsForm = document.querySelector('#local-contacts-form');
+const localContactsMessage = document.querySelector('#local-contacts-message');
+const saveLocalContactsButton = document.querySelector('#save-local-contacts-button');
+const AI_AUTHORIZATION_POLICY_VERSION = '2026-08-20';
 
 function setMessage(element, message = '') {
   element.textContent = message;
@@ -239,6 +247,41 @@ async function loadBilling() {
   }
 }
 
+async function loadAiAuthorization() {
+  setMessage(aiAuthorizationMessage);
+  try {
+    const payload = await request('/manager/account/ai-authorization');
+    aiAuthorizationCheckbox.checked = payload.company_ai_processing_authorized === true;
+    aiAuthorizationCheckbox.disabled = payload.can_manage === false;
+    saveAiAuthorizationButton.hidden = payload.can_manage === false;
+    aiAuthorizationStatus.textContent = payload.company_ai_processing_authorized
+      ? `Authorized for this company${payload.company_authorized_at ? ` since ${new Date(payload.company_authorized_at).toLocaleDateString()}` : ''}.`
+      : 'AI language interpretation is currently off for this company.';
+  } catch (error) {
+    aiAuthorizationStatus.textContent = 'Company authorization could not be loaded.';
+    aiAuthorizationCheckbox.disabled = true;
+    saveAiAuthorizationButton.hidden = true;
+    setMessage(aiAuthorizationMessage, error.message);
+  }
+}
+
+async function loadLocalContacts() {
+  setMessage(localContactsMessage);
+  try {
+    const payload = await request('/manager/account/local-contacts');
+    document.querySelector('#cxpc-phone-number').value = payload.cxpc_phone_number || '';
+    document.querySelector('#csa-phone-number').value = payload.csa_phone_number || '';
+    document.querySelector('#primary-manager-name').value = payload.manager_name || '';
+    document.querySelector('#primary-manager-phone-number').value = payload.manager_phone_number || '';
+    localContactsForm.querySelectorAll('input').forEach((input) => { input.disabled = payload.can_manage === false; });
+    saveLocalContactsButton.hidden = payload.can_manage === false;
+  } catch (error) {
+    localContactsForm.querySelectorAll('input').forEach((input) => { input.disabled = true; });
+    saveLocalContactsButton.hidden = true;
+    setMessage(localContactsMessage, error.message);
+  }
+}
+
 async function openPortal() {
   const payload = decodeToken(getToken());
   if (!payload || payload.role !== 'manager') {
@@ -248,7 +291,7 @@ async function openPortal() {
   document.querySelector('#company-name').textContent = payload.company_name || 'Your company';
   loginView.hidden = true;
   portalView.hidden = false;
-  await Promise.all([loadDrivers(), loadManagers(), loadBilling()]);
+  await Promise.all([loadDrivers(), loadManagers(), loadBilling(), loadAiAuthorization(), loadLocalContacts()]);
   showPortalView(new URLSearchParams(window.location.search).get('view') || 'overview');
 }
 
@@ -500,6 +543,54 @@ passwordForm.addEventListener('submit', async (event) => {
     setMessage(messageElement, error.message);
   } finally {
     button.disabled = false;
+  }
+});
+
+saveAiAuthorizationButton.addEventListener('click', async () => {
+  saveAiAuthorizationButton.disabled = true;
+  setMessage(aiAuthorizationMessage);
+  aiAuthorizationMessage.classList.remove('error');
+  try {
+    await request('/manager/account/ai-authorization', {
+      method: 'PUT',
+      body: JSON.stringify({
+        authorized: aiAuthorizationCheckbox.checked,
+        policy_version: AI_AUTHORIZATION_POLICY_VERSION
+      })
+    });
+    await loadAiAuthorization();
+    setMessage(aiAuthorizationMessage, aiAuthorizationCheckbox.checked
+      ? 'Company authorization saved. Authorized drivers may now use AI language interpretation.'
+      : 'AI language interpretation is now off for this company. Approved non-AI answers remain available.');
+  } catch (error) {
+    aiAuthorizationMessage.classList.add('error');
+    setMessage(aiAuthorizationMessage, error.message);
+  } finally {
+    saveAiAuthorizationButton.disabled = false;
+  }
+});
+
+localContactsForm.addEventListener('submit', async (event) => {
+  event.preventDefault();
+  saveLocalContactsButton.disabled = true;
+  setMessage(localContactsMessage);
+  localContactsMessage.classList.remove('error');
+  try {
+    await request('/manager/account/local-contacts', {
+      method: 'PUT',
+      body: JSON.stringify({
+        cxpc_phone_number: document.querySelector('#cxpc-phone-number').value.trim(),
+        csa_phone_number: document.querySelector('#csa-phone-number').value.trim(),
+        manager_name: document.querySelector('#primary-manager-name').value.trim(),
+        manager_phone_number: document.querySelector('#primary-manager-phone-number').value.trim()
+      })
+    });
+    setMessage(localContactsMessage, 'Local driver contact numbers saved.');
+  } catch (error) {
+    localContactsMessage.classList.add('error');
+    setMessage(localContactsMessage, error.message);
+  } finally {
+    saveLocalContactsButton.disabled = false;
   }
 });
 

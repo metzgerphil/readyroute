@@ -6,6 +6,7 @@ const { createAuthRouter } = require('./routes/auth');
 const { createBillingRouter } = require('./routes/billing');
 const { createDriverHelpRouter } = require('./routes/driverHelp');
 const { createPublicAccountRouter } = require('./routes/publicAccount');
+const { createResendWebhookRouter } = require('./routes/resendWebhook');
 const { createManagerRouter } = require('./routes/manager');
 const { createManagerDriverHelpRouter } = require('./routes/managerDriverHelp');
 const propertyIntelManagerRoutes = require('./routes/propertyIntelManager');
@@ -109,7 +110,9 @@ function createApp(options = {}) {
     stripeAnnualPriceId: options.stripeAnnualPriceId,
     trialDays: options.trialDays,
     requireManager,
+    requireDriver,
     sendManagerPasswordResetEmail: options.sendManagerPasswordResetEmail,
+    sendDriverPasswordResetEmail: options.sendDriverPasswordResetEmail,
     authorizeDriverDevice: options.authorizeDriverDevice,
     requireDriverDeviceId: options.requireDriverDeviceId
   });
@@ -136,6 +139,10 @@ function createApp(options = {}) {
     signupReturnUrl: options.signupReturnUrl,
     sendRraCompanyReadyEmail: options.sendRraCompanyReadyEmail,
     publicFormLimiter: rateLimiters.publicForm
+  });
+  const resendWebhookRouter = createResendWebhookRouter({
+    supabase: options.supabase,
+    webhookSecret: options.resendWebhookSecret
   });
   const requireActiveSubscription = options.enforceBilling === false || (Boolean(options.supabase) && options.enforceBilling !== true)
     ? (_req, _res, next) => next()
@@ -285,6 +292,7 @@ function createApp(options = {}) {
 
   app.use(rateLimiters.global);
   app.use('/billing', billingRouter);
+  app.use('/webhooks/resend', resendWebhookRouter);
   app.use((req, _res, next) => {
     const contentType = req.headers['content-type'];
     if (typeof contentType === 'string' && /charset=UTF-8/i.test(contentType)) {
@@ -304,6 +312,7 @@ function createApp(options = {}) {
   ], rateLimiters.login);
   app.use([
     '/auth/driver/accept-invite',
+    '/auth/driver/request-password-reset',
     '/auth/manager/request-password-reset',
     '/manager/drivers/:driver_id/invite',
     '/manager/drivers/:driver_id/password-reset',

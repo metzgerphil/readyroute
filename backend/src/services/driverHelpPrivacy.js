@@ -1,4 +1,4 @@
-const AI_CONSENT_POLICY_VERSION = '2026-08-16';
+const AI_CONSENT_POLICY_VERSION = '2026-08-20';
 
 function redactTextForAi(value) {
   return String(value || '')
@@ -27,50 +27,101 @@ function redactConversationContextForAi(context = {}) {
 
 function createDriverHelpPrivacyService({ supabase, now = () => new Date() } = {}) {
   async function getPreference({ accountId, actorType, actorId }) {
-    const { data, error } = await supabase
-      .from('driver_help_ai_consents')
-      .select('ai_processing_consent, policy_version, accepted_at, withdrawn_at, updated_at')
-      .eq('account_id', accountId)
-      .eq('actor_type', actorType)
-      .eq('actor_id', actorId)
-      .maybeSingle();
-    if (error) throw error;
-    return data || {
-      ai_processing_consent: false,
+    const [{ data: account, error: accountError }, { data: notice, error: noticeError }] = await Promise.all([
+      supabase
+        .from('accounts')
+        .select('rra_ai_processing_authorized, rra_ai_processing_policy_version, rra_ai_processing_authorized_at, rra_ai_processing_withdrawn_at')
+        .eq('id', accountId)
+        .maybeSingle(),
+      supabase
+        .from('driver_help_ai_notices')
+        .select('policy_version, seen_at, updated_at')
+        .eq('account_id', accountId)
+        .eq('actor_type', actorType)
+        .eq('actor_id', actorId)
+        .eq('policy_version', AI_CONSENT_POLICY_VERSION)
+        .maybeSingle()
+    ]);
+    if (accountError) throw accountError;
+    if (noticeError) throw noticeError;
+
+    const companyAuthorized = account?.rra_ai_processing_authorized === true
+      && account?.rra_ai_processing_policy_version === AI_CONSENT_POLICY_VERSION
+      && !account?.rra_ai_processing_withdrawn_at;
+
+    return {
+      ai_processing_consent: companyAuthorized,
+      company_ai_processing_authorized: companyAuthorized,
       policy_version: AI_CONSENT_POLICY_VERSION,
-      accepted_at: null,
-      withdrawn_at: null,
-      updated_at: null
+      company_authorized_at: account?.rra_ai_processing_authorized_at || null,
+      notice_seen_at: notice?.seen_at || null,
+      notice_required: !notice?.seen_at,
+      updated_at: notice?.updated_at || account?.rra_ai_processing_authorized_at || null
     };
   }
 
-  async function setPreference({ accountId, driverId, actorType, actorId, consent, policyVersion }) {
+  async function acknowledgeNotice({ accountId, actorType, actorId, policyVersion }) {
     if (policyVersion !== AI_CONSENT_POLICY_VERSION) {
-      const error = new Error('The privacy notice has changed. Review the current notice before choosing.');
+      const error = new Error('The privacy notice has changed. Review the current notice before continuing.');
+      error.code = 'POLICY_VERSION_MISMATCH';
+      throw error;
+    }
+    const timestamp = now().toISOString();
+    const { error } = await supabase
+      .from('driver_help_ai_notices')
+      .upsert({
+        account_id: accountId,
+        actor_type: actorType,
+        actor_id: actorId,
+        policy_version: policyVersion,
+        seen_at: timestamp,
+        updated_at: timestamp
+      }, { onConflict: 'account_id,actor_type,actor_id,policy_version' });
+    if (error) throw error;
+    return getPreference({ accountId, actorType, actorId });
+  }
+
+  async function setCompanyAuthorization({ accountId, managerUserId, authorized, policyVersion }) {
+    if (policyVersion !== AI_CONSENT_POLICY_VERSION) {
+      const error = new Error('The AI authorization has changed. Review the current authorization before choosing.');
       error.code = 'POLICY_VERSION_MISMATCH';
       throw error;
     }
     const timestamp = now().toISOString();
     const { data, error } = await supabase
-      .from('driver_help_ai_consents')
-      .upsert({
-        account_id: accountId,
-        driver_id: actorType === 'driver' ? driverId : null,
-        actor_type: actorType,
-        actor_id: actorId,
-        ai_processing_consent: consent,
-        policy_version: policyVersion,
-        accepted_at: consent ? timestamp : null,
-        withdrawn_at: consent ? null : timestamp,
-        updated_at: timestamp
-      }, { onConflict: 'account_id,actor_type,actor_id' })
-      .select('ai_processing_consent, policy_version, accepted_at, withdrawn_at, updated_at')
-      .single();
+      .from('accounts')
+      .update(authorized ? {
+        rra_ai_processing_authorized: true,
+        rra_ai_processing_policy_version: policyVersion,
+        rra_ai_processing_authorized_at: timestamp,
+        rra_ai_processing_authorized_by: managerUserId || null,
+        rra_ai_processing_withdrawn_at: null,
+        rra_ai_processing_withdrawn_by: null
+      } : {
+        rra_ai_processing_authorized: false,
+        rra_ai_processing_withdrawn_at: timestamp,
+        rra_ai_processing_withdrawn_by: managerUserId || null
+      })
+      .eq('id', accountId)
+      .select('rra_ai_processing_authorized, rra_ai_processing_policy_version, rra_ai_processing_authorized_at, rra_ai_processing_withdrawn_at')
+      .maybeSingle();
     if (error) throw error;
-    return data;
+    if (!data) {
+      const notFound = new Error('Company account not found.');
+      notFound.code = 'ACCOUNT_NOT_FOUND';
+      throw notFound;
+    }
+    return {
+      company_ai_processing_authorized: data.rra_ai_processing_authorized === true
+        && data.rra_ai_processing_policy_version === AI_CONSENT_POLICY_VERSION
+        && !data.rra_ai_processing_withdrawn_at,
+      policy_version: AI_CONSENT_POLICY_VERSION,
+      company_authorized_at: data.rra_ai_processing_authorized_at || null,
+      company_withdrawn_at: data.rra_ai_processing_withdrawn_at || null
+    };
   }
 
-  return { getPreference, setPreference };
+  return { acknowledgeNotice, getPreference, setCompanyAuthorization };
 }
 
 module.exports = {

@@ -101,7 +101,7 @@ export default function LoginScreen({ onAuthenticated }) {
     const requestedEmail = resetEmail.trim() || email.trim();
 
     if (!requestedEmail) {
-      setResetErrorMessage('Enter your manager email first.');
+      setResetErrorMessage('Enter your driver email first.');
       return;
     }
 
@@ -111,7 +111,7 @@ export default function LoginScreen({ onAuthenticated }) {
     setResetErrorMessage('');
 
     try {
-      const response = await api.post('/auth/manager/request-password-reset', {
+      const response = await api.post('/auth/driver/request-password-reset', {
         email: requestedEmail
       }, {
         skipAuth: true
@@ -204,12 +204,12 @@ export default function LoginScreen({ onAuthenticated }) {
                     pressed && !resetLoading ? styles.forgotPasswordLinkPressed : null
                   ]}
                 >
-                  <Text style={styles.forgotPasswordText}>Forgot manager password?</Text>
+                  <Text style={styles.forgotPasswordText}>Forgot password?</Text>
                 </Pressable>
                 {showPasswordReset ? (
                   <View style={styles.resetPanel}>
                     <Text style={styles.resetHelperText}>
-                      Enter your manager email and we&apos;ll send reset instructions.
+                      Enter your driver email and we&apos;ll send secure reset instructions. Company managers can reset their password at readyroute.org/portal.
                     </Text>
                     <TextInput
                       autoCapitalize="none"
@@ -221,7 +221,7 @@ export default function LoginScreen({ onAuthenticated }) {
                           setResetErrorMessage('');
                         }
                       }}
-                      placeholder="Manager email"
+                      placeholder="Driver email"
                       placeholderTextColor="#8b8b8b"
                       returnKeyType="send"
                       onSubmitEditing={handlePasswordReset}
