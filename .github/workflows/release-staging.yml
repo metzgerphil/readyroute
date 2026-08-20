@@ -171,7 +171,6 @@ jobs:
           echo "STAGING_IMAGE_URI=$image_uri" >> "$GITHUB_ENV"
           gcloud builds submit backend \
             --project "${{ vars.GCP_PROJECT_ID }}" \
-            --region "${{ vars.GCP_REGION }}" \
             --timeout 20m \
             --tag "$image_uri"
 
