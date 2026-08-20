@@ -2789,6 +2789,31 @@ function createManagerRouter(options = {}) {
     }
   });
 
+  router.get('/account/monthly-value-reports', requireManager, async (req, res) => {
+    try {
+      const { data, error } = await supabase
+        .from('driver_help_monthly_report_deliveries')
+        .select('id, report_month, metrics, delivery_status, delivered_at, created_at')
+        .eq('account_id', req.account.account_id)
+        .order('report_month', { ascending: false })
+        .limit(36);
+      if (error) throw error;
+
+      const reportsByMonth = new Map();
+      for (const report of data || []) {
+        const prior = reportsByMonth.get(report.report_month);
+        if (!prior || (report.delivery_status === 'sent' && prior.delivery_status !== 'sent')) {
+          reportsByMonth.set(report.report_month, report);
+        }
+      }
+
+      return res.status(200).json({ reports: [...reportsByMonth.values()] });
+    } catch (error) {
+      console.error('Manager monthly value report lookup failed:', error);
+      return res.status(500).json({ error: 'Could not load monthly value reports.' });
+    }
+  });
+
   router.put('/account/ai-authorization', requireManager, requireAccountSettingsAccess, async (req, res) => {
     if (typeof req.body?.authorized !== 'boolean') {
       return res.status(400).json({ error: 'authorized must be true or false.' });

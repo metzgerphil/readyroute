@@ -4,13 +4,16 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="description" content="ReadyRoute Answers company portal for managing authorized driver access.">
-  <title>Company Portal | ReadyRoute Answers</title>
+  <title>Ready Route Portal | ReadyRoute Answers</title>
   <link rel="stylesheet" href="/portal.css">
 </head>
 <body>
   <header class="site-header">
     <a class="brand" href="/" aria-label="ReadyRoute home"><span>ready</span>Route</a>
-    <a class="support-link" href="mailto:info@readyroute.org">Support</a>
+    <div class="portal-mark" aria-label="Ready Route Portal">
+      <span>Ready Route Portal</span>
+      <small>Company workspace</small>
+    </div>
   </header>
 
   <main>
@@ -27,7 +30,7 @@
       </div>
 
       <div class="card login-card">
-        <p class="eyebrow">Company portal</p>
+        <p class="eyebrow">Ready Route Portal</p>
         <h2>Sign in</h2>
         <p class="muted">Use the company-contact email and password supplied by ReadyRoute.</p>
         <form id="invite-form" hidden>
@@ -60,9 +63,9 @@
     <section class="portal-view" id="portal-view" hidden>
       <div class="portal-heading">
         <div>
-          <p class="eyebrow">ReadyRoute Answers company portal</p>
+          <p class="eyebrow">Ready Route Portal</p>
           <h1 id="company-name">Your company</h1>
-          <p class="muted">Manage the drivers who may sign in to the ReadyRoute app.</p>
+          <p class="muted">Manage your team’s ReadyRoute access and account details.</p>
         </div>
         <button class="secondary" id="logout-button" type="button">Sign out</button>
       </div>
@@ -72,22 +75,29 @@
         <button data-view="drivers" type="button">Drivers</button>
         <button data-view="managers" type="button">Managers</button>
         <button data-view="billing" type="button">Billing</button>
-        <button data-view="settings" type="button">Password &amp; settings</button>
+        <button data-view="settings" type="button">Settings</button>
       </nav>
 
       <section class="portal-panel" data-panel="overview">
+      <div class="overview-heading">
+        <div><p class="eyebrow">At a glance</p><h2>Company overview</h2></div>
+        <p>Your current driver access and ReadyRoute reporting, all in one place.</p>
+      </div>
       <div class="summary-grid">
-        <article class="card summary-card"><strong id="active-count">0</strong><span>Active drivers</span></article>
-        <article class="card summary-card"><strong id="pending-count">0</strong><span>Invitations pending</span></article>
+        <article class="card summary-card active-summary"><span class="summary-label">Active drivers</span><strong id="active-count">0</strong><span class="summary-detail">Can sign in to ReadyRoute</span></article>
+        <article class="card summary-card pending-summary"><span class="summary-label">Invitations pending</span><strong id="pending-count">0</strong><span class="summary-detail">Waiting for driver setup</span></article>
         <article class="card report-card">
-          <div>
-            <strong>Monthly value report</strong>
-            <p>ReadyRoute personnel will email your company’s monthly RRA usage and value summary.</p>
+          <div class="report-copy">
+            <p class="eyebrow">Usage &amp; value</p>
+            <strong>Monthly value reports</strong>
+            <p>Your first report will appear here after 30 days of ReadyRoute activity. Each monthly report will remain available in this portal.</p>
           </div>
-          <a href="mailto:info@readyroute.org">Contact ReadyRoute</a>
+          <div class="report-empty" id="monthly-report-history" aria-label="Monthly report history">
+            <span>First report</span>
+            <strong>After 30 days</strong>
+          </div>
         </article>
       </div>
-      <article class="card welcome-card"><p class="eyebrow">Company access</p><h2>Everything your company needs for RRA</h2><p class="muted">Add authorized drivers, invite additional managers, update passwords, and review billing from this portal. ReadyRoute staff retain the detailed reporting needed for your monthly value email.</p></article>
       </section>
 
       <section class="portal-panel" data-panel="drivers" hidden>
@@ -181,7 +191,7 @@
               <button class="primary" id="save-local-contacts-button" type="submit">Save local contacts</button>
             </form>
           </article>
-          <article class="card portal-section-card"><p class="eyebrow">Support</p><h2>Need help?</h2><p class="muted">Email ReadyRoute for company-access or account questions.</p><a class="support-action" href="mailto:info@readyroute.org">info@readyroute.org</a></article>
+          <article class="card portal-section-card"><p class="eyebrow">Account help</p><h2>Need account assistance?</h2><p class="muted">For login, billing, or company-access problems, email the ReadyRoute team.</p><a class="support-action" href="mailto:info@readyroute.org">info@readyroute.org</a></article>
         </div>
       </section>
     </section>

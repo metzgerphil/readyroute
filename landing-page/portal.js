@@ -32,6 +32,7 @@ const saveAiAuthorizationButton = document.querySelector('#save-ai-authorization
 const localContactsForm = document.querySelector('#local-contacts-form');
 const localContactsMessage = document.querySelector('#local-contacts-message');
 const saveLocalContactsButton = document.querySelector('#save-local-contacts-button');
+const monthlyReportHistory = document.querySelector('#monthly-report-history');
 const AI_AUTHORIZATION_POLICY_VERSION = '2026-08-20';
 
 function setMessage(element, message = '') {
@@ -282,6 +283,54 @@ async function loadLocalContacts() {
   }
 }
 
+function formatReportMonth(value) {
+  const date = new Date(`${String(value || '').slice(0, 10)}T00:00:00Z`);
+  if (Number.isNaN(date.getTime())) return 'Monthly report';
+  return date.toLocaleDateString('en-US', { month: 'long', year: 'numeric', timeZone: 'UTC' });
+}
+
+function renderMonthlyValueReports(reports = []) {
+  if (!reports.length) return;
+  monthlyReportHistory.className = 'report-history';
+  monthlyReportHistory.replaceChildren();
+
+  reports.slice(0, 3).forEach((report) => {
+    const metrics = report.metrics || {};
+    const item = document.createElement('article');
+    item.className = 'report-row';
+
+    const heading = document.createElement('div');
+    const month = document.createElement('strong');
+    month.textContent = formatReportMonth(report.report_month);
+    const status = document.createElement('span');
+    status.textContent = report.delivery_status === 'sent' ? 'Ready' : 'Recorded';
+    heading.append(month, status);
+
+    const summary = document.createElement('p');
+    const questions = Number(metrics.total_questions || 0);
+    const answers = Number(metrics.verified_answers || 0);
+    const hours = Number(metrics.estimated_manager_minutes_avoided || 0) / 60;
+    summary.textContent = `${questions} questions · ${answers} verified answers · ${hours.toFixed(1)} estimated hours saved`;
+    item.append(heading, summary);
+    monthlyReportHistory.append(item);
+  });
+}
+
+async function loadMonthlyValueReports() {
+  try {
+    const payload = await request('/manager/account/monthly-value-reports');
+    renderMonthlyValueReports(Array.isArray(payload.reports) ? payload.reports : []);
+  } catch (_error) {
+    monthlyReportHistory.className = 'report-empty';
+    monthlyReportHistory.replaceChildren();
+    const label = document.createElement('span');
+    label.textContent = 'Report history';
+    const message = document.createElement('strong');
+    message.textContent = 'Temporarily unavailable';
+    monthlyReportHistory.append(label, message);
+  }
+}
+
 async function openPortal() {
   const payload = decodeToken(getToken());
   if (!payload || payload.role !== 'manager') {
@@ -291,7 +340,7 @@ async function openPortal() {
   document.querySelector('#company-name').textContent = payload.company_name || 'Your company';
   loginView.hidden = true;
   portalView.hidden = false;
-  await Promise.all([loadDrivers(), loadManagers(), loadBilling(), loadAiAuthorization(), loadLocalContacts()]);
+  await Promise.all([loadDrivers(), loadManagers(), loadBilling(), loadAiAuthorization(), loadLocalContacts(), loadMonthlyValueReports()]);
   showPortalView(new URLSearchParams(window.location.search).get('view') || 'overview');
 }
 

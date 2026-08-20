@@ -5827,3 +5827,58 @@ test('PATCH /manager/property-intel/:id updates an access code for the manager a
     await server.close();
   }
 });
+
+test('GET /manager/account/monthly-value-reports returns one portal record per month', async () => {
+  const supabase = new MockSupabase((query) => {
+    if (query.table === 'driver_help_monthly_report_deliveries' && query.operation === 'select') {
+      assert.equal(query.filters.find((filter) => filter.column === 'account_id')?.value, 'acct-1');
+      assert.equal(query.orders[0]?.column, 'report_month');
+      return {
+        data: [
+          {
+            id: 'report-july-owner',
+            report_month: '2026-07-01',
+            metrics: { total_questions: 42, verified_answers: 38, estimated_manager_minutes_avoided: 190 },
+            delivery_status: 'sent',
+            delivered_at: '2026-08-01T12:00:00.000Z',
+            created_at: '2026-08-01T12:00:00.000Z'
+          },
+          {
+            id: 'report-july-manager',
+            report_month: '2026-07-01',
+            metrics: { total_questions: 42, verified_answers: 38, estimated_manager_minutes_avoided: 190 },
+            delivery_status: 'failed',
+            delivered_at: null,
+            created_at: '2026-08-01T12:00:00.000Z'
+          },
+          {
+            id: 'report-june-owner',
+            report_month: '2026-06-01',
+            metrics: { total_questions: 20, verified_answers: 17, estimated_manager_minutes_avoided: 85 },
+            delivery_status: 'sent',
+            delivered_at: '2026-07-01T12:00:00.000Z',
+            created_at: '2026-07-01T12:00:00.000Z'
+          }
+        ],
+        error: null
+      };
+    }
+    throw new Error(`Unexpected query ${query.table}:${query.operation}:${query.mode}`);
+  });
+  const server = await startTestServer({ supabase });
+
+  try {
+    const response = await fetch(`${server.baseUrl}/manager/account/monthly-value-reports`, {
+      headers: { Authorization: `Bearer ${signManagerToken()}` }
+    });
+    const body = await response.json();
+
+    assert.equal(response.status, 200);
+    assert.equal(body.reports.length, 2);
+    assert.equal(body.reports[0].id, 'report-july-owner');
+    assert.equal(body.reports[1].report_month, '2026-06-01');
+    assert.equal(body.reports[0].metrics.total_questions, 42);
+  } finally {
+    await server.close();
+  }
+});
