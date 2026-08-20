@@ -2847,11 +2847,32 @@ function createManagerRouter(options = {}) {
         .maybeSingle();
       if (error) throw error;
       if (!data) return res.status(404).json({ error: 'Account not found.' });
+
+      const accountContacts = {
+        cxpc_phone_number: String(data.rra_cxpc_phone_number || '').trim(),
+        csa_phone_number: String(data.rra_csa_phone_number || '').trim(),
+        manager_name: String(data.rra_primary_manager_name || '').trim(),
+        manager_phone_number: String(data.rra_primary_manager_phone_number || '').trim()
+      };
+      const hasMissingContact = Object.values(accountContacts).some((value) => !value);
+      let signup = null;
+      if (hasMissingContact) {
+        const signupLookup = await supabase
+          .from('early_access_signups')
+          .select('name, manager_name, phone_number, manager_phone_number, cxpc_phone_number, csa_phone_number')
+          .eq('account_id', req.account.account_id)
+          .order('updated_at', { ascending: false })
+          .limit(1)
+          .maybeSingle();
+        if (signupLookup.error) throw signupLookup.error;
+        signup = signupLookup.data;
+      }
+
       return res.status(200).json({
-        cxpc_phone_number: data.rra_cxpc_phone_number || '',
-        csa_phone_number: data.rra_csa_phone_number || '',
-        manager_name: data.rra_primary_manager_name || req.account.manager_name || '',
-        manager_phone_number: data.rra_primary_manager_phone_number || '',
+        cxpc_phone_number: accountContacts.cxpc_phone_number || signup?.cxpc_phone_number || '',
+        csa_phone_number: accountContacts.csa_phone_number || signup?.csa_phone_number || '',
+        manager_name: accountContacts.manager_name || signup?.manager_name || signup?.name || req.account.manager_name || '',
+        manager_phone_number: accountContacts.manager_phone_number || signup?.manager_phone_number || signup?.phone_number || '',
         can_manage: canManageAccountSettings(req)
       });
     } catch (error) {
