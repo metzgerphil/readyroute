@@ -5888,6 +5888,7 @@ test('GET /manager/account/local-contacts fills blank account fields from the or
     if (query.table === 'accounts' && query.operation === 'select') {
       return {
         data: {
+          company_name: 'Bridge Transportation Inc',
           rra_cxpc_phone_number: null,
           rra_csa_phone_number: null,
           rra_primary_manager_name: 'Phil Metzger',
@@ -5937,6 +5938,7 @@ test('GET /manager/account/local-contacts preserves company edits without readin
     if (query.table === 'accounts' && query.operation === 'select') {
       return {
         data: {
+          company_name: 'Bridge Transportation Inc',
           rra_cxpc_phone_number: '555-0201',
           rra_csa_phone_number: '555-0202',
           rra_primary_manager_name: 'Updated Manager',
@@ -5961,6 +5963,62 @@ test('GET /manager/account/local-contacts preserves company edits without readin
     assert.equal(body.manager_name, 'Updated Manager');
     assert.equal(body.manager_phone_number, '555-0299');
     assert.equal(supabase.calls.length, 1);
+  } finally {
+    await server.close();
+  }
+});
+
+test('GET /manager/account/local-contacts recovers an unlinked signup by company name and email', async () => {
+  let signupSelectCount = 0;
+  const supabase = new MockSupabase((query) => {
+    if (query.table === 'accounts' && query.operation === 'select') {
+      return {
+        data: {
+          company_name: 'Bridge Transportation Inc',
+          rra_cxpc_phone_number: null,
+          rra_csa_phone_number: null,
+          rra_primary_manager_name: null,
+          rra_primary_manager_phone_number: null
+        },
+        error: null
+      };
+    }
+    if (query.table === 'early_access_signups' && query.operation === 'select') {
+      signupSelectCount += 1;
+      if (signupSelectCount === 1) {
+        assert.equal(query.filters.find((filter) => filter.column === 'account_id')?.value, 'acct-1');
+        return { data: null, error: null };
+      }
+      assert.equal(query.filters.find((filter) => filter.column === 'email')?.value, 'phillovesjoy@gmail.com');
+      assert.equal(query.filters.find((filter) => filter.column === 'company_csa')?.value, 'Bridge Transportation Inc');
+      return {
+        data: {
+          name: 'Phillip Metzger',
+          manager_name: 'Phil Metzger',
+          phone_number: '555-0100',
+          manager_phone_number: '555-0199',
+          cxpc_phone_number: '555-0101',
+          csa_phone_number: '555-0102'
+        },
+        error: null
+      };
+    }
+    throw new Error(`Unexpected query ${query.table}:${query.operation}:${query.mode}`);
+  });
+  const server = await startTestServer({ supabase });
+
+  try {
+    const response = await fetch(`${server.baseUrl}/manager/account/local-contacts`, {
+      headers: { Authorization: `Bearer ${signManagerToken()}` }
+    });
+    const body = await response.json();
+
+    assert.equal(response.status, 200);
+    assert.equal(body.cxpc_phone_number, '555-0101');
+    assert.equal(body.csa_phone_number, '555-0102');
+    assert.equal(body.manager_name, 'Phil Metzger');
+    assert.equal(body.manager_phone_number, '555-0199');
+    assert.equal(signupSelectCount, 2);
   } finally {
     await server.close();
   }
