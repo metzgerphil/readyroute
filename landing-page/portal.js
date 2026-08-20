@@ -137,7 +137,7 @@ function renderDrivers(drivers) {
     } else if (['pending', 'expired'].includes(status)) {
       const inviteButton = document.createElement('button');
       inviteButton.type = 'button';
-      inviteButton.textContent = status === 'expired' ? 'Send new invite' : 'Resend invite';
+      inviteButton.textContent = status === 'expired' ? 'Send new access email' : 'Send access email';
       inviteButton.addEventListener('click', () => sendInvite(driver.id, inviteButton));
       actions.append(inviteButton);
     }
@@ -521,7 +521,7 @@ driverForm.addEventListener('submit', async (event) => {
     if (payload.invitation?.email_delivery === 'sent') {
       setMessage(driversMessage, 'Driver added. One setup email was sent with the app and password instructions.');
     } else {
-      setMessage(driversError, 'Driver added, but the setup email could not be delivered. Select Resend invite beside the driver to try again.');
+      setMessage(driversError, 'Driver added, but the setup email could not be delivered. Select Send access email beside the driver to try again.');
     }
   } catch (error) {
     setMessage(errorElement, error.message);
