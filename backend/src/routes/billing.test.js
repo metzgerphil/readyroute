@@ -441,6 +441,138 @@ test('POST /billing/signup/complete provisions the company and sends the RRA por
   }
 });
 
+test('POST /billing/signup/complete honors the password entered for a returning manager email', async () => {
+  const accessNonce = '00000000-0000-4000-8000-000000000004';
+  const oldPasswordHash = await bcrypt.hash('old-password-123', 10);
+  let insertedManager;
+  const supabase = new MockSupabase((query) => {
+    if (query.table === 'early_access_signups' && query.operation === 'select') {
+      return { data: {
+        id: 'signup-1', name: 'Taylor Owner', email: 'owner@example.com', phone_number: '555-0100',
+        manager_name: 'Taylor Owner', manager_phone_number: '555-0100',
+        cxpc_phone_number: '555-0101', csa_phone_number: '555-0102',
+        company_csa: 'New Company', role: 'Owner', driver_count: 5, billing_interval: 'monthly',
+        billing_policy_version: '2026-08-15-v2', billing_consent_at: '2026-08-16T12:00:00.000Z',
+        account_id: null, onboarding_status: 'pending_payment'
+      }, error: null };
+    }
+    if (query.table === 'early_access_signups' && query.operation === 'update') return { data: null, error: null };
+    if (query.table === 'accounts' && query.operation === 'select') return { data: null, error: null };
+    if (query.table === 'manager_users' && query.operation === 'select') {
+      return { data: { password_hash: oldPasswordHash }, error: null };
+    }
+    if (query.table === 'accounts' && query.operation === 'insert') {
+      return { data: { id: 'acct-new', company_name: 'New Company' }, error: null };
+    }
+    if (query.table === 'manager_users' && query.operation === 'insert') {
+      insertedManager = query.payload;
+      return { data: { id: 'manager-new', ...query.payload }, error: null };
+    }
+    if (query.table === 'account_internal_profiles' && query.operation === 'upsert') return { data: null, error: null };
+    throw new Error(`Unexpected query ${query.table}:${query.operation}`);
+  });
+  const stripeClient = {
+    checkout: { sessions: { retrieve: async () => ({
+      id: 'cs_signup', mode: 'setup', status: 'complete', customer: 'cus_signup',
+      metadata: {
+        readyroute_signup_id: 'signup-1',
+        readyroute_access_nonce_hash: hashSignupAccessNonce(accessNonce)
+      },
+      setup_intent: { id: 'seti_signup', payment_method: { id: 'pm_signup' } }
+    }) } }
+  };
+  const server = await startTestServer({ supabase, stripeClient });
+
+  try {
+    const response = await fetch(`${server.baseUrl}/billing/signup/complete`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        session_id: 'cs_signup',
+        access_nonce: accessNonce,
+        password: 'new-password-123'
+      })
+    });
+    const payload = await response.json();
+
+    assert.equal(response.status, 200);
+    assert.equal(payload.password_created, true);
+    assert.equal(payload.password_already_set, false);
+    assert.equal(await bcrypt.compare('new-password-123', insertedManager.password_hash), true);
+    assert.equal(await bcrypt.compare('old-password-123', insertedManager.password_hash), false);
+  } finally {
+    await server.close();
+  }
+});
+
+test('POST /billing/signup/complete replaces a stale password when completion is retried securely', async () => {
+  const accessNonce = '00000000-0000-4000-8000-000000000005';
+  const oldPasswordHash = await bcrypt.hash('old-password-123', 10);
+  const updates = [];
+  const supabase = new MockSupabase((query) => {
+    if (query.table === 'early_access_signups' && query.operation === 'select') {
+      return { data: {
+        id: 'signup-1', name: 'Taylor Owner', email: 'owner@example.com', phone_number: '555-0100',
+        manager_name: 'Taylor Owner', manager_phone_number: '555-0100',
+        cxpc_phone_number: '555-0101', csa_phone_number: '555-0102',
+        company_csa: 'New Company', role: 'Owner', driver_count: 5, billing_interval: 'monthly',
+        billing_policy_version: '2026-08-15-v2', billing_consent_at: '2026-08-16T12:00:00.000Z',
+        account_id: 'acct-new', onboarding_status: 'email_sent'
+      }, error: null };
+    }
+    if (query.table === 'early_access_signups' && query.operation === 'update') return { data: null, error: null };
+    if (query.table === 'accounts' && query.operation === 'select') {
+      return { data: { id: 'acct-new', company_name: 'New Company' }, error: null };
+    }
+    if (query.table === 'manager_users' && query.operation === 'select') {
+      return { data: {
+        id: 'manager-new', email: 'owner@example.com', full_name: 'Taylor Owner', password_hash: oldPasswordHash
+      }, error: null };
+    }
+    if (query.table === 'manager_users' && query.operation === 'update') {
+      updates.push({ table: query.table, ...query.payload });
+      return { data: null, error: null };
+    }
+    if (query.table === 'accounts' && query.operation === 'update') {
+      updates.push({ table: query.table, ...query.payload });
+      return { data: null, error: null };
+    }
+    if (query.table === 'account_internal_profiles' && query.operation === 'upsert') return { data: null, error: null };
+    throw new Error(`Unexpected query ${query.table}:${query.operation}`);
+  });
+  const stripeClient = {
+    checkout: { sessions: { retrieve: async () => ({
+      id: 'cs_signup', mode: 'setup', status: 'complete', customer: 'cus_signup',
+      metadata: {
+        readyroute_signup_id: 'signup-1',
+        readyroute_access_nonce_hash: hashSignupAccessNonce(accessNonce)
+      },
+      setup_intent: { id: 'seti_signup', payment_method: { id: 'pm_signup' } }
+    }) } }
+  };
+  const server = await startTestServer({ supabase, stripeClient });
+
+  try {
+    const response = await fetch(`${server.baseUrl}/billing/signup/complete`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        session_id: 'cs_signup',
+        access_nonce: accessNonce,
+        password: 'new-password-123'
+      })
+    });
+    const payload = await response.json();
+
+    assert.equal(response.status, 200);
+    assert.equal(payload.password_created, true);
+    assert.equal(await bcrypt.compare('new-password-123', updates[0].password_hash), true);
+    assert.equal(await bcrypt.compare('new-password-123', updates[1].manager_password_hash), true);
+  } finally {
+    await server.close();
+  }
+});
+
 test('POST /billing/setup creates a Stripe customer and subscription', async () => {
   let accountSelectCount = 0;
   const supabase = new MockSupabase((query) => {
