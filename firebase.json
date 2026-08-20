@@ -10,33 +10,6 @@
       ],
       "headers": [
         {
-          "source": "/portal",
-          "headers": [
-            {
-              "key": "Cache-Control",
-              "value": "no-cache, no-store, must-revalidate"
-            }
-          ]
-        },
-        {
-          "source": "/portal.html",
-          "headers": [
-            {
-              "key": "Cache-Control",
-              "value": "no-cache, no-store, must-revalidate"
-            }
-          ]
-        },
-        {
-          "source": "/portal.@(js|css)",
-          "headers": [
-            {
-              "key": "Cache-Control",
-              "value": "no-cache, must-revalidate"
-            }
-          ]
-        },
-        {
           "source": "**",
           "headers": [
             {
@@ -79,6 +52,33 @@
         "**/node_modules/**"
       ],
       "headers": [
+        {
+          "source": "/portal",
+          "headers": [
+            {
+              "key": "Cache-Control",
+              "value": "no-cache, no-store, must-revalidate"
+            }
+          ]
+        },
+        {
+          "source": "/portal.html",
+          "headers": [
+            {
+              "key": "Cache-Control",
+              "value": "no-cache, no-store, must-revalidate"
+            }
+          ]
+        },
+        {
+          "source": "/portal.@(js|css)",
+          "headers": [
+            {
+              "key": "Cache-Control",
+              "value": "no-cache, must-revalidate"
+            }
+          ]
+        },
         {
           "source": "**",
           "headers": [
