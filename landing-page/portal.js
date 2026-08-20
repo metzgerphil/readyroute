@@ -360,6 +360,10 @@ async function sendInvite(driverId, button) {
     setMessage(driversMessage, payload.message || 'Driver invitation sent.');
     await loadDrivers();
   } catch (error) {
+    if (error.message === 'This driver has already established a password') {
+      await resetDriverAccess(driverId, button);
+      return;
+    }
     setMessage(driversError, error.message);
   } finally {
     button.disabled = false;
