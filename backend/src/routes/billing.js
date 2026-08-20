@@ -12,6 +12,7 @@ const { AI_CONSENT_POLICY_VERSION } = require('../services/driverHelpPrivacy');
 const { buildSignupPayload } = require('./waitlist');
 const {
   createStripeSignupBillingService,
+  hashSignupAccessNonce,
   normalizeBillingAddress,
   normalizeBillingInterval
 } = require('../services/stripeSignupBilling');
@@ -81,7 +82,14 @@ function createBillingRouter(options = {}) {
     return `https://readyroute.org/portal?invite=${encodeURIComponent(token)}`;
   }
 
-  async function finalizeSignupCheckout(sessionOrId) {
+  function signupAccessNonceMatches(session, accessNonce) {
+    const expectedHash = String(session?.metadata?.readyroute_access_nonce_hash || '');
+    const actualHash = hashSignupAccessNonce(accessNonce);
+    if (!/^[0-9a-f]{64}$/.test(expectedHash) || !/^[0-9a-f]{64}$/.test(actualHash)) return false;
+    return crypto.timingSafeEqual(Buffer.from(expectedHash, 'hex'), Buffer.from(actualHash, 'hex'));
+  }
+
+  async function finalizeSignupCheckout(sessionOrId, { password = null, accessNonce = null } = {}) {
     const stripe = getStripe();
     const session = typeof sessionOrId === 'string'
       ? await stripe.checkout.sessions.retrieve(sessionOrId, { expand: ['setup_intent', 'setup_intent.payment_method'] })
@@ -91,6 +99,14 @@ function createBillingRouter(options = {}) {
       error.code = 'CHECKOUT_INCOMPLETE';
       throw error;
     }
+
+    const requestedPassword = typeof password === 'string' ? password : '';
+    if (requestedPassword && !signupAccessNonceMatches(session, accessNonce)) {
+      const error = new Error('This secure password-setup session is no longer available. Use the password email or request a new link.');
+      error.code = 'INVALID_SIGNUP_ACCESS';
+      throw error;
+    }
+    const requestedPasswordHash = requestedPassword ? await bcrypt.hash(requestedPassword, 10) : null;
 
     const signupId = String(session.metadata?.readyroute_signup_id || '').trim();
     if (!signupId) throw new Error('Stripe checkout is missing the ReadyRoute signup reference');
@@ -142,6 +158,7 @@ function createBillingRouter(options = {}) {
 
     let manager = null;
     let needsPassword = true;
+    let passwordCreated = false;
     if (!account) {
       const existingManager = await supabase
         .from('manager_users')
@@ -151,7 +168,8 @@ function createBillingRouter(options = {}) {
         .limit(1)
         .maybeSingle();
       if (existingManager.error) throw existingManager.error;
-      const inaccessiblePasswordHash = await bcrypt.hash(crypto.randomBytes(32).toString('hex'), 10);
+      const managerPasswordHash = existingManager.data?.password_hash || requestedPasswordHash;
+      const inaccessiblePasswordHash = managerPasswordHash || await bcrypt.hash(crypto.randomBytes(32).toString('hex'), 10);
       const accountInsert = await supabase
         .from('accounts')
         .insert({
@@ -183,14 +201,15 @@ function createBillingRouter(options = {}) {
         .single();
       if (accountInsert.error || !accountInsert.data) throw accountInsert.error || new Error('Company account was not created');
       account = accountInsert.data;
-      needsPassword = !existingManager.data?.password_hash;
+      needsPassword = !managerPasswordHash;
+      passwordCreated = Boolean(requestedPasswordHash && !existingManager.data?.password_hash);
       const managerInsert = await supabase
         .from('manager_users')
         .insert({
           account_id: account.id,
           email: signup.email,
           full_name: signup.name,
-          password_hash: existingManager.data?.password_hash || null,
+          password_hash: managerPasswordHash || null,
           is_active: true,
           invited_at: timestamp,
           accepted_at: needsPassword ? null : timestamp
@@ -212,7 +231,7 @@ function createBillingRouter(options = {}) {
       const profileResult = await supabase.from('account_internal_profiles').upsert({
         account_id: account.id,
         lifecycle_status: 'onboarding',
-        onboarding_stage: 'manager_invited',
+        onboarding_stage: needsPassword ? 'manager_invited' : 'manager_active',
         updated_at: timestamp
       }, { onConflict: 'account_id' });
       if (profileResult.error) throw profileResult.error;
@@ -233,6 +252,29 @@ function createBillingRouter(options = {}) {
       manager = managerLookup.data;
       if (!manager) throw new Error('ReadyRoute manager account not found');
       needsPassword = !manager.password_hash;
+
+      if (needsPassword && requestedPasswordHash) {
+        const managerPasswordUpdate = await supabase
+          .from('manager_users')
+          .update({ password_hash: requestedPasswordHash, accepted_at: timestamp })
+          .eq('id', manager.id);
+        if (managerPasswordUpdate.error) throw managerPasswordUpdate.error;
+        const legacyPasswordUpdate = await supabase
+          .from('accounts')
+          .update({ manager_password_hash: requestedPasswordHash })
+          .eq('id', account.id);
+        if (legacyPasswordUpdate.error) throw legacyPasswordUpdate.error;
+        manager.password_hash = requestedPasswordHash;
+        needsPassword = false;
+        passwordCreated = true;
+        const profileUpdate = await supabase.from('account_internal_profiles').upsert({
+          account_id: account.id,
+          lifecycle_status: 'onboarding',
+          onboarding_stage: 'manager_active',
+          updated_at: timestamp
+        }, { onConflict: 'account_id' });
+        if (profileUpdate.error) throw profileUpdate.error;
+      }
 
       if (!signup.account_id) {
         const signupLink = await supabase.from('early_access_signups').update({
@@ -281,6 +323,8 @@ function createBillingRouter(options = {}) {
       account_id: account.id,
       company_name: account.company_name,
       email: manager.email,
+      password_created: passwordCreated,
+      password_already_set: Boolean(requestedPassword && !passwordCreated && manager.password_hash),
       onboarding_status: delivery.delivered ? 'email_sent' : 'email_failed',
       email_delivered: Boolean(delivery.delivered)
     };
@@ -352,11 +396,22 @@ function createBillingRouter(options = {}) {
     if (!/^cs_[A-Za-z0-9_]+$/.test(sessionId)) {
       return res.status(400).json({ error: 'A valid Stripe checkout session is required.' });
     }
+    const password = String(req.body?.password || '');
+    const accessNonce = String(req.body?.access_nonce || '');
+    if (password && password.length < 10) {
+      return res.status(400).json({ error: 'Password must be at least 10 characters.' });
+    }
     try {
-      return res.status(200).json(await finalizeSignupCheckout(sessionId));
+      return res.status(200).json(await finalizeSignupCheckout(sessionId, {
+        password: password || null,
+        accessNonce: accessNonce || null
+      }));
     } catch (error) {
       if (error.code === 'CHECKOUT_INCOMPLETE') {
         return res.status(409).json({ error: error.message });
+      }
+      if (error.code === 'INVALID_SIGNUP_ACCESS') {
+        return res.status(403).json({ error: error.message });
       }
       console.error('Ready Route Answers signup completion failed:', error);
       return res.status(500).json({ error: 'Payment was received, but company setup needs attention. Contact info@readyroute.org.' });
