@@ -5882,3 +5882,86 @@ test('GET /manager/account/monthly-value-reports returns one portal record per m
     await server.close();
   }
 });
+
+test('GET /manager/account/local-contacts fills blank account fields from the original signup', async () => {
+  const supabase = new MockSupabase((query) => {
+    if (query.table === 'accounts' && query.operation === 'select') {
+      return {
+        data: {
+          rra_cxpc_phone_number: null,
+          rra_csa_phone_number: null,
+          rra_primary_manager_name: 'Phil Metzger',
+          rra_primary_manager_phone_number: null
+        },
+        error: null
+      };
+    }
+    if (query.table === 'early_access_signups' && query.operation === 'select') {
+      assert.equal(query.filters.find((filter) => filter.column === 'account_id')?.value, 'acct-1');
+      assert.equal(query.orders[0]?.column, 'updated_at');
+      assert.equal(query.limit, 1);
+      return {
+        data: {
+          name: 'Phillip Metzger',
+          manager_name: 'Phil Metzger',
+          phone_number: '555-0100',
+          manager_phone_number: '555-0199',
+          cxpc_phone_number: '555-0101',
+          csa_phone_number: '555-0102'
+        },
+        error: null
+      };
+    }
+    throw new Error(`Unexpected query ${query.table}:${query.operation}:${query.mode}`);
+  });
+  const server = await startTestServer({ supabase });
+
+  try {
+    const response = await fetch(`${server.baseUrl}/manager/account/local-contacts`, {
+      headers: { Authorization: `Bearer ${signManagerToken()}` }
+    });
+    const body = await response.json();
+
+    assert.equal(response.status, 200);
+    assert.equal(body.cxpc_phone_number, '555-0101');
+    assert.equal(body.csa_phone_number, '555-0102');
+    assert.equal(body.manager_name, 'Phil Metzger');
+    assert.equal(body.manager_phone_number, '555-0199');
+  } finally {
+    await server.close();
+  }
+});
+
+test('GET /manager/account/local-contacts preserves company edits without reading signup values', async () => {
+  const supabase = new MockSupabase((query) => {
+    if (query.table === 'accounts' && query.operation === 'select') {
+      return {
+        data: {
+          rra_cxpc_phone_number: '555-0201',
+          rra_csa_phone_number: '555-0202',
+          rra_primary_manager_name: 'Updated Manager',
+          rra_primary_manager_phone_number: '555-0299'
+        },
+        error: null
+      };
+    }
+    throw new Error(`Unexpected query ${query.table}:${query.operation}:${query.mode}`);
+  });
+  const server = await startTestServer({ supabase });
+
+  try {
+    const response = await fetch(`${server.baseUrl}/manager/account/local-contacts`, {
+      headers: { Authorization: `Bearer ${signManagerToken()}` }
+    });
+    const body = await response.json();
+
+    assert.equal(response.status, 200);
+    assert.equal(body.cxpc_phone_number, '555-0201');
+    assert.equal(body.csa_phone_number, '555-0202');
+    assert.equal(body.manager_name, 'Updated Manager');
+    assert.equal(body.manager_phone_number, '555-0299');
+    assert.equal(supabase.calls.length, 1);
+  } finally {
+    await server.close();
+  }
+});
