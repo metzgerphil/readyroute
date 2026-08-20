@@ -21,6 +21,7 @@ import {
   useSpeechRecognitionEvent
 } from 'expo-speech-recognition';
 
+import VehicleBarcodeCard from '../components/VehicleBarcodeCard';
 import api from '../services/api';
 import appTheme from '../theme/appTheme';
 import { getApiErrorMessage } from '../utils/apiError';
@@ -188,7 +189,9 @@ export default function DriverHelpScreen() {
   const [selectedClarificationKey, setSelectedClarificationKey] = useState(null);
   const [selectedImage, setSelectedImage] = useState(null);
   const answerStructure = getAnswerStructure(result);
-  const prominentCode = getProminentCode(answerStructure);
+  const isVehicleBarcodeWorkflow = result?.answer_type === 'VEHICLE_BARCODE';
+  const minimumQuestionLength = isVehicleBarcodeWorkflow && result?.response_mode === 'CLARIFY' ? 1 : 2;
+  const prominentCode = isVehicleBarcodeWorkflow ? null : getProminentCode(answerStructure);
 
   useEffect(() => {
     const subscription = Keyboard.addListener('keyboardDidShow', () => {
@@ -242,7 +245,7 @@ export default function DriverHelpScreen() {
 
   async function submitQuestion(nextQuestion = question, { preserveSituation = false } = {}) {
     const trimmedQuestion = String(nextQuestion || '').trim();
-    if (trimmedQuestion.length < 2 || submittingRef.current) {
+    if (trimmedQuestion.length < minimumQuestionLength || submittingRef.current) {
       return;
     }
     submittingRef.current = true;
@@ -460,12 +463,12 @@ export default function DriverHelpScreen() {
         ) : null}
         <Pressable
           accessibilityLabel="Ask Ready Route"
-          disabled={question.trim().length < 2 || isSubmitting}
+          disabled={question.trim().length < minimumQuestionLength || isSubmitting}
           onPress={() => submitQuestion(question, { preserveSituation })}
           style={({ pressed }) => [
             styles.sendButton,
-            (question.trim().length < 2 || isSubmitting) ? styles.disabled : null,
-            pressed && question.trim().length >= 2 && !isSubmitting ? styles.pressed : null
+            (question.trim().length < minimumQuestionLength || isSubmitting) ? styles.disabled : null,
+            pressed && question.trim().length >= minimumQuestionLength && !isSubmitting ? styles.pressed : null
           ]}
         >
           {isSubmitting ? (
@@ -581,6 +584,8 @@ export default function DriverHelpScreen() {
                 </View>
               ) : null}
               <Text maxFontSizeMultiplier={1.35} style={styles.directAnswerText}>{answerStructure.directAnswer}</Text>
+
+              {result.barcode ? <VehicleBarcodeCard barcode={result.barcode} /> : null}
 
               {answerStructure.steps.length ? (
                 <>
@@ -762,7 +767,7 @@ export default function DriverHelpScreen() {
                 <Text style={styles.clarifyEyebrow}>One detail first</Text>
               </View>
               <Text style={styles.clarificationPrompt}>{result.clarification_prompt}</Text>
-              <View style={styles.optionList}>
+              {!isVehicleBarcodeWorkflow ? <View style={styles.optionList}>
                 {(result.clarification_options || []).map((option) => {
                   const optionKey = `${option?.knowledge_id || 'option'}-${option?.version || 1}-${option?.label || option?.query}`;
                   const isSelected = selectedClarificationKey === optionKey;
@@ -803,9 +808,13 @@ export default function DriverHelpScreen() {
                     {selectedClarificationKey === 'not-sure' && isSubmitting ? 'Checking…' : 'Not sure'}
                   </Text>
                 </Pressable>
-              </View>
+              </View> : null}
               {!(result.clarification_options || []).length ? (
-                <Text style={styles.clarificationHelp}>Answer this detail in your own words below.</Text>
+                <Text style={styles.clarificationHelp}>
+                  {isVehicleBarcodeWorkflow
+                    ? 'Enter the vehicle number below.'
+                    : 'Answer this detail in your own words below.'}
+                </Text>
               ) : null}
             </View>
           ) : null}
@@ -840,10 +849,16 @@ export default function DriverHelpScreen() {
           {result ? (
             <View style={styles.followUpSection}>
               <Text style={styles.followUpLabel}>
-                {result.response_mode === 'CLARIFY' ? 'Answer this detail' : 'Ask about this answer'}
+                {isVehicleBarcodeWorkflow && result.response_mode === 'CLARIFY'
+                  ? 'Enter vehicle number'
+                  : result.response_mode === 'CLARIFY'
+                    ? 'Answer this detail'
+                    : 'Ask about this answer'}
               </Text>
               {renderQuestionComposer(
-                result.response_mode === 'CLARIFY'
+                isVehicleBarcodeWorkflow && result.response_mode === 'CLARIFY'
+                  ? 'Vehicle number'
+                  : result.response_mode === 'CLARIFY'
                   ? 'Answer this detail'
                   : 'Ask a follow-up question',
                 { preserveSituation: true, showMicrophone: true }

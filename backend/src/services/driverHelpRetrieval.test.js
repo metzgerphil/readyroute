@@ -6,6 +6,7 @@ const path = require('node:path');
 const {
   buildAnswerStructure,
   buildDriverHelpDecision,
+  clarificationOptionsForRequirement,
   normalizeDriverQuestion,
   rankKnowledgeRecords,
   selectCanonicalRecordVersions
@@ -103,6 +104,77 @@ test('a canceled pickup with no attempt resolves to Code 24 without an irrelevan
     'Confirm the package count is 0.',
     'Select Code 24 and tap DONE.'
   ]);
+});
+
+test('Vlad correction prompts use their direct authored branches', () => {
+  const recordsPath = path.resolve(__dirname, '../../../knowledge/operations/records.jsonl');
+  const records = fs.readFileSync(recordsPath, 'utf8')
+    .trim()
+    .split('\n')
+    .map(JSON.parse)
+    .map((canonical) => ({
+      ...canonical,
+      version: canonical.record_version,
+      status: canonical.knowledge_status,
+      is_published: canonical.production_eligibility.publication_ready,
+      concise_answer: canonical.concise_driver_answer,
+      taxonomy_paths: canonical.category_paths
+    }));
+  const expectations = [
+    [
+      'This box at my pickup doesn’t have a barcode. What should I do?',
+      'KNO-PUP-NO-BARCODE-001',
+      'No barcode means no pickup.'
+    ],
+    [
+      'How do I do a bulk transfer?',
+      'KNO-FORGE-BULK-TRANSFER-001',
+      'The person whose manifest currently holds the package must start the bulk transfer.'
+    ],
+    [
+      'The customer specifically canceled the pickup. What should I do?',
+      'KNO-PUP-CANCELED-001',
+      'Use Code 24 if the listed pickup was canceled before any attempt.'
+    ]
+  ];
+
+  for (const [question, knowledgeId, directAnswer] of expectations) {
+    const decision = buildDriverHelpDecision(question, records);
+    assert.equal(decision.response_mode, 'ANSWER', question);
+    assert.equal(decision.selected_records[0]?.knowledge_id, knowledgeId, question);
+    assert.equal(decision.answer_structure.direct_answer, directAnswer, question);
+  }
+});
+
+test('ambiguous clarification choices carry explicit operational branch meaning', () => {
+  const wrongWorkArea = record({
+    knowledge_id: 'KNO-FORGE-WRONG-WORK-AREA-001',
+    canonical_situation: 'Wrong work area',
+    clarification_requirements: ['Has anything already been scanned in the wrong work area?']
+  });
+  const wrongScan = record({
+    knowledge_id: 'KNO-FORGE-DELETE-SCAN-001',
+    canonical_situation: 'Wrong package scan',
+    clarification_requirements: ['Was the package only scanned, or was it already delivered?']
+  });
+
+  assert.deepEqual(
+    clarificationOptionsForRequirement(
+      wrongWorkArea.clarification_requirements[0],
+      [{ record: wrongWorkArea, score: 100 }]
+    ).map((option) => [option.label, option.query]),
+    [
+      ['Yes', 'Yes, I already scanned something in the wrong work area'],
+      ['No', 'No, nothing has been scanned in the wrong work area']
+    ]
+  );
+  assert.deepEqual(
+    clarificationOptionsForRequirement(
+      wrongScan.clarification_requirements[0],
+      [{ record: wrongScan, score: 100 }]
+    ).map((option) => option.label),
+    ['Only scanned', 'Already delivered']
+  );
 });
 
 test('an unsupported operational acronym cannot be absorbed by a neighboring refusal workflow', () => {
@@ -308,6 +380,24 @@ test('record-authored clarification requirements control ambiguity handling', ()
   assert.deepEqual(decision.clarification_options, []);
 });
 
+test('safety-then-clarify patterns ask the safety question before ordinary handling', () => {
+  const decision = buildDriverHelpDecision('Package looks damaged before delivery', [record({
+    knowledge_id: 'KNO-DEL-DAMAGE-INSPECTION-001',
+    canonical_situation: 'A package looks damaged before delivery',
+    normalized_description: 'Possible damage requires the leaking or hazardous branch to be ruled out first.',
+    driver_question_variants: ['Package looks damaged before delivery'],
+    driver_question_patterns: [{
+      utterance: 'Package looks damaged before delivery',
+      response_mode: 'IMMEDIATE_SAFETY_ACTION_THEN_CLARIFY',
+      must_clarify: ['Is the package leaking or hazardous?']
+    }],
+    clarification_requirements: ['Is the package leaking or hazardous?']
+  })]);
+
+  assert.equal(decision.response_mode, 'CLARIFY');
+  assert.match(decision.clarification_prompt, /leaking or hazardous/i);
+});
+
 test('data-authored patterns ignore filler words and do not repeat an already supplied business fact', () => {
   const decision = buildDriverHelpDecision('The business is closed and nobody is there.', [record({
     canonical_situation: 'A business recipient is not in and delivery release is not permitted',
@@ -459,7 +549,7 @@ test('all controlled records satisfy the compact initial-answer contract', () =>
     .split('\n')
     .map(JSON.parse);
 
-  assert.equal(records.length, 100);
+  assert.equal(records.length, 109);
   for (const canonical of records) {
     const structure = buildAnswerStructure({
       ...canonical,

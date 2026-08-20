@@ -14,6 +14,7 @@ Ready Route Answers accepts two publication paths: documentary source verificati
 - `reference/pickup-reason-codes.jsonl` — source-backed pickup reason-code definitions.
 - `sources/registry.jsonl` — accepted sources.
 - `adjudications/records.json` — explicit Ready Route decisions.
+- `evaluations/vlad-priority-51-cases.jsonl` — Vlad's 51 highest-priority reviewed question outcomes and their canonical targets.
 - `../research/fedex-ground-driver-knowledge/` — authoring and evidence workbench.
 - `manifest.json` — generated counts and checksums proving the active release state.
 
@@ -33,5 +34,6 @@ These are definition records, not blanket authorization to select a code. Detail
 6. Add real driver-language evaluation cases.
 7. Run `npm run knowledge:release`.
 8. Review the manifest and evaluation results before importing anything into an answer environment.
+
 
 The archived v1 corpus is documented in `docs/ready-route-answers-reset-2026-08-15.md`. It is not part of this active knowledge system.

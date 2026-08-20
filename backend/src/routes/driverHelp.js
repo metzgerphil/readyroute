@@ -67,8 +67,8 @@ function createDriverHelpRouter(options = {}) {
     const question = String(req.body?.question || '').trim();
     const sessionId = req.body?.session_id ? String(req.body.session_id).trim() : null;
 
-    if (question.length < 2 || question.length > 500) {
-      return res.status(400).json({ error: 'Question must be between 2 and 500 characters.' });
+    if (question.length < 1 || question.length > 500) {
+      return res.status(400).json({ error: 'Question must be between 1 and 500 characters.' });
     }
 
     try {

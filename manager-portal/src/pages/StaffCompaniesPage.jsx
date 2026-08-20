@@ -44,6 +44,86 @@ function responseTone(mode) {
   return 'neutral';
 }
 
+function RraBillingControl({ account }) {
+  const queryClient = useQueryClient();
+  const [billingDraft, setBillingDraft] = useState({
+    treatment: account?.rra_billing_treatment || 'standard',
+    reason: account?.rra_complimentary_reason || ''
+  });
+  const [billingMessage, setBillingMessage] = useState('');
+  const updateBillingTreatmentMutation = useMutation({
+    mutationFn: async () => {
+      const response = await api.patch(`/staff/accounts/${account.id}/rra-billing-treatment`, billingDraft);
+      return response.data;
+    },
+    onSuccess: async () => {
+      setBillingMessage(
+        billingDraft.treatment === 'complimentary'
+          ? 'Complimentary service is active. Usage remains tracked and accrued RRA charges have been waived.'
+          : 'Standard RRA billing is active for future driver-month charges.'
+      );
+      await queryClient.invalidateQueries({ queryKey: ['staff-accounts'] });
+      await queryClient.invalidateQueries({ queryKey: ['staff-account-detail', account.id] });
+    },
+    onError: (error) => setBillingMessage(error.response?.data?.error || 'Unable to update RRA billing.')
+  });
+
+  return (
+    <section className="staff-simple-section" aria-label="RRA billing treatment">
+      <div className="staff-simple-section-header">
+        <div>
+          <h3>RRA billing</h3>
+          <p>Complimentary companies use the full product and remain in all usage and monthly value reports.</p>
+        </div>
+        <StatusBadge tone={account.rra_billing_treatment === 'complimentary' ? 'active' : 'neutral'}>
+          {account.rra_billing_treatment === 'complimentary' ? 'Complimentary' : 'Standard'}
+        </StatusBadge>
+      </div>
+      <div className="staff-company-finder-grid staff-company-create-grid">
+        <label>
+          Billing treatment
+          <select
+            value={billingDraft.treatment}
+            onChange={(event) => {
+              const treatment = event.target.value;
+              setBillingDraft((current) => ({
+                treatment,
+                reason: treatment === 'complimentary' ? current.reason : ''
+              }));
+              setBillingMessage('');
+            }}
+          >
+            <option value="standard">Standard</option>
+            <option value="complimentary">Complimentary</option>
+          </select>
+        </label>
+        {billingDraft.treatment === 'complimentary' ? (
+          <label>
+            Internal reason
+            <input
+              placeholder="For example: Owner-operated company"
+              value={billingDraft.reason}
+              onChange={(event) => {
+                setBillingDraft((current) => ({ ...current, reason: event.target.value }));
+                setBillingMessage('');
+              }}
+            />
+          </label>
+        ) : null}
+      </div>
+      {billingMessage ? <p className="form-success-message" role="status">{billingMessage}</p> : null}
+      <button
+        className="primary-button"
+        disabled={updateBillingTreatmentMutation.isPending || (billingDraft.treatment === 'complimentary' && !billingDraft.reason.trim())}
+        onClick={() => updateBillingTreatmentMutation.mutate()}
+        type="button"
+      >
+        {updateBillingTreatmentMutation.isPending ? 'Saving…' : 'Save RRA billing'}
+      </button>
+    </section>
+  );
+}
+
 export default function StaffCompaniesPage() {
   const queryClient = useQueryClient();
   const [selectedAccountId, setSelectedAccountId] = useState('');
@@ -58,6 +138,14 @@ export default function StaffCompaniesPage() {
     queryFn: async () => {
       const response = await api.get('/staff/accounts');
       return response.data?.accounts || [];
+    }
+  });
+
+  const companySignupsQuery = useQuery({
+    queryKey: ['staff-company-signups'],
+    queryFn: async () => {
+      const response = await api.get('/staff/company-signups');
+      return response.data?.pending_signups || [];
     }
   });
 
@@ -106,6 +194,7 @@ export default function StaffCompaniesPage() {
             : 'Company created, but email delivery needs attention.'
       );
       await queryClient.invalidateQueries({ queryKey: ['staff-accounts'] });
+      await queryClient.invalidateQueries({ queryKey: ['staff-company-signups'] });
       if (result?.account?.id) setSelectedAccountId(result.account.id);
     },
     onError: (error) => setCompanyCreateMessage(error.response?.data?.error || 'Unable to create this company.')
@@ -159,6 +248,17 @@ export default function StaffCompaniesPage() {
     setCompanyCreateMessage('');
   }
 
+  function prepareCompanyFromSignup(signup) {
+    setCompanyDraft({
+      company_name: signup.company_name || '',
+      manager_name: signup.name || '',
+      manager_email: signup.email || ''
+    });
+    setCompanyCreateMessage('Review the signup details, then create the company and send the manager invitation.');
+    setIsCreateCompanyOpen(true);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }
+
   return (
     <section className="staff-page staff-companies-page">
       <PageHeader
@@ -173,6 +273,50 @@ export default function StaffCompaniesPage() {
       />
 
       {companyCreateMessage ? <p className="form-success-message" role="status">{companyCreateMessage}</p> : null}
+
+      {companySignupsQuery.isLoading ? (
+        <LoadingState title="Loading new company signups" variant="card" />
+      ) : companySignupsQuery.isError ? (
+        <ErrorState
+          title="Unable to load new company signups"
+          description="Company accounts are still available below. Refresh this signup queue before onboarding a new request."
+          onRetry={() => companySignupsQuery.refetch()}
+        />
+      ) : companySignupsQuery.data?.length ? (
+        <section className="staff-account-detail staff-signup-queue" aria-label="New company signups">
+          <header className="staff-account-detail-header">
+            <h2>New company signups</h2>
+            <p>Review each request, then open the company account and email the manager their secure password link.</p>
+          </header>
+          <div className="staff-compact-list">
+            {companySignupsQuery.data.map((signup) => (
+              <article key={signup.id}>
+                <div>
+                  <strong>{signup.company_name || 'Company name not provided'}</strong>
+                  <span>{signup.name || 'Manager name not provided'} · {signup.email}</span>
+                  <span>
+                    {signup.driver_count || 'No'} expected driver{signup.driver_count === 1 ? '' : 's'}
+                    {signup.billing_interval ? ` · ${signup.billing_interval} billing requested` : ''}
+                    {signup.created_at ? ` · Signed up ${formatDateTime(signup.created_at, true)}` : ''}
+                  </span>
+                </div>
+                <div className="staff-user-row-badges">
+                  <StatusBadge tone={signup.billing_setup_status === 'succeeded' ? 'active' : 'warning'}>
+                    {signup.billing_setup_status === 'succeeded' ? 'Payment method ready' : 'Payment not collected'}
+                  </StatusBadge>
+                  <button className="primary-button" onClick={() => prepareCompanyFromSignup(signup)} type="button">
+                    Review and onboard
+                  </button>
+                </div>
+              </article>
+            ))}
+          </div>
+        </section>
+      ) : (
+        <section className="staff-account-detail staff-signup-queue" aria-label="New company signups">
+          <EmptyState title="No pending company signups" description="New requests from readyroute.org/signup will appear here." variant="inline" />
+        </section>
+      )}
 
       {isCreateCompanyOpen ? (
         <section className="staff-account-detail staff-create-company-card" aria-label="Create company">
@@ -257,6 +401,11 @@ export default function StaffCompaniesPage() {
               <p className="staff-usage-estimate-note">
                 A question is one driver-help situation, even when Ready Route asks a follow-up. Success means the situation reached at least one verified answer. Helpful rate includes rated answers only; feedback coverage shows how many verified answers received a rating. Time saved remains an estimate: {metrics.minutes_per_answer_estimate || account.driver_help_minutes_per_answer_estimate || 5} minutes per successful situation.
               </p>
+
+              <RraBillingControl
+                account={account}
+                key={`${account.id}:${account.rra_billing_treatment_updated_at || 'initial'}`}
+              />
 
               <section className="staff-simple-section">
                 <div className="staff-simple-section-header">

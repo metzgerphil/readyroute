@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { lazy, Suspense, useEffect, useState } from 'react';
 
 import api from '../services/api';
 import {
@@ -7,6 +7,8 @@ import {
   formatRraTestLog,
   summarizeRraTestLogEntry
 } from '../utils/rraTestLog';
+
+const WebVehicleBarcode = lazy(() => import('../components/WebVehicleBarcode'));
 
 const TEST_HISTORY_STORAGE_KEY = 'readyroute:rra-test-history:v1';
 
@@ -69,6 +71,8 @@ export default function RraTestPage() {
   const structure = answerStructure(result);
   const shadow = result?.interpretation_result || {};
   const isFollowUp = result?.response_mode === 'CLARIFY';
+  const isVehicleBarcodeWorkflow = result?.answer_type === 'VEHICLE_BARCODE';
+  const minimumQuestionLength = isVehicleBarcodeWorkflow && isFollowUp ? 1 : 2;
 
   useEffect(() => {
     window.sessionStorage.setItem(TEST_HISTORY_STORAGE_KEY, JSON.stringify(testHistory));
@@ -77,7 +81,7 @@ export default function RraTestPage() {
   async function askQuestion(event, overrideQuestion = null) {
     event?.preventDefault?.();
     const nextQuestion = String(overrideQuestion || question).trim();
-    if (nextQuestion.length < 2 || isSubmitting) return;
+    if (nextQuestion.length < minimumQuestionLength || isSubmitting) return;
 
     setQuestion(nextQuestion);
     if (!sessionId) setSituationQuestion(nextQuestion);
@@ -167,14 +171,16 @@ export default function RraTestPage() {
             maxLength={500}
             onChange={(event) => setQuestion(event.target.value)}
             placeholder={isFollowUp
-              ? 'Type the requested detail here, such as: 2387, yes, or no advance notice.'
+              ? (isVehicleBarcodeWorkflow
+                ? 'Enter the vehicle number.'
+                : 'Type the requested detail here, such as: 2387, yes, or no advance notice.')
               : 'Example: The pickup was canceled before I went there. What code do I use?'}
             rows={4}
             value={question}
           />
           <div className="rra-test-form-footer">
             <span>{question.length}/500</span>
-            <button className="primary-cta" disabled={isSubmitting || question.trim().length < 2} type="submit">
+            <button className="primary-cta" disabled={isSubmitting || question.trim().length < minimumQuestionLength} type="submit">
               {isSubmitting ? 'Checking approved records…' : isFollowUp ? 'Send follow-up' : 'Ask Ready Route'}
             </button>
           </div>
@@ -189,6 +195,12 @@ export default function RraTestPage() {
             <div className="rra-card-kicker">Driver sees this</div>
             <h2>Answer</h2>
             <p className="rra-direct-answer">{structure.directAnswer}</p>
+
+            {result.barcode ? (
+              <Suspense fallback={<p role="status">Preparing vehicle barcode…</p>}>
+                <WebVehicleBarcode barcode={result.barcode} />
+              </Suspense>
+            ) : null}
 
             {structure.steps.length ? (
               <div className="rra-answer-section">

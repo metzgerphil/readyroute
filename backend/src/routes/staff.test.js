@@ -105,6 +105,15 @@ class MockSupabase {
     return new MockQueryBuilder(this, table);
   }
 
+  rpc(functionName, payload) {
+    return Promise.resolve(this.execute({
+      table: functionName,
+      operation: 'rpc',
+      payload,
+      filters: []
+    }));
+  }
+
   execute(query) {
     this.calls.push(query);
     return this.handler(query, this.calls);
@@ -678,6 +687,61 @@ test('GET /staff/accounts rejects customer manager tokens', async () => {
   }
 });
 
+test('GET /staff/company-signups returns pending public signups newest first', async () => {
+  const supabase = new MockSupabase((query) => {
+    if (query.table === 'early_access_signups' && query.operation === 'select') {
+      assert.equal(query.order.column, 'created_at');
+      assert.equal(query.order.options.ascending, false);
+      return {
+        data: [
+          {
+            id: 'signup-new',
+            name: 'Taylor Manager',
+            email: 'TAYLOR@example.com',
+            phone_number: '555-0100',
+            company_csa: 'Taylor Transport',
+            role: 'Owner',
+            driver_count: 18,
+            billing_interval: 'annual',
+            billing_setup_status: 'succeeded',
+            account_id: null,
+            created_at: '2026-08-16T12:00:00.000Z'
+          },
+          {
+            id: 'signup-onboarded',
+            name: 'Morgan Manager',
+            email: 'morgan@example.com',
+            company_csa: 'Morgan Delivery',
+            driver_count: 7,
+            account_id: 'acct-existing',
+            created_at: '2026-08-15T12:00:00.000Z'
+          }
+        ],
+        error: null
+      };
+    }
+    return { data: null, error: null };
+  });
+  const server = await startTestServer({ supabase });
+
+  try {
+    const response = await fetch(`${server.baseUrl}/staff/company-signups`, {
+      headers: { Authorization: `Bearer ${signStaffToken({ staff_role: 'support' })}` }
+    });
+    const payload = await response.json();
+
+    assert.equal(response.status, 200);
+    assert.equal(payload.signups.length, 2);
+    assert.equal(payload.pending_signups.length, 1);
+    assert.equal(payload.pending_signups[0].company_name, 'Taylor Transport');
+    assert.equal(payload.pending_signups[0].email, 'taylor@example.com');
+    assert.equal(payload.pending_signups[0].driver_count, 18);
+    assert.equal(payload.pending_signups[0].billing_setup_status, 'succeeded');
+  } finally {
+    await server.close();
+  }
+});
+
 test('POST /staff/accounts/:accountId/managers/:managerId/invite resends a pending manager invitation', async () => {
   const sentInvites = [];
   const supabase = new MockSupabase((query) => {
@@ -949,6 +1013,77 @@ test('GET /staff/accounts/:accountId returns detail, usage, and timeline', async
     assert.equal(payload.driver_help.driver_metrics[0].total_questions, 2);
     assert.equal(payload.driver_help.recent_interactions[0].question, 'sig pkg nobody home');
     assert.equal(payload.driver_help.monthly_reports[0].delivery_status, 'sent');
+  } finally {
+    await server.close();
+  }
+});
+
+test('PATCH /staff/accounts/:accountId/rra-billing-treatment makes an account complimentary', async () => {
+  const rpcCalls = [];
+  const audits = [];
+  const supabase = new MockSupabase((query) => {
+    if (query.table === 'accounts' && query.operation === 'select') {
+      return {
+        data: {
+          id: 'acct-1',
+          company_name: 'Owner Transportation',
+          rra_billing_treatment: 'standard'
+        },
+        error: null
+      };
+    }
+    if (query.table === 'readyroute_set_rra_billing_treatment' && query.operation === 'rpc') {
+      rpcCalls.push(query.payload);
+      return { data: null, error: null };
+    }
+    if (query.table === 'readyroute_staff_audit_log' && query.operation === 'insert') {
+      audits.push(query.payload);
+      return { data: query.payload, error: null };
+    }
+    return { data: null, error: null };
+  });
+  const server = await startTestServer({ supabase });
+
+  try {
+    const response = await fetch(`${server.baseUrl}/staff/accounts/acct-1/rra-billing-treatment`, {
+      method: 'PATCH',
+      headers: {
+        Authorization: `Bearer ${signStaffToken({ staff_role: 'owner' })}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({ treatment: 'complimentary', reason: 'Owner-operated company' })
+    });
+    const payload = await response.json();
+
+    assert.equal(response.status, 200);
+    assert.equal(payload.account.rra_billing_treatment, 'complimentary');
+    assert.equal(payload.account.rra_complimentary_reason, 'Owner-operated company');
+    assert.equal(rpcCalls.length, 1);
+    assert.equal(rpcCalls[0].p_account_id, 'acct-1');
+    assert.equal(rpcCalls[0].p_treatment, 'complimentary');
+    assert.equal(audits[0].action, 'account.rra_billing_treatment_updated');
+  } finally {
+    await server.close();
+  }
+});
+
+test('PATCH /staff/accounts/:accountId/rra-billing-treatment requires a complimentary reason', async () => {
+  const supabase = new MockSupabase(() => ({ data: null, error: null }));
+  const server = await startTestServer({ supabase });
+
+  try {
+    const response = await fetch(`${server.baseUrl}/staff/accounts/acct-1/rra-billing-treatment`, {
+      method: 'PATCH',
+      headers: {
+        Authorization: `Bearer ${signStaffToken({ staff_role: 'owner' })}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({ treatment: 'complimentary', reason: '' })
+    });
+    const payload = await response.json();
+
+    assert.equal(response.status, 400);
+    assert.match(payload.error, /internal reason/i);
   } finally {
     await server.close();
   }

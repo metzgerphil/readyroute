@@ -1,4 +1,8 @@
-const { normalizeDriverQuestion } = require('./driverHelpRetrieval');
+const {
+  normalizeDriverQuestion,
+  tokenMatchScore,
+  tokenize
+} = require('./driverHelpRetrieval');
 
 const REFERENCE_ID = /^([A-Z][A-Z0-9_]*):(\d{1,4})$/;
 
@@ -18,6 +22,20 @@ function referenceParts(record) {
 
 function normalizedCode(code) {
   return String(Number.parseInt(String(code), 10));
+}
+
+function stripConversationalFraming(value) {
+  return normalizeDriverQuestion(value)
+    .replace(/^(?:please )?help\s+/, '')
+    .replace(/^i asked (?:the )?question\s+/, '')
+    .trim();
+}
+
+function authoredReferenceMatches(question, variant) {
+  const questionTokens = tokenize(stripConversationalFraming(question));
+  const variantTokens = tokenize(stripConversationalFraming(variant));
+  return questionTokens.length === variantTokens.length
+    && variantTokens.every((token, index) => tokenMatchScore(token, questionTokens[index]) >= 0.82);
 }
 
 function requestedNamespace(question) {
@@ -146,6 +164,24 @@ function buildDriverHelpReferenceDecision(question, allRecords) {
     return answerDecision(matches);
   }
 
+  // Some owner-approved reference cases describe the condition in plain
+  // language instead of naming the numeric code. Only honor an exact authored
+  // variant from a published reference record; do not infer a code from loose
+  // similarity or general model knowledge.
+  const authoredMatches = records.filter((record) => (
+    isEligibleReference(record)
+    && (record.driver_question_variants || []).some((variant) => (
+      authoredReferenceMatches(normalized, variant)
+    ))
+  ));
+  if (authoredMatches.length === 1) return answerDecision(authoredMatches);
+  if (authoredMatches.length > 1) {
+    return clarificationDecision(
+      authoredMatches,
+      'What happened? RRA needs the actual condition before distinguishing between these codes.'
+    );
+  }
+
   // A scenario followed by “what code should I use?” is an operational
   // question, not a request to define a numbered reference. Let normal
   // operational retrieval evaluate the stated facts.
@@ -154,10 +190,12 @@ function buildDriverHelpReferenceDecision(question, allRecords) {
 
 module.exports = {
   answerDecision,
+  authoredReferenceMatches,
   buildDriverHelpReferenceDecision,
   explicitCodeTokens,
   isReferenceRecord,
   normalizedCode,
   requestedNamespace,
+  stripConversationalFraming,
   referenceParts
 };

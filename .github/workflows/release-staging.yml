@@ -46,7 +46,14 @@ jobs:
           JWT_SECRET: test-secret
           GOOGLE_MAPS_API_KEY: test-google-maps-key
           GOOGLE_CLOUD_PROJECT: ready-route-project
-        run: npm ci && npm run verify:schema && npm run check:launch && npm run knowledge:gold-gate && npm run test:unit
+        run: npm ci && npm run verify:schema && npm run check:launch && npm run test:unit
+
+      - name: Run the complete Ready Route Answers release gate
+        working-directory: .
+        env:
+          SUPABASE_URL: https://example.supabase.co
+          SUPABASE_SERVICE_KEY: test-service-role-key
+        run: npm run knowledge:gate
 
       - name: Apply pending staging migrations
         env:
@@ -76,7 +83,7 @@ jobs:
               current_version="$version"
             fi
           done
-          test "$current_version" = "20260816230000"
+          test "$current_version" = "20260816232000"
 
       - name: Import canonical knowledge into staging
         env:
@@ -177,7 +184,7 @@ jobs:
         run: |
           for attempt in {1..30}; do
             body="$(curl --fail --silent --show-error "$STAGING_BACKEND_URL/health" || true)"
-            if [[ "$body" == *"$EXPECTED_COMMIT"* && "$body" == *'"current":"20260816230000"'* && "$body" == *'"compatible":true'* ]]; then
+            if [[ "$body" == *"$EXPECTED_COMMIT"* && "$body" == *'"current":"20260816232000"'* && "$body" == *'"compatible":true'* ]]; then
               echo "Staging is serving $EXPECTED_COMMIT with current canonical knowledge schema"
               exit 0
             fi

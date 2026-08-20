@@ -9,6 +9,7 @@ import DriverHelpScreen, {
 } from './DriverHelpScreen';
 import api from '../services/api';
 import { ExpoSpeechRecognitionModule } from 'expo-speech-recognition';
+import bwipjs from '@bwip-js/react-native';
 
 const mockSpeechHandlers = {};
 
@@ -30,10 +31,73 @@ jest.mock('../services/api', () => ({
   }
 }));
 
+jest.mock('@bwip-js/react-native', () => ({
+  __esModule: true,
+  default: { toDataURL: jest.fn() }
+}), { virtual: true });
+
 describe('DriverHelpScreen', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     Object.keys(mockSpeechHandlers).forEach((key) => delete mockSpeechHandlers[key]);
+    bwipjs.toDataURL.mockResolvedValue({
+      uri: 'data:image/png;base64,vehicle-barcode',
+      width: 420,
+      height: 180
+    });
+  });
+
+  it('keeps the vehicle-barcode workflow in the conversation and renders the encoded value', async () => {
+    api.post
+      .mockResolvedValueOnce({
+        data: {
+          session_id: 'vehicle-session',
+          interaction_id: 'vehicle-question',
+          response_mode: 'CLARIFY',
+          answer_type: 'VEHICLE_BARCODE',
+          clarification_prompt: 'What is the vehicle number?',
+          clarification_options: []
+        }
+      })
+      .mockResolvedValueOnce({
+        data: {
+          session_id: 'vehicle-session',
+          interaction_id: 'vehicle-answer',
+          response_mode: 'ANSWER',
+          answer_type: 'VEHICLE_BARCODE',
+          answer: 'Scan this vehicle barcode.',
+          answer_structure: {
+            direct_answer: 'Scan this vehicle barcode.',
+            steps: []
+          },
+          barcode: { symbology: 'CODE128', value: 'V400770' },
+          trace: [{ knowledge_id: 'KNO-FORGE-VEHICLE-BARCODE-WORKAROUND-001', version: 2 }]
+        }
+      });
+    const screen = render(<DriverHelpScreen />);
+
+    fireEvent.changeText(screen.getByLabelText('Driver question'), 'Can you create a barcode for me?');
+    fireEvent.press(screen.getByLabelText('Ask Ready Route'));
+
+    expect(await screen.findByText('What is the vehicle number?')).toBeTruthy();
+    expect(screen.getByText('Enter vehicle number')).toBeTruthy();
+    expect(screen.queryByText('Not sure')).toBeNull();
+
+    fireEvent.changeText(screen.getByLabelText('Driver question'), '400770');
+    fireEvent.press(screen.getByLabelText('Ask Ready Route'));
+
+    expect(await screen.findByText('V400770')).toBeTruthy();
+    expect(screen.getByText('CODE 128')).toBeTruthy();
+    expect(screen.getByTestId('vehicle-barcode-image')).toBeTruthy();
+    expect(screen.queryByText('USE CODE 128')).toBeNull();
+    expect(api.post).toHaveBeenLastCalledWith('/driver-help/query', {
+      question: '400770',
+      session_id: 'vehicle-session'
+    });
+    expect(bwipjs.toDataURL).toHaveBeenCalledWith(expect.objectContaining({
+      bcid: 'code128',
+      text: 'V400770'
+    }));
   });
 
   it('keeps the image viewer controls below the device safe area', () => {

@@ -21,6 +21,7 @@ const CONVERSATION_SCENARIOS_PATH = path.join(RESEARCH, 'validation/conversation
 const OUT_OF_CORPUS_CASES_PATH = path.join(RESEARCH, 'validation/out_of_corpus_cases.jsonl');
 const CANDIDATE_OPERATIONAL_CASES_PATH = path.join(RESEARCH, 'validation/candidate_operational_language_cases.jsonl');
 const CANDIDATE_GAP_CASES_PATH = path.join(RESEARCH, 'validation/candidate_gap_language_cases.jsonl');
+const VLAD_PRIORITY_CASES_PATH = path.join(RESEARCH, 'validation/vlad_priority_51_cases.jsonl');
 const DELIVERY_STATUS_PATH = path.join(RESEARCH, 'knowledge/status_codes.jsonl');
 const PICKUP_REASON_PATH = path.join(RESEARCH, 'knowledge/pickup_reason_codes.jsonl');
 const INVENTORY_PATH = path.join(RESEARCH, 'inventory/source_inventory.csv');
@@ -140,6 +141,7 @@ function main() {
   const outOfCorpusCases = readJsonLines(OUT_OF_CORPUS_CASES_PATH);
   const candidateOperationalCases = readJsonLines(CANDIDATE_OPERATIONAL_CASES_PATH);
   const candidateGapCases = readJsonLines(CANDIDATE_GAP_CASES_PATH);
+  const vladPriorityCases = readJsonLines(VLAD_PRIORITY_CASES_PATH);
   const deliveryStatuses = readJsonLines(DELIVERY_STATUS_PATH);
   const pickupReasons = readJsonLines(PICKUP_REASON_PATH);
   const sourceInventory = readSourceInventory(INVENTORY_PATH);
@@ -318,6 +320,7 @@ function main() {
     out_of_corpus_cases: outOfCorpusCases.length,
     candidate_operational_language_cases: candidateOperationalCases.length,
     candidate_gap_language_cases: candidateGapCases.length,
+    vlad_priority_cases: vladPriorityCases.length,
     delivery_status_references: deliveryStatuses.length,
     pickup_reason_references: pickupReasons.length,
     active_adjudications: activeApprovals.size
@@ -337,6 +340,7 @@ function main() {
   writeJsonLines(path.join(RELEASE, 'evaluations/out-of-corpus-cases.jsonl'), outOfCorpusCases);
   writeJsonLines(path.join(RELEASE, 'evaluations/candidate-operational-language-cases.jsonl'), candidateOperationalCases);
   writeJsonLines(path.join(RELEASE, 'evaluations/candidate-gap-language-cases.jsonl'), candidateGapCases);
+  writeJsonLines(path.join(RELEASE, 'evaluations/vlad-priority-51-cases.jsonl'), vladPriorityCases);
   writeJsonLines(path.join(RELEASE, 'history/change-log.jsonl'), changeLog);
   writeJson(path.join(RELEASE, 'operations/status-summary.json'), statusSummary);
   fs.mkdirSync(path.join(RELEASE, 'reference'), { recursive: true });
@@ -360,6 +364,7 @@ function main() {
     'evaluations/out-of-corpus-cases.jsonl',
     'evaluations/candidate-operational-language-cases.jsonl',
     'evaluations/candidate-gap-language-cases.jsonl',
+    'evaluations/vlad-priority-51-cases.jsonl',
     'history/change-log.jsonl',
     'reference/taxonomy.json',
     'reference/delivery-status-codes.jsonl',

@@ -1,0 +1,117 @@
+const VEHICLE_BARCODE_KNOWLEDGE_ID = 'KNO-FORGE-VEHICLE-BARCODE-WORKAROUND-001';
+const VEHICLE_BARCODE_WORKFLOW_TYPE = 'VEHICLE_BARCODE';
+const VEHICLE_NUMBER_PROMPT = 'What is the vehicle number?';
+
+function normalizeIntentText(value) {
+  return String(value || '')
+    .toLowerCase()
+    .replace(/\bveihcle\b/g, 'vehicle')
+    .replace(/[’']/g, '')
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim();
+}
+
+function isVehicleBarcodeIntent(value) {
+  const normalized = normalizeIntentText(value);
+  if (!normalized) return false;
+
+  const asksAboutCode128 = /\bcode\s*128\b/.test(normalized);
+  const barcodePattern = '\\bbar\\s*code\\b';
+  const asksToCreateBarcode = (
+    new RegExp(`\\b(?:create|make|generate|build|produce)\\b.*${barcodePattern}`).test(normalized)
+    || new RegExp(`${barcodePattern}.*\\b(?:create|make|generate|build|produce)\\b`).test(normalized)
+  );
+  const namesVehicle = /\b(?:vehicle|truck|van)\b/.test(normalized);
+  const namesBarcode = new RegExp(barcodePattern).test(normalized)
+    || /\bvehicle scan code\b/.test(normalized);
+  const describesMissingOrNeededBarcode = /\b(?:cant find|cannot find|couldnt find|missing|gone|lost|wont scan|will not scan|cannot scan|need|where)\b/.test(normalized);
+
+  return asksAboutCode128
+    || asksToCreateBarcode
+    || (namesVehicle && namesBarcode && describesMissingOrNeededBarcode);
+}
+
+function buildVehicleBarcodeValue(vehicleNumber) {
+  const suppliedValue = String(vehicleNumber || '')
+    .trim()
+    .replace(/^[“"']+|[”"'?!.,;:]+$/g, '')
+    .trim();
+  return `V${suppliedValue}`;
+}
+
+function recordCandidate(record) {
+  return {
+    knowledge_id: record.knowledge_id,
+    version: record.version,
+    canonical_situation: record.canonical_situation,
+    score: 100
+  };
+}
+
+function buildVehicleBarcodeWorkflowDecision(question, context = {}, record = null) {
+  if (!record) return null;
+
+  const pendingWorkflow = context.pending_workflow;
+  if (pendingWorkflow?.type === VEHICLE_BARCODE_WORKFLOW_TYPE
+    && pendingWorkflow?.state === 'AWAITING_VEHICLE_NUMBER') {
+    const value = buildVehicleBarcodeValue(question);
+    return {
+      response_mode: 'ANSWER',
+      answer_type: VEHICLE_BARCODE_WORKFLOW_TYPE,
+      confidence: 1,
+      candidates: [recordCandidate(record)],
+      selected_records: [record],
+      answer: 'Scan this vehicle barcode.',
+      more_info: null,
+      answer_structure: {
+        direct_answer: 'Scan this vehicle barcode.',
+        steps: ['Scan the Code 128 barcode shown above.'],
+        watch_for: 'Confirm the encoded value matches the actual vehicle number before scanning.',
+        options: [],
+        procedure_steps: [],
+        documentation: [],
+        prohibited_actions: [
+          'Do not omit the uppercase V prefix.',
+          'Do not use a barcode format other than Code 128.'
+        ],
+        escalation_requirements: []
+      },
+      barcode: {
+        symbology: 'CODE128',
+        value
+      },
+      workflow: {
+        type: VEHICLE_BARCODE_WORKFLOW_TYPE,
+        state: 'COMPLETE'
+      }
+    };
+  }
+
+  if (!isVehicleBarcodeIntent(question)) return null;
+
+  return {
+    response_mode: 'CLARIFY',
+    answer_type: VEHICLE_BARCODE_WORKFLOW_TYPE,
+    confidence: 1,
+    candidates: [recordCandidate(record)],
+    selected_records: [],
+    clarification_prompt: VEHICLE_NUMBER_PROMPT,
+    clarification_requirement: 'actual vehicle number',
+    clarification_plan: ['actual vehicle number'],
+    clarification_options: [],
+    workflow: {
+      type: VEHICLE_BARCODE_WORKFLOW_TYPE,
+      state: 'AWAITING_VEHICLE_NUMBER'
+    }
+  };
+}
+
+module.exports = {
+  VEHICLE_BARCODE_KNOWLEDGE_ID,
+  VEHICLE_BARCODE_WORKFLOW_TYPE,
+  VEHICLE_NUMBER_PROMPT,
+  buildVehicleBarcodeValue,
+  buildVehicleBarcodeWorkflowDecision,
+  isVehicleBarcodeIntent,
+  normalizeIntentText
+};

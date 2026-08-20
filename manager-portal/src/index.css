@@ -172,6 +172,69 @@ body {
   line-height: 1.45;
 }
 
+.rra-web-barcode {
+  width: 100%;
+  margin-top: var(--rr-space-5);
+  padding: 16px;
+  color: var(--rr-color-text-strong);
+  background: var(--rr-color-surface-muted);
+  border: 1px solid var(--rr-color-border);
+  border-radius: var(--rr-radius-lg);
+}
+
+.rra-web-barcode h3 {
+  margin: 0 0 12px;
+  font-size: 0.82rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.rra-web-barcode-surface {
+  display: flex;
+  min-height: 176px;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  padding: 14px 16px;
+  background: #fff;
+  border-radius: var(--rr-radius-md);
+}
+
+.rra-web-barcode-surface img {
+  display: block;
+  width: auto;
+  max-width: 100%;
+  height: auto;
+  max-height: 150px;
+  image-rendering: pixelated;
+}
+
+.rra-web-barcode-error {
+  color: var(--rr-color-red);
+  font-weight: 700;
+  text-align: center;
+}
+
+.rra-web-barcode-value,
+.rra-web-barcode-type {
+  display: block;
+  text-align: center;
+}
+
+.rra-web-barcode-value {
+  margin-top: 12px;
+  font-size: clamp(1.35rem, 4vw, 1.7rem);
+  letter-spacing: 0.08em;
+}
+
+.rra-web-barcode-type {
+  margin-top: 4px;
+  color: var(--rr-color-text-muted);
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: 0.1em;
+}
+
 .rra-answer-section,
 .rra-watch-for,
 .rra-more-info,

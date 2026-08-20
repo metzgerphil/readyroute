@@ -187,7 +187,11 @@ function validateInterpretation(
     : null;
   if (answerPatternId && !selectedPattern) return null;
   if (selectedPattern) {
-    const patternDecision = ['ASK_MINIMUM_CLARIFICATION', 'CLARIFY'].includes(selectedPattern.response_mode)
+    const patternDecision = [
+      'ASK_MINIMUM_CLARIFICATION',
+      'CLARIFY',
+      'IMMEDIATE_SAFETY_ACTION_THEN_CLARIFY'
+    ].includes(selectedPattern.response_mode)
       ? 'CLARIFY'
       : 'ANSWER';
     if (payload.decision !== patternDecision) return null;
@@ -306,7 +310,7 @@ function createDriverHelpAiInterpreter(options = {}) {
                   'Treat candidate exceptions as hard boundaries: when the question requests a condition or action that an exception excludes, do not select that record and return NONE unless another candidate safely fits. An exception beginning [OUT_OF_CORPUS] is an explicit fail-closed phrase and must return NONE when its terms match the question.',
                   'Require the same specific package type, object, event, and operational condition; a merely related category or shared action word is not a match.',
                   'Do not substitute adjacent regulated categories for one another (for example, tobacco is not alcohol). Return NONE when the stated subject is not covered by a supplied record.',
-                  'Follow a selected pattern response_mode exactly: ASK_MINIMUM_CLARIFICATION or CLARIFY means CLARIFY; DIRECT_SOURCE_GROUNDED_ANSWER, ALTERNATE_DOCUMENTATION, IMMEDIATE_SAFETY_ACTION_THEN_CLARIFY, or ANSWER means ANSWER.',
+                  'Follow a selected pattern response_mode exactly: ASK_MINIMUM_CLARIFICATION, CLARIFY, or IMMEDIATE_SAFETY_ACTION_THEN_CLARIFY means CLARIFY; DIRECT_SOURCE_GROUNDED_ANSWER, ALTERNATE_DOCUMENTATION, or ANSWER means ANSWER.',
                   'When the driver question semantically matches a supplied driver_question_pattern, return that pattern_id and follow its response_mode. The wording does not need to be exact.',
                   'Return ANSWER only when the supplied wording and context contain enough detail to choose that record safely.',
                   'If the question clearly identifies one candidate situation but lacks a material detail listed in that candidate clarification requirements, select that candidate and return CLARIFY; reserve NONE for questions whose situation does not safely match any supplied candidate.',

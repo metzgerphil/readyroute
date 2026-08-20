@@ -22,4 +22,9 @@ SUPABASE_SERVICE_KEY="${SUPABASE_SERVICE_KEY:-test-service-role-key}" \
 JWT_SECRET="${JWT_SECRET:-test-secret}" \
   npm --prefix "$ROOT_DIR/backend" run test:unit
 
+echo "==> Running the complete Ready Route Answers release gate"
+SUPABASE_URL="${SUPABASE_URL:-https://example.supabase.co}" \
+SUPABASE_SERVICE_KEY="${SUPABASE_SERVICE_KEY:-test-service-role-key}" \
+  npm --prefix "$ROOT_DIR" run knowledge:gate
+
 echo "==> Verify complete"

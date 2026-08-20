@@ -4,3 +4,15 @@
 {"case_id":"OOC-008","utterance":"The customer refuses a COD package","expected_mode":"ESCALATE"}
 {"case_id":"OOC-009","utterance":"How do I deliver a tobacco package?","expected_mode":"ESCALATE"}
 {"case_id":"OOC-010","utterance":"Cancel all call tags for suspected fraud","expected_mode":"ESCALATE"}
+{"case_id":"OOC-011","utterance":"My fuel card was declined at the gas station. What should I do?","expected_mode":"ESCALATE"}
+{"case_id":"OOC-012","utterance":"The engine temperature warning came on while I was driving","expected_mode":"ESCALATE"}
+{"case_id":"OOC-013","utterance":"How do I dispute a parking ticket I received on route?","expected_mode":"ESCALATE"}
+{"case_id":"OOC-014","utterance":"How is overtime pay calculated for drivers?","expected_mode":"ESCALATE"}
+{"case_id":"OOC-015","utterance":"How do I request vacation time from my contractor?","expected_mode":"ESCALATE"}
+{"case_id":"OOC-016","utterance":"What customs forms do I need for an international package?","expected_mode":"ESCALATE"}
+{"case_id":"OOC-017","utterance":"The customer called and told me to change the address myself","expected_mode":"ESCALATE"}
+{"case_id":"OOC-018","utterance":"Can I open a customer's package to inspect what is inside?","expected_mode":"ESCALATE"}
+{"case_id":"OOC-019","utterance":"How do I deliver a package containing a firearm?","expected_mode":"ESCALATE"}
+{"case_id":"OOC-020","utterance":"A customer wants me to accept cash for shipping charges","expected_mode":"ESCALATE"}
+{"case_id":"OOC-021","utterance":"Can I take a package home overnight and deliver it tomorrow?","expected_mode":"ESCALATE"}
+{"case_id":"OOC-022","utterance":"Who is allowed to hire and terminate drivers?","expected_mode":"ESCALATE"}

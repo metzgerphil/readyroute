@@ -130,3 +130,31 @@ test('POST /manager/driver-help/query uses manager identity and returns diagnost
   assert.equal(deterministicResponse.status, 200);
   assert.equal(calls[1].aiInterpretationModeOverride, 'OFF');
 });
+
+test('POST /manager/driver-help/query accepts a one-character vehicle number follow-up', async () => {
+  const calls = [];
+  const service = {
+    async answerQuestion(input) {
+      calls.push(input);
+      return { response_mode: 'ANSWER', answer_type: 'VEHICLE_BARCODE' };
+    }
+  };
+  const app = express();
+  app.use(express.json());
+  app.use((req, _res, next) => {
+    req.account = { account_id: 'account-1', manager_user_id: 'manager-1' };
+    next();
+  });
+  app.use('/manager/driver-help', createManagerDriverHelpRouter({
+    supabase: { from: () => new QueryBuilder('unused', {}) },
+    service
+  }));
+
+  const response = await request(app)
+    .post('/manager/driver-help/query')
+    .send({ question: '7', session_id: 'session-1' });
+
+  assert.equal(response.status, 200);
+  assert.equal(calls[0].question, '7');
+  assert.equal(calls[0].sessionId, 'session-1');
+});

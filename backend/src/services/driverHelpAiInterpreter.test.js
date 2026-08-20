@@ -148,6 +148,32 @@ test('interpretation validation accepts only eligible candidates and exact clari
   }, candidates), null);
 });
 
+test('interpretation validation treats safety-then-clarify authored patterns as clarifications', () => {
+  const candidate = {
+    ...candidates[0],
+    knowledge_id: 'KNO-DEL-DAMAGE-INSPECTION-001',
+    clarification_requirements: ['Is the package leaking or hazardous?'],
+    driver_question_patterns: [{
+      pattern_id: 'KNO-DEL-DAMAGE-INSPECTION-001::0',
+      utterance: 'Package looks damaged before delivery',
+      response_mode: 'IMMEDIATE_SAFETY_ACTION_THEN_CLARIFY',
+      must_clarify: ['Is the package leaking or hazardous?']
+    }]
+  };
+  const result = validateInterpretation({
+    selection: 'SELECT',
+    knowledge_id: candidate.knowledge_id,
+    decision: 'CLARIFY',
+    answer_pattern_id: 'KNO-DEL-DAMAGE-INSPECTION-001::0',
+    clarification_requirement: 'Is the package leaking or hazardous?',
+    facts: {},
+    confidence: 0.99
+  }, [candidate], undefined, 'Package looks damaged before delivery');
+
+  assert.equal(result?.decision, 'CLARIFY');
+  assert.equal(result?.knowledge_id, candidate.knowledge_id);
+});
+
 test('generic signature-package questions always collect the signature service first', () => {
   const signatureCandidates = [
     {

@@ -3,7 +3,9 @@ const path = require('path');
 const {
   buildAnswerStructure,
   buildDriverHelpDecision,
-  buildPresentedAnswer
+  buildPresentedAnswer,
+  formatDriverCodeTerminology,
+  getMatchingQuestionPattern
 } = require('../services/driverHelpRetrieval');
 const {
   buildImport,
@@ -33,14 +35,18 @@ function validate() {
     if (record.status === 'READY_ROUTE_APPROVED' && !record.adjudication_id) {
       failures.push({ knowledge_id: record.knowledge_id, failure: 'approved record lacks adjudication trace' });
     }
-    const structure = buildAnswerStructure(record, record.canonical_situation);
-    if (JSON.stringify(structure.procedure_steps) !== JSON.stringify((record.required_procedure || []).map((step) => step.action))) {
+    const structure = buildAnswerStructure(record);
+    const canonicalProcedure = (record.required_procedure || [])
+      .map((step) => formatDriverCodeTerminology(step.action, record));
+    const canonicalProhibitions = (record.prohibited_actions || [])
+      .map((item) => formatDriverCodeTerminology(item, record));
+    if (JSON.stringify(structure.procedure_steps) !== JSON.stringify(canonicalProcedure)) {
       failures.push({ knowledge_id: record.knowledge_id, failure: 'procedure structure differs from canonical procedure' });
     }
     if (JSON.stringify(structure.documentation) !== JSON.stringify(record.required_documentation || [])) {
       failures.push({ knowledge_id: record.knowledge_id, failure: 'documentation structure differs from canonical record' });
     }
-    if (JSON.stringify(structure.prohibited_actions) !== JSON.stringify(record.prohibited_actions || [])) {
+    if (JSON.stringify(structure.prohibited_actions) !== JSON.stringify(canonicalProhibitions)) {
       failures.push({ knowledge_id: record.knowledge_id, failure: 'prohibition structure differs from canonical record' });
     }
   }
@@ -57,9 +63,13 @@ function validate() {
       continue;
     }
     const selected = decision.selected_records[0];
-    if (decision.answer !== buildPresentedAnswer(selected, testCase.utterance)
+    const pattern = getMatchingQuestionPattern(testCase.utterance, selected);
+    const expectedAnswer = pattern?.answer_override?.direct_answer
+      ? formatDriverCodeTerminology(pattern.answer_override.direct_answer, selected)
+      : buildPresentedAnswer(selected);
+    if (decision.answer !== expectedAnswer
       || decision.more_info !== (selected.more_info_answer || null)) {
-      failures.push({ case_id: testCase.case_id, failure: 'answer or More Info differs from selected canonical snapshot' });
+      failures.push({ case_id: testCase.case_id, failure: 'answer or More Info lacks a selected canonical or approved question-pattern trace' });
       continue;
     }
     tracedAnswers += 1;

@@ -60,6 +60,24 @@ test('POST /driver-help/query rejects empty and oversized questions', async () =
   assert.equal((await request(app).post('/driver-help/query').send({ question: 'x'.repeat(501) })).status, 400);
 });
 
+test('POST /driver-help/query accepts a one-character vehicle number follow-up', async () => {
+  const calls = [];
+  const app = createTestApp({
+    async answerQuestion(payload) {
+      calls.push(payload);
+      return { response_mode: 'ANSWER', answer_type: 'VEHICLE_BARCODE' };
+    }
+  });
+
+  const response = await request(app)
+    .post('/driver-help/query')
+    .send({ question: '7', session_id: 'vehicle-session' });
+
+  assert.equal(response.status, 200);
+  assert.equal(calls[0].question, '7');
+  assert.equal(calls[0].sessionId, 'vehicle-session');
+});
+
 test('POST /driver-help/interactions/:id/feedback validates and saves driver feedback', async () => {
   const calls = [];
   const app = createTestApp({

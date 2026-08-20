@@ -59,6 +59,15 @@ const WITHHELD_STATUSES = new Set([
   'INSUFFICIENT_EVIDENCE'
 ]);
 
+// These are reviewed active-corpus boundaries, not operational answers. Keep
+// them narrow: their only purpose is to prevent a neighboring verified record
+// from answering a question for which Ready Route has no approved procedure.
+const UNSUPPORTED_BOUNDARY_PATTERNS = [
+  /\bcustomer\b.*\b(?:called|told)\b.*\bchange\b.*\baddress\b/,
+  /\bopen\b.*\b(?:customer|recipient)(?: s)?\b.*\bpackage\b.*\binspect\b|\binspect\b.*\binside\b.*\bpackage\b/,
+  /\baccept\b.*\bcash\b.*\bshipping charges?\b|\bcash\b.*\bshipping charges?\b/
+];
+
 function normalizeDriverQuestion(value) {
   return String(value || '')
     .normalize('NFKD')
@@ -72,7 +81,15 @@ function normalizeDriverQuestion(value) {
 function tokenize(value) {
   return normalizeDriverQuestion(value)
     .split(' ')
-    .filter((token) => token && (!STOP_WORDS.has(token) || /^\d+$/.test(token)))
+    .filter((token) => token && (
+      /^\d+$/.test(token)
+      || (
+        !STOP_WORDS.has(token)
+        && !(token.length >= 5 && [...STOP_WORDS].some((word) => (
+          word.length >= 5 && editDistanceWithinOne(token, word)
+        )))
+      )
+    ))
     .map((token) => {
       const singular = token.length > 4 && token.endsWith('s') ? token.slice(0, -1) : token;
       return DRIVER_TOKEN_ALIASES.get(token)
@@ -286,11 +303,14 @@ function hasExactQuestionVariant(question, record) {
 
 function getPatternRuntimeMode(pattern) {
   if (!pattern) return null;
-  if (['ASK_MINIMUM_CLARIFICATION', 'CLARIFY'].includes(pattern.response_mode)) return 'CLARIFY';
+  if ([
+    'ASK_MINIMUM_CLARIFICATION',
+    'CLARIFY',
+    'IMMEDIATE_SAFETY_ACTION_THEN_CLARIFY'
+  ].includes(pattern.response_mode)) return 'CLARIFY';
   if ([
     'DIRECT_SOURCE_GROUNDED_ANSWER',
     'ALTERNATE_DOCUMENTATION',
-    'IMMEDIATE_SAFETY_ACTION_THEN_CLARIFY',
     'ANSWER'
   ].includes(pattern.response_mode)) return 'ANSWER';
   return 'ESCALATE';
@@ -452,6 +472,38 @@ function clarificationOptions(ranked) {
 function clarificationOptionsForRequirement(requirement, ranked) {
   const normalized = normalizeDriverQuestion(requirement);
   const topRecord = ranked.find(({ record }) => isProductionEligibleRecord(record))?.record;
+  if (/anything already been scanned in the wrong work area/.test(normalized) && topRecord) {
+    return [
+      {
+        knowledge_id: topRecord.knowledge_id,
+        version: topRecord.version,
+        label: 'Yes',
+        query: 'Yes, I already scanned something in the wrong work area'
+      },
+      {
+        knowledge_id: topRecord.knowledge_id,
+        version: topRecord.version,
+        label: 'No',
+        query: 'No, nothing has been scanned in the wrong work area'
+      }
+    ];
+  }
+  if (/package only scanned or was it already delivered/.test(normalized) && topRecord) {
+    return [
+      {
+        knowledge_id: topRecord.knowledge_id,
+        version: topRecord.version,
+        label: 'Only scanned',
+        query: 'I scanned the wrong package into this stop but did not deliver it'
+      },
+      {
+        knowledge_id: topRecord.knowledge_id,
+        version: topRecord.version,
+        label: 'Already delivered',
+        query: 'I already delivered the wrong scanned package'
+      }
+    ];
+  }
   if (/completed delivery photo or an unsuccessful attempt photo/.test(normalized) && topRecord) {
     return [
       { knowledge_id: topRecord.knowledge_id, version: topRecord.version, label: 'Completed delivery photo', query: 'What should my delivery photo show?' },
@@ -654,7 +706,12 @@ function buildDriverHelpDecision(question, records, context = {}) {
   const normalizedQuestion = normalizeDriverQuestion(question);
   const bypassRequest = /\b(ignore|invent|pretend)\b/.test(normalizedQuestion);
   const protectedRequest = /\b(hidden|system) (instructions|prompt)\b|\breveal (your )?(instructions|prompt)\b/.test(normalizedQuestion);
-  if (!normalizedQuestion || bypassRequest || protectedRequest) return escalation();
+  if (
+    !normalizedQuestion
+    || bypassRequest
+    || protectedRequest
+    || UNSUPPORTED_BOUNDARY_PATTERNS.some((pattern) => pattern.test(normalizedQuestion))
+  ) return escalation();
   if (/^(?:what is )?code \d{1,3}$/.test(normalizedQuestion)) return escalation();
   if (context.clarification_plan_active === true) {
     const newestAnswer = latestDriverAnswer(question);
@@ -727,6 +784,11 @@ function buildDriverHelpDecision(question, records, context = {}) {
       && replacement
       && replacement.record.knowledge_id !== plannedRecord.knowledge_id
       && (recordsAreRelated || replacementNamesExplicitSubject)
+      && (
+        (context.remaining_clarification_requirements || []).length > 0
+        || describesSituationBranch
+        || replacementNamesExplicitSubject
+      )
       && replacement.score >= ANSWER_THRESHOLD
       && (
         !plannedCandidate
