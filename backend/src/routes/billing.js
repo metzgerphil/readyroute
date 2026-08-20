@@ -168,7 +168,11 @@ function createBillingRouter(options = {}) {
         .limit(1)
         .maybeSingle();
       if (existingManager.error) throw existingManager.error;
-      const managerPasswordHash = existingManager.data?.password_hash || requestedPasswordHash;
+      // A password entered in the secure post-Stripe signup flow is the
+      // password the new company identity must receive. Reusing an older
+      // password from another company silently rejects the password the
+      // customer just created and makes the new portal login appear broken.
+      const managerPasswordHash = requestedPasswordHash || existingManager.data?.password_hash;
       const inaccessiblePasswordHash = managerPasswordHash || await bcrypt.hash(crypto.randomBytes(32).toString('hex'), 10);
       const accountInsert = await supabase
         .from('accounts')
@@ -202,7 +206,7 @@ function createBillingRouter(options = {}) {
       if (accountInsert.error || !accountInsert.data) throw accountInsert.error || new Error('Company account was not created');
       account = accountInsert.data;
       needsPassword = !managerPasswordHash;
-      passwordCreated = Boolean(requestedPasswordHash && !existingManager.data?.password_hash);
+      passwordCreated = Boolean(requestedPasswordHash);
       const managerInsert = await supabase
         .from('manager_users')
         .insert({
@@ -253,7 +257,10 @@ function createBillingRouter(options = {}) {
       if (!manager) throw new Error('ReadyRoute manager account not found');
       needsPassword = !manager.password_hash;
 
-      if (needsPassword && requestedPasswordHash) {
+      // The access nonce proves this request came from the browser that began
+      // checkout, so an explicitly submitted password must also replace a
+      // stale password when checkout completion is retried.
+      if (requestedPasswordHash) {
         const managerPasswordUpdate = await supabase
           .from('manager_users')
           .update({ password_hash: requestedPasswordHash, accepted_at: timestamp })
