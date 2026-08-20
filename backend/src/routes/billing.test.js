@@ -248,11 +248,12 @@ test('POST /billing/signup/checkout-session redirects a valid RRA company signup
         name: 'Taylor Owner',
         email: 'owner@example.com',
         phone: '555-0100',
-        manager_phone_number: '555-0100',
+        manager_name: 'Casey Manager',
+        manager_phone_number: '555-0199',
         cxpc_phone_number: '555-0101',
         csa_phone_number: '555-0102',
         company: 'Taylor Transport',
-        role: 'Owner',
+        role: 'Authorized officer',
         drivers: 5,
         billing_interval: 'monthly',
         billing_consent: true,
@@ -284,6 +285,7 @@ test('POST /billing/signup/complete creates the first manager password without r
     if (query.table === 'early_access_signups' && query.operation === 'select') {
       return { data: {
         id: 'signup-1', name: 'Taylor Owner', email: 'owner@example.com', phone_number: '555-0100',
+        manager_name: 'Casey Manager', manager_phone_number: '555-0199',
         company_csa: 'Taylor Transport', role: 'Owner', driver_count: 5, billing_interval: 'monthly',
         billing_policy_version: '2026-08-15-v2', billing_consent_at: '2026-08-16T12:00:00.000Z',
         account_id: 'acct-new', onboarding_status: 'email_sent'
@@ -378,6 +380,7 @@ test('POST /billing/signup/complete provisions the company and sends the RRA por
     if (query.table === 'early_access_signups' && query.operation === 'select') {
       return { data: {
         id: 'signup-1', name: 'Taylor Owner', email: 'owner@example.com', phone_number: '555-0100',
+        manager_name: 'Casey Manager', manager_phone_number: '555-0199',
         company_csa: 'Taylor Transport', role: 'Owner', driver_count: 5, billing_interval: 'monthly',
         billing_policy_version: '2026-08-15-v2', billing_consent_at: '2026-08-16T12:00:00.000Z',
         account_id: null, onboarding_status: 'pending_payment'
@@ -428,6 +431,9 @@ test('POST /billing/signup/complete provisions the company and sends the RRA por
     assert.equal(payload.account_id, 'acct-new');
     assert.equal(payload.email_delivered, true);
     assert.equal(inserts[0].rra_billing_treatment, 'standard');
+    assert.equal(inserts[0].rra_primary_manager_name, 'Casey Manager');
+    assert.equal(inserts[0].rra_primary_manager_phone_number, '555-0199');
+    assert.equal(inserts[1].full_name, 'Taylor Owner');
     assert.match(sentEmail.accessUrl, /^https:\/\/readyroute\.org\/portal\?invite=/);
     assert.equal(updates.at(-1).onboarding_status, 'email_sent');
   } finally {

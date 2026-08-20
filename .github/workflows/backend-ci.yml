@@ -27,8 +27,36 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  changes:
+    name: Detect RRA routing changes
+    runs-on: ubuntu-latest
+    outputs:
+      knowledge: ${{ steps.filter.outputs.knowledge }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            knowledge:
+              - 'knowledge/**'
+              - 'research/fedex-ground-driver-knowledge/validation/**'
+              - 'scripts/build-ready-route-knowledge.js'
+              - 'scripts/validate-ready-route-knowledge.js'
+              - 'backend/src/app.js'
+              - 'backend/src/routes/driverHelp.js'
+              - 'backend/src/routes/driverHelp.test.js'
+              - 'backend/src/routes/managerDriverHelp.js'
+              - 'backend/src/routes/managerDriverHelp.test.js'
+              - 'backend/src/services/driverHelp*/**'
+              - 'backend/src/services/driverHelp*'
+              - 'backend/src/scripts/*DriverHelp*'
+              - 'backend/src/scripts/*Regression*'
+              - 'backend/src/scripts/*Stability*'
+
   test-backend:
     name: Test Backend
+    needs: changes
     runs-on: ubuntu-latest
     env:
       FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
@@ -59,6 +87,7 @@ jobs:
         run: npm run test:unit
 
       - name: Run Ready Route Answers stability gate
+        if: needs.changes.outputs.knowledge == 'true'
         working-directory: .
         env:
           SUPABASE_URL: https://example.supabase.co

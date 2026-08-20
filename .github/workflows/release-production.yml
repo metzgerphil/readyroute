@@ -2,6 +2,12 @@ name: Release Production Backend
 
 on:
   workflow_dispatch:
+    inputs:
+      run_knowledge_checks:
+        description: Run the full RRA corpus/routing gate and canonical import
+        required: true
+        type: boolean
+        default: true
   push:
     branches:
       - main
@@ -24,8 +30,36 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  changes:
+    name: Detect RRA routing changes
+    runs-on: ubuntu-latest
+    outputs:
+      knowledge: ${{ steps.filter.outputs.knowledge }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            knowledge:
+              - 'knowledge/**'
+              - 'research/fedex-ground-driver-knowledge/validation/**'
+              - 'scripts/build-ready-route-knowledge.js'
+              - 'scripts/validate-ready-route-knowledge.js'
+              - 'backend/src/app.js'
+              - 'backend/src/routes/driverHelp.js'
+              - 'backend/src/routes/driverHelp.test.js'
+              - 'backend/src/routes/managerDriverHelp.js'
+              - 'backend/src/routes/managerDriverHelp.test.js'
+              - 'backend/src/services/driverHelp*/**'
+              - 'backend/src/services/driverHelp*'
+              - 'backend/src/scripts/*DriverHelp*'
+              - 'backend/src/scripts/*Regression*'
+              - 'backend/src/scripts/*Stability*'
+
   verify:
     name: Verify Backend
+    needs: changes
     runs-on: ubuntu-latest
     timeout-minutes: 15
     defaults:
@@ -55,6 +89,7 @@ jobs:
         run: npm run verify:schema && npm run check:launch && npm run test:unit
 
       - name: Run Ready Route Answers stability gate
+        if: needs.changes.outputs.knowledge == 'true' || (github.event_name == 'workflow_dispatch' && inputs.run_knowledge_checks == true)
         working-directory: .
         env:
           SUPABASE_URL: https://example.supabase.co
@@ -63,7 +98,7 @@ jobs:
 
   migrate:
     name: Apply Supabase Migrations
-    needs: verify
+    needs: [changes, verify]
     runs-on: ubuntu-latest
     timeout-minutes: 10
     environment: production
@@ -151,6 +186,7 @@ jobs:
         run: supabase db push --linked --yes
 
       - name: Set up Node.js for canonical knowledge import
+        if: needs.changes.outputs.knowledge == 'true' || (github.event_name == 'workflow_dispatch' && inputs.run_knowledge_checks == true)
         uses: actions/setup-node@v6
         with:
           node-version: 20
@@ -158,10 +194,12 @@ jobs:
           cache-dependency-path: backend/package-lock.json
 
       - name: Install backend import dependencies
+        if: needs.changes.outputs.knowledge == 'true' || (github.event_name == 'workflow_dispatch' && inputs.run_knowledge_checks == true)
         working-directory: backend
         run: npm ci --ignore-scripts --omit=dev
 
       - name: Import canonical driver knowledge
+        if: needs.changes.outputs.knowledge == 'true' || (github.event_name == 'workflow_dispatch' && inputs.run_knowledge_checks == true)
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
