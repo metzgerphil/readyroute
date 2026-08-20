@@ -266,19 +266,24 @@ function createAuthRouter(options = {}) {
     };
   }
 
-  async function findDriverByEmail(email) {
+  async function findDriversByEmail(email) {
     const normalizedEmail = String(email).trim().toLowerCase();
     const { data, error } = await supabase
       .from('drivers')
       .select('id, account_id, name, email, username, pin, password_hash, invited_at, invite_accepted_at, is_active')
-      .eq('email', normalizedEmail)
-      .maybeSingle();
+      .eq('email', normalizedEmail);
 
     if (error) {
       throw error;
     }
 
-    return data || null;
+    if (Array.isArray(data)) return data;
+    return data ? [data] : [];
+  }
+
+  async function findDriverByEmailForAccount(email, accountId) {
+    const drivers = await findDriversByEmail(email);
+    return drivers.find((driver) => driver.account_id === accountId) || null;
   }
 
   async function findDriversByIdentifier(identifier) {
@@ -286,8 +291,7 @@ function createAuthRouter(options = {}) {
     if (!normalizedIdentifier) return [];
 
     if (normalizedIdentifier.includes('@')) {
-      const driver = await findDriverByEmail(normalizedIdentifier);
-      return driver ? [driver] : [];
+      return findDriversByEmail(normalizedIdentifier);
     }
 
     if (!/^[a-z0-9._-]{3,40}$/i.test(normalizedIdentifier)) return [];
@@ -957,24 +961,22 @@ function createAuthRouter(options = {}) {
       return res.status(400).json({ error: 'Email and PIN or password are required' });
     }
     try {
-      const [driver, managerIdentities] = await Promise.all([
-        findDriverByEmail(email),
+      const [driverIdentities, managerIdentities] = await Promise.all([
+        findDriversByEmail(email),
         findManagerIdentitiesByEmail(email)
       ]);
       const activeManagerIdentities = managerIdentities.filter((identity) => (
         identity.password_hash &&
         identity.is_active !== false
       ));
-      const driverAccountSummary = await getAccountSummary(driver?.account_id);
-
-      let hasDriverAccess = false;
-      let managerIdentity = null;
-
-      const driverCredentialHash = driver?.password_hash || driver?.pin;
-      if (driverCredentialHash && driver.is_active !== false) {
-        hasDriverAccess = await bcrypt.compare(secret, driverCredentialHash);
+      const activeDrivers = driverIdentities.filter((driver) => driver.is_active !== false);
+      const matchingDrivers = [];
+      for (const driver of activeDrivers) {
+        const credentialHash = driver.password_hash || driver.pin;
+        if (credentialHash && await bcrypt.compare(secret, credentialHash)) {
+          matchingDrivers.push(driver);
+        }
       }
-
       const matchingManagerIdentities = [];
       for (const identity of activeManagerIdentities) {
         if (await bcrypt.compare(secret, identity.password_hash)) {
@@ -982,9 +984,18 @@ function createAuthRouter(options = {}) {
         }
       }
 
-      managerIdentity = matchingManagerIdentities.find((identity) => (
-        driver?.account_id && identity.account_id === driver.account_id
+      const managerIdentity = matchingManagerIdentities.find((identity) => (
+        matchingDrivers.some((driver) => driver.account_id === identity.account_id)
       )) || matchingManagerIdentities[0] || null;
+
+      const driver = managerIdentity
+        ? activeDrivers.find((candidate) => candidate.account_id === managerIdentity.account_id) || null
+        : matchingDrivers.length === 1
+          ? matchingDrivers[0]
+          : null;
+      const hasDriverAccess = Boolean(driver && matchingDrivers.some((candidate) => candidate.id === driver.id));
+      const driverCredentialHash = driver?.password_hash || driver?.pin;
+      const driverAccountSummary = await getAccountSummary(driver?.account_id);
 
       const hasManagerAccess = Boolean(managerIdentity);
       const managerAccountSummary = await getAccountSummary(managerIdentity?.account_id);
@@ -1072,7 +1083,7 @@ function createAuthRouter(options = {}) {
 
       const accountSummary = await getAccountSummary(req.account.account_id);
       const driver = managerIdentity.email
-        ? await findDriverByEmail(managerIdentity.email)
+        ? await findDriverByEmailForAccount(managerIdentity.email, managerIdentity.account_id)
         : null;
       const linkedDriver = driver?.account_id === req.account.account_id && driver?.is_active !== false
         ? driver
