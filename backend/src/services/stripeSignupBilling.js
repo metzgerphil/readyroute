@@ -102,6 +102,7 @@ function createStripeSignupBillingService(options = {}) {
 
     const session = await stripe.checkout.sessions.create({
       mode: 'setup',
+      currency: 'usd',
       customer: customerId,
       billing_address_collection: 'required',
       customer_update: { address: 'auto', name: 'auto' },

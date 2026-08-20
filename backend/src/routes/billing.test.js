@@ -265,6 +265,7 @@ test('POST /billing/signup/checkout-session redirects a valid RRA company signup
 
     assert.equal(response.status, 201);
     assert.equal(payload.checkout_url, 'https://checkout.stripe.test/cs_signup');
+    assert.equal(checkoutPayload.currency, 'usd');
     assert.match(checkoutPayload.success_url, /session_id=\{CHECKOUT_SESSION_ID\}/);
     assert.equal(
       checkoutPayload.metadata.readyroute_access_nonce_hash,
