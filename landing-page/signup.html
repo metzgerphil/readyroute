@@ -319,16 +319,18 @@
         updateEstimate();
         if (!config.enabled && !new URLSearchParams(window.location.search).get('session_id')) {
           submitButton.disabled = true;
-          submitButton.textContent = 'Secure enrollment opening soon';
-          errorMessage.innerHTML = 'Online enrollment is not available yet. Email <a href="mailto:info@readyroute.org">info@readyroute.org</a> and we will help open your RRA company account.';
+          submitButton.textContent = 'Secure enrollment temporarily unavailable';
+          errorMessage.innerHTML = 'Secure enrollment is temporarily unavailable. Please refresh the page. If the problem continues, email <a href="mailto:info@readyroute.org">info@readyroute.org</a>.';
           errorMessage.classList.add('show');
         }
       })
       .catch(() => {
         stripeConfig = {enabled:false};
         submitButton.disabled = true;
-        submitButton.textContent = 'Secure enrollment opening soon';
-        errorMessage.innerHTML = 'Online enrollment is not available yet. Email <a href="mailto:info@readyroute.org">info@readyroute.org</a> and we will help open your RRA company account.';
+        submitButton.textContent = 'Reconnect to secure enrollment';
+        errorMessage.innerHTML = window.location.protocol === 'file:'
+          ? 'This saved preview cannot connect to enrollment. <a href="https://readyroute.org/signup">Open the live ReadyRoute signup page</a>.'
+          : 'We could not connect to secure enrollment. Please refresh the page. If the problem continues, email <a href="mailto:info@readyroute.org">info@readyroute.org</a>.';
         errorMessage.classList.add('show');
       });
 
@@ -347,7 +349,7 @@
 
       try {
         if (!stripeConfig.enabled) {
-          throw new Error('Secure company enrollment is not available yet. Please email info@readyroute.org.');
+          throw new Error('Secure enrollment is temporarily unavailable. Please refresh the page and try again.');
         }
         const response = await fetch(`${getApiBase()}/billing/signup/checkout-session`, {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
         const result = await response.json().catch(() => ({}));
@@ -359,7 +361,7 @@
         errorMessage.classList.add('show');
       } finally {
         submitButton.disabled = false;
-        submitButton.textContent = stripeConfig.enabled ? 'Continue to secure Stripe checkout' : 'Secure enrollment opening soon';
+        submitButton.textContent = stripeConfig.enabled ? 'Continue to secure Stripe checkout' : 'Reconnect to secure enrollment';
       }
     }
 
