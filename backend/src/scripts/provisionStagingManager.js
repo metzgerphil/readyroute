@@ -26,7 +26,7 @@ async function requestJson(url, options = {}) {
   return body;
 }
 
-async function fulfillStagingDriverInviteRequest({ email, password }) {
+async function fulfillStagingDriverInviteRequest({ email, password, supabase, accountId }) {
   if (!fs.existsSync(STAGING_DRIVER_INVITE_REQUEST_PATH)) return null;
 
   const backendUrl = requireEnv('STAGING_BACKEND_URL').replace(/\/$/, '');
@@ -74,13 +74,14 @@ async function fulfillStagingDriverInviteRequest({ email, password }) {
       throw new Error('The ReadyRoute email provider did not accept a requested driver invitation');
     }
 
-    drivers = await requestJson(`${backendUrl}/manager/drivers`, {
-      headers: authenticatedHeaders
-    });
-    const verifiedDriver = (drivers.drivers || []).find(
-      (candidate) => String(candidate.email || '').trim().toLowerCase() === requestedEmail
-    );
-    if (!verifiedDriver || verifiedDriver.is_active !== true || verifiedDriver.access_status !== 'invited') {
+    const { data: verifiedDriver, error: verificationError } = await supabase
+      .from('drivers')
+      .select('id, is_active, invited_at')
+      .eq('id', driver.id)
+      .eq('account_id', accountId)
+      .maybeSingle();
+    if (verificationError) throw verificationError;
+    if (!verifiedDriver || verifiedDriver.is_active !== true || !verifiedDriver.invited_at) {
       throw new Error('A staging driver invitation could not be verified after delivery');
     }
   }
@@ -190,7 +191,9 @@ async function provisionStagingManager() {
 
   const driverInviteResult = await fulfillStagingDriverInviteRequest({
     email,
-    password: bootstrapPassword
+    password: bootstrapPassword,
+    supabase,
+    accountId: account.id
   });
 
   console.log(JSON.stringify({
