@@ -116,6 +116,7 @@ export default function AppNavigator() {
   const [isSupportOpen, setIsSupportOpen] = useState(false);
   const [isPrivacyOpen, setIsPrivacyOpen] = useState(false);
   const [isPrivacyChoiceRequired, setIsPrivacyChoiceRequired] = useState(false);
+  const [isSavingPrivacyChoice, setIsSavingPrivacyChoice] = useState(false);
   const [currentRouteName, setCurrentRouteName] = useState(null);
   const [isLoadingManagerCsas, setIsLoadingManagerCsas] = useState(false);
   const [isSwitchingManagerCsa, setIsSwitchingManagerCsa] = useState(false);
@@ -239,6 +240,8 @@ export default function AppNavigator() {
   }
 
   async function handlePrivacyChoice(consent, policyVersion) {
+    if (isSavingPrivacyChoice) return;
+    setIsSavingPrivacyChoice(true);
     try {
       await api.put('/driver-help/privacy-preferences', {
         ai_processing_consent: consent,
@@ -248,6 +251,8 @@ export default function AppNavigator() {
       setIsPrivacyOpen(false);
     } catch (_error) {
       Alert.alert('Could Not Save Preference', 'Check your connection and try again. No question will be sent for AI processing until your choice is saved.');
+    } finally {
+      setIsSavingPrivacyChoice(false);
     }
   }
 
@@ -656,6 +661,7 @@ export default function AppNavigator() {
             visible={isSupportOpen}
           />
           <RraPrivacyModal
+            isSaving={isSavingPrivacyChoice}
             onChoose={handlePrivacyChoice}
             onClose={() => setIsPrivacyOpen(false)}
             required={isPrivacyChoiceRequired}
