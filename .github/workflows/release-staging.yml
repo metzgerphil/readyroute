@@ -26,7 +26,7 @@ jobs:
   release:
     name: Verify, migrate, import, and deploy staging
     runs-on: ubuntu-latest
-    timeout-minutes: 35
+    timeout-minutes: 50
     steps:
       - name: Check out release commit
         uses: actions/checkout@v7
@@ -160,6 +160,21 @@ jobs:
           workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
           service_account: ${{ vars.GCP_DEPLOY_SERVICE_ACCOUNT }}
 
+      - name: Set up Google Cloud CLI
+        uses: google-github-actions/setup-gcloud@v3
+
+      - name: Build staging container
+        shell: bash
+        run: |
+          set -euo pipefail
+          image_uri="${{ vars.GCP_REGION }}-docker.pkg.dev/${{ vars.GCP_PROJECT_ID }}/cloud-run-source-deploy/${STAGING_CLOUD_RUN_SERVICE}:${GITHUB_SHA}"
+          echo "STAGING_IMAGE_URI=$image_uri" >> "$GITHUB_ENV"
+          gcloud builds submit backend \
+            --project "${{ vars.GCP_PROJECT_ID }}" \
+            --region "${{ vars.GCP_REGION }}" \
+            --timeout 20m \
+            --tag "$image_uri"
+
       - name: Deploy staging Cloud Run service
         id: deploy
         uses: google-github-actions/deploy-cloudrun@v3
@@ -167,7 +182,7 @@ jobs:
           project_id: ${{ vars.GCP_PROJECT_ID }}
           region: ${{ vars.GCP_REGION }}
           service: ${{ env.STAGING_CLOUD_RUN_SERVICE }}
-          source: backend
+          image: ${{ env.STAGING_IMAGE_URI }}
           env_vars: |-
             SOURCE_COMMIT=${{ github.sha }}
             NODE_ENV=production
