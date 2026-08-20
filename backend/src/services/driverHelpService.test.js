@@ -144,6 +144,14 @@ test('obvious follow-ups retain the answered situation without carrying unrelate
     'The scanner technology failed during my pickup. Driver follow-up: I lost it'
   );
   assert.equal(
+    buildContextualQuestion('What do I do with the door tag?', {
+      last_response_mode: 'ANSWER',
+      last_question: 'ISR',
+      situation_question: 'I have an ISR package with a signed door tag on file'
+    }),
+    'I have an ISR package with a signed door tag on file. Driver follow-up: What do I do with the door tag?'
+  );
+  assert.equal(
     buildContextualQuestion('One amount was prefilled', {
       last_response_mode: 'ANSWER',
       last_question: 'I have three COD packages at one stop'
@@ -775,6 +783,37 @@ test('AI-selected signature clarification presents ASR DSR and ISR buttons', asy
     accountId: '00000000-0000-0000-0000-000000000001',
     driverId: '00000000-0000-0000-0000-000000000002',
     question: 'I have a signature package and nobody is home'
+  });
+
+  assert.equal(response.response_mode, 'CLARIFY');
+  assert.match(response.clarification_prompt, /What signature service/);
+  assert.deepEqual(response.clarification_options.map((option) => option.query), ['ASR', 'DSR', 'ISR']);
+});
+
+test('generic package-with-signature wording asks for ASR DSR or ISR instead of defaulting to ASR', async () => {
+  const signatureRequirement = 'What signature service does FORGE show?';
+  const records = [
+    ['KNO-DEL-SIG-ASR-001', 'Adult Signature Required'],
+    ['KNO-DEL-SIG-DSR-001', 'Direct Signature Required'],
+    ['KNO-DEL-SIG-ISR-001', 'Indirect Signature Required']
+  ].map(([knowledgeId, label]) => knowledgeRecord({
+    knowledge_id: knowledgeId,
+    canonical_situation: `Delivering an ${label} package`,
+    taxonomy_paths: ['TAX-DELIVERY', 'TAX-DELIVERY/TAX-SIGNATURE'],
+    clarification_requirements: [signatureRequirement]
+  }));
+  const supabase = fakeSupabase(records);
+  const service = createDriverHelpService({
+    supabase,
+    now: () => new Date(0),
+    aiInterpretationMode: 'ACTIVE',
+    aiInterpreter: async () => 'NONE'
+  });
+
+  const response = await service.answerQuestion({
+    accountId: '00000000-0000-0000-0000-000000000001',
+    driverId: '00000000-0000-0000-0000-000000000002',
+    question: 'I have a package with the signature, but there is a signed door tag, what should I do?'
   });
 
   assert.equal(response.response_mode, 'CLARIFY');

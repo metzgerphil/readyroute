@@ -229,6 +229,7 @@ function isAnsweredSituationFollowUp(question) {
     || /^(?:it|this|that)\b/.test(normalized)
     || /^(?:one|the)\b.*\b(?:amount|barcode|check|count|screen)\b/.test(normalized)
     || /^(?:where|what|which|can|could|should|do|does|did)\b.*\b(?:it|this|that)\b/.test(normalized)
+    || /^(?:where|what|which|can|could|should|do|does|did|how)\b.*\b(?:door tag|package|form|paperwork|barcode|sid|sticker)\b/.test(normalized)
     || /^i (?:lost|forgot|found) (?:it|this|that)\b/.test(normalized)
     || /^(?:i )?(?:cannot|can t|cant) (?:safely )?(?:get out|escape)\b/.test(normalized);
 }
@@ -609,7 +610,10 @@ function buildControlledInterpretationFallback(question, records, baseDecision) 
   }
 
   const genericSignature = (
-    /\bsignature (?:required )?(?:package|pkg)\b|\bsig (?:package|pkg)\b/.test(normalized)
+    (
+      /\bsignature (?:required )?(?:package|pkg)\b|\bsig (?:package|pkg)\b/.test(normalized)
+      || /\b(?:package|pkg)\b.*\bsignature\b/.test(normalized)
+    )
     && !/\b(?:asr|dsr|isr)\b/.test(normalized)
   );
   if (genericSignature) {
@@ -731,7 +735,10 @@ function buildDeterministicRuntimeDecision(question, records, context = {}) {
     context.last_response_mode === 'ANSWER'
     && (context.knowledge_ids || []).includes('KNO-DEL-SIG-ISR-001')
     && /\bdoor tag\b/.test(normalizedQuestion)
-    && /\b(?:itself|iteslf|it|form)\b/.test(normalizedQuestion)
+    && (
+      /\b(?:itself|iteslf|it|form)\b/.test(normalizedQuestion)
+      || /^(?:what|where|how|can|could|should|do|does|did)\b/.test(normalizedQuestion)
+    )
   );
   if (isApprovedIsrDoorTagFollowUp) {
     const sraRecord = selectCanonicalRecordVersions(records).find((record) => (
@@ -740,7 +747,6 @@ function buildDeterministicRuntimeDecision(question, records, context = {}) {
       && isProductionEligibleRecord(record)
     ));
     if (sraRecord) {
-      const pattern = getMatchingQuestionPattern('SRA form has no barcode', sraRecord);
       const decision = {
         response_mode: 'ANSWER',
         confidence: 1,
@@ -751,11 +757,9 @@ function buildDeterministicRuntimeDecision(question, records, context = {}) {
           score: 100
         }],
         selected_records: [sraRecord],
-        answer: pattern?.answer_override?.direct_answer
-          ? formatDriverCodeTerminology(pattern.answer_override.direct_answer, sraRecord)
-          : buildPresentedAnswer(sraRecord, question),
+        answer: buildPresentedAnswer(sraRecord, question),
         more_info: sraRecord.more_info_answer || null,
-        answer_structure: buildAnswerStructure(sraRecord, pattern?.answer_override || null)
+        answer_structure: buildAnswerStructure(sraRecord, null)
       };
       return {
         clarificationSelection: null,
@@ -790,6 +794,24 @@ function buildDeterministicRuntimeDecision(question, records, context = {}) {
   // accumulated transcript and return the wrong namespace.
   const referenceDecision = buildDriverHelpReferenceDecision(question, records)
     || buildDriverHelpReferenceDecision(resolvedQuestion, records);
+  const operationalDecision = buildDriverHelpDecision(
+    resolvedQuestion,
+    records.filter((record) => !isReferenceRecord(record)),
+    decisionContext
+  );
+  const operationalRecord = operationalDecision.selected_records?.[0] || null;
+  const exactOperationalMatch = Boolean(
+    operationalDecision.response_mode === 'ANSWER'
+    && operationalRecord
+    && (
+      getMatchingQuestionPattern(resolvedQuestion, operationalRecord)
+      || getMatchingQuestionPattern(question, operationalRecord)
+      || (operationalRecord.driver_question_variants || []).some((variant) => (
+        normalizeDriverQuestion(variant) === normalizeDriverQuestion(question)
+        || normalizeDriverQuestion(variant) === normalizeDriverQuestion(resolvedQuestion)
+      ))
+    )
+  );
   const decision = selectedClarificationRecord
     ? {
         response_mode: 'ANSWER',
@@ -819,11 +841,7 @@ function buildDeterministicRuntimeDecision(question, records, context = {}) {
           return buildAnswerStructure(selectedClarificationRecord, pattern?.answer_override || null);
         })()
       }
-    : referenceDecision || buildDriverHelpDecision(
-        resolvedQuestion,
-        records.filter((record) => !isReferenceRecord(record)),
-        decisionContext
-      );
+    : (exactOperationalMatch ? operationalDecision : referenceDecision || operationalDecision);
   const authoredDecisionRecord = decision.selected_records?.[0] || null;
   const authoredAnswerPattern = authoredDecisionRecord
     ? (
