@@ -84,6 +84,7 @@ async function request(path, options = {}) {
 
 function accessLabel(driver) {
   if (driver.is_active === false || driver.access_status === 'deactivated') return 'inactive';
+  if (driver.has_password) return 'active';
   if (driver.access_status === 'invite_expired') return 'expired';
   if (driver.access_status === 'invited' || driver.access_status === 'not_invited') return 'pending';
   return 'active';
@@ -127,7 +128,13 @@ function renderDrivers(drivers) {
 
     const actions = document.createElement('div');
     actions.className = 'row-actions';
-    if (['pending', 'expired'].includes(status)) {
+    if (status === 'active' || driver.has_password) {
+      const resetButton = document.createElement('button');
+      resetButton.type = 'button';
+      resetButton.textContent = 'Send password reset';
+      resetButton.addEventListener('click', () => resetDriverAccess(driver.id, resetButton));
+      actions.append(resetButton);
+    } else if (['pending', 'expired'].includes(status)) {
       const inviteButton = document.createElement('button');
       inviteButton.type = 'button';
       inviteButton.textContent = status === 'expired' ? 'Send new invite' : 'Resend invite';
@@ -346,10 +353,26 @@ async function openPortal() {
 
 async function sendInvite(driverId, button) {
   button.disabled = true;
+  setMessage(driversMessage);
   setMessage(driversError);
   try {
-    await request(`/manager/drivers/${encodeURIComponent(driverId)}/invite`, { method: 'POST' });
+    const payload = await request(`/manager/drivers/${encodeURIComponent(driverId)}/invite`, { method: 'POST' });
+    setMessage(driversMessage, payload.message || 'Driver invitation sent.');
     await loadDrivers();
+  } catch (error) {
+    setMessage(driversError, error.message);
+  } finally {
+    button.disabled = false;
+  }
+}
+
+async function resetDriverAccess(driverId, button) {
+  button.disabled = true;
+  setMessage(driversMessage);
+  setMessage(driversError);
+  try {
+    const payload = await request(`/manager/drivers/${encodeURIComponent(driverId)}/password-reset`, { method: 'POST' });
+    setMessage(driversMessage, payload.message || 'Driver password reset sent.');
   } catch (error) {
     setMessage(driversError, error.message);
   } finally {

@@ -2596,6 +2596,7 @@ function createManagerRouter(options = {}) {
           daily_flat_rate: 0,
           ...driver,
           password_hash: undefined,
+          has_password: Boolean(driver.password_hash),
           access_status: driver.is_active === false
             ? 'deactivated'
             : driver.invite_accepted_at || driver.password_hash

@@ -97,6 +97,8 @@ input:focus { outline: 3px solid rgba(243, 111, 33, .18); border-color: var(--or
 .portal-grid > .card { padding: 25px; }
 .portal-grid:not(:has(.add-driver-card:not([hidden]))) { grid-template-columns: 1fr; }
 .section-heading { display: flex; align-items: center; justify-content: space-between; gap: 18px; }
+.driver-access-note { display: grid; grid-template-columns:auto 1fr; gap: 14px; align-items:start; margin-top:18px; border:1px solid #d9e5eb; border-radius:14px; padding:15px 17px; color:var(--muted); background:var(--navy-soft); font-size:.86rem; line-height:1.55; }
+.driver-access-note strong { color:var(--navy); white-space:nowrap; }
 .driver-list { display: grid; gap: 0; margin-top: 19px; }
 .driver-row { display: grid; grid-template-columns: minmax(180px, 1.2fr) minmax(190px, 1fr) 125px auto; align-items: center; gap: 15px; border-top: 1px solid var(--line); padding: 16px 2px; }
 .driver-row:first-child { border-top: 0; }
@@ -151,5 +153,6 @@ button:disabled { cursor: wait; opacity: .62; }
   .report-history { width: 100%; }
   .portal-heading, footer { align-items: flex-start; flex-direction: column; }
   .driver-row, .manager-row { grid-template-columns: 1fr; }
+  .driver-access-note { grid-template-columns:1fr; gap:5px; }
   .billing-card { align-items: flex-start; flex-direction: column; }
 }

@@ -13,9 +13,11 @@ function createSupabaseStub(initialAccount = {}) {
     manager_password_hash: initialAccount.manager_password_hash || null,
     company_name: initialAccount.company_name || 'Bridge Transportation'
   };
+  const accounts = initialAccount.accounts || [account];
   const managerUsers = initialAccount.manager_users || (initialAccount.manager_user ? [initialAccount.manager_user] : []);
   const managerUser = initialAccount.manager_user || managerUsers[0] || null;
   const driver = initialAccount.driver || null;
+  const drivers = initialAccount.drivers || (driver ? [driver] : []);
 
   return {
     account,
@@ -44,11 +46,11 @@ function createSupabaseStub(initialAccount = {}) {
         },
         then(resolve, reject) {
           if (table === 'drivers') {
-            const rows = driver && (
-              (!this.email || this.email === driver.email) &&
-              (!this.ilike_username || String(this.ilike_username).toLowerCase() === String(driver.username || '').toLowerCase()) &&
-              (!this.id || this.id === driver.id)
-            ) ? [{ ...driver }] : [];
+            const rows = drivers.filter((candidate) => (
+              (!this.email || this.email === candidate.email) &&
+              (!this.ilike_username || String(this.ilike_username).toLowerCase() === String(candidate.username || '').toLowerCase()) &&
+              (!this.id || this.id === candidate.id)
+            )).map((candidate) => ({ ...candidate }));
 
             return Promise.resolve({ data: rows, error: null }).then(resolve, reject);
           }
@@ -69,18 +71,14 @@ function createSupabaseStub(initialAccount = {}) {
         },
         async maybeSingle() {
           if (table === 'drivers') {
-            if (!driver) {
+            const matchingDriver = drivers.find((candidate) => (
+              (!this.email || this.email === candidate.email) &&
+              (!this.id || this.id === candidate.id)
+            ));
+            if (!matchingDriver) {
               return { data: null, error: null };
             }
-
-            if (
-              (this.email && this.email !== driver.email) ||
-              (this.id && this.id !== driver.id)
-            ) {
-              return { data: null, error: null };
-            }
-
-            return { data: { ...driver }, error: null };
+            return { data: { ...matchingDriver }, error: null };
           }
 
           if (table === 'manager_users') {
@@ -97,14 +95,14 @@ function createSupabaseStub(initialAccount = {}) {
             return { data: { ...row }, error: null };
           }
 
-          if (
-            (this.manager_email && this.manager_email !== account.manager_email) ||
-            (this.id && this.id !== account.id)
-          ) {
+          const matchingAccount = accounts.find((candidate) => (
+            (!this.manager_email || this.manager_email === candidate.manager_email) &&
+            (!this.id || this.id === candidate.id)
+          ));
+          if (!matchingAccount) {
             return { data: null, error: null };
           }
-
-          return { data: { ...account }, error: null };
+          return { data: { ...matchingAccount }, error: null };
         },
         update(payload) {
           return {
@@ -353,6 +351,66 @@ test('mobile login returns both portal tokens for a linked manager-driver identi
   assert.equal(driverPayload.device_session_id, 'device-session-1');
   assert.equal(managerPayload.manager_user_id, 'manager-user-1');
   assert.equal(managerPayload.role, 'manager');
+});
+
+test('mobile login selects the credential-matched company when one email has multiple driver memberships', async () => {
+  const bridgeSecret = 'BridgeDriver!2026';
+  const supabase = createSupabaseStub({
+    accounts: [
+      { id: 'account-smoke', company_name: 'Smoke Test ReadyRoute Account' },
+      { id: 'account-bridge', company_name: 'Bridge Transportation' }
+    ],
+    manager_users: [{
+      id: 'manager-bridge',
+      account_id: 'account-bridge',
+      email: 'phillovesjoy@gmail.com',
+      password_hash: await bcrypt.hash(bridgeSecret, 10),
+      full_name: 'Phil Metzger',
+      is_active: true
+    }],
+    drivers: [
+      {
+        id: 'driver-smoke',
+        account_id: 'account-smoke',
+        name: 'Smoke Test Driver',
+        email: 'phillovesjoy@gmail.com',
+        password_hash: await bcrypt.hash('DifferentSmokePassword!2026', 10),
+        is_active: true
+      },
+      {
+        id: 'driver-bridge',
+        account_id: 'account-bridge',
+        name: 'Phil Metzger',
+        email: 'phillovesjoy@gmail.com',
+        password_hash: await bcrypt.hash(bridgeSecret, 10),
+        is_active: true
+      }
+    ]
+  });
+  const app = createApp({
+    supabase,
+    jwtSecret: 'test-secret',
+    enforceBilling: false,
+    requireDriverDeviceId: true,
+    authorizeDriverDevice: async () => ({
+      id: 'device-session-bridge',
+      device_hash: 'device-hash-bridge'
+    })
+  });
+
+  const response = await request(app)
+    .post('/auth/mobile/login')
+    .send({
+      email: 'phillovesjoy@gmail.com',
+      secret: bridgeSecret,
+      device_id: '12345678-1234-1234-1234-123456789012'
+    });
+
+  assert.equal(response.status, 200);
+  assert.equal(response.body.user.account_id, 'account-bridge');
+  assert.equal(response.body.user.company_name, 'Bridge Transportation');
+  assert.equal(jwt.verify(response.body.driver_token, 'test-secret').driver_id, 'driver-bridge');
+  assert.equal(jwt.verify(response.body.manager_token, 'test-secret').account_id, 'account-bridge');
 });
 
 test('legacy driver login accepts an established password as well as a four-digit PIN', async () => {
