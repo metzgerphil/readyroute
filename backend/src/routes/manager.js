@@ -2842,7 +2842,7 @@ function createManagerRouter(options = {}) {
     try {
       const { data, error } = await supabase
         .from('accounts')
-        .select('rra_cxpc_phone_number, rra_csa_phone_number, rra_primary_manager_name, rra_primary_manager_phone_number')
+        .select('company_name, rra_cxpc_phone_number, rra_csa_phone_number, rra_primary_manager_name, rra_primary_manager_phone_number')
         .eq('id', req.account.account_id)
         .maybeSingle();
       if (error) throw error;
@@ -2866,6 +2866,18 @@ function createManagerRouter(options = {}) {
           .maybeSingle();
         if (signupLookup.error) throw signupLookup.error;
         signup = signupLookup.data;
+        if (!signup && req.account.manager_email && data.company_name) {
+          const unlinkedSignupLookup = await supabase
+            .from('early_access_signups')
+            .select('name, manager_name, phone_number, manager_phone_number, cxpc_phone_number, csa_phone_number')
+            .eq('email', String(req.account.manager_email).trim().toLowerCase())
+            .eq('company_csa', data.company_name)
+            .order('updated_at', { ascending: false })
+            .limit(1)
+            .maybeSingle();
+          if (unlinkedSignupLookup.error) throw unlinkedSignupLookup.error;
+          signup = unlinkedSignupLookup.data;
+        }
       }
 
       return res.status(200).json({
