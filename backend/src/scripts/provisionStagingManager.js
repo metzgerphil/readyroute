@@ -1,13 +1,10 @@
 const bcrypt = require('bcrypt');
 const crypto = require('crypto');
-const fs = require('fs');
-const path = require('path');
 const { createClient } = require('@supabase/supabase-js');
 
 const STAGING_PROJECT_REF = 'xtzbjlmizmdfqelvhhwx';
 const STAGING_COMPANY_NAME = 'Smoke Test ReadyRoute Account';
 const STAGING_AUTOMATION_EMAIL = 'rra-staging-automation@readyroute.test';
-const STAGING_DRIVER_INVITE_REQUEST_PATH = path.resolve(process.cwd(), '.staging-driver-invite-request.json');
 
 function requireEnv(name) {
   const value = String(process.env[name] || '').trim();
@@ -15,78 +12,6 @@ function requireEnv(name) {
     throw new Error(`Missing required environment variable: ${name}`);
   }
   return value;
-}
-
-async function requestJson(url, options = {}) {
-  const response = await fetch(url, options);
-  const body = await response.json().catch(() => ({}));
-  if (!response.ok) {
-    throw new Error(body.error || `Staging request failed with status ${response.status}`);
-  }
-  return body;
-}
-
-async function fulfillStagingDriverInviteRequest({ email, password, supabase, accountId }) {
-  if (!fs.existsSync(STAGING_DRIVER_INVITE_REQUEST_PATH)) return null;
-
-  const backendUrl = requireEnv('STAGING_BACKEND_URL').replace(/\/$/, '');
-  const request = JSON.parse(fs.readFileSync(STAGING_DRIVER_INVITE_REQUEST_PATH, 'utf8'));
-  const requestedEmails = Array.isArray(request.driver_emails)
-    ? request.driver_emails.map((value) => String(value || '').trim().toLowerCase()).filter(Boolean)
-    : [];
-  if (requestedEmails.length === 0) {
-    throw new Error('The staging driver invitation request does not contain any email addresses');
-  }
-
-  const login = await requestJson(`${backendUrl}/auth/manager/login`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ email, password })
-  });
-  if (!login.token) throw new Error('Staging manager login did not return a token');
-  const authenticatedHeaders = { Authorization: `Bearer ${login.token}` };
-
-  for (const requestedEmail of requestedEmails) {
-    let drivers = await requestJson(`${backendUrl}/manager/drivers`, {
-      headers: authenticatedHeaders
-    });
-    const matches = (drivers.drivers || []).filter(
-      (driver) => String(driver.email || '').trim().toLowerCase() === requestedEmail
-    );
-    if (matches.length !== 1) {
-      throw new Error('A requested staging driver was not found exactly once');
-    }
-    const driver = matches[0];
-
-    if (driver.is_active !== true) {
-      await requestJson(`${backendUrl}/manager/drivers/${driver.id}/status`, {
-        method: 'PATCH',
-        headers: { ...authenticatedHeaders, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ is_active: true })
-      });
-    }
-
-    const invitation = await requestJson(`${backendUrl}/manager/drivers/${driver.id}/invite`, {
-      method: 'POST',
-      headers: authenticatedHeaders
-    });
-    if (invitation.email_delivery !== 'sent') {
-      throw new Error('The ReadyRoute email provider did not accept a requested driver invitation');
-    }
-
-    const { data: verifiedDriver, error: verificationError } = await supabase
-      .from('drivers')
-      .select('id, is_active, invited_at')
-      .eq('id', driver.id)
-      .eq('account_id', accountId)
-      .maybeSingle();
-    if (verificationError) throw verificationError;
-    if (!verifiedDriver || verifiedDriver.is_active !== true || !verifiedDriver.invited_at) {
-      throw new Error('A staging driver invitation could not be verified after delivery');
-    }
-  }
-
-  return { activated_and_invited: requestedEmails.length };
 }
 
 async function provisionStagingManager() {
@@ -189,20 +114,12 @@ async function provisionStagingManager() {
     managerId = createdManager.id;
   }
 
-  const driverInviteResult = await fulfillStagingDriverInviteRequest({
-    email,
-    password: bootstrapPassword,
-    supabase,
-    accountId: account.id
-  });
-
   console.log(JSON.stringify({
     provisioned: true,
     created: !existingManager,
     account_id: account.id,
     manager_id: managerId,
-    email,
-    ...(driverInviteResult || {})
+    email
   }));
 }
 
@@ -217,6 +134,5 @@ module.exports = {
   provisionStagingManager,
   STAGING_AUTOMATION_EMAIL,
   STAGING_COMPANY_NAME,
-  STAGING_PROJECT_REF,
-  fulfillStagingDriverInviteRequest
+  STAGING_PROJECT_REF
 };
