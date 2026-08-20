@@ -246,11 +246,16 @@ test('POST /billing/signup/checkout-session redirects a valid RRA company signup
         name: 'Taylor Owner',
         email: 'owner@example.com',
         phone: '555-0100',
+        manager_phone_number: '555-0100',
+        cxpc_phone_number: '555-0101',
+        csa_phone_number: '555-0102',
         company: 'Taylor Transport',
         role: 'Owner',
         drivers: 5,
         billing_interval: 'monthly',
         billing_consent: true,
+        ai_processing_authorized: true,
+        ai_processing_policy_version: '2026-08-20',
         request_id: '00000000-0000-4000-8000-000000000001'
       })
     });

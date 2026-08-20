@@ -60,7 +60,7 @@
                 <input id="email" name="email" type="email" inputmode="email" autocomplete="email" required>
               </div>
               <div class="field">
-                <label for="phone">Phone number <span class="required" aria-hidden="true">*</span></label>
+                <label for="phone">Manager phone number <span class="required" aria-hidden="true">*</span></label>
                 <input id="phone" name="phone" type="tel" inputmode="tel" autocomplete="tel" required>
               </div>
               <div class="field">
@@ -74,6 +74,16 @@
               <div class="field full">
                 <label for="company">Company / CSA name <span class="required" aria-hidden="true">*</span></label>
                 <input id="company" name="company" autocomplete="organization" required>
+              </div>
+              <div class="field">
+                <label for="cxpc-phone">Local CXPC phone number <span class="required" aria-hidden="true">*</span></label>
+                <input id="cxpc-phone" name="cxpc_phone_number" type="tel" inputmode="tel" required>
+                <p class="field-hint">RRA can show this number when a driver needs CXPC.</p>
+              </div>
+              <div class="field">
+                <label for="csa-phone">Local CSA phone number <span class="required" aria-hidden="true">*</span></label>
+                <input id="csa-phone" name="csa_phone_number" type="tel" inputmode="tel" required>
+                <p class="field-hint">RRA can show this number when a driver needs the CSA.</p>
               </div>
               <div class="field full">
                 <label for="drivers">Number of drivers <span class="required" aria-hidden="true">*</span></label>
@@ -96,6 +106,7 @@
               <div class="estimate-total" id="price-estimate">$0 <small>/ month</small></div>
             </div>
             <label class="consent"><input id="billing-consent" name="billing_consent" required type="checkbox"><span>I authorize ReadyRoute to save a payment method through Stripe and, when billing is activated, charge <strong>$10 per active driver monthly or $100 per active driver annually</strong>, according to the schedule selected above, plus applicable tax. Driver-count changes adjust future billing.</span></label>
+            <label class="consent"><input id="ai-processing-authorization" name="ai_processing_authorized" required type="checkbox"><span>As an owner or authorized business contact, I authorize Ready Route Answers to use OpenAI to interpret how our authorized drivers phrase questions. <strong>OpenAI does not choose or create the operational procedure</strong>; RRA answers only from ReadyRoute-approved information. Common contact, address, link, and package identifiers are removed before AI processing. This authorization applies to our authorized RRA drivers and can be withdrawn in Company settings.</span></label>
             <button class="submit" id="submit-button" type="submit">Continue to secure Stripe checkout</button>
             <p class="legal">Payment information is entered on Stripe’s secure website and is not stored by ReadyRoute. By continuing, you agree to our <a href="/privacy">Privacy Policy</a> and <a href="/terms">Terms</a>.</p>
             <p class="message error" id="signup-error" role="alert"></p>
@@ -161,9 +172,14 @@
       const formData = new FormData(form);
       return {
         name: formData.get('name'), email: formData.get('email'), phone: formData.get('phone'),
+        manager_phone_number: formData.get('phone'),
+        cxpc_phone_number: formData.get('cxpc_phone_number'),
+        csa_phone_number: formData.get('csa_phone_number'),
         company: formData.get('company'), role: formData.get('role'), drivers: formData.get('drivers'),
         billing_interval: formData.get('billing_interval'),
         billing_consent: formData.get('billing_consent') === 'on',
+        ai_processing_authorized: formData.get('ai_processing_authorized') === 'on',
+        ai_processing_policy_version: '2026-08-20',
         request_id: createRequestId(), source_page: window.location.href
       };
     }

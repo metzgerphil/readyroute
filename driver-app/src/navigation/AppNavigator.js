@@ -6,6 +6,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import MobileNavigationDrawer from '../components/MobileNavigationDrawer';
 import RraPrivacyModal from '../components/RraPrivacyModal';
+import DriverPasswordModal from '../components/DriverPasswordModal';
 import SupportRequestModal from '../components/SupportRequestModal';
 import { usePortalSession } from '../context/PortalSessionContext';
 import api from '../services/api';
@@ -115,6 +116,7 @@ export default function AppNavigator() {
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
   const [isSupportOpen, setIsSupportOpen] = useState(false);
   const [isPrivacyOpen, setIsPrivacyOpen] = useState(false);
+  const [isPasswordOpen, setIsPasswordOpen] = useState(false);
   const [isPrivacyChoiceRequired, setIsPrivacyChoiceRequired] = useState(false);
   const [currentRouteName, setCurrentRouteName] = useState(null);
   const [isLoadingManagerCsas, setIsLoadingManagerCsas] = useState(false);
@@ -174,10 +176,9 @@ export default function AppNavigator() {
       .then((response) => {
         if (!active) return;
         const preference = response.data || {};
-        const hasCurrentChoice = Boolean(preference.updated_at)
-          && preference.policy_version === preference.current_policy_version;
-        setIsPrivacyChoiceRequired(!hasCurrentChoice);
-        setIsPrivacyOpen(!hasCurrentChoice);
+        const noticeRequired = preference.notice_required !== false;
+        setIsPrivacyChoiceRequired(noticeRequired);
+        setIsPrivacyOpen(noticeRequired);
       })
       .catch(() => {
         if (!active) return;
@@ -238,10 +239,15 @@ export default function AppNavigator() {
     setIsPrivacyOpen(true);
   }
 
-  async function handlePrivacyChoice(consent, policyVersion) {
+  function openPassword() {
+    setIsDrawerOpen(false);
+    setIsPasswordOpen(true);
+  }
+
+  async function handlePrivacyNotice(policyVersion) {
     try {
       await api.put('/driver-help/privacy-preferences', {
-        ai_processing_consent: consent,
+        notice_seen: true,
         policy_version: policyVersion
       });
       setIsPrivacyChoiceRequired(false);
@@ -643,6 +649,7 @@ export default function AppNavigator() {
             onManagerWorkspaceSwitch={handleManagerWorkspaceSwitch}
             onLogout={logout}
             onNavigate={handleNavigate}
+            onPasswordPress={openPassword}
             onPrivacyPress={openPrivacy}
             onSupportPress={openSupport}
             onSwitchMode={() => handleSelectMode(activeMode === 'manager' ? 'driver' : 'manager')}
@@ -656,10 +663,15 @@ export default function AppNavigator() {
             visible={isSupportOpen}
           />
           <RraPrivacyModal
-            onChoose={handlePrivacyChoice}
+            onAcknowledge={handlePrivacyNotice}
             onClose={() => setIsPrivacyOpen(false)}
             required={isPrivacyChoiceRequired}
             visible={isPrivacyOpen}
+          />
+          <DriverPasswordModal
+            onClose={() => setIsPasswordOpen(false)}
+            onPasswordChanged={logout}
+            visible={isPasswordOpen}
           />
         </>
       ) : null}

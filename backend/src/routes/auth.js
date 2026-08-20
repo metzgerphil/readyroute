@@ -7,8 +7,12 @@ const defaultSupabase = require('../lib/supabase');
 const { requireManager: defaultRequireManager } = require('../middleware/auth');
 const { createBillingService } = require('../services/billing');
 const { getEffectiveAccountStatus } = require('../services/accountLifecycle');
+const { recordEmailDelivery } = require('../services/emailDeliveryTracking');
 const { updateRouteBillingSettings } = require('../services/routeBilling');
-const { sendManagerPasswordResetEmail: defaultSendManagerPasswordResetEmail } = require('../services/managerInviteEmail');
+const {
+  sendDriverPasswordResetEmail: defaultSendDriverPasswordResetEmail,
+  sendManagerPasswordResetEmail: defaultSendManagerPasswordResetEmail
+} = require('../services/managerInviteEmail');
 const {
   authorizeDriverDevice: defaultAuthorizeDriverDevice,
   normalizeDeviceId
@@ -23,6 +27,7 @@ function createAuthRouter(options = {}) {
   const supabase = options.supabase || defaultSupabase;
   const jwtSecret = options.jwtSecret || process.env.JWT_SECRET;
   const requireManager = options.requireManager || defaultRequireManager;
+  const requireDriver = options.requireDriver || ((_req, res) => res.status(500).json({ error: 'Driver authentication is not configured' }));
   const billingService = createBillingService({
     supabase,
     stripeClient: options.stripeClient,
@@ -32,8 +37,17 @@ function createAuthRouter(options = {}) {
     trialDays: options.trialDays
   });
   const sendManagerPasswordResetEmail = options.sendManagerPasswordResetEmail || defaultSendManagerPasswordResetEmail;
+  const sendDriverPasswordResetEmail = options.sendDriverPasswordResetEmail || defaultSendDriverPasswordResetEmail;
   const authorizeDriverDevice = options.authorizeDriverDevice || defaultAuthorizeDriverDevice;
   const requireDriverDeviceId = options.requireDriverDeviceId ?? process.env.NODE_ENV === 'production';
+
+  async function trackPasswordEmail(details) {
+    try {
+      await recordEmailDelivery({ supabase, ...details, now: options.now || (() => new Date()) });
+    } catch (trackingError) {
+      console.error('Password email delivery tracking failed:', trackingError);
+    }
+  }
 
   function signToken(payload, expiresIn) {
     if (!jwtSecret) {
@@ -67,6 +81,11 @@ function createAuthRouter(options = {}) {
   function buildManagerInviteUrl(token) {
     const baseUrl = getCompanyPortalBaseUrl().replace(/\/$/, '');
     return `${baseUrl}?invite=${encodeURIComponent(token)}`;
+  }
+
+  function buildDriverPasswordResetUrl(token) {
+    const baseUrl = getManagerPortalBaseUrl().replace(/\/$/, '');
+    return `${baseUrl}/driver-invite?token=${encodeURIComponent(token)}&mode=reset`;
   }
 
   function buildTrialActivationUrl(token) {
@@ -783,6 +802,109 @@ function createAuthRouter(options = {}) {
     }
   });
 
+  router.post('/driver/request-password-reset', async (req, res) => {
+    const email = normalizeEmail(req.body?.email);
+    if (!isValidEmail(email)) {
+      return res.status(400).json({ error: 'A valid email is required' });
+    }
+
+    const responsePayload = {
+      message: 'If that email has an active driver account, password-reset instructions have been sent.'
+    };
+
+    try {
+      const { data: drivers, error: lookupError } = await supabase
+        .from('drivers')
+        .select('id, account_id, name, email, password_hash, is_active')
+        .eq('email', email)
+        .eq('is_active', true);
+      if (lookupError) throw lookupError;
+
+      const eligibleDrivers = (drivers || []).filter((driver) => driver.password_hash);
+      for (const driver of eligibleDrivers) {
+        const { data: account, error: accountError } = await supabase
+          .from('accounts')
+          .select('id, company_name, account_status, retention_ends_at')
+          .eq('id', driver.account_id)
+          .maybeSingle();
+        if (accountError) throw accountError;
+        if (!account || !isAccountLoginAvailable(account)) continue;
+
+        const token = signToken({
+          purpose: 'driver_password_reset',
+          driver_id: driver.id,
+          account_id: driver.account_id,
+          email: driver.email,
+          pwdv: getPasswordVersion(driver.password_hash)
+        }, '30m');
+
+        let delivery;
+        try {
+          delivery = await sendDriverPasswordResetEmail({
+            to: driver.email,
+            fullName: driver.name,
+            resetUrl: buildDriverPasswordResetUrl(token),
+            companyName: account.company_name
+          });
+        } catch (emailError) {
+          console.error('Driver self-service password reset email delivery failed:', emailError);
+          delivery = { delivered: false, skipped: false, reason: 'Email delivery failed' };
+        }
+        await trackPasswordEmail({
+          accountId: driver.account_id,
+          recipientEmail: driver.email,
+          recipientType: 'driver',
+          recipientId: driver.id,
+          messageType: 'driver_password_reset',
+          delivery
+        });
+      }
+
+      return res.status(200).json(responsePayload);
+    } catch (error) {
+      console.error('Driver self-service password reset request failed:', error);
+      return res.status(500).json({ error: 'Password reset could not be prepared right now.' });
+    }
+  });
+
+  router.post('/driver/change-password', requireDriver, async (req, res) => {
+    const currentPassword = String(req.body?.current_password || '');
+    const nextPassword = String(req.body?.new_password || '');
+    if (!currentPassword || !nextPassword) {
+      return res.status(400).json({ error: 'Current password and new password are required' });
+    }
+    if (!isStrongEnoughPassword(nextPassword)) {
+      return res.status(400).json({ error: 'Password must be at least 10 characters' });
+    }
+    if (currentPassword === nextPassword) {
+      return res.status(400).json({ error: 'New password must be different from the current password' });
+    }
+
+    try {
+      const { data: driver, error: lookupError } = await supabase
+        .from('drivers')
+        .select('id, account_id, password_hash')
+        .eq('id', req.driver.driver_id)
+        .eq('account_id', req.driver.account_id)
+        .maybeSingle();
+      if (lookupError) throw lookupError;
+      if (!driver?.password_hash || !(await bcrypt.compare(currentPassword, driver.password_hash))) {
+        return res.status(401).json({ error: 'Current password is incorrect' });
+      }
+      const passwordHash = await bcrypt.hash(nextPassword, 10);
+      const { error: updateError } = await supabase
+        .from('drivers')
+        .update({ password_hash: passwordHash })
+        .eq('id', driver.id)
+        .eq('account_id', driver.account_id);
+      if (updateError) throw updateError;
+      return res.status(200).json({ message: 'Password updated. Sign in again with your new password.' });
+    } catch (error) {
+      console.error('Driver password change failed:', error);
+      return res.status(500).json({ error: 'Password could not be updated right now.' });
+    }
+  });
+
   router.post('/manager/login', async (req, res) => {
     const { email, password } = req.body || {};
     const requestedAccountId = req.body?.account_id ? String(req.body.account_id) : null;
@@ -1031,6 +1153,15 @@ function createAuthRouter(options = {}) {
           reason: 'Email delivery failed'
         };
       }
+
+      await trackPasswordEmail({
+        accountId: managerIdentity.account_id,
+        recipientEmail: managerIdentity.email,
+        recipientType: 'manager',
+        recipientId: managerIdentity.source === 'manager_user' ? managerIdentity.id : null,
+        messageType: 'manager_password_reset',
+        delivery: emailDelivery
+      });
 
       if (process.env.NODE_ENV === 'production' && emailDelivery?.skipped) {
         return res.status(503).json({ error: 'Password reset email service is not configured yet' });

@@ -8,6 +8,7 @@ const defaultSupabase = require('../lib/supabase');
 const { requireManager: defaultRequireManager } = require('../middleware/auth');
 const { createBillingService } = require('../services/billing');
 const { sendRraCompanyReadyEmail: defaultSendRraCompanyReadyEmail } = require('../services/managerInviteEmail');
+const { AI_CONSENT_POLICY_VERSION } = require('../services/driverHelpPrivacy');
 const { buildSignupPayload } = require('./waitlist');
 const {
   createStripeSignupBillingService,
@@ -105,7 +106,7 @@ function createBillingRouter(options = {}) {
 
     const { data: signup, error: signupError } = await supabase
       .from('early_access_signups')
-      .select('id, name, email, phone_number, company_csa, role, driver_count, billing_interval, billing_policy_version, billing_consent_at, account_id, onboarding_status')
+      .select('id, name, email, phone_number, manager_phone_number, cxpc_phone_number, csa_phone_number, company_csa, role, driver_count, billing_interval, billing_policy_version, billing_consent_at, ai_processing_authorized, ai_processing_policy_version, ai_processing_authorized_at, account_id, onboarding_status')
       .eq('id', signupId)
       .maybeSingle();
     if (signupError) throw signupError;
@@ -168,6 +169,14 @@ function createBillingRouter(options = {}) {
           billing_interval: signup.billing_interval || 'monthly',
           billing_policy_version: signup.billing_policy_version || null,
           billing_consent_at: signup.billing_consent_at || null,
+          rra_ai_processing_authorized: signup.ai_processing_authorized === true
+            && signup.ai_processing_policy_version === AI_CONSENT_POLICY_VERSION,
+          rra_ai_processing_policy_version: signup.ai_processing_policy_version || null,
+          rra_ai_processing_authorized_at: signup.ai_processing_authorized_at || null,
+          rra_cxpc_phone_number: signup.cxpc_phone_number,
+          rra_csa_phone_number: signup.csa_phone_number,
+          rra_primary_manager_name: signup.name,
+          rra_primary_manager_phone_number: signup.manager_phone_number || signup.phone_number,
           rra_billing_treatment: 'standard'
         })
         .select('id, company_name')
@@ -193,6 +202,13 @@ function createBillingRouter(options = {}) {
         throw managerInsert.error || new Error('Company manager was not created');
       }
       manager = managerInsert.data;
+      if (signup.ai_processing_authorized === true && signup.ai_processing_policy_version === AI_CONSENT_POLICY_VERSION) {
+        const authorizationActorUpdate = await supabase
+          .from('accounts')
+          .update({ rra_ai_processing_authorized_by: manager.id })
+          .eq('id', account.id);
+        if (authorizationActorUpdate.error) throw authorizationActorUpdate.error;
+      }
       const profileResult = await supabase.from('account_internal_profiles').upsert({
         account_id: account.id,
         lifecycle_status: 'onboarding',
@@ -285,14 +301,20 @@ function createBillingRouter(options = {}) {
     }
     const { payload, error: signupError } = buildSignupPayload(req.body, req);
     if (signupError) return res.status(400).json({ error: signupError });
-    if (!payload.company_csa || !payload.phone_number || !payload.role || !Number.isInteger(payload.driver_count) || payload.driver_count < 1) {
-      return res.status(400).json({ error: 'Company, phone, role, and at least one expected active driver are required.' });
+    if (!payload.company_csa || !payload.manager_phone_number || !payload.cxpc_phone_number || !payload.csa_phone_number || !payload.role || !Number.isInteger(payload.driver_count) || payload.driver_count < 1) {
+      return res.status(400).json({ error: 'Company, manager phone, CXPC phone, CSA phone, role, and at least one expected active driver are required.' });
     }
     if (!['owner', 'business contact'].includes(String(payload.role).toLowerCase())) {
       return res.status(400).json({ error: 'Company signup must be completed by an owner or authorized business contact.' });
     }
     if (req.body?.billing_consent !== true) {
       return res.status(400).json({ error: 'Billing authorization is required before opening secure checkout.' });
+    }
+    if (req.body?.ai_processing_authorized !== true || req.body?.ai_processing_policy_version !== AI_CONSENT_POLICY_VERSION) {
+      return res.status(400).json({
+        error: 'Company AI-processing authorization is required before opening secure checkout.',
+        current_policy_version: AI_CONSENT_POLICY_VERSION
+      });
     }
     const requestId = String(req.body?.request_id || '').trim();
     if (!/^[0-9a-f-]{36}$/i.test(requestId)) {
@@ -384,11 +406,17 @@ function createBillingRouter(options = {}) {
 
     const { payload, error: signupError } = buildSignupPayload(req.body, req);
     if (signupError) return res.status(400).json({ error: signupError });
-    if (!payload.company_csa || !payload.phone_number || !payload.role || !Number.isInteger(payload.driver_count) || payload.driver_count < 1) {
-      return res.status(400).json({ error: 'Company, phone, role, and at least one expected active driver are required.' });
+    if (!payload.company_csa || !payload.manager_phone_number || !payload.cxpc_phone_number || !payload.csa_phone_number || !payload.role || !Number.isInteger(payload.driver_count) || payload.driver_count < 1) {
+      return res.status(400).json({ error: 'Company, manager phone, CXPC phone, CSA phone, role, and at least one expected active driver are required.' });
     }
     if (req.body?.billing_consent !== true) {
       return res.status(400).json({ error: 'Billing authorization is required before saving a payment method.' });
+    }
+    if (req.body?.ai_processing_authorized !== true || req.body?.ai_processing_policy_version !== AI_CONSENT_POLICY_VERSION) {
+      return res.status(400).json({
+        error: 'Company AI-processing authorization is required before saving a payment method.',
+        current_policy_version: AI_CONSENT_POLICY_VERSION
+      });
     }
     const requestId = String(req.body?.request_id || '').trim();
     if (!/^[0-9a-f-]{36}$/i.test(requestId)) {

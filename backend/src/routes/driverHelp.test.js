@@ -5,7 +5,7 @@ const request = require('supertest');
 
 const { createDriverHelpRouter } = require('./driverHelp');
 
-function createTestApp(service) {
+function createTestApp(service, options = {}) {
   const app = express();
   app.use(express.json());
   app.use((req, _res, next) => {
@@ -16,7 +16,7 @@ function createTestApp(service) {
     };
     next();
   });
-  app.use('/driver-help', createDriverHelpRouter({ service }));
+  app.use('/driver-help', createDriverHelpRouter({ service, ...options }));
   return app;
 }
 
@@ -52,6 +52,54 @@ test('POST /driver-help/query passes authenticated account and driver scope to t
     sessionId: 'session-1',
     allowAiProcessing: true
   }]);
+});
+
+test('POST /driver-help/query returns the company CXPC number without AI interpretation', async () => {
+  const inserts = [];
+  const supabase = {
+    from(table) {
+      if (table === 'accounts') {
+        return {
+          select() { return this; },
+          eq() { return this; },
+          async maybeSingle() {
+            return {
+              data: {
+                rra_cxpc_phone_number: '555-0101',
+                rra_csa_phone_number: '555-0102',
+                rra_primary_manager_name: 'Taylor Owner',
+                rra_primary_manager_phone_number: '555-0100'
+              },
+              error: null
+            };
+          }
+        };
+      }
+      if (table === 'driver_help_interactions') {
+        return {
+          insert(payload) { inserts.push(payload); return this; },
+          select() { return this; },
+          async single() { return { data: { id: 'interaction-contact-1' }, error: null }; }
+        };
+      }
+      throw new Error(`Unexpected table ${table}`);
+    }
+  };
+  const app = createTestApp({
+    async answerQuestion() {
+      throw new Error('Operational retrieval should not be called for a local contact lookup.');
+    }
+  }, { supabase });
+
+  const response = await request(app)
+    .post('/driver-help/query')
+    .send({ question: 'What is my local CXPC phone number?' });
+
+  assert.equal(response.status, 200);
+  assert.equal(response.body.response_mode, 'ANSWER');
+  assert.match(response.body.answer, /555-0101/);
+  assert.equal(response.body.interpretation_mode, 'DETERMINISTIC');
+  assert.equal(inserts[0].response_mode, 'ANSWER');
 });
 
 test('POST /driver-help/query rejects empty and oversized questions', async () => {

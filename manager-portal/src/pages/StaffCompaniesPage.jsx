@@ -244,6 +244,7 @@ export default function StaffCompaniesPage() {
   const managers = Array.isArray(detail.managers) ? detail.managers : [];
   const drivers = Array.isArray(detail.drivers) ? detail.drivers : [];
   const monthlyReports = Array.isArray(driverHelp.monthly_reports) ? driverHelp.monthly_reports : [];
+  const emailDeliveries = Array.isArray(detail.email_deliveries) ? detail.email_deliveries : [];
   const driverById = new Map(drivers.map((driver) => [driver.id, driver]));
   const feedbackByInteraction = new Map(feedback.map((item) => [item.interaction_id, item]));
 
@@ -376,6 +377,31 @@ export default function StaffCompaniesPage() {
                 {account.rra_billing_treatment === 'complimentary' ? <p className="staff-usage-estimate-note">Regular service value is still tracked, but no payment method or subscription activation is required.</p> : null}
                 {account.rra_billing_treatment !== 'complimentary' && account.billing_setup_status !== 'succeeded' ? <p className="staff-usage-estimate-note">This company must securely save a payment method before billing can be activated.</p> : null}
                 {account.rra_billing_treatment !== 'complimentary' && account.billing_setup_status === 'succeeded' && !(account.counts?.active_drivers > 0) ? <p className="staff-usage-estimate-note">Add at least one active driver before billing can be activated.</p> : null}
+              </section>
+
+              <section className="staff-simple-section">
+                <div className="staff-simple-section-header">
+                  <div>
+                    <h3>Password email delivery</h3>
+                    <p>Recent password links for this company. Delivered means the receiving mail system accepted the email.</p>
+                  </div>
+                </div>
+                {emailDeliveries.length ? (
+                  <div className="staff-compact-list">
+                    {emailDeliveries.map((delivery) => (
+                      <article key={delivery.id}>
+                        <div>
+                          <strong>{delivery.recipient_email}</strong>
+                          <span>{delivery.recipient_type} · {delivery.message_type.replaceAll('_', ' ')}</span>
+                          <span>{formatDateTime(delivery.requested_at)}{delivery.failure_reason ? ` · ${delivery.failure_reason}` : ''}</span>
+                        </div>
+                        <StatusBadge tone={delivery.delivery_status === 'delivered' ? 'active' : ['failed', 'bounced', 'complained', 'suppressed'].includes(delivery.delivery_status) ? 'urgent' : 'warning'}>
+                          {delivery.delivery_status}
+                        </StatusBadge>
+                      </article>
+                    ))}
+                  </div>
+                ) : <EmptyState title="No password emails yet" description="Password link delivery will appear here after the first request." variant="inline" />}
               </section>
 
               <section className="staff-simple-section">

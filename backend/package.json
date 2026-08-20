@@ -51,6 +51,7 @@
     "jsonwebtoken": "^9.0.2",
     "playwright": "^1.59.1",
     "stripe": "^22.0.1",
+    "svix": "^1.99.1",
     "xlsx": "https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz"
   },
   "devDependencies": {

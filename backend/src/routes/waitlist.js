@@ -73,6 +73,9 @@ function buildSignupPayload(body = {}, req) {
       name,
       email,
       phone_number: normalizeText(body.phone ?? body.phone_number, 80),
+      manager_phone_number: normalizeText(body.manager_phone_number ?? body.phone ?? body.phone_number, 80),
+      cxpc_phone_number: normalizeText(body.cxpc_phone_number, 80),
+      csa_phone_number: normalizeText(body.csa_phone_number, 80),
       company_csa: normalizeText(body.company ?? body.company_csa, 200),
       role: normalizeText(body.role, 120),
       route_count: routeCount,
@@ -80,6 +83,9 @@ function buildSignupPayload(body = {}, req) {
       csa_count: csaCount,
       current_routing_tool: normalizeText(body.tool ?? body.current_routing_tool, 160),
       interested_in_beta: normalizeBetaInterest(body.beta ?? body.interested_in_beta),
+      ai_processing_authorized: body.ai_processing_authorized === true,
+      ai_processing_policy_version: normalizeText(body.ai_processing_policy_version, 80),
+      ai_processing_authorized_at: body.ai_processing_authorized === true ? new Date().toISOString() : null,
       billing_interval: ['monthly', 'annual'].includes(requestedBillingInterval) ? requestedBillingInterval : 'monthly',
       source_page: normalizeText(body.source_page, 500),
       user_agent: normalizeText(req.get('user-agent'), 500),
@@ -135,8 +141,8 @@ function createWaitlistRouter(options = {}) {
         return res.status(400).json({ error });
       }
 
-      if (!payload.company_csa || !payload.phone_number || !['owner', 'business contact'].includes(String(payload.role || '').toLowerCase()) || !Number.isInteger(payload.driver_count) || payload.driver_count < 1) {
-        return res.status(400).json({ error: 'Company, phone, Owner or Business contact role, and at least one expected active driver are required.' });
+      if (!payload.company_csa || !payload.manager_phone_number || !payload.cxpc_phone_number || !payload.csa_phone_number || !['owner', 'business contact'].includes(String(payload.role || '').toLowerCase()) || !Number.isInteger(payload.driver_count) || payload.driver_count < 1) {
+        return res.status(400).json({ error: 'Company, manager phone, CXPC phone, CSA phone, Owner or Business contact role, and at least one expected active driver are required.' });
       }
 
       const { error: upsertError } = await supabase

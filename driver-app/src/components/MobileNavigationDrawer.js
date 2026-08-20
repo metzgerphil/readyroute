@@ -60,6 +60,7 @@ export default function MobileNavigationDrawer({
   managerCsas = [],
   onClose,
   onManagerCsaSelect,
+  onPasswordPress,
   onLogout,
   onNavigate,
   onPrivacyPress,
@@ -191,6 +192,9 @@ export default function MobileNavigationDrawer({
           <View style={[styles.footer, { paddingBottom: Math.max(insets.bottom, 12) }]}>
             {driverHelpOnly && activeMode === 'driver' ? (
               <>
+                <Pressable onPress={onPasswordPress} style={({ pressed }) => [styles.supportButton, pressed ? styles.pressed : null]}>
+                  <Text style={styles.supportText}>Change password</Text>
+                </Pressable>
                 <Pressable onPress={onPrivacyPress} style={({ pressed }) => [styles.supportButton, pressed ? styles.pressed : null]}>
                   <Text style={styles.supportText}>Privacy &amp; AI</Text>
                 </Pressable>

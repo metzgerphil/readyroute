@@ -57,6 +57,9 @@ test('POST /waitlist/early-access stores company details without bypassing Strip
     assert.equal(query.payload.name, 'Phillip');
     assert.equal(query.payload.email, 'phil@example.com');
     assert.equal(query.payload.phone_number, '555-123-4567');
+    assert.equal(query.payload.manager_phone_number, '555-123-4567');
+    assert.equal(query.payload.cxpc_phone_number, '555-222-1000');
+    assert.equal(query.payload.csa_phone_number, '555-222-2000');
     assert.equal(query.payload.company_csa, 'Ready Route CSA');
     assert.equal(query.payload.role, 'Owner');
     assert.equal(query.payload.route_count, null);
@@ -74,7 +77,8 @@ test('POST /waitlist/early-access stores company details without bypassing Strip
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        name: 'Phillip', email: 'PHIL@example.com', phone: '555-123-4567', company: 'Ready Route CSA',
+        name: 'Phillip', email: 'PHIL@example.com', phone: '555-123-4567', manager_phone_number: '555-123-4567',
+        cxpc_phone_number: '555-222-1000', csa_phone_number: '555-222-2000', company: 'Ready Route CSA',
         role: 'Owner', drivers: '12', csas: '2', tool: 'GroundCloud', beta: 'Yes', billing_interval: 'annual'
       })
     });

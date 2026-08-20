@@ -11,6 +11,10 @@ const { parseMultipartForm } = require('../middleware/multipart');
 const { createBillingService } = require('../services/billing');
 const { createRouteInvoicingService } = require('../services/routeInvoicing');
 const {
+  AI_CONSENT_POLICY_VERSION,
+  createDriverHelpPrivacyService
+} = require('../services/driverHelpPrivacy');
+const {
   SESSION_SUBJECT_TYPES,
   buildCredentialSessionClaims
 } = require('../services/credentialSession');
@@ -25,6 +29,7 @@ const {
   sendManagerPasswordResetEmail: defaultSendManagerPasswordResetEmail
 } = require('../services/managerInviteEmail');
 const { applyLocationCorrectionsToStops } = require('../services/locationCorrections');
+const { recordEmailDelivery } = require('../services/emailDeliveryTracking');
 const {
   detectApartmentUnitStop,
   detectBusinessContact,
@@ -2191,6 +2196,27 @@ function createManagerRouter(options = {}) {
   const sendDriverInviteEmail = options.sendDriverInviteEmail || defaultSendDriverInviteEmail;
   const sendDriverPasswordResetEmail = options.sendDriverPasswordResetEmail || defaultSendDriverPasswordResetEmail;
   const sendManagerPasswordResetEmail = options.sendManagerPasswordResetEmail || defaultSendManagerPasswordResetEmail;
+  const driverHelpPrivacyService = options.driverHelpPrivacyService || createDriverHelpPrivacyService({
+    supabase,
+    now: nowProvider
+  });
+
+  async function trackPasswordEmail({ accountId, recipientEmail, recipientType, recipientId, messageType, delivery }) {
+    try {
+      await recordEmailDelivery({
+        supabase,
+        accountId,
+        recipientEmail,
+        recipientType,
+        recipientId,
+        messageType,
+        delivery,
+        now: nowProvider
+      });
+    } catch (error) {
+      console.error('Password email tracking failed:', error);
+    }
+  }
   const billingService = options.billingService || createBillingService({
     supabase,
     stripeClient: options.stripeClient,
@@ -2741,6 +2767,96 @@ function createManagerRouter(options = {}) {
     } catch (error) {
       console.error('Manager account lifecycle lookup failed:', error);
       return res.status(500).json({ error: 'Could not load ReadyRoute account status.' });
+    }
+  });
+
+  router.get('/account/ai-authorization', requireManager, async (req, res) => {
+    try {
+      const preference = await driverHelpPrivacyService.getPreference({
+        accountId: req.account.account_id,
+        actorType: 'manager',
+        actorId: req.account.manager_user_id || req.account.account_id
+      });
+      return res.status(200).json({
+        company_ai_processing_authorized: preference.company_ai_processing_authorized,
+        policy_version: AI_CONSENT_POLICY_VERSION,
+        company_authorized_at: preference.company_authorized_at,
+        can_manage: canManageAccountSettings(req)
+      });
+    } catch (error) {
+      console.error('Manager AI authorization lookup failed:', error);
+      return res.status(500).json({ error: 'Could not load the company AI authorization.' });
+    }
+  });
+
+  router.put('/account/ai-authorization', requireManager, requireAccountSettingsAccess, async (req, res) => {
+    if (typeof req.body?.authorized !== 'boolean') {
+      return res.status(400).json({ error: 'authorized must be true or false.' });
+    }
+    try {
+      const authorization = await driverHelpPrivacyService.setCompanyAuthorization({
+        accountId: req.account.account_id,
+        managerUserId: req.account.manager_user_id || null,
+        authorized: req.body.authorized,
+        policyVersion: String(req.body?.policy_version || '')
+      });
+      return res.status(200).json(authorization);
+    } catch (error) {
+      if (error?.code === 'POLICY_VERSION_MISMATCH') {
+        return res.status(409).json({ error: error.message, current_policy_version: AI_CONSENT_POLICY_VERSION });
+      }
+      if (error?.code === 'ACCOUNT_NOT_FOUND') {
+        return res.status(404).json({ error: error.message });
+      }
+      console.error('Manager AI authorization update failed:', error);
+      return res.status(500).json({ error: 'Could not update the company AI authorization.' });
+    }
+  });
+
+  router.get('/account/local-contacts', requireManager, async (req, res) => {
+    try {
+      const { data, error } = await supabase
+        .from('accounts')
+        .select('rra_cxpc_phone_number, rra_csa_phone_number, rra_primary_manager_name, rra_primary_manager_phone_number')
+        .eq('id', req.account.account_id)
+        .maybeSingle();
+      if (error) throw error;
+      if (!data) return res.status(404).json({ error: 'Account not found.' });
+      return res.status(200).json({
+        cxpc_phone_number: data.rra_cxpc_phone_number || '',
+        csa_phone_number: data.rra_csa_phone_number || '',
+        manager_name: data.rra_primary_manager_name || req.account.manager_name || '',
+        manager_phone_number: data.rra_primary_manager_phone_number || '',
+        can_manage: canManageAccountSettings(req)
+      });
+    } catch (error) {
+      console.error('Manager local contact lookup failed:', error);
+      return res.status(500).json({ error: 'Could not load company contact numbers.' });
+    }
+  });
+
+  router.put('/account/local-contacts', requireManager, requireAccountSettingsAccess, async (req, res) => {
+    const contacts = {
+      rra_cxpc_phone_number: String(req.body?.cxpc_phone_number || '').trim(),
+      rra_csa_phone_number: String(req.body?.csa_phone_number || '').trim(),
+      rra_primary_manager_name: String(req.body?.manager_name || '').trim(),
+      rra_primary_manager_phone_number: String(req.body?.manager_phone_number || '').trim()
+    };
+    if (Object.values(contacts).some((value) => value.length < 2 || value.length > 120)) {
+      return res.status(400).json({ error: 'CXPC phone, CSA phone, manager name, and manager phone are all required.' });
+    }
+    try {
+      const { error } = await supabase.from('accounts').update(contacts).eq('id', req.account.account_id);
+      if (error) throw error;
+      return res.status(200).json({
+        cxpc_phone_number: contacts.rra_cxpc_phone_number,
+        csa_phone_number: contacts.rra_csa_phone_number,
+        manager_name: contacts.rra_primary_manager_name,
+        manager_phone_number: contacts.rra_primary_manager_phone_number
+      });
+    } catch (error) {
+      console.error('Manager local contact update failed:', error);
+      return res.status(500).json({ error: 'Could not save company contact numbers.' });
     }
   });
 
@@ -4347,6 +4463,15 @@ function createManagerRouter(options = {}) {
         };
       }
 
+      await trackPasswordEmail({
+        accountId: req.account.account_id,
+        recipientEmail: managerUser.email,
+        recipientType: 'manager',
+        recipientId: managerUser.id,
+        messageType: 'manager_password_reset',
+        delivery: emailResult
+      });
+
       return res.status(200).json({
         message: emailResult.delivered
           ? `Password reset email sent to ${managerUser.email}.`
@@ -4634,6 +4759,14 @@ function createManagerRouter(options = {}) {
         console.error('Driver password reset email delivery failed:', emailError);
         emailResult = { delivered: false, skipped: false, reason: 'Email delivery failed' };
       }
+      await trackPasswordEmail({
+        accountId: driver.account_id,
+        recipientEmail: driver.email,
+        recipientType: 'driver',
+        recipientId: driver.id,
+        messageType: 'driver_password_reset',
+        delivery: emailResult
+      });
       return res.status(200).json({
         message: emailResult.delivered ? `Password reset email sent to ${driver.email}.` : 'Password reset link ready. Share it securely with the driver.',
         reset_url: emailResult.delivered ? null : resetUrl,

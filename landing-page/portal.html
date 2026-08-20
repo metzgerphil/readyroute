@@ -161,6 +161,26 @@
               <button class="primary" id="change-password-button" type="submit">Update password</button>
             </form>
           </article>
+          <article class="card portal-section-card">
+            <p class="eyebrow">Company authorization</p><h2>AI language interpretation</h2>
+            <p class="muted">This one company setting applies to every authorized RRA driver. OpenAI may interpret how a question is phrased, but it cannot create or change the approved operational answer.</p>
+            <p class="authorization-status" id="ai-authorization-status">Loading company authorization…</p>
+            <label class="authorization-choice"><input id="ai-authorization-checkbox" type="checkbox"><span>I am an owner or authorized business contact and authorize AI language interpretation for this company’s RRA drivers.</span></label>
+            <div class="message" id="ai-authorization-message" role="status" hidden></div>
+            <button class="primary" id="save-ai-authorization-button" type="button">Save company authorization</button>
+          </article>
+          <article class="card portal-section-card">
+            <p class="eyebrow">Driver contacts</p><h2>Local help numbers</h2>
+            <p class="muted">RRA uses these company-specific contacts when a driver needs to call for help. All four fields are required.</p>
+            <form id="local-contacts-form">
+              <label for="cxpc-phone-number">Local CXPC phone number</label><input id="cxpc-phone-number" required type="tel">
+              <label for="csa-phone-number">Local CSA phone number</label><input id="csa-phone-number" required type="tel">
+              <label for="primary-manager-name">Manager name</label><input id="primary-manager-name" required>
+              <label for="primary-manager-phone-number">Manager phone number</label><input id="primary-manager-phone-number" required type="tel">
+              <div class="message" id="local-contacts-message" role="status" hidden></div>
+              <button class="primary" id="save-local-contacts-button" type="submit">Save local contacts</button>
+            </form>
+          </article>
           <article class="card portal-section-card"><p class="eyebrow">Support</p><h2>Need help?</h2><p class="muted">Email ReadyRoute for company-access or account questions.</p><a class="support-action" href="mailto:info@readyroute.org">info@readyroute.org</a></article>
         </div>
       </section>

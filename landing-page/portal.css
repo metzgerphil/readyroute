@@ -92,6 +92,9 @@ input:focus { outline: 3px solid rgba(243, 111, 33, .18); border-color: var(--or
 .billing-card .message { width: 100%; }
 .settings-grid { display: grid; grid-template-columns: minmax(0, 1.3fr) minmax(260px, .7fr); align-items: start; gap: 18px; }
 .support-action { display: inline-flex; margin-top: 15px; font-weight: 800; }
+.authorization-status { border-radius: 10px; padding: 11px 13px; color: var(--navy); background: #eef3f6; font-size: .9rem; font-weight: 750; }
+.authorization-choice { display: grid; grid-template-columns: 22px 1fr; gap: 10px; align-items: start; margin: 18px 0 4px; color: var(--muted); line-height: 1.5; }
+.authorization-choice input { width: 18px; min-height: 18px; margin-top: 2px; padding: 0; }
 
 footer { display: flex; justify-content: space-between; gap: 24px; border-top: 1px solid var(--line); padding: 26px 0 35px; color: var(--muted); font-size: .8rem; }
 footer nav { display: flex; gap: 16px; flex: 0 0 auto; }
