@@ -50,7 +50,8 @@ test('driver invitation sends one complete onboarding email', async (t) => {
   assert.equal(body.to[0], 'Driver.One@Example.com');
   assert.equal(body.subject, 'Bridge & Transit invited you to ReadyRoute');
   assert.match(body.html, /Your login email:<\/strong> driver\.one@example\.com/);
-  assert.match(body.html, /Create my password/);
+  assert.match(body.html, /Set up my driver access/);
+  assert.match(body.html, /4-digit driver PIN or a full password/);
   assert.match(body.html, /https:\/\/apps\.apple\.com\/us\/app\/ready-route\/id6762488881/);
   assert.match(body.html, /Android download: coming soon/);
   assert.match(body.html, /Signing in on a new phone signs the previous phone out/);

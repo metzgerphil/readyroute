@@ -197,10 +197,10 @@ async function sendDriverInviteEmail({ to, fullName, inviteUrl, companyName }) {
       <p>Hi ${safeName},</p>
       <p>${safeCompanyName} created a ReadyRoute driver account for you.</p>
       <p><strong>Your login email:</strong> ${safeLoginEmail}</p>
-      <p><strong>1. Create your private password.</strong> This secure link is only for you and expires automatically.</p>
+      <p><strong>1. Choose your private sign-in.</strong> Use a quick 4-digit driver PIN or a full password. This secure link is only for you and expires automatically.</p>
       <p style="margin:24px 0;">
         <a href="${safeInviteUrl}" style="background:#ff6200;color:#ffffff;text-decoration:none;padding:12px 18px;border-radius:12px;font-weight:700;display:inline-block;">
-          Create my password
+          Set up my driver access
         </a>
       </p>
       <p><strong>2. Download ReadyRoute on your phone.</strong></p>
@@ -210,11 +210,11 @@ async function sendDriverInviteEmail({ to, fullName, inviteUrl, companyName }) {
         </a>
         ${androidDownload}
       </p>
-      <p><strong>3. Sign in</strong> with the login email above and the password you created.</p>
+      <p><strong>3. Sign in</strong> with the login email above and the PIN or password you created.</p>
       <p>Only one phone can use this driver account at a time. Signing in on a new phone signs the previous phone out.</p>
-      <p>If the password button does not work, open this link:</p>
+      <p>If the setup button does not work, open this link:</p>
       <p><a href="${safeInviteUrl}">${safeInviteUrl}</a></p>
-      <p>This single invitation email contains everything you need to get started. Do not forward it or share your password.</p>
+      <p>This single invitation email contains everything you need to get started. Do not forward it or share your PIN or password.</p>
     </div>
   `;
   return sendResendEmail({
@@ -229,13 +229,13 @@ async function sendDriverPasswordResetEmail({ to, fullName, resetUrl, companyNam
   const safeCompanyName = String(companyName || 'your company').trim();
   return sendResendEmail({
     to,
-    subject: 'Reset your ReadyRoute driver password',
+    subject: 'Reset your ReadyRoute driver access',
     html: `
       <div style="font-family:Arial,Helvetica,sans-serif;line-height:1.6;color:#173042;">
-        <h2>Reset your ReadyRoute driver password</h2>
+        <h2>Reset your ReadyRoute driver access</h2>
         <p>Hi ${safeName},</p>
-        <p>${safeCompanyName} prepared a secure password-reset link for your driver account.</p>
-        <p><a href="${resetUrl}">Choose a new ReadyRoute password</a></p>
+        <p>${safeCompanyName} prepared a secure reset link for your driver account.</p>
+        <p><a href="${resetUrl}">Choose a new 4-digit PIN or full password</a></p>
         <p>This single-use link expires in 30 minutes. Ignore it if you did not request the reset.</p>
       </div>
     `
