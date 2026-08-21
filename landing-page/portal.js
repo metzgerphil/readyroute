@@ -33,6 +33,14 @@ const localContactsForm = document.querySelector('#local-contacts-form');
 const localContactsMessage = document.querySelector('#local-contacts-message');
 const saveLocalContactsButton = document.querySelector('#save-local-contacts-button');
 const monthlyReportHistory = document.querySelector('#monthly-report-history');
+const driverPinDialog = document.querySelector('#driver-pin-dialog');
+const driverPinForm = document.querySelector('#driver-pin-form');
+const driverPinDescription = document.querySelector('#driver-pin-description');
+const driverPinInput = document.querySelector('#driver-pin');
+const driverPinConfirmInput = document.querySelector('#driver-pin-confirm');
+const driverPinError = document.querySelector('#driver-pin-error');
+const saveDriverPinButton = document.querySelector('#save-driver-pin');
+let selectedDriverForPin = null;
 const AI_AUTHORIZATION_POLICY_VERSION = '2026-08-20';
 
 function setMessage(element, message = '') {
@@ -128,6 +136,12 @@ function renderDrivers(drivers) {
 
     const actions = document.createElement('div');
     actions.className = 'row-actions';
+    const pinButton = document.createElement('button');
+    pinButton.type = 'button';
+    pinButton.className = 'pin-action';
+    pinButton.textContent = driver.has_password ? 'Reset PIN' : 'Set PIN';
+    pinButton.addEventListener('click', () => openDriverPinDialog(driver));
+    actions.append(pinButton);
     if (status === 'active' || driver.has_password) {
       const resetButton = document.createElement('button');
       resetButton.type = 'button';
@@ -150,6 +164,54 @@ function renderDrivers(drivers) {
     row.append(identity, email, badge, actions);
     driverList.append(row);
   });
+}
+
+function openDriverPinDialog(driver) {
+  selectedDriverForPin = driver;
+  driverPinForm.reset();
+  setMessage(driverPinError);
+  driverPinDescription.textContent = `Choose a private 4-digit PIN for ${driver.name || driver.email}. It will work immediately with ${driver.email}.`;
+  driverPinDialog.showModal();
+  driverPinInput.focus();
+}
+
+function closeDriverPinDialog() {
+  selectedDriverForPin = null;
+  driverPinForm.reset();
+  setMessage(driverPinError);
+  driverPinDialog.close();
+}
+
+async function saveDriverPin(event) {
+  event.preventDefault();
+  setMessage(driverPinError);
+  const pin = driverPinInput.value.replace(/\D/g, '').slice(0, 4);
+  const confirmation = driverPinConfirmInput.value.replace(/\D/g, '').slice(0, 4);
+
+  if (!/^\d{4}$/.test(pin)) {
+    setMessage(driverPinError, 'Enter exactly 4 digits.');
+    return;
+  }
+  if (pin !== confirmation) {
+    setMessage(driverPinError, 'The PINs do not match.');
+    return;
+  }
+  if (!selectedDriverForPin?.id) return;
+
+  saveDriverPinButton.disabled = true;
+  try {
+    const payload = await request(`/manager/drivers/${encodeURIComponent(selectedDriverForPin.id)}/pin`, {
+      method: 'POST',
+      body: JSON.stringify({ pin })
+    });
+    closeDriverPinDialog();
+    await loadDrivers();
+    setMessage(driversMessage, payload.message || 'Driver PIN updated.');
+  } catch (error) {
+    setMessage(driverPinError, error.message);
+  } finally {
+    saveDriverPinButton.disabled = false;
+  }
 }
 
 async function loadDrivers() {
@@ -668,6 +730,18 @@ localContactsForm.addEventListener('submit', async (event) => {
   } finally {
     saveLocalContactsButton.disabled = false;
   }
+});
+
+driverPinInput.addEventListener('input', () => {
+  driverPinInput.value = driverPinInput.value.replace(/\D/g, '').slice(0, 4);
+});
+driverPinConfirmInput.addEventListener('input', () => {
+  driverPinConfirmInput.value = driverPinConfirmInput.value.replace(/\D/g, '').slice(0, 4);
+});
+driverPinForm.addEventListener('submit', saveDriverPin);
+document.querySelector('#close-driver-pin-dialog').addEventListener('click', closeDriverPinDialog);
+driverPinDialog.addEventListener('click', (event) => {
+  if (event.target === driverPinDialog) closeDriverPinDialog();
 });
 
 if (getToken()) openPortal();

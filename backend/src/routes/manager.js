@@ -4648,6 +4648,7 @@ function createManagerRouter(options = {}) {
         hourly_rate: parsedHourlyRate,
         daily_flat_rate: parsedDailyFlatRate,
         pin: pinHash,
+        password_hash: resolvedPin ? pinHash : null,
         is_active: true
       };
 
@@ -4837,6 +4838,50 @@ function createManagerRouter(options = {}) {
     }
   });
 
+  router.post('/drivers/:driver_id/pin', requireManager, async (req, res) => {
+    const pin = String(req.body?.pin || '').trim();
+
+    if (!/^\d{4}$/.test(pin)) {
+      return res.status(400).json({ error: 'PIN must be exactly 4 digits' });
+    }
+
+    try {
+      const { data: driver, error: driverError } = await supabase
+        .from('drivers')
+        .select('id, account_id, is_active')
+        .eq('id', req.params.driver_id)
+        .eq('account_id', req.account.account_id)
+        .maybeSingle();
+
+      if (driverError) throw driverError;
+      if (!driver) return res.status(404).json({ error: 'Driver not found' });
+      if (driver.is_active === false) {
+        return res.status(409).json({ error: 'Reactivate this driver before setting a PIN' });
+      }
+
+      const credentialHash = await bcrypt.hash(pin, 10);
+      const acceptedAt = nowProvider().toISOString();
+      const { error: updateError } = await supabase
+        .from('drivers')
+        .update({
+          password_hash: credentialHash,
+          pin: credentialHash,
+          invite_accepted_at: acceptedAt
+        })
+        .eq('id', driver.id)
+        .eq('account_id', driver.account_id);
+
+      if (updateError) throw updateError;
+
+      return res.status(200).json({
+        message: 'Driver PIN updated. The driver can sign in immediately with this email and PIN.'
+      });
+    } catch (error) {
+      console.error('Manager driver PIN update failed:', error);
+      return res.status(500).json({ error: 'Failed to update driver PIN' });
+    }
+  });
+
   router.post('/drivers/import', requireManager, parseMultipartForm, async (req, res) => {
     if (!req.file) {
       return res.status(400).json({ error: 'Driver import file is required' });
@@ -4889,6 +4934,7 @@ function createManagerRouter(options = {}) {
           continue;
         }
 
+        const credentialHash = await bcrypt.hash(resolvedPin, 10);
         const driverPayload = {
           account_id: req.account.account_id,
           name,
@@ -4896,7 +4942,8 @@ function createManagerRouter(options = {}) {
           fedex_driver_id: String(row.fedex_driver_id || '').trim() || null,
           phone: String(row.phone || '').trim() || null,
           hourly_rate: 0,
-          pin: await bcrypt.hash(resolvedPin, 10),
+          pin: credentialHash,
+          password_hash: credentialHash,
           is_active: true
         };
 
@@ -4999,7 +5046,9 @@ function createManagerRouter(options = {}) {
       }
 
       if (pin) {
-        updatePayload.pin = await bcrypt.hash(String(pin), 10);
+        const credentialHash = await bcrypt.hash(String(pin), 10);
+        updatePayload.pin = credentialHash;
+        updatePayload.password_hash = credentialHash;
       }
 
       let updateQuery = await supabase

@@ -469,6 +469,7 @@ test('driver invitation lets every company driver choose a four-digit PIN', asyn
 
     if (query.table === 'drivers' && query.operation === 'update') {
       assert.equal(await bcrypt.compare('2468', query.payload.password_hash), true);
+      assert.equal(query.payload.pin, query.payload.password_hash);
       Object.assign(driverState, query.payload);
       return { data: null, error: null };
     }

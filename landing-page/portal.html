@@ -107,7 +107,7 @@
             <div><p class="eyebrow">Driver access</p><h2>Authorized drivers</h2></div>
             <button class="primary compact" id="open-driver-form" type="button">Add driver</button>
           </div>
-          <div class="driver-access-note"><strong>How drivers sign in</strong><span>Drivers use the ReadyRoute mobile app with the email or username shown below and can choose a 4-digit PIN or full password. Select <b>Send access email</b> when setup is pending, or <b>Send access reset</b> after setup.</span></div>
+          <div class="driver-access-note"><strong>How drivers sign in</strong><span>Drivers use the ReadyRoute mobile app with the email shown below and their 4-digit PIN or password. You can set a driver PIN here for immediate access, or send a private setup/reset email.</span></div>
           <div class="message" id="drivers-message" role="status" hidden></div>
           <div class="message error" id="drivers-error" role="alert" hidden></div>
           <div class="driver-list" id="driver-list" aria-live="polite"></div>
@@ -130,6 +130,22 @@
         </aside>
       </div>
       </section>
+
+      <dialog class="pin-dialog" id="driver-pin-dialog">
+        <form id="driver-pin-form">
+          <div class="section-heading">
+            <div><p class="eyebrow">Driver access</p><h2>Set driver PIN</h2></div>
+            <button class="close-button" id="close-driver-pin-dialog" aria-label="Close" type="button">×</button>
+          </div>
+          <p class="muted" id="driver-pin-description">Choose a private 4-digit PIN. The driver can use it immediately with their email in the ReadyRoute app.</p>
+          <label for="driver-pin">New 4-digit PIN</label>
+          <input id="driver-pin" inputmode="numeric" maxlength="4" pattern="[0-9]{4}" required type="password" autocomplete="new-password">
+          <label for="driver-pin-confirm">Confirm PIN</label>
+          <input id="driver-pin-confirm" inputmode="numeric" maxlength="4" pattern="[0-9]{4}" required type="password" autocomplete="new-password">
+          <div class="message error" id="driver-pin-error" role="alert" hidden></div>
+          <button class="primary" id="save-driver-pin" type="submit">Save PIN</button>
+        </form>
+      </dialog>
 
       <section class="portal-panel" data-panel="managers" hidden>
         <div class="portal-grid manager-grid">
