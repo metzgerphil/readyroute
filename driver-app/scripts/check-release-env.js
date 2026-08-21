@@ -134,6 +134,9 @@ function main() {
       if (!driverHelpOnly) {
         errors.push(`${profileName} profile must set EXPO_PUBLIC_DRIVER_HELP_ONLY=true.`);
       }
+      if (apiUrl !== 'https://api.readyroute.org') {
+        errors.push(`${profileName} profile must use the production ReadyRoute API.`);
+      }
       if (appConfig?.ios?.bundleIdentifier !== 'com.readyroute.driverapp') {
         errors.push(`${profileName} profile must use the production iOS bundle identifier.`);
       }
