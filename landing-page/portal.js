@@ -131,7 +131,7 @@ function renderDrivers(drivers) {
     if (status === 'active' || driver.has_password) {
       const resetButton = document.createElement('button');
       resetButton.type = 'button';
-      resetButton.textContent = 'Send password reset';
+      resetButton.textContent = 'Send access reset';
       resetButton.addEventListener('click', () => resetDriverAccess(driver.id, resetButton));
       actions.append(resetButton);
     } else if (['pending', 'expired'].includes(status)) {
@@ -376,7 +376,7 @@ async function resetDriverAccess(driverId, button) {
   setMessage(driversError);
   try {
     const payload = await request(`/manager/drivers/${encodeURIComponent(driverId)}/password-reset`, { method: 'POST' });
-    setMessage(driversMessage, payload.message || 'Driver password reset sent.');
+    setMessage(driversMessage, payload.message || 'Driver access reset sent.');
   } catch (error) {
     setMessage(driversError, error.message);
   } finally {
@@ -523,7 +523,7 @@ driverForm.addEventListener('submit', async (event) => {
     addDriverCard.hidden = true;
     await loadDrivers();
     if (payload.invitation?.email_delivery === 'sent') {
-      setMessage(driversMessage, 'Driver added. One setup email was sent with the app and password instructions.');
+      setMessage(driversMessage, 'Driver added. One setup email was sent with the app and PIN or password instructions.');
     } else {
       setMessage(driversError, 'Driver added, but the setup email could not be delivered. Select Send access email beside the driver to try again.');
     }

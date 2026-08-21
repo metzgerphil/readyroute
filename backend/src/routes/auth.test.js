@@ -450,6 +450,55 @@ test('legacy driver login accepts an established password as well as a four-digi
   assert.equal(jwt.verify(response.body.token, 'test-secret').device_session_id, 'device-session-password-1');
 });
 
+test('driver invitation lets every company driver choose a four-digit PIN', async () => {
+  const invitedAt = new Date().toISOString();
+  const driverState = {
+    id: 'driver-pin-choice-1',
+    account_id: 'account-1',
+    name: 'PIN Choice Driver',
+    email: 'pin-choice@example.com',
+    password_hash: null,
+    invited_at: invitedAt,
+    invite_accepted_at: null,
+    is_active: true
+  };
+  const supabase = new AuthRouteMockSupabase(async (query) => {
+    if (query.table === 'drivers' && query.operation === 'select') {
+      return { data: { ...driverState }, error: null };
+    }
+
+    if (query.table === 'drivers' && query.operation === 'update') {
+      assert.equal(await bcrypt.compare('2468', query.payload.password_hash), true);
+      Object.assign(driverState, query.payload);
+      return { data: null, error: null };
+    }
+
+    throw new Error(`Unexpected query ${query.table}:${query.operation}`);
+  });
+  const app = createApp({ supabase, jwtSecret: 'test-secret', enforceBilling: false });
+  const token = jwt.sign({
+    purpose: 'driver_invite',
+    driver_id: driverState.id,
+    account_id: driverState.account_id,
+    email: driverState.email,
+    invited_at: invitedAt
+  }, 'test-secret', { expiresIn: '7d' });
+
+  const invalidResponse = await request(app)
+    .post('/auth/driver/accept-invite')
+    .send({ token, password: '24680', credential_type: 'pin' });
+  assert.equal(invalidResponse.status, 400);
+  assert.match(invalidResponse.body.error, /exactly 4 digits/i);
+
+  const response = await request(app)
+    .post('/auth/driver/accept-invite')
+    .send({ token, password: '2468', credential_type: 'pin' });
+
+  assert.equal(response.status, 200);
+  assert.match(response.body.message, /driver pin established/i);
+  assert.ok(driverState.invite_accepted_at);
+});
+
 test('legacy driver login accepts the username established from the invitation', async () => {
   const password = 'SecureDriverPassword!2026';
   const passwordHash = await bcrypt.hash(password, 10);

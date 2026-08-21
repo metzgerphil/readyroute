@@ -102,6 +102,14 @@ function createAuthRouter(options = {}) {
     return typeof password === 'string' && password.length >= 10;
   }
 
+  function isValidDriverCredential(credential, credentialType) {
+    if (credentialType === 'pin') {
+      return /^\d{4}$/.test(credential);
+    }
+
+    return isStrongEnoughPassword(credential);
+  }
+
   function normalizeEmail(email) {
     return String(email || '').trim().toLowerCase();
   }
@@ -730,13 +738,18 @@ function createAuthRouter(options = {}) {
   router.post('/driver/accept-invite', async (req, res) => {
     const token = String(req.body?.token || '');
     const password = String(req.body?.password || '');
+    const credentialType = req.body?.credential_type === 'pin' ? 'pin' : 'password';
     const username = String(req.body?.username || '').trim() || null;
 
     if (!token || !password) {
-      return res.status(400).json({ error: 'Invite token and password are required' });
+      return res.status(400).json({ error: 'Invite token and driver PIN or password are required' });
     }
-    if (!isStrongEnoughPassword(password)) {
-      return res.status(400).json({ error: 'Password must be at least 10 characters' });
+    if (!isValidDriverCredential(password, credentialType)) {
+      return res.status(400).json({
+        error: credentialType === 'pin'
+          ? 'Driver PIN must be exactly 4 digits'
+          : 'Password must be at least 10 characters'
+      });
     }
     if (username && !/^[A-Za-z0-9._-]{3,40}$/.test(username)) {
       return res.status(400).json({ error: 'Username must be 3–40 letters, numbers, periods, underscores, or dashes' });
@@ -794,8 +807,8 @@ function createAuthRouter(options = {}) {
 
       return res.status(200).json({
         message: payload.purpose === 'driver_invite'
-          ? 'Driver password established. Sign in to authorize this device.'
-          : 'Driver password reset. Sign in again on the authorized device.'
+          ? `Driver ${credentialType === 'pin' ? 'PIN' : 'password'} established. Sign in to authorize this device.`
+          : `Driver ${credentialType === 'pin' ? 'PIN' : 'password'} reset. Sign in again on the authorized device.`
       });
     } catch (error) {
       if (error?.code === '23505') {
