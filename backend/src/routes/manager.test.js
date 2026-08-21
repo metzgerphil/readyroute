@@ -635,6 +635,7 @@ test('POST /manager/drivers creates a driver with a hashed PIN', async () => {
       assert.equal(query.payload.hourly_rate, 0);
       assert.equal(query.payload.is_active, true);
       assert.notEqual(query.payload.pin, '1234');
+      assert.equal(query.payload.password_hash, query.payload.pin);
       return {
         data: { id: 'driver-99' },
         error: null
@@ -673,6 +674,7 @@ test('POST /manager/drivers creates a driver with a hashed PIN', async () => {
     const insertCall = supabase.calls.find((call) => call.table === 'drivers' && call.operation === 'insert');
     assert.ok(insertCall);
     assert.equal(await bcrypt.compare('1234', insertCall.payload.pin), true);
+    assert.equal(insertCall.payload.password_hash, insertCall.payload.pin);
   } finally {
     await server.close();
   }
@@ -2606,6 +2608,7 @@ test('PUT /manager/drivers/:id hashes and updates a new driver PIN when provided
       assert.equal(query.payload.phone, '555-8888');
       assert.equal(query.payload.hourly_rate, 25.5);
       assert.notEqual(query.payload.pin, '4321');
+      assert.equal(query.payload.password_hash, query.payload.pin);
       return { data: null, error: null };
     }
 
@@ -2634,6 +2637,57 @@ test('PUT /manager/drivers/:id hashes and updates a new driver PIN when provided
 
     const updateCall = supabase.calls.find((call) => call.table === 'drivers' && call.operation === 'update');
     assert.equal(await bcrypt.compare('4321', updateCall.payload.pin), true);
+    assert.equal(updateCall.payload.password_hash, updateCall.payload.pin);
+  } finally {
+    await server.close();
+  }
+});
+
+test('POST /manager/drivers/:id/pin replaces the effective driver credential', async () => {
+  let pinUpdatePayload = null;
+  const supabase = new MockSupabase((query) => {
+    if (query.table === 'drivers' && query.operation === 'select') {
+      return {
+        data: { id: 'driver-1', account_id: 'acct-1', is_active: true },
+        error: null
+      };
+    }
+
+    if (query.table === 'drivers' && query.operation === 'update') {
+      assert.equal(query.payload.password_hash, query.payload.pin);
+      assert.ok(query.payload.invite_accepted_at);
+      pinUpdatePayload = query.payload;
+      return { data: null, error: null };
+    }
+
+    throw new Error(`Unexpected query ${query.table}:${query.operation}`);
+  });
+
+  const server = await startTestServer({ supabase });
+
+  try {
+    const invalidResponse = await fetch(`${server.baseUrl}/manager/drivers/driver-1/pin`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${signManagerToken()}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({ pin: '48261' })
+    });
+    assert.equal(invalidResponse.status, 400);
+
+    const response = await fetch(`${server.baseUrl}/manager/drivers/driver-1/pin`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${signManagerToken()}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({ pin: '4826' })
+    });
+
+    assert.equal(response.status, 200);
+    assert.match((await response.json()).message, /sign in immediately/i);
+    assert.equal(await bcrypt.compare('4826', pinUpdatePayload.password_hash), true);
   } finally {
     await server.close();
   }

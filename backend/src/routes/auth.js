@@ -795,6 +795,9 @@ function createAuthRouter(options = {}) {
       const acceptedAt = new Date().toISOString();
       const passwordUpdate = {
         password_hash: passwordHash,
+        // Keep the legacy driver credential column synchronized so there is
+        // only one effective credential regardless of which login path reads it.
+        pin: passwordHash,
         ...(username ? { username } : {}),
         ...(payload.purpose === 'driver_invite' ? { invite_accepted_at: acceptedAt } : {})
       };

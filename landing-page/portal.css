@@ -110,6 +110,10 @@ input:focus { outline: 3px solid rgba(243, 111, 33, .18); border-color: var(--or
 .status.inactive { color: #646b70; background: #eceff1; }
 .row-actions { display: flex; justify-content: flex-end; gap: 8px; }
 .row-actions button { border: 1px solid #c1c9ce; border-radius: 8px; padding: 7px 10px; color: var(--navy); background: white; font-size: .79rem; font-weight: 750; }
+.row-actions .pin-action { border-color: var(--navy); color: white; background: var(--navy); }
+.pin-dialog { width: min(470px, calc(100% - 28px)); border: 1px solid rgba(207, 216, 222, .95); border-radius: 20px; padding: 0; color: var(--ink); background: white; box-shadow: 0 24px 70px rgba(23, 43, 58, .24); }
+.pin-dialog::backdrop { background: rgba(16, 31, 42, .55); backdrop-filter: blur(3px); }
+.pin-dialog form { margin: 0; padding: 28px; }
 .empty-state { border: 1px dashed #bdc7cd; border-radius: 12px; padding: 28px; color: var(--muted); text-align: center; }
 .close-button { border: 0; color: var(--muted); background: transparent; font-size: 1.7rem; }
 .optional { color: var(--muted); font-size: .75rem; font-weight: 500; }
