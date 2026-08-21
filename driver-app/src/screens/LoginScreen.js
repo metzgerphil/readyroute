@@ -13,11 +13,31 @@ import {
   View
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import Constants from 'expo-constants';
 
 import { getApiErrorMessage } from '../utils/apiError';
-import api from '../services/api';
+import api, { API_URL } from '../services/api';
 import { saveSessionTokens } from '../services/auth';
 import { getOrCreateDeviceIdentity } from '../services/deviceIdentity';
+
+const IS_STAGING_BUILD = API_URL.includes('readyroute-api-staging');
+const BUILD_NUMBER = Constants.nativeBuildVersion || Constants.expoConfig?.ios?.buildNumber || null;
+
+export function getLoginErrorMessage(error) {
+  if (error?.code === 'INVALID_LOGIN_RESPONSE') {
+    return 'ReadyRoute could not complete sign in. Try again.';
+  }
+
+  if (!error?.response) {
+    return 'Could not reach ReadyRoute. Check your connection and try again.';
+  }
+
+  if (error.response.status === 401) {
+    return 'Incorrect email or PIN/password. Try again.';
+  }
+
+  return getApiErrorMessage(error, 'ReadyRoute could not complete sign in. Try again.');
+}
 
 export default function LoginScreen({ onAuthenticated }) {
   const { width } = useWindowDimensions();
@@ -35,7 +55,7 @@ export default function LoginScreen({ onAuthenticated }) {
 
   async function handleLogin() {
     if (!email.trim() || !secret.trim()) {
-      setErrorMessage('Incorrect username, email, or password. Try again.');
+      setErrorMessage('Enter your email and PIN or password.');
       return;
     }
 
@@ -43,8 +63,19 @@ export default function LoginScreen({ onAuthenticated }) {
     setLoading(true);
     setErrorMessage('');
 
+    let deviceIdentity;
     try {
-      const deviceIdentity = await getOrCreateDeviceIdentity();
+      deviceIdentity = await getOrCreateDeviceIdentity();
+    } catch (_deviceError) {
+      setErrorMessage('ReadyRoute could not identify this phone. Close and reopen the app, then try again.');
+      setLoading(false);
+      return;
+    }
+
+    let driverToken = null;
+    let managerToken = null;
+
+    try {
       const mobileResponse = await api.post('/auth/mobile/login', {
         email: email.trim(),
         secret: secret.trim(),
@@ -53,38 +84,49 @@ export default function LoginScreen({ onAuthenticated }) {
         skipAuth: true
       });
 
-      const driverToken = mobileResponse.data?.driver_token || null;
-      const managerToken = mobileResponse.data?.manager_token || null;
+      driverToken = mobileResponse.data?.driver_token || null;
+      managerToken = mobileResponse.data?.manager_token || null;
 
       if (!driverToken && !managerToken) {
-        throw new Error('Missing mobile session tokens');
+        const responseError = new Error('Missing mobile session tokens');
+        responseError.code = 'INVALID_LOGIN_RESPONSE';
+        throw responseError;
+      }
+    } catch (mobileError) {
+      if (mobileError?.response?.status !== 404) {
+        setErrorMessage(getLoginErrorMessage(mobileError));
+        setLoading(false);
+        return;
       }
 
-      await saveSessionTokens({ driverToken, managerToken });
-      onAuthenticated({ driverToken, managerToken });
-    } catch (_mobileError) {
       try {
         const response = await api.post('/auth/driver/login', {
           email: email.trim(),
-          pin: secret.trim(),
+          password: secret.trim(),
           ...deviceIdentity
         }, {
           skipAuth: true
         });
-        const legacyDriverToken = response.data?.token;
+        driverToken = response.data?.token || null;
+        managerToken = null;
 
-        if (!legacyDriverToken) {
-          throw new Error('Missing driver token');
+        if (!driverToken) {
+          const responseError = new Error('Missing driver token');
+          responseError.code = 'INVALID_LOGIN_RESPONSE';
+          throw responseError;
         }
-
-        await saveSessionTokens({ driverToken: legacyDriverToken });
-        onAuthenticated({ driverToken: legacyDriverToken, managerToken: null });
       } catch (legacyError) {
-        const networkUnavailable = !(_mobileError?.response || legacyError?.response);
-        setErrorMessage(networkUnavailable
-          ? 'Could not reach ReadyRoute. Check your connection and try again.'
-          : 'Incorrect username, email, or password. Try again.');
+        setErrorMessage(getLoginErrorMessage(legacyError));
+        setLoading(false);
+        return;
       }
+    }
+
+    try {
+      await saveSessionTokens({ driverToken, managerToken });
+      onAuthenticated({ driverToken, managerToken });
+    } catch (_storageError) {
+      setErrorMessage('Your login was accepted, but ReadyRoute could not save it on this phone. Restart the phone and try again.');
     } finally {
       setLoading(false);
     }
@@ -146,22 +188,19 @@ export default function LoginScreen({ onAuthenticated }) {
 
               <View style={styles.form}>
                 <Text style={styles.helperText}>
-                  Sign in with your ReadyRoute username or email and password.
-                </Text>
-                <Text style={styles.helperText}>
-                  First time here? Use the secure link in your driver invitation email to create your password first.
+                  Sign in with your ReadyRoute email and either your 4-digit driver PIN or your manager password.
                 </Text>
                 <TextInput
                   autoCapitalize="none"
                   autoCorrect={false}
-                  keyboardType="default"
+                  keyboardType="email-address"
                   onChangeText={(value) => {
                     setEmail(value);
                     if (errorMessage) {
                       setErrorMessage('');
                     }
                   }}
-                  placeholder="Username or email"
+                  placeholder="Email"
                   placeholderTextColor="#8b8b8b"
                   returnKeyType="next"
                   style={styles.input}
@@ -174,7 +213,7 @@ export default function LoginScreen({ onAuthenticated }) {
                       setErrorMessage('');
                     }
                   }}
-                  placeholder="Password"
+                  placeholder="4-digit PIN or password"
                   placeholderTextColor="#8b8b8b"
                   secureTextEntry
                   style={styles.input}
@@ -249,6 +288,11 @@ export default function LoginScreen({ onAuthenticated }) {
                 ) : null}
                 {errorMessage ? <Text style={styles.errorText}>{errorMessage}</Text> : null}
               </View>
+              {IS_STAGING_BUILD ? (
+                <Text style={styles.buildText}>
+                  TestFlight staging{BUILD_NUMBER ? ` • Build ${BUILD_NUMBER}` : ''}
+                </Text>
+              ) : null}
             </View>
           </ScrollView>
         </KeyboardAvoidingView>
@@ -405,5 +449,12 @@ const styles = StyleSheet.create({
     fontSize: 18,
     lineHeight: 24,
     marginTop: 4
+  },
+  buildText: {
+    color: '#7a7a7a',
+    fontSize: 12,
+    lineHeight: 18,
+    marginTop: 24,
+    textAlign: 'center'
   }
 });

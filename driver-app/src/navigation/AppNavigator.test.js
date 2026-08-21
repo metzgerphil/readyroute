@@ -271,7 +271,11 @@ describe('AppNavigator', () => {
       isBootstrapping: false,
       logout,
       needsModeSelection: false,
-      selectMode
+      selectMode,
+      sessionTokens: {
+        driverToken: null,
+        managerToken: 'manager-token'
+      }
     });
 
     let tree;
@@ -293,6 +297,54 @@ describe('AppNavigator', () => {
     expect(screenLabels).not.toContain('Routes');
     expect(screenLabels).not.toContain('HomeScreen');
     expect(screenLabels).not.toContain('PortalEntryScreen');
+    expect(mockDrawerProps.current.showModeSwitch).toBe(true);
+  });
+
+  it('creates a driver session when a manager switches to the driver question view', async () => {
+    api.post.mockResolvedValueOnce({ data: { driver_token: 'new-driver-token' } });
+    usePortalSession.mockReturnValue({
+      activeMode: 'manager',
+      authenticate,
+      availableModes: ['manager'],
+      hasAnyAccess: true,
+      identity: {
+        fullName: 'ReadyRoute Manager',
+        companyName: 'ReadyRoute',
+        primaryRole: 'Manager'
+      },
+      isBootstrapping: false,
+      logout,
+      needsModeSelection: false,
+      selectMode,
+      sessionTokens: {
+        driverToken: null,
+        managerToken: 'manager-token'
+      }
+    });
+
+    await act(async () => {
+      renderer.create(<AppNavigator />);
+    });
+
+    await act(async () => {
+      await mockDrawerProps.current.onSwitchMode();
+    });
+
+    expect(api.post).toHaveBeenCalledWith('/auth/mobile/manager-driver-session', {}, {
+      authMode: 'manager'
+    });
+    expect(saveSessionTokens).toHaveBeenCalledWith({
+      driverToken: 'new-driver-token',
+      managerToken: 'manager-token'
+    });
+    expect(saveLastPortalMode).toHaveBeenCalledWith('driver', {
+      driverToken: 'new-driver-token',
+      managerToken: 'manager-token'
+    });
+    expect(authenticate).toHaveBeenCalledWith({
+      driverToken: 'new-driver-token',
+      managerToken: 'manager-token'
+    });
   });
 
   it('passes manager notification attention into the mobile drawer', async () => {

@@ -10,6 +10,7 @@ const {
   buildContextualQuestion,
   buildDeterministicRuntimeDecision,
   buildNextSessionContext,
+  extractDriverUtterance,
   isClarificationAnswerSufficient,
   createDriverHelpService,
   filterActionableClarificationOptions,
@@ -17,6 +18,33 @@ const {
   resolveClarificationFollowUp,
   resolveClarificationSelection
 } = require('./driverHelp');
+
+test('reply framing is removed before a short follow-up is interpreted', () => {
+  assert.equal(extractDriverUtterance('My answer is: Yes'), 'Yes');
+  assert.equal(extractDriverUtterance('Driver answered: it was closed'), 'it was closed');
+  assert.equal(
+    extractDriverUtterance('I asked the question: “Where is that in FORGE?”'),
+    'Where is that in FORGE?'
+  );
+
+  const context = buildNextSessionContext({
+    last_response_mode: 'CLARIFY',
+    last_question: 'My pickup was canceled',
+    situation_question: 'My pickup was canceled',
+    pending_clarification_prompt: 'Ready Route Answers needs one detail: Was any attempt made?',
+    pending_clarification_requirement: 'Was any attempt made?',
+    clarification_plan_active: true,
+    remaining_clarification_requirements: ['Was any attempt made?'],
+    answered_clarification_requirements: []
+  }, 'My answer is: No', {
+    response_mode: 'ANSWER',
+    selected_records: [],
+    candidates: []
+  });
+
+  assert.equal(context.last_question, 'No');
+  assert.deepEqual(context.answered_clarification_requirements, ['Was any attempt made?']);
+});
 
 test('answer memory normalizes equivalent repeated wording and protects high-risk routes', () => {
   assert.equal(
@@ -45,32 +73,32 @@ test('clarification answer validation recognizes common fact types', () => {
 });
 
 test('clarification replies keep the original situation and accumulated answers', () => {
-  const firstContext = buildNextSessionContext({}, 'The vehicle barcode is missing', {
+  const firstContext = buildNextSessionContext({}, 'The listed pickup is closed', {
     response_mode: 'CLARIFY',
     selected_records: [],
-    candidates: [{ knowledge_id: 'KNO-VEHICLE', version: 1 }],
-    clarification_prompt: 'Ready Route Answers needs one detail: actual vehicle number.',
+    candidates: [{ knowledge_id: 'KNO-PICKUP', version: 1 }],
+    clarification_prompt: 'Ready Route Answers needs one detail: Was an attempt made?',
     clarification_options: []
   });
-  const secondQuestion = buildContextualQuestion('2387', firstContext);
+  const secondQuestion = buildContextualQuestion('yes', firstContext);
 
-  assert.match(secondQuestion, /vehicle barcode is missing/i);
-  assert.match(secondQuestion, /actual vehicle number/i);
-  assert.match(secondQuestion, /2387/);
+  assert.match(secondQuestion, /listed pickup is closed/i);
+  assert.match(secondQuestion, /attempt made/i);
+  assert.match(secondQuestion, /yes/i);
 
-  const secondContext = buildNextSessionContext(firstContext, '2387', {
+  const secondContext = buildNextSessionContext(firstContext, 'yes', {
     response_mode: 'CLARIFY',
     selected_records: [],
-    candidates: [{ knowledge_id: 'KNO-VEHICLE', version: 1 }],
-    clarification_prompt: 'Ready Route Answers needs one detail: Is the generator set to Code 128?',
+    candidates: [{ knowledge_id: 'KNO-PICKUP', version: 1 }],
+    clarification_prompt: 'Ready Route Answers needs one detail: Were any packages obtained?',
     clarification_options: []
   });
-  const thirdQuestion = buildContextualQuestion('yes', secondContext);
+  const thirdQuestion = buildContextualQuestion('none', secondContext);
 
-  assert.match(thirdQuestion, /vehicle barcode is missing/i);
-  assert.match(thirdQuestion, /2387/);
-  assert.match(thirdQuestion, /generator set to Code 128/i);
-  assert.match(thirdQuestion, /Driver answered: yes/i);
+  assert.match(thirdQuestion, /listed pickup is closed/i);
+  assert.match(thirdQuestion, /attempt made/i);
+  assert.match(thirdQuestion, /packages obtained/i);
+  assert.match(thirdQuestion, /Driver answered: none/i);
 });
 
 test('structured AI facts are retained for the next turn', () => {
@@ -114,6 +142,14 @@ test('obvious follow-ups retain the answered situation without carrying unrelate
   assert.equal(
     buildContextualQuestion('I lost it', context),
     'The scanner technology failed during my pickup. Driver follow-up: I lost it'
+  );
+  assert.equal(
+    buildContextualQuestion('What do I do with the door tag?', {
+      last_response_mode: 'ANSWER',
+      last_question: 'ISR',
+      situation_question: 'I have an ISR package with a signed door tag on file'
+    }),
+    'I have an ISR package with a signed door tag on file. Driver follow-up: What do I do with the door tag?'
   );
   assert.equal(
     buildContextualQuestion('One amount was prefilled', {
@@ -240,32 +276,6 @@ function knowledgeRecord(overrides = {}) {
     ...overrides
   };
 }
-
-test('staff test mode returns reusable conversation context without writing customer data', async () => {
-  const record = knowledgeRecord();
-  const supabase = memorySupabase([record], null);
-  const service = createDriverHelpService({
-    supabase,
-    now: () => new Date(0),
-    aiInterpretationMode: 'OFF'
-  });
-
-  const result = await service.answerQuestion({
-    accountId: null,
-    driverId: null,
-    actorType: 'manager',
-    actorId: '00000000-0000-0000-0000-000000000099',
-    question: 'Pickup got canceled',
-    includeDiagnostics: true,
-    persist: false
-  });
-
-  assert.equal(result.test_mode, true);
-  assert.equal(result.interaction_id, null);
-  assert.ok(result.session_id);
-  assert.equal(result.session_context.situation_question, 'Pickup got canceled');
-  assert.deepEqual(supabase.writes, []);
-});
 
 test('an active exact answer-memory route bypasses AI and still renders published record content', async () => {
   const record = knowledgeRecord({
@@ -509,6 +519,56 @@ test('empty corpus returns and records a fail-closed escalation', async () => {
   assert.ok(supabase.writes.some((write) => write.table === 'driver_help_unanswered_questions'));
 });
 
+test('negative field feedback is preserved and immediately suspends answer-memory reuse', async () => {
+  const writes = [];
+  const rpcCalls = [];
+  const interaction = {
+    id: 'interaction-1',
+    normalized_question: 'pickup got canceled',
+    selected_knowledge_ids: ['KNO-PUP-CANCELED-001'],
+    interpretation_result: null
+  };
+  const supabase = {
+    from(table) {
+      if (table === 'driver_help_interactions') {
+        return { select() { return filterChain({ data: interaction, error: null }); } };
+      }
+      if (table === 'driver_help_feedback') {
+        return {
+          upsert(row) {
+            writes.push(row);
+            return Promise.resolve({ error: null });
+          }
+        };
+      }
+      throw new Error(`Unexpected table ${table}`);
+    },
+    rpc(name, parameters) {
+      rpcCalls.push({ name, parameters });
+      return Promise.resolve({ error: null });
+    }
+  };
+  const service = createDriverHelpService({ supabase, now: () => new Date('2026-08-19T12:00:00Z') });
+
+  const result = await service.saveFeedback({
+    accountId: 'account-1',
+    driverId: 'driver-1',
+    interactionId: interaction.id,
+    rating: 'down',
+    comment: 'The attempt branch did not match what happened.'
+  });
+
+  assert.equal(result.rating, 'down');
+  assert.equal(writes[0].comment, 'The attempt branch did not match what happened.');
+  assert.deepEqual(rpcCalls, [{
+    name: 'suspend_driver_help_answer_memory',
+    parameters: {
+      p_route_key: answerMemoryRouteKey(interaction.normalized_question),
+      p_knowledge_id: 'KNO-PUP-CANCELED-001'
+    }
+  }]);
+});
+
 test('grounded AI interpretation may select a record but the answer remains canonical record content', async () => {
   const record = knowledgeRecord({
     driver_question_patterns: [{
@@ -553,6 +613,99 @@ test('grounded AI interpretation may select a record but the answer remains cano
   assert.equal(response.interpretation_mode, 'GROUNDED_AI');
   assert.equal(response.interpretation_confidence, 0.93);
   assert.equal(response.trace[0].interpretation_mode, 'GROUNDED_AI');
+});
+
+test('grounded AI composition tailors the direct response but preserves verified steps', async () => {
+  const record = knowledgeRecord({
+    clarification_requirements: [],
+    required_procedure: [
+      { step: 1, action: 'Confirm no pickup attempt occurred.' },
+      { step: 2, action: 'Apply Code 24.' }
+    ]
+  });
+  const supabase = fakeSupabase([record]);
+  let compositionRequest = null;
+  const service = createDriverHelpService({
+    supabase,
+    now: () => new Date(0),
+    aiInterpretationMode: 'ACTIVE',
+    aiInterpreter: async () => ({
+      selection: 'SELECT',
+      knowledge_id: record.knowledge_id,
+      decision: 'ANSWER',
+      answer_pattern_id: null,
+      clarification_requirement: null,
+      facts: {},
+      confidence: 0.96
+    }),
+    aiComposer: async (request) => {
+      compositionRequest = request;
+      return {
+        selection: 'COMPOSED',
+        answer: 'Since you did not attempt the pickup, use Code 24.',
+        more_info: null,
+        answer_structure: null,
+        grounding: [{
+          output_path: 'answer',
+          knowledge_id: record.knowledge_id,
+          source_paths: ['concise_answer', 'required_procedure']
+        }]
+      };
+    }
+  });
+
+  const response = await service.answerQuestion({
+    accountId: '00000000-0000-0000-0000-000000000001',
+    driverId: '00000000-0000-0000-0000-000000000002',
+    question: 'The shipper canceled before I headed to the pickup',
+    includeDiagnostics: true
+  });
+
+  assert.equal(response.composition_mode, 'GROUNDED_AI');
+  assert.equal(response.answer, 'Since you did not attempt the pickup, use Code 24.');
+  assert.equal(response.answer_structure.direct_answer, response.answer);
+  assert.deepEqual(response.answer_structure.steps, [
+    'Confirm no pickup attempt occurred.',
+    'Apply Code 24.'
+  ]);
+  assert.equal(compositionRequest.driver_question, 'The shipper canceled before I headed to the pickup');
+  assert.match(compositionRequest.safety_identifier, /^rr_[a-f0-9]+$/);
+  assert.equal(response.composition_validation.valid, true);
+});
+
+test('exact approved answer patterns remain locked and bypass AI composition', async () => {
+  const record = knowledgeRecord({
+    driver_question_patterns: [{
+      utterance: 'Pickup canceled before attempt',
+      response_mode: 'DIRECT_SOURCE_GROUNDED_ANSWER',
+      must_clarify: [],
+      answer_override: { direct_answer: 'Use Code 24.' }
+    }]
+  });
+  const supabase = fakeSupabase([record]);
+  let composerCalls = 0;
+  const service = createDriverHelpService({
+    supabase,
+    now: () => new Date(0),
+    aiInterpretationMode: 'ACTIVE',
+    aiInterpreter: async () => {
+      throw new Error('Locked answer should not call the interpreter');
+    },
+    aiComposer: async () => {
+      composerCalls += 1;
+      throw new Error('Locked answer should not call the composer');
+    }
+  });
+
+  const response = await service.answerQuestion({
+    accountId: '00000000-0000-0000-0000-000000000001',
+    driverId: '00000000-0000-0000-0000-000000000002',
+    question: 'Pickup canceled before attempt'
+  });
+
+  assert.equal(composerCalls, 0);
+  assert.equal(response.answer_structure.direct_answer, 'Use Code 24.');
+  assert.equal(response.composition_mode, 'DETERMINISTIC');
 });
 
 test('AI may select an approved authored answer branch but cannot supply answer prose', async () => {
@@ -630,6 +783,37 @@ test('AI-selected signature clarification presents ASR DSR and ISR buttons', asy
     accountId: '00000000-0000-0000-0000-000000000001',
     driverId: '00000000-0000-0000-0000-000000000002',
     question: 'I have a signature package and nobody is home'
+  });
+
+  assert.equal(response.response_mode, 'CLARIFY');
+  assert.match(response.clarification_prompt, /What signature service/);
+  assert.deepEqual(response.clarification_options.map((option) => option.query), ['ASR', 'DSR', 'ISR']);
+});
+
+test('generic package-with-signature wording asks for ASR DSR or ISR instead of defaulting to ASR', async () => {
+  const signatureRequirement = 'What signature service does FORGE show?';
+  const records = [
+    ['KNO-DEL-SIG-ASR-001', 'Adult Signature Required'],
+    ['KNO-DEL-SIG-DSR-001', 'Direct Signature Required'],
+    ['KNO-DEL-SIG-ISR-001', 'Indirect Signature Required']
+  ].map(([knowledgeId, label]) => knowledgeRecord({
+    knowledge_id: knowledgeId,
+    canonical_situation: `Delivering an ${label} package`,
+    taxonomy_paths: ['TAX-DELIVERY', 'TAX-DELIVERY/TAX-SIGNATURE'],
+    clarification_requirements: [signatureRequirement]
+  }));
+  const supabase = fakeSupabase(records);
+  const service = createDriverHelpService({
+    supabase,
+    now: () => new Date(0),
+    aiInterpretationMode: 'ACTIVE',
+    aiInterpreter: async () => 'NONE'
+  });
+
+  const response = await service.answerQuestion({
+    accountId: '00000000-0000-0000-0000-000000000001',
+    driverId: '00000000-0000-0000-0000-000000000002',
+    question: 'I have a package with the signature, but there is a signed door tag, what should I do?'
   });
 
   assert.equal(response.response_mode, 'CLARIFY');
@@ -943,6 +1127,45 @@ test('manager test console may activate grounded interpretation without changing
   assert.equal(response.response_mode, 'ANSWER');
   assert.equal(response.answer, record.concise_answer);
   assert.equal(response.interpretation_mode, 'GROUNDED_AI');
+});
+
+test('an exact approved answer override bypasses AI reinterpretation', async () => {
+  const record = knowledgeRecord({
+    driver_question_variants: ['How do I do a bulk transfer?'],
+    driver_question_patterns: [{
+      utterance: 'How do I do a bulk transfer?',
+      response_mode: 'DIRECT_SOURCE_GROUNDED_ANSWER',
+      must_clarify: [],
+      answer_override: {
+        direct_answer: 'The current manifest holder starts the bulk transfer.',
+        steps: ['Open Bulk Transfer and scan the packages.'],
+        watch_for: 'Use the confirmed destination work area.'
+      }
+    }],
+    clarification_requirements: ['Whose manifest currently holds the package?']
+  });
+  const supabase = fakeSupabase([record]);
+  let aiCalls = 0;
+  const service = createDriverHelpService({
+    supabase,
+    now: () => new Date(0),
+    aiInterpretationMode: 'ACTIVE',
+    aiInterpreter: async () => {
+      aiCalls += 1;
+      throw new Error('AI should not reinterpret an exact approved answer override');
+    }
+  });
+
+  const response = await service.answerQuestion({
+    accountId: '00000000-0000-0000-0000-000000000001',
+    driverId: '00000000-0000-0000-0000-000000000002',
+    question: 'How do I do a bulk transfer?'
+  });
+
+  assert.equal(response.response_mode, 'ANSWER');
+  assert.equal(response.answer_structure.direct_answer, 'The current manifest holder starts the bulk transfer.');
+  assert.equal(response.interpretation_mode, 'DETERMINISTIC');
+  assert.equal(aiCalls, 0);
 });
 
 test('active AI can select the approved clarification branch for exact authored wording', async () => {

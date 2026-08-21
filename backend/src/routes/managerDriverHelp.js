@@ -6,15 +6,6 @@ const { applyAiInterpretation, createDriverHelpService, isMissingTableError } = 
 function createManagerDriverHelpRouter(options = {}) {
   const router = express.Router();
   const supabase = options.supabase || defaultSupabase;
-  const getRequestContext = options.getRequestContext || ((req) => ({
-    accountId: req.account.account_id,
-    actorType: 'manager',
-    actorId: req.account.manager_user_id || req.account.account_id,
-    persist: true,
-    sessionContext: null
-  }));
-  const globalOverview = options.globalOverview === true;
-  const authorizeReview = options.authorizeReview || (() => true);
   const service = options.service || createDriverHelpService({
     supabase,
     now: options.now
@@ -23,27 +14,22 @@ function createManagerDriverHelpRouter(options = {}) {
   router.post('/query', async (req, res) => {
     const question = String(req.body?.question || '').trim();
     const sessionId = req.body?.session_id ? String(req.body.session_id).trim() : null;
-    if (question.length < 2 || question.length > 500) {
-      return res.status(400).json({ error: 'Question must be between 2 and 500 characters.' });
+    if (question.length < 1 || question.length > 500) {
+      return res.status(400).json({ error: 'Question must be between 1 and 500 characters.' });
     }
 
     try {
-      const context = getRequestContext(req);
       const requestedInterpretationMode = String(req.body?.ai_interpretation_mode || '').toUpperCase();
       const aiInterpretationModeOverride = ['OFF', 'SHADOW', 'ACTIVE'].includes(requestedInterpretationMode)
         ? requestedInterpretationMode
         : 'ACTIVE';
       const result = await service.answerQuestion({
-        accountId: context.accountId,
+        accountId: req.account.account_id,
         driverId: null,
-        actorType: context.actorType || 'manager',
-        actorId: context.actorId,
+        actorType: 'manager',
+        actorId: req.account.manager_user_id || req.account.account_id,
         question,
         sessionId,
-        ...(context.persist === false ? {
-          persist: false,
-          sessionContext: context.sessionContext || req.body?.session_context || null
-        } : {}),
         includeDiagnostics: true,
         aiInterpretationModeOverride
       });
@@ -65,15 +51,11 @@ function createManagerDriverHelpRouter(options = {}) {
     }
 
     try {
-      const context = getRequestContext(req);
-      if (context.persist === false) {
-        return res.status(400).json({ error: 'Staff test answers are not saved as customer feedback.' });
-      }
       const feedback = await service.saveFeedback({
-        accountId: context.accountId,
+        accountId: req.account.account_id,
         driverId: null,
-        actorType: context.actorType || 'manager',
-        actorId: context.actorId,
+        actorType: 'manager',
+        actorId: req.account.manager_user_id || req.account.account_id,
         interactionId: req.params.interaction_id,
         rating,
         comment
@@ -137,19 +119,15 @@ function createManagerDriverHelpRouter(options = {}) {
   });
 
   router.post('/answer-memory/:route_key/review', async (req, res) => {
-    if (!authorizeReview(req)) {
-      return res.status(403).json({ error: 'This staff role cannot change Answer Memory.' });
-    }
     const action = String(req.body?.action || '').trim().toUpperCase();
     if (!['APPROVE', 'SUSPEND'].includes(action)) {
       return res.status(400).json({ error: 'Action must be APPROVE or SUSPEND.' });
     }
     try {
-      const context = getRequestContext(req);
       const { data, error } = await supabase.rpc('review_driver_help_answer_memory', {
         p_route_key: req.params.route_key,
         p_action: action,
-        p_reviewed_by: context.actorId
+        p_reviewed_by: req.account.manager_user_id || req.account.account_id
       });
       if (error) throw error;
       if (!data) return res.status(404).json({ error: 'Learned answer route not found.' });
@@ -161,33 +139,34 @@ function createManagerDriverHelpRouter(options = {}) {
   });
 
   router.get('/overview', async (req, res) => {
-    const accountId = globalOverview ? null : getRequestContext(req).accountId;
+    const accountId = req.account.account_id;
     const limit = Math.min(Math.max(Number(req.query.limit) || 50, 1), 100);
 
     try {
-      let interactionQuery = supabase
-        .from('driver_help_interactions')
-        .select('id, driver_id, question, response_mode, selected_knowledge_ids, selected_knowledge_versions, canonical_trace, retrieval_candidates, confidence, interpretation_mode, interpretation_result, response_latency_ms, created_at');
-      let unansweredQuery = supabase
-        .from('driver_help_unanswered_questions')
-        .select('id, driver_id, interaction_id, question, status, created_at, resolved_at, resolved_knowledge_id');
-      let feedbackQuery = supabase
-        .from('driver_help_feedback')
-        .select('id, driver_id, interaction_id, rating, comment, created_at');
-      let activeDriverQuery = supabase.from('drivers').select('id').eq('is_active', true);
-
-      if (accountId) {
-        interactionQuery = interactionQuery.eq('account_id', accountId);
-        unansweredQuery = unansweredQuery.eq('account_id', accountId);
-        feedbackQuery = feedbackQuery.eq('account_id', accountId);
-        activeDriverQuery = activeDriverQuery.eq('account_id', accountId);
-      }
-
       const [interactionResult, unansweredResult, feedbackResult, activeDriverResult] = await Promise.all([
-        interactionQuery.order('created_at', { ascending: false }).limit(limit),
-        unansweredQuery.order('created_at', { ascending: false }).limit(limit),
-        feedbackQuery.order('created_at', { ascending: false }).limit(limit),
-        activeDriverQuery
+        supabase
+          .from('driver_help_interactions')
+          .select('id, driver_id, question, response_mode, selected_knowledge_ids, selected_knowledge_versions, canonical_trace, retrieval_candidates, confidence, interpretation_mode, interpretation_result, response_latency_ms, created_at')
+          .eq('account_id', accountId)
+          .order('created_at', { ascending: false })
+          .limit(limit),
+        supabase
+          .from('driver_help_unanswered_questions')
+          .select('id, driver_id, interaction_id, question, status, created_at, resolved_at, resolved_knowledge_id')
+          .eq('account_id', accountId)
+          .order('created_at', { ascending: false })
+          .limit(limit),
+        supabase
+          .from('driver_help_feedback')
+          .select('id, driver_id, interaction_id, rating, comment, created_at')
+          .eq('account_id', accountId)
+          .order('created_at', { ascending: false })
+          .limit(limit),
+        supabase
+          .from('drivers')
+          .select('id')
+          .eq('account_id', accountId)
+          .eq('is_active', true)
       ]);
 
       const firstError = interactionResult.error || unansweredResult.error || feedbackResult.error || activeDriverResult.error;

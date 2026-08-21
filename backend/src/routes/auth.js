@@ -925,6 +925,48 @@ function createAuthRouter(options = {}) {
     }
   });
 
+  router.post('/driver/change-pin', requireDriver, async (req, res) => {
+    const currentCredential = String(req.body?.current_credential || '');
+    const nextPin = String(req.body?.new_pin || '').trim();
+    if (!currentCredential || !nextPin) {
+      return res.status(400).json({ error: 'Current PIN or password and new PIN are required' });
+    }
+    if (!/^\d{4}$/.test(nextPin)) {
+      return res.status(400).json({ error: 'New PIN must be a 4-digit code' });
+    }
+    if (currentCredential === nextPin) {
+      return res.status(400).json({ error: 'New PIN must be different from the current PIN' });
+    }
+
+    try {
+      const { data: driver, error: lookupError } = await supabase
+        .from('drivers')
+        .select('id, account_id, pin, password_hash')
+        .eq('id', req.driver.driver_id)
+        .eq('account_id', req.driver.account_id)
+        .maybeSingle();
+      if (lookupError) throw lookupError;
+
+      const currentHash = driver?.password_hash || driver?.pin;
+      if (!currentHash || !(await bcrypt.compare(currentCredential, currentHash))) {
+        return res.status(401).json({ error: 'Current PIN or password is incorrect' });
+      }
+
+      const pinHash = await bcrypt.hash(nextPin, 10);
+      const { error: updateError } = await supabase
+        .from('drivers')
+        .update({ pin: pinHash, password_hash: null })
+        .eq('id', driver.id)
+        .eq('account_id', driver.account_id);
+      if (updateError) throw updateError;
+
+      return res.status(200).json({ message: 'PIN updated. Sign in again with your new PIN.' });
+    } catch (error) {
+      console.error('Driver PIN change failed:', error);
+      return res.status(500).json({ error: 'PIN could not be updated right now.' });
+    }
+  });
+
   router.post('/manager/login', async (req, res) => {
     const { email, password } = req.body || {};
     const requestedAccountId = req.body?.account_id ? String(req.body.account_id) : null;

@@ -105,21 +105,29 @@ function createSupabaseStub(initialAccount = {}) {
           return { data: { ...matchingAccount }, error: null };
         },
         update(payload) {
+          const filters = {};
           return {
             eq(column, value) {
+              filters[column] = value;
+              return this;
+            },
+            then(resolve, reject) {
               if (table === 'manager_users') {
-                if (managerUser && column === 'id' && value === managerUser.id) {
-                  Object.assign(managerUser, payload);
-                }
-
-                return Promise.resolve({ error: null });
+                const row = managerUsers.find((candidate) => (
+                  (!filters.id || filters.id === candidate.id)
+                  && (!filters.account_id || filters.account_id === candidate.account_id)
+                ));
+                if (row) Object.assign(row, payload);
+              } else if (table === 'drivers') {
+                const row = drivers.find((candidate) => (
+                  (!filters.id || filters.id === candidate.id)
+                  && (!filters.account_id || filters.account_id === candidate.account_id)
+                ));
+                if (row) Object.assign(row, payload);
+              } else if (!filters.id || filters.id === account.id) {
+                Object.assign(account, payload);
               }
-
-              if (column === 'id' && value === account.id) {
-                account.manager_password_hash = payload.manager_password_hash;
-              }
-
-              return Promise.resolve({ error: null });
+              return Promise.resolve({ error: null }).then(resolve, reject);
             }
           };
         }
@@ -448,6 +456,64 @@ test('legacy driver login accepts an established password as well as a four-digi
   assert.equal(response.status, 200);
   assert.equal(response.body.user.driver_id, 'driver-password-1');
   assert.equal(jwt.verify(response.body.token, 'test-secret').device_session_id, 'device-session-password-1');
+});
+
+test('driver can replace the current credential with a personal four-digit PIN', async () => {
+  const driverState = {
+    id: 'driver-pin-change-1',
+    account_id: 'account-1',
+    name: 'PIN Change Driver',
+    email: 'pin-change@example.com',
+    pin: await bcrypt.hash('2468', 10),
+    password_hash: null,
+    is_active: true
+  };
+  const supabase = createSupabaseStub({ driver: driverState });
+  const app = createApp({
+    supabase,
+    jwtSecret: 'test-secret',
+    enforceBilling: false,
+    requireDriverDeviceId: true,
+    authorizeDriverDevice: async () => ({
+      id: 'device-session-pin-change-1',
+      device_hash: 'device-hash-pin-change-1'
+    })
+  });
+
+  const login = await request(app)
+    .post('/auth/driver/login')
+    .send({
+      email: driverState.email,
+      pin: '2468',
+      device_id: '12345678-1234-1234-1234-123456789012'
+    });
+  assert.equal(login.status, 200);
+
+  const change = await request(app)
+    .post('/auth/driver/change-pin')
+    .set('Authorization', `Bearer ${login.body.token}`)
+    .send({ current_credential: '2468', new_pin: '8642' });
+  assert.equal(change.status, 200);
+  assert.equal(driverState.password_hash, null);
+  assert.equal(await bcrypt.compare('8642', driverState.pin), true);
+
+  const oldPinLogin = await request(app)
+    .post('/auth/driver/login')
+    .send({
+      email: driverState.email,
+      pin: '2468',
+      device_id: '12345678-1234-1234-1234-123456789012'
+    });
+  assert.equal(oldPinLogin.status, 401);
+
+  const newPinLogin = await request(app)
+    .post('/auth/driver/login')
+    .send({
+      email: driverState.email,
+      pin: '8642',
+      device_id: '12345678-1234-1234-1234-123456789012'
+    });
+  assert.equal(newPinLogin.status, 200);
 });
 
 test('driver invitation lets every company driver choose a four-digit PIN', async () => {

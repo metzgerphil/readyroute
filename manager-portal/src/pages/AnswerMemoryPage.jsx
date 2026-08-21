@@ -32,7 +32,7 @@ function statusMeta(status) {
   return STATUS_META[status] || { label: status || 'Unknown', tone: 'neutral' };
 }
 
-export default function AnswerMemoryPage({ apiBase = '/manager/driver-help' }) {
+export default function AnswerMemoryPage() {
   const queryClient = useQueryClient();
   const [statusFilter, setStatusFilter] = useState('ALL');
   const [search, setSearch] = useState('');
@@ -40,9 +40,9 @@ export default function AnswerMemoryPage({ apiBase = '/manager/driver-help' }) {
   const [expandedRouteKey, setExpandedRouteKey] = useState(null);
 
   const memoryQuery = useQuery({
-    queryKey: ['driver-help-answer-memory', apiBase],
+    queryKey: ['driver-help-answer-memory'],
     queryFn: async () => {
-      const response = await api.get(`${apiBase}/answer-memory`, { params: { limit: 250 } });
+      const response = await api.get('/manager/driver-help/answer-memory', { params: { limit: 250 } });
       return response.data;
     },
     refetchInterval: 60000
@@ -51,13 +51,13 @@ export default function AnswerMemoryPage({ apiBase = '/manager/driver-help' }) {
   const reviewMutation = useMutation({
     mutationFn: async ({ routeKey, action }) => {
       const response = await api.post(
-        `${apiBase}/answer-memory/${encodeURIComponent(routeKey)}/review`,
+        `/manager/driver-help/answer-memory/${encodeURIComponent(routeKey)}/review`,
         { action }
       );
       return response.data;
     },
     onMutate: () => setActionError(''),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['driver-help-answer-memory', apiBase] }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['driver-help-answer-memory'] }),
     onError: (error) => setActionError(error.response?.data?.error || 'That memory route could not be updated.')
   });
 

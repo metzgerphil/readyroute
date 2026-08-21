@@ -66,6 +66,9 @@ function createDriverHelpAiComposer(options = {}) {
     : DEFAULT_TIMEOUT_MS;
 
   return async function composeGroundedAnswer(request) {
+    const safetyIdentifier = String(request?.safety_identifier || '').trim() || undefined;
+    const modelRequest = { ...request };
+    delete modelRequest.safety_identifier;
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), timeoutMs);
     try {
@@ -78,6 +81,10 @@ function createDriverHelpAiComposer(options = {}) {
         signal: controller.signal,
         body: JSON.stringify({
           model,
+          ...(safetyIdentifier ? { safety_identifier: safetyIdentifier } : {}),
+          reasoning: {
+            effort: 'low'
+          },
           input: [
             {
               role: 'system',
@@ -88,6 +95,9 @@ function createDriverHelpAiComposer(options = {}) {
                     'You present Ready Route operational answers to trained drivers.',
                     'Use only facts explicitly present in canonical_records or deterministic_answer.',
                     'Never add a code, number, step, condition, exception, prohibition, escalation, or factual claim.',
+                    'Answer the driver\'s precise question directly in one or two short sentences.',
+                    'Use deterministic_answer as the preferred factual baseline and preserve every required action and prohibition.',
+                    'Do not repeat the full procedure because the application presents verified steps separately.',
                     'You may paraphrase, shorten, organize, or combine supported content for clarity.',
                     'Ground each populated output to the exact selected knowledge_id and source fields.',
                     'Set answer_structure to null; the application preserves its verified deterministic structure.',
@@ -98,7 +108,7 @@ function createDriverHelpAiComposer(options = {}) {
             },
             {
               role: 'user',
-              content: [{ type: 'input_text', text: JSON.stringify(request) }]
+              content: [{ type: 'input_text', text: JSON.stringify(modelRequest) }]
             }
           ],
           text: {

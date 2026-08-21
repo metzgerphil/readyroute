@@ -27,3 +27,24 @@ test('launch readiness fails closed when live systems are enabled without approv
   assert.match(readiness.errors.join(' '), /FCC automation/);
   assert.match(readiness.errors.join(' '), /Live route billing/);
 });
+
+test('launch readiness reports AI answer capabilities only when fully configured', () => {
+  const active = getLaunchReadiness({
+    GOOGLE_MAPS_API_KEY: 'maps-key',
+    GOOGLE_CLOUD_PROJECT: 'ready-route-project',
+    OPENAI_API_KEY: 'openai-key',
+    READYROUTE_DRIVER_HELP_MODEL: 'readyroute-model',
+    READYROUTE_DRIVER_HELP_AI_INTERPRETATION_MODE: 'ACTIVE',
+    READYROUTE_DRIVER_HELP_AI_ENABLED: 'true'
+  });
+  const missingKey = getLaunchReadiness({
+    READYROUTE_DRIVER_HELP_MODEL: 'readyroute-model',
+    READYROUTE_DRIVER_HELP_AI_INTERPRETATION_MODE: 'ACTIVE',
+    READYROUTE_DRIVER_HELP_AI_ENABLED: 'true'
+  });
+
+  assert.equal(active.capabilities.driver_help_ai_interpretation, true);
+  assert.equal(active.capabilities.driver_help_ai_composition, true);
+  assert.equal(missingKey.capabilities.driver_help_ai_interpretation, false);
+  assert.equal(missingKey.capabilities.driver_help_ai_composition, false);
+});

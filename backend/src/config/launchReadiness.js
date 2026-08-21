@@ -24,6 +24,18 @@ function getLaunchReadiness(env = process.env) {
   const stripePricesConfigured = stripeMonthlyPriceConfigured && stripeAnnualPriceConfigured;
   const stripeTaxEnabled = isEnabled(env.STRIPE_TAX_ENABLED);
   const stripeTaxRegistrationsConfirmed = isEnabled(env.STRIPE_TAX_REGISTRATIONS_CONFIRMED);
+  const driverHelpModelConfigured = Boolean(String(env.READYROUTE_DRIVER_HELP_MODEL || '').trim());
+  const openAiConfigured = Boolean(String(env.OPENAI_API_KEY || '').trim());
+  const driverHelpAiInterpretationMode = String(
+    env.READYROUTE_DRIVER_HELP_AI_INTERPRETATION_MODE || ''
+  ).trim().toUpperCase();
+  const driverHelpAiInterpretationEnabled = (
+    driverHelpAiInterpretationMode === 'ACTIVE' ||
+    isEnabled(env.READYROUTE_DRIVER_HELP_AI_INTERPRETATION_ENABLED)
+  ) && driverHelpModelConfigured && openAiConfigured;
+  const driverHelpAiCompositionEnabled = isEnabled(
+    env.READYROUTE_DRIVER_HELP_AI_ENABLED
+  ) && driverHelpModelConfigured && openAiConfigured;
   const errors = [];
   const warnings = [];
 
@@ -70,7 +82,9 @@ function getLaunchReadiness(env = process.env) {
       stripe: stripeConfigured,
       stripe_webhooks: stripeWebhookConfigured,
       stripe_signup: stripeSignupEnabled && stripeConfigured && stripePublishableConfigured,
-      stripe_tax: stripeTaxEnabled && stripeTaxRegistrationsConfirmed
+      stripe_tax: stripeTaxEnabled && stripeTaxRegistrationsConfirmed,
+      driver_help_ai_interpretation: driverHelpAiInterpretationEnabled,
+      driver_help_ai_composition: driverHelpAiCompositionEnabled
     },
     errors,
     warnings

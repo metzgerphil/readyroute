@@ -51,6 +51,41 @@ test('does not intercept a stated operational situation that asks which code to 
   );
 });
 
+test('answers an exact owner-authored plain-language reference case', () => {
+  const decision = buildDriverHelpReferenceDecision(
+    "Customer wants future delivery because they're doing inventory, what code?",
+    [reference({
+      knowledge_id: 'DELIVERY_STATUS:034',
+      concise_answer: 'Code 034: Inventory/Request Future Delivery.',
+      driver_question_variants: [
+        "Customer wants future delivery because they're doing inventory, what code?"
+      ]
+    })]
+  );
+
+  assert.equal(decision.response_mode, 'ANSWER');
+  assert.equal(decision.selected_records[0].knowledge_id, 'DELIVERY_STATUS:034');
+});
+
+test('keeps owner-authored reference matching through ordinary conversational framing', () => {
+  const records = [reference({
+    knowledge_id: 'DELIVERY_STATUS:034',
+    concise_answer: 'Code 034: Inventory/Request Future Delivery.',
+    driver_question_variants: [
+      "Customer wants future delivery because they're doing inventory, what code?"
+    ]
+  })];
+
+  for (const question of [
+    "Please help — Customer wants future delivery because they're doing inventory, what code?",
+    "I asked the question: Customer wants future delivery because they're doing inventory, what code?"
+  ]) {
+    const decision = buildDriverHelpReferenceDecision(question, records);
+    assert.equal(decision.response_mode, 'ANSWER');
+    assert.equal(decision.selected_records[0].knowledge_id, 'DELIVERY_STATUS:034');
+  }
+});
+
 test('empty reference corpus fails closed', () => {
   const decision = buildDriverHelpReferenceDecision('what is code 101', []);
   assert.equal(decision.response_mode, 'ESCALATE');
@@ -72,31 +107,6 @@ test('matches delivery codes whether or not the driver says leading zeroes', () 
   const decision = buildDriverHelpReferenceDecision('what is delivery code 11', [delivery]);
   assert.equal(decision.response_mode, 'ANSWER');
   assert.equal(decision.selected_records[0].knowledge_id, 'DELIVERY_STATUS:011');
-});
-
-test('answers a plain-language comparison between two verified delivery codes', () => {
-  const records = [
-    reference({
-      knowledge_id: 'DELIVERY_STATUS:002',
-      concise_answer: 'Code 002 — Incorrect Recipient Address: the label address is wrong or invalid.'
-    }),
-    reference({
-      knowledge_id: 'DELIVERY_STATUS:003',
-      concise_answer: 'Code 003 — Unable to Locate: the listed address cannot physically be located.'
-    })
-  ];
-
-  const question = "what's the difference betwen a code 2 and a code 3?";
-  assert.deepEqual(explicitCodeTokens(question), ['2', '3']);
-
-  const decision = buildDriverHelpReferenceDecision(question, records);
-  assert.equal(decision.response_mode, 'ANSWER');
-  assert.deepEqual(
-    decision.selected_records.map((record) => record.knowledge_id),
-    ['DELIVERY_STATUS:002', 'DELIVERY_STATUS:003']
-  );
-  assert.match(decision.answer, /Incorrect Recipient Address/);
-  assert.match(decision.answer, /Unable to Locate/);
 });
 
 test('uses an explicit pickup or delivery category to resolve duplicate numbers', () => {

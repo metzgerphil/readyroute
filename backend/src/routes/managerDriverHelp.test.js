@@ -131,54 +131,30 @@ test('POST /manager/driver-help/query uses manager identity and returns diagnost
   assert.equal(calls[1].aiInterpretationModeOverride, 'OFF');
 });
 
-test('POST staff driver-help query runs without a customer company or persisted interaction', async () => {
+test('POST /manager/driver-help/query accepts a one-character vehicle number follow-up', async () => {
   const calls = [];
   const service = {
     async answerQuestion(input) {
       calls.push(input);
-      return {
-        interaction_id: null,
-        session_id: 'staff-test-session',
-        session_context: { situation_question: input.question },
-        test_mode: true,
-        response_mode: 'ANSWER',
-        answer: 'Use the published Ready Route answer.'
-      };
+      return { response_mode: 'ANSWER', answer_type: 'VEHICLE_BARCODE' };
     }
   };
   const app = express();
   app.use(express.json());
-  app.use('/staff/driver-help', createManagerDriverHelpRouter({
+  app.use((req, _res, next) => {
+    req.account = { account_id: 'account-1', manager_user_id: 'manager-1' };
+    next();
+  });
+  app.use('/manager/driver-help', createManagerDriverHelpRouter({
     supabase: { from: () => new QueryBuilder('unused', {}) },
-    service,
-    globalOverview: true,
-    getRequestContext: () => ({
-      accountId: null,
-      actorType: 'manager',
-      actorId: '00000000-0000-0000-0000-000000000099',
-      persist: false
-    })
+    service
   }));
 
   const response = await request(app)
-    .post('/staff/driver-help/query')
-    .send({
-      question: 'What should a driver do?',
-      session_context: { previous_question: 'Earlier test wording' }
-    });
+    .post('/manager/driver-help/query')
+    .send({ question: '7', session_id: 'session-1' });
 
   assert.equal(response.status, 200);
-  assert.equal(response.body.test_mode, true);
-  assert.deepEqual(calls[0], {
-    accountId: null,
-    driverId: null,
-    actorType: 'manager',
-    actorId: '00000000-0000-0000-0000-000000000099',
-    question: 'What should a driver do?',
-    sessionId: null,
-    persist: false,
-    sessionContext: { previous_question: 'Earlier test wording' },
-    includeDiagnostics: true,
-    aiInterpretationModeOverride: 'ACTIVE'
-  });
+  assert.equal(calls[0].question, '7');
+  assert.equal(calls[0].sessionId, 'session-1');
 });

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { lazy, Suspense, useEffect, useState } from 'react';
 
 import api from '../services/api';
 import {
@@ -7,6 +7,8 @@ import {
   formatRraTestLog,
   summarizeRraTestLogEntry
 } from '../utils/rraTestLog';
+
+const WebVehicleBarcode = lazy(() => import('../components/WebVehicleBarcode'));
 
 const TEST_HISTORY_STORAGE_KEY = 'readyroute:rra-test-history:v1';
 
@@ -55,11 +57,10 @@ async function copyTextToClipboard(text) {
   document.body.removeChild(textArea);
 }
 
-export default function RraTestPage({ apiBase = '/manager/driver-help', allowFeedback = true }) {
+export default function RraTestPage() {
   const [question, setQuestion] = useState('');
   const [situationQuestion, setSituationQuestion] = useState('');
   const [sessionId, setSessionId] = useState(null);
-  const [sessionContext, setSessionContext] = useState(null);
   const [result, setResult] = useState(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [showMore, setShowMore] = useState(false);
@@ -70,6 +71,8 @@ export default function RraTestPage({ apiBase = '/manager/driver-help', allowFee
   const structure = answerStructure(result);
   const shadow = result?.interpretation_result || {};
   const isFollowUp = result?.response_mode === 'CLARIFY';
+  const isVehicleBarcodeWorkflow = result?.answer_type === 'VEHICLE_BARCODE';
+  const minimumQuestionLength = isVehicleBarcodeWorkflow && isFollowUp ? 1 : 2;
 
   useEffect(() => {
     window.sessionStorage.setItem(TEST_HISTORY_STORAGE_KEY, JSON.stringify(testHistory));
@@ -78,7 +81,7 @@ export default function RraTestPage({ apiBase = '/manager/driver-help', allowFee
   async function askQuestion(event, overrideQuestion = null) {
     event?.preventDefault?.();
     const nextQuestion = String(overrideQuestion || question).trim();
-    if (nextQuestion.length < 2 || isSubmitting) return;
+    if (nextQuestion.length < minimumQuestionLength || isSubmitting) return;
 
     setQuestion(nextQuestion);
     if (!sessionId) setSituationQuestion(nextQuestion);
@@ -87,14 +90,12 @@ export default function RraTestPage({ apiBase = '/manager/driver-help', allowFee
     setFeedback(null);
     setShowMore(false);
     try {
-      const response = await api.post(`${apiBase}/query`, {
+      const response = await api.post('/manager/driver-help/query', {
         question: nextQuestion,
-        ...(sessionId ? { session_id: sessionId } : {}),
-        ...(sessionContext ? { session_context: sessionContext } : {})
+        ...(sessionId ? { session_id: sessionId } : {})
       });
       setResult(response.data || null);
       setSessionId(response.data?.session_id || sessionId);
-      setSessionContext(response.data?.session_context || sessionContext);
       setTestHistory((entries) => appendRraTestLogEntry(
         entries,
         buildRraTestLogEntry(nextQuestion, response.data || {})
@@ -112,7 +113,7 @@ export default function RraTestPage({ apiBase = '/manager/driver-help', allowFee
     if (!result?.interaction_id || feedback || isSubmitting) return;
     setFeedback(rating);
     try {
-      await api.post(`${apiBase}/interactions/${result.interaction_id}/feedback`, { rating });
+      await api.post(`/manager/driver-help/interactions/${result.interaction_id}/feedback`, { rating });
     } catch {
       setFeedback(null);
       setError('Feedback could not be saved. The test answer is still available.');
@@ -123,7 +124,6 @@ export default function RraTestPage({ apiBase = '/manager/driver-help', allowFee
     setQuestion('');
     setSituationQuestion('');
     setSessionId(null);
-    setSessionContext(null);
     setResult(null);
     setShowMore(false);
     setFeedback(null);
@@ -171,14 +171,16 @@ export default function RraTestPage({ apiBase = '/manager/driver-help', allowFee
             maxLength={500}
             onChange={(event) => setQuestion(event.target.value)}
             placeholder={isFollowUp
-              ? 'Type the requested detail here, such as: 2387, yes, or no advance notice.'
+              ? (isVehicleBarcodeWorkflow
+                ? 'Enter the vehicle number.'
+                : 'Type the requested detail here, such as: 2387, yes, or no advance notice.')
               : 'Example: The pickup was canceled before I went there. What code do I use?'}
             rows={4}
             value={question}
           />
           <div className="rra-test-form-footer">
             <span>{question.length}/500</span>
-            <button className="primary-cta" disabled={isSubmitting || question.trim().length < 2} type="submit">
+            <button className="primary-cta" disabled={isSubmitting || question.trim().length < minimumQuestionLength} type="submit">
               {isSubmitting ? 'Checking approved records…' : isFollowUp ? 'Send follow-up' : 'Ask Ready Route'}
             </button>
           </div>
@@ -193,6 +195,12 @@ export default function RraTestPage({ apiBase = '/manager/driver-help', allowFee
             <div className="rra-card-kicker">Driver sees this</div>
             <h2>Answer</h2>
             <p className="rra-direct-answer">{structure.directAnswer}</p>
+
+            {result.barcode ? (
+              <Suspense fallback={<p role="status">Preparing vehicle barcode…</p>}>
+                <WebVehicleBarcode barcode={result.barcode} />
+              </Suspense>
+            ) : null}
 
             {structure.steps.length ? (
               <div className="rra-answer-section">
@@ -228,11 +236,11 @@ export default function RraTestPage({ apiBase = '/manager/driver-help', allowFee
                 </div>
               ) : null}
 
-            {allowFeedback && result.interaction_id ? <div className="rra-feedback-row">
+            <div className="rra-feedback-row">
               <span>Was this the right driver answer?</span>
               <button className={feedback === 'up' ? 'selected' : ''} disabled={Boolean(feedback)} onClick={() => sendFeedback('up')} type="button">Yes</button>
               <button className={feedback === 'down' ? 'selected' : ''} disabled={Boolean(feedback)} onClick={() => sendFeedback('down')} type="button">No</button>
-            </div> : null}
+            </div>
           </section>
 
           <section className="page-card rra-shadow-card">

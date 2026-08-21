@@ -41,6 +41,7 @@ function main() {
   const outOfCorpusCases = readJsonLines('evaluations/out-of-corpus-cases.jsonl');
   const candidateOperationalCases = readJsonLines('evaluations/candidate-operational-language-cases.jsonl');
   const candidateGapCases = readJsonLines('evaluations/candidate-gap-language-cases.jsonl');
+  const vladPriorityCases = readJsonLines('evaluations/vlad-priority-51-cases.jsonl');
   const deliveryStatuses = readJsonLines('reference/delivery-status-codes.jsonl');
   const pickupReasons = readJsonLines('reference/pickup-reason-codes.jsonl');
   const pendingReviewItems = readJsonLines('pending-review/review-items.jsonl');
@@ -143,6 +144,24 @@ function main() {
       if (!recordIds.has(knowledgeId)) errors.push(`${testCase.case_id} references unknown knowledge ${knowledgeId}`);
     }
   }
+
+  const vladPriorityIds = new Set();
+  for (const testCase of vladPriorityCases) {
+    if (!testCase.priority_case_id || vladPriorityIds.has(testCase.priority_case_id)) {
+      errors.push(`Invalid or duplicate Vlad priority case ${testCase.priority_case_id || '(missing)'}`);
+    }
+    vladPriorityIds.add(testCase.priority_case_id);
+    if (!['ANSWER', 'CLARIFY', 'REFERENCE_ANSWER'].includes(testCase.expected_mode)) {
+      errors.push(`${testCase.priority_case_id} has invalid expected mode ${testCase.expected_mode}`);
+    }
+    for (const knowledgeId of testCase.expected_knowledge_ids || []) {
+      if (!recordIds.has(knowledgeId)) errors.push(`${testCase.priority_case_id} references unknown knowledge ${knowledgeId}`);
+    }
+    for (const referenceId of testCase.expected_reference_ids || []) {
+      if (!referenceIds.has(referenceId)) errors.push(`${testCase.priority_case_id} references unknown reference ${referenceId}`);
+    }
+  }
+  if (vladPriorityCases.length !== 51) errors.push(`Expected 51 Vlad priority cases, found ${vladPriorityCases.length}`);
   const candidateOperationalCaseIds = new Set();
   for (const testCase of candidateOperationalCases) {
     if (!testCase.case_id || candidateOperationalCaseIds.has(testCase.case_id)) {
@@ -228,6 +247,7 @@ function main() {
     out_of_corpus_cases: outOfCorpusCases.length,
     candidate_operational_language_cases: candidateOperationalCases.length,
     candidate_gap_language_cases: candidateGapCases.length,
+    vlad_priority_cases: vladPriorityCases.length,
     delivery_status_references: deliveryStatuses.length,
     pickup_reason_references: pickupReasons.length,
     change_log_entries: changeLog.length,

@@ -118,6 +118,7 @@ export default function AppNavigator() {
   const [isPrivacyOpen, setIsPrivacyOpen] = useState(false);
   const [isPasswordOpen, setIsPasswordOpen] = useState(false);
   const [isPrivacyChoiceRequired, setIsPrivacyChoiceRequired] = useState(false);
+  const [isSavingPrivacyChoice, setIsSavingPrivacyChoice] = useState(false);
   const [currentRouteName, setCurrentRouteName] = useState(null);
   const [isLoadingManagerCsas, setIsLoadingManagerCsas] = useState(false);
   const [isSwitchingManagerCsa, setIsSwitchingManagerCsa] = useState(false);
@@ -176,9 +177,10 @@ export default function AppNavigator() {
       .then((response) => {
         if (!active) return;
         const preference = response.data || {};
-        const noticeRequired = preference.notice_required !== false;
-        setIsPrivacyChoiceRequired(noticeRequired);
-        setIsPrivacyOpen(noticeRequired);
+        const hasCurrentChoice = Boolean(preference.updated_at)
+          && preference.policy_version === preference.current_policy_version;
+        setIsPrivacyChoiceRequired(!hasCurrentChoice);
+        setIsPrivacyOpen(!hasCurrentChoice);
       })
       .catch(() => {
         if (!active) return;
@@ -244,16 +246,20 @@ export default function AppNavigator() {
     setIsPasswordOpen(true);
   }
 
-  async function handlePrivacyNotice(policyVersion) {
+  async function handlePrivacyChoice(consent, policyVersion) {
+    if (isSavingPrivacyChoice) return;
+    setIsSavingPrivacyChoice(true);
     try {
       await api.put('/driver-help/privacy-preferences', {
-        notice_seen: true,
+        ai_processing_consent: consent,
         policy_version: policyVersion
       });
       setIsPrivacyChoiceRequired(false);
       setIsPrivacyOpen(false);
     } catch (_error) {
       Alert.alert('Could Not Save Preference', 'Check your connection and try again. No question will be sent for AI processing until your choice is saved.');
+    } finally {
+      setIsSavingPrivacyChoice(false);
     }
   }
 
@@ -653,7 +659,7 @@ export default function AppNavigator() {
             onPrivacyPress={openPrivacy}
             onSupportPress={openSupport}
             onSwitchMode={() => handleSelectMode(activeMode === 'manager' ? 'driver' : 'manager')}
-            showModeSwitch={!DRIVER_HELP_ONLY && (availableModes.length > 1 || (activeMode === 'manager' && Boolean(sessionTokens?.managerToken)))}
+            showModeSwitch={availableModes.length > 1 || (activeMode === 'manager' && Boolean(sessionTokens?.managerToken))}
           />
           <SupportRequestModal
             activeMode={activeMode}
@@ -663,14 +669,15 @@ export default function AppNavigator() {
             visible={isSupportOpen}
           />
           <RraPrivacyModal
-            onAcknowledge={handlePrivacyNotice}
+            isSaving={isSavingPrivacyChoice}
+            onChoose={handlePrivacyChoice}
             onClose={() => setIsPrivacyOpen(false)}
             required={isPrivacyChoiceRequired}
             visible={isPrivacyOpen}
           />
           <DriverPasswordModal
             onClose={() => setIsPasswordOpen(false)}
-            onPasswordChanged={logout}
+            onPinChanged={logout}
             visible={isPasswordOpen}
           />
         </>

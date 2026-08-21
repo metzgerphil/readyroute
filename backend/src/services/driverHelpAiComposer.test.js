@@ -46,10 +46,17 @@ test('uses strict structured output and returns a grounded composition', async (
     }
   });
 
-  const result = await composer({ canonical_records: [], deterministic_answer: {} });
+  const result = await composer({
+    safety_identifier: 'rr_test_identifier',
+    driver_question: 'What should I do?',
+    canonical_records: [],
+    deterministic_answer: {}
+  });
   const requestBody = JSON.parse(calls[0].options.body);
   assert.equal(calls[0].url, 'https://api.openai.com/v1/responses');
   assert.equal(requestBody.model, 'test-model');
+  assert.equal(requestBody.safety_identifier, 'rr_test_identifier');
+  assert.equal(JSON.parse(requestBody.input[1].content[0].text).safety_identifier, undefined);
   assert.equal(requestBody.text.format.strict, true);
   assert.deepEqual(requestBody.text.format.schema, responseSchema());
   assert.equal(result.selection, 'COMPOSED');

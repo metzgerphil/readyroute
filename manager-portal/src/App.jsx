@@ -89,6 +89,9 @@ function ProtectedApp() {
               <Route element={<NotificationsPage />} path="/notifications" />
               <Route element={<RecordsPage />} path="/records" />
               <Route element={<DriversPage />} path="/drivers" />
+              <Route element={<KnowledgeActivityPage />} path="/knowledge-activity" />
+              <Route element={<AnswerMemoryPage />} path="/answer-memory" />
+              <Route element={<RraTestPage />} path="/rra-test" />
               <Route element={<VehiclesPage />} path="/vehicles" />
               <Route element={<AccessCodesPage />} path="/access-codes" />
               <Route element={<BillingPage />} path="/billing" />

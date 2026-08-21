@@ -112,12 +112,13 @@ function createDriverHelpRouter(options = {}) {
   });
 
   router.put('/privacy-preferences', async (req, res) => {
-    if (req.body?.notice_seen !== true) {
-      return res.status(400).json({ error: 'notice_seen must be true.' });
+    if (typeof req.body?.ai_processing_consent !== 'boolean') {
+      return res.status(400).json({ error: 'ai_processing_consent must be true or false.' });
     }
     try {
-      const preference = await privacyService.acknowledgeNotice({
+      const preference = await privacyService.setPreference({
         ...getActor(req),
+        consent: req.body.ai_processing_consent,
         policyVersion: String(req.body?.policy_version || '')
       });
       return res.status(200).json({
@@ -137,8 +138,8 @@ function createDriverHelpRouter(options = {}) {
     const question = String(req.body?.question || '').trim();
     const sessionId = req.body?.session_id ? String(req.body.session_id).trim() : null;
 
-    if (question.length < 2 || question.length > 500) {
-      return res.status(400).json({ error: 'Question must be between 2 and 500 characters.' });
+    if (question.length < 1 || question.length > 500) {
+      return res.status(400).json({ error: 'Question must be between 1 and 500 characters.' });
     }
 
     try {

@@ -5,18 +5,18 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import api from '../services/api';
 import { getApiErrorMessage } from '../utils/apiError';
 
-export default function DriverPasswordModal({ onClose, onPasswordChanged, visible }) {
+export default function DriverPasswordModal({ onClose, onPinChanged, visible }) {
   const insets = useSafeAreaInsets();
-  const [currentPassword, setCurrentPassword] = useState('');
-  const [newPassword, setNewPassword] = useState('');
+  const [currentCredential, setCurrentCredential] = useState('');
+  const [newPin, setNewPin] = useState('');
   const [confirmation, setConfirmation] = useState('');
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
 
   function close() {
     if (saving) return;
-    setCurrentPassword('');
-    setNewPassword('');
+    setCurrentCredential('');
+    setNewPin('');
     setConfirmation('');
     setError('');
     onClose?.();
@@ -24,26 +24,26 @@ export default function DriverPasswordModal({ onClose, onPasswordChanged, visibl
 
   async function submit() {
     setError('');
-    if (newPassword.length < 10) {
-      setError('New password must be at least 10 characters.');
+    if (!/^\d{4}$/.test(newPin)) {
+      setError('New PIN must be a 4-digit code.');
       return;
     }
-    if (newPassword !== confirmation) {
-      setError('New passwords do not match.');
+    if (newPin !== confirmation) {
+      setError('PINs do not match.');
       return;
     }
     setSaving(true);
     try {
-      await api.post('/auth/driver/change-password', {
-        current_password: currentPassword,
-        new_password: newPassword
+      await api.post('/auth/driver/change-pin', {
+        current_credential: currentCredential,
+        new_pin: newPin
       });
-      setCurrentPassword('');
-      setNewPassword('');
+      setCurrentCredential('');
+      setNewPin('');
       setConfirmation('');
-      onPasswordChanged?.();
+      onPinChanged?.();
     } catch (requestError) {
-      setError(getApiErrorMessage(requestError, 'Password could not be updated.'));
+      setError(getApiErrorMessage(requestError, 'PIN could not be updated.'));
     } finally {
       setSaving(false);
     }
@@ -53,14 +53,14 @@ export default function DriverPasswordModal({ onClose, onPasswordChanged, visibl
     <Modal animationType="slide" onRequestClose={close} transparent visible={visible}>
       <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={styles.overlay}>
         <View style={[styles.sheet, { paddingBottom: Math.max(insets.bottom, 18) }]}>
-          <Text accessibilityRole="header" style={styles.title}>Change password</Text>
-          <Text style={styles.body}>After your password changes, sign in again with the new password.</Text>
-          <TextInput onChangeText={setCurrentPassword} placeholder="Current password" secureTextEntry style={styles.input} value={currentPassword} />
-          <TextInput onChangeText={setNewPassword} placeholder="New password" secureTextEntry style={styles.input} value={newPassword} />
-          <TextInput onChangeText={setConfirmation} placeholder="Confirm new password" secureTextEntry style={styles.input} value={confirmation} />
+          <Text accessibilityRole="header" style={styles.title}>Change PIN</Text>
+          <Text style={styles.body}>Enter your current PIN or password, then choose a new four-digit PIN. You will sign in again after it changes.</Text>
+          <TextInput autoCapitalize="none" onChangeText={setCurrentCredential} placeholder="Current PIN or password" secureTextEntry style={styles.input} value={currentCredential} />
+          <TextInput keyboardType="number-pad" maxLength={4} onChangeText={(value) => setNewPin(value.replace(/\D/g, '').slice(0, 4))} placeholder="New 4-digit PIN" secureTextEntry style={styles.input} value={newPin} />
+          <TextInput keyboardType="number-pad" maxLength={4} onChangeText={(value) => setConfirmation(value.replace(/\D/g, '').slice(0, 4))} placeholder="Confirm new PIN" secureTextEntry style={styles.input} value={confirmation} />
           {error ? <Text style={styles.error}>{error}</Text> : null}
           <Pressable disabled={saving} onPress={submit} style={[styles.primaryButton, saving ? styles.disabled : null]}>
-            {saving ? <ActivityIndicator color="#fff" /> : <Text style={styles.primaryButtonText}>Update password</Text>}
+            {saving ? <ActivityIndicator color="#fff" /> : <Text style={styles.primaryButtonText}>Update PIN</Text>}
           </Pressable>
           <Pressable disabled={saving} onPress={close} style={styles.closeButton}><Text style={styles.closeButtonText}>Cancel</Text></Pressable>
         </View>

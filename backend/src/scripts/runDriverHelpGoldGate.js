@@ -46,10 +46,12 @@ function typoVariant(value) {
   }
   if (bestIndex < 0) return `${value}?`;
   const token = tokens[bestIndex];
-  const letters = [...token];
+  const segments = [...token.matchAll(/[A-Za-z]+/g)].sort((left, right) => right[0].length - left[0].length);
+  const segment = segments[0];
+  const letters = [...segment[0]];
   const start = Math.max(1, Math.floor(letters.length / 2) - 1);
   [letters[start], letters[start + 1]] = [letters[start + 1], letters[start]];
-  tokens[bestIndex] = letters.join('');
+  tokens[bestIndex] = `${token.slice(0, segment.index)}${letters.join('')}${token.slice(segment.index + segment[0].length)}`;
   return tokens.join('');
 }
 

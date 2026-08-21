@@ -193,7 +193,7 @@ export default function MobileNavigationDrawer({
             {driverHelpOnly && activeMode === 'driver' ? (
               <>
                 <Pressable onPress={onPasswordPress} style={({ pressed }) => [styles.supportButton, pressed ? styles.pressed : null]}>
-                  <Text style={styles.supportText}>Change password</Text>
+                  <Text style={styles.supportText}>Change PIN</Text>
                 </Pressable>
                 <Pressable onPress={onPrivacyPress} style={({ pressed }) => [styles.supportButton, pressed ? styles.pressed : null]}>
                   <Text style={styles.supportText}>Privacy &amp; AI</Text>

@@ -2,7 +2,7 @@
   {
     "adjudication_id": "ADJ-20260815-OWNER-MISLOAD-AFTERDISPATCH-001",
     "knowledge_id": "KNO-DEL-MISLOAD-AFTERDISPATCH-001",
-    "status": "APPROVED",
+    "status": "SUPERSEDED",
     "issue_reviewed": "Whether the partner-provided wrong-route package procedure may be used without a document supporting every step.",
     "canonical_determination": "A package found after dispatch that belongs to another route is not delivered, receives Code 012 and the service-cross notation, has the SID sticker removed, and is returned to the station.",
     "previous_interpretations": [
@@ -63,7 +63,7 @@
   {
     "adjudication_id": "ADJ-20260815-OWNER-MANIFEST-PREVIEW-001",
     "knowledge_id": "KNO-FORGE-MANIFEST-PREVIEW-001",
-    "status": "APPROVED",
+    "status": "SUPERSEDED",
     "issue_reviewed": "The approved predispatch correction paths for a package assigned to the wrong work area.",
     "canonical_determination": "Before dispatch, use a package-handler scan, Manifest Preview Modify, or Bulk Transfer. The person whose manifest currently holds the package initiates Bulk Transfer and selects the destination work area.",
     "previous_interpretations": [
@@ -250,7 +250,7 @@
   {
     "adjudication_id": "ADJ-20260815-OWNER-VEHICLE-BARCODE-001",
     "knowledge_id": "KNO-FORGE-VEHICLE-BARCODE-WORKAROUND-001",
-    "status": "APPROVED",
+    "status": "SUPERSEDED",
     "issue_reviewed": "The approved workaround for a missing or unscannable vehicle barcode.",
     "canonical_determination": "Generate a Code 128 barcode using a capital V plus the actual vehicle number and scan it from the screen.",
     "previous_interpretations": [
@@ -291,12 +291,15 @@
         }
       ],
       "concise_driver_answer": "Use a reputable Code 128 barcode generator. Enter a capital V followed by the actual vehicle number, such as V538765, generate the barcode, and scan it from the screen."
-    }
+    },
+    "superseded_by": [
+      "ADJ-20260819-OWNER-INAPP-VEHICLE-BARCODE-001"
+    ]
   },
   {
     "adjudication_id": "ADJ-20260815-OWNER-PICKUP-NO-BARCODE-001",
     "knowledge_id": "KNO-PUP-NO-BARCODE-001",
-    "status": "APPROVED",
+    "status": "SUPERSEDED",
     "issue_reviewed": "Whether a package without a barcode may be accepted at pickup.",
     "canonical_determination": "No barcode means no pickup. Do not take the package; call CXPC if the situation is not straightforward.",
     "previous_interpretations": [
@@ -701,6 +704,1685 @@
       ],
       "concise_driver_answer": "Load hazmat on the floor, arrows up, blocked and braced so it cannot move, and separate incompatible materials. Keep the certification/declaration, manifest, and ERG within arm's reach while driving; when unattended, keep them on the seat or in the driver's door pocket as applicable. Cross off delivered packages. If the manifest is unavailable or a package transfers, use the required hazmat paperwork envelope, and remove OP-900LL when the package is no longer aboard.",
       "more_info_answer": "Relay transfer has a separate Check-Out/Check-In procedure that this approval does not replace."
+    }
+  },
+  {
+    "adjudication_id": "ADJ-20260819-VLAD-BUS-CLOSED-001",
+    "knowledge_id": "KNO-DEL-BUS-CLOSED-001",
+    "status": "SUPERSEDED",
+    "issue_reviewed": "The complete disposition for a closed non-residential delivery, including station return treatment.",
+    "canonical_determination": "Use Code 011 for the applicable weekend closure or Code 004 for another closed non-residential recipient-not-in condition, complete the door tag, cross and remove the SID, and return the package to the station.",
+    "previous_interpretations": [
+      "The v2 source-backed record included Code 004/011, the door tag, and package notation but withheld SID removal and final station return."
+    ],
+    "supporting_source_ids": [
+      "SRC-V2-VLAD-CONSOLIDATED-DETAIL-20260818",
+      "SRC-V2-VLAD-RESPONSE-20260819",
+      "SRC-V2-OWNER-VLAD-APPROVAL-20260819"
+    ],
+    "conflicting_or_superseded_source_ids": [],
+    "reasoning": "Phillip Metzger explicitly approved Vlad-provided procedures and operational information as accurate Ready Route knowledge without requiring separate documentary corroboration. This adjudication preserves the exact supplied scope and later branch corrections.",
+    "approved_by": "Phillip Metzger, Ready Route product owner",
+    "approval_date": "2026-08-19",
+    "effective_date": "2026-08-19",
+    "supersedes": [],
+    "reopen_conditions": [
+      "Phillip or Vlad revises the supplied procedure.",
+      "A later operational, policy, or application change materially conflicts with this procedure.",
+      "A later Vlad artifact supplies a more specific branch or corrects the summarized intake."
+    ],
+    "canonical_overrides": {
+      "authoritative_rule": "When a non-residential recipient is unavailable and no authorized release path exists, use Code 011 for the applicable weekend closure or Code 004 for another recipient-not-in condition. Complete, scan, and leave the door tag, cross the package with the matching code, date, and work area number, remove the SID sticker, and return the package to the station.",
+      "required_procedure": [
+        {
+          "step": 1,
+          "action": "Confirm the stop is non-residential and no authorized release path is available."
+        },
+        {
+          "step": 2,
+          "action": "Use Code 011 for the applicable weekend closure; otherwise use Code 004."
+        },
+        {
+          "step": 3,
+          "action": "Complete, scan, and leave the door tag at the main entrance."
+        },
+        {
+          "step": 4,
+          "action": "Cross the package with the matching code, date, and work area number."
+        },
+        {
+          "step": 5,
+          "action": "Remove the SID sticker and return the package to the station."
+        }
+      ],
+      "required_documentation": [
+        "Code 004 or 011",
+        "Scanned door tag",
+        "Package crossing"
+      ],
+      "prohibited_actions": [
+        "Do not use Code 004 for a residential stop.",
+        "Do not leave the package without an authorized release path."
+      ],
+      "concise_driver_answer": "If no authorized release applies, use Code 011 for the applicable weekend closure or Code 004 for another closed-business condition. Complete the door tag, cross the package with the code, date, and work area, remove the SID, and return it to the station."
+    }
+  },
+  {
+    "adjudication_id": "ADJ-20260819-VLAD-DAMAGE-RETURN-001",
+    "knowledge_id": "KNO-DEL-DAMAGE-INSPECTION-001",
+    "status": "APPROVED",
+    "issue_reviewed": "The complete station-return treatment for an ordinary possible-damage inspection.",
+    "canonical_determination": "After ruling out a leaking or hazmat emergency, use Code 010, cross the package, remove the SID, and return it for inspection.",
+    "previous_interpretations": [
+      "The source-backed record included Code 010, crossing, and station return but withheld SID removal."
+    ],
+    "supporting_source_ids": [
+      "SRC-V2-VLAD-CONSOLIDATED-DETAIL-20260818",
+      "SRC-V2-VLAD-RESPONSE-20260819",
+      "SRC-V2-OWNER-VLAD-APPROVAL-20260819"
+    ],
+    "conflicting_or_superseded_source_ids": [],
+    "reasoning": "Phillip Metzger explicitly approved Vlad-provided procedures and operational information as accurate Ready Route knowledge without requiring separate documentary corroboration. This adjudication preserves the exact supplied scope and later branch corrections.",
+    "approved_by": "Phillip Metzger, Ready Route product owner",
+    "approval_date": "2026-08-19",
+    "effective_date": "2026-08-19",
+    "supersedes": [],
+    "reopen_conditions": [
+      "Phillip or Vlad revises the supplied procedure.",
+      "A later operational, policy, or application change materially conflicts with this procedure.",
+      "A later Vlad artifact supplies a more specific branch or corrects the summarized intake."
+    ],
+    "canonical_overrides": {
+      "authoritative_rule": "For an ordinary possibly damaged package being returned for inspection, first rule out a leaking or hazardous-material emergency. Apply Code 010, cross the package with the code, date, and work area number, remove the SID sticker, and return it to the station for inspection.",
+      "required_procedure": [
+        {
+          "step": 1,
+          "action": "Determine whether the package is leaking or hazardous; if so, use the separate safety process."
+        },
+        {
+          "step": 2,
+          "action": "Apply Code 010."
+        },
+        {
+          "step": 3,
+          "action": "Cross the package with Code 010, the date, and the work area number."
+        },
+        {
+          "step": 4,
+          "action": "Remove the SID sticker."
+        },
+        {
+          "step": 5,
+          "action": "Return the package to the station for inspection."
+        }
+      ],
+      "prohibited_actions": [
+        "Do not handle a leaking or hazardous package as an ordinary Code 010 return."
+      ],
+      "concise_driver_answer": "If it is not leaking or hazardous, use Code 010, cross it with the code, date, and work area, remove the SID, and return it to the station for inspection."
+    }
+  },
+  {
+    "adjudication_id": "ADJ-20260819-VLAD-CODE001-RETURN-001",
+    "knowledge_id": "KNO-DEL-SECURITY-NODELIVERY-001",
+    "status": "APPROVED",
+    "issue_reviewed": "Code 001 handling when security measures or a closed road prevent delivery.",
+    "canonical_determination": "Use Code 001 when the condition prevents delivery, record the actual reason, cross and remove the SID, and return the package.",
+    "previous_interpretations": [
+      "The source-backed record applied Code 001 only to customer security measures and did not include complete crossing or SID treatment.",
+      "Road closure returned Answer Unavailable before Vlad supplied the approved branch."
+    ],
+    "supporting_source_ids": [
+      "SRC-V2-VLAD-CONSOLIDATED-DETAIL-20260818",
+      "SRC-V2-VLAD-RESPONSE-20260819",
+      "SRC-V2-OWNER-VLAD-APPROVAL-20260819"
+    ],
+    "conflicting_or_superseded_source_ids": [],
+    "reasoning": "Phillip Metzger explicitly approved Vlad-provided procedures and operational information as accurate Ready Route knowledge without requiring separate documentary corroboration. This adjudication preserves the exact supplied scope and later branch corrections.",
+    "approved_by": "Phillip Metzger, Ready Route product owner",
+    "approval_date": "2026-08-19",
+    "effective_date": "2026-08-19",
+    "supersedes": [],
+    "reopen_conditions": [
+      "Phillip or Vlad revises the supplied procedure.",
+      "A later operational, policy, or application change materially conflicts with this procedure.",
+      "A later Vlad artifact supplies a more specific branch or corrects the summarized intake."
+    ],
+    "canonical_overrides": {
+      "authoritative_rule": "When customer security measures or a closed road prevent delivery, use Code 001 and add a note stating the actual reason. Cross the package with Code 001, the date, and work area number, remove the SID sticker, and return it to the station. Do not use Code 001 for a delay that still permits delivery.",
+      "applicability": [
+        "Customer security measures prevent delivery",
+        "A closed road prevents access and delivery"
+      ],
+      "required_procedure": [
+        {
+          "step": 1,
+          "action": "Confirm the condition prevents delivery rather than merely delaying access."
+        },
+        {
+          "step": 2,
+          "action": "Apply Code 001 and add a note describing the actual reason."
+        },
+        {
+          "step": 3,
+          "action": "Cross the package with Code 001, the date, and work area number."
+        },
+        {
+          "step": 4,
+          "action": "Remove the SID sticker and return the package to the station."
+        }
+      ],
+      "required_documentation": [
+        "Code 001",
+        "Scanner note with the actual reason",
+        "Package crossing"
+      ],
+      "prohibited_actions": [
+        "Do not use Code 001 for an allowed entry delay that does not prevent delivery."
+      ],
+      "concise_driver_answer": "Use Code 001 when security or a closed road prevents delivery. Add a note with the actual reason, cross the package with the code, date, and work area, remove the SID, and return it to the station."
+    }
+  },
+  {
+    "adjudication_id": "ADJ-20260819-VLAD-ASR-DISPOSITION-001",
+    "knowledge_id": "KNO-DEL-SIG-ASR-001",
+    "status": "APPROVED",
+    "issue_reviewed": "Separate ASR ID-refusal station return from the no-eligible-signer reattempt branch.",
+    "canonical_determination": "ID refusal uses Code 006, crossing, SID removal, and station return. No eligible signer uses Code 007 residential or Code 004 non-residential, door-tag attempt documentation, and retention for reattempt without crossing or SID removal.",
+    "previous_interpretations": [
+      "The ASR record did not explicitly separate package treatment for the ID-refusal and no-eligible-signer branches.",
+      "The report initially described ASR as one disposition before Vlad corrected the split."
+    ],
+    "supporting_source_ids": [
+      "SRC-V2-VLAD-CONSOLIDATED-DETAIL-20260818",
+      "SRC-V2-VLAD-RESPONSE-20260819",
+      "SRC-V2-OWNER-VLAD-APPROVAL-20260819"
+    ],
+    "conflicting_or_superseded_source_ids": [],
+    "reasoning": "Phillip Metzger explicitly approved Vlad-provided procedures and operational information as accurate Ready Route knowledge without requiring separate documentary corroboration. This adjudication preserves the exact supplied scope and later branch corrections.",
+    "approved_by": "Phillip Metzger, Ready Route product owner",
+    "approval_date": "2026-08-19",
+    "effective_date": "2026-08-19",
+    "supersedes": [],
+    "reopen_conditions": [
+      "Phillip or Vlad revises the supplied procedure.",
+      "A later operational, policy, or application change materially conflicts with this procedure.",
+      "A later Vlad artifact supplies a more specific branch or corrects the summarized intake."
+    ],
+    "canonical_overrides": {
+      "authoritative_rule": "ASR requires an in-person signature at the labeled address from a person age 21 or older with valid government ID. If ID is refused, use Code 006, complete the delivery notation, cross the package with the code, date, and work area number, remove the SID sticker, and return it to the station. If no eligible signer is available, use Code 007 residential or Code 004 non-residential, complete the door tag and attempt photo, and retain the package for reattempt without crossing it or removing the SID. The door-tag requirement for the Code 006 ID-refusal branch remains unresolved.",
+      "required_procedure": [
+        {
+          "step": 1,
+          "action": "Require valid government ID from a signer age 21 or older at the labeled address and attempt the ID scan."
+        },
+        {
+          "step": 2,
+          "action": "If valid ID is presented but cannot be scanned after the attempt, use the permitted manual DOB and visual-verification path."
+        },
+        {
+          "step": 3,
+          "action": "If ID is refused, use Code 006, complete the notation, cross the package, remove the SID, and return it to the station."
+        },
+        {
+          "step": 4,
+          "action": "If no eligible signer is available, use Code 007 residential or Code 004 non-residential, complete the door tag and attempt photo, and retain the package for reattempt."
+        },
+        {
+          "step": 5,
+          "action": "Do not cross or remove the SID for the retain-for-reattempt branch."
+        }
+      ],
+      "required_documentation": [
+        "ID verification and signature when delivered",
+        "Code 006, notation, and package crossing when ID is refused",
+        "Code 007 or 004, scanned door tag, and attempt photo when no signer is available"
+      ],
+      "prohibited_actions": [
+        "Do not driver release or indirectly deliver ASR.",
+        "Do not cross or remove the SID on the retain-for-reattempt branch.",
+        "Do not claim a door tag is confirmed for the Code 006 ID-refusal branch."
+      ],
+      "concise_driver_answer": "ASR has two unsuccessful branches. If ID is refused, use Code 006, cross the package, remove the SID, and return it to the station. If no eligible signer is available, use Code 007 residential or 004 non-residential, complete the door tag and attempt photo, and keep the package for reattempt without crossing it or removing the SID."
+    }
+  },
+  {
+    "adjudication_id": "ADJ-20260819-VLAD-DSR-REATtempt-001",
+    "knowledge_id": "KNO-DEL-SIG-DSR-001",
+    "status": "APPROVED",
+    "issue_reviewed": "The package treatment when no eligible DSR signer is available.",
+    "canonical_determination": "Use Code 007 residential or Code 004 non-residential, complete the attempt documentation, and retain the package for reattempt without crossing or SID removal.",
+    "previous_interpretations": [
+      "The source-backed record said not to leave the package but did not explicitly state the no-cross/no-SID reattempt disposition."
+    ],
+    "supporting_source_ids": [
+      "SRC-V2-VLAD-CONSOLIDATED-DETAIL-20260818",
+      "SRC-V2-VLAD-RESPONSE-20260819",
+      "SRC-V2-OWNER-VLAD-APPROVAL-20260819"
+    ],
+    "conflicting_or_superseded_source_ids": [],
+    "reasoning": "Phillip Metzger explicitly approved Vlad-provided procedures and operational information as accurate Ready Route knowledge without requiring separate documentary corroboration. This adjudication preserves the exact supplied scope and later branch corrections.",
+    "approved_by": "Phillip Metzger, Ready Route product owner",
+    "approval_date": "2026-08-19",
+    "effective_date": "2026-08-19",
+    "supersedes": [],
+    "reopen_conditions": [
+      "Phillip or Vlad revises the supplied procedure.",
+      "A later operational, policy, or application change materially conflicts with this procedure.",
+      "A later Vlad artifact supplies a more specific branch or corrects the summarized intake."
+    ],
+    "canonical_overrides": {
+      "authoritative_rule": "DSR requires an in-person signature at the labeled address. If nobody can sign, use Code 007 residential or Code 004 non-residential, complete and scan the door tag, capture the attempt photo, and retain the package for reattempt. Do not cross the package or remove the SID sticker for this reattempt branch.",
+      "required_procedure": [
+        {
+          "step": 1,
+          "action": "Confirm FORGE shows DSR and attempt the in-person signature at the labeled address."
+        },
+        {
+          "step": 2,
+          "action": "If nobody can sign, use Code 007 residential or Code 004 non-residential."
+        },
+        {
+          "step": 3,
+          "action": "Complete and scan the door tag and capture the attempt photo."
+        },
+        {
+          "step": 4,
+          "action": "Retain the package for reattempt without crossing it or removing the SID."
+        }
+      ],
+      "prohibited_actions": [
+        "Do not driver release, indirectly deliver, or use a signed door tag for DSR.",
+        "Do not cross or remove the SID on the retain-for-reattempt branch."
+      ],
+      "concise_driver_answer": "If nobody can sign for DSR, use Code 007 residential or 004 non-residential, complete the door tag and attempt photo, and keep the package for reattempt. Do not cross it or remove the SID."
+    }
+  },
+  {
+    "adjudication_id": "ADJ-20260819-VLAD-APT-RETURN-001",
+    "knowledge_id": "KNO-DEL-APT-001",
+    "status": "APPROVED",
+    "issue_reviewed": "The complete apartment no-signer station-return treatment.",
+    "canonical_determination": "After allowed recipient and indirect-signer paths fail, use Code 007/004, door tag, crossing, SID removal, and station return.",
+    "previous_interpretations": [
+      "The source-backed record included the delivery branches, code, door tag, and return but not SID removal."
+    ],
+    "supporting_source_ids": [
+      "SRC-V2-VLAD-CONSOLIDATED-DETAIL-20260818",
+      "SRC-V2-VLAD-RESPONSE-20260819",
+      "SRC-V2-OWNER-VLAD-APPROVAL-20260819"
+    ],
+    "conflicting_or_superseded_source_ids": [],
+    "reasoning": "Phillip Metzger explicitly approved Vlad-provided procedures and operational information as accurate Ready Route knowledge without requiring separate documentary corroboration. This adjudication preserves the exact supplied scope and later branch corrections.",
+    "approved_by": "Phillip Metzger, Ready Route product owner",
+    "approval_date": "2026-08-19",
+    "effective_date": "2026-08-19",
+    "supersedes": [],
+    "reopen_conditions": [
+      "Phillip or Vlad revises the supplied procedure.",
+      "A later operational, policy, or application change materially conflicts with this procedure.",
+      "A later Vlad artifact supplies a more specific branch or corrects the summarized intake."
+    ],
+    "canonical_overrides": {
+      "authoritative_rule": "Attempt the accessible apartment door. If the recipient is unavailable, use an allowed indirect delivery only when an eligible neighbor, office, receiving-area employee, or door attendant accepts and signs. If no signer is available, use Code 007 residential or Code 004 business, complete and leave the door tag, cross the package with the code, date, and work area number, remove the SID sticker, and return it to the station.",
+      "required_procedure": [
+        {
+          "step": 1,
+          "action": "Attempt the accessible apartment door."
+        },
+        {
+          "step": 2,
+          "action": "Use an allowed indirect delivery only when an eligible person accepts and signs."
+        },
+        {
+          "step": 3,
+          "action": "If no signer is available, use Code 007 residential or Code 004 business and complete the door tag."
+        },
+        {
+          "step": 4,
+          "action": "Cross the package with the matching code, date, and work area number."
+        },
+        {
+          "step": 5,
+          "action": "Remove the SID sticker and return the package to the station."
+        }
+      ],
+      "prohibited_actions": [
+        "Do not leave a package unattended in a common-entry apartment building.",
+        "Do not bypass signature restrictions."
+      ],
+      "concise_driver_answer": "Attempt the unit, then an allowed indirect signer. If nobody can accept and sign, use Code 007 residential or 004 business, complete the door tag, cross the package, remove the SID, and return it to the station."
+    }
+  },
+  {
+    "adjudication_id": "ADJ-20260819-VLAD-LOCKER-RETURN-001",
+    "knowledge_id": "KNO-DEL-LOCKER-FAIL-001",
+    "status": "APPROVED",
+    "issue_reviewed": "The complete return treatment when an eligible package cannot use the third-party locker.",
+    "canonical_determination": "After property-management alternatives fail, use Code 007, note the reason, door tag, crossing, SID removal, and station return.",
+    "previous_interpretations": [
+      "The source-backed record included Code 007 and station return but not the complete note, door-tag, crossing, and SID sequence."
+    ],
+    "supporting_source_ids": [
+      "SRC-V2-VLAD-CONSOLIDATED-DETAIL-20260818",
+      "SRC-V2-VLAD-RESPONSE-20260819",
+      "SRC-V2-OWNER-VLAD-APPROVAL-20260819"
+    ],
+    "conflicting_or_superseded_source_ids": [],
+    "reasoning": "Phillip Metzger explicitly approved Vlad-provided procedures and operational information as accurate Ready Route knowledge without requiring separate documentary corroboration. This adjudication preserves the exact supplied scope and later branch corrections.",
+    "approved_by": "Phillip Metzger, Ready Route product owner",
+    "approval_date": "2026-08-19",
+    "effective_date": "2026-08-19",
+    "supersedes": [],
+    "reopen_conditions": [
+      "Phillip or Vlad revises the supplied procedure.",
+      "A later operational, policy, or application change materially conflicts with this procedure.",
+      "A later Vlad artifact supplies a more specific branch or corrects the summarized intake."
+    ],
+    "canonical_overrides": {
+      "authoritative_rule": "For an eligible locker package that does not fit or cannot be placed because the locker failed, contact property management for an approved alternate. If none is available, use Code 007, add a note describing the locker failure, complete and leave the door tag, cross the package with Code 007, the date, and work area number, remove the SID sticker, and return it to the station.",
+      "required_procedure": [
+        {
+          "step": 1,
+          "action": "Confirm the package is eligible for the locker."
+        },
+        {
+          "step": 2,
+          "action": "Contact property management for an approved alternate location."
+        },
+        {
+          "step": 3,
+          "action": "If none is available, use Code 007 and add a note describing the actual locker failure."
+        },
+        {
+          "step": 4,
+          "action": "Complete and leave the door tag and cross the package."
+        },
+        {
+          "step": 5,
+          "action": "Remove the SID sticker and return the package to the station."
+        }
+      ],
+      "required_documentation": [
+        "Code 007",
+        "Scanner note with actual locker-failure reason",
+        "Door tag",
+        "Package crossing"
+      ],
+      "prohibited_actions": [
+        "Do not leave the package on, under, near, or outside the unusable locker."
+      ],
+      "concise_driver_answer": "Contact property management for an approved alternate. If none is available, use Code 007, note the locker failure, complete the door tag, cross the package, remove the SID, and return it to the station."
+    }
+  },
+  {
+    "adjudication_id": "ADJ-20260819-VLAD-SAFEPLACE-RETURN-001",
+    "knowledge_id": "KNO-DEL-SAFEPLACE-001",
+    "status": "APPROVED",
+    "issue_reviewed": "The complete no-safe-place sequence, including customer contact and station-return treatment.",
+    "canonical_determination": "Call the customer first, use an allowed indirect signer if available, and otherwise use Code 007, door tag, crossing, SID removal, and station return.",
+    "previous_interpretations": [
+      "The source-backed record began with an indirect-neighbor option and included Code 007 and return but not customer contact or SID removal."
+    ],
+    "supporting_source_ids": [
+      "SRC-V2-VLAD-CONSOLIDATED-DETAIL-20260818",
+      "SRC-V2-VLAD-RESPONSE-20260819",
+      "SRC-V2-OWNER-VLAD-APPROVAL-20260819"
+    ],
+    "conflicting_or_superseded_source_ids": [],
+    "reasoning": "Phillip Metzger explicitly approved Vlad-provided procedures and operational information as accurate Ready Route knowledge without requiring separate documentary corroboration. This adjudication preserves the exact supplied scope and later branch corrections.",
+    "approved_by": "Phillip Metzger, Ready Route product owner",
+    "approval_date": "2026-08-19",
+    "effective_date": "2026-08-19",
+    "supersedes": [],
+    "reopen_conditions": [
+      "Phillip or Vlad revises the supplied procedure.",
+      "A later operational, policy, or application change materially conflicts with this procedure.",
+      "A later Vlad artifact supplies a more specific branch or corrects the summarized intake."
+    ],
+    "canonical_overrides": {
+      "authoritative_rule": "Do not leave an eligible residential release package where no safe location exists. Call the customer first. If an allowed indirect delivery is available, obtain the required signature. Otherwise use Code 007, complete the notation and door tag, capture the attempt photo, cross the package with the code, date, and work area number, remove the SID sticker, and return it to the station.",
+      "required_procedure": [
+        {
+          "step": 1,
+          "action": "Do not leave the package in an unsafe or exposed location; call the customer first."
+        },
+        {
+          "step": 2,
+          "action": "If allowed, attempt an indirect delivery to an eligible signer."
+        },
+        {
+          "step": 3,
+          "action": "If no allowed delivery path exists, use Code 007 and complete the notation, door tag, and attempt photo."
+        },
+        {
+          "step": 4,
+          "action": "Cross the package with Code 007, the date, and work area number."
+        },
+        {
+          "step": 5,
+          "action": "Remove the SID sticker and return the package to the station."
+        }
+      ],
+      "prohibited_actions": [
+        "Do not leave the package in an unsafe or exposed location.",
+        "Do not use indirect delivery when restrictions prohibit it."
+      ],
+      "concise_driver_answer": "Call the customer first and use an allowed indirect signer if available. Otherwise use Code 007, complete the door tag and attempt photo, cross the package, remove the SID, and return it to the station."
+    }
+  },
+  {
+    "adjudication_id": "ADJ-20260819-VLAD-HAL-RETURN-001",
+    "knowledge_id": "KNO-DEL-HAL-UNABLE-001",
+    "status": "APPROVED",
+    "issue_reviewed": "The complete station-return treatment when a HAL package cannot be tendered.",
+    "canonical_determination": "Use the correct pre-close or post-close HAL branch, then cross, remove the SID, and return the package to station QA.",
+    "previous_interpretations": [
+      "The source-backed record included the Code 250 and post-close pickup/QA paths but not crossing or SID removal."
+    ],
+    "supporting_source_ids": [
+      "SRC-V2-VLAD-CONSOLIDATED-DETAIL-20260818",
+      "SRC-V2-VLAD-RESPONSE-20260819",
+      "SRC-V2-OWNER-VLAD-APPROVAL-20260819"
+    ],
+    "conflicting_or_superseded_source_ids": [],
+    "reasoning": "Phillip Metzger explicitly approved Vlad-provided procedures and operational information as accurate Ready Route knowledge without requiring separate documentary corroboration. This adjudication preserves the exact supplied scope and later branch corrections.",
+    "approved_by": "Phillip Metzger, Ready Route product owner",
+    "approval_date": "2026-08-19",
+    "effective_date": "2026-08-19",
+    "supersedes": [],
+    "reopen_conditions": [
+      "Phillip or Vlad revises the supplied procedure.",
+      "A later operational, policy, or application change materially conflicts with this procedure.",
+      "A later Vlad artifact supplies a more specific branch or corrects the summarized intake."
+    ],
+    "canonical_overrides": {
+      "authoritative_rule": "Before stop close, use Code 250 with the actual Unable to HAL reason. After a FedEx Office post-close refusal, use the location-applied Unable to Hold label and pickup scan. For either station-return branch, cross the package with the applicable code or return status, date, and work area number, remove the SID sticker, and return it to station QA.",
+      "required_procedure": [
+        {
+          "step": 1,
+          "action": "Determine whether the HAL stop is still open."
+        },
+        {
+          "step": 2,
+          "action": "Before close, use Code 250 and the actual Unable to HAL reason."
+        },
+        {
+          "step": 3,
+          "action": "After a FedEx Office post-close refusal, have the location apply the Unable to Hold label and scan the package as a pickup."
+        },
+        {
+          "step": 4,
+          "action": "Cross the package with the applicable return status, date, and work area number and remove the SID sticker."
+        },
+        {
+          "step": 5,
+          "action": "Return the package to station QA."
+        }
+      ],
+      "prohibited_actions": [
+        "Do not use a reason that does not match the condition.",
+        "Do not use the pre-close Code 250 path after the stop has closed."
+      ],
+      "concise_driver_answer": "Use Code 250 and the actual reason before close, or the Unable to Hold label and pickup path after a FedEx Office post-close refusal. Cross the return package, remove the SID, and return it to station QA."
+    }
+  },
+  {
+    "adjudication_id": "ADJ-20260819-VLAD-PICKUP-NO-BARCODE-001",
+    "knowledge_id": "KNO-PUP-NO-BARCODE-001",
+    "status": "APPROVED",
+    "issue_reviewed": "Who the driver may contact when a pickup package has no barcode and the situation is unclear.",
+    "canonical_determination": "No barcode means no pickup; call CXPC or the BC/manager if the situation is unclear.",
+    "previous_interpretations": [
+      "The prior owner approval named CXPC but did not include the BC/manager alternative."
+    ],
+    "supporting_source_ids": [
+      "SRC-V2-VLAD-CONSOLIDATED-DETAIL-20260818",
+      "SRC-V2-VLAD-RESPONSE-20260819",
+      "SRC-V2-OWNER-VLAD-APPROVAL-20260819"
+    ],
+    "conflicting_or_superseded_source_ids": [],
+    "reasoning": "Phillip Metzger explicitly approved Vlad-provided procedures and operational information as accurate Ready Route knowledge without requiring separate documentary corroboration. This adjudication preserves the exact supplied scope and later branch corrections.",
+    "approved_by": "Phillip Metzger, Ready Route product owner",
+    "approval_date": "2026-08-19",
+    "effective_date": "2026-08-19",
+    "supersedes": [
+      "ADJ-20260815-OWNER-PICKUP-NO-BARCODE-001"
+    ],
+    "reopen_conditions": [
+      "Phillip or Vlad revises the supplied procedure.",
+      "A later operational, policy, or application change materially conflicts with this procedure.",
+      "A later Vlad artifact supplies a more specific branch or corrects the summarized intake."
+    ],
+    "canonical_overrides": {
+      "authoritative_rule": "No barcode means no pickup. Do not take the package. If the situation is not straightforward, call CXPC or the BC/manager.",
+      "required_procedure": [
+        {
+          "step": 1,
+          "action": "Confirm the pickup package has no barcode."
+        },
+        {
+          "step": 2,
+          "action": "Do not pick up the package."
+        },
+        {
+          "step": 3,
+          "action": "Call CXPC or the BC/manager if the situation is not straightforward."
+        }
+      ],
+      "prohibited_actions": [
+        "Do not pick up a package with no barcode."
+      ],
+      "escalation_requirements": [
+        "CXPC or BC/manager when the situation is unclear"
+      ],
+      "concise_driver_answer": "No barcode means no pickup. Do not take the package. If anything is unclear, call CXPC or your BC/manager."
+    }
+  },
+  {
+    "adjudication_id": "ADJ-20260819-VLAD-DEL-FAD-GROUND-001",
+    "knowledge_id": "KNO-DEL-FAD-GROUND-001",
+    "status": "APPROVED",
+    "issue_reviewed": "Whether Vlad's supplied procedure may be published as Ready Route operational knowledge: A FAD Ground delivery cannot be completed",
+    "canonical_determination": "Call the BC or manager first. If the delivery still cannot be completed, use Code 004 for a non-residential recipient-not-in condition or Code 007 for a residential recipient-not-in condition, complete and leave the door tag, cross the package with the code, date, and work area number, remove the SID sticker, and return the package to the station.",
+    "previous_interpretations": [
+      "This procedure was absent, incomplete, or withheld from the active v2 corpus before the August 19 Vlad owner approval."
+    ],
+    "supporting_source_ids": [
+      "SRC-V2-VLAD-CONSOLIDATED-DETAIL-20260818",
+      "SRC-V2-VLAD-RESPONSE-20260819",
+      "SRC-V2-OWNER-VLAD-APPROVAL-20260819"
+    ],
+    "conflicting_or_superseded_source_ids": [],
+    "reasoning": "Phillip Metzger explicitly approved Vlad-provided procedures and operational information as accurate Ready Route knowledge without requiring separate documentary corroboration. This adjudication preserves the exact supplied scope and later branch corrections.",
+    "approved_by": "Phillip Metzger, Ready Route product owner",
+    "approval_date": "2026-08-19",
+    "effective_date": "2026-08-19",
+    "supersedes": [],
+    "reopen_conditions": [
+      "Phillip or Vlad revises the supplied procedure.",
+      "A later operational, policy, or application change materially conflicts with this procedure.",
+      "A later Vlad artifact supplies a more specific branch or corrects the summarized intake."
+    ],
+    "canonical_overrides": {
+      "authoritative_rule": "Call the BC or manager first. If the delivery still cannot be completed, use Code 004 for a non-residential recipient-not-in condition or Code 007 for a residential recipient-not-in condition, complete and leave the door tag, cross the package with the code, date, and work area number, remove the SID sticker, and return the package to the station.",
+      "applicability": [
+        "FORGE or the package identifies FAD Ground",
+        "Delivery cannot be completed"
+      ],
+      "conditions": [
+        "The BC or manager is contacted before the package is placed into the return branch"
+      ],
+      "exceptions": [],
+      "required_procedure": [
+        {
+          "step": 1,
+          "action": "Call the BC or manager and explain why the FAD Ground delivery cannot be completed."
+        },
+        {
+          "step": 2,
+          "action": "If delivery remains unsuccessful, use Code 004 for non-residential or Code 007 for residential."
+        },
+        {
+          "step": 3,
+          "action": "Complete, scan, and leave the door tag."
+        },
+        {
+          "step": 4,
+          "action": "Cross the package with the matching code, date, and work area number."
+        },
+        {
+          "step": 5,
+          "action": "Remove the SID sticker and return the package to the station."
+        }
+      ],
+      "required_documentation": [
+        "BC or manager contact",
+        "Code 004 or 007",
+        "Door tag",
+        "Package crossing"
+      ],
+      "prohibited_actions": [
+        "Do not choose 004 or 007 without matching the actual stop type.",
+        "Do not omit the management call before this return branch."
+      ],
+      "escalation_requirements": [
+        "BC or manager before applying the return branch"
+      ],
+      "clarification_requirements": [
+        "Is the stop residential or non-residential?",
+        "Has the BC or manager been contacted?"
+      ],
+      "concise_driver_answer": "Call your BC or manager first. If the FAD Ground delivery still cannot be completed, use Code 004 for non-residential or 007 for residential, complete the door tag, cross the package with the code, date, and work area, remove the SID, and return it to the station.",
+      "more_info_answer": null
+    }
+  },
+  {
+    "adjudication_id": "ADJ-20260819-VLAD-PUP-SCAN-CLASSIFICATION-001",
+    "knowledge_id": "KNO-PUP-SCAN-CLASSIFICATION-001",
+    "status": "APPROVED",
+    "issue_reviewed": "Whether Vlad's supplied procedure may be published as Ready Route operational knowledge: A pickup package will not scan and its service type cannot be identified",
+    "canonical_determination": "At a station that is not Express-certified, accept only a package positively identified as Ground or Home Delivery. If the service type cannot be determined, do not pick up the package and call the manager.",
+    "previous_interpretations": [
+      "This procedure was absent, incomplete, or withheld from the active v2 corpus before the August 19 Vlad owner approval."
+    ],
+    "supporting_source_ids": [
+      "SRC-V2-VLAD-CONSOLIDATED-DETAIL-20260818",
+      "SRC-V2-VLAD-RESPONSE-20260819",
+      "SRC-V2-OWNER-VLAD-APPROVAL-20260819"
+    ],
+    "conflicting_or_superseded_source_ids": [],
+    "reasoning": "Phillip Metzger explicitly approved Vlad-provided procedures and operational information as accurate Ready Route knowledge without requiring separate documentary corroboration. This adjudication preserves the exact supplied scope and later branch corrections.",
+    "approved_by": "Phillip Metzger, Ready Route product owner",
+    "approval_date": "2026-08-19",
+    "effective_date": "2026-08-19",
+    "supersedes": [],
+    "reopen_conditions": [
+      "Phillip or Vlad revises the supplied procedure.",
+      "A later operational, policy, or application change materially conflicts with this procedure.",
+      "A later Vlad artifact supplies a more specific branch or corrects the summarized intake."
+    ],
+    "canonical_overrides": {
+      "authoritative_rule": "At a station that is not Express-certified, accept only a package positively identified as Ground or Home Delivery. If the service type cannot be determined, do not pick up the package and call the manager.",
+      "applicability": [
+        "Pickup package does not scan",
+        "Service classification is uncertain"
+      ],
+      "conditions": [
+        "The station is not Express-certified"
+      ],
+      "exceptions": [
+        "An Express-certified station follows its applicable acceptance process"
+      ],
+      "required_procedure": [
+        {
+          "step": 1,
+          "action": "Determine whether the station is Express-certified."
+        },
+        {
+          "step": 2,
+          "action": "Positively identify the package service before acceptance."
+        },
+        {
+          "step": 3,
+          "action": "At a non-Express-certified station, accept only Ground or Home Delivery."
+        },
+        {
+          "step": 4,
+          "action": "If the service type remains uncertain, do not pick it up and call the manager."
+        }
+      ],
+      "required_documentation": [],
+      "prohibited_actions": [
+        "Do not guess the service type.",
+        "Do not accept an unidentified package at a non-Express-certified station."
+      ],
+      "escalation_requirements": [
+        "Manager when service type cannot be determined"
+      ],
+      "clarification_requirements": [],
+      "concise_driver_answer": "If your station is not Express-certified, pick up only packages you can positively identify as Ground or Home Delivery. If you cannot determine the type, do not pick it up; call your manager.",
+      "more_info_answer": null
+    }
+  },
+  {
+    "adjudication_id": "ADJ-20260819-VLAD-PUP-EARLY-REQUEST-001",
+    "knowledge_id": "KNO-PUP-EARLY-REQUEST-001",
+    "status": "APPROVED",
+    "issue_reviewed": "Whether Vlad's supplied procedure may be published as Ready Route operational knowledge: A customer asks the driver to perform a pickup before the listed ready time",
+    "canonical_determination": "Contact CXPC. CXPC confirms the request directly with the customer and adjusts the pickup hours. Perform the pickup early only after CXPC confirms and changes the hours.",
+    "previous_interpretations": [
+      "This procedure was absent, incomplete, or withheld from the active v2 corpus before the August 19 Vlad owner approval."
+    ],
+    "supporting_source_ids": [
+      "SRC-V2-VLAD-CONSOLIDATED-DETAIL-20260818",
+      "SRC-V2-VLAD-RESPONSE-20260819",
+      "SRC-V2-OWNER-VLAD-APPROVAL-20260819"
+    ],
+    "conflicting_or_superseded_source_ids": [],
+    "reasoning": "Phillip Metzger explicitly approved Vlad-provided procedures and operational information as accurate Ready Route knowledge without requiring separate documentary corroboration. This adjudication preserves the exact supplied scope and later branch corrections.",
+    "approved_by": "Phillip Metzger, Ready Route product owner",
+    "approval_date": "2026-08-19",
+    "effective_date": "2026-08-19",
+    "supersedes": [],
+    "reopen_conditions": [
+      "Phillip or Vlad revises the supplied procedure.",
+      "A later operational, policy, or application change materially conflicts with this procedure.",
+      "A later Vlad artifact supplies a more specific branch or corrects the summarized intake."
+    ],
+    "canonical_overrides": {
+      "authoritative_rule": "Contact CXPC. CXPC confirms the request directly with the customer and adjusts the pickup hours. Perform the pickup early only after CXPC confirms and changes the hours.",
+      "applicability": [
+        "Customer requests pickup before the listed ready time"
+      ],
+      "conditions": [
+        "CXPC confirms with the customer",
+        "CXPC adjusts the pickup hours"
+      ],
+      "exceptions": [],
+      "required_procedure": [
+        {
+          "step": 1,
+          "action": "Contact CXPC with the early-pickup request."
+        },
+        {
+          "step": 2,
+          "action": "Wait for CXPC to confirm directly with the customer and adjust the pickup hours."
+        },
+        {
+          "step": 3,
+          "action": "Perform the pickup early only after both confirmation and the hours adjustment."
+        }
+      ],
+      "required_documentation": [],
+      "prohibited_actions": [
+        "Do not perform the pickup early based only on the customer statement to the driver."
+      ],
+      "escalation_requirements": [
+        "CXPC for confirmation and pickup-hours adjustment"
+      ],
+      "clarification_requirements": [],
+      "concise_driver_answer": "Call CXPC. Pick it up early only after CXPC confirms with the customer and adjusts the pickup hours.",
+      "more_info_answer": null
+    }
+  },
+  {
+    "adjudication_id": "ADJ-20260819-VLAD-DEL-SIGNED-NOTE-001",
+    "knowledge_id": "KNO-DEL-SIGNED-NOTE-001",
+    "status": "APPROVED",
+    "issue_reviewed": "Whether Vlad's supplied procedure may be published as Ready Route operational knowledge: A customer leaves a handwritten signed note asking the driver to release a package",
+    "canonical_determination": "A handwritten signed note does not authorize package release. Only an official approved FedEx document or release path counts. A handwritten note never satisfies ASR or DSR.",
+    "previous_interpretations": [
+      "This procedure was absent, incomplete, or withheld from the active v2 corpus before the August 19 Vlad owner approval."
+    ],
+    "supporting_source_ids": [
+      "SRC-V2-VLAD-CONSOLIDATED-DETAIL-20260818",
+      "SRC-V2-VLAD-RESPONSE-20260819",
+      "SRC-V2-OWNER-VLAD-APPROVAL-20260819"
+    ],
+    "conflicting_or_superseded_source_ids": [],
+    "reasoning": "Phillip Metzger explicitly approved Vlad-provided procedures and operational information as accurate Ready Route knowledge without requiring separate documentary corroboration. This adjudication preserves the exact supplied scope and later branch corrections.",
+    "approved_by": "Phillip Metzger, Ready Route product owner",
+    "approval_date": "2026-08-19",
+    "effective_date": "2026-08-19",
+    "supersedes": [],
+    "reopen_conditions": [
+      "Phillip or Vlad revises the supplied procedure.",
+      "A later operational, policy, or application change materially conflicts with this procedure.",
+      "A later Vlad artifact supplies a more specific branch or corrects the summarized intake."
+    ],
+    "canonical_overrides": {
+      "authoritative_rule": "A handwritten signed note does not authorize package release. Only an official approved FedEx document or release path counts. A handwritten note never satisfies ASR or DSR.",
+      "applicability": [
+        "Customer left a handwritten or informal signed note requesting release"
+      ],
+      "conditions": [
+        "The note is not an official approved FedEx release document"
+      ],
+      "exceptions": [],
+      "required_procedure": [
+        {
+          "step": 1,
+          "action": "Identify the package signature or release requirement."
+        },
+        {
+          "step": 2,
+          "action": "Disregard the handwritten note as release authorization."
+        },
+        {
+          "step": 3,
+          "action": "Use only the official approved FedEx document or release path applicable to the package."
+        },
+        {
+          "step": 4,
+          "action": "If no approved path is available, complete the applicable unsuccessful-attempt procedure."
+        }
+      ],
+      "required_documentation": [],
+      "prohibited_actions": [
+        "Do not use a handwritten note to release ASR or DSR.",
+        "Do not treat an informal signature as an approved FedEx authorization."
+      ],
+      "escalation_requirements": [],
+      "clarification_requirements": [],
+      "concise_driver_answer": "No. A handwritten signed note does not authorize release. Use only an approved FedEx document or release path, and never use a handwritten note for ASR or DSR.",
+      "more_info_answer": null
+    }
+  },
+  {
+    "adjudication_id": "ADJ-20260819-VLAD-DEL-PERISHABLE-001",
+    "knowledge_id": "KNO-DEL-PERISHABLE-001",
+    "status": "APPROVED",
+    "issue_reviewed": "Whether Vlad's supplied procedure may be published as Ready Route operational knowledge: A residential perishable delivery cannot be completed because nobody answers",
+    "canonical_determination": "Contact CXPC first because it may have another customer contact number. If CXPC cannot establish a delivery path, use Code 007, complete and leave the door tag, cross the package with the code, date, and work area number, remove the SID sticker, and return the package to the station.",
+    "previous_interpretations": [
+      "This procedure was absent, incomplete, or withheld from the active v2 corpus before the August 19 Vlad owner approval."
+    ],
+    "supporting_source_ids": [
+      "SRC-V2-VLAD-CONSOLIDATED-DETAIL-20260818",
+      "SRC-V2-VLAD-RESPONSE-20260819",
+      "SRC-V2-OWNER-VLAD-APPROVAL-20260819"
+    ],
+    "conflicting_or_superseded_source_ids": [],
+    "reasoning": "Phillip Metzger explicitly approved Vlad-provided procedures and operational information as accurate Ready Route knowledge without requiring separate documentary corroboration. This adjudication preserves the exact supplied scope and later branch corrections.",
+    "approved_by": "Phillip Metzger, Ready Route product owner",
+    "approval_date": "2026-08-19",
+    "effective_date": "2026-08-19",
+    "supersedes": [],
+    "reopen_conditions": [
+      "Phillip or Vlad revises the supplied procedure.",
+      "A later operational, policy, or application change materially conflicts with this procedure.",
+      "A later Vlad artifact supplies a more specific branch or corrects the summarized intake."
+    ],
+    "canonical_overrides": {
+      "authoritative_rule": "Contact CXPC first because it may have another customer contact number. If CXPC cannot establish a delivery path, use Code 007, complete and leave the door tag, cross the package with the code, date, and work area number, remove the SID sticker, and return the package to the station.",
+      "applicability": [
+        "Residential perishable delivery",
+        "Nobody answers",
+        "No authorized release path is available"
+      ],
+      "conditions": [
+        "CXPC callback attempt occurs before the return branch"
+      ],
+      "exceptions": [],
+      "required_procedure": [
+        {
+          "step": 1,
+          "action": "Contact CXPC and ask whether another customer contact number is available."
+        },
+        {
+          "step": 2,
+          "action": "If delivery still cannot be completed, apply Code 007."
+        },
+        {
+          "step": 3,
+          "action": "Complete, scan, and leave the door tag."
+        },
+        {
+          "step": 4,
+          "action": "Cross the package with Code 007, the date, and the work area number."
+        },
+        {
+          "step": 5,
+          "action": "Remove the SID sticker and return the package to the station."
+        }
+      ],
+      "required_documentation": [
+        "CXPC contact attempt",
+        "Code 007",
+        "Door tag",
+        "Package crossing"
+      ],
+      "prohibited_actions": [
+        "Do not leave the package through an unauthorized release merely because it is perishable."
+      ],
+      "escalation_requirements": [
+        "CXPC before the unsuccessful-delivery return branch"
+      ],
+      "clarification_requirements": [],
+      "concise_driver_answer": "Call CXPC first for another customer contact. If delivery still cannot be completed, use Code 007, complete the door tag, cross the package with the code, date, and work area, remove the SID, and return it to the station.",
+      "more_info_answer": null
+    }
+  },
+  {
+    "adjudication_id": "ADJ-20260819-VLAD-DOC-HANDSHEET-GENERAL-001",
+    "knowledge_id": "KNO-DOC-HANDSHEET-GENERAL-001",
+    "status": "APPROVED",
+    "issue_reviewed": "Whether Vlad's supplied procedure may be published as Ready Route operational knowledge: FORGE or the scanner is completely unavailable for a non-HAL delivery",
+    "canonical_determination": "Use the current station-issued hand sheet. Identify the tracking number from the applicable 96, EPIC, LMO, or Ground Economy barcode, record the tracking number in the required format, use military time and the four-letter street abbreviation, circle the correct status code, obtain the CSA number from the manager, include the FedEx ID, and turn in the completed sheet at check-in or check-out.",
+    "previous_interpretations": [
+      "This procedure was absent, incomplete, or withheld from the active v2 corpus before the August 19 Vlad owner approval."
+    ],
+    "supporting_source_ids": [
+      "SRC-V2-VLAD-CONSOLIDATED-DETAIL-20260818",
+      "SRC-V2-VLAD-RESPONSE-20260819",
+      "SRC-V2-OWNER-VLAD-APPROVAL-20260819"
+    ],
+    "conflicting_or_superseded_source_ids": [],
+    "reasoning": "Phillip Metzger explicitly approved Vlad-provided procedures and operational information as accurate Ready Route knowledge without requiring separate documentary corroboration. This adjudication preserves the exact supplied scope and later branch corrections.",
+    "approved_by": "Phillip Metzger, Ready Route product owner",
+    "approval_date": "2026-08-19",
+    "effective_date": "2026-08-19",
+    "supersedes": [],
+    "reopen_conditions": [
+      "Phillip or Vlad revises the supplied procedure.",
+      "A later operational, policy, or application change materially conflicts with this procedure.",
+      "A later Vlad artifact supplies a more specific branch or corrects the summarized intake."
+    ],
+    "canonical_overrides": {
+      "authoritative_rule": "Use the current station-issued hand sheet. Identify the tracking number from the applicable 96, EPIC, LMO, or Ground Economy barcode, record the tracking number in the required format, use military time and the four-letter street abbreviation, circle the correct status code, obtain the CSA number from the manager, include the FedEx ID, and turn in the completed sheet at check-in or check-out.",
+      "applicability": [
+        "Non-HAL delivery",
+        "FORGE or the scanning device is completely inoperable"
+      ],
+      "conditions": [
+        "Use the current station-issued form and manager-supplied CSA number"
+      ],
+      "exceptions": [
+        "HAL outage uses the separate OP-207/OP-207Res record"
+      ],
+      "required_procedure": [
+        {
+          "step": 1,
+          "action": "Obtain the current station-issued hand sheet and the CSA number from the manager."
+        },
+        {
+          "step": 2,
+          "action": "Identify the tracking number from the applicable 96, EPIC, LMO, or Ground Economy barcode and record it in the required format."
+        },
+        {
+          "step": 3,
+          "action": "Record the delivery time in military time and use the required four-letter street abbreviation."
+        },
+        {
+          "step": 4,
+          "action": "Circle the truthful delivery or status code."
+        },
+        {
+          "step": 5,
+          "action": "Include the CSA number and FedEx ID."
+        },
+        {
+          "step": 6,
+          "action": "Turn in the completed sheet at check-in or check-out."
+        }
+      ],
+      "required_documentation": [
+        "Current station-issued hand sheet",
+        "Tracking number",
+        "Military time",
+        "Street abbreviation",
+        "Status code",
+        "CSA number",
+        "FedEx ID"
+      ],
+      "prohibited_actions": [
+        "Do not invent tracking digits or a status code.",
+        "Do not use this general record as a substitute for the separate HAL outage form procedure."
+      ],
+      "escalation_requirements": [
+        "Manager for the current form and CSA number"
+      ],
+      "clarification_requirements": [
+        "Is this a HAL package?",
+        "Which supported barcode type identifies the tracking number?"
+      ],
+      "concise_driver_answer": "Use the current station-issued hand sheet. Record the supported tracking number, military time, four-letter street abbreviation, truthful circled status code, manager-provided CSA number, and FedEx ID, then turn it in at check-in or check-out.",
+      "more_info_answer": null
+    }
+  },
+  {
+    "adjudication_id": "ADJ-20260819-VLAD-DEL-SIGNATURE-WAIT-001",
+    "knowledge_id": "KNO-DEL-SIGNATURE-WAIT-001",
+    "status": "APPROVED",
+    "issue_reviewed": "Whether Vlad's supplied procedure may be published as Ready Route operational knowledge: A recipient needs time to answer and provide a required delivery signature",
+    "canonical_determination": "Allow two to five minutes for the recipient to answer and provide the required signature. If an eligible signer does not become available, use the applicable signature-service unsuccessful-attempt procedure.",
+    "previous_interpretations": [
+      "This procedure was absent, incomplete, or withheld from the active v2 corpus before the August 19 Vlad owner approval."
+    ],
+    "supporting_source_ids": [
+      "SRC-V2-VLAD-CONSOLIDATED-DETAIL-20260818",
+      "SRC-V2-VLAD-RESPONSE-20260819",
+      "SRC-V2-OWNER-VLAD-APPROVAL-20260819"
+    ],
+    "conflicting_or_superseded_source_ids": [],
+    "reasoning": "Phillip Metzger explicitly approved Vlad-provided procedures and operational information as accurate Ready Route knowledge without requiring separate documentary corroboration. This adjudication preserves the exact supplied scope and later branch corrections.",
+    "approved_by": "Phillip Metzger, Ready Route product owner",
+    "approval_date": "2026-08-19",
+    "effective_date": "2026-08-19",
+    "supersedes": [],
+    "reopen_conditions": [
+      "Phillip or Vlad revises the supplied procedure.",
+      "A later operational, policy, or application change materially conflicts with this procedure.",
+      "A later Vlad artifact supplies a more specific branch or corrects the summarized intake."
+    ],
+    "canonical_overrides": {
+      "authoritative_rule": "Allow two to five minutes for the recipient to answer and provide the required signature. If an eligible signer does not become available, use the applicable signature-service unsuccessful-attempt procedure.",
+      "applicability": [
+        "A delivery requires an in-person signature",
+        "The driver is waiting at the delivery location for an eligible signer"
+      ],
+      "conditions": [],
+      "exceptions": [],
+      "required_procedure": [
+        {
+          "step": 1,
+          "action": "Allow two to five minutes for an eligible signer to answer and sign."
+        },
+        {
+          "step": 2,
+          "action": "If no eligible signer becomes available, follow the unsuccessful-attempt branch for the actual signature service and stop type."
+        }
+      ],
+      "required_documentation": [],
+      "prohibited_actions": [
+        "Do not release the package without satisfying its signature requirement."
+      ],
+      "escalation_requirements": [],
+      "clarification_requirements": [],
+      "concise_driver_answer": "Wait two to five minutes for an eligible signer. If nobody eligible becomes available, use the unsuccessful-attempt procedure for the actual signature service and stop type.",
+      "more_info_answer": null
+    }
+  },
+  {
+    "adjudication_id": "ADJ-20260819-VLAD-WEATHER-QUESTIONABLE-001",
+    "knowledge_id": "KNO-WEATHER-QUESTIONABLE-001",
+    "status": "APPROVED",
+    "issue_reviewed": "Whether Vlad's supplied procedure may be published as Ready Route operational knowledge: Weather conditions appear unsafe and the driver is considering a weather exception",
+    "canonical_determination": "Explain the unsafe driving conditions to the BC or manager and confirm that the applicable weather code is approved before using it. Do not compromise safety while waiting for direction.",
+    "previous_interpretations": [
+      "This procedure was absent, incomplete, or withheld from the active v2 corpus before the August 19 Vlad owner approval."
+    ],
+    "supporting_source_ids": [
+      "SRC-V2-VLAD-CONSOLIDATED-DETAIL-20260818",
+      "SRC-V2-VLAD-RESPONSE-20260819",
+      "SRC-V2-OWNER-VLAD-APPROVAL-20260819"
+    ],
+    "conflicting_or_superseded_source_ids": [],
+    "reasoning": "Phillip Metzger explicitly approved Vlad-provided procedures and operational information as accurate Ready Route knowledge without requiring separate documentary corroboration. This adjudication preserves the exact supplied scope and later branch corrections.",
+    "approved_by": "Phillip Metzger, Ready Route product owner",
+    "approval_date": "2026-08-19",
+    "effective_date": "2026-08-19",
+    "supersedes": [],
+    "reopen_conditions": [
+      "Phillip or Vlad revises the supplied procedure.",
+      "A later operational, policy, or application change materially conflicts with this procedure.",
+      "A later Vlad artifact supplies a more specific branch or corrects the summarized intake."
+    ],
+    "canonical_overrides": {
+      "authoritative_rule": "Explain the unsafe driving conditions to the BC or manager and confirm that the applicable weather code is approved before using it. Do not compromise safety while waiting for direction.",
+      "applicability": [
+        "Weather conditions appear unsafe",
+        "A weather delivery or pickup exception is being considered"
+      ],
+      "conditions": [
+        "BC or manager confirms the applicable weather code is approved"
+      ],
+      "exceptions": [],
+      "required_procedure": [
+        {
+          "step": 1,
+          "action": "Move to or remain in a safe condition; do not compromise safety."
+        },
+        {
+          "step": 2,
+          "action": "Call the BC or manager and explain the specific unsafe driving conditions."
+        },
+        {
+          "step": 3,
+          "action": "Use a weather code only after the applicable code is confirmed as approved."
+        }
+      ],
+      "required_documentation": [],
+      "prohibited_actions": [
+        "Do not use an unapproved weather code.",
+        "Do not continue unsafe driving merely to meet service timing."
+      ],
+      "escalation_requirements": [
+        "BC or manager for weather-code approval"
+      ],
+      "clarification_requirements": [],
+      "concise_driver_answer": "Do not compromise safety. Call your BC or manager, explain the unsafe conditions, and use the applicable weather code only after they confirm it is approved.",
+      "more_info_answer": null
+    }
+  },
+  {
+    "adjudication_id": "ADJ-20260819-VLAD-FORGE-PREDISPATCH-PHYSICAL-HANDOFF-001",
+    "knowledge_id": "KNO-FORGE-PREDISPATCH-PHYSICAL-HANDOFF-001",
+    "status": "SUPERSEDED",
+    "issue_reviewed": "Whether Vlad's supplied procedure may be published as Ready Route operational knowledge: A wrong-work-area package can be physically handed off before dispatch",
+    "canonical_determination": "Before dispatch, if the correct work area is known and a driver from that work area is available, hand the package directly to that driver and ensure a package handler scans it to the correct work area. If the correct work area is not nearby, give the package to QA or the BC.",
+    "previous_interpretations": [
+      "This procedure was absent, incomplete, or withheld from the active v2 corpus before the August 19 Vlad owner approval."
+    ],
+    "supporting_source_ids": [
+      "SRC-V2-VLAD-CONSOLIDATED-DETAIL-20260818",
+      "SRC-V2-VLAD-RESPONSE-20260819",
+      "SRC-V2-OWNER-VLAD-APPROVAL-20260819"
+    ],
+    "conflicting_or_superseded_source_ids": [],
+    "reasoning": "Phillip Metzger explicitly approved Vlad-provided procedures and operational information as accurate Ready Route knowledge without requiring separate documentary corroboration. This adjudication preserves the exact supplied scope and later branch corrections.",
+    "approved_by": "Phillip Metzger, Ready Route product owner",
+    "approval_date": "2026-08-19",
+    "effective_date": "2026-08-19",
+    "supersedes": [],
+    "reopen_conditions": [
+      "Phillip or Vlad revises the supplied procedure.",
+      "A later operational, policy, or application change materially conflicts with this procedure.",
+      "A later Vlad artifact supplies a more specific branch or corrects the summarized intake."
+    ],
+    "canonical_overrides": {
+      "authoritative_rule": "Before dispatch, if the correct work area is known and a driver from that work area is available, hand the package directly to that driver and ensure a package handler scans it to the correct work area. If the correct work area is not nearby, give the package to QA or the BC.",
+      "applicability": [
+        "Before dispatch",
+        "Package is assigned to the wrong work area",
+        "Correct work area is known"
+      ],
+      "conditions": [
+        "A package-handler scan corrects the work-area assignment when handed to the correct driver"
+      ],
+      "exceptions": [
+        "After dispatch uses the separate Code 012 procedure",
+        "FORGE Bulk Transfer remains a separate approved correction path"
+      ],
+      "required_procedure": [
+        {
+          "step": 1,
+          "action": "Confirm this is before dispatch and identify the correct work area."
+        },
+        {
+          "step": 2,
+          "action": "If a driver from that work area is available, hand the package directly to that driver."
+        },
+        {
+          "step": 3,
+          "action": "Ensure a package handler scans the package to the correct work area."
+        },
+        {
+          "step": 4,
+          "action": "If the work area is not nearby, give the package to QA or the BC."
+        }
+      ],
+      "required_documentation": [],
+      "prohibited_actions": [
+        "Do not use this predispatch handoff after dispatch.",
+        "Do not treat physical handoff alone as the required work-area scan."
+      ],
+      "escalation_requirements": [],
+      "clarification_requirements": [
+        "Has dispatch occurred?",
+        "Is the correct work area known and nearby?"
+      ],
+      "concise_driver_answer": "Before dispatch, if the correct-work-area driver is available, hand over the package and make sure a package handler scans it to that work area. If that work area is not nearby, give it to QA or your BC.",
+      "more_info_answer": null
+    }
+  },
+  {
+    "adjudication_id": "ADJ-20260819-OWNER-INAPP-VEHICLE-BARCODE-001",
+    "knowledge_id": "KNO-FORGE-VEHICLE-BARCODE-WORKAROUND-001",
+    "status": "APPROVED",
+    "issue_reviewed": "Whether the approved vehicle Code 128 workaround should be generated and displayed directly inside Ready Route.",
+    "canonical_determination": "Ready Route asks exactly “What is the vehicle number?”, treats the next message in that authenticated conversation as the vehicle number, prefixes it with uppercase V, and displays an in-app Code 128 barcode encoding the complete value with the value beneath it.",
+    "previous_interpretations": [
+      "The 2026-08-15 approved workaround directed the driver to a reputable external Code 128 generator and asked for separate Code 128 confirmation."
+    ],
+    "supporting_source_ids": [
+      "SRC-V2-PARTNER-REPORT-20260814",
+      "SRC-V2-OWNER-DIRECTIVE-20260815",
+      "SRC-V2-OWNER-INAPP-VEHICLE-BARCODE-20260819"
+    ],
+    "conflicting_or_superseded_source_ids": [],
+    "reasoning": "The product owner explicitly approved the in-app implementation, exact two-turn interaction, Code 128 symbology, and uppercase V-prefixed value. This is more specific and later than the external-generator presentation.",
+    "approved_by": "Phillip Metzger, Ready Route product owner",
+    "approval_date": "2026-08-19",
+    "effective_date": "2026-08-19",
+    "supersedes": [
+      "ADJ-20260815-OWNER-VEHICLE-BARCODE-001"
+    ],
+    "reopen_conditions": [
+      "Phillip revises the in-app workflow.",
+      "The accepted vehicle barcode prefix or symbology changes.",
+      "A later application or operational requirement materially conflicts with this workflow."
+    ],
+    "canonical_overrides": {
+      "authoritative_rule": "When a driver requests Code 128, cannot find the vehicle-scan barcode, or asks Ready Route to create or generate a barcode, ask exactly “What is the vehicle number?” Treat the next message in that conversation as the vehicle number, prefix it immediately with uppercase V, and display an in-app Code 128 barcode encoding the complete value with the human-readable value beneath it.",
+      "applicability": [
+        "The driver asks about Code 128",
+        "The required vehicle-scan barcode is missing or unscannable",
+        "The driver asks Ready Route to create, make, or generate a barcode"
+      ],
+      "conditions": [
+        "Use Code 128",
+        "Prefix the supplied vehicle number immediately with uppercase V",
+        "Keep the pending vehicle-number step scoped to the authenticated conversation"
+      ],
+      "exceptions": [
+        "Ordinary package, pickup, delivery, SRA, and tracking-barcode questions retain their separate procedures unless the driver explicitly asks Ready Route to create or generate a barcode"
+      ],
+      "required_procedure": [
+        {
+          "step": 1,
+          "action": "Ask exactly: “What is the vehicle number?”"
+        },
+        {
+          "step": 2,
+          "action": "Treat the next driver message in that conversation as the vehicle number."
+        },
+        {
+          "step": 3,
+          "action": "Construct the encoded value by placing uppercase V immediately before the supplied vehicle number."
+        },
+        {
+          "step": 4,
+          "action": "Generate a Code 128 barcode for the complete V-prefixed value inside Ready Route."
+        },
+        {
+          "step": 5,
+          "action": "Display the barcode clearly with the encoded value beneath it so the driver can scan and verify it."
+        }
+      ],
+      "required_documentation": [
+        "The V-prefixed encoded vehicle value displayed beneath the barcode"
+      ],
+      "prohibited_actions": [
+        "Do not omit the uppercase V prefix",
+        "Do not use a barcode format other than Code 128",
+        "Do not redirect the driver to an external barcode generator",
+        "Do not add a Code 128 confirmation or unnecessary vehicle-number confirmation step"
+      ],
+      "escalation_requirements": [],
+      "clarification_requirements": [
+        "What is the vehicle number?"
+      ],
+      "concise_driver_answer": "Ready Route generates the vehicle barcode in app. Supply the vehicle number; Ready Route prefixes it with uppercase V and displays a Code 128 barcode with the encoded value beneath it.",
+      "more_info_answer": "The barcode always uses Code 128 and encodes the complete uppercase V-prefixed vehicle value."
+    }
+  },
+  {
+    "adjudication_id": "ADJ-20260820-ROUND3-MISLOAD-AFTERDISPATCH-001",
+    "knowledge_id": "KNO-DEL-MISLOAD-AFTERDISPATCH-001",
+    "status": "APPROVED",
+    "issue_reviewed": "The complete Code 012 return procedure.",
+    "canonical_determination": "Do not deliver; use Code 012; cross the package; remove SID; return to station.",
+    "previous_interpretations": [
+      "The prior approval had the same procedure but visible answer overrides could omit the final return actions."
+    ],
+    "supporting_source_ids": [
+      "SRC-V2-VLAD-ROUND3-20260819",
+      "SRC-V2-OWNER-ROUND3-APPROVAL-20260820"
+    ],
+    "conflicting_or_superseded_source_ids": [],
+    "reasoning": "Phillip Metzger explicitly approved Vlad's Round 3 operational correction and directed that it control over conflicting approved corpus content.",
+    "approved_by": "Phillip Metzger, Ready Route product owner",
+    "approval_date": "2026-08-20",
+    "effective_date": "2026-08-20",
+    "supersedes": [
+      "ADJ-20260815-OWNER-MISLOAD-AFTERDISPATCH-001"
+    ],
+    "reopen_conditions": [
+      "Phillip or Vlad revises this procedure.",
+      "A later applicable operational update materially conflicts with it."
+    ],
+    "canonical_overrides": {
+      "authoritative_rule": "For a wrong-route package discovered after dispatch, do not deliver it. Apply Code 012, cross it with Code 012, the date, and work area number, remove the SID sticker, and return it to the station.",
+      "required_procedure": [
+        {
+          "step": 1,
+          "action": "Do not deliver the wrong-route package."
+        },
+        {
+          "step": 2,
+          "action": "Apply Code 012."
+        },
+        {
+          "step": 3,
+          "action": "Cross it with Code 012, the date, and work area number."
+        },
+        {
+          "step": 4,
+          "action": "Remove the SID sticker."
+        },
+        {
+          "step": 5,
+          "action": "Return the package to the station."
+        }
+      ],
+      "prohibited_actions": [
+        "Do not deliver a package that belongs to another route under this after-dispatch condition."
+      ],
+      "escalation_requirements": [],
+      "concise_driver_answer": "Do not deliver it. Apply Code 012, cross it with Code 012, the date, and your work area number, remove the SID sticker, and return it to the station."
+    }
+  },
+  {
+    "adjudication_id": "ADJ-20260820-ROUND3-BUS-CLOSED-001",
+    "knowledge_id": "KNO-DEL-BUS-CLOSED-001",
+    "status": "APPROVED",
+    "issue_reviewed": "The complete closed-business station-return procedure.",
+    "canonical_determination": "Use 011 for an applicable weekend closure or 004 otherwise; door tag; cross; remove SID; return to station.",
+    "previous_interpretations": [
+      "The prior active approval contained the return actions, but some delivered answer structures omitted them."
+    ],
+    "supporting_source_ids": [
+      "SRC-V2-VLAD-ROUND3-20260819",
+      "SRC-V2-OWNER-ROUND3-APPROVAL-20260820"
+    ],
+    "conflicting_or_superseded_source_ids": [],
+    "reasoning": "Phillip Metzger explicitly approved Vlad's Round 3 operational correction and directed that it control over conflicting approved corpus content.",
+    "approved_by": "Phillip Metzger, Ready Route product owner",
+    "approval_date": "2026-08-20",
+    "effective_date": "2026-08-20",
+    "supersedes": [
+      "ADJ-20260819-VLAD-BUS-CLOSED-001"
+    ],
+    "reopen_conditions": [
+      "Phillip or Vlad revises this procedure.",
+      "A later applicable operational update materially conflicts with it."
+    ],
+    "canonical_overrides": {
+      "authoritative_rule": "When a non-residential recipient is unavailable and no authorized release path exists, use Code 011 for an applicable weekend closure or Code 004 otherwise. Complete, scan, and leave the door tag; cross the package; remove the SID sticker; and return it to the station.",
+      "required_procedure": [
+        {
+          "step": 1,
+          "action": "Confirm the stop is non-residential and no authorized release path is available."
+        },
+        {
+          "step": 2,
+          "action": "Use Code 011 for an applicable weekend closure; otherwise use Code 004."
+        },
+        {
+          "step": 3,
+          "action": "Complete, scan, and leave the door tag at the main entrance."
+        },
+        {
+          "step": 4,
+          "action": "Cross the package with the matching code, date, and work area number."
+        },
+        {
+          "step": 5,
+          "action": "Remove the SID sticker."
+        },
+        {
+          "step": 6,
+          "action": "Return the package to the station."
+        }
+      ],
+      "prohibited_actions": [
+        "Do not use Code 004 for a residential stop.",
+        "Do not leave the package without an authorized release path."
+      ],
+      "concise_driver_answer": "Use Code 011 for an applicable weekend closure or Code 004 otherwise. Complete the door tag, cross the package, remove the SID, and return it to the station."
+    }
+  },
+  {
+    "adjudication_id": "ADJ-20260820-ROUND3-PREDISPATCH-MISLOAD-001",
+    "knowledge_id": "KNO-FORGE-MANIFEST-PREVIEW-001",
+    "status": "APPROVED",
+    "issue_reviewed": "Who handles a wrong-work-area package before dispatch.",
+    "canonical_determination": "Before dispatch, whether or not the wrong-work-area package appears on the driver's manifest, the station handles the correction: a package handler or QA scans it and loads it to the correct work area. A new driver who is unsure should ask the BC or manager.",
+    "previous_interpretations": [
+      "The prior approval recommended driver-operated Manifest Preview or Bulk Transfer paths."
+    ],
+    "supporting_source_ids": [
+      "SRC-V2-VLAD-ROUND3-20260819",
+      "SRC-V2-OWNER-ROUND3-APPROVAL-20260820"
+    ],
+    "conflicting_or_superseded_source_ids": [],
+    "reasoning": "Phillip Metzger explicitly approved Vlad's Round 3 operational correction and directed that it control over conflicting approved corpus content.",
+    "approved_by": "Phillip Metzger, Ready Route product owner",
+    "approval_date": "2026-08-20",
+    "effective_date": "2026-08-20",
+    "supersedes": [
+      "ADJ-20260815-OWNER-MANIFEST-PREVIEW-001"
+    ],
+    "reopen_conditions": [
+      "Phillip or Vlad revises this procedure.",
+      "A later applicable operational update materially conflicts with it."
+    ],
+    "canonical_overrides": {
+      "authoritative_rule": "Before dispatch, whether or not the wrong-work-area package appears on the driver's manifest, the station handles the correction: a package handler or QA scans it and loads it to the correct work area. A new driver who is unsure should ask the BC or manager.",
+      "applicability": [
+        "Before dispatch",
+        "Package is assigned to the wrong work area"
+      ],
+      "conditions": [
+        "The station correction applies whether or not the package is on the driver's manifest"
+      ],
+      "exceptions": [
+        "After-dispatch wrong-route packages use Code 012",
+        "A separately and explicitly directed Bulk Transfer workflow is outside this scenario"
+      ],
+      "required_procedure": [
+        {
+          "step": 1,
+          "action": "Confirm the discrepancy was found before dispatch."
+        },
+        {
+          "step": 2,
+          "action": "Give the package to a package handler or QA for the station correction."
+        },
+        {
+          "step": 3,
+          "action": "The package handler or QA scans it and loads it to the correct work area."
+        },
+        {
+          "step": 4,
+          "action": "If you are unsure where to take it, ask your BC or manager."
+        }
+      ],
+      "required_documentation": [
+        "Correct work-area scan"
+      ],
+      "prohibited_actions": [
+        "Do not make the driver perform Bulk Transfer as the default correction for this scenario.",
+        "Do not use the after-dispatch Code 012 procedure before dispatch."
+      ],
+      "escalation_requirements": [
+        "A new or unsure driver asks the BC or manager"
+      ],
+      "clarification_requirements": [
+        "Was the package discovered before or after dispatch?"
+      ],
+      "concise_driver_answer": "Before dispatch, the station handles it whether or not it is on your manifest. Give it to a package handler or QA so they can scan and load it to the correct work area. If you are unsure, ask your BC or manager."
+    }
+  },
+  {
+    "adjudication_id": "ADJ-20260820-ROUND3-PREDISPATCH-STATION-HANDOFF-001",
+    "knowledge_id": "KNO-FORGE-PREDISPATCH-PHYSICAL-HANDOFF-001",
+    "status": "APPROVED",
+    "issue_reviewed": "The corrected station-owned predispatch handoff.",
+    "canonical_determination": "Before dispatch, whether or not the wrong-work-area package appears on the driver's manifest, the station handles the correction: a package handler or QA scans it and loads it to the correct work area. A new driver who is unsure should ask the BC or manager.",
+    "previous_interpretations": [
+      "The prior approval focused on driver-to-driver handoff and treated Bulk Transfer as a separate correction path."
+    ],
+    "supporting_source_ids": [
+      "SRC-V2-VLAD-ROUND3-20260819",
+      "SRC-V2-OWNER-ROUND3-APPROVAL-20260820"
+    ],
+    "conflicting_or_superseded_source_ids": [],
+    "reasoning": "Phillip Metzger explicitly approved Vlad's Round 3 operational correction and directed that it control over conflicting approved corpus content.",
+    "approved_by": "Phillip Metzger, Ready Route product owner",
+    "approval_date": "2026-08-20",
+    "effective_date": "2026-08-20",
+    "supersedes": [
+      "ADJ-20260819-VLAD-FORGE-PREDISPATCH-PHYSICAL-HANDOFF-001"
+    ],
+    "reopen_conditions": [
+      "Phillip or Vlad revises this procedure.",
+      "A later applicable operational update materially conflicts with it."
+    ],
+    "canonical_overrides": {
+      "authoritative_rule": "Before dispatch, whether or not the wrong-work-area package appears on the driver's manifest, the station handles the correction: a package handler or QA scans it and loads it to the correct work area. A new driver who is unsure should ask the BC or manager.",
+      "applicability": [
+        "Before dispatch",
+        "Package is assigned to the wrong work area"
+      ],
+      "conditions": [
+        "The process applies whether or not the package is on the driver's manifest"
+      ],
+      "exceptions": [
+        "After dispatch uses the Code 012 procedure"
+      ],
+      "required_procedure": [
+        {
+          "step": 1,
+          "action": "Confirm the discrepancy was found before dispatch."
+        },
+        {
+          "step": 2,
+          "action": "Give the package to a package handler or QA for the station correction."
+        },
+        {
+          "step": 3,
+          "action": "The package handler or QA scans it and loads it to the correct work area."
+        },
+        {
+          "step": 4,
+          "action": "If you are unsure where to take it, ask your BC or manager."
+        }
+      ],
+      "required_documentation": [
+        "Correct work-area scan"
+      ],
+      "prohibited_actions": [
+        "Do not treat a driver-to-driver handoff without the station scan as completion.",
+        "Do not default this scenario to driver-operated Bulk Transfer."
+      ],
+      "escalation_requirements": [
+        "Ask the BC or manager when unsure"
+      ],
+      "clarification_requirements": [
+        "Has dispatch occurred?"
+      ],
+      "concise_driver_answer": "Before dispatch, give the package to a package handler or QA so the station can scan and load it to the correct work area. This applies whether or not it is on your manifest. Ask your BC or manager if you are unsure."
+    }
+  },
+  {
+    "adjudication_id": "ADJ-20260820-ROUND3-ISR-ONFILE-001",
+    "knowledge_id": "KNO-DEL-SRA-001",
+    "status": "APPROVED",
+    "issue_reviewed": "The ISR signed-door-tag On File procedure.",
+    "canonical_determination": "For an ISR package released using a signed door tag on file, choose ALT, then Shipment Status Tag; scan the OP-200/OP-200SP, write On File, enter the recipient initial and last name, and turn in the physical door tag at check-in. Other SRA paths remain separate.",
+    "previous_interpretations": [
+      "The source record described a non-barcoded SRA path without preserving the exact OP-200/OP-200SP wording from Round 3."
+    ],
+    "supporting_source_ids": [
+      "SRC-V2-VLAD-ROUND3-20260819",
+      "SRC-V2-OWNER-ROUND3-APPROVAL-20260820"
+    ],
+    "conflicting_or_superseded_source_ids": [],
+    "reasoning": "Phillip Metzger explicitly approved Vlad's Round 3 operational correction and directed that it control over conflicting approved corpus content.",
+    "approved_by": "Phillip Metzger, Ready Route product owner",
+    "approval_date": "2026-08-20",
+    "effective_date": "2026-08-20",
+    "supersedes": [],
+    "reopen_conditions": [
+      "Phillip or Vlad revises this procedure.",
+      "A later applicable operational update materially conflicts with it."
+    ],
+    "canonical_overrides": {
+      "authoritative_rule": "For an ISR package released using a signed door tag on file, choose ALT, then Shipment Status Tag; scan the OP-200/OP-200SP, write On File, enter the recipient initial and last name, and turn in the physical door tag at check-in. Other SRA paths remain separate.",
+      "required_procedure": [
+        {
+          "step": 1,
+          "action": "Choose ALT, then Shipment Status Tag."
+        },
+        {
+          "step": 2,
+          "action": "Scan the OP-200/OP-200SP door tag."
+        },
+        {
+          "step": 3,
+          "action": "Write On File on the door tag."
+        },
+        {
+          "step": 4,
+          "action": "Enter the recipient initial and last name."
+        },
+        {
+          "step": 5,
+          "action": "Turn in the physical door tag at check-in."
+        }
+      ],
+      "required_documentation": [
+        "Scanned OP-200/OP-200SP marked On File",
+        "Recipient initial and last name",
+        "Physical door tag returned at check-in"
+      ],
+      "prohibited_actions": [
+        "Do not use SRA authorization for DSR, ASR, alcohol, or appointment delivery."
+      ],
+      "concise_driver_answer": "For the ISR signed-door-tag path, choose ALT, then Shipment Status Tag; scan the OP-200/OP-200SP, write On File, enter the recipient initial and last name, and turn in the physical door tag at check-in."
+    }
+  },
+  {
+    "adjudication_id": "ADJ-20260820-ROUND3-CODE034-001",
+    "knowledge_id": "KNO-DEL-INVENTORY-FUTURE-034-001",
+    "status": "APPROVED",
+    "issue_reviewed": "The procedure for inventory/request future delivery.",
+    "canonical_determination": "Apply Code 034, cross the package with the work-area number, date, and Code 034, and remove the SID sticker.",
+    "previous_interpretations": [
+      "Only the Code 034 reference definition was previously available; no operational record was reachable."
+    ],
+    "supporting_source_ids": [
+      "SRC-V2-VLAD-ROUND3-20260819",
+      "SRC-V2-OWNER-ROUND3-APPROVAL-20260820"
+    ],
+    "conflicting_or_superseded_source_ids": [],
+    "reasoning": "Phillip Metzger explicitly approved Vlad's Round 3 operational correction and directed that it control over conflicting approved corpus content.",
+    "approved_by": "Phillip Metzger, Ready Route product owner",
+    "approval_date": "2026-08-20",
+    "effective_date": "2026-08-20",
+    "supersedes": [],
+    "reopen_conditions": [
+      "Phillip or Vlad revises this procedure.",
+      "A later applicable operational update materially conflicts with it."
+    ],
+    "canonical_overrides": {
+      "authoritative_rule": "Apply Code 034, cross the package with the work-area number, date, and Code 034, and remove the SID sticker.",
+      "required_procedure": [
+        {
+          "step": 1,
+          "action": "Apply Code 034."
+        },
+        {
+          "step": 2,
+          "action": "Cross the package with the work-area number, date, and Code 034."
+        },
+        {
+          "step": 3,
+          "action": "Remove the SID sticker."
+        }
+      ],
+      "required_documentation": [
+        "Code 034",
+        "Package crossing with work-area number and date"
+      ],
+      "prohibited_actions": [
+        "Do not substitute another status code for this stated condition."
+      ],
+      "concise_driver_answer": "Apply Code 034. Cross the package with your work-area number, the date, and Code 034, then remove the SID sticker."
+    }
+  },
+  {
+    "adjudication_id": "ADJ-20260820-ROUND3-CSA-001",
+    "knowledge_id": "KNO-FORGE-CSA-001",
+    "status": "APPROVED",
+    "issue_reviewed": "The meaning and scanner-login use of CSA.",
+    "canonical_determination": "CSA means Contracting Service Area. Each CSA has its own personal number entered at scanner login; it is typically saved automatically after the first entry.",
+    "previous_interpretations": [
+      "The corpus lacked a CSA glossary record and could misroute the question to HAL."
+    ],
+    "supporting_source_ids": [
+      "SRC-V2-VLAD-ROUND3-20260819",
+      "SRC-V2-OWNER-ROUND3-APPROVAL-20260820"
+    ],
+    "conflicting_or_superseded_source_ids": [],
+    "reasoning": "Phillip Metzger explicitly approved Vlad's Round 3 operational correction and directed that it control over conflicting approved corpus content.",
+    "approved_by": "Phillip Metzger, Ready Route product owner",
+    "approval_date": "2026-08-20",
+    "effective_date": "2026-08-20",
+    "supersedes": [],
+    "reopen_conditions": [
+      "Phillip or Vlad revises this procedure.",
+      "A later applicable operational update materially conflicts with it."
+    ],
+    "canonical_overrides": {
+      "authoritative_rule": "CSA means Contracting Service Area. Each CSA has its own personal number entered at scanner login; it is typically saved automatically after the first entry.",
+      "required_procedure": [
+        {
+          "step": 1,
+          "action": "Enter the personal number for your Contracting Service Area at scanner login when requested."
+        },
+        {
+          "step": 2,
+          "action": "The scanner typically saves it automatically after the first entry."
+        }
+      ],
+      "prohibited_actions": [
+        "Do not route a CSA definition question to the HAL workflow."
+      ],
+      "concise_driver_answer": "CSA means Contracting Service Area. Each CSA has its own personal number entered at scanner login, and it is typically saved automatically after you enter it once."
     }
   }
 ]

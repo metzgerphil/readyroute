@@ -57,7 +57,7 @@ test('accepts a clearer answer grounded to eligible canonical fields', async () 
   assert.equal(result.composition_validation.valid, true);
 });
 
-test('preserves verified deterministic answer structure when AI only rewrites prose', async () => {
+test('uses tailored prose as the direct response while preserving verified procedure structure', async () => {
   const decision = {
     ...answerDecision(),
     answer_structure: { heading: 'What to do', steps: ['Apply status code 006.'] }
@@ -74,7 +74,11 @@ test('preserves verified deterministic answer structure when AI only rewrites pr
   }));
 
   assert.equal(result.composition_mode, 'GROUNDED_AI');
-  assert.deepEqual(result.answer_structure, decision.answer_structure);
+  assert.deepEqual(result.answer_structure, {
+    heading: 'What to do',
+    direct_answer: 'Use code 006 and keep the package with you.',
+    steps: ['Apply status code 006.']
+  });
 });
 
 test('rejects an invented operational code and uses the deterministic answer', async () => {
