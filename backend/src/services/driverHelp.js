@@ -1489,6 +1489,27 @@ function createDriverHelpService({
           interpreted_facts: decisionContext.interpretation_facts || null
         })
       });
+      const compositionProvider = decision.composition_validation?.provider_metadata || null;
+      if (compositionProvider) {
+        const { provider_metadata: _providerMetadata, ...compositionValidation } = decision.composition_validation;
+        const compositionUsage = compositionProvider.usage
+          ? estimateUsageCost(process.env.READYROUTE_DRIVER_HELP_MODEL, compositionProvider.usage)
+          : null;
+        decision = {
+          ...decision,
+          interpretation_result: {
+            ...(decision.interpretation_result || {}),
+            composition_usage: compositionUsage
+          },
+          composition_validation: {
+            ...compositionValidation,
+            provider_model: compositionUsage ? process.env.READYROUTE_DRIVER_HELP_MODEL : null,
+            provider_response_id: compositionProvider.response_id || null,
+            provider_request_id: compositionProvider.request_id || null,
+            usage: compositionUsage
+          }
+        };
+      }
     }
     if (persist && activeMemory && memoryRouteAccepted && interpretedDecision && decision.response_mode !== 'ESCALATE') {
       await recordAnswerMemoryReuse(activeMemory.route_key);

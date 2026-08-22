@@ -129,7 +129,12 @@ function createDriverHelpAiComposer(options = {}) {
       const text = outputText(body);
       if (!text) throw new Error('Grounded composer returned no structured output');
       const payload = JSON.parse(text);
-      return payload.selection === 'NONE' ? 'NONE' : payload;
+      payload.provider_metadata = {
+        response_id: body.id || null,
+        request_id: response.headers?.get?.('x-request-id') || null,
+        usage: body.usage || null
+      };
+      return payload;
     } finally {
       clearTimeout(timer);
     }

@@ -670,7 +670,11 @@ test('grounded AI composition tailors the direct response but preserves verified
           output_path: 'answer',
           knowledge_id: record.knowledge_id,
           source_paths: ['concise_answer', 'required_procedure']
-        }]
+        }],
+        provider_metadata: {
+          response_id: 'resp-composer-1',
+          usage: { input_tokens: 100, output_tokens: 20, total_tokens: 120 }
+        }
       };
     }
   });
@@ -692,6 +696,9 @@ test('grounded AI composition tailors the direct response but preserves verified
   assert.equal(compositionRequest.driver_question, 'The shipper canceled before I headed to the pickup');
   assert.match(compositionRequest.safety_identifier, /^rr_[a-f0-9]+$/);
   assert.equal(response.composition_validation.valid, true);
+  assert.equal(response.composition_validation.provider_response_id, 'resp-composer-1');
+  assert.equal(response.composition_validation.usage.total_tokens, 120);
+  assert.equal(response.interpretation_result.composition_usage.total_tokens, 120);
 });
 
 test('exact approved answer patterns remain locked and bypass AI composition', async () => {

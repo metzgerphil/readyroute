@@ -29,6 +29,8 @@ test('uses strict structured output and returns a grounded composition', async (
         ok: true,
         async json() {
           return {
+            id: 'resp-composer-1',
+            usage: { input_tokens: 100, output_tokens: 20, total_tokens: 120 },
             output_text: JSON.stringify({
               selection: 'COMPOSED',
               answer: 'Use code 006 and keep the package with you.',
@@ -60,6 +62,8 @@ test('uses strict structured output and returns a grounded composition', async (
   assert.equal(requestBody.text.format.strict, true);
   assert.deepEqual(requestBody.text.format.schema, responseSchema());
   assert.equal(result.selection, 'COMPOSED');
+  assert.equal(result.provider_metadata.response_id, 'resp-composer-1');
+  assert.equal(result.provider_metadata.usage.total_tokens, 120);
 });
 
 test('returns NONE when the model declines to compose', async () => {
@@ -80,7 +84,7 @@ test('returns NONE when the model declines to compose', async () => {
       }
     })
   });
-  assert.equal(await composer({}), 'NONE');
+  assert.equal((await composer({})).selection, 'NONE');
 });
 
 test('rejects provider errors and malformed responses for deterministic fallback upstream', async () => {
