@@ -553,6 +553,12 @@ function clarificationOptionsForRequirement(requirement, ranked) {
     };
     return ranked
       .filter(({ record }) => labels[record.knowledge_id] && isProductionEligibleRecord(record))
+      .sort((left, right) => (
+        ['KNO-DEL-SIG-ASR-001', 'KNO-DEL-SIG-DSR-001', 'KNO-DEL-SIG-ISR-001']
+          .indexOf(left.record.knowledge_id)
+        - ['KNO-DEL-SIG-ASR-001', 'KNO-DEL-SIG-DSR-001', 'KNO-DEL-SIG-ISR-001']
+          .indexOf(right.record.knowledge_id)
+      ))
       .slice(0, 3)
       .map(({ record }) => ({
         knowledge_id: record.knowledge_id,
