@@ -30,6 +30,11 @@ test('detects Code 128, missing vehicle barcode, and barcode creation requests',
   }
 });
 
+test('does not start barcode generation for a Code 128 safety question', () => {
+  assert.equal(isVehicleBarcodeIntent('Is a Code 128 vehicle barcode safe to use?'), false);
+  assert.equal(isVehicleBarcodeIntent('I need a Code 128.'), true);
+});
+
 test('does not capture unrelated package-barcode questions', () => {
   for (const question of [
     'The pickup package has no barcode',

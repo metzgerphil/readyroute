@@ -26,7 +26,10 @@ function isVehicleBarcodeIntent(value) {
     || /\bvehicle scan code\b/.test(normalized);
   const describesMissingOrNeededBarcode = /\b(?:cant find|cannot find|couldnt find|missing|gone|lost|wont scan|will not scan|cannot scan|need|where)\b/.test(normalized);
 
-  return asksAboutCode128
+  const requestsCode128 = asksAboutCode128
+    && /\b(?:need|create|make|generate|build|produce|show|get|want)\b/.test(normalized);
+
+  return requestsCode128
     || asksToCreateBarcode
     || (namesVehicle && namesBarcode && describesMissingOrNeededBarcode);
 }

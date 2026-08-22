@@ -168,6 +168,32 @@ test('obvious follow-ups retain the answered situation without carrying unrelate
   );
 });
 
+test('answered clarification details remain available to later follow-ups', () => {
+  const context = {
+    last_response_mode: 'ANSWER',
+    last_question: 'DSR',
+    situation_question: 'I have a signature package, but nobody is home',
+    clarification_history: [{
+      prompt: 'What signature service does FORGE show?',
+      answer: 'DSR'
+    }]
+  };
+
+  const signatureFollowUp = buildContextualQuestion(
+    'Can I use the signed door tag they left?',
+    context
+  );
+  assert.match(signatureFollowUp, /nobody is home/i);
+  assert.match(signatureFollowUp, /Driver answered: DSR/i);
+
+  const codeFollowUp = buildContextualQuestion('What code should I use?', {
+    ...context,
+    situation_question: 'I found another-route freight',
+    clarification_history: [{ prompt: 'Before or after dispatch?', answer: 'After dispatch' }]
+  });
+  assert.match(codeFollowUp, /After dispatch/i);
+});
+
 test('a short badge-state reply satisfies the pending badge clarification', () => {
   assert.equal(
     isClarificationAnswerSufficient('Was the badge forgotten, lost, or found after replacement?', 'I lost it'),
@@ -503,6 +529,204 @@ test('clarification selection preserves the offered record identity', () => {
   assert.deepEqual(resolveClarificationSelection('Sample situation', {
     pending_clarification_options: [option]
   }), option);
+});
+
+test('natural yes and no clarification replies select the authored branch', () => {
+  const yes = { knowledge_id: 'KNO-YES', label: 'Yes', query: 'authored yes branch' };
+  const no = { knowledge_id: 'KNO-NO', label: 'No', query: 'authored no branch' };
+  const context = { pending_clarification_options: [yes, no] };
+
+  assert.deepEqual(resolveClarificationSelection('Yes, I already scanned packages.', context), yes);
+  assert.deepEqual(resolveClarificationSelection('No, I have not scanned anything.', context), no);
+});
+
+test('protected runtime branches fail closed and preserve high-risk distinctions', () => {
+  const damageRecord = knowledgeRecord({
+    knowledge_id: 'KNO-DEL-DAMAGE-INSPECTION-001',
+    canonical_situation: 'Ordinary damaged package return',
+    concise_answer: 'If it is not leaking or hazardous, use Code 010.'
+  });
+  const leakRecord = knowledgeRecord({
+    knowledge_id: 'KNO-HAZ-LEAK-001',
+    canonical_situation: 'Leaking hazardous-material package on route',
+    concise_answer: 'Do not deliver or handle it. Park safely and contact the station immediately.'
+  });
+  const leaking = buildDeterministicRuntimeDecision(
+    'Yes, it is leaking and might be hazardous.',
+    [damageRecord, leakRecord],
+    {
+      pending_clarification_prompt: 'Is the package leaking or hazardous?',
+      pending_clarification_requirement: 'Is the package leaking or hazardous?',
+      knowledge_ids: [damageRecord.knowledge_id]
+    }
+  );
+  assert.equal(leaking.decision.response_mode, 'ANSWER');
+  assert.equal(leaking.decision.selected_records[0].knowledge_id, leakRecord.knowledge_id);
+  assert.doesNotMatch(leaking.decision.answer, /Code 010/i);
+  assert.equal(leaking.lockedDecision, true);
+
+  const vacation = buildDeterministicRuntimeDecision(
+    'How do I request vacation time?',
+    [knowledgeRecord({
+      knowledge_id: 'KNO-PUP-EARLY-REQUEST-001',
+      concise_answer: 'Call CXPC before an early pickup.'
+    })],
+    {}
+  );
+  assert.equal(vacation.decision.response_mode, 'ESCALATE');
+  assert.deepEqual(vacation.decision.selected_records, []);
+  assert.equal(vacation.lockedDecision, true);
+
+  const codRefusal = buildDeterministicRuntimeDecision(
+    'The customer refuses a COD package. What code should I use?',
+    [],
+    {}
+  );
+  assert.equal(codRefusal.decision.response_mode, 'ESCALATE');
+  assert.match(codRefusal.decision.escalation_message, /verified COD-refusal/i);
+
+  const codRecord = knowledgeRecord({
+    knowledge_id: 'KNO-DEL-REFUSED-001',
+    driver_question_variants: ['The customer refuses a COD package'],
+    concise_answer: 'Follow the verified refused-package procedure.'
+  });
+  const genericCodRefusal = buildDeterministicRuntimeDecision(
+    'The customer refuses a COD package',
+    [codRecord],
+    {}
+  );
+  assert.equal(genericCodRefusal.decision.response_mode, 'ANSWER');
+  assert.equal(genericCodRefusal.decision.selected_records[0].knowledge_id, codRecord.knowledge_id);
+});
+
+test('Code 030 remains definition-only and Code 128 safety wording does not launch a workflow', () => {
+  const code030 = referenceRecord(
+    'DELIVERY_STATUS:030',
+    'Code 030: Retail Refusal/O.S.A. The reviewed source does not define the exact operating condition.',
+    'Delivery status Code 030'
+  );
+  const reference = buildDeterministicRuntimeDecision(
+    'What does Code 030 mean, and when am I authorized to use it?',
+    [code030],
+    {}
+  );
+  assert.equal(reference.decision.response_mode, 'ANSWER');
+  assert.equal(reference.decision.selected_records[0].knowledge_id, 'DELIVERY_STATUS:030');
+  assert.match(reference.decision.answer, /Retail Refusal/i);
+  assert.doesNotMatch(reference.decision.answer, /shipper release/i);
+
+  const barcodeRecord = knowledgeRecord({
+    knowledge_id: 'KNO-FORGE-VEHICLE-BARCODE-WORKAROUND-001',
+    canonical_situation: 'Vehicle barcode workaround'
+  });
+  const barcodeSafety = buildDeterministicRuntimeDecision(
+    'Is a Code 128 vehicle barcode safe to use?',
+    [barcodeRecord],
+    {}
+  );
+  assert.equal(barcodeSafety.decision.response_mode, 'ANSWER');
+  assert.equal(barcodeSafety.workflowDecision, false);
+  assert.match(barcodeSafety.decision.answer, /approved format/i);
+});
+
+test('answered DSR and after-dispatch branches cannot be forgotten on the next turn', () => {
+  const dsr = knowledgeRecord({
+    knowledge_id: 'KNO-DEL-SIG-DSR-001',
+    concise_answer: 'DSR requires an in-person signature.'
+  });
+  const dsrFollowUp = buildDeterministicRuntimeDecision(
+    'Can I use the signed door tag they left?',
+    [dsr],
+    { knowledge_ids: [dsr.knowledge_id], last_response_mode: 'ANSWER' }
+  );
+  assert.equal(dsrFollowUp.decision.selected_records[0].knowledge_id, dsr.knowledge_id);
+  assert.match(dsrFollowUp.decision.answer, /cannot satisfy DSR/i);
+
+  const misload = knowledgeRecord({
+    knowledge_id: 'KNO-DEL-MISLOAD-AFTERDISPATCH-001',
+    concise_answer: 'Use Code 012 and return the package to the station.'
+  });
+  const codeFollowUp = buildDeterministicRuntimeDecision(
+    'What code should I use?',
+    [misload],
+    { knowledge_ids: [misload.knowledge_id], last_response_mode: 'ANSWER' }
+  );
+  assert.equal(codeFollowUp.decision.selected_records[0].knowledge_id, misload.knowledge_id);
+  assert.match(codeFollowUp.decision.answer, /Code 012/i);
+});
+
+test('live-test regression phrases route to the complete approved procedure', () => {
+  const bulkRecord = knowledgeRecord({
+    knowledge_id: 'KNO-FORGE-BULK-TRANSFER-001',
+    canonical_situation: 'Bulk Transfer between work areas',
+    concise_answer: 'The current manifest holder starts the bulk transfer.',
+    driver_question_patterns: [{
+      utterance: 'How do I bulk transfer packages?',
+      answer_override: {
+        direct_answer: 'The person whose manifest currently holds the package must start the bulk transfer.',
+        steps: ['Open Bulk Transfer and scan the packages.'],
+        watch_for: 'Use the confirmed destination work area.'
+      }
+    }]
+  });
+  const bulk = buildDeterministicRuntimeDecision(
+    'how do i xfer bulk pkgs to other driver',
+    [bulkRecord],
+    {}
+  );
+  assert.equal(bulk.decision.selected_records[0].knowledge_id, bulkRecord.knowledge_id);
+  assert.match(bulk.decision.answer, /manifest currently holds/i);
+
+  const canceled = knowledgeRecord({ knowledge_id: 'KNO-PUP-CANCELED-001' });
+  const code20 = knowledgeRecord({
+    knowledge_id: 'KNO-PUP-CODE20-001',
+    concise_answer: 'Use Code 20 after the customer confirms zero packages.'
+  });
+  const comparison = buildDeterministicRuntimeDecision(
+    'What is the difference between pickup Codes 11, 20, and 24?',
+    [canceled, code20],
+    {}
+  );
+  assert.match(comparison.decision.answer, /Code 11/i);
+  assert.match(comparison.decision.answer, /Code 20/i);
+  assert.match(comparison.decision.answer, /Code 24/i);
+  assert.deepEqual(
+    comparison.decision.selected_records.map((record) => record.knowledge_id),
+    ['KNO-PUP-CANCELED-001', 'KNO-PUP-CODE20-001']
+  );
+});
+
+test('unknown misdelivery address and moved-recipient changes stay grounded', () => {
+  const misdelivery = knowledgeRecord({
+    knowledge_id: 'KNO-DEL-MISDELIVERY-RECOVERY-001',
+    prohibited_actions: ['Do not redeliver until the correct address is established'],
+    escalation_requirements: ['Contact management when the correct address cannot be established']
+  });
+  const unknown = buildDeterministicRuntimeDecision(
+    'I don’t know the correct address.',
+    [misdelivery],
+    { knowledge_ids: [misdelivery.knowledge_id], last_response_mode: 'ANSWER' }
+  );
+  assert.equal(unknown.decision.selected_records[0].knowledge_id, misdelivery.knowledge_id);
+  assert.match(unknown.decision.answer, /Do not redeliver/i);
+  assert.match(unknown.decision.answer, /station or management/i);
+
+  const directedChange = buildDeterministicRuntimeDecision(
+    'The customer moved and texted me a new address. Can I deliver there?',
+    [knowledgeRecord({ knowledge_id: 'KNO-FORGE-EDIT-ADDRESS-001' })],
+    {}
+  );
+  assert.equal(directedChange.decision.response_mode, 'ANSWER');
+  assert.equal(directedChange.decision.selected_records[0].knowledge_id, 'KNO-FORGE-EDIT-ADDRESS-001');
+  assert.equal(directedChange.decision.answer, 'No. Use Code 002 and return the package to the station.');
+
+  const unsupportedChange = buildDeterministicRuntimeDecision(
+    'The customer called and told me to change the delivery address myself.',
+    [knowledgeRecord({ knowledge_id: 'KNO-FORGE-EDIT-ADDRESS-001' })],
+    {}
+  );
+  assert.equal(unsupportedChange.decision.response_mode, 'ESCALATE');
+  assert.deepEqual(unsupportedChange.decision.selected_records, []);
 });
 
 test('empty corpus returns and records a fail-closed escalation', async () => {

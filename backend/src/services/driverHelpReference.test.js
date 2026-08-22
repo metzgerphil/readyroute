@@ -23,6 +23,7 @@ test('recognizes explicit reference identifiers without operational assumptions'
   assert.equal(isReferenceRecord(reference()), true);
   assert.deepEqual(explicitCodeTokens('what is reference code 101'), ['101']);
   assert.deepEqual(explicitCodeTokens('what does pickup code 101 mean'), ['101']);
+  assert.deepEqual(explicitCodeTokens('what does code 101 mean and when can I use it'), ['101']);
   assert.deepEqual(explicitCodeTokens('code 101 for delivery'), ['101']);
   assert.deepEqual(explicitCodeTokens('there are 101 items'), []);
   assert.deepEqual(
