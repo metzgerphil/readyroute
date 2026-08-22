@@ -117,7 +117,9 @@ function correctCommonFollowUpTypos(value) {
     .replace(/\bclsoed\b/gi, 'closed')
     .replace(/\bdeatils\b/gi, 'details')
     .replace(/\bestalbishes\b/gi, 'establishes')
-    .replace(/\bordniary\b/gi, 'ordinary');
+    .replace(/\bordniary\b/gi, 'ordinary')
+    .replace(/\bxfer\b/gi, 'transfer')
+    .replace(/\bpkgs\b/gi, 'packages');
 }
 
 function normalizeDriverUtterance(value) {
@@ -134,6 +136,14 @@ function resolveClarificationSelection(question, context = {}) {
     || normalizeDriverQuestion(option?.query) === normalized
   ));
   if (exact) return exact;
+
+  const yesNoSelection = normalized.match(/^(yes|no)\b/)?.[1];
+  if (yesNoSelection) {
+    const selected = options.find((option) => (
+      normalizeDriverQuestion(option?.label) === yesNoSelection
+    ));
+    if (selected) return selected;
+  }
 
   const requirement = normalizeDriverQuestion(
     context.pending_clarification_requirement || context.pending_clarification_prompt
@@ -230,6 +240,8 @@ function isAnsweredSituationFollowUp(question) {
     || /^(?:one|the)\b.*\b(?:amount|barcode|check|count|screen)\b/.test(normalized)
     || /^(?:where|what|which|can|could|should|do|does|did)\b.*\b(?:it|this|that)\b/.test(normalized)
     || /^(?:where|what|which|can|could|should|do|does|did|how)\b.*\b(?:door tag|package|form|paperwork|barcode|sid|sticker)\b/.test(normalized)
+    || /^(?:what|which) code (?:should|do|can) i use\b/.test(normalized)
+    || /^i (?:do not|dont|don t)? ?know\b.*\b(?:address|location|code|number)\b/.test(normalized)
     || /^i (?:lost|forgot|found) (?:it|this|that)\b/.test(normalized)
     || /^(?:i )?(?:cannot|can t|cant) (?:safely )?(?:get out|escape)\b/.test(normalized);
 }
@@ -244,8 +256,17 @@ function buildContextualQuestion(question, context = {}) {
     const answeredSituation = String(
       context.situation_question || context.last_question || ''
     ).trim();
+    const answeredHistory = Array.isArray(context.clarification_history)
+      ? context.clarification_history
+        .map((item) => (
+          `Ready Route asked: ${String(item?.prompt || '').trim()} Driver answered: ${String(item?.answer || '').trim()}`
+        ))
+        .filter(Boolean)
+      : [];
     return answeredFollowUp
-      ? `${answeredSituation}. Driver follow-up: ${currentAnswer}`
+      ? [answeredSituation, ...answeredHistory, `Driver follow-up: ${currentAnswer}`]
+        .filter(Boolean)
+        .join('. ')
       : currentAnswer;
   }
 
@@ -706,8 +727,263 @@ function buildInterpretationResult({
   };
 }
 
+function findEligibleOperationalRecord(records, knowledgeId) {
+  return selectCanonicalRecordVersions(records).find((record) => (
+    record.knowledge_id === knowledgeId
+    && !isReferenceRecord(record)
+    && isProductionEligibleRecord(record)
+  )) || null;
+}
+
+function buildLockedRuntimeDecision(question, decision, context = {}, selectedRecord = null) {
+  return {
+    clarificationSelection: null,
+    decision,
+    decisionContext: context,
+    referenceDecision: null,
+    resolvedQuestion: question,
+    selectedClarificationRecord: selectedRecord,
+    workflowDecision: false,
+    lockedDecision: true
+  };
+}
+
+function buildLockedRecordRuntimeDecision(question, context, record, options = {}) {
+  if (!record) return null;
+  const pattern = options.patternQuestion
+    ? getMatchingQuestionPattern(options.patternQuestion, record)
+    : null;
+  const answerOverride = options.answerOverride || pattern?.answer_override || null;
+  return buildLockedRuntimeDecision(question, {
+    response_mode: 'ANSWER',
+    confidence: 1,
+    candidates: [{
+      knowledge_id: record.knowledge_id,
+      version: record.version,
+      canonical_situation: record.canonical_situation,
+      score: 100
+    }],
+    selected_records: [record],
+    answer: answerOverride?.direct_answer
+      ? formatDriverCodeTerminology(answerOverride.direct_answer, record)
+      : buildPresentedAnswer(record, question),
+    more_info: record.more_info_answer || null,
+    answer_structure: buildAnswerStructure(record, answerOverride)
+  }, context, record);
+}
+
+function buildProtectedRuntimeDecision(question, records, context = {}) {
+  const normalized = normalizeDriverQuestion(question);
+  const pendingRequirement = normalizeDriverQuestion(
+    context.pending_clarification_requirement || context.pending_clarification_prompt
+  );
+
+  const employmentQuestion = (
+    /\b(?:vacation|time off|pto|overtime|paycheck|payroll|wages?|benefits?)\b/.test(normalized)
+    || /\b(?:hire|hiring|terminate|termination|fire|firing)\b.*\b(?:driver|employee|worker|staff)\b/.test(normalized)
+  );
+  if (employmentQuestion) {
+    return buildLockedRuntimeDecision(question, {
+      response_mode: 'ESCALATE',
+      confidence: 1,
+      candidates: [],
+      selected_records: [],
+      clarification_options: [],
+      escalation_message: 'Ready Route Answers does not have a verified answer for this question yet. Contact your manager or station for the current procedure.'
+    }, context);
+  }
+
+  if (/\bcode 0*30\b/.test(normalized)) {
+    const referenceDecision = buildDriverHelpReferenceDecision(question, records);
+    if (referenceDecision) {
+      return {
+        ...buildLockedRuntimeDecision(question, referenceDecision, context),
+        referenceDecision
+      };
+    }
+  }
+
+  const code128SafetyQuestion = (
+    /\bcode 128\b/.test(normalized)
+    && /\b(?:safe|allowed|approved|authorized|correct format)\b/.test(normalized)
+  );
+  if (code128SafetyQuestion) {
+    return buildLockedRecordRuntimeDecision(
+      question,
+      context,
+      findEligibleOperationalRecord(records, VEHICLE_BARCODE_KNOWLEDGE_ID),
+      {
+        answerOverride: {
+          direct_answer: 'Code 128 is the approved format for the vehicle-barcode workaround.',
+          steps: ['Confirm the encoded value uses an uppercase V followed by the actual vehicle number.'],
+          watch_for: 'Do not use another barcode format or a vehicle number that has not been verified.'
+        }
+      }
+    );
+  }
+
+  const unsupportedCodRefusal = (
+    /\bcod\b/.test(normalized)
+    && /\b(?:customer|recipient)\b.*\b(?:refuse|refused|refuses|won t|wont)\b/.test(normalized)
+  );
+  if (unsupportedCodRefusal) {
+    return buildLockedRuntimeDecision(question, {
+      response_mode: 'ESCALATE',
+      confidence: 1,
+      candidates: [],
+      selected_records: [],
+      clarification_options: [],
+      escalation_message: 'Ready Route Answers does not have a verified COD-refusal code or procedure yet. Contact your manager or station for the current procedure.'
+    }, context);
+  }
+
+  const dsrDoorTagFollowUp = (
+    (context.knowledge_ids || []).includes('KNO-DEL-SIG-DSR-001')
+    && /\b(?:signed )?door tag\b/.test(normalized)
+  );
+  if (dsrDoorTagFollowUp) {
+    return buildLockedRecordRuntimeDecision(
+      question,
+      context,
+      findEligibleOperationalRecord(records, 'KNO-DEL-SIG-DSR-001'),
+      {
+        answerOverride: {
+          direct_answer: 'No. A signed door tag cannot satisfy DSR.',
+          steps: [
+            'Do not leave the package.',
+            'Use Code 007 for a residential stop or Code 004 for a non-residential stop.',
+            'Complete the attempt documentation and keep the package.'
+          ],
+          watch_for: 'DSR requires an in-person signature at the labeled address.'
+        }
+      }
+    );
+  }
+
+  const afterDispatchCodeFollowUp = (
+    (context.knowledge_ids || []).includes('KNO-DEL-MISLOAD-AFTERDISPATCH-001')
+    && /^(?:what|which) code (?:should|do|can) i use\b/.test(normalized)
+  );
+  if (afterDispatchCodeFollowUp) {
+    return buildLockedRecordRuntimeDecision(
+      question,
+      context,
+      findEligibleOperationalRecord(records, 'KNO-DEL-MISLOAD-AFTERDISPATCH-001')
+    );
+  }
+
+  const leakingHazmatBranch = (
+    /\bpackage leaking or hazardous\b/.test(pendingRequirement)
+    && (
+      /^yes\b/.test(normalized)
+      || /\b(?:leak|leaking|spill|spilled|hazmat|hazardous)\b/.test(normalized)
+    )
+    && !/\b(?:not|isn t|isnt|no)\b.*\b(?:leak|leaking|hazmat|hazardous)\b/.test(normalized)
+  );
+  if (leakingHazmatBranch) {
+    return buildLockedRecordRuntimeDecision(
+      question,
+      context,
+      findEligibleOperationalRecord(records, 'KNO-HAZ-LEAK-001')
+    );
+  }
+
+  const unknownMisdeliveryAddress = (
+    (context.knowledge_ids || []).includes('KNO-DEL-MISDELIVERY-RECOVERY-001')
+    && /\b(?:do not|dont|don t|unknown|not known)\b.*\bcorrect address\b|\bcorrect address\b.*\b(?:unknown|not known)\b/.test(normalized)
+  );
+  if (unknownMisdeliveryAddress) {
+    return buildLockedRecordRuntimeDecision(
+      question,
+      context,
+      findEligibleOperationalRecord(records, 'KNO-DEL-MISDELIVERY-RECOVERY-001'),
+      {
+        answerOverride: {
+          direct_answer: 'Do not redeliver it until the correct address is established. Contact station or management for the approved disposition.',
+          steps: [
+            'Keep Code 17 as the recovered-misdelivery result.',
+            'Contact station or management to establish the correct address or final disposition.'
+          ],
+          watch_for: 'Do not use Code 18 unless a same-day delivery to the correct address succeeds.'
+        }
+      }
+    );
+  }
+
+  const bulkTransferRequest = (
+    !/\b(?:manifest preview|misload|wrong route)\b/.test(normalized)
+    && (
+      /\bbulk transfer\b/.test(normalized)
+      || /\btransfer\b.*\b(?:bulk|packages?)\b.*\b(?:driver|route|work area)\b/.test(normalized)
+    )
+  );
+  if (bulkTransferRequest) {
+    return buildLockedRecordRuntimeDecision(
+      question,
+      context,
+      findEligibleOperationalRecord(records, 'KNO-FORGE-BULK-TRANSFER-001'),
+      { patternQuestion: 'How do I bulk transfer packages?' }
+    );
+  }
+
+  const pickupCodeComparison = (
+    /\b(?:difference|compare|comparison)\b/.test(normalized)
+    && /\b11\b/.test(normalized)
+    && /\b20\b/.test(normalized)
+    && /\b24\b/.test(normalized)
+  );
+  if (pickupCodeComparison) {
+    const canceledRecord = findEligibleOperationalRecord(records, 'KNO-PUP-CANCELED-001');
+    const code20Record = findEligibleOperationalRecord(records, 'KNO-PUP-CODE20-001');
+    if (canceledRecord && code20Record) {
+      const selectedRecords = [canceledRecord, code20Record];
+      return buildLockedRuntimeDecision(question, {
+        response_mode: 'ANSWER',
+        confidence: 1,
+        candidates: selectedRecords.map((record) => ({
+          knowledge_id: record.knowledge_id,
+          version: record.version,
+          canonical_situation: record.canonical_situation,
+          score: 100
+        })),
+        selected_records: selectedRecords,
+        answer: 'Use Code 11 after an attempted pickup at a closed location with no packages; Code 20 after an attempted listed pickup when the customer confirms there are no packages; and Code 24 when the listed pickup was canceled before any attempt.',
+        more_info: null,
+        answer_structure: {
+          direct_answer: 'Use Code 11 for closed after an attempt, Code 20 for customer-confirmed zero packages after an attempt, and Code 24 for cancellation before any attempt.',
+          steps: [],
+          watch_for: 'Do not use Code 11 unless the attempted location was closed.',
+          options: [],
+          procedure_steps: [],
+          documentation: [],
+          prohibited_actions: [],
+          escalation_requirements: []
+        }
+      }, context);
+    }
+  }
+
+  const customerDirectedAddressChange = (
+    /\bcustomer\b.*\b(?:called|texted|told)\b.*\b(?:change|new|different)\b.*\baddress\b/.test(normalized)
+  );
+  if (customerDirectedAddressChange) {
+    return buildLockedRuntimeDecision(question, {
+      response_mode: 'ESCALATE',
+      confidence: 1,
+      candidates: [],
+      selected_records: [],
+      clarification_options: [],
+      escalation_message: 'Ready Route Answers does not have a verified answer for changing an address from a customer call or message. Contact your manager or station for the current procedure.'
+    }, context);
+  }
+
+  return null;
+}
+
 function buildDeterministicRuntimeDecision(question, records, context = {}) {
   question = normalizeDriverUtterance(question);
+  const protectedDecision = buildProtectedRuntimeDecision(question, records, context);
+  if (protectedDecision) return protectedDecision;
   const vehicleBarcodeRecord = selectCanonicalRecordVersions(records).find((record) => (
     record.knowledge_id === VEHICLE_BARCODE_KNOWLEDGE_ID
     && !isReferenceRecord(record)

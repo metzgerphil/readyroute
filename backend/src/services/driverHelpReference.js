@@ -61,7 +61,7 @@ function explicitCodeTokens(question) {
     /^(?:(?:what|which) (?:is |are )?)?(?:delivery |pickup |status |reason |reference )?code \d/.test(normalized)
     || /\b(?:delivery|pickup|status|reason|reference|p u|pu) code \d/.test(normalized)
     || /\bcode \d{1,4} (?:for )?(?:(?:at|on) (?:a |the )?)?(?:delivery|pickup|status|reason|p u|pu)\b/.test(normalized)
-    || /^what does (?:delivery |pickup |status |reason |reference )?code \d{1,4} mean$/.test(normalized)
+    || /^what does (?:delivery |pickup |status |reason |reference )?code \d{1,4} mean\b/.test(normalized)
     || /\b(?:apply|choose|select|use) code \d/.test(normalized)
     || /\bcode \d{1,4} (?:or|versus|vs) \d{1,4}\b/.test(normalized)
   );
