@@ -251,7 +251,7 @@ test('POST /billing/signup/checkout-session redirects a valid RRA company signup
         manager_name: 'Casey Manager',
         manager_phone_number: '555-0199',
         cxpc_phone_number: '555-0101',
-        csa_phone_number: '555-0102',
+        csa_number: 'CSA-0102',
         company: 'Taylor Transport',
         role: 'Authorized officer',
         drivers: 5,
@@ -450,7 +450,7 @@ test('POST /billing/signup/complete honors the password entered for a returning 
       return { data: {
         id: 'signup-1', name: 'Taylor Owner', email: 'owner@example.com', phone_number: '555-0100',
         manager_name: 'Taylor Owner', manager_phone_number: '555-0100',
-        cxpc_phone_number: '555-0101', csa_phone_number: '555-0102',
+        cxpc_phone_number: '555-0101', csa_number: 'CSA-0102',
         company_csa: 'New Company', role: 'Owner', driver_count: 5, billing_interval: 'monthly',
         billing_policy_version: '2026-08-15-v2', billing_consent_at: '2026-08-16T12:00:00.000Z',
         account_id: null, onboarding_status: 'pending_payment'
@@ -514,7 +514,7 @@ test('POST /billing/signup/complete replaces a stale password when completion is
       return { data: {
         id: 'signup-1', name: 'Taylor Owner', email: 'owner@example.com', phone_number: '555-0100',
         manager_name: 'Taylor Owner', manager_phone_number: '555-0100',
-        cxpc_phone_number: '555-0101', csa_phone_number: '555-0102',
+        cxpc_phone_number: '555-0101', csa_number: 'CSA-0102',
         company_csa: 'New Company', role: 'Owner', driver_count: 5, billing_interval: 'monthly',
         billing_policy_version: '2026-08-15-v2', billing_consent_at: '2026-08-16T12:00:00.000Z',
         account_id: 'acct-new', onboarding_status: 'email_sent'

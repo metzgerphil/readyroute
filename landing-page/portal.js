@@ -340,7 +340,7 @@ async function loadLocalContacts() {
   try {
     const payload = await request('/manager/account/local-contacts');
     document.querySelector('#cxpc-phone-number').value = payload.cxpc_phone_number || '';
-    document.querySelector('#csa-phone-number').value = payload.csa_phone_number || '';
+    document.querySelector('#csa-number').value = payload.csa_number || '';
     document.querySelector('#primary-manager-name').value = payload.manager_name || '';
     document.querySelector('#primary-manager-phone-number').value = payload.manager_phone_number || '';
     localContactsForm.querySelectorAll('input').forEach((input) => { input.disabled = payload.can_manage === false; });
@@ -718,7 +718,7 @@ localContactsForm.addEventListener('submit', async (event) => {
       method: 'PUT',
       body: JSON.stringify({
         cxpc_phone_number: document.querySelector('#cxpc-phone-number').value.trim(),
-        csa_phone_number: document.querySelector('#csa-phone-number').value.trim(),
+        csa_number: document.querySelector('#csa-number').value.trim(),
         manager_name: document.querySelector('#primary-manager-name').value.trim(),
         manager_phone_number: document.querySelector('#primary-manager-phone-number').value.trim()
       })

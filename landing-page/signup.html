@@ -88,9 +88,9 @@
                 <p class="field-hint">RRA can show this number when a driver needs CXPC.</p>
               </div>
                 <div class="field">
-                <label for="csa-phone">Local CSA phone number <span class="required" aria-hidden="true">*</span></label>
-                <input id="csa-phone" name="csa_phone_number" type="tel" inputmode="tel" required>
-                <p class="field-hint">RRA can show this number when a driver needs the CSA.</p>
+                <label for="csa-number">CSA Number <span class="required" aria-hidden="true">*</span></label>
+                <input id="csa-number" name="csa_number" autocomplete="off" required>
+                <p class="field-hint">Enter the contracted service area number assigned to this company.</p>
               </div>
                 <div class="field">
                 <label for="manager-name">Day-to-day manager name <span class="required" aria-hidden="true">*</span></label>
@@ -217,7 +217,7 @@
         manager_name: formData.get('manager_name'),
         manager_phone_number: formData.get('manager_phone_number'),
         cxpc_phone_number: formData.get('cxpc_phone_number'),
-        csa_phone_number: formData.get('csa_phone_number'),
+        csa_number: formData.get('csa_number'),
         company: formData.get('company'), role: formData.get('role'), drivers: formData.get('drivers'),
         billing_interval: formData.get('billing_interval'),
         billing_consent: formData.get('billing_consent') === 'on',

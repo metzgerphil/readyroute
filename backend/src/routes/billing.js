@@ -122,7 +122,7 @@ function createBillingRouter(options = {}) {
 
     const { data: signup, error: signupError } = await supabase
       .from('early_access_signups')
-      .select('id, name, email, phone_number, manager_name, manager_phone_number, cxpc_phone_number, csa_phone_number, company_csa, role, driver_count, billing_interval, billing_policy_version, billing_consent_at, ai_processing_authorized, ai_processing_policy_version, ai_processing_authorized_at, account_id, onboarding_status')
+      .select('id, name, email, phone_number, manager_name, manager_phone_number, cxpc_phone_number, csa_number, company_csa, role, driver_count, billing_interval, billing_policy_version, billing_consent_at, ai_processing_authorized, ai_processing_policy_version, ai_processing_authorized_at, account_id, onboarding_status')
       .eq('id', signupId)
       .maybeSingle();
     if (signupError) throw signupError;
@@ -196,7 +196,7 @@ function createBillingRouter(options = {}) {
           rra_ai_processing_policy_version: signup.ai_processing_policy_version || null,
           rra_ai_processing_authorized_at: signup.ai_processing_authorized_at || null,
           rra_cxpc_phone_number: signup.cxpc_phone_number,
-          rra_csa_phone_number: signup.csa_phone_number,
+          rra_csa_number: signup.csa_number,
           rra_primary_manager_name: signup.manager_name || signup.name,
           rra_primary_manager_phone_number: signup.manager_phone_number || signup.phone_number,
           rra_billing_treatment: 'standard'
@@ -352,8 +352,8 @@ function createBillingRouter(options = {}) {
     }
     const { payload, error: signupError } = buildSignupPayload(req.body, req);
     if (signupError) return res.status(400).json({ error: signupError });
-    if (!payload.company_csa || !payload.manager_name || !payload.manager_phone_number || !payload.cxpc_phone_number || !payload.csa_phone_number || !payload.role || !Number.isInteger(payload.driver_count) || payload.driver_count < 1) {
-      return res.status(400).json({ error: 'CSA name, day-to-day manager name and phone, CXPC phone, CSA phone, role, and at least one expected active driver are required.' });
+    if (!payload.company_csa || !payload.manager_name || !payload.manager_phone_number || !payload.cxpc_phone_number || !payload.csa_number || !payload.role || !Number.isInteger(payload.driver_count) || payload.driver_count < 1) {
+      return res.status(400).json({ error: 'CSA name and number, day-to-day manager name and phone, CXPC phone, role, and at least one expected active driver are required.' });
     }
     if (!['owner', 'authorized officer', 'business contact'].includes(String(payload.role).toLowerCase())) {
       return res.status(400).json({ error: 'Company signup must be completed by an authorized officer (AO) or business contact (BC).' });
@@ -468,8 +468,8 @@ function createBillingRouter(options = {}) {
 
     const { payload, error: signupError } = buildSignupPayload(req.body, req);
     if (signupError) return res.status(400).json({ error: signupError });
-    if (!payload.company_csa || !payload.manager_name || !payload.manager_phone_number || !payload.cxpc_phone_number || !payload.csa_phone_number || !payload.role || !Number.isInteger(payload.driver_count) || payload.driver_count < 1) {
-      return res.status(400).json({ error: 'CSA name, day-to-day manager name and phone, CXPC phone, CSA phone, role, and at least one expected active driver are required.' });
+    if (!payload.company_csa || !payload.manager_name || !payload.manager_phone_number || !payload.cxpc_phone_number || !payload.csa_number || !payload.role || !Number.isInteger(payload.driver_count) || payload.driver_count < 1) {
+      return res.status(400).json({ error: 'CSA name and number, day-to-day manager name and phone, CXPC phone, role, and at least one expected active driver are required.' });
     }
     if (req.body?.billing_consent !== true) {
       return res.status(400).json({ error: 'Billing authorization is required before saving a payment method.' });

@@ -76,7 +76,7 @@ function buildSignupPayload(body = {}, req) {
       manager_name: normalizeText(body.manager_name ?? body.primary_manager_name ?? body.name, 160),
       manager_phone_number: normalizeText(body.manager_phone_number ?? body.phone ?? body.phone_number, 80),
       cxpc_phone_number: normalizeText(body.cxpc_phone_number, 80),
-      csa_phone_number: normalizeText(body.csa_phone_number, 80),
+      csa_number: normalizeText(body.csa_number, 80),
       company_csa: normalizeText(body.company ?? body.company_csa, 200),
       role: normalizeText(body.role, 120),
       route_count: routeCount,
@@ -142,8 +142,8 @@ function createWaitlistRouter(options = {}) {
         return res.status(400).json({ error });
       }
 
-      if (!payload.company_csa || !payload.manager_name || !payload.manager_phone_number || !payload.cxpc_phone_number || !payload.csa_phone_number || !['owner', 'authorized officer', 'business contact'].includes(String(payload.role || '').toLowerCase()) || !Number.isInteger(payload.driver_count) || payload.driver_count < 1) {
-        return res.status(400).json({ error: 'CSA name, day-to-day manager name and phone, CXPC phone, CSA phone, AO or BC role, and at least one expected active driver are required.' });
+      if (!payload.company_csa || !payload.manager_name || !payload.manager_phone_number || !payload.cxpc_phone_number || !payload.csa_number || !['owner', 'authorized officer', 'business contact'].includes(String(payload.role || '').toLowerCase()) || !Number.isInteger(payload.driver_count) || payload.driver_count < 1) {
+        return res.status(400).json({ error: 'CSA name and number, day-to-day manager name and phone, CXPC phone, AO or BC role, and at least one expected active driver are required.' });
       }
 
       const { error: upsertError } = await supabase

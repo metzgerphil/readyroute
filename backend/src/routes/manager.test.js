@@ -5947,7 +5947,7 @@ test('GET /manager/account/local-contacts fills blank account fields from the or
         data: {
           company_name: 'Bridge Transportation Inc',
           rra_cxpc_phone_number: null,
-          rra_csa_phone_number: null,
+          rra_csa_number: null,
           rra_primary_manager_name: 'Phil Metzger',
           rra_primary_manager_phone_number: null
         },
@@ -5965,7 +5965,7 @@ test('GET /manager/account/local-contacts fills blank account fields from the or
           phone_number: '555-0100',
           manager_phone_number: '555-0199',
           cxpc_phone_number: '555-0101',
-          csa_phone_number: '555-0102'
+          csa_number: 'CSA-0102'
         },
         error: null
       };
@@ -5982,7 +5982,7 @@ test('GET /manager/account/local-contacts fills blank account fields from the or
 
     assert.equal(response.status, 200);
     assert.equal(body.cxpc_phone_number, '555-0101');
-    assert.equal(body.csa_phone_number, '555-0102');
+    assert.equal(body.csa_number, 'CSA-0102');
     assert.equal(body.manager_name, 'Phil Metzger');
     assert.equal(body.manager_phone_number, '555-0199');
   } finally {
@@ -5997,7 +5997,7 @@ test('GET /manager/account/local-contacts preserves company edits without readin
         data: {
           company_name: 'Bridge Transportation Inc',
           rra_cxpc_phone_number: '555-0201',
-          rra_csa_phone_number: '555-0202',
+          rra_csa_number: 'CSA-0202',
           rra_primary_manager_name: 'Updated Manager',
           rra_primary_manager_phone_number: '555-0299'
         },
@@ -6016,7 +6016,7 @@ test('GET /manager/account/local-contacts preserves company edits without readin
 
     assert.equal(response.status, 200);
     assert.equal(body.cxpc_phone_number, '555-0201');
-    assert.equal(body.csa_phone_number, '555-0202');
+    assert.equal(body.csa_number, 'CSA-0202');
     assert.equal(body.manager_name, 'Updated Manager');
     assert.equal(body.manager_phone_number, '555-0299');
     assert.equal(supabase.calls.length, 1);
@@ -6033,7 +6033,7 @@ test('GET /manager/account/local-contacts recovers an unlinked signup by company
         data: {
           company_name: 'Bridge Transportation Inc',
           rra_cxpc_phone_number: null,
-          rra_csa_phone_number: null,
+          rra_csa_number: null,
           rra_primary_manager_name: null,
           rra_primary_manager_phone_number: null
         },
@@ -6055,7 +6055,7 @@ test('GET /manager/account/local-contacts recovers an unlinked signup by company
           phone_number: '555-0100',
           manager_phone_number: '555-0199',
           cxpc_phone_number: '555-0101',
-          csa_phone_number: '555-0102'
+          csa_number: 'CSA-0102'
         },
         error: null
       };
@@ -6072,10 +6072,49 @@ test('GET /manager/account/local-contacts recovers an unlinked signup by company
 
     assert.equal(response.status, 200);
     assert.equal(body.cxpc_phone_number, '555-0101');
-    assert.equal(body.csa_phone_number, '555-0102');
+    assert.equal(body.csa_number, 'CSA-0102');
     assert.equal(body.manager_name, 'Phil Metzger');
     assert.equal(body.manager_phone_number, '555-0199');
     assert.equal(signupSelectCount, 2);
+  } finally {
+    await server.close();
+  }
+});
+
+test('PUT /manager/account/local-contacts saves CSA Number separately from phone contacts', async () => {
+  const supabase = new MockSupabase((query) => {
+    assert.equal(query.table, 'accounts');
+    assert.equal(query.operation, 'update');
+    assert.deepEqual(query.payload, {
+      rra_cxpc_phone_number: '8008888888',
+      rra_csa_number: 'CSA-619',
+      rra_primary_manager_name: 'Vlad Fed',
+      rra_primary_manager_phone_number: '6199990000'
+    });
+    assert.equal(query.filters.find((filter) => filter.column === 'id')?.value, 'acct-1');
+    return { data: null, error: null };
+  });
+  const server = await startTestServer({ supabase });
+
+  try {
+    const response = await fetch(`${server.baseUrl}/manager/account/local-contacts`, {
+      method: 'PUT',
+      headers: {
+        Authorization: `Bearer ${signManagerToken({ manager_role: 'owner' })}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        cxpc_phone_number: '8008888888',
+        csa_number: 'CSA-619',
+        manager_name: 'Vlad Fed',
+        manager_phone_number: '6199990000'
+      })
+    });
+    const body = await response.json();
+
+    assert.equal(response.status, 200);
+    assert.equal(body.csa_number, 'CSA-619');
+    assert.equal(body.cxpc_phone_number, '8008888888');
   } finally {
     await server.close();
   }
