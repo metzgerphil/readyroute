@@ -2843,7 +2843,7 @@ function createManagerRouter(options = {}) {
     try {
       const { data, error } = await supabase
         .from('accounts')
-        .select('company_name, rra_cxpc_phone_number, rra_csa_phone_number, rra_primary_manager_name, rra_primary_manager_phone_number')
+        .select('company_name, rra_cxpc_phone_number, rra_csa_number, rra_primary_manager_name, rra_primary_manager_phone_number')
         .eq('id', req.account.account_id)
         .maybeSingle();
       if (error) throw error;
@@ -2851,7 +2851,7 @@ function createManagerRouter(options = {}) {
 
       const accountContacts = {
         cxpc_phone_number: String(data.rra_cxpc_phone_number || '').trim(),
-        csa_phone_number: String(data.rra_csa_phone_number || '').trim(),
+        csa_number: String(data.rra_csa_number || '').trim(),
         manager_name: String(data.rra_primary_manager_name || '').trim(),
         manager_phone_number: String(data.rra_primary_manager_phone_number || '').trim()
       };
@@ -2860,7 +2860,7 @@ function createManagerRouter(options = {}) {
       if (hasMissingContact) {
         const signupLookup = await supabase
           .from('early_access_signups')
-          .select('name, manager_name, phone_number, manager_phone_number, cxpc_phone_number, csa_phone_number')
+          .select('name, manager_name, phone_number, manager_phone_number, cxpc_phone_number, csa_number')
           .eq('account_id', req.account.account_id)
           .order('updated_at', { ascending: false })
           .limit(1)
@@ -2870,7 +2870,7 @@ function createManagerRouter(options = {}) {
         if (!signup && req.account.manager_email && data.company_name) {
           const unlinkedSignupLookup = await supabase
             .from('early_access_signups')
-            .select('name, manager_name, phone_number, manager_phone_number, cxpc_phone_number, csa_phone_number')
+            .select('name, manager_name, phone_number, manager_phone_number, cxpc_phone_number, csa_number')
             .eq('email', String(req.account.manager_email).trim().toLowerCase())
             .eq('company_csa', data.company_name)
             .order('updated_at', { ascending: false })
@@ -2883,7 +2883,7 @@ function createManagerRouter(options = {}) {
 
       return res.status(200).json({
         cxpc_phone_number: accountContacts.cxpc_phone_number || signup?.cxpc_phone_number || '',
-        csa_phone_number: accountContacts.csa_phone_number || signup?.csa_phone_number || '',
+        csa_number: accountContacts.csa_number || signup?.csa_number || '',
         manager_name: accountContacts.manager_name || signup?.manager_name || signup?.name || req.account.manager_name || '',
         manager_phone_number: accountContacts.manager_phone_number || signup?.manager_phone_number || signup?.phone_number || '',
         can_manage: canManageAccountSettings(req)
@@ -2897,19 +2897,19 @@ function createManagerRouter(options = {}) {
   router.put('/account/local-contacts', requireManager, requireAccountSettingsAccess, async (req, res) => {
     const contacts = {
       rra_cxpc_phone_number: String(req.body?.cxpc_phone_number || '').trim(),
-      rra_csa_phone_number: String(req.body?.csa_phone_number || '').trim(),
+      rra_csa_number: String(req.body?.csa_number || '').trim(),
       rra_primary_manager_name: String(req.body?.manager_name || '').trim(),
       rra_primary_manager_phone_number: String(req.body?.manager_phone_number || '').trim()
     };
     if (Object.values(contacts).some((value) => value.length < 2 || value.length > 120)) {
-      return res.status(400).json({ error: 'CXPC phone, CSA phone, manager name, and manager phone are all required.' });
+      return res.status(400).json({ error: 'CXPC phone, CSA number, manager name, and manager phone are all required.' });
     }
     try {
       const { error } = await supabase.from('accounts').update(contacts).eq('id', req.account.account_id);
       if (error) throw error;
       return res.status(200).json({
         cxpc_phone_number: contacts.rra_cxpc_phone_number,
-        csa_phone_number: contacts.rra_csa_phone_number,
+        csa_number: contacts.rra_csa_number,
         manager_name: contacts.rra_primary_manager_name,
         manager_phone_number: contacts.rra_primary_manager_phone_number
       });
