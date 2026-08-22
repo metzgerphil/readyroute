@@ -13,12 +13,16 @@ test('builds a shareable RRA test entry with displayed output and diagnostics', 
     response_mode: 'CLARIFY',
     clarification_prompt: 'Is release permitted?',
     candidates: [{ knowledge_id: 'KNO-1', score: 88 }],
-    interpretation_mode: 'GROUNDED_AI'
+    interpretation_mode: 'GROUNDED_AI',
+    composition_mode: 'GROUNDED_AI',
+    composition_validation: { valid: true, usage: { estimated_cost_usd: 0.001 } }
   }, '2026-08-15T14:00:00.000Z');
 
   assert.equal(entry.question, 'Business is closed.');
   assert.equal(entry.displayed_response.clarification_prompt, 'Is release permitted?');
   assert.equal(entry.diagnostics.candidates[0].knowledge_id, 'KNO-1');
+  assert.equal(entry.diagnostics.composition_mode, 'GROUNDED_AI');
+  assert.equal(entry.diagnostics.composition_validation.usage.estimated_cost_usd, 0.001);
   assert.equal(summarizeRraTestLogEntry(entry), 'Is release permitted?');
 });
 

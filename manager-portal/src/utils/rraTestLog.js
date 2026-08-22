@@ -28,7 +28,9 @@ export function buildRraTestLogEntry(question, result = {}, recordedAt = new Dat
       candidates: list(result.candidates),
       trace: list(result.trace),
       interpretation_mode: result.interpretation_mode || null,
-      interpretation_result: result.interpretation_result || null
+      interpretation_result: result.interpretation_result || null,
+      composition_mode: result.composition_mode || null,
+      composition_validation: result.composition_validation || null
     }
   };
 }

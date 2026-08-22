@@ -57,6 +57,27 @@ test('accepts a clearer answer grounded to eligible canonical fields', async () 
   assert.equal(result.composition_validation.valid, true);
 });
 
+test('preserves composer usage metadata for cost accounting', async () => {
+  const decision = answerDecision();
+  const result = await composeGroundedDecision(decision, async () => ({
+    answer: 'Use code 006 and keep the package with you.',
+    more_info: null,
+    answer_structure: null,
+    grounding: [{
+      output_path: 'answer',
+      knowledge_id: 'KNO-TEST-006',
+      source_paths: ['concise_answer']
+    }],
+    provider_metadata: {
+      response_id: 'resp-composer-1',
+      usage: { input_tokens: 100, output_tokens: 20, total_tokens: 120 }
+    }
+  }));
+
+  assert.equal(result.composition_validation.provider_metadata.response_id, 'resp-composer-1');
+  assert.equal(result.composition_validation.provider_metadata.usage.total_tokens, 120);
+});
+
 test('uses tailored prose as the direct response while preserving verified procedure structure', async () => {
   const decision = {
     ...answerDecision(),

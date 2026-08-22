@@ -121,12 +121,16 @@ function validateGroundedComposition(payload, selectedRecords) {
   return { valid: true, reason: null };
 }
 
-function deterministicFallback(decision, reason = null) {
+function deterministicFallback(decision, reason = null, providerMetadata = null) {
   return {
     ...decision,
     composition_mode: reason ? 'DETERMINISTIC_FALLBACK' : 'DETERMINISTIC',
     composition_grounding: [],
-    composition_validation: reason ? { valid: false, reason } : null
+    composition_validation: reason ? {
+      valid: false,
+      reason,
+      ...(providerMetadata ? { provider_metadata: providerMetadata } : {})
+    } : null
   };
 }
 
@@ -177,17 +181,18 @@ async function composeGroundedDecision(decision, composer, options = {}) {
   } catch (_error) {
     return deterministicFallback(decision, 'composer_error');
   }
+  const providerMetadata = payload?.provider_metadata || null;
   if (payload === 'NONE' || payload?.selection === 'NONE') {
-    return deterministicFallback(decision, 'composer_declined');
+    return deterministicFallback(decision, 'composer_declined', providerMetadata);
   }
   const validation = validateGroundedComposition(payload, decision.selected_records);
-  if (!validation.valid) return deterministicFallback(decision, validation.reason);
+  if (!validation.valid) return deterministicFallback(decision, validation.reason, providerMetadata);
   const instructionValidation = validateRequiredAnswerPatterns(
     payload,
     decision.required_answer_patterns || []
   );
   if (!instructionValidation.valid) {
-    return deterministicFallback(decision, instructionValidation.reason);
+    return deterministicFallback(decision, instructionValidation.reason, providerMetadata);
   }
 
   return {
@@ -202,7 +207,10 @@ async function composeGroundedDecision(decision, composer, options = {}) {
       : (isPlainObject(payload.answer_structure) ? payload.answer_structure : null),
     composition_mode: 'GROUNDED_AI',
     composition_grounding: payload.grounding,
-    composition_validation: validation
+    composition_validation: {
+      ...validation,
+      ...(providerMetadata ? { provider_metadata: providerMetadata } : {})
+    }
   };
 }
 
