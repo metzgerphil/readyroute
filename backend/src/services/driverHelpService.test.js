@@ -584,6 +584,19 @@ test('protected runtime branches fail closed and preserve high-risk distinctions
   );
   assert.equal(codRefusal.decision.response_mode, 'ESCALATE');
   assert.match(codRefusal.decision.escalation_message, /verified COD-refusal/i);
+
+  const codRecord = knowledgeRecord({
+    knowledge_id: 'KNO-DEL-REFUSED-001',
+    driver_question_variants: ['The customer refuses a COD package'],
+    concise_answer: 'Follow the verified refused-package procedure.'
+  });
+  const genericCodRefusal = buildDeterministicRuntimeDecision(
+    'The customer refuses a COD package',
+    [codRecord],
+    {}
+  );
+  assert.equal(genericCodRefusal.decision.response_mode, 'ANSWER');
+  assert.equal(genericCodRefusal.decision.selected_records[0].knowledge_id, codRecord.knowledge_id);
 });
 
 test('Code 030 remains definition-only and Code 128 safety wording does not launch a workflow', () => {
@@ -683,7 +696,7 @@ test('live-test regression phrases route to the complete approved procedure', ()
   );
 });
 
-test('unknown misdelivery address stays grounded and customer-directed changes fail closed', () => {
+test('unknown misdelivery address and customer-directed changes stay grounded', () => {
   const misdelivery = knowledgeRecord({
     knowledge_id: 'KNO-DEL-MISDELIVERY-RECOVERY-001',
     prohibited_actions: ['Do not redeliver until the correct address is established'],
@@ -700,12 +713,12 @@ test('unknown misdelivery address stays grounded and customer-directed changes f
 
   const directedChange = buildDeterministicRuntimeDecision(
     'The customer called and told me to change the delivery address myself.',
-    [],
+    [knowledgeRecord({ knowledge_id: 'KNO-FORGE-EDIT-ADDRESS-001' })],
     {}
   );
-  assert.equal(directedChange.decision.response_mode, 'ESCALATE');
-  assert.deepEqual(directedChange.decision.selected_records, []);
-  assert.match(directedChange.decision.escalation_message, /does not have a verified answer/i);
+  assert.equal(directedChange.decision.response_mode, 'ANSWER');
+  assert.equal(directedChange.decision.selected_records[0].knowledge_id, 'KNO-FORGE-EDIT-ADDRESS-001');
+  assert.equal(directedChange.decision.answer, 'No. Use Code 002 and return the package to the station.');
 });
 
 test('empty corpus returns and records a fail-closed escalation', async () => {

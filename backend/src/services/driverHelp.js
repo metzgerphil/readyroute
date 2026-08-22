@@ -825,6 +825,10 @@ function buildProtectedRuntimeDecision(question, records, context = {}) {
   const unsupportedCodRefusal = (
     /\bcod\b/.test(normalized)
     && /\b(?:customer|recipient)\b.*\b(?:refuse|refused|refuses|won t|wont)\b/.test(normalized)
+    && (
+      /\b(?:what|which) code\b.*\buse\b/.test(normalized)
+      || /\bcode\b.*\b(?:should|do|can) i use\b/.test(normalized)
+    )
   );
   if (unsupportedCodRefusal) {
     return buildLockedRuntimeDecision(question, {
@@ -967,14 +971,21 @@ function buildProtectedRuntimeDecision(question, records, context = {}) {
     /\bcustomer\b.*\b(?:called|texted|told)\b.*\b(?:change|new|different)\b.*\baddress\b/.test(normalized)
   );
   if (customerDirectedAddressChange) {
-    return buildLockedRuntimeDecision(question, {
-      response_mode: 'ESCALATE',
-      confidence: 1,
-      candidates: [],
-      selected_records: [],
-      clarification_options: [],
-      escalation_message: 'Ready Route Answers does not have a verified answer for changing an address from a customer call or message. Contact your manager or station for the current procedure.'
-    }, context);
+    return buildLockedRecordRuntimeDecision(
+      question,
+      context,
+      findEligibleOperationalRecord(records, 'KNO-FORGE-EDIT-ADDRESS-001'),
+      {
+        answerOverride: {
+          direct_answer: 'No. Use Code 002 and return the package to the station.',
+          steps: [
+            'If the recipient moved or is not at the label address, use Code 002 and return the package to the station.',
+            'If the correct recipient address has already been established through an approved source, follow the FORGE Edit Address procedure.'
+          ],
+          watch_for: 'Do not invent or guess a different recipient address. If the correct address has not already been established, obtain current station or management direction.'
+        }
+      }
+    );
   }
 
   return null;
