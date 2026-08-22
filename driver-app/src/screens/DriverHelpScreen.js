@@ -1,9 +1,11 @@
 import { useContext, useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
+  Alert,
   Image,
   Keyboard,
   KeyboardAvoidingView,
+  Linking,
   Modal,
   PanResponder,
   Platform,
@@ -23,6 +25,7 @@ import {
 
 import VehicleBarcodeCard from '../components/VehicleBarcodeCard';
 import api from '../services/api';
+import { getRraQuickActions } from '../services/rraQuickActions';
 import appTheme from '../theme/appTheme';
 import { getApiErrorMessage } from '../utils/apiError';
 
@@ -98,6 +101,19 @@ function SendIcon() {
   );
 }
 
+function QuickActionIcon({ type }) {
+  if (type === 'phone') {
+    return <Svg height={28} viewBox="0 0 32 32" width={28}><Path d="M8 4h5l2 7-3 2c2 4 5 7 9 9l2-3 6 2v5c0 2-2 3-4 3C13 27 5 19 3 8c0-2 2-4 5-4Z" fill="none" stroke={BRAND_NAVY} strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.4" /></Svg>;
+  }
+  if (type === 'person') {
+    return <Svg height={29} viewBox="0 0 32 32" width={29}><Path d="M16 16a6 6 0 1 0 0-12 6 6 0 0 0 0 12Zm-11 12c1-6 5-9 11-9s10 3 11 9" fill="none" stroke={BRAND_NAVY} strokeLinecap="round" strokeWidth="2.4" /></Svg>;
+  }
+  if (type === 'list') {
+    return <Svg height={29} viewBox="0 0 32 32" width={29}><Path d="M9 8h18M9 16h18M9 24h18" fill="none" stroke={BRAND_NAVY} strokeLinecap="round" strokeWidth="2.4" /><Path d="M4 8h1M4 16h1M4 24h1" fill="none" stroke={BRAND_NAVY} strokeLinecap="round" strokeWidth="3" /></Svg>;
+  }
+  return <Svg height={29} viewBox="0 0 32 32" width={29}><Path d="M5 5v22M9 5v22M14 5v22M18 5v22M24 5v22M27 5v22" fill="none" stroke={BRAND_NAVY} strokeWidth="2" /></Svg>;
+}
+
 function StatusShieldIcon({ unavailable = false }) {
   return (
     <Svg height={unavailable ? 76 : 34} viewBox="0 0 48 56" width={unavailable ? 66 : 40}>
@@ -167,7 +183,7 @@ export function getProminentCode(answerStructure = {}) {
   return uniqueCodes.length === 1 ? uniqueCodes[0] : null;
 }
 
-export default function DriverHelpScreen() {
+export default function DriverHelpScreen({ navigation }) {
   const safeAreaInsets = useContext(SafeAreaInsetsContext) || { bottom: 0, top: 0 };
   const inputRef = useRef(null);
   const inputFocusedRef = useRef(false);
@@ -188,6 +204,7 @@ export default function DriverHelpScreen() {
   const [isListening, setIsListening] = useState(false);
   const [selectedClarificationKey, setSelectedClarificationKey] = useState(null);
   const [selectedImage, setSelectedImage] = useState(null);
+  const [quickActions, setQuickActions] = useState({ cxpc: null, manager: null });
   const answerStructure = getAnswerStructure(result);
   const isVehicleBarcodeWorkflow = result?.answer_type === 'VEHICLE_BARCODE';
   const minimumQuestionLength = isVehicleBarcodeWorkflow && result?.response_mode === 'CLARIFY' ? 1 : 2;
@@ -206,6 +223,45 @@ export default function DriverHelpScreen() {
     const timer = resetDriverHelpViewport(scrollRef);
     return () => clearTimeout(timer);
   }, [result]);
+
+  useEffect(() => {
+    getRraQuickActions()
+      .then((actions) => setQuickActions(actions || { cxpc: null, manager: null }))
+      .catch(() => setQuickActions({ cxpc: null, manager: null }));
+  }, []);
+
+  async function callContact(label, phone) {
+    if (!phone) {
+      Alert.alert(`${label} unavailable`, 'A manager needs to add this phone number in ReadyRoute settings.');
+      return;
+    }
+    const url = `tel:${phone}`;
+    if (!(await Linking.canOpenURL(url))) {
+      Alert.alert('Calling unavailable', `This device cannot place a call to ${label}.`);
+      return;
+    }
+    await Linking.openURL(url);
+  }
+
+  function renderQuickActions() {
+    const managerFirstName = String(quickActions.manager?.name || 'Manager').trim().split(/\s+/)[0];
+    const actions = [
+      { key: 'cxpc', icon: 'phone', label: 'Contact CXPC', onPress: () => callContact('CXPC', quickActions.cxpc?.phone) },
+      { key: 'manager', icon: 'person', label: `Contact ${managerFirstName}`, onPress: () => callContact(managerFirstName, quickActions.manager?.phone) },
+      { key: 'codes', icon: 'list', label: 'List of Codes', onPress: () => navigation.navigate('RraCodes') },
+      { key: 'barcode', icon: 'barcode', label: 'Barcode Creator', onPress: () => navigation.navigate('RraBarcode') }
+    ];
+    return (
+      <View style={styles.quickActionsGrid}>
+        {actions.map((action) => (
+          <Pressable accessibilityRole="button" key={action.key} onPress={action.onPress} style={({ pressed }) => [styles.quickActionTile, pressed ? styles.pressed : null]}>
+            <View style={styles.quickActionIcon}><QuickActionIcon type={action.icon} /></View>
+            <Text numberOfLines={2} style={styles.quickActionLabel}>{action.label}</Text>
+          </Pressable>
+        ))}
+      </View>
+    );
+  }
 
   useSpeechRecognitionEvent('start', () => {
     setIsListening(true);
@@ -519,7 +575,7 @@ export default function DriverHelpScreen() {
 
           {!result ? (
             <View style={styles.homeHero}>
-              <Text style={styles.title}>What do you need help with?</Text>
+              <Text adjustsFontSizeToFit minimumFontScale={0.72} numberOfLines={1} style={styles.title}>What do you need help with?</Text>
               <Pressable
                 accessibilityHint={isListening ? 'Stops speech recognition' : 'Starts speech recognition'}
                 accessibilityLabel={isListening ? 'Stop listening' : 'Speak a question'}
@@ -552,6 +608,7 @@ export default function DriverHelpScreen() {
           ) : null}
 
           {!result ? renderQuestionComposer() : null}
+          {!result ? renderQuickActions() : null}
 
           {error ? (
             <View style={styles.errorCard}>
@@ -932,7 +989,7 @@ const styles = StyleSheet.create({
   wordmark: { color: BRAND_NAVY, fontSize: 28, fontWeight: '900', letterSpacing: -1 },
   wordmarkAccent: { color: BRAND_ORANGE, fontWeight: '500' },
   homeHero: { alignItems: 'center', maxWidth: 620, paddingTop: 42, width: '100%' },
-  title: { color: BRAND_NAVY, fontSize: 30, fontWeight: '900', lineHeight: 36, maxWidth: 520, textAlign: 'center' },
+  title: { color: BRAND_NAVY, fontSize: 28, fontWeight: '900', lineHeight: 34, textAlign: 'center', width: '100%' },
   micButton: { alignItems: 'center', backgroundColor: BRAND_ORANGE, borderColor: '#ffffff', borderRadius: 82, borderWidth: 5, height: 164, justifyContent: 'center', marginTop: 38, shadowColor: '#d45400', shadowOffset: { height: 10, width: 0 }, shadowOpacity: 0.24, shadowRadius: 22, width: 164 },
   micButtonListening: { backgroundColor: BRAND_NAVY, shadowColor: BRAND_NAVY },
   stopIcon: { backgroundColor: '#ffffff', borderRadius: 5, height: 38, width: 38 },
@@ -941,6 +998,10 @@ const styles = StyleSheet.create({
   dictationHint: { color: appTheme.colors.textSecondary, fontSize: 13, marginTop: 10, textAlign: 'center' },
   dictationError: { color: appTheme.colors.danger, fontSize: 13, fontWeight: '700', marginTop: 10, maxWidth: 620, textAlign: 'center' },
   questionComposer: { alignItems: 'center', backgroundColor: appTheme.colors.surface, borderColor: '#dde5eb', borderRadius: 18, borderWidth: 1, flexDirection: 'row', gap: 10, marginTop: 32, maxWidth: 680, minHeight: 64, paddingHorizontal: 8, paddingVertical: 7, width: '100%', ...appTheme.shadows.card },
+  quickActionsGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 12, marginTop: 26, maxWidth: 680, width: '100%' },
+  quickActionTile: { alignItems: 'center', backgroundColor: appTheme.colors.surface, borderColor: '#dde5eb', borderRadius: 18, borderWidth: 1, flexBasis: '47%', flexDirection: 'row', flexGrow: 1, gap: 12, minHeight: 84, paddingHorizontal: 14, ...appTheme.shadows.card },
+  quickActionIcon: { alignItems: 'center', backgroundColor: '#fff1e8', borderRadius: 27, height: 54, justifyContent: 'center', width: 54 },
+  quickActionLabel: { color: BRAND_NAVY, flex: 1, fontSize: 16, fontWeight: '900', lineHeight: 20 },
   input: { color: BRAND_NAVY, flex: 1, fontSize: 17, lineHeight: 23, maxHeight: 112, minHeight: 48, paddingHorizontal: 10, paddingVertical: 8 },
   followUpMicButton: { alignItems: 'center', backgroundColor: BRAND_ORANGE, borderRadius: 24, height: 48, justifyContent: 'center', width: 48 },
   followUpMicButtonListening: { backgroundColor: BRAND_NAVY },

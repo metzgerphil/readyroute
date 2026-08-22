@@ -8,6 +8,7 @@ import DriverHelpScreen, {
   shouldStartBackSwipe
 } from './DriverHelpScreen';
 import api from '../services/api';
+import { getRraQuickActions } from '../services/rraQuickActions';
 import { ExpoSpeechRecognitionModule } from 'expo-speech-recognition';
 import bwipjs from '@bwip-js/react-native';
 
@@ -31,6 +32,10 @@ jest.mock('../services/api', () => ({
   }
 }));
 
+jest.mock('../services/rraQuickActions', () => ({
+  getRraQuickActions: jest.fn(() => new Promise(() => {}))
+}));
+
 jest.mock('@bwip-js/react-native', () => ({
   __esModule: true,
   default: { toDataURL: jest.fn() }
@@ -45,6 +50,21 @@ describe('DriverHelpScreen', () => {
       width: 420,
       height: 180
     });
+  });
+
+  it('shows the four approved home tiles without a redundant heading or subtitles', async () => {
+    getRraQuickActions.mockResolvedValueOnce({
+      cxpc: { phone: '8008888888' },
+      manager: { name: 'Vlad Fed', phone: '6199990000' }
+    });
+    const navigation = { navigate: jest.fn() };
+    const screen = render(<DriverHelpScreen navigation={navigation} />);
+    expect(await screen.findByText('Contact Vlad')).toBeTruthy();
+    expect(screen.getByText('Contact CXPC')).toBeTruthy();
+    expect(screen.getByText('List of Codes')).toBeTruthy();
+    expect(screen.getByText('Barcode Creator')).toBeTruthy();
+    expect(screen.queryByText('Quick actions')).toBeNull();
+    expect(screen.queryByText('Call CXPC')).toBeNull();
   });
 
   it('keeps the vehicle-barcode workflow in the conversation and renders the encoded value', async () => {

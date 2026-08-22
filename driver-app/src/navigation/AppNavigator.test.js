@@ -86,6 +86,9 @@ jest.mock('../screens/DriverHelpScreen', () => function MockDriverHelpScreen() {
   return <MockText>DriverHelpScreen</MockText>;
 });
 
+jest.mock('../screens/RraCodesScreen', () => function MockRraCodesScreen() { return null; });
+jest.mock('../screens/RraBarcodeScreen', () => function MockRraBarcodeScreen() { return null; });
+
 jest.mock('../screens/LoginScreen', () => function MockLoginScreen() {
   const { Text: MockText } = require('react-native');
   return <MockText>LoginScreen</MockText>;
