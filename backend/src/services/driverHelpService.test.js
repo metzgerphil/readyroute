@@ -696,7 +696,7 @@ test('live-test regression phrases route to the complete approved procedure', ()
   );
 });
 
-test('unknown misdelivery address and customer-directed changes stay grounded', () => {
+test('unknown misdelivery address and moved-recipient changes stay grounded', () => {
   const misdelivery = knowledgeRecord({
     knowledge_id: 'KNO-DEL-MISDELIVERY-RECOVERY-001',
     prohibited_actions: ['Do not redeliver until the correct address is established'],
@@ -712,13 +712,21 @@ test('unknown misdelivery address and customer-directed changes stay grounded', 
   assert.match(unknown.decision.answer, /station or management/i);
 
   const directedChange = buildDeterministicRuntimeDecision(
-    'The customer called and told me to change the delivery address myself.',
+    'The customer moved and texted me a new address. Can I deliver there?',
     [knowledgeRecord({ knowledge_id: 'KNO-FORGE-EDIT-ADDRESS-001' })],
     {}
   );
   assert.equal(directedChange.decision.response_mode, 'ANSWER');
   assert.equal(directedChange.decision.selected_records[0].knowledge_id, 'KNO-FORGE-EDIT-ADDRESS-001');
   assert.equal(directedChange.decision.answer, 'No. Use Code 002 and return the package to the station.');
+
+  const unsupportedChange = buildDeterministicRuntimeDecision(
+    'The customer called and told me to change the delivery address myself.',
+    [knowledgeRecord({ knowledge_id: 'KNO-FORGE-EDIT-ADDRESS-001' })],
+    {}
+  );
+  assert.equal(unsupportedChange.decision.response_mode, 'ESCALATE');
+  assert.deepEqual(unsupportedChange.decision.selected_records, []);
 });
 
 test('empty corpus returns and records a fail-closed escalation', async () => {
