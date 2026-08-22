@@ -1,6 +1,7 @@
 const express = require('express');
 
 const { createDriverHelpService } = require('../services/driverHelp');
+const { loadDriverQuickActions, loadRraReferenceCodes } = require('../services/rraQuickActions');
 const {
   AI_CONSENT_POLICY_VERSION,
   createDriverHelpPrivacyService
@@ -131,6 +132,26 @@ function createDriverHelpRouter(options = {}) {
       }
       console.error('Driver help privacy preference update failed:', error);
       return res.status(500).json({ error: 'Privacy preferences could not be saved right now.' });
+    }
+  });
+
+  router.get('/quick-actions', async (req, res) => {
+    try {
+      return res.status(200).json({
+        quick_actions: await loadDriverQuickActions(supabase, req.driver.account_id)
+      });
+    } catch (error) {
+      console.error('RRA quick actions lookup failed:', error);
+      return res.status(500).json({ error: 'Ready Route contacts could not be loaded right now.' });
+    }
+  });
+
+  router.get('/reference-codes', async (_req, res) => {
+    try {
+      return res.status(200).json({ codes: await loadRraReferenceCodes(supabase) });
+    } catch (error) {
+      console.error('RRA reference code lookup failed:', error);
+      return res.status(500).json({ error: 'Ready Route codes could not be loaded right now.' });
     }
   });
 

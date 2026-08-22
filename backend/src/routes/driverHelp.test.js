@@ -109,6 +109,31 @@ test('POST /driver-help/query returns the company CXPC number without AI interpr
   assert.equal(inserts[0].response_mode, 'ANSWER');
 });
 
+test('GET /driver-help/quick-actions returns the authenticated company contacts', async () => {
+  const supabase = {
+    from(table) {
+      assert.equal(table, 'accounts');
+      return {
+        select() { return this; },
+        eq() { return this; },
+        async maybeSingle() {
+          return { data: {
+            rra_cxpc_phone_number: '8008888888',
+            rra_primary_manager_name: 'Vlad Fed',
+            rra_primary_manager_phone_number: '6199990000'
+          }, error: null };
+        }
+      };
+    }
+  };
+  const response = await request(createTestApp({}, { supabase })).get('/driver-help/quick-actions');
+  assert.equal(response.status, 200);
+  assert.deepEqual(response.body.quick_actions, {
+    cxpc: { phone: '8008888888' },
+    manager: { name: 'Vlad Fed', phone: '6199990000' }
+  });
+});
+
 test('POST /driver-help/query rejects empty and oversized questions', async () => {
   const app = createTestApp({ answerQuestion: async () => ({}) });
   assert.equal((await request(app).post('/driver-help/query').send({ question: ' ' })).status, 400);

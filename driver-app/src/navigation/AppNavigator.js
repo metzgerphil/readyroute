@@ -13,6 +13,8 @@ import api from '../services/api';
 import { saveLastPortalMode, saveSessionTokens } from '../services/auth';
 import HomeScreen from '../screens/HomeScreen';
 import DriverHelpScreen from '../screens/DriverHelpScreen';
+import RraBarcodeScreen from '../screens/RraBarcodeScreen';
+import RraCodesScreen from '../screens/RraCodesScreen';
 import LoginScreen from '../screens/LoginScreen';
 import ManagerAccessCodesScreen from '../screens/ManagerAccessCodesScreen';
 import ManagerDashboardScreen from '../screens/ManagerDashboardScreen';
@@ -541,6 +543,8 @@ export default function AppNavigator() {
                 );
               }}
             </Stack.Screen>
+            <Stack.Screen name="RraCodes" component={RraCodesScreen} options={{ title: 'Codes', headerBackTitle: 'Back' }} />
+            <Stack.Screen name="RraBarcode" component={RraBarcodeScreen} options={{ title: 'Vehicle Barcode', headerBackTitle: 'Back' }} />
             {!DRIVER_HELP_ONLY ? (
               <>
             <Stack.Screen name="RouteTools" options={{ headerShown: false }}>
