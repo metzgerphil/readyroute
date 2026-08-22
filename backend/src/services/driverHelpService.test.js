@@ -519,6 +519,27 @@ test('empty corpus returns and records a fail-closed escalation', async () => {
   assert.ok(supabase.writes.some((write) => write.table === 'driver_help_unanswered_questions'));
 });
 
+test('staff test mode answers without creating customer sessions or interactions', async () => {
+  const supabase = fakeSupabase([]);
+  const service = createDriverHelpService({ supabase, now: () => new Date(0) });
+  const response = await service.answerQuestion({
+    accountId: null,
+    driverId: null,
+    actorType: 'manager',
+    actorId: '00000000-0000-0000-0000-000000000099',
+    question: 'What should I do?',
+    persist: false,
+    sessionContext: { previous_question: 'Earlier staff test' }
+  });
+
+  assert.equal(response.response_mode, 'ESCALATE');
+  assert.equal(response.test_mode, true);
+  assert.equal(response.session_id, null);
+  assert.equal(response.interaction_id, null);
+  assert.equal(response.session_context.last_question, 'What should I do?');
+  assert.deepEqual(supabase.writes, []);
+});
+
 test('negative field feedback is preserved and immediately suspends answer-memory reuse', async () => {
   const writes = [];
   const rpcCalls = [];

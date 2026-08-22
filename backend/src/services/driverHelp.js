@@ -1166,6 +1166,8 @@ function createDriverHelpService({
     actorId = driverId,
     question,
     sessionId = null,
+    persist = true,
+    sessionContext = null,
     includeDiagnostics = false,
     aiInterpretationModeOverride = null,
     allowAiProcessing = true
@@ -1178,7 +1180,9 @@ function createDriverHelpService({
       : (allowAiProcessing ? aiInterpretationMode : 'OFF');
     const [records, sessionState] = await Promise.all([
       loadKnowledgeRecords(),
-      loadSessionContext(sessionId, accountId, actorType, actorId)
+      persist
+        ? loadSessionContext(sessionId, accountId, actorType, actorId)
+        : Promise.resolve({ session_id: null, context: sessionContext || {} })
     ]);
     const runtime = buildDeterministicRuntimeDecision(question, records, sessionState.context);
     const {
@@ -1248,6 +1252,7 @@ function createDriverHelpService({
       && effectiveAiInterpretationMode === 'ACTIVE'
       && aiCandidates.length
       && Number(answerMemoryAuditRate) > 0
+      && persist
       && random() < Number(answerMemoryAuditRate)
     );
     if (shouldAuditMemory) {
@@ -1485,10 +1490,11 @@ function createDriverHelpService({
         })
       });
     }
-    if (activeMemory && memoryRouteAccepted && interpretedDecision && decision.response_mode !== 'ESCALATE') {
+    if (persist && activeMemory && memoryRouteAccepted && interpretedDecision && decision.response_mode !== 'ESCALATE') {
       await recordAnswerMemoryReuse(activeMemory.route_key);
     } else if (
-      validatedAiInterpretation
+      persist
+      && validatedAiInterpretation
       && !activeMemory
       && interpretationMode === 'GROUNDED_AI'
       && decision.response_mode !== 'ESCALATE'
@@ -1500,32 +1506,38 @@ function createDriverHelpService({
         interpretation: validatedAiInterpretation
       });
     }
-    const effectiveSessionId = await createOrUpdateSession({
-      sessionId: sessionState.session_id,
-      accountId,
-      driverId,
-      actorType,
-      actorId,
-      question,
-      decision,
-      previousContext: decisionContext
-    });
-    const interactionId = await recordInteraction({
-      sessionId: effectiveSessionId,
-      accountId,
-      driverId,
-      actorType,
-      actorId,
-      question,
-      decision,
-      responseLatencyMs: Math.max(0, Date.now() - startedAt)
-    });
+    const nextSessionContext = buildNextSessionContext(decisionContext, question, decision);
+    const effectiveSessionId = persist
+      ? await createOrUpdateSession({
+        sessionId: sessionState.session_id,
+        accountId,
+        driverId,
+        actorType,
+        actorId,
+        question,
+        decision,
+        previousContext: decisionContext
+      })
+      : null;
+    const interactionId = persist
+      ? await recordInteraction({
+        sessionId: effectiveSessionId,
+        accountId,
+        driverId,
+        actorType,
+        actorId,
+        question,
+        decision,
+        responseLatencyMs: Math.max(0, Date.now() - startedAt)
+      })
+      : null;
     const images = decision.response_mode === 'ANSWER'
       ? await getAnswerImages(decision.selected_records)
       : [];
 
     return {
       session_id: effectiveSessionId,
+      ...(persist ? {} : { session_context: nextSessionContext, test_mode: true }),
       interaction_id: interactionId,
       response_mode: decision.response_mode,
       answer_type: decision.answer_type || 'OPERATIONAL',
