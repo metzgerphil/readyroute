@@ -573,7 +573,8 @@ function applyAiInterpretation(interpretation, question, records, baseDecision) 
       .map((record) => ({
         record,
         score: record.knowledge_id === selectedRecord.knowledge_id ? 100 : 50
-      }));
+      }))
+      .sort((left, right) => right.score - left.score);
     return {
       response_mode: 'CLARIFY',
       confidence: interpretation.confidence,

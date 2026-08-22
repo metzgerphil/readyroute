@@ -1042,6 +1042,45 @@ test('AI-selected signature clarification presents ASR DSR and ISR buttons', asy
   assert.deepEqual(response.clarification_options.map((option) => option.query), ['ASR', 'DSR', 'ISR']);
 });
 
+test('AI-selected clarification options retain the selected record identity', async () => {
+  const requirement = 'Has anything already been scanned in the wrong work area?';
+  const records = [
+    knowledgeRecord({
+      knowledge_id: 'KNO-DEL-SIG-ASR-001',
+      canonical_situation: 'Adult Signature Required'
+    }),
+    knowledgeRecord({
+      knowledge_id: 'KNO-FORGE-WRONG-WORK-AREA-001',
+      canonical_situation: 'Wrong work area login',
+      clarification_requirements: [requirement]
+    })
+  ];
+  const service = createDriverHelpService({
+    supabase: fakeSupabase(records),
+    now: () => new Date(0),
+    aiInterpretationMode: 'ACTIVE',
+    aiInterpreter: async () => ({
+      selection: 'SELECT',
+      knowledge_id: 'KNO-FORGE-WRONG-WORK-AREA-001',
+      decision: 'CLARIFY',
+      clarification_requirement: requirement,
+      confidence: 0.99
+    })
+  });
+
+  const response = await service.answerQuestion({
+    accountId: '00000000-0000-0000-0000-000000000001',
+    driverId: '00000000-0000-0000-0000-000000000002',
+    question: 'I selected the wrong work area in FORGE. What should I do?'
+  });
+
+  assert.equal(response.response_mode, 'CLARIFY');
+  assert.deepEqual(
+    response.clarification_options.map((option) => option.knowledge_id),
+    ['KNO-FORGE-WRONG-WORK-AREA-001', 'KNO-FORGE-WRONG-WORK-AREA-001']
+  );
+});
+
 test('generic package-with-signature wording asks for ASR DSR or ISR instead of defaulting to ASR', async () => {
   const signatureRequirement = 'What signature service does FORGE show?';
   const records = [
