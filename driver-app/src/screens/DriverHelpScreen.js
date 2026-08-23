@@ -248,7 +248,7 @@ export default function DriverHelpScreen({ navigation }) {
     const actions = [
       { key: 'cxpc', icon: 'phone', label: 'Contact CXPC', onPress: () => callContact('CXPC', quickActions.cxpc?.phone) },
       { key: 'manager', icon: 'person', label: `Contact ${managerFirstName}`, onPress: () => callContact(managerFirstName, quickActions.manager?.phone) },
-      { key: 'codes', icon: 'list', label: 'List of Codes', onPress: () => navigation.navigate('RraCodes') },
+      { key: 'codes', icon: 'list', label: 'Codes', onPress: () => navigation.navigate('RraCodes') },
       { key: 'barcode', icon: 'barcode', label: 'Barcode Creator', onPress: () => navigation.navigate('RraBarcode') }
     ];
     return (
@@ -256,7 +256,15 @@ export default function DriverHelpScreen({ navigation }) {
         {actions.map((action) => (
           <Pressable accessibilityRole="button" key={action.key} onPress={action.onPress} style={({ pressed }) => [styles.quickActionTile, pressed ? styles.pressed : null]}>
             <View style={styles.quickActionIcon}><QuickActionIcon type={action.icon} /></View>
-            <Text numberOfLines={2} style={styles.quickActionLabel}>{action.label}</Text>
+            <Text
+              adjustsFontSizeToFit
+              maxFontSizeMultiplier={1.15}
+              minimumFontScale={0.8}
+              numberOfLines={2}
+              style={styles.quickActionLabel}
+            >
+              {action.label}
+            </Text>
           </Pressable>
         ))}
       </View>
@@ -999,9 +1007,9 @@ const styles = StyleSheet.create({
   dictationError: { color: appTheme.colors.danger, fontSize: 13, fontWeight: '700', marginTop: 10, maxWidth: 620, textAlign: 'center' },
   questionComposer: { alignItems: 'center', backgroundColor: appTheme.colors.surface, borderColor: '#dde5eb', borderRadius: 18, borderWidth: 1, flexDirection: 'row', gap: 10, marginTop: 32, maxWidth: 680, minHeight: 64, paddingHorizontal: 8, paddingVertical: 7, width: '100%', ...appTheme.shadows.card },
   quickActionsGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 12, marginTop: 26, maxWidth: 680, width: '100%' },
-  quickActionTile: { alignItems: 'center', backgroundColor: appTheme.colors.surface, borderColor: '#dde5eb', borderRadius: 18, borderWidth: 1, flexBasis: '47%', flexDirection: 'row', flexGrow: 1, gap: 12, minHeight: 84, paddingHorizontal: 14, ...appTheme.shadows.card },
-  quickActionIcon: { alignItems: 'center', backgroundColor: '#fff1e8', borderRadius: 27, height: 54, justifyContent: 'center', width: 54 },
-  quickActionLabel: { color: BRAND_NAVY, flex: 1, fontSize: 16, fontWeight: '900', lineHeight: 20 },
+  quickActionTile: { alignItems: 'center', backgroundColor: appTheme.colors.surface, borderColor: '#dde5eb', borderRadius: 18, borderWidth: 1, flexBasis: '47%', flexDirection: 'row', flexGrow: 1, gap: 10, minHeight: 84, paddingHorizontal: 12, ...appTheme.shadows.card },
+  quickActionIcon: { alignItems: 'center', backgroundColor: '#fff1e8', borderRadius: 24, flexShrink: 0, height: 48, justifyContent: 'center', width: 48 },
+  quickActionLabel: { color: BRAND_NAVY, flex: 1, flexShrink: 1, fontSize: 15, fontWeight: '900', lineHeight: 19 },
   input: { color: BRAND_NAVY, flex: 1, fontSize: 17, lineHeight: 23, maxHeight: 112, minHeight: 48, paddingHorizontal: 10, paddingVertical: 8 },
   followUpMicButton: { alignItems: 'center', backgroundColor: BRAND_ORANGE, borderRadius: 24, height: 48, justifyContent: 'center', width: 48 },
   followUpMicButtonListening: { backgroundColor: BRAND_NAVY },
