@@ -97,22 +97,51 @@ test('POST /waitlist/early-access validates required fields', async () => {
     const response = await fetch(`${server.baseUrl}/waitlist/early-access`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: '', email: 'bad-email' })
     });
+    const payload = await response.json();
     assert.equal(response.status, 400);
+    assert.equal(payload.error, 'Name is required.');
     assert.equal(supabase.calls.length, 0);
   } finally {
     await server.close();
   }
 });
 
-test('POST /waitlist/early-access permits only AO, legacy owner, or business contact roles', async () => {
+test('POST /waitlist/early-access routes an outdated form to the current signup steps', async () => {
   const supabase = new MockSupabase(() => { throw new Error('Supabase should not be called for a disallowed role'); });
   const server = await startTestServer(supabase);
   try {
     const response = await fetch(`${server.baseUrl}/waitlist/early-access`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name: 'Taylor', email: 'taylor@example.com', phone: '555-0100', company: 'Taylor Transport', role: 'Manager', drivers: 10 })
+      body: JSON.stringify({ name: 'Taylor', email: 'taylor@example.com', phone: '555-0100', company: 'Taylor Transport', role: 'Owner', drivers: 10 })
     });
+    const payload = await response.json();
     assert.equal(response.status, 400);
+    assert.equal(payload.code, 'SIGNUP_DETAILS_REQUIRED');
+    assert.equal(payload.required_step, 2);
+    assert.deepEqual(payload.missing_fields, ['cxpc_phone_number', 'csa_number']);
+    assert.equal(payload.signup_url, 'https://readyroute.org/signup');
+    assert.equal(supabase.calls.length, 0);
+  } finally {
+    await server.close();
+  }
+});
+
+test('POST /waitlist/early-access permits only AO or business contact roles', async () => {
+  const supabase = new MockSupabase(() => { throw new Error('Supabase should not be called for a disallowed role'); });
+  const server = await startTestServer(supabase);
+  try {
+    const response = await fetch(`${server.baseUrl}/waitlist/early-access`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        name: 'Taylor', email: 'taylor@example.com', phone: '555-0100', company: 'Taylor Transport',
+        role: 'Owner', drivers: 10, cxpc_phone_number: '555-0101', csa_number: 'CSA-100'
+      })
+    });
+    const payload = await response.json();
+    assert.equal(response.status, 400);
+    assert.equal(payload.code, 'SIGNUP_ROLE_REQUIRED');
+    assert.equal(payload.required_step, 1);
+    assert.deepEqual(payload.missing_fields, ['role']);
     assert.equal(supabase.calls.length, 0);
   } finally {
     await server.close();

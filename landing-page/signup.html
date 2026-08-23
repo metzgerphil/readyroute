@@ -3,6 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="readyroute-signup-version" content="2026-08-23-v3">
   <title>Sign Up | ReadyRoute</title>
   <meta name="description" content="Sign up your contractor company for ReadyRoute at $10 per driver monthly or $100 per driver annually.">
   <style>
@@ -174,6 +175,14 @@
     const passwordError = document.getElementById('password-error');
     const passwordSubmit = document.getElementById('password-submit');
     const successPanel = document.getElementById('signup-success');
+    const signupDraftKey = 'readyrouteSignupDraftV3';
+    const signupRequestIdKey = 'readyrouteSignupRequestId';
+    const signupFormVersion = '2026-08-23-v3';
+    const draftFieldNames = [
+      'name', 'email', 'phone', 'role', 'company', 'cxpc_phone_number', 'csa_number',
+      'manager_name', 'manager_phone_number', 'drivers', 'billing_interval',
+      'billing_consent', 'ai_processing_authorized'
+    ];
     let stripeConfig = {enabled:false};
     let currentStep = 1;
     const stepCopy = {
@@ -210,6 +219,49 @@
       });
     }
 
+    function getSignupRequestId() {
+      let requestId = sessionStorage.getItem(signupRequestIdKey);
+      if (!requestId) {
+        requestId = createRequestId();
+        sessionStorage.setItem(signupRequestIdKey, requestId);
+      }
+      return requestId;
+    }
+
+    function saveSignupDraft() {
+      const values = {};
+      draftFieldNames.forEach((name) => {
+        const fields = Array.from(form.querySelectorAll(`[name="${name}"]`));
+        if (!fields.length) return;
+        if (fields[0].type === 'radio') {
+          values[name] = fields.find((field) => field.checked)?.value || '';
+        } else if (fields[0].type === 'checkbox') {
+          values[name] = fields[0].checked;
+        } else {
+          values[name] = fields[0].value;
+        }
+      });
+      sessionStorage.setItem(signupDraftKey, JSON.stringify({version: signupFormVersion, step: currentStep, values}));
+    }
+
+    function restoreSignupDraft() {
+      let draft;
+      try { draft = JSON.parse(sessionStorage.getItem(signupDraftKey) || 'null'); }
+      catch (_error) { sessionStorage.removeItem(signupDraftKey); }
+      if (!draft?.values || draft.version !== signupFormVersion) return;
+
+      Object.entries(draft.values).forEach(([name, value]) => {
+        const fields = Array.from(form.querySelectorAll(`[name="${name}"]`));
+        fields.forEach((field) => {
+          if (field.type === 'radio') field.checked = field.value === value;
+          else if (field.type === 'checkbox') field.checked = value === true;
+          else field.value = String(value ?? '');
+        });
+      });
+      setStep(Number(draft.step) || 1, {scroll: false});
+      updateEstimate();
+    }
+
     function buildPayload() {
       const formData = new FormData(form);
       return {
@@ -223,11 +275,12 @@
         billing_consent: formData.get('billing_consent') === 'on',
         ai_processing_authorized: formData.get('ai_processing_authorized') === 'on',
         ai_processing_policy_version: '2026-08-20',
-        request_id: createRequestId(), source_page: window.location.href
+        signup_form_version: signupFormVersion,
+        request_id: getSignupRequestId(), source_page: window.location.href
       };
     }
 
-    function setStep(step) {
+    function setStep(step, options = {}) {
       currentStep = Math.max(1, Math.min(3, step));
       formSteps.forEach((section) => section.classList.toggle('active', Number(section.dataset.step) === currentStep));
       progressSteps.forEach((progress, index) => progress.classList.toggle('active', index < currentStep));
@@ -237,7 +290,21 @@
       backButton.hidden = currentStep === 1;
       submitButton.textContent = currentStep < 3 ? 'Continue' : 'Continue to secure Stripe checkout';
       errorMessage.classList.remove('show');
-      document.querySelector('.form-card').scrollIntoView({behavior:'smooth',block:'start'});
+      saveSignupDraft();
+      if (options.scroll !== false) document.querySelector('.form-card').scrollIntoView({behavior:'smooth',block:'start'});
+    }
+
+    function showServerValidation(result = {}) {
+      const requiredStep = Number(result.required_step);
+      if (requiredStep >= 1 && requiredStep <= 3) setStep(requiredStep);
+      const missingFields = Array.isArray(result.missing_fields) ? result.missing_fields : [];
+      missingFields.forEach((name) => {
+        form.querySelectorAll(`[name="${name}"]`).forEach((field) => field.setAttribute('aria-invalid', 'true'));
+      });
+      const firstMissing = missingFields.length ? form.querySelector(`[name="${missingFields[0]}"]`) : null;
+      if (firstMissing) window.setTimeout(() => firstMissing.focus({preventScroll:true}), 250);
+      errorMessage.textContent = result.error || 'Review the highlighted signup information and try again.';
+      errorMessage.classList.add('show');
     }
 
     function validateCurrentStep() {
@@ -270,6 +337,8 @@
       successPanel.classList.add('show');
       successPanel.focus();
       sessionStorage.removeItem('readyrouteSignupAccessNonce');
+      sessionStorage.removeItem(signupDraftKey);
+      sessionStorage.removeItem(signupRequestIdKey);
       window.history.replaceState({}, '', '/signup?checkout=complete');
     }
 
@@ -312,6 +381,13 @@
       }
     }
 
+    form.addEventListener('input', (event) => {
+      event.target.removeAttribute('aria-invalid');
+      saveSignupDraft();
+    });
+    form.addEventListener('change', saveSignupDraft);
+    restoreSignupDraft();
+
     fetch(`${getApiBase()}/billing/signup/config`)
       .then((response) => response.ok ? response.json() : {enabled:false})
       .then((config) => {
@@ -353,12 +429,19 @@
         }
         const response = await fetch(`${getApiBase()}/billing/signup/checkout-session`, {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
         const result = await response.json().catch(() => ({}));
-        if (!response.ok || !result.checkout_url) throw new Error(result.error || 'We could not open secure Stripe checkout.');
+        if (!response.ok || !result.checkout_url) {
+          const requestError = new Error(result.error || 'We could not open secure Stripe checkout.');
+          requestError.details = result;
+          throw requestError;
+        }
         sessionStorage.setItem('readyrouteSignupAccessNonce', payload.request_id);
         window.location.assign(result.checkout_url);
       } catch (error) {
-        errorMessage.textContent = error.message || 'We could not save your signup. Please try again.';
-        errorMessage.classList.add('show');
+        if (error.details?.required_step || error.details?.missing_fields) showServerValidation(error.details);
+        else {
+          errorMessage.textContent = error.message || 'We could not save your signup. Please try again.';
+          errorMessage.classList.add('show');
+        }
       } finally {
         submitButton.disabled = false;
         submitButton.textContent = stripeConfig.enabled ? 'Continue to secure Stripe checkout' : 'Reconnect to secure enrollment';

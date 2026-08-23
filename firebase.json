@@ -80,6 +80,33 @@
       ],
       "headers": [
         {
+          "source": "/",
+          "headers": [
+            {
+              "key": "Cache-Control",
+              "value": "no-cache, no-store, must-revalidate"
+            }
+          ]
+        },
+        {
+          "source": "/index.html",
+          "headers": [
+            {
+              "key": "Cache-Control",
+              "value": "no-cache, no-store, must-revalidate"
+            }
+          ]
+        },
+        {
+          "source": "/@(signup|signup.html|mvp|mvp.html)",
+          "headers": [
+            {
+              "key": "Cache-Control",
+              "value": "no-cache, no-store, must-revalidate"
+            }
+          ]
+        },
+        {
           "source": "/portal",
           "headers": [
             {
@@ -132,6 +159,23 @@
           ]
         }
       ],
+      "redirects": [
+        {
+          "source": "/mvp",
+          "destination": "/signup",
+          "type": 302
+        },
+        {
+          "source": "/mvp.html",
+          "destination": "/signup",
+          "type": 302
+        },
+        {
+          "source": "/signup.html",
+          "destination": "/signup",
+          "type": 302
+        }
+      ],
       "rewrites": [
         {
           "source": "/staff",
@@ -140,10 +184,6 @@
         {
           "source": "/staff/**",
           "destination": "/staff/index.html"
-        },
-        {
-          "source": "/mvp",
-          "destination": "/mvp.html"
         },
         {
           "source": "/support",

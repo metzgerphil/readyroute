@@ -95,6 +95,50 @@ function buildSignupPayload(body = {}, req) {
   };
 }
 
+const SIGNUP_URL = 'https://readyroute.org/signup';
+const SIGNUP_FIELD_STEPS = Object.freeze({
+  company: 1,
+  role: 1,
+  cxpc_phone_number: 2,
+  csa_number: 2,
+  manager_name: 2,
+  manager_phone_number: 2,
+  drivers: 2
+});
+
+function validateCompanySignup(payload = {}) {
+  const missingFields = [];
+  if (!payload.company_csa) missingFields.push('company');
+  if (!payload.role) missingFields.push('role');
+  if (!payload.cxpc_phone_number) missingFields.push('cxpc_phone_number');
+  if (!payload.csa_number) missingFields.push('csa_number');
+  if (!payload.manager_name) missingFields.push('manager_name');
+  if (!payload.manager_phone_number) missingFields.push('manager_phone_number');
+  if (!Number.isInteger(payload.driver_count) || payload.driver_count < 1) missingFields.push('drivers');
+
+  if (missingFields.length) {
+    return {
+      error: 'This signup page is missing required company fields. Your entries have not been submitted. Continue with the current three-step signup form.',
+      code: 'SIGNUP_DETAILS_REQUIRED',
+      required_step: Math.min(...missingFields.map((field) => SIGNUP_FIELD_STEPS[field])),
+      missing_fields: missingFields,
+      signup_url: SIGNUP_URL
+    };
+  }
+
+  if (!['authorized officer', 'business contact'].includes(String(payload.role).toLowerCase())) {
+    return {
+      error: 'Choose Authorized Officer (AO) or Business Contact (BC) to continue.',
+      code: 'SIGNUP_ROLE_REQUIRED',
+      required_step: 1,
+      missing_fields: ['role'],
+      signup_url: SIGNUP_URL
+    };
+  }
+
+  return null;
+}
+
 function buildFeedbackPayload(body = {}, req) {
   const name = normalizeText(body.name, 160);
   const email = normalizeEmail(body.email);
@@ -142,9 +186,8 @@ function createWaitlistRouter(options = {}) {
         return res.status(400).json({ error });
       }
 
-      if (!payload.company_csa || !payload.manager_name || !payload.manager_phone_number || !payload.cxpc_phone_number || !payload.csa_number || !['owner', 'authorized officer', 'business contact'].includes(String(payload.role || '').toLowerCase()) || !Number.isInteger(payload.driver_count) || payload.driver_count < 1) {
-        return res.status(400).json({ error: 'CSA name and number, day-to-day manager name and phone, CXPC phone, AO or BC role, and at least one expected active driver are required.' });
-      }
+      const validationError = validateCompanySignup(payload);
+      if (validationError) return res.status(400).json(validationError);
 
       const { error: upsertError } = await supabase
         .from('early_access_signups')
@@ -190,7 +233,7 @@ function createWaitlistRouter(options = {}) {
 }
 
 module.exports = createWaitlistRouter();
-module.exports.buildSignupPayload = buildSignupPayload;
 module.exports.createWaitlistRouter = createWaitlistRouter;
 module.exports.buildFeedbackPayload = buildFeedbackPayload;
 module.exports.buildSignupPayload = buildSignupPayload;
+module.exports.validateCompanySignup = validateCompanySignup;
