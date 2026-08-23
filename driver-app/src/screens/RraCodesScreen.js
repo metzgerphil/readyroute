@@ -4,6 +4,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { getRraReferenceCodes } from '../services/rraQuickActions';
 import appTheme from '../theme/appTheme';
+import { formatReferenceCode } from '../utils/referenceCode';
 
 export default function RraCodesScreen() {
   const [type, setType] = useState('delivery');
@@ -21,7 +22,7 @@ export default function RraCodesScreen() {
   return (
     <SafeAreaView style={styles.safeArea} edges={['bottom']}>
       <View style={styles.content}>
-        <Text accessibilityRole="header" style={styles.title}>List of Codes</Text>
+        <Text accessibilityRole="header" style={styles.title}>Codes</Text>
         <View style={styles.tabs}>
           {['delivery', 'pickup'].map((item) => (
             <Pressable key={item} onPress={() => setType(item)} style={[styles.tab, type === item ? styles.tabSelected : null]}>
@@ -37,7 +38,7 @@ export default function RraCodesScreen() {
             keyExtractor={(item) => `${type}-${item.code}`}
             renderItem={({ item }) => (
               <View style={styles.row}>
-                <Text style={styles.code}>{item.code}</Text>
+                <Text style={styles.code}>{formatReferenceCode(item.code)}</Text>
                 <Text style={styles.label}>{item.label}</Text>
               </View>
             )}
@@ -61,7 +62,7 @@ const styles = StyleSheet.create({
   tabTextSelected: { color: '#ffffff' },
   list: { backgroundColor: '#ffffff', borderColor: '#dde5eb', borderRadius: 18, borderWidth: 1 },
   row: { alignItems: 'center', borderBottomColor: '#e7ecef', borderBottomWidth: 1, flexDirection: 'row', minHeight: 58, paddingHorizontal: 16 },
-  code: { color: '#ff6200', fontSize: 21, fontWeight: '900', width: 72 },
+  code: { color: '#ff6200', fontSize: 21, fontWeight: '900', width: 62 },
   label: { color: '#173042', flex: 1, fontSize: 15, fontWeight: '700', lineHeight: 19 },
   loader: { marginTop: 40 },
   error: { color: appTheme.colors.dangerText, fontSize: 15, marginTop: 28, textAlign: 'center' }

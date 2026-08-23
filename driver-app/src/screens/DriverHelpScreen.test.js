@@ -61,7 +61,7 @@ describe('DriverHelpScreen', () => {
     const screen = render(<DriverHelpScreen navigation={navigation} />);
     expect(await screen.findByText('Contact Vlad')).toBeTruthy();
     expect(screen.getByText('Contact CXPC')).toBeTruthy();
-    expect(screen.getByText('List of Codes')).toBeTruthy();
+    expect(screen.getByText('Codes')).toBeTruthy();
     expect(screen.getByText('Barcode Creator')).toBeTruthy();
     expect(screen.queryByText('Quick actions')).toBeNull();
     expect(screen.queryByText('Call CXPC')).toBeNull();
