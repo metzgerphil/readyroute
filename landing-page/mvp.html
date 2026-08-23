@@ -736,9 +736,9 @@
         <li><a href="#drivers">Drivers</a></li>
         <li><a href="#pricing">Pricing</a></li>
         <li><a class="js-feedback-focus" href="#feedback">Feedback</a></li>
-        <li><a href="#early-access">Sign Up</a></li>
+        <li><a href="/signup">Sign Up</a></li>
       </ul>
-      <a class="btn btn-primary js-waitlist-focus" href="#early-access">Sign Up</a>
+      <a class="btn btn-primary" href="/signup">Sign Up</a>
     </nav>
   </header>
 
@@ -750,7 +750,7 @@
           <h1 id="hero-title">Bring verified operational answers to your team.</h1>
           <p class="hero-sub">Tell us about your company, operating structure, and rollout goals. We’ll use the information to prepare the right ReadyRoute workspace and onboarding conversation.</p>
           <div class="hero-actions">
-            <a class="btn btn-primary js-waitlist-focus" href="#early-access">Sign Up</a>
+            <a class="btn btn-primary" href="/signup">Sign Up</a>
             <a class="btn btn-secondary" href="/#rollout">See the Rollout Process</a>
           </div>
           <div class="hero-bullets" aria-label="ReadyRoute highlights">
@@ -856,7 +856,7 @@
           <h3>Simple pricing for the whole team.</h3>
           <div class="price-line"><strong>$10</strong><span>per driver/month or $100/year</span></div>
           <p>Add drivers as your team grows with one simple monthly price.</p>
-          <a class="btn btn-primary js-waitlist-focus" href="#early-access">Sign Up</a>
+          <a class="btn btn-primary" href="/signup">Sign Up</a>
         </div>
       </div>
     </section>
@@ -900,39 +900,13 @@
         <div>
           <p class="section-kicker">Sign Up</p>
           <h2 id="early-access-title">Sign up your company for ReadyRoute.</h2>
-          <p class="section-sub">Send us the basics and we’ll create your company account so you can add staff and drivers.</p>
+          <p class="section-sub">Use the current three-step signup to enter your CSA, driver support contacts, billing choice, and account password.</p>
         </div>
-        <form class="waitlist-card" id="waitlist-form">
-          <div class="form-grid">
-            <div class="field">
-              <label for="name">Name</label>
-              <input id="name" name="name" autocomplete="name" required>
-            </div>
-            <div class="field">
-              <label for="email">Email</label>
-              <input id="email" name="email" type="email" inputmode="email" autocomplete="email" required>
-            </div>
-            <div class="field">
-              <label for="phone">Phone number</label>
-              <input id="phone" name="phone" type="tel" autocomplete="tel">
-            </div>
-            <div class="field">
-              <label for="company">Company / CSA</label>
-              <input id="company" name="company" autocomplete="organization">
-            </div>
-            <div class="field">
-              <label for="role">Role</label>
-              <input id="role" name="role" placeholder="Owner, manager, dispatcher, driver">
-            </div>
-            <div class="field">
-              <label for="drivers">Number of drivers</label>
-              <input id="drivers" name="drivers" inputmode="numeric">
-            </div>
-          </div>
-          <button class="btn btn-primary" type="submit" style="margin-top: 18px; width: 100%;">Sign Up</button>
-          <p class="success" id="waitlist-success" role="status">Thanks. Your ReadyRoute sign-up was received.</p>
-          <p class="form-error" id="waitlist-error" role="alert">We couldn’t save your sign-up. Please try again.</p>
-        </form>
+        <div class="waitlist-card">
+          <h3>Complete company setup</h3>
+          <p>Have your CSA number, CXPC number, day-to-day manager contact, and expected driver count ready.</p>
+          <a class="btn btn-primary" href="/signup" style="margin-top: 18px; width: 100%;">Open Company Signup</a>
+        </div>
       </div>
     </section>
   </main>
@@ -942,12 +916,6 @@
   </footer>
 
   <script>
-    const form = document.getElementById('waitlist-form');
-    const success = document.getElementById('waitlist-success');
-    const formError = document.getElementById('waitlist-error');
-    const nameField = document.getElementById('name');
-    const waitlistLinks = document.querySelectorAll('.js-waitlist-focus');
-    const submitButton = form.querySelector('button[type="submit"]');
     const feedbackForm = document.getElementById('feedback-form');
     const feedbackSuccess = document.getElementById('feedback-success');
     const feedbackError = document.getElementById('feedback-error');
@@ -965,58 +933,10 @@
       return 'https://api.readyroute.org';
     }
 
-    waitlistLinks.forEach((link) => {
-      link.addEventListener('click', () => {
-        window.setTimeout(() => nameField.focus({ preventScroll: true }), 520);
-      });
-    });
-
     feedbackLinks.forEach((link) => {
       link.addEventListener('click', () => {
         window.setTimeout(() => feedbackNameField.focus({ preventScroll: true }), 520);
       });
-    });
-
-    form.addEventListener('submit', async (event) => {
-      event.preventDefault();
-      success.style.display = 'none';
-      formError.style.display = 'none';
-      submitButton.disabled = true;
-      submitButton.textContent = 'Signing up...';
-
-      const formData = new FormData(form);
-      const payload = {
-        name: formData.get('name'),
-        email: formData.get('email'),
-        phone: formData.get('phone'),
-        company: formData.get('company'),
-        role: formData.get('role'),
-        drivers: formData.get('drivers'),
-        source_page: window.location.href
-      };
-
-      try {
-        const response = await fetch(`${getWaitlistApiBase()}/waitlist/early-access`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(payload)
-        });
-
-        if (!response.ok) {
-          const result = await response.json().catch(() => ({}));
-          throw new Error(result.error || 'Unable to save sign-up.');
-        }
-
-        success.style.display = 'block';
-        form.reset();
-        nameField.focus({ preventScroll: true });
-      } catch (error) {
-        formError.textContent = error.message || 'We couldn’t save your sign-up. Please try again.';
-        formError.style.display = 'block';
-      } finally {
-        submitButton.disabled = false;
-        submitButton.textContent = 'Sign Up';
-      }
     });
 
     feedbackForm.addEventListener('submit', async (event) => {

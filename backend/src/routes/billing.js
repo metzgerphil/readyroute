@@ -9,7 +9,7 @@ const { requireManager: defaultRequireManager } = require('../middleware/auth');
 const { createBillingService } = require('../services/billing');
 const { sendRraCompanyReadyEmail: defaultSendRraCompanyReadyEmail } = require('../services/managerInviteEmail');
 const { AI_CONSENT_POLICY_VERSION } = require('../services/driverHelpPrivacy');
-const { buildSignupPayload } = require('./waitlist');
+const { buildSignupPayload, validateCompanySignup } = require('./waitlist');
 const {
   createStripeSignupBillingService,
   hashSignupAccessNonce,
@@ -352,12 +352,8 @@ function createBillingRouter(options = {}) {
     }
     const { payload, error: signupError } = buildSignupPayload(req.body, req);
     if (signupError) return res.status(400).json({ error: signupError });
-    if (!payload.company_csa || !payload.manager_name || !payload.manager_phone_number || !payload.cxpc_phone_number || !payload.csa_number || !payload.role || !Number.isInteger(payload.driver_count) || payload.driver_count < 1) {
-      return res.status(400).json({ error: 'CSA name and number, day-to-day manager name and phone, CXPC phone, role, and at least one expected active driver are required.' });
-    }
-    if (!['owner', 'authorized officer', 'business contact'].includes(String(payload.role).toLowerCase())) {
-      return res.status(400).json({ error: 'Company signup must be completed by an authorized officer (AO) or business contact (BC).' });
-    }
+    const validationError = validateCompanySignup(payload);
+    if (validationError) return res.status(400).json(validationError);
     if (req.body?.billing_consent !== true) {
       return res.status(400).json({ error: 'Billing authorization is required before opening secure checkout.' });
     }
@@ -468,9 +464,8 @@ function createBillingRouter(options = {}) {
 
     const { payload, error: signupError } = buildSignupPayload(req.body, req);
     if (signupError) return res.status(400).json({ error: signupError });
-    if (!payload.company_csa || !payload.manager_name || !payload.manager_phone_number || !payload.cxpc_phone_number || !payload.csa_number || !payload.role || !Number.isInteger(payload.driver_count) || payload.driver_count < 1) {
-      return res.status(400).json({ error: 'CSA name and number, day-to-day manager name and phone, CXPC phone, role, and at least one expected active driver are required.' });
-    }
+    const validationError = validateCompanySignup(payload);
+    if (validationError) return res.status(400).json(validationError);
     if (req.body?.billing_consent !== true) {
       return res.status(400).json({ error: 'Billing authorization is required before saving a payment method.' });
     }

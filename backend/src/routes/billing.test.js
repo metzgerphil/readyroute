@@ -278,6 +278,42 @@ test('POST /billing/signup/checkout-session redirects a valid RRA company signup
   }
 });
 
+test('POST /billing/signup/checkout-session returns the correct step for an outdated signup form', async () => {
+  const supabase = new MockSupabase(() => { throw new Error('Database should not be reached'); });
+  const stripeClient = {
+    customers: { create: async () => { throw new Error('Stripe should not be reached'); } },
+    checkout: { sessions: { create: async () => { throw new Error('Stripe should not be reached'); } } }
+  };
+  const server = await startTestServer({
+    supabase,
+    stripeClient,
+    stripeMonthlyPriceId: 'price_monthly',
+    stripeAnnualPriceId: 'price_annual',
+    stripeSignupEnabled: true
+  });
+
+  try {
+    const response = await fetch(`${server.baseUrl}/billing/signup/checkout-session`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        name: 'Taylor Owner', email: 'owner@example.com', phone: '555-0100',
+        company: 'Taylor Transport', role: 'Owner', drivers: 5
+      })
+    });
+    const payload = await response.json();
+
+    assert.equal(response.status, 400);
+    assert.equal(payload.code, 'SIGNUP_DETAILS_REQUIRED');
+    assert.equal(payload.required_step, 2);
+    assert.deepEqual(payload.missing_fields, ['cxpc_phone_number', 'csa_number']);
+    assert.equal(payload.signup_url, 'https://readyroute.org/signup');
+    assert.equal(supabase.calls.length, 0);
+  } finally {
+    await server.close();
+  }
+});
+
 test('POST /billing/signup/complete creates the first manager password without requiring email', async () => {
   const updates = [];
   const accessNonce = '00000000-0000-4000-8000-000000000002';
