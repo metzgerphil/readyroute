@@ -458,6 +458,50 @@ test('legacy driver login accepts an established password as well as a four-digi
   assert.equal(jwt.verify(response.body.token, 'test-secret').device_session_id, 'device-session-password-1');
 });
 
+test('driver login accepts an owner-set PIN when the driver also has an established password', async () => {
+  const driver = {
+    id: 'driver-password-and-pin-1',
+    account_id: 'account-1',
+    name: 'Password and PIN Driver',
+    email: 'password-and-pin@example.com',
+    password_hash: await bcrypt.hash('SecureDriverPassword!2026', 10),
+    pin: await bcrypt.hash('2468', 10),
+    is_active: true
+  };
+  const supabase = createSupabaseStub({ driver });
+  const app = createApp({
+    supabase,
+    jwtSecret: 'test-secret',
+    enforceBilling: false,
+    requireDriverDeviceId: true,
+    authorizeDriverDevice: async () => ({
+      id: 'device-session-password-and-pin-1',
+      device_hash: 'device-hash-password-and-pin-1'
+    })
+  });
+
+  const legacyLogin = await request(app)
+    .post('/auth/driver/login')
+    .send({
+      email: driver.email,
+      pin: '2468',
+      device_id: '12345678-1234-1234-1234-123456789012'
+    });
+
+  const mobileLogin = await request(app)
+    .post('/auth/mobile/login')
+    .send({
+      email: driver.email,
+      secret: '2468',
+      device_id: '12345678-1234-1234-1234-123456789012'
+    });
+
+  assert.equal(legacyLogin.status, 200);
+  assert.equal(legacyLogin.body.user.driver_id, driver.id);
+  assert.equal(mobileLogin.status, 200);
+  assert.equal(jwt.verify(mobileLogin.body.driver_token, 'test-secret').driver_id, driver.id);
+});
+
 test('driver can replace the current credential with a personal four-digit PIN', async () => {
   const driverState = {
     id: 'driver-pin-change-1',
@@ -563,6 +607,52 @@ test('driver invitation lets every company driver choose a four-digit PIN', asyn
 
   assert.equal(response.status, 200);
   assert.match(response.body.message, /driver pin established/i);
+  assert.ok(driverState.invite_accepted_at);
+});
+
+test('driver password setup preserves an owner-set PIN', async () => {
+  const invitedAt = new Date().toISOString();
+  const originalPinHash = await bcrypt.hash('2468', 10);
+  const driverState = {
+    id: 'driver-password-with-pin-1',
+    account_id: 'account-1',
+    name: 'Password With PIN Driver',
+    email: 'password-with-pin@example.com',
+    pin: originalPinHash,
+    password_hash: null,
+    invited_at: invitedAt,
+    invite_accepted_at: null,
+    is_active: true
+  };
+  const supabase = new AuthRouteMockSupabase(async (query) => {
+    if (query.table === 'drivers' && query.operation === 'select') {
+      return { data: { ...driverState }, error: null };
+    }
+
+    if (query.table === 'drivers' && query.operation === 'update') {
+      assert.equal(await bcrypt.compare('SecureDriverPassword!2026', query.payload.password_hash), true);
+      assert.equal(Object.hasOwn(query.payload, 'pin'), false);
+      Object.assign(driverState, query.payload);
+      return { data: null, error: null };
+    }
+
+    throw new Error(`Unexpected query ${query.table}:${query.operation}`);
+  });
+  const app = createApp({ supabase, jwtSecret: 'test-secret', enforceBilling: false });
+  const token = jwt.sign({
+    purpose: 'driver_invite',
+    driver_id: driverState.id,
+    account_id: driverState.account_id,
+    email: driverState.email,
+    invited_at: invitedAt
+  }, 'test-secret', { expiresIn: '7d' });
+
+  const response = await request(app)
+    .post('/auth/driver/accept-invite')
+    .send({ token, password: 'SecureDriverPassword!2026' });
+
+  assert.equal(response.status, 200);
+  assert.equal(driverState.pin, originalPinHash);
   assert.ok(driverState.invite_accepted_at);
 });
 
