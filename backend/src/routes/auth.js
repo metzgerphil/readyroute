@@ -110,6 +110,21 @@ function createAuthRouter(options = {}) {
     return isStrongEnoughPassword(credential);
   }
 
+  async function matchesDriverCredential(driver, credential) {
+    const credentialHashes = [...new Set([
+      driver?.password_hash,
+      driver?.pin
+    ].filter(Boolean))];
+
+    for (const credentialHash of credentialHashes) {
+      if (await bcrypt.compare(credential, credentialHash)) {
+        return true;
+      }
+    }
+
+    return false;
+  }
+
   function normalizeEmail(email) {
     return String(email || '').trim().toLowerCase();
   }
@@ -319,11 +334,9 @@ function createAuthRouter(options = {}) {
     const matches = [];
 
     for (const candidate of candidates) {
-      const credentialHash = candidate?.password_hash || candidate?.pin;
       if (
         candidate?.is_active !== false &&
-        credentialHash &&
-        await bcrypt.compare(credential, credentialHash)
+        await matchesDriverCredential(candidate, credential)
       ) {
         matches.push(candidate);
       }
@@ -794,10 +807,9 @@ function createAuthRouter(options = {}) {
       const passwordHash = await bcrypt.hash(password, 10);
       const acceptedAt = new Date().toISOString();
       const passwordUpdate = {
-        password_hash: passwordHash,
-        // Keep the legacy driver credential column synchronized so there is
-        // only one effective credential regardless of which login path reads it.
-        pin: passwordHash,
+        ...(credentialType === 'pin'
+          ? { password_hash: passwordHash, pin: passwordHash }
+          : { password_hash: passwordHash }),
         ...(username ? { username } : {}),
         ...(payload.purpose === 'driver_invite' ? { invite_accepted_at: acceptedAt } : {})
       };
@@ -1030,8 +1042,7 @@ function createAuthRouter(options = {}) {
       const activeDrivers = driverIdentities.filter((driver) => driver.is_active !== false);
       const matchingDrivers = [];
       for (const driver of activeDrivers) {
-        const credentialHash = driver.password_hash || driver.pin;
-        if (credentialHash && await bcrypt.compare(secret, credentialHash)) {
+        if (await matchesDriverCredential(driver, secret)) {
           matchingDrivers.push(driver);
         }
       }
