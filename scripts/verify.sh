@@ -7,6 +7,7 @@ echo "==> Verifying landing page files"
 test -f "$ROOT_DIR/landing-page/index.html"
 test -f "$ROOT_DIR/landing-page/signup.html"
 test -f "$ROOT_DIR/landing-page/vercel.json"
+npm --prefix "$ROOT_DIR" run verify:site-branding
 
 echo "==> Linting manager portal"
 npm --prefix "$ROOT_DIR/manager-portal" run lint
