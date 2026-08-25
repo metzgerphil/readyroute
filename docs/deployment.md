@@ -80,4 +80,4 @@ Resend does not deploy code from GitHub. Keep it stable through configuration an
 
 - DNS records live in Vercel DNS
 - `RESEND_API_KEY` and `RESEND_FROM_EMAIL` live in Google Cloud Secret Manager / Cloud Run env
-- Production smoke calls the manager password reset endpoint when `SMOKE_PASSWORD_RESET_EMAIL` is set
+- Production smoke never sends password-reset email. Password recovery is covered by automated route tests so production checks do not contact real users.
