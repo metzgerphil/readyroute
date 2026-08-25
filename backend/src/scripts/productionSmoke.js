@@ -257,7 +257,6 @@ async function main() {
   const portalUrl = normalizeBaseUrl(process.env.SMOKE_PORTAL_URL || DEFAULT_PORTAL_URL);
   const managerEmail = optionalEnv('SMOKE_MANAGER_EMAIL');
   const managerPassword = optionalEnv('SMOKE_MANAGER_PASSWORD');
-  const passwordResetEmail = optionalEnv('SMOKE_PASSWORD_RESET_EMAIL');
   const supabaseUrl = optionalEnv('SUPABASE_URL');
   const supabaseServiceKey = optionalEnv('SUPABASE_SERVICE_KEY');
   const smokeId = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
@@ -278,18 +277,6 @@ async function main() {
   await requestOk(`${portalUrl}/login`, { method: 'HEAD' });
   await requestOk(`${portalUrl}/drivers`, { method: 'HEAD' });
   console.log('ok portal routes');
-
-  if (passwordResetEmail) {
-    await requestJson(`${backendUrl}/auth/manager/request-password-reset`, {
-      method: 'POST',
-      body: JSON.stringify({
-        email: passwordResetEmail
-      })
-    });
-    console.log('ok manager password reset request');
-  } else {
-    console.log('skip manager password reset request: SMOKE_PASSWORD_RESET_EMAIL not set');
-  }
 
   const missingAuthenticatedSmokeEnv = [
     ['SMOKE_MANAGER_EMAIL', managerEmail],
