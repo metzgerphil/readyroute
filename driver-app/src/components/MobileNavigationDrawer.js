@@ -64,7 +64,6 @@ export default function MobileNavigationDrawer({
   onLogout,
   onNavigate,
   onPrivacyPress,
-  onSupportPress,
   onSwitchMode,
   showModeSwitch
 }) {
@@ -203,9 +202,6 @@ export default function MobileNavigationDrawer({
                 </Pressable>
               </>
             ) : null}
-            <Pressable onPress={onSupportPress} style={({ pressed }) => [styles.supportButton, pressed ? styles.pressed : null]}>
-              <Text style={styles.supportText}>Support</Text>
-            </Pressable>
             <Pressable onPress={onLogout} style={({ pressed }) => [styles.logoutButton, pressed ? styles.pressed : null]}>
               <Text style={styles.logoutText}>Logout</Text>
             </Pressable>
