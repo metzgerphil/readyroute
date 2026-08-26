@@ -2384,5 +2384,597 @@
       ],
       "concise_driver_answer": "CSA means Contracting Service Area. Each CSA has its own personal number entered at scanner login, and it is typically saved automatically after you enter it once."
     }
+  },
+  {
+    "adjudication_id": "ADJ-20260826-ROUND3-ADDENDUM-DEL-ANIMAL-HAZARD-001",
+    "knowledge_id": "KNO-DEL-ANIMAL-HAZARD-001",
+    "status": "APPROVED",
+    "issue_reviewed": "The dog-at-the-door decision branches.",
+    "canonical_determination": "Do not approach a dog that blocks safe access. If the scanner specifically requires front-door delivery, apply Code 007, cross the package, remove the SID sticker, and return it to the station. If the scanner gives no specific delivery-location instruction, leave the package at the gate in a location secure from theft or being run over.",
+    "previous_interpretations": [
+      "The prior record always returned Code 007 and did not include the secure gate-delivery branch."
+    ],
+    "supporting_source_ids": [
+      "SRC-V2-VLAD-ROUND3-ADDENDUM-20260822",
+      "SRC-V2-OWNER-ROUND3-ADDENDUM-APPROVAL-20260826"
+    ],
+    "conflicting_or_superseded_source_ids": [],
+    "reasoning": "Phillip Metzger explicitly directed Ready Route to treat the Round 3 Continued Addendum as authoritative and use each supplied answer.",
+    "approved_by": "Phillip Metzger, Ready Route product owner",
+    "approval_date": "2026-08-26",
+    "effective_date": "2026-08-26",
+    "supersedes": [],
+    "reopen_conditions": [
+      "Phillip or Vlad revises the supplied answer.",
+      "A later applicable operational or regulatory update materially conflicts with it."
+    ],
+    "canonical_overrides": {
+      "authoritative_rule": "Do not approach a dog that blocks safe access. If the scanner specifically requires front-door delivery, apply Code 007, cross the package, remove the SID sticker, and return it to the station. If the scanner gives no specific delivery-location instruction, leave the package at the gate in a location secure from theft or being run over.",
+      "applicability": [
+        "Residential delivery",
+        "A dog blocks safe access to the delivery location"
+      ],
+      "conditions": [
+        "The scanner instruction determines whether the front-door return branch or gate-delivery branch applies"
+      ],
+      "exceptions": [
+        "This record does not replace stricter signature, Hazmat, alcohol, security, or other special-service requirements"
+      ],
+      "required_procedure": [
+        {
+          "step": 1,
+          "action": "Do not approach the dog or enter the unsafe area."
+        },
+        {
+          "step": 2,
+          "action": "Check whether the scanner specifically instructs delivery at the front door."
+        },
+        {
+          "step": 3,
+          "action": "If front-door delivery is specifically required, apply Code 007."
+        },
+        {
+          "step": 4,
+          "action": "For the Code 007 branch, cross the package, remove the SID sticker, and return it to the station."
+        },
+        {
+          "step": 5,
+          "action": "If there is no specific delivery-location instruction, leave the package at the gate in a spot secure from theft or being run over."
+        }
+      ],
+      "required_documentation": [
+        "Code 007 and package crossing for the front-door-required return branch"
+      ],
+      "prohibited_actions": [
+        "Do not approach when the dog blocks safe access",
+        "Do not use the gate branch when the scanner specifically requires front-door delivery",
+        "Do not place the package where it is vulnerable to theft or being run over"
+      ],
+      "escalation_requirements": [],
+      "clarification_requirements": [
+        "Does the scanner specifically instruct delivery at the front door?"
+      ],
+      "concise_driver_answer": "Do not approach. If the scanner specifically requires the front door, use Code 007, cross the package, remove the SID, and return it to the station. If no specific delivery location is required, leave it securely at the gate.",
+      "more_info_answer": "Use the scanner location instruction to select the branch, and do not let this procedure override stricter package requirements."
+    }
+  },
+  {
+    "adjudication_id": "ADJ-20260826-ROUND3-ADDENDUM-VEH-BREAKDOWN-001",
+    "knowledge_id": "KNO-VEH-BREAKDOWN-001",
+    "status": "APPROVED",
+    "issue_reviewed": "The immediate procedure for a vehicle breakdown.",
+    "canonical_determination": "Turn on the hazard lights, place warning triangles within 10 minutes using the applicable 49 CFR 392.22 layout, and call the BC.",
+    "previous_interpretations": [
+      "Ready Route did not have a verified breakdown answer."
+    ],
+    "supporting_source_ids": [
+      "SRC-V2-VLAD-ROUND3-ADDENDUM-20260822",
+      "SRC-V2-OWNER-ROUND3-ADDENDUM-APPROVAL-20260826",
+      "SRC-ECFR-49CFR39222-20260824"
+    ],
+    "conflicting_or_superseded_source_ids": [],
+    "reasoning": "Phillip Metzger explicitly directed Ready Route to treat the Round 3 Continued Addendum as authoritative and use each supplied answer.",
+    "approved_by": "Phillip Metzger, Ready Route product owner",
+    "approval_date": "2026-08-26",
+    "effective_date": "2026-08-26",
+    "supersedes": [],
+    "reopen_conditions": [
+      "Phillip or Vlad revises the supplied answer.",
+      "A later applicable operational or regulatory update materially conflicts with it."
+    ],
+    "canonical_overrides": {
+      "authoritative_rule": "Turn on the hazard lights, place warning triangles within 10 minutes using the applicable 49 CFR 392.22 layout, and call the BC.",
+      "applicability": [
+        "Vehicle will not start or breaks down",
+        "Vehicle is stopped on or beside a roadway"
+      ],
+      "conditions": [
+        "Triangle placement must be adjusted for the actual road type and visibility obstruction"
+      ],
+      "exceptions": [
+        "Use the one-way/divided-road adjustment when applicable",
+        "On a hill, curve, or other blocked-visibility location, place the warning device farther out toward the obstruction as required"
+      ],
+      "required_procedure": [
+        {
+          "step": 1,
+          "action": "Turn on the emergency hazard lights."
+        },
+        {
+          "step": 2,
+          "action": "Within 10 minutes of stopping, place warning triangles: approximately 10 feet behind the vehicle, 100 feet behind, and 100 feet ahead on a two-way road."
+        },
+        {
+          "step": 3,
+          "action": "Adjust triangle placement for a one-way or divided road, and move the warning device farther out toward a hill, curve, or other blocked-visibility obstruction."
+        },
+        {
+          "step": 4,
+          "action": "Call your BC."
+        }
+      ],
+      "required_documentation": [],
+      "prohibited_actions": [
+        "Do not omit the immediate hazard lights",
+        "Do not delay warning-device placement beyond 10 minutes"
+      ],
+      "escalation_requirements": [
+        "Call the BC after securing the warning setup"
+      ],
+      "clarification_requirements": [
+        "Is the vehicle on a two-way, one-way, or divided road?",
+        "Is visibility blocked by a hill, curve, or other obstruction?"
+      ],
+      "concise_driver_answer": "Turn on the hazard lights, place the warning triangles within 10 minutes using the layout for the road and visibility conditions, then call your BC.",
+      "more_info_answer": "On a two-way road, the supplied layout is about 10 feet behind, 100 feet behind, and 100 feet ahead. One-way/divided roads and hills or curves require adjusted placement."
+    }
+  },
+  {
+    "adjudication_id": "ADJ-20260826-ROUND3-ADDENDUM-INCIDENT-DOG-BITE-001",
+    "knowledge_id": "KNO-INCIDENT-DOG-BITE-001",
+    "status": "APPROVED",
+    "issue_reviewed": "The response to a dog bite during delivery.",
+    "canonical_determination": "Call 911 first for an emergency. Obtain medical attention even when the bite does not seem serious, contact the customer if the customer is home, and report the incident to the BC.",
+    "previous_interpretations": [
+      "Ready Route did not have a verified dog-bite response."
+    ],
+    "supporting_source_ids": [
+      "SRC-V2-VLAD-ROUND3-ADDENDUM-20260822",
+      "SRC-V2-OWNER-ROUND3-ADDENDUM-APPROVAL-20260826"
+    ],
+    "conflicting_or_superseded_source_ids": [],
+    "reasoning": "Phillip Metzger explicitly directed Ready Route to treat the Round 3 Continued Addendum as authoritative and use each supplied answer.",
+    "approved_by": "Phillip Metzger, Ready Route product owner",
+    "approval_date": "2026-08-26",
+    "effective_date": "2026-08-26",
+    "supersedes": [],
+    "reopen_conditions": [
+      "Phillip or Vlad revises the supplied answer.",
+      "A later applicable operational or regulatory update materially conflicts with it."
+    ],
+    "canonical_overrides": {
+      "authoritative_rule": "Call 911 first for an emergency. Obtain medical attention even when the bite does not seem serious, contact the customer if the customer is home, and report the incident to the BC.",
+      "applicability": [
+        "Driver is bitten by a dog while delivering"
+      ],
+      "conditions": [
+        "Emergency severity determines whether 911 is the first action"
+      ],
+      "exceptions": [],
+      "required_procedure": [
+        {
+          "step": 1,
+          "action": "If it is an emergency, call 911 first."
+        },
+        {
+          "step": 2,
+          "action": "Get medical attention even if the bite does not seem serious."
+        },
+        {
+          "step": 3,
+          "action": "Contact the customer if the customer is home."
+        },
+        {
+          "step": 4,
+          "action": "Report the incident to your BC."
+        }
+      ],
+      "required_documentation": [],
+      "prohibited_actions": [
+        "Do not skip medical attention because the bite appears minor"
+      ],
+      "escalation_requirements": [
+        "Call 911 first for an emergency",
+        "Report the incident to the BC"
+      ],
+      "clarification_requirements": [],
+      "concise_driver_answer": "If it is an emergency, call 911 first. Get medical attention even if it seems minor, contact the customer if home, and report the incident to your BC.",
+      "more_info_answer": "The owner-approved procedure requires medical attention even for an apparently minor bite because of infection and rabies risk."
+    }
+  },
+  {
+    "adjudication_id": "ADJ-20260826-ROUND3-ADDENDUM-DEL-RAIN-PROTECTION-001",
+    "knowledge_id": "KNO-DEL-RAIN-PROTECTION-001",
+    "status": "APPROVED",
+    "issue_reviewed": "Package protection and disposition during heavy rain.",
+    "canonical_determination": "Use a plastic bag when available and confirm protection; otherwise use a safe covered location. If no good protected spot exists, apply Code 007, add a weather note, cross the package, remove the SID sticker, and return it to the station.",
+    "previous_interpretations": [
+      "Ready Route did not have a verified package weather-protection answer."
+    ],
+    "supporting_source_ids": [
+      "SRC-V2-VLAD-ROUND3-ADDENDUM-20260822",
+      "SRC-V2-OWNER-ROUND3-ADDENDUM-APPROVAL-20260826"
+    ],
+    "conflicting_or_superseded_source_ids": [],
+    "reasoning": "Phillip Metzger explicitly directed Ready Route to treat the Round 3 Continued Addendum as authoritative and use each supplied answer.",
+    "approved_by": "Phillip Metzger, Ready Route product owner",
+    "approval_date": "2026-08-26",
+    "effective_date": "2026-08-26",
+    "supersedes": [],
+    "reopen_conditions": [
+      "Phillip or Vlad revises the supplied answer.",
+      "A later applicable operational or regulatory update materially conflicts with it."
+    ],
+    "canonical_overrides": {
+      "authoritative_rule": "Use a plastic bag when available and confirm protection; otherwise use a safe covered location. If no good protected spot exists, apply Code 007, add a weather note, cross the package, remove the SID sticker, and return it to the station.",
+      "applicability": [
+        "Heavy rain or wet conditions threaten the package at delivery"
+      ],
+      "conditions": [
+        "Any delivery location used must be both protected and safe"
+      ],
+      "exceptions": [],
+      "required_procedure": [
+        {
+          "step": 1,
+          "action": "Check whether the vehicle has plastic bags. If so, bag the package, confirm it is protected, and deliver normally."
+        },
+        {
+          "step": 2,
+          "action": "If no bag is available, find a covered spot at the location, confirm it is safe, and deliver there."
+        },
+        {
+          "step": 3,
+          "action": "If no good protected spot exists, apply Code 007 and add a note explaining the weather situation."
+        },
+        {
+          "step": 4,
+          "action": "Cross the package, remove the SID sticker, and return it to the station."
+        }
+      ],
+      "required_documentation": [
+        "Weather note for the Code 007 return branch",
+        "Package crossing for the Code 007 return branch"
+      ],
+      "prohibited_actions": [
+        "Do not leave the package unprotected",
+        "Do not use an unsafe covered location"
+      ],
+      "escalation_requirements": [],
+      "clarification_requirements": [],
+      "concise_driver_answer": "Bag the package if bags are available; otherwise use a safe covered spot. If neither protects it, use Code 007, add a weather note, cross the package, remove the SID, and return it to the station.",
+      "more_info_answer": "Confirm the bag or covered location actually protects the package before completing delivery."
+    }
+  },
+  {
+    "adjudication_id": "ADJ-20260826-ROUND3-ADDENDUM-DEL-DUPLICATE-ADDRESS-001",
+    "knowledge_id": "KNO-DEL-DUPLICATE-ADDRESS-001",
+    "status": "APPROVED",
+    "issue_reviewed": "The disposition when two houses share the same address number.",
+    "canonical_determination": "Apply Code 002, add a comment explaining the duplicate-address situation, cross the package, remove the SID sticker, and return it to the station.",
+    "previous_interpretations": [
+      "Ready Route did not have a verified duplicate-address answer."
+    ],
+    "supporting_source_ids": [
+      "SRC-V2-VLAD-ROUND3-ADDENDUM-20260822",
+      "SRC-V2-OWNER-ROUND3-ADDENDUM-APPROVAL-20260826"
+    ],
+    "conflicting_or_superseded_source_ids": [],
+    "reasoning": "Phillip Metzger explicitly directed Ready Route to treat the Round 3 Continued Addendum as authoritative and use each supplied answer.",
+    "approved_by": "Phillip Metzger, Ready Route product owner",
+    "approval_date": "2026-08-26",
+    "effective_date": "2026-08-26",
+    "supersedes": [],
+    "reopen_conditions": [
+      "Phillip or Vlad revises the supplied answer.",
+      "A later applicable operational or regulatory update materially conflicts with it."
+    ],
+    "canonical_overrides": {
+      "authoritative_rule": "Apply Code 002, add a comment explaining the duplicate-address situation, cross the package, remove the SID sticker, and return it to the station.",
+      "applicability": [
+        "Two houses have the same address number",
+        "The correct delivery destination cannot be reliably identified"
+      ],
+      "conditions": [],
+      "exceptions": [],
+      "required_procedure": [
+        {
+          "step": 1,
+          "action": "Apply Code 002."
+        },
+        {
+          "step": 2,
+          "action": "Add a comment explaining that two houses have the same address number."
+        },
+        {
+          "step": 3,
+          "action": "Cross the package and remove the SID sticker."
+        },
+        {
+          "step": 4,
+          "action": "Return the package to the station."
+        }
+      ],
+      "required_documentation": [
+        "Code 002",
+        "Comment explaining the duplicate-address situation",
+        "Package crossing"
+      ],
+      "prohibited_actions": [
+        "Do not guess which house is correct"
+      ],
+      "escalation_requirements": [],
+      "clarification_requirements": [],
+      "concise_driver_answer": "Use Code 002, add a comment explaining the duplicate addresses, cross the package, remove the SID, and return it to the station.",
+      "more_info_answer": "Use this procedure when the duplicated house number prevents reliable identification of the destination."
+    }
+  },
+  {
+    "adjudication_id": "ADJ-20260826-ROUND3-ADDENDUM-VEH-DOT-INSPECTION-001",
+    "knowledge_id": "KNO-VEH-DOT-INSPECTION-001",
+    "status": "APPROVED",
+    "issue_reviewed": "The unified vehicle inspection checklist.",
+    "canonical_determination": "Check brakes, tires, lights and signals, mirrors, windshield and wipers, horn, steering, fluid levels, fuel, seatbelt, emergency equipment, cargo securement, and general body condition or leaks. If any item is not working correctly, notify the BC immediately and pull over or park in a safe area.",
+    "previous_interpretations": [
+      "Ready Route lacked a unified approved pre-trip/post-trip checklist."
+    ],
+    "supporting_source_ids": [
+      "SRC-V2-VLAD-ROUND3-ADDENDUM-20260822",
+      "SRC-V2-OWNER-ROUND3-ADDENDUM-APPROVAL-20260826",
+      "SRC-ECFR-49CFR39613-20260824",
+      "SRC-ECFR-49CFR39611-20260824"
+    ],
+    "conflicting_or_superseded_source_ids": [],
+    "reasoning": "Phillip Metzger explicitly directed Ready Route to treat the Round 3 Continued Addendum as authoritative and use each supplied answer.",
+    "approved_by": "Phillip Metzger, Ready Route product owner",
+    "approval_date": "2026-08-26",
+    "effective_date": "2026-08-26",
+    "supersedes": [],
+    "reopen_conditions": [
+      "Phillip or Vlad revises the supplied answer.",
+      "A later applicable operational or regulatory update materially conflicts with it."
+    ],
+    "canonical_overrides": {
+      "authoritative_rule": "Check brakes, tires, lights and signals, mirrors, windshield and wipers, horn, steering, fluid levels, fuel, seatbelt, emergency equipment, cargo securement, and general body condition or leaks. If any item is not working correctly, notify the BC immediately and pull over or park in a safe area.",
+      "applicability": [
+        "Pre-trip inspection",
+        "Post-trip inspection",
+        "General vehicle-safety or DOT-standard inspection question"
+      ],
+      "conditions": [],
+      "exceptions": [],
+      "required_procedure": [
+        {
+          "step": 1,
+          "action": "Check brakes; tires for tread, pressure, and damage; all lights and signals; mirrors; windshield and wipers; horn; and steering."
+        },
+        {
+          "step": 2,
+          "action": "Check fluid levels, fuel, seatbelt, emergency equipment including the fire extinguisher and warning triangles, cargo securement, and general body condition or leaks."
+        },
+        {
+          "step": 3,
+          "action": "If anything on the checklist is not working correctly, notify your BC immediately and pull over or park in a safe area."
+        }
+      ],
+      "required_documentation": [],
+      "prohibited_actions": [
+        "Do not continue without notifying the BC when an inspected item is not working correctly"
+      ],
+      "escalation_requirements": [
+        "Notify the BC immediately for any item that is not working correctly"
+      ],
+      "clarification_requirements": [],
+      "concise_driver_answer": "Check brakes, tires, lights/signals, mirrors, windshield/wipers, horn, steering, fluids, fuel, seatbelt, emergency equipment, cargo securement, and body condition/leaks. If anything is not working correctly, notify your BC immediately and pull over or park safely.",
+      "more_info_answer": "This is the unified Ready Route answer for pre-trip, post-trip, what-to-check, and DOT-standard inspection questions."
+    }
+  },
+  {
+    "adjudication_id": "ADJ-20260826-ROUND3-ADDENDUM-VEH-FEDEX-SAFETY-CHECK-001",
+    "knowledge_id": "KNO-VEH-FEDEX-SAFETY-CHECK-001",
+    "status": "APPROVED",
+    "issue_reviewed": "The FedEx-specific vehicle safety check.",
+    "canonical_determination": "Check that all locks work and keys are present, the anti-theft device works, backup and 360 cameras work, and backup sensors beep as the vehicle approaches an object. Six parking sensors should be present in back. If anything is not working correctly, notify the BC immediately and pull over or park in a safe area.",
+    "previous_interpretations": [
+      "Ready Route did not have a verified FedEx-specific vehicle safety checklist."
+    ],
+    "supporting_source_ids": [
+      "SRC-V2-VLAD-ROUND3-ADDENDUM-20260822",
+      "SRC-V2-OWNER-ROUND3-ADDENDUM-APPROVAL-20260826"
+    ],
+    "conflicting_or_superseded_source_ids": [],
+    "reasoning": "Phillip Metzger explicitly directed Ready Route to treat the Round 3 Continued Addendum as authoritative and use each supplied answer.",
+    "approved_by": "Phillip Metzger, Ready Route product owner",
+    "approval_date": "2026-08-26",
+    "effective_date": "2026-08-26",
+    "supersedes": [],
+    "reopen_conditions": [
+      "Phillip or Vlad revises the supplied answer.",
+      "A later applicable operational or regulatory update materially conflicts with it."
+    ],
+    "canonical_overrides": {
+      "authoritative_rule": "Check that all locks work and keys are present, the anti-theft device works, backup and 360 cameras work, and backup sensors beep as the vehicle approaches an object. Six parking sensors should be present in back. If anything is not working correctly, notify the BC immediately and pull over or park in a safe area.",
+      "applicability": [
+        "FedEx-specific vehicle safety check"
+      ],
+      "conditions": [],
+      "exceptions": [
+        "This check is separate from the DOT vehicle inspection checklist"
+      ],
+      "required_procedure": [
+        {
+          "step": 1,
+          "action": "Check that all locks work and keys are present, including the bulk door, rear door, and side doors."
+        },
+        {
+          "step": 2,
+          "action": "Check the anti-theft device and the backup and 360 cameras."
+        },
+        {
+          "step": 3,
+          "action": "Check that the backup sensors beep as you approach an object. Six parking sensors should be present in the back."
+        },
+        {
+          "step": 4,
+          "action": "If anything is not working correctly, notify your BC immediately and pull over or park in a safe area."
+        }
+      ],
+      "required_documentation": [],
+      "prohibited_actions": [
+        "Do not treat this as a replacement for the DOT inspection"
+      ],
+      "escalation_requirements": [
+        "Notify the BC immediately for any item that is not working correctly"
+      ],
+      "clarification_requirements": [],
+      "concise_driver_answer": "Check all door locks and keys, the anti-theft device, backup and 360 cameras, and backup sensors; six parking sensors should be present in back. If anything is not working, notify your BC immediately and pull over or park safely.",
+      "more_info_answer": "This owner-verified FedEx-specific check is separate from the DOT inspection checklist."
+    }
+  },
+  {
+    "adjudication_id": "ADJ-20260826-ROUND3-ADDENDUM-DEL-PACKAGE-NOT-FOUND-VAN-001",
+    "knowledge_id": "KNO-DEL-PACKAGE-NOT-FOUND-VAN-001",
+    "status": "APPROVED",
+    "issue_reviewed": "The procedure when a delivery package cannot be located on the van.",
+    "canonical_determination": "Check the main label addresses on nearby packages for a mix-up or stale SID sticker, search for no more than 5–8 minutes, attempt delivery if the package is found later, and call the BC for advice if returning would be too far out of the way.",
+    "previous_interpretations": [
+      "The gap could be misrouted to the no-barcode/Key Enter procedure."
+    ],
+    "supporting_source_ids": [
+      "SRC-V2-VLAD-ROUND3-ADDENDUM-20260822",
+      "SRC-V2-OWNER-ROUND3-ADDENDUM-APPROVAL-20260826"
+    ],
+    "conflicting_or_superseded_source_ids": [],
+    "reasoning": "Phillip Metzger explicitly directed Ready Route to treat the Round 3 Continued Addendum as authoritative and use each supplied answer.",
+    "approved_by": "Phillip Metzger, Ready Route product owner",
+    "approval_date": "2026-08-26",
+    "effective_date": "2026-08-26",
+    "supersedes": [],
+    "reopen_conditions": [
+      "Phillip or Vlad revises the supplied answer.",
+      "A later applicable operational or regulatory update materially conflicts with it."
+    ],
+    "canonical_overrides": {
+      "authoritative_rule": "Check the main label addresses on nearby packages for a mix-up or stale SID sticker, search for no more than 5–8 minutes, attempt delivery if the package is found later, and call the BC for advice if returning would be too far out of the way.",
+      "applicability": [
+        "Driver is at or near the delivery address",
+        "The expected package cannot be located on the van"
+      ],
+      "conditions": [],
+      "exceptions": [
+        "This is not the no-barcode or Key Enter procedure"
+      ],
+      "required_procedure": [
+        {
+          "step": 1,
+          "action": "Check the main-label address on nearby packages; the package may be mixed up, or a SID sticker from a previous day may be causing confusion."
+        },
+        {
+          "step": 2,
+          "action": "Search for no more than 5–8 minutes."
+        },
+        {
+          "step": 3,
+          "action": "If you find the package later on the route, attempt delivery then."
+        },
+        {
+          "step": 4,
+          "action": "If the address is too far out of the way when you find it, call your BC for advice."
+        }
+      ],
+      "required_documentation": [],
+      "prohibited_actions": [
+        "Do not route this situation into the no-barcode or Key Enter procedure",
+        "Do not spend more than 5–8 minutes searching at the stop"
+      ],
+      "escalation_requirements": [
+        "Call the BC when the later delivery would be too far out of the way"
+      ],
+      "clarification_requirements": [],
+      "concise_driver_answer": "Check nearby packages’ main-label addresses and look for a stale SID mix-up, but search no more than 5–8 minutes. If found later, attempt delivery; if the address is too far out of the way, call your BC.",
+      "more_info_answer": "This is a package-location problem on the van, not a missing-barcode or Key Enter situation."
+    }
+  },
+  {
+    "adjudication_id": "ADJ-20260826-ROUND3-ADDENDUM-FORGE-UNMANIFESTED-DELIVERY-001",
+    "knowledge_id": "KNO-FORGE-UNMANIFESTED-DELIVERY-001",
+    "status": "APPROVED",
+    "issue_reviewed": "The No branch for an unmanifested package.",
+    "canonical_determination": "If station or management assigned the package and its label establishes the address, scan it as Delivery and use the label-supported stop details. If not, deliver it when close to the address, add it to the map for a later route stop, or ask the BC for advice if the address has already been passed.",
+    "previous_interpretations": [
+      "The prior source-backed record covered only the assigned-and-label-established Yes branch."
+    ],
+    "supporting_source_ids": [
+      "SRC-V2-VLAD-ROUND3-ADDENDUM-20260822",
+      "SRC-V2-OWNER-ROUND3-ADDENDUM-APPROVAL-20260826"
+    ],
+    "conflicting_or_superseded_source_ids": [],
+    "reasoning": "Phillip Metzger explicitly directed Ready Route to treat the Round 3 Continued Addendum as authoritative and use each supplied answer.",
+    "approved_by": "Phillip Metzger, Ready Route product owner",
+    "approval_date": "2026-08-26",
+    "effective_date": "2026-08-26",
+    "supersedes": [],
+    "reopen_conditions": [
+      "Phillip or Vlad revises the supplied answer.",
+      "A later applicable operational or regulatory update materially conflicts with it."
+    ],
+    "canonical_overrides": {
+      "authoritative_rule": "If station or management assigned the package and its label establishes the address, scan it as Delivery and use the label-supported stop details. If not, deliver it when close to the address, add it to the map for a later route stop, or ask the BC for advice if the address has already been passed.",
+      "applicability": [
+        "Package is not on the current electronic manifest"
+      ],
+      "conditions": [
+        "The assignment-and-label question selects the applicable branch"
+      ],
+      "exceptions": [],
+      "required_procedure": [
+        {
+          "step": 1,
+          "action": "Determine whether station or management assigned the package and whether the label establishes the delivery address."
+        },
+        {
+          "step": 2,
+          "action": "If yes, scan the package, select Delivery, enter the label-supported stop details, and choose the actual business or residential type."
+        },
+        {
+          "step": 3,
+          "action": "If no and the address is close to where you are already delivering, deliver it."
+        },
+        {
+          "step": 4,
+          "action": "If no and the address will be on your route later, add it to your map and deliver it when you get there."
+        },
+        {
+          "step": 5,
+          "action": "If no and you already passed the address, check with your BC for advice."
+        }
+      ],
+      "required_documentation": [
+        "Package scan and final delivery outcome when delivered",
+        "Mapped stop when added for later delivery"
+      ],
+      "prohibited_actions": [
+        "Do not invent an address",
+        "Do not return the Yes-branch prerequisites as the answer after the driver says they are not established"
+      ],
+      "escalation_requirements": [
+        "Check with the BC when the address has already been passed"
+      ],
+      "clarification_requirements": [
+        "Did station or management assign it, and does the label establish the address?"
+      ],
+      "concise_driver_answer": "If station/management assigned it and the label establishes the address, add it as a Delivery stop using label-supported details. Otherwise: deliver if close, map it for later if it is ahead, or call your BC if you already passed it.",
+      "more_info_answer": "The No branch is selected when station or management did not assign the package or the label does not establish the address."
+    }
   }
 ]
