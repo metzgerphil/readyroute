@@ -555,12 +555,14 @@ test('promotes a single applicable status code into the direct answer', () => {
 
 test('all controlled records satisfy the compact initial-answer contract', () => {
   const recordsPath = path.resolve(__dirname, '../../../knowledge/operations/records.jsonl');
+  const manifestPath = path.resolve(__dirname, '../../../knowledge/manifest.json');
   const records = fs.readFileSync(recordsPath, 'utf8')
     .trim()
     .split('\n')
     .map(JSON.parse);
+  const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
 
-  assert.equal(records.length, 111);
+  assert.equal(records.length, manifest.counts.total_records);
   for (const canonical of records) {
     const structure = buildAnswerStructure({
       ...canonical,
