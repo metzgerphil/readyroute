@@ -631,7 +631,18 @@ test('an ambiguous closed storefront asks whether this is delivery or pickup', (
   );
 });
 
-test('fully stated Code 20 and unusable-locker facts bypass unnecessary AI clarification', () => {
+test('fully stated pickup receipt, Code 20, and unusable-locker facts bypass unnecessary AI clarification', () => {
+  const receiptRecord = knowledgeRecord({
+    knowledge_id: 'KNO-PUP-RECEIPT-001',
+    canonical_situation: 'Printing a pickup receipt after successfully picking up packages',
+    driver_question_patterns: [{
+      utterance: 'Customer requests proof for the regular pickup packages',
+      response_mode: 'DIRECT_SOURCE_GROUNDED_ANSWER',
+      information_sufficiency: 'SUFFICIENT',
+      must_clarify: [],
+      answer_override: { direct_answer: 'Select the pickup-receipt option on Stop Summary.' }
+    }]
+  });
   const code20Record = knowledgeRecord({
     knowledge_id: 'KNO-PUP-CODE20-001',
     canonical_situation: 'Customer confirms no packages after an attempted pickup',
@@ -654,6 +665,16 @@ test('fully stated Code 20 and unusable-locker facts bypass unnecessary AI clari
       answer_override: { direct_answer: 'Use Code 007 and return the package.' }
     }]
   });
+
+  const receipt = buildDeterministicRuntimeDecision(
+    'The shipper wants proof that I took their outgoing packages.',
+    [receiptRecord],
+    {}
+  );
+  assert.equal(receipt.decision.response_mode, 'ANSWER');
+  assert.equal(receipt.decision.selected_records[0].knowledge_id, receiptRecord.knowledge_id);
+  assert.match(receipt.decision.answer, /pickup-receipt option/i);
+  assert.equal(receipt.lockedDecision, true);
 
   const pickup = buildDeterministicRuntimeDecision(
     'The pickup place is open and the customer says they have zero boxes for me.',

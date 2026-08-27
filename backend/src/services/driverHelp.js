@@ -871,6 +871,25 @@ function buildProtectedRuntimeDecision(question, records, context = {}) {
     }, context);
   }
 
+  // Asking for proof of packages the driver already took or collected is a
+  // completed-pickup receipt request. The successful-pickup fact is contained
+  // in the driver's wording, so do not ask it again or fall through to an
+  // unrelated proof-of-delivery route.
+  const completedPickupReceiptRequest = (
+    /\b(?:customer|shipper)\b/.test(normalized)
+    && /\b(?:proof|receipt)\b/.test(normalized)
+    && /\b(?:took|collected|picked up|received)\b/.test(normalized)
+    && /\b(?:outgoing\s+)?(?:package|packages|boxes)\b/.test(normalized)
+  );
+  if (completedPickupReceiptRequest) {
+    return buildLockedRecordRuntimeDecision(
+      question,
+      context,
+      findEligibleOperationalRecord(records, 'KNO-PUP-RECEIPT-001'),
+      { patternQuestion: 'Customer requests proof for the regular pickup packages' }
+    );
+  }
+
   const customerConfirmedZeroPackagePickup = (
     /\bpickup\b/.test(normalized)
     && /\b(?:customer|shipper)\b/.test(normalized)
