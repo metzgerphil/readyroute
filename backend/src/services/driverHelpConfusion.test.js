@@ -114,7 +114,9 @@ test('reviewed unsupported boundaries fail closed instead of using neighboring p
   const questions = [
     "The customer called and told me to change the address myself",
     "Can I open a customer's package to inspect what is inside?",
-    'A customer wants me to accept cash for shipping charges'
+    'A customer wants me to accept cash for shipping charges',
+    'Can I deliver this tobacco package?',
+    'How do I fight this parking ticket?'
   ];
 
   for (const question of questions) {
@@ -122,4 +124,24 @@ test('reviewed unsupported boundaries fail closed instead of using neighboring p
     assert.equal(decision.response_mode, 'ESCALATE', question);
     assert.equal(selectedId(decision), null, question);
   }
+});
+
+test('clear new-driver wording reaches the intended approved record', () => {
+  const cases = [
+    ["Yesterday's delivery went to the wrong house and I found out this morning.", 'KNO-DEL-MISDELIVERY-LATE-RETRIEVAL-001'],
+    ['Before leaving the station I found a carton with a different work-area number.', 'KNO-FORGE-MANIFEST-PREVIEW-001'],
+    ["It's a normal house delivery with no signature, but every spot is exposed to the street.", 'KNO-DEL-SAFEPLACE-001'],
+    ["The roads are icing over and I don't think this route is safe anymore.", 'KNO-WEATHER-QUESTIONABLE-001']
+  ];
+
+  for (const [question, expected] of cases) {
+    const decision = decide(question);
+    assert.equal(decision.response_mode, 'ANSWER', question);
+    assert.equal(selectedId(decision), expected, question);
+  }
+});
+
+test('the pre-dispatch package shortcut does not absorb a pickup assigned to the wrong work area', () => {
+  const decision = decide('Pickup is on the wrong work area before dispatch');
+  assert.equal(selectedId(decision), 'KNO-PUP-WRONG-WA-001');
 });

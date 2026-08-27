@@ -4,13 +4,16 @@ const defaultSupabase = require('../lib/supabase');
 const {
   buildAnswerStructure,
   buildClarificationPrompt,
+  clarificationBranchAnswerOverride,
   clarificationOptionsForRequirement,
   buildDriverHelpDecision,
   buildPresentedAnswer,
   formatDriverCodeTerminology,
   getMatchingQuestionPattern,
   isProductionEligibleRecord,
+  isUnsupportedBoundaryRequest,
   normalizeDriverQuestion,
+  questionSatisfiesClarificationRequirement,
   rankKnowledgeRecords,
   requirementMatches,
   selectCanonicalRecordVersions,
@@ -431,7 +434,11 @@ const AI_SUBJECT_GUARDS = Object.freeze([
   { pattern: /\b(?:badge|id card)\b/, knowledgeIds: ['KNO-SEC-LOST-BADGE-001'] },
   { pattern: /\b(?:photo|picture|ppod)\b/, knowledgeIds: ['KNO-DEL-PPOD-001'] },
   { pattern: /\b(?:asr|dsr|isr|signature required|signature package)\b/, knowledgeIds: ['KNO-DEL-SIG-ASR-001', 'KNO-DEL-SIG-DSR-001', 'KNO-DEL-SIG-ISR-001'] },
-  { pattern: /\b(?:wrong route|different route|another route|misload|manifest)\b/, knowledgeIds: ['KNO-DEL-MISLOAD-AFTERDISPATCH-001', 'KNO-FORGE-MANIFEST-PREVIEW-001', 'KNO-FORGE-BULK-TRANSFER-001'] }
+  { pattern: /\b(?:wrong route|different route|another route|misload|manifest|different work area|wrong work area)\b/, knowledgeIds: ['KNO-DEL-MISLOAD-AFTERDISPATCH-001', 'KNO-FORGE-MANIFEST-PREVIEW-001', 'KNO-FORGE-PREDISPATCH-PHYSICAL-HANDOFF-001', 'KNO-FORGE-BULK-TRANSFER-001'] },
+  { pattern: /\b(?:exposed|public view|no safe place|unsafe place)\b/, knowledgeIds: ['KNO-DEL-SAFEPLACE-001'] },
+  { pattern: /\b(?:tip|bucks|dollars|customer offered me money)\b/, knowledgeIds: ['KNO-POLICY-CUSTOMER-TIP-001'] },
+  { pattern: /\b(?:icy|icing|unsafe weather|unsafe roads|dangerous roads)\b/, knowledgeIds: ['KNO-WEATHER-QUESTIONABLE-001'] },
+  { pattern: /\b(?:yesterday|previous day|earlier day|next day)\b.*\b(?:wrong house|wrong address|misdeliver)/, knowledgeIds: ['KNO-DEL-MISDELIVERY-LATE-RETRIEVAL-001'] }
 ]);
 
 function candidateSearchText(record) {
@@ -575,6 +582,21 @@ function applyAiInterpretation(interpretation, question, records, baseDecision) 
         score: record.knowledge_id === selectedRecord.knowledge_id ? 100 : 50
       }))
       .sort((left, right) => right.score - left.score);
+    if (questionSatisfiesClarificationRequirement(
+      interpretation.clarification_requirement,
+      question
+    )) {
+      const answerStructure = buildAnswerStructure(selectedRecord, selectedPattern?.answer_override || null);
+      return {
+        response_mode: 'ANSWER',
+        confidence: interpretation.confidence,
+        candidates,
+        selected_records: [selectedRecord],
+        answer: answerStructure.direct_answer,
+        more_info: selectedRecord.more_info_answer || null,
+        answer_structure: answerStructure
+      };
+    }
     return {
       response_mode: 'CLARIFY',
       confidence: interpretation.confidence,
@@ -590,16 +612,15 @@ function applyAiInterpretation(interpretation, question, records, baseDecision) 
     };
   }
 
+  const answerStructure = buildAnswerStructure(selectedRecord, selectedPattern?.answer_override || null);
   return {
     response_mode: 'ANSWER',
     confidence: interpretation.confidence,
     candidates,
     selected_records: [selectedRecord],
-    answer: selectedPattern?.answer_override?.direct_answer
-      ? formatDriverCodeTerminology(selectedPattern.answer_override.direct_answer, selectedRecord)
-      : buildPresentedAnswer(selectedRecord, question),
+    answer: answerStructure.direct_answer,
     more_info: selectedRecord.more_info_answer || null,
-    answer_structure: buildAnswerStructure(selectedRecord, selectedPattern?.answer_override || null)
+    answer_structure: answerStructure
   };
 }
 
@@ -755,6 +776,7 @@ function buildLockedRecordRuntimeDecision(question, context, record, options = {
     ? getMatchingQuestionPattern(options.patternQuestion, record)
     : null;
   const answerOverride = options.answerOverride || pattern?.answer_override || null;
+  const answerStructure = buildAnswerStructure(record, answerOverride);
   return buildLockedRuntimeDecision(question, {
     response_mode: 'ANSWER',
     confidence: 1,
@@ -765,11 +787,9 @@ function buildLockedRecordRuntimeDecision(question, context, record, options = {
       score: 100
     }],
     selected_records: [record],
-    answer: answerOverride?.direct_answer
-      ? formatDriverCodeTerminology(answerOverride.direct_answer, record)
-      : buildPresentedAnswer(record, question),
+    answer: answerStructure.direct_answer,
     more_info: record.more_info_answer || null,
-    answer_structure: buildAnswerStructure(record, answerOverride)
+    answer_structure: answerStructure
   }, context, record);
 }
 
@@ -778,6 +798,92 @@ function buildProtectedRuntimeDecision(question, records, context = {}) {
   const pendingRequirement = normalizeDriverQuestion(
     context.pending_clarification_requirement || context.pending_clarification_prompt
   );
+
+  if (isUnsupportedBoundaryRequest(normalized)) {
+    const parkingRecord = /\b(?:ticket|citation)\b/.test(normalized)
+      ? findEligibleOperationalRecord(records, 'KNO-INCIDENT-PARKING-TICKET-001')
+      : null;
+    return buildLockedRuntimeDecision(question, {
+      response_mode: 'ESCALATE',
+      confidence: parkingRecord ? 1 : 0,
+      candidates: parkingRecord ? [{
+        knowledge_id: parkingRecord.knowledge_id,
+        version: parkingRecord.version,
+        canonical_situation: parkingRecord.canonical_situation,
+        score: 100
+      }] : [],
+      selected_records: [],
+      clarification_options: [],
+      escalation_message: 'Ready Route Answers does not have a verified answer for this question yet. Contact your manager or station for the current procedure.'
+    }, context);
+  }
+
+  const lateMisdelivery = (
+    /\b(?:yesterday|last night|previous day|earlier day|day before|next day)\b/.test(normalized)
+    && /\b(?:wrong house|wrong address|wrong door|misdeliver|misdelivered)\b/.test(normalized)
+  );
+  if (lateMisdelivery) {
+    return buildLockedRecordRuntimeDecision(
+      question,
+      context,
+      findEligibleOperationalRecord(records, 'KNO-DEL-MISDELIVERY-LATE-RETRIEVAL-001'),
+      { patternQuestion: "I found a package yesterday that I'd actually left at the wrong address." }
+    );
+  }
+
+  const preDispatchWorkArea = (
+    /\b(?:before dispatch|before leaving (?:the )?station|still at (?:the )?station)\b/.test(normalized)
+    && !/\bpickup\b/.test(normalized)
+    && (
+      /\b(?:different|wrong) work area\b/.test(normalized)
+      || /\b(?:different|wrong|another) route\b/.test(normalized)
+    )
+  );
+  if (preDispatchWorkArea) {
+    return buildLockedRecordRuntimeDecision(
+      question,
+      context,
+      findEligibleOperationalRecord(records, 'KNO-FORGE-MANIFEST-PREVIEW-001')
+    );
+  }
+
+  const exposedResidentialRelease = (
+    /\b(?:house|home|residential)\b/.test(normalized)
+    && /\b(?:no signature|normal (?:house )?delivery|driver release|release package)\b/.test(normalized)
+    && /\b(?:exposed|public view|street|no safe (?:place|spot)|unsafe (?:place|spot))\b/.test(normalized)
+  );
+  if (exposedResidentialRelease) {
+    return buildLockedRecordRuntimeDecision(
+      question,
+      context,
+      findEligibleOperationalRecord(records, 'KNO-DEL-SAFEPLACE-001')
+    );
+  }
+
+  const customerTip = (
+    /\bcustomer\b/.test(normalized)
+    && /\b(?:tip|bucks|dollars|cash|money|twenty)\b/.test(normalized)
+    && /\b(?:hand|offer|offered|give|giving|trying)\b/.test(normalized)
+  );
+  if (customerTip) {
+    return buildLockedRecordRuntimeDecision(
+      question,
+      context,
+      findEligibleOperationalRecord(records, 'KNO-POLICY-CUSTOMER-TIP-001')
+    );
+  }
+
+  const unsafeWeather = (
+    /\b(?:icy|icing|ice|snow|weather|flood|flooded)\b/.test(normalized)
+    && /\b(?:unsafe|dangerous|not safe|don t think.*safe)\b/.test(normalized)
+  );
+  if (unsafeWeather) {
+    return buildLockedRecordRuntimeDecision(
+      question,
+      context,
+      findEligibleOperationalRecord(records, 'KNO-WEATHER-QUESTIONABLE-001')
+    );
+  }
 
   const employmentQuestion = (
     /\b(?:vacation|time off|pto|overtime|paycheck|payroll|wages?|benefits?)\b/.test(normalized)
@@ -1126,9 +1232,15 @@ function buildDeterministicRuntimeDecision(question, records, context = {}) {
             clarificationSelection?.query || resolvedQuestion,
             selectedClarificationRecord
           );
-          return pattern?.answer_override?.direct_answer
-            ? formatDriverCodeTerminology(pattern.answer_override.direct_answer, selectedClarificationRecord)
-            : buildPresentedAnswer(selectedClarificationRecord, resolvedQuestion);
+          const branchOverride = clarificationBranchAnswerOverride(
+            selectedClarificationRecord,
+            context.pending_clarification_requirement || context.pending_clarification_prompt,
+            clarificationSelection?.query || question
+          );
+          return buildAnswerStructure(
+            selectedClarificationRecord,
+            branchOverride || pattern?.answer_override || null
+          ).direct_answer;
         })(),
         more_info: selectedClarificationRecord.more_info_answer || null,
         answer_structure: (() => {
@@ -1136,7 +1248,15 @@ function buildDeterministicRuntimeDecision(question, records, context = {}) {
             clarificationSelection?.query || resolvedQuestion,
             selectedClarificationRecord
           );
-          return buildAnswerStructure(selectedClarificationRecord, pattern?.answer_override || null);
+          const branchOverride = clarificationBranchAnswerOverride(
+            selectedClarificationRecord,
+            context.pending_clarification_requirement || context.pending_clarification_prompt,
+            clarificationSelection?.query || question
+          );
+          return buildAnswerStructure(
+            selectedClarificationRecord,
+            branchOverride || pattern?.answer_override || null
+          );
         })()
       }
     : (exactOperationalMatch ? operationalDecision : referenceDecision || operationalDecision);

@@ -65,8 +65,15 @@ const WITHHELD_STATUSES = new Set([
 const UNSUPPORTED_BOUNDARY_PATTERNS = [
   /\bcustomer\b.*\b(?:called|told)\b.*\bchange\b.*\baddress\b/,
   /\bopen\b.*\b(?:customer|recipient)(?: s)?\b.*\bpackage\b.*\binspect\b|\binspect\b.*\binside\b.*\bpackage\b/,
-  /\baccept\b.*\bcash\b.*\bshipping charges?\b|\bcash\b.*\bshipping charges?\b/
+  /\baccept\b.*\bcash\b.*\bshipping charges?\b|\bcash\b.*\bshipping charges?\b/,
+  /\b(?:cigarette|cigarettes|tobacco|nicotine|vape|vaping)\b/,
+  /\b(?:fight|dispute|appeal|contest)\b.*\b(?:parking )?(?:ticket|citation)\b|\b(?:parking )?(?:ticket|citation)\b.*\b(?:fight|dispute|appeal|contest)\b/
 ];
+
+function isUnsupportedBoundaryRequest(question) {
+  const normalizedQuestion = normalizeDriverQuestion(question);
+  return UNSUPPORTED_BOUNDARY_PATTERNS.some((pattern) => pattern.test(normalizedQuestion));
+}
 
 function normalizeDriverQuestion(value) {
   return String(value || '')
@@ -506,10 +513,17 @@ function clarificationOptionsForRequirement(requirement, ranked) {
       }
     ];
   }
-  if (/completed delivery photo or an unsuccessful attempt photo/.test(normalized) && topRecord) {
+  if (/completed delivery photo or an unsuccessful attempt photo/.test(normalized)) {
+    const photoRecord = ranked
+      .map(({ record }) => record)
+      .find((record) => (
+        record.knowledge_id === 'KNO-DEL-PPOD-001'
+        && isProductionEligibleRecord(record)
+      ));
+    if (!photoRecord) return [];
     return [
-      { knowledge_id: topRecord.knowledge_id, version: topRecord.version, label: 'Completed delivery photo', query: 'What should my delivery photo show?' },
-      { knowledge_id: topRecord.knowledge_id, version: topRecord.version, label: 'Unsuccessful-attempt photo', query: 'What should the attempt photo show?' }
+      { knowledge_id: photoRecord.knowledge_id, version: photoRecord.version, label: 'Completed delivery photo', query: 'What should my delivery photo show?' },
+      { knowledge_id: photoRecord.knowledge_id, version: photoRecord.version, label: 'Unsuccessful-attempt photo', query: 'What should the attempt photo show?' }
     ];
   }
   if (/package discovered before or after dispatch/.test(normalized)) {
@@ -567,6 +581,36 @@ function clarificationOptionsForRequirement(requirement, ranked) {
         query: record.knowledge_id.split('-')[3]
       }));
   }
+  if (/package weight field optional or required/.test(normalized) && topRecord) {
+    return [
+      { knowledge_id: topRecord.knowledge_id, version: topRecord.version, label: 'Optional', query: 'FORGE says the package weight is optional' },
+      { knowledge_id: topRecord.knowledge_id, version: topRecord.version, label: 'Required', query: 'FORGE says the package weight is required' }
+    ];
+  }
+  if (/ordinary personal vehicle or an approved alternative vehicle/.test(normalized) && topRecord) {
+    return [
+      { knowledge_id: topRecord.knowledge_id, version: topRecord.version, label: 'Personal vehicle', query: 'This is an ordinary personal vehicle' },
+      { knowledge_id: topRecord.knowledge_id, version: topRecord.version, label: 'Approved Alternative Vehicle', query: 'This is an approved Alternative Vehicle' }
+    ];
+  }
+  if (/scanner specifically instruct delivery at the front door/.test(normalized) && topRecord) {
+    return [
+      { knowledge_id: topRecord.knowledge_id, version: topRecord.version, label: 'Front door required', query: 'Yes, FORGE specifically requires the front door' },
+      { knowledge_id: topRecord.knowledge_id, version: topRecord.version, label: 'No specific location', query: 'No, FORGE does not specify the front door' }
+    ];
+  }
+  if (/hal delivery stop already closed/.test(normalized) && topRecord) {
+    return [
+      { knowledge_id: topRecord.knowledge_id, version: topRecord.version, label: 'Stop still open', query: 'No, the HAL stop is still open' },
+      { knowledge_id: topRecord.knowledge_id, version: topRecord.version, label: 'Stop already closed', query: 'Yes, the HAL stop is already closed' }
+    ];
+  }
+  if (/weekend closure/.test(normalized) && topRecord) {
+    return [
+      { knowledge_id: topRecord.knowledge_id, version: topRecord.version, label: 'Weekend closure', query: 'Yes, this is a weekend closure' },
+      { knowledge_id: topRecord.knowledge_id, version: topRecord.version, label: 'Not a weekend closure', query: 'No, this is a weekday closure' }
+    ];
+  }
   if (
     /^(?:is|was|were|did|does|do|has|have|can|could|should|will|would)\b/.test(normalized)
     || /^if attempted\b/.test(normalized)
@@ -593,16 +637,15 @@ function escalation(candidates = [], confidence = 0, message = null) {
 
 function answer(record, candidates, confidence, pattern = null) {
   const answerOverride = pattern?.answer_override || null;
+  const answerStructure = buildAnswerStructure(record, answerOverride);
   return {
     response_mode: 'ANSWER',
     confidence,
     candidates,
     selected_records: [record],
-    answer: answerOverride?.direct_answer
-      ? formatDriverCodeTerminology(answerOverride.direct_answer, record)
-      : buildPresentedAnswer(record),
+    answer: answerStructure.direct_answer,
     more_info: record.more_info_answer || null,
-    answer_structure: buildAnswerStructure(record, answerOverride)
+    answer_structure: answerStructure
   };
 }
 
@@ -671,7 +714,148 @@ function questionSatisfiesClarificationRequirement(requirement, question) {
   if (/locker full broken or wrong/.test(normalizedRequirement)) {
     return /\b(?:full|broken|won t fit|wont fit|does not fit|wrong locker)\b/.test(normalizedQuestion);
   }
+  if (/at least one package successfully picked up/.test(normalizedRequirement)) {
+    return /\b(?:picked up|took|collected|received)\b.*\b(?:package|packages|box|boxes)\b/.test(normalizedQuestion)
+      || /\b(?:package|packages|box|boxes)\b.*\b(?:picked up|took|collected|received)\b/.test(normalizedQuestion);
+  }
+  if (/pickup package rather than a delivery package/.test(normalizedRequirement)) {
+    return /\b(?:outgoing|pickup|shipper)\b/.test(normalizedQuestion);
+  }
+  if (/truly no barcode/.test(normalizedRequirement)) {
+    return /\b(?:no|missing|without)\b.*\bbarcode\b|\bbarcode\b.*\b(?:missing|nowhere|anywhere)\b/.test(normalizedQuestion);
+  }
+  if (/fedex premises or operating covered leased equipment/.test(normalizedRequirement)) {
+    return /\b(?:fedex|station|hub|security checkpoint|loading area|secured yard)\b/.test(normalizedQuestion);
+  }
   return false;
+}
+
+function clarificationBranchAnswerOverride(record, requirement, answerText) {
+  const knowledgeId = record?.knowledge_id;
+  const normalizedRequirement = normalizeDriverQuestion(requirement);
+  const normalizedAnswer = normalizeDriverQuestion(answerText);
+  const isNo = /^(?:no|nope)\b/.test(normalizedAnswer)
+    || /\b(?:not|isn t|isnt|wasn t|wasnt)\b/.test(normalizedAnswer);
+  const isYes = /^(?:yes|yeah|yep)\b/.test(normalizedAnswer);
+
+  if (knowledgeId === 'KNO-DEL-BUS-CLOSED-001' && /weekend closure/.test(normalizedRequirement)) {
+    const weekend = isYes || /\b(?:weekend|saturday|sunday)\b/.test(normalizedAnswer);
+    const weekday = isNo || /\b(?:weekday|monday|tuesday|wednesday|thursday|friday)\b/.test(normalizedAnswer);
+    if (weekend || weekday) {
+      const code = weekend ? '011' : '004';
+      return {
+        direct_answer: `Use Code ${code} for this closed non-residential stop.`,
+        steps: [
+          `Apply Code ${code}.`,
+          'Complete, scan, and leave the door tag at the main entrance.',
+          `Cross the package with Code ${code}, the date, and work area number.`,
+          'Remove the SID sticker and return the package to the station.'
+        ],
+        watch_for: weekend
+          ? 'Use Code 011 only for the applicable weekend closure.'
+          : 'Use Code 011 instead when the stop qualifies as a weekend closure.'
+      };
+    }
+  }
+
+  if (knowledgeId === 'KNO-DEL-ANIMAL-HAZARD-001' && /front door/.test(normalizedRequirement)) {
+    const frontDoorRequired = isYes || /\bfront door (?:is )?(?:required|specified)\b/.test(normalizedAnswer);
+    const noSpecificLocation = isNo || /\bno specific (?:delivery )?location\b/.test(normalizedAnswer);
+    if (frontDoorRequired) {
+      return {
+        direct_answer: 'Do not approach the dog. Use Code 007 because the required front door is unsafe to access.',
+        steps: [
+          'Apply Code 007.',
+          'Complete the door tag and attempt photo.',
+          'Cross the package with Code 007, the date, and work area number.',
+          'Remove the SID sticker and return the package to the station.'
+        ],
+        watch_for: 'Do not approach the dog or leave the package at the gate when FORGE requires the front door.'
+      };
+    }
+    if (noSpecificLocation) {
+      return {
+        direct_answer: 'Do not approach the dog. Leave the package securely at the gate when FORGE does not require a specific delivery location.',
+        steps: [
+          'Stay outside the unsafe area.',
+          'Choose a secure spot at the gate.',
+          'Keep the package protected from theft and being run over.',
+          'Complete the eligible delivery at that gate location.'
+        ],
+        watch_for: 'Do not use this gate branch when FORGE requires the front door or the package has a stricter restriction.'
+      };
+    }
+  }
+
+  if (knowledgeId === 'KNO-PUP-WEIGHT-ENTRY-001' && /optional or required/.test(normalizedRequirement)) {
+    if (/\brequired\b/.test(normalizedAnswer)) {
+      return {
+        direct_answer: 'Enter the accurate package weight in pounds before continuing.',
+        steps: [
+          'Obtain the accurate package weight.',
+          'Enter that weight in the required Package Weight field.',
+          'Keep any Dry Ice weight in its separate prompt.'
+        ],
+        watch_for: 'Do not invent or estimate a weight just to clear the prompt.'
+      };
+    }
+    if (/\boptional\b/.test(normalizedAnswer)) {
+      return {
+        direct_answer: 'Enter the accurate package weight if known; otherwise you may continue because FORGE marks it optional.',
+        steps: [
+          'Enter the accurate package weight if it is available.',
+          'If it is unavailable, continue without entering it.',
+          'Keep any Dry Ice weight in its separate prompt.'
+        ],
+        watch_for: 'Do not assume a field is optional unless FORGE marks it optional.'
+      };
+    }
+  }
+
+  if (knowledgeId === 'KNO-DEL-HAL-UNABLE-001' && /stop already closed/.test(normalizedRequirement)) {
+    const stillOpen = isNo || /\b(?:still open|not closed)\b/.test(normalizedAnswer);
+    const alreadyClosed = isYes || /\b(?:already closed|stop is closed)\b/.test(normalizedAnswer);
+    if (stillOpen) {
+      return {
+        direct_answer: 'Use Code 250 and select the actual Unable to HAL reason before closing the stop.',
+        steps: [
+          'Apply Code 250 and the reason that matches the refusal.',
+          'Cross the package with Code 250, the date, and work area number.',
+          'Remove the SID sticker.',
+          'Return the package to station QA.'
+        ],
+        watch_for: 'Do not use the post-close Unable to Hold label path while the stop is still open.'
+      };
+    }
+    if (alreadyClosed) {
+      return {
+        direct_answer: 'Use the FedEx Office post-close Unable to Hold label and pickup path.',
+        steps: [
+          'Have the location apply the Unable to Hold label.',
+          'Have the location scan the package as a pickup.',
+          'Cross the package with the applicable return status, date, and work area number.',
+          'Remove the SID sticker and return the package to station QA.'
+        ],
+        watch_for: 'Do not use the pre-close Code 250 path after the stop has closed.'
+      };
+    }
+  }
+
+  if (knowledgeId === 'KNO-SEC-FACILITY-VEHICLE-001' && /ordinary personal vehicle or an approved alternative vehicle/.test(normalizedRequirement)) {
+    if (/\b(?:ordinary|personal)\b/.test(normalizedAnswer) && !/\bapproved alternative\b/.test(normalizedAnswer)) {
+      return {
+        direct_answer: 'Do not drive or park an ordinary personal vehicle inside the secured FedEx yard or station.',
+        steps: [
+          'Park outside the secured fence or yard.',
+          'Use the main pedestrian entrance.',
+          'Complete the required security screening.'
+        ],
+        watch_for: 'Do not use a vehicle gate to bypass pedestrian screening.'
+      };
+    }
+  }
+
+  return null;
 }
 
 function unansweredClarificationRequirements(record, context = {}, question = '') {
@@ -717,12 +901,24 @@ function buildDriverHelpDecision(question, records, context = {}) {
   const normalizedQuestion = normalizeDriverQuestion(question);
   const bypassRequest = /\b(ignore|invent|pretend)\b/.test(normalizedQuestion);
   const protectedRequest = /\b(hidden|system) (instructions|prompt)\b|\breveal (your )?(instructions|prompt)\b/.test(normalizedQuestion);
+  const unsupportedBoundary = isUnsupportedBoundaryRequest(normalizedQuestion);
   if (
     !normalizedQuestion
     || bypassRequest
     || protectedRequest
-    || UNSUPPORTED_BOUNDARY_PATTERNS.some((pattern) => pattern.test(normalizedQuestion))
   ) return escalation();
+  if (unsupportedBoundary) {
+    const parkingRecord = /\b(?:ticket|citation)\b/.test(normalizedQuestion)
+      ? selectCanonicalRecordVersions(records).find((record) => (
+        record.knowledge_id === 'KNO-INCIDENT-PARKING-TICKET-001'
+        && isProductionEligibleRecord(record)
+      ))
+      : null;
+    return escalation(
+      parkingRecord ? candidateSummary([{ record: parkingRecord, score: 100 }]) : [],
+      parkingRecord ? 1 : 0
+    );
+  }
   if (/^(?:what is )?code \d{1,3}$/.test(normalizedQuestion)) return escalation();
   if (context.clarification_plan_active === true) {
     const newestAnswer = latestDriverAnswer(question);
@@ -846,6 +1042,14 @@ function buildDriverHelpDecision(question, records, context = {}) {
           }
         });
       }
+      const branchOverride = clarificationBranchAnswerOverride(
+        plannedRecord,
+        context.pending_clarification_requirement || context.pending_clarification_prompt,
+        newestAnswer
+      );
+      if (branchOverride) {
+        return answer(plannedRecord, plannedCandidates, 1, { answer_override: branchOverride });
+      }
       if (!remaining.length) return answer(plannedRecord, plannedCandidates, 1);
       const decision = clarify(
         [{ record: plannedRecord, score: 100 }],
@@ -947,6 +1151,7 @@ module.exports = {
   GENERIC_DOMAIN_TOKENS,
   buildAnswerStructure,
   buildClarificationPrompt,
+  clarificationBranchAnswerOverride,
   clarificationOptionsForRequirement,
   buildCriticalIntentDecision,
   buildDirectAnswer,
@@ -957,6 +1162,7 @@ module.exports = {
   getMatchingQuestionPattern,
   getPatternRuntimeMode,
   isProductionEligibleRecord,
+  isUnsupportedBoundaryRequest,
   normalizeDriverQuestion,
   rankKnowledgeRecords,
   requirementMatches,

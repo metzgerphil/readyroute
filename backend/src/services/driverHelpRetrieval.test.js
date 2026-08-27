@@ -6,6 +6,7 @@ const path = require('node:path');
 const {
   buildAnswerStructure,
   buildDriverHelpDecision,
+  clarificationBranchAnswerOverride,
   clarificationOptionsForRequirement,
   normalizeDriverQuestion,
   questionSatisfiesClarificationRequirement,
@@ -40,6 +41,56 @@ test('empty corpus always fails closed', () => {
   assert.equal(decision.response_mode, 'ESCALATE');
   assert.deepEqual(decision.selected_records, []);
   assert.match(decision.escalation_message, /does not have a verified answer/i);
+});
+
+test('photo clarification choices stay bound to the PPOD record even when another candidate ranks first', () => {
+  const signedNote = record({
+    knowledge_id: 'KNO-DEL-SIGNED-NOTE-001',
+    canonical_situation: 'A signed note is presented'
+  });
+  const photo = record({
+    knowledge_id: 'KNO-DEL-PPOD-001',
+    canonical_situation: 'Picture proof of delivery'
+  });
+  const options = clarificationOptionsForRequirement(
+    'Is this a completed delivery photo or an unsuccessful attempt photo?',
+    [{ record: signedNote, score: 100 }, { record: photo, score: 90 }]
+  );
+
+  assert.deepEqual(options.map((option) => option.knowledge_id), [
+    'KNO-DEL-PPOD-001',
+    'KNO-DEL-PPOD-001'
+  ]);
+});
+
+test('either-or clarifiers use meaningful choices and selected branches stay concise', () => {
+  const weight = record({ knowledge_id: 'KNO-PUP-WEIGHT-ENTRY-001' });
+  const options = clarificationOptionsForRequirement(
+    'Is the Package Weight field optional or required?',
+    [{ record: weight, score: 100 }]
+  );
+  assert.deepEqual(options.map((option) => option.label), ['Optional', 'Required']);
+
+  const animal = record({ knowledge_id: 'KNO-DEL-ANIMAL-HAZARD-001' });
+  const branch = clarificationBranchAnswerOverride(
+    animal,
+    'Does the scanner specifically instruct delivery at the front door?',
+    'No, FORGE does not specify the front door'
+  );
+  assert.match(branch.direct_answer, /leave the package securely at the gate/i);
+  assert.doesNotMatch(branch.direct_answer, /Code 007/i);
+});
+
+test('facts stated in the question satisfy redundant clarification requirements', () => {
+  const cases = [
+    ['Was at least one package successfully picked up?', 'I picked up three packages but forgot the receipt'],
+    ['Is this a pickup package rather than a delivery package?', 'This outgoing package has no barcode'],
+    ['Is there truly no barcode?', 'The barcode is missing everywhere on this package'],
+    ['Are you entering FedEx premises or operating covered leased equipment?', 'Security stopped me at the FedEx station checkpoint']
+  ];
+  for (const [requirement, question] of cases) {
+    assert.equal(questionSatisfiesClarificationRequirement(requirement, question), true);
+  }
 });
 
 test('branch-specific answer overrides cannot leak a conflicting base procedure or reason wording', () => {
