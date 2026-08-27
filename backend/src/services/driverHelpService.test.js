@@ -309,7 +309,7 @@ test('an active exact answer-memory route bypasses AI and still renders publishe
     canonical_situation: 'A business is closed and no recipient is available',
     concise_answer: 'Use Code 004 when the closed business has no authorized release path.'
   });
-  const question = 'The business is locked and nobody is there';
+  const question = 'My delivery is at a business that is locked and nobody is there';
   const supabase = memorySupabase([record], {
     route_key: answerMemoryRouteKey(question),
     knowledge_id: record.knowledge_id,
@@ -353,11 +353,11 @@ test('a sampled answer-memory audit keeps an agreeing route active and records t
   const record = knowledgeRecord({
     knowledge_id: 'KNO-DEL-BUS-CLOSED-001',
     canonical_situation: 'A business is closed and no recipient is available',
-    driver_question_variants: ['The business is locked and nobody is there'],
+    driver_question_variants: ['My delivery is at a business that is locked and nobody is there'],
     clarification_requirements: [],
     concise_answer: 'Use Code 004 when the closed business has no authorized release path.'
   });
-  const question = 'The business is locked and nobody is there';
+  const question = 'My delivery is at a business that is locked and nobody is there';
   const supabase = memorySupabase([record], {
     route_key: answerMemoryRouteKey(question),
     knowledge_id: record.knowledge_id,
@@ -597,6 +597,38 @@ test('protected runtime branches fail closed and preserve high-risk distinctions
   );
   assert.equal(genericCodRefusal.decision.response_mode, 'ANSWER');
   assert.equal(genericCodRefusal.decision.selected_records[0].knowledge_id, codRecord.knowledge_id);
+});
+
+test('an ambiguous closed storefront asks whether this is delivery or pickup', () => {
+  const deliveryRecord = knowledgeRecord({
+    knowledge_id: 'KNO-DEL-BUS-CLOSED-001',
+    canonical_situation: 'A business recipient is not in',
+    driver_question_patterns: [{
+      utterance: 'The business is closed and nobody is there.',
+      response_mode: 'DIRECT_SOURCE_GROUNDED_ANSWER',
+      information_sufficiency: 'SUFFICIENT',
+      must_clarify: [],
+      answer_override: { direct_answer: 'Use the approved closed-business delivery procedure.' }
+    }]
+  });
+  const pickupRecord = knowledgeRecord({
+    knowledge_id: 'KNO-PUP-CANCELED-001',
+    canonical_situation: 'A listed pickup is canceled or has no packages'
+  });
+
+  const result = buildDeterministicRuntimeDecision(
+    'The shop is dark, the front doors are chained, and nobody is answering me.',
+    [deliveryRecord, pickupRecord],
+    {}
+  );
+
+  assert.equal(result.decision.response_mode, 'CLARIFY');
+  assert.equal(result.lockedDecision, true);
+  assert.match(result.decision.clarification_prompt, /delivery or attempting a pickup/i);
+  assert.deepEqual(
+    result.decision.clarification_options.map((option) => option.label),
+    ['Delivery', 'Pickup — no packages available']
+  );
 });
 
 test('Code 030 remains definition-only and Code 128 safety wording does not launch a workflow', () => {

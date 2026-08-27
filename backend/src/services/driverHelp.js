@@ -828,6 +828,49 @@ function buildProtectedRuntimeDecision(question, records, context = {}) {
     }, context);
   }
 
+  // A closed storefront can describe either a delivery attempt or a pickup
+  // attempt. Both procedures have approved records, but their codes and steps
+  // differ. Do not let an AI outage or a shared alias silently choose one.
+  const ambiguousClosedBusinessStop = (
+    /\b(?:office|shop|store)\b/.test(normalized)
+    && /\b(?:dark|chained)\b/.test(normalized)
+    && /\b(?:nobody|no one|not answering|unavailable)\b/.test(normalized)
+    && !/\b(?:deliver|delivery|package|pickup|pick up|collect)\b/.test(normalized)
+  );
+  if (ambiguousClosedBusinessStop) {
+    const deliveryRecord = findEligibleOperationalRecord(records, 'KNO-DEL-BUS-CLOSED-001');
+    const pickupRecord = findEligibleOperationalRecord(records, 'KNO-PUP-CANCELED-001');
+    const options = [
+      deliveryRecord ? {
+        knowledge_id: deliveryRecord.knowledge_id,
+        version: deliveryRecord.version,
+        label: 'Delivery',
+        query: 'The business is closed and nobody is there.'
+      } : null,
+      pickupRecord ? {
+        knowledge_id: pickupRecord.knowledge_id,
+        version: pickupRecord.version,
+        label: 'Pickup — no packages available',
+        query: 'I attempted the pickup, the business was closed, and I obtained zero packages. What should I do?'
+      } : null
+    ].filter(Boolean);
+    return buildLockedRuntimeDecision(question, {
+      response_mode: 'CLARIFY',
+      confidence: 1,
+      candidates: [deliveryRecord, pickupRecord].filter(Boolean).map((record) => ({
+        knowledge_id: record.knowledge_id,
+        version: record.version,
+        canonical_situation: record.canonical_situation,
+        score: 100
+      })),
+      selected_records: [],
+      clarification_prompt: 'Ready Route Answers needs one detail: Are you making a delivery or attempting a pickup?',
+      clarification_requirement: 'Are you making a delivery or attempting a pickup?',
+      clarification_plan: ['Are you making a delivery or attempting a pickup?'],
+      clarification_options: options
+    }, context);
+  }
+
   const priorLateMisdelivery = (context.knowledge_ids || []).includes(
     'KNO-DEL-MISDELIVERY-LATE-RETRIEVAL-001'
   );
