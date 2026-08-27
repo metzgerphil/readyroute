@@ -831,6 +831,20 @@ function buildProtectedRuntimeDecision(question, records, context = {}) {
     );
   }
 
+  const recentSameDayMisdelivery = (
+    /\b(?:just|minutes?|moments?|earlier today|today|last (?:package|stop))\b/.test(normalized)
+    && /\b(?:left|delivered|dropped|put)\b/.test(normalized)
+    && /\b(?:neighbor|wrong house|wrong address|wrong door|misdeliver|misdelivered)\b/.test(normalized)
+  );
+  if (recentSameDayMisdelivery) {
+    return buildLockedRecordRuntimeDecision(
+      question,
+      context,
+      findEligibleOperationalRecord(records, 'KNO-DEL-MISDELIVERY-RECOVERY-001'),
+      { patternQuestion: 'I left a package at the wrong address — how do I fix it?' }
+    );
+  }
+
   const preDispatchWorkArea = (
     /\b(?:before dispatch|before leaving (?:the )?station|still at (?:the )?station)\b/.test(normalized)
     && !/\bpickup\b/.test(normalized)
@@ -845,6 +859,23 @@ function buildProtectedRuntimeDecision(question, records, context = {}) {
       context,
       findEligibleOperationalRecord(records, 'KNO-FORGE-MANIFEST-PREVIEW-001')
     );
+  }
+
+  const requiredPickupWeight = (
+    /\b(?:forge|scanner)\b/.test(normalized)
+    && /\b(?:pickup|outgoing)\b/.test(normalized)
+    && /\bweight\b/.test(normalized)
+    && /\b(?:stopped|requires|required|won t continue|cannot continue)\b/.test(normalized)
+  );
+  if (requiredPickupWeight) {
+    const record = findEligibleOperationalRecord(records, 'KNO-PUP-WEIGHT-ENTRY-001');
+    return buildLockedRecordRuntimeDecision(question, context, record, {
+      answerOverride: clarificationBranchAnswerOverride(
+        record,
+        'Does FORGE mark the package-weight field optional or required?',
+        'FORGE marks the package-weight field required'
+      )
+    });
   }
 
   const exposedResidentialRelease = (

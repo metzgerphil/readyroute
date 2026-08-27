@@ -129,9 +129,11 @@ test('reviewed unsupported boundaries fail closed instead of using neighboring p
 test('clear new-driver wording reaches the intended approved record', () => {
   const cases = [
     ["Yesterday's delivery went to the wrong house and I found out this morning.", 'KNO-DEL-MISDELIVERY-LATE-RETRIEVAL-001'],
+    ["I just noticed I left that last package at the neighbor's place about twenty minutes ago.", 'KNO-DEL-MISDELIVERY-RECOVERY-001'],
     ['Before leaving the station I found a carton with a different work-area number.', 'KNO-FORGE-MANIFEST-PREVIEW-001'],
     ["It's a normal house delivery with no signature, but every spot is exposed to the street.", 'KNO-DEL-SAFEPLACE-001'],
-    ["The roads are icing over and I don't think this route is safe anymore.", 'KNO-WEATHER-QUESTIONABLE-001']
+    ["The roads are icing over and I don't think this route is safe anymore.", 'KNO-WEATHER-QUESTIONABLE-001'],
+    ['FORGE stopped me and wants the weight for this pickup carton.', 'KNO-PUP-WEIGHT-ENTRY-001']
   ];
 
   for (const [question, expected] of cases) {
@@ -139,6 +141,14 @@ test('clear new-driver wording reaches the intended approved record', () => {
     assert.equal(decision.response_mode, 'ANSWER', question);
     assert.equal(selectedId(decision), expected, question);
   }
+});
+
+test('required pickup weight wording selects only the required branch', () => {
+  const decision = decide('FORGE stopped me and wants the weight for this pickup carton.');
+  assert.equal(decision.response_mode, 'ANSWER');
+  assert.equal(selectedId(decision), 'KNO-PUP-WEIGHT-ENTRY-001');
+  assert.match(decision.answer, /enter the accurate package weight/i);
+  assert.doesNotMatch(decision.answer, /optional/i);
 });
 
 test('the pre-dispatch package shortcut does not absorb a pickup assigned to the wrong work area', () => {
