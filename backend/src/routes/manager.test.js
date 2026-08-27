@@ -6119,3 +6119,76 @@ test('PUT /manager/account/local-contacts saves CSA Number separately from phone
     await server.close();
   }
 });
+
+test('GET /manager/account/manager-schedule returns the company-local weekly schedule', async () => {
+  const supabase = new MockSupabase((query) => {
+    if (query.table === 'accounts') return { data: { operations_timezone: 'America/Los_Angeles' }, error: null };
+    if (query.table === 'manager_users') return {
+      data: [{ id: 'manager-1', full_name: 'Phil Manager', email: 'phil@example.com', phone: '4155550100' }],
+      error: null
+    };
+    if (query.table === 'rra_manager_weekly_schedule') return {
+      data: [{ iso_weekday: 4, manager_user_id: 'manager-1' }],
+      error: null
+    };
+    throw new Error(`Unexpected query ${query.table}:${query.operation}`);
+  });
+  const server = await startTestServer({ supabase, now: () => new Date('2026-08-27T18:00:00.000Z') });
+
+  try {
+    const response = await fetch(`${server.baseUrl}/manager/account/manager-schedule`, {
+      headers: { Authorization: `Bearer ${signManagerToken({ manager_role: 'owner' })}` }
+    });
+    const body = await response.json();
+    assert.equal(response.status, 200);
+    assert.equal(body.operations_timezone, 'America/Los_Angeles');
+    assert.equal(body.current_iso_weekday, 4);
+    assert.equal(body.managers[0].phone, '4155550100');
+    assert.deepEqual(body.schedule, [{ iso_weekday: 4, manager_user_id: 'manager-1' }]);
+  } finally {
+    await server.close();
+  }
+});
+
+test('PUT /manager/account/manager-schedule saves all seven company-wide assignments', async () => {
+  const supabase = new MockSupabase((query) => {
+    if (query.table === 'manager_users' && query.operation === 'select') {
+      return { data: [{ id: 'manager-1', phone: null }, { id: 'manager-2', phone: null }], error: null };
+    }
+    if (query.table === 'accounts' && query.operation === 'update') return { data: null, error: null };
+    if (query.table === 'manager_users' && query.operation === 'update') return { data: null, error: null };
+    if (query.table === 'rra_manager_weekly_schedule' && query.operation === 'upsert') return { data: null, error: null };
+    throw new Error(`Unexpected query ${query.table}:${query.operation}`);
+  });
+  const server = await startTestServer({ supabase });
+  const schedule = [1, 2, 3, 4, 5, 6, 7].map((isoWeekday) => ({
+    iso_weekday: isoWeekday,
+    manager_user_id: isoWeekday <= 3 ? 'manager-1' : 'manager-2'
+  }));
+
+  try {
+    const response = await fetch(`${server.baseUrl}/manager/account/manager-schedule`, {
+      method: 'PUT',
+      headers: {
+        Authorization: `Bearer ${signManagerToken({ manager_role: 'owner' })}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        operations_timezone: 'America/Los_Angeles',
+        managers: [
+          { id: 'manager-1', phone: '415-555-0100' },
+          { id: 'manager-2', phone: '415-555-0101' }
+        ],
+        schedule
+      })
+    });
+    assert.equal(response.status, 200);
+    const scheduleUpsert = supabase.calls.find((query) => query.table === 'rra_manager_weekly_schedule');
+    assert.equal(scheduleUpsert.payload.length, 7);
+    assert.equal(scheduleUpsert.options.onConflict, 'account_id,iso_weekday');
+    const managerUpdates = supabase.calls.filter((query) => query.table === 'manager_users' && query.operation === 'update');
+    assert.deepEqual(managerUpdates.map((query) => query.payload.phone), ['4155550100', '4155550101']);
+  } finally {
+    await server.close();
+  }
+});

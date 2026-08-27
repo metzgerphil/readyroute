@@ -46,11 +46,15 @@ function createDriverHelpRouter(options = {}) {
       .maybeSingle();
     if (error) throw error;
 
+    const scheduledManager = contactType === 'manager'
+      ? (await loadDriverQuickActions(supabase, req.driver.account_id)).manager
+      : null;
+
     const contact = contactType === 'cxpc'
       ? { label: 'local CXPC', name: null, phone: account?.rra_cxpc_phone_number }
       : contactType === 'csa'
         ? { label: 'local CSA', name: null, phone: account?.rra_csa_phone_number }
-        : { label: 'manager', name: account?.rra_primary_manager_name, phone: account?.rra_primary_manager_phone_number };
+        : { label: 'manager', name: scheduledManager?.name, phone: scheduledManager?.phone };
     const hasContact = Boolean(contact.phone);
     const answer = hasContact
       ? `${contact.name ? `${contact.name}, your ${contact.label},` : `Your ${contact.label} number`} is ${contact.phone}.`

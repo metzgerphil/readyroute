@@ -62,6 +62,7 @@ create table if not exists public.manager_users (
   account_id uuid not null references public.accounts(id) on delete cascade,
   email text not null,
   full_name text,
+  phone text,
   password_hash text,
   is_active boolean not null default true,
   invited_at timestamptz,
@@ -69,6 +70,19 @@ create table if not exists public.manager_users (
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
+
+create table if not exists public.rra_manager_weekly_schedule (
+  account_id uuid not null references public.accounts(id) on delete cascade,
+  iso_weekday smallint not null check (iso_weekday between 1 and 7),
+  manager_user_id uuid not null references public.manager_users(id) on delete restrict,
+  updated_by_manager_user_id uuid references public.manager_users(id) on delete set null,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  primary key (account_id, iso_weekday)
+);
+
+create index if not exists rra_manager_weekly_schedule_manager_idx
+  on public.rra_manager_weekly_schedule (manager_user_id);
 
 create table if not exists public.readyroute_staff_users (
   id uuid primary key default gen_random_uuid(),
@@ -1207,6 +1221,7 @@ create index if not exists driver_positions_timestamp_idx on public.driver_posit
 
 alter table public.accounts enable row level security;
 alter table public.manager_users enable row level security;
+alter table public.rra_manager_weekly_schedule enable row level security;
 alter table public.readyroute_staff_users enable row level security;
 alter table public.account_internal_profiles enable row level security;
 alter table public.readyroute_staff_invites enable row level security;
@@ -1253,6 +1268,13 @@ with check (id = public.readyroute_account_id());
 drop policy if exists drivers_by_account on public.drivers;
 create policy drivers_by_account
 on public.drivers
+for all
+using (account_id = public.readyroute_account_id())
+with check (account_id = public.readyroute_account_id());
+
+drop policy if exists rra_manager_weekly_schedule_by_account on public.rra_manager_weekly_schedule;
+create policy rra_manager_weekly_schedule_by_account
+on public.rra_manager_weekly_schedule
 for all
 using (account_id = public.readyroute_account_id())
 with check (account_id = public.readyroute_account_id());

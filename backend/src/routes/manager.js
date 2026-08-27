@@ -42,6 +42,7 @@ const {
 const { attachStopNotesToStops, saveStopNote } = require('../services/stopNotes');
 const { parseDriverImportRows } = require('../services/resourceImport');
 const { filterProductionRows, isProductionTestArtifact } = require('../services/testDataFilter');
+const { getIsoWeekday, normalizePhone } = require('../services/rraQuickActions');
 const {
   acceptOverageAuthorization,
   getRouteBillingSummary,
@@ -1282,6 +1283,7 @@ function toManagerAccessRecord(managerUser, primaryManagerEmail) {
     account_id: managerUser.account_id,
     email: managerUser.email,
     full_name: managerUser.full_name || null,
+    phone: managerUser.phone || null,
     is_active: managerUser.is_active !== false,
     invited_at: managerUser.invited_at || null,
     accepted_at: managerUser.accepted_at || null,
@@ -1326,7 +1328,7 @@ async function getAccountManagerContext(supabase, accountId) {
 async function listManagerUsersForAccount(supabase, accountId, primaryManagerEmail = null) {
   const managerUsersQuery = await supabase
     .from('manager_users')
-    .select('id, account_id, email, full_name, password_hash, is_active, invited_at, accepted_at, created_at')
+    .select('id, account_id, email, full_name, phone, password_hash, is_active, invited_at, accepted_at, created_at')
     .eq('account_id', accountId)
     .order('created_at');
 
@@ -2916,6 +2918,112 @@ function createManagerRouter(options = {}) {
     } catch (error) {
       console.error('Manager local contact update failed:', error);
       return res.status(500).json({ error: 'Could not save company contact numbers.' });
+    }
+  });
+
+  router.get('/account/manager-schedule', requireManager, async (req, res) => {
+    try {
+      const [
+        { data: account, error: accountError },
+        { data: managers, error: managersError },
+        { data: schedule, error: scheduleError }
+      ] = await Promise.all([
+        supabase.from('accounts')
+          .select('operations_timezone')
+          .eq('id', req.account.account_id)
+          .maybeSingle(),
+        supabase.from('manager_users')
+          .select('id, full_name, email, phone')
+          .eq('account_id', req.account.account_id)
+          .eq('is_active', true)
+          .order('full_name'),
+        supabase.from('rra_manager_weekly_schedule')
+          .select('iso_weekday, manager_user_id')
+          .eq('account_id', req.account.account_id)
+          .order('iso_weekday')
+      ]);
+      if (accountError) throw accountError;
+      if (managersError) throw managersError;
+      if (scheduleError) throw scheduleError;
+
+      const operationsTimezone = account?.operations_timezone || DEFAULT_ROUTE_SYNC_SETTINGS.operations_timezone;
+      return res.status(200).json({
+        operations_timezone: operationsTimezone,
+        current_iso_weekday: getIsoWeekday(nowProvider(), operationsTimezone),
+        managers: managers || [],
+        schedule: schedule || [],
+        can_manage: canManageAccountSettings(req)
+      });
+    } catch (error) {
+      console.error('Manager schedule lookup failed:', error);
+      return res.status(500).json({ error: 'Could not load the company manager schedule.' });
+    }
+  });
+
+  router.put('/account/manager-schedule', requireManager, requireAccountSettingsAccess, async (req, res) => {
+    const operationsTimezone = String(req.body?.operations_timezone || '').trim();
+    const submittedManagers = Array.isArray(req.body?.managers) ? req.body.managers : [];
+    const submittedSchedule = Array.isArray(req.body?.schedule) ? req.body.schedule : [];
+    const phoneByManagerId = new Map(submittedManagers.map((manager) => [
+      String(manager?.id || '').trim(),
+      normalizePhone(manager?.phone)
+    ]));
+    const scheduleByWeekday = new Map(submittedSchedule.map((entry) => [
+      Number(entry?.iso_weekday),
+      String(entry?.manager_user_id || '').trim()
+    ]));
+    const completeSchedule = scheduleByWeekday.size === 7 && [1, 2, 3, 4, 5, 6, 7]
+      .every((isoWeekday) => Boolean(scheduleByWeekday.get(isoWeekday)));
+
+    if (!isValidTimeZone(operationsTimezone) || !completeSchedule) {
+      return res.status(400).json({ error: 'Choose a valid company timezone and one manager for every day.' });
+    }
+
+    try {
+      const { data: activeManagers, error: managerError } = await supabase.from('manager_users')
+        .select('id, phone')
+        .eq('account_id', req.account.account_id)
+        .eq('is_active', true);
+      if (managerError) throw managerError;
+
+      const activeManagerIds = new Set((activeManagers || []).map((manager) => manager.id));
+      const scheduledManagerIds = [...new Set(scheduleByWeekday.values())];
+      if (scheduledManagerIds.some((managerId) => !activeManagerIds.has(managerId))) {
+        return res.status(400).json({ error: 'Every scheduled manager must be active and belong to this company.' });
+      }
+
+      const normalizedPhones = new Map((activeManagers || []).map((manager) => [
+        manager.id,
+        phoneByManagerId.get(manager.id) || normalizePhone(manager.phone)
+      ]));
+      if (scheduledManagerIds.some((managerId) => !normalizedPhones.get(managerId))) {
+        return res.status(400).json({ error: 'Every scheduled manager needs a valid phone number.' });
+      }
+
+      const timestamp = nowProvider().toISOString();
+      const scheduleRows = [...scheduleByWeekday.entries()].map(([isoWeekday, managerUserId]) => ({
+        account_id: req.account.account_id,
+        iso_weekday: isoWeekday,
+        manager_user_id: managerUserId,
+        updated_by_manager_user_id: req.account.manager_user_id || null,
+        updated_at: timestamp
+      }));
+      const results = await Promise.all([
+        supabase.from('accounts').update({ operations_timezone: operationsTimezone }).eq('id', req.account.account_id),
+        ...[...normalizedPhones.entries()].filter(([, phone]) => Boolean(phone)).map(([managerId, phone]) => supabase.from('manager_users')
+          .update({ phone })
+          .eq('id', managerId)
+          .eq('account_id', req.account.account_id)),
+        supabase.from('rra_manager_weekly_schedule')
+          .upsert(scheduleRows, { onConflict: 'account_id,iso_weekday' })
+      ]);
+      const failure = results.find((result) => result.error);
+      if (failure?.error) throw failure.error;
+
+      return res.status(200).json({ ok: true });
+    } catch (error) {
+      console.error('Manager schedule update failed:', error);
+      return res.status(500).json({ error: 'Could not save the company manager schedule.' });
     }
   });
 
