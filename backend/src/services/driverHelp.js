@@ -236,8 +236,10 @@ function resolveClarificationFollowUp(question, context = {}) {
 
 function isAnsweredSituationFollowUp(question) {
   const normalized = normalizeDriverQuestion(question);
-  return /\b(?:also|still|again|instead|then)\b/.test(normalized)
+  return /^(?:yes|no|not yet)\b/.test(normalized)
+    || /\b(?:also|still|again|instead|then)\b/.test(normalized)
     || /\bnone of\b.*\b(?:this|that) (?:customer|location|stop)\b/.test(normalized)
+    || /^(?:i|we|they|he|she|the customer|the package)\b.*\b(?:recover|recovered|retrieve|retrieved)\b/.test(normalized)
     || /^(?:what|which) (?:details|information)\b/.test(normalized)
     || /^(?:it|this|that)\b/.test(normalized)
     || /^(?:one|the)\b.*\b(?:amount|barcode|check|count|screen)\b/.test(normalized)
@@ -416,7 +418,8 @@ function buildNextSessionContext(previousContext = {}, question, decision) {
       : null,
     pending_workflow: decision.workflow?.state === 'AWAITING_VEHICLE_NUMBER'
       ? decision.workflow
-      : null
+      : null,
+    session_boundary: decision.session_boundary || null
   };
 }
 
@@ -795,12 +798,18 @@ function buildLockedRecordRuntimeDecision(question, context, record, options = {
 
 function buildProtectedRuntimeDecision(question, records, context = {}) {
   const normalized = normalizeDriverQuestion(question);
+  const originalSituation = normalizeDriverQuestion(
+    context.situation_question || context.last_question
+  );
   const pendingRequirement = normalizeDriverQuestion(
     context.pending_clarification_requirement || context.pending_clarification_prompt
   );
 
-  if (isUnsupportedBoundaryRequest(normalized)) {
-    const parkingRecord = /\b(?:ticket|citation)\b/.test(normalized)
+  if (
+    context.session_boundary === 'UNSUPPORTED_OPERATIONAL_SCOPE'
+    || isUnsupportedBoundaryRequest(normalized)
+  ) {
+    const parkingRecord = /\b(?:ticket|citation)\b/.test(`${originalSituation} ${normalized}`)
       ? findEligibleOperationalRecord(records, 'KNO-INCIDENT-PARKING-TICKET-001')
       : null;
     return buildLockedRuntimeDecision(question, {
@@ -814,8 +823,59 @@ function buildProtectedRuntimeDecision(question, records, context = {}) {
       }] : [],
       selected_records: [],
       clarification_options: [],
+      session_boundary: 'UNSUPPORTED_OPERATIONAL_SCOPE',
       escalation_message: 'Ready Route Answers does not have a verified answer for this question yet. Contact your manager or station for the current procedure.'
     }, context);
+  }
+
+  const priorLateMisdelivery = (context.knowledge_ids || []).includes(
+    'KNO-DEL-MISDELIVERY-LATE-RETRIEVAL-001'
+  );
+  const priorSameDayMisdelivery = (context.knowledge_ids || []).includes(
+    'KNO-DEL-MISDELIVERY-RECOVERY-001'
+  );
+  const recoveryStatusFollowUp = (
+    /\b(?:recover|recovered|retrieve|retrieved|get it back|got it back)\b/.test(normalized)
+    && /\b(?:it|package|delivery|misdelivery)\b/.test(normalized)
+  );
+  const packageNotRecovered = recoveryStatusFollowUp && (
+    /\b(?:not|haven t|hasn t|didn t|cannot|can t)\b.{0,48}\b(?:recover|recovered|retrieve|retrieved|get|got)\b/.test(normalized)
+    || /\b(?:recover|recovered|retrieve|retrieved|get|got)\b.{0,48}\bnot\b/.test(normalized)
+  );
+
+  if (priorLateMisdelivery && recoveryStatusFollowUp) {
+    const record = findEligibleOperationalRecord(
+      records,
+      'KNO-DEL-MISDELIVERY-LATE-RETRIEVAL-001'
+    );
+    return buildLockedRecordRuntimeDecision(question, context, record, packageNotRecovered ? {
+      answerOverride: {
+        direct_answer: 'Do not use Code 361 yet. Code 361 applies when the earlier-day misdelivery is physically retrieved.',
+        steps: [
+          'Confirm the package is physically retrieved.',
+          'Then use Code 361, Package Retrieval.',
+          'Follow station or management direction for redelivery or final disposition.'
+        ],
+        watch_for: 'Do not use the same-day Code 17 branch for an earlier-day misdelivery.'
+      }
+    } : {
+      patternQuestion: "I found a package yesterday that I'd actually left at the wrong address."
+    });
+  }
+
+  if (priorSameDayMisdelivery && packageNotRecovered) {
+    const record = findEligibleOperationalRecord(records, 'KNO-DEL-MISDELIVERY-RECOVERY-001');
+    return buildLockedRecordRuntimeDecision(question, context, record, {
+      answerOverride: {
+        direct_answer: 'Do not use Code 17 yet. Code 17 applies after the misdelivered package is physically recovered.',
+        steps: [
+          'Physically recover the package.',
+          'After recovery, use Code 17.',
+          'Use Code 18 only if delivery to the correct address succeeds today.'
+        ],
+        watch_for: 'If the package cannot be recovered or its disposition cannot be established, contact station or management.'
+      }
+    });
   }
 
   const lateMisdelivery = (

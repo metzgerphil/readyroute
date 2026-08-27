@@ -729,6 +729,79 @@ test('unknown misdelivery address and moved-recipient changes stay grounded', ()
   assert.deepEqual(unsupportedChange.decision.selected_records, []);
 });
 
+test('misdelivery recovery follow-ups preserve the original timing and actual recovery status', () => {
+  const sameDay = knowledgeRecord({
+    knowledge_id: 'KNO-DEL-MISDELIVERY-RECOVERY-001',
+    canonical_situation: 'Recovering and correcting a misdelivered package on the same day',
+    concise_answer: 'Use Code 17 after physically recovering the package.',
+    clarification_requirements: ['Has the package been physically recovered?']
+  });
+  const late = knowledgeRecord({
+    knowledge_id: 'KNO-DEL-MISDELIVERY-LATE-RETRIEVAL-001',
+    canonical_situation: 'Retrieving a misdelivered package after the day it was misdelivered',
+    concise_answer: 'Use Code 361 for the later-day retrieval.',
+    clarification_requirements: []
+  });
+
+  const lateFirst = buildDeterministicRuntimeDecision(
+    "Yesterday's delivery went to the wrong house and I found out this morning.",
+    [sameDay, late],
+    {}
+  );
+  const lateContext = buildNextSessionContext(
+    {},
+    "Yesterday's delivery went to the wrong house and I found out this morning.",
+    lateFirst.decision
+  );
+  const lateFollowUp = buildDeterministicRuntimeDecision(
+    'No, I have not recovered it yet.',
+    [sameDay, late],
+    lateContext
+  );
+  assert.equal(lateFollowUp.decision.response_mode, 'ANSWER');
+  assert.equal(lateFollowUp.decision.selected_records[0].knowledge_id, late.knowledge_id);
+  assert.match(lateFollowUp.decision.answer, /Do not use Code 361 yet/i);
+  assert.doesNotMatch(lateFollowUp.decision.answer, /Code 17/i);
+
+  const sameDayContext = buildNextSessionContext({}, 'I just left it at the wrong house.', {
+    response_mode: 'ANSWER',
+    selected_records: [sameDay],
+    candidates: []
+  });
+  const sameDayFollowUp = buildDeterministicRuntimeDecision(
+    'No, I have not recovered the package yet.',
+    [sameDay, late],
+    sameDayContext
+  );
+  assert.equal(sameDayFollowUp.decision.response_mode, 'ANSWER');
+  assert.equal(sameDayFollowUp.decision.selected_records[0].knowledge_id, sameDay.knowledge_id);
+  assert.match(sameDayFollowUp.decision.answer, /Do not use Code 17 yet/i);
+});
+
+test('unsupported operational boundaries remain closed for the rest of that situation', () => {
+  const first = buildDeterministicRuntimeDecision(
+    'Can I deliver this tobacco package?',
+    [],
+    {}
+  );
+  assert.equal(first.decision.response_mode, 'ESCALATE');
+
+  const context = buildNextSessionContext(
+    {},
+    'Can I deliver this tobacco package?',
+    first.decision
+  );
+  assert.equal(context.session_boundary, 'UNSUPPORTED_OPERATIONAL_SCOPE');
+
+  const followUp = buildDeterministicRuntimeDecision(
+    'Yes, the customer showed valid ID.',
+    [knowledgeRecord({ knowledge_id: 'KNO-DEL-SIG-ASR-001' })],
+    context
+  );
+  assert.equal(followUp.decision.response_mode, 'ESCALATE');
+  assert.deepEqual(followUp.decision.selected_records, []);
+});
+
 test('empty corpus returns and records a fail-closed escalation', async () => {
   const supabase = fakeSupabase([]);
   const service = createDriverHelpService({ supabase, now: () => new Date(0) });
