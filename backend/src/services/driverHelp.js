@@ -871,6 +871,46 @@ function buildProtectedRuntimeDecision(question, records, context = {}) {
     }, context);
   }
 
+  const customerConfirmedZeroPackagePickup = (
+    /\bpickup\b/.test(normalized)
+    && /\b(?:customer|shipper)\b/.test(normalized)
+    && /\b(?:say|says|said|confirm|confirms|confirmed)\b/.test(normalized)
+    && (
+      /\b(?:zero|no)\s+(?:packages|boxes)\b/.test(normalized)
+      || /\bnothing\b/.test(normalized)
+    )
+    && !/\b(?:before|without)\b.{0,40}\b(?:arriv|attempt|went|go|drove|headed)\b/.test(normalized)
+    && !/\b(?:never\s+(?:attempted|went|arrived)|no\s+attempt)\b/.test(normalized)
+  );
+  if (customerConfirmedZeroPackagePickup) {
+    return buildLockedRecordRuntimeDecision(
+      question,
+      context,
+      findEligibleOperationalRecord(records, 'KNO-PUP-CODE20-001'),
+      {
+        patternQuestion: /\bcxpc\b/.test(normalized)
+          ? question
+          : 'Open business says no packages for the listed pickup'
+      }
+    );
+  }
+
+  const fullLockerWithoutAlternate = (
+    /\b(?:apartment|residential)\b/.test(normalized)
+    && /\blocker\b/.test(normalized)
+    && /\b(?:full|broken|does not work|doesn t work|wont fit|won t fit)\b/.test(normalized)
+    && /\b(?:management|manager)\b/.test(normalized)
+    && /\b(?:no|none|without)\b.{0,32}\b(?:alternate|alternative|secure|approved|place|location)\b/.test(normalized)
+  );
+  if (fullLockerWithoutAlternate) {
+    return buildLockedRecordRuntimeDecision(
+      question,
+      context,
+      findEligibleOperationalRecord(records, 'KNO-DEL-LOCKER-FAIL-001'),
+      { patternQuestion: 'The residential locker does not work and property management has no alternate' }
+    );
+  }
+
   const priorLateMisdelivery = (context.knowledge_ids || []).includes(
     'KNO-DEL-MISDELIVERY-LATE-RETRIEVAL-001'
   );

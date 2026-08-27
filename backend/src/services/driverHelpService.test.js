@@ -631,6 +631,51 @@ test('an ambiguous closed storefront asks whether this is delivery or pickup', (
   );
 });
 
+test('fully stated Code 20 and unusable-locker facts bypass unnecessary AI clarification', () => {
+  const code20Record = knowledgeRecord({
+    knowledge_id: 'KNO-PUP-CODE20-001',
+    canonical_situation: 'Customer confirms no packages after an attempted pickup',
+    driver_question_patterns: [{
+      utterance: 'Open business says no packages for the listed pickup',
+      response_mode: 'DIRECT_SOURCE_GROUNDED_ANSWER',
+      information_sufficiency: 'SUFFICIENT',
+      must_clarify: [],
+      answer_override: { direct_answer: 'Use Code 20.' }
+    }]
+  });
+  const lockerRecord = knowledgeRecord({
+    knowledge_id: 'KNO-DEL-LOCKER-FAIL-001',
+    canonical_situation: 'A residential locker is unusable with no approved alternate',
+    driver_question_patterns: [{
+      utterance: 'The residential locker does not work and property management has no alternate',
+      response_mode: 'DIRECT_SOURCE_GROUNDED_ANSWER',
+      information_sufficiency: 'SUFFICIENT',
+      must_clarify: [],
+      answer_override: { direct_answer: 'Use Code 007 and return the package.' }
+    }]
+  });
+
+  const pickup = buildDeterministicRuntimeDecision(
+    'The pickup place is open and the customer says they have zero boxes for me.',
+    [code20Record],
+    {}
+  );
+  assert.equal(pickup.decision.response_mode, 'ANSWER');
+  assert.equal(pickup.decision.selected_records[0].knowledge_id, code20Record.knowledge_id);
+  assert.match(pickup.decision.answer, /Code 20/i);
+  assert.equal(pickup.lockedDecision, true);
+
+  const locker = buildDeterministicRuntimeDecision(
+    'The apartment locker is full and management has no other secure place.',
+    [lockerRecord],
+    {}
+  );
+  assert.equal(locker.decision.response_mode, 'ANSWER');
+  assert.equal(locker.decision.selected_records[0].knowledge_id, lockerRecord.knowledge_id);
+  assert.match(locker.decision.answer, /Code 007/i);
+  assert.equal(locker.lockedDecision, true);
+});
+
 test('Code 030 remains definition-only and Code 128 safety wording does not launch a workflow', () => {
   const code030 = referenceRecord(
     'DELIVERY_STATUS:030',
