@@ -32,6 +32,10 @@ const saveAiAuthorizationButton = document.querySelector('#save-ai-authorization
 const localContactsForm = document.querySelector('#local-contacts-form');
 const localContactsMessage = document.querySelector('#local-contacts-message');
 const saveLocalContactsButton = document.querySelector('#save-local-contacts-button');
+const operationsTimezoneSelect = document.querySelector('#operations-timezone');
+const managerPhoneFields = document.querySelector('#manager-phone-fields');
+const weeklyManagerSchedule = document.querySelector('#weekly-manager-schedule');
+const managerSchedulePreview = document.querySelector('#manager-schedule-preview');
 const monthlyReportHistory = document.querySelector('#monthly-report-history');
 const driverPinDialog = document.querySelector('#driver-pin-dialog');
 const driverPinForm = document.querySelector('#driver-pin-form');
@@ -41,7 +45,17 @@ const driverPinConfirmInput = document.querySelector('#driver-pin-confirm');
 const driverPinError = document.querySelector('#driver-pin-error');
 const saveDriverPinButton = document.querySelector('#save-driver-pin');
 let selectedDriverForPin = null;
+let managerScheduleState = { managers: [], schedule: [], current_iso_weekday: null, can_manage: false };
 const AI_AUTHORIZATION_POLICY_VERSION = '2026-08-20';
+const WEEKDAYS = [
+  { iso_weekday: 1, label: 'Monday' },
+  { iso_weekday: 2, label: 'Tuesday' },
+  { iso_weekday: 3, label: 'Wednesday' },
+  { iso_weekday: 4, label: 'Thursday' },
+  { iso_weekday: 5, label: 'Friday' },
+  { iso_weekday: 6, label: 'Saturday' },
+  { iso_weekday: 7, label: 'Sunday' }
+];
 
 function setMessage(element, message = '') {
   element.textContent = message;
@@ -335,18 +349,81 @@ async function loadAiAuthorization() {
   }
 }
 
+function getManagerLabel(manager) {
+  return manager?.full_name || manager?.email || 'Manager';
+}
+
+function renderManagerSchedule() {
+  managerPhoneFields.replaceChildren();
+  weeklyManagerSchedule.replaceChildren();
+  const managers = managerScheduleState.managers || [];
+  const schedule = new Map((managerScheduleState.schedule || []).map((entry) => [Number(entry.iso_weekday), entry.manager_user_id]));
+
+  managers.forEach((manager) => {
+    const label = document.createElement('label');
+    label.textContent = getManagerLabel(manager);
+    const input = document.createElement('input');
+    input.type = 'tel';
+    input.required = true;
+    input.value = manager.phone || '';
+    input.dataset.managerId = manager.id;
+    input.disabled = managerScheduleState.can_manage === false;
+    label.append(input);
+    managerPhoneFields.append(label);
+  });
+
+  WEEKDAYS.forEach((weekday) => {
+    const label = document.createElement('label');
+    label.textContent = `${weekday.label}${managerScheduleState.current_iso_weekday === weekday.iso_weekday ? ' — today' : ''}`;
+    const select = document.createElement('select');
+    select.required = true;
+    select.dataset.isoWeekday = String(weekday.iso_weekday);
+    select.disabled = managerScheduleState.can_manage === false;
+    managers.forEach((manager) => {
+      const option = document.createElement('option');
+      option.value = manager.id;
+      option.textContent = getManagerLabel(manager);
+      select.append(option);
+    });
+    select.value = schedule.get(weekday.iso_weekday) || managers[0]?.id || '';
+    select.addEventListener('change', () => {
+      if (managerScheduleState.current_iso_weekday === weekday.iso_weekday) {
+        const selected = managers.find((manager) => manager.id === select.value);
+        managerSchedulePreview.textContent = `Today drivers will contact ${getManagerLabel(selected)}.`;
+      }
+    });
+    label.append(select);
+    weeklyManagerSchedule.append(label);
+  });
+
+  const todayManagerId = schedule.get(managerScheduleState.current_iso_weekday)
+    || weeklyManagerSchedule.querySelector(`[data-iso-weekday="${managerScheduleState.current_iso_weekday}"]`)?.value;
+  managerSchedulePreview.textContent = todayManagerId
+    ? `Today drivers will contact ${getManagerLabel(managers.find((manager) => manager.id === todayManagerId))}.`
+    : 'Add an active manager before saving the weekly schedule.';
+}
+
 async function loadLocalContacts() {
   setMessage(localContactsMessage);
   try {
-    const payload = await request('/manager/account/local-contacts');
-    document.querySelector('#cxpc-phone-number').value = payload.cxpc_phone_number || '';
-    document.querySelector('#csa-number').value = payload.csa_number || '';
-    document.querySelector('#primary-manager-name').value = payload.manager_name || '';
-    document.querySelector('#primary-manager-phone-number').value = payload.manager_phone_number || '';
-    localContactsForm.querySelectorAll('input').forEach((input) => { input.disabled = payload.can_manage === false; });
-    saveLocalContactsButton.hidden = payload.can_manage === false;
+    const [contacts, schedule] = await Promise.all([
+      request('/manager/account/local-contacts'),
+      request('/manager/account/manager-schedule')
+    ]);
+    document.querySelector('#cxpc-phone-number').value = contacts.cxpc_phone_number || '';
+    document.querySelector('#csa-number').value = contacts.csa_number || '';
+    document.querySelector('#primary-manager-name').value = contacts.manager_name || '';
+    document.querySelector('#primary-manager-phone-number').value = contacts.manager_phone_number || '';
+    if (![...operationsTimezoneSelect.options].some((option) => option.value === schedule.operations_timezone)) {
+      operationsTimezoneSelect.add(new Option(schedule.operations_timezone, schedule.operations_timezone));
+    }
+    operationsTimezoneSelect.value = schedule.operations_timezone || 'America/Los_Angeles';
+    managerScheduleState = schedule;
+    renderManagerSchedule();
+    localContactsForm.querySelectorAll('input, select').forEach((input) => { input.disabled = contacts.can_manage === false || schedule.can_manage === false; });
+    saveLocalContactsButton.hidden = contacts.can_manage === false || schedule.can_manage === false;
   } catch (error) {
-    localContactsForm.querySelectorAll('input').forEach((input) => { input.disabled = true; });
+    localContactsForm.querySelectorAll('input, select').forEach((input) => { input.disabled = true; });
     saveLocalContactsButton.hidden = true;
     setMessage(localContactsMessage, error.message);
   }
@@ -714,16 +791,32 @@ localContactsForm.addEventListener('submit', async (event) => {
   setMessage(localContactsMessage);
   localContactsMessage.classList.remove('error');
   try {
-    await request('/manager/account/local-contacts', {
-      method: 'PUT',
-      body: JSON.stringify({
-        cxpc_phone_number: document.querySelector('#cxpc-phone-number').value.trim(),
-        csa_number: document.querySelector('#csa-number').value.trim(),
-        manager_name: document.querySelector('#primary-manager-name').value.trim(),
-        manager_phone_number: document.querySelector('#primary-manager-phone-number').value.trim()
+    await Promise.all([
+      request('/manager/account/local-contacts', {
+        method: 'PUT',
+        body: JSON.stringify({
+          cxpc_phone_number: document.querySelector('#cxpc-phone-number').value.trim(),
+          csa_number: document.querySelector('#csa-number').value.trim(),
+          manager_name: document.querySelector('#primary-manager-name').value.trim(),
+          manager_phone_number: document.querySelector('#primary-manager-phone-number').value.trim()
+        })
+      }),
+      request('/manager/account/manager-schedule', {
+        method: 'PUT',
+        body: JSON.stringify({
+          operations_timezone: operationsTimezoneSelect.value,
+          managers: [...managerPhoneFields.querySelectorAll('[data-manager-id]')].map((input) => ({
+            id: input.dataset.managerId,
+            phone: input.value.trim()
+          })),
+          schedule: [...weeklyManagerSchedule.querySelectorAll('[data-iso-weekday]')].map((select) => ({
+            iso_weekday: Number(select.dataset.isoWeekday),
+            manager_user_id: select.value
+          }))
+        })
       })
-    });
-    setMessage(localContactsMessage, 'Local driver contact numbers saved.');
+    ]);
+    setMessage(localContactsMessage, 'Driver contacts and weekly manager schedule saved.');
   } catch (error) {
     localContactsMessage.classList.add('error');
     setMessage(localContactsMessage, error.message);

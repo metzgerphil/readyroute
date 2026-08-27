@@ -201,14 +201,33 @@
           </article>
           <article class="card portal-section-card">
             <p class="eyebrow">Driver contacts</p><h2>Local help numbers</h2>
-            <p class="muted">RRA uses this company information for driver support. All four fields are required.</p>
+            <p class="muted">RRA uses this company information and weekly schedule to show every driver the correct manager to call.</p>
             <form id="local-contacts-form">
               <label for="cxpc-phone-number">Local CXPC phone number</label><input id="cxpc-phone-number" required type="tel">
               <label for="csa-number">CSA Number</label><input id="csa-number" required>
-              <label for="primary-manager-name">Manager name</label><input id="primary-manager-name" required>
-              <label for="primary-manager-phone-number">Manager phone number</label><input id="primary-manager-phone-number" required type="tel">
+              <label for="primary-manager-name">Fallback manager name</label><input id="primary-manager-name" required>
+              <label for="primary-manager-phone-number">Fallback manager phone number</label><input id="primary-manager-phone-number" required type="tel">
+              <label for="operations-timezone">Company timezone</label>
+              <select id="operations-timezone" required>
+                <option value="America/New_York">America/New York</option>
+                <option value="America/Chicago">America/Chicago</option>
+                <option value="America/Denver">America/Denver</option>
+                <option value="America/Phoenix">America/Phoenix</option>
+                <option value="America/Los_Angeles">America/Los Angeles</option>
+                <option value="America/Anchorage">America/Anchorage</option>
+                <option value="Pacific/Honolulu">Pacific/Honolulu</option>
+              </select>
+              <div class="manager-schedule-section">
+                <h3>Manager phone numbers</h3>
+                <div id="manager-phone-fields"></div>
+              </div>
+              <div class="manager-schedule-section">
+                <h3>Who drivers call each day</h3>
+                <p class="muted" id="manager-schedule-preview"></p>
+                <div id="weekly-manager-schedule"></div>
+              </div>
               <div class="message" id="local-contacts-message" role="status" hidden></div>
-              <button class="primary" id="save-local-contacts-button" type="submit">Save local contacts</button>
+              <button class="primary" id="save-local-contacts-button" type="submit">Save contacts and schedule</button>
             </form>
           </article>
           <article class="card portal-section-card"><p class="eyebrow">Account help</p><h2>Need account assistance?</h2><p class="muted">For login, billing, or company-access problems, email the ReadyRoute team.</p><a class="support-action" href="mailto:info@readyroute.org">info@readyroute.org</a></article>
@@ -221,6 +240,6 @@
     <span>ReadyRoute Answers is an operational reference for trained drivers. It does not replace required training.</span>
     <nav aria-label="Legal links"><a href="/privacy">Privacy</a><a href="/terms">Terms</a><a href="/account">Driver account deletion</a></nav>
   </footer>
-  <script src="/portal.js?v=20260820-5" defer></script>
+  <script src="/portal.js?v=20260827-1" defer></script>
 </body>
 </html>

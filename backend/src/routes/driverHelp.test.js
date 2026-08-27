@@ -112,16 +112,19 @@ test('POST /driver-help/query returns the company CXPC number without AI interpr
 test('GET /driver-help/quick-actions returns the authenticated company contacts', async () => {
   const supabase = {
     from(table) {
-      assert.equal(table, 'accounts');
       return {
         select() { return this; },
         eq() { return this; },
         async maybeSingle() {
-          return { data: {
+          if (table === 'accounts') return { data: {
+            operations_timezone: 'America/Los_Angeles',
             rra_cxpc_phone_number: '8008888888',
-            rra_primary_manager_name: 'Vlad Fed',
+            rra_primary_manager_name: 'Fallback Manager',
             rra_primary_manager_phone_number: '6199990000'
           }, error: null };
+          if (table === 'rra_manager_weekly_schedule') return { data: { manager_user_id: 'manager-1' }, error: null };
+          if (table === 'manager_users') return { data: { full_name: 'Vlad Fed', phone: '6199990000' }, error: null };
+          throw new Error(`Unexpected table ${table}`);
         }
       };
     }
