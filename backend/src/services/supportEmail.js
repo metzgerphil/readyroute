@@ -210,7 +210,10 @@ async function sendSupportAssignmentNotification({
   }
 
   const reference = ticket.ticket_reference || ticket.id || 'support ticket';
-  const staffPortalUrl = `${String(process.env.MANAGER_PORTAL_URL || 'https://portal.readyroute.org').replace(/\/$/, '')}/readyroute/support`;
+  const staffPortalUrl = `${String(
+    process.env.STAFF_PORTAL_URL ||
+    'https://staff.readyroute.org'
+  ).replace(/\/$/, '')}/readyroute/support`;
   const response = await fetchImpl('https://api.resend.com/emails', {
     method: 'POST',
     headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },

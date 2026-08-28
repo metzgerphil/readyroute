@@ -4,14 +4,14 @@ import { NavLink, useNavigate } from 'react-router-dom';
 import { clearReadyRouteStaffToken, getReadyRouteStaffTokenPayload } from '../services/auth';
 
 const staffNavLinks = [
-  { path: 'support', label: 'Support' },
-  { path: 'companies', label: 'Companies' },
-  { path: 'knowledge', label: 'Knowledge Activity' },
-  { path: 'memory', label: 'Answer Memory' },
-  { path: 'rra-test', label: 'RRA Test Console' },
-  { path: 'costs', label: 'Costs' },
-  { path: 'staff', label: 'Staff' },
-  { path: 'settings', label: 'Settings' }
+  { to: '/readyroute/support', label: 'Support' },
+  { to: '/readyroute/companies', label: 'Companies' },
+  { to: '/readyroute/knowledge', label: 'Knowledge Activity' },
+  { to: '/readyroute/memory', label: 'Answer Memory' },
+  { to: '/readyroute/rra-test', label: 'RRA Test Console' },
+  { to: '/readyroute/costs', label: 'Costs' },
+  { to: '/readyroute/staff', label: 'Staff' },
+  { to: '/readyroute/settings', label: 'Settings' }
 ];
 
 function formatStaffRole(role) {
@@ -22,7 +22,7 @@ function formatStaffRole(role) {
     .join(' ');
 }
 
-export default function StaffLayout({ children, basePath = '/staff' }) {
+export default function StaffLayout({ children }) {
   const navigate = useNavigate();
   const [isSidebarHidden, setIsSidebarHidden] = useState(false);
   const staffPayload = getReadyRouteStaffTokenPayload() || {};
@@ -30,7 +30,7 @@ export default function StaffLayout({ children, basePath = '/staff' }) {
 
   function handleLogout() {
     clearReadyRouteStaffToken();
-    navigate(`${basePath}/login`, { replace: true });
+    navigate('/readyroute/login', { replace: true });
   }
 
   return (
@@ -54,8 +54,8 @@ export default function StaffLayout({ children, basePath = '/staff' }) {
             {staffNavLinks.map((link) => (
               <NavLink
                 className={({ isActive }) => `staff-nav-link${isActive ? ' active' : ''}`}
-                key={link.path}
-                to={`${basePath}/${link.path}`}
+                key={link.to}
+                to={link.to}
               >
                 {link.label}
               </NavLink>

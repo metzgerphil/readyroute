@@ -155,7 +155,7 @@ export default function StaffLoginPage({ basePath = '/readyroute' }) {
           ) : null}
 
           <div className="login-secondary-links">
-            <a href="/login">Manager portal</a>
+            <a href="https://portal.readyroute.org/login">Manager portal</a>
             <a href="https://readyroute.org/">ReadyRoute home</a>
           </div>
         </div>
