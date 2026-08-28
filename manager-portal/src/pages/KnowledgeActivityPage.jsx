@@ -16,7 +16,7 @@ export default function KnowledgeActivityPage() {
   const activityQuery = useQuery({
     queryKey: ['driver-help-overview'],
     queryFn: async () => {
-      const response = await api.get('/manager/driver-help/overview');
+      const response = await api.get('/staff/driver-help/overview');
       return response.data;
     },
     refetchInterval: 60000
