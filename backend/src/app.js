@@ -74,13 +74,16 @@ function createApp(options = {}) {
     'https://www.readyroute.org',
     'https://app.readyroute.app',
     'https://portal.readyroute.org',
+    'https://staff.readyroute.org',
     'https://ready-route-project.web.app',
     'https://ready-route-project.firebaseapp.com',
     'https://ready-route-landing.web.app',
     'https://ready-route-landing.firebaseapp.com',
     process.env.VITE_MANAGER_PORTAL_URL,
     process.env.VERCEL_MANAGER_PORTAL_URL,
-    process.env.MANAGER_PORTAL_URL
+    process.env.MANAGER_PORTAL_URL,
+    process.env.VITE_STAFF_PORTAL_URL,
+    process.env.STAFF_PORTAL_URL
   ].filter(Boolean);
   function isAllowedCorsOrigin(origin) {
     if (!origin) {
