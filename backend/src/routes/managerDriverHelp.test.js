@@ -12,6 +12,7 @@ class QueryBuilder {
   }
   select() { return this; }
   eq() { return this; }
+  gte() { return this; }
   order() { return this; }
   limit() { return Promise.resolve({ data: this.rows[this.table] || [], error: null }); }
   then(resolve, reject) {
@@ -129,6 +130,52 @@ test('POST /manager/driver-help/query uses manager identity and returns diagnost
 
   assert.equal(deterministicResponse.status, 200);
   assert.equal(calls[1].aiInterpretationModeOverride, 'OFF');
+});
+
+test('GET staff answer memory includes retained company usage and hides no review context', async () => {
+  const routeKey = 'remembered-route-1';
+  const rows = {
+    driver_help_answer_memory: [{
+      route_key: routeKey,
+      normalized_question: `route:${routeKey}`,
+      knowledge_id: 'KNO-DEL-BUS-CLOSED-001',
+      knowledge_version: 1,
+      response_mode: 'ANSWER',
+      risk_tier: 'STANDARD',
+      status: 'SUSPENDED',
+      agreement_count: 4,
+      disagreement_count: 1,
+      negative_feedback_count: 0,
+      audit_disagreement_count: 1
+    }],
+    driver_help_interactions: [{
+      id: 'interaction-1',
+      account_id: 'account-1',
+      question: 'The business is locked. What should I do?',
+      normalized_question: 'the business is locked what should i do',
+      interpretation_mode: 'LEARNED_ROUTE',
+      interpretation_result: { memory_route_key: routeKey },
+      created_at: '2026-08-28T17:00:00.000Z'
+    }],
+    accounts: [{ id: 'account-1', company_name: 'Bridge Transportation' }]
+  };
+  const supabase = { from: (table) => new QueryBuilder(table, rows) };
+  const service = { loadKnowledgeRecords: async () => [] };
+  const app = express();
+  app.use('/staff/driver-help', createManagerDriverHelpRouter({
+    supabase,
+    service,
+    globalOverview: true,
+    now: () => new Date('2026-08-28T18:00:00.000Z')
+  }));
+
+  const response = await request(app).get('/staff/driver-help/answer-memory');
+
+  assert.equal(response.status, 200);
+  assert.equal(response.body.routes[0].company_count, 1);
+  assert.equal(response.body.routes[0].latest_company_name, 'Bridge Transportation');
+  assert.equal(response.body.routes[0].latest_question, 'The business is locked. What should I do?');
+  assert.match(response.body.routes[0].review_reason, /production AI audit disagreed/);
 });
 
 test('POST /manager/driver-help/query accepts a one-character vehicle number follow-up', async () => {
