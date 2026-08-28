@@ -1,16 +1,21 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Fragment, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
+import { Link } from 'react-router-dom';
 
 import api from '../services/api';
 
-const FILTERS = [
+const TABS = [
+  { value: 'QUEUE', label: 'Review queue' },
+  { value: 'ROUTES', label: 'Learned routes' },
+  { value: 'PERFORMANCE', label: 'Activity & performance' }
+];
+const ROUTE_FILTERS = [
   { value: 'ALL', label: 'All' },
   { value: 'REVIEW_REQUIRED', label: 'Needs review' },
   { value: 'ACTIVE', label: 'Active' },
   { value: 'CANDIDATE', label: 'Learning' },
   { value: 'SUSPENDED', label: 'Suspended' }
 ];
-
 const STATUS_META = {
   ACTIVE: { label: 'Active', tone: 'ready' },
   CANDIDATE: { label: 'Learning', tone: 'neutral' },
@@ -23,233 +28,194 @@ function formatDate(value) {
   const date = new Date(value);
   return Number.isNaN(date.getTime()) ? '—' : date.toLocaleString();
 }
-
 function formatKnowledgeId(value) {
   return String(value || 'Unknown record').replace(/^KNO-/, '').replaceAll('-', ' · ');
+}
+
+function formatLatency(value) {
+  const milliseconds = Number(value);
+  if (!Number.isFinite(milliseconds)) return '—';
+  return milliseconds >= 1000 ? `${(milliseconds / 1000).toFixed(1)}s` : `${Math.round(milliseconds)}ms`;
+}
+
+function formatMoney(value) {
+  const amount = Number(value || 0);
+  return `$${amount.toFixed(amount < 1 ? 4 : 2)}`;
 }
 
 function statusMeta(status) {
   return STATUS_META[status] || { label: status || 'Unknown', tone: 'neutral' };
 }
 
+function routeMatches(route, search, companyId) {
+  if (companyId && !(route.company_usage || []).some((company) => company.account_id === companyId)) return false;
+  const term = search.trim().toLowerCase();
+  if (!term) return true;
+  return [route.latest_question, route.knowledge_id, route.review_reason, ...(route.company_usage || []).map((company) => company.company_name)]
+    .some((value) => String(value || '').toLowerCase().includes(term));
+}
+
+function QuestionPreview({ preview }) {
+  const steps = preview?.answer_structure?.steps || [];
+  const watchFor = preview?.answer_structure?.watch_for || preview?.answer_structure?.prohibited_actions?.[0] || null;
+  if (!preview) return <p className="answer-quality-muted">Preview unavailable. Keep this route suspended until its published behavior can be loaded.</p>;
+  return (
+    <div className="answer-quality-driver-preview">
+      <span className="eyebrow">What the driver receives</span>
+      <h4>{preview.response_mode === 'CLARIFY' ? 'Clarification' : 'Published answer'}</h4>
+      {preview.clarification_prompt ? <p className="answer-quality-answer">{preview.clarification_prompt}</p> : null}
+      {preview.clarification_options?.length ? <div className="answer-memory-preview-options">{preview.clarification_options.map((option) => <span key={`${option.label}-${option.query}`}>{option.label}</span>)}</div> : null}
+      {preview.answer ? <p className="answer-quality-answer">{preview.answer}</p> : null}
+      {steps.length ? <ol>{steps.map((step) => <li key={step}>{step}</li>)}</ol> : null}
+      {watchFor ? <p className="answer-memory-preview-watch"><strong>Watch for:</strong> {watchFor}</p> : null}
+      {preview.more_info ? <details><summary>More information</summary><p>{preview.more_info}</p></details> : null}
+    </div>
+  );
+}
+
+function CompanyUsage({ route }) {
+  const companies = route.company_usage || [];
+  if (!companies.length) return <p className="answer-quality-muted">No retained company activity is available for this route.</p>;
+  return (
+    <div className="answer-quality-company-list">
+      {companies.map((company) => (
+        <div key={company.account_id}>
+          <Link to={`/readyroute/companies/${company.account_id}/view`}>{company.company_name}</Link>
+          <span>{company.question_count} question{company.question_count === 1 ? '' : 's'} · latest {formatDate(company.latest_seen_at)}</span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function RouteCard({ route, expanded, isUpdating, onToggle, onReview }) {
+  const meta = statusMeta(route.status);
+  const remaining = Math.max(Number(route.required_agreements || 0) - Number(route.agreement_count || 0), 0);
+  const latestCompany = (route.company_usage || []).find((company) => company.account_id === route.latest_company_id)
+    || route.company_usage?.[0];
+  return (
+    <article className={`answer-quality-route-card ${meta.tone}`}>
+      <div className="answer-quality-route-main">
+        <div className="answer-quality-route-copy">
+          <div className="answer-quality-route-topline"><span className={`answer-memory-status ${meta.tone}`}>{meta.label}</span><span>{route.risk_tier === 'HIGH' ? 'High-risk topic' : 'Standard topic'}</span></div>
+          <h3>{route.latest_question ? `“${route.latest_question}”` : formatKnowledgeId(route.knowledge_id)}</h3>
+          <p className="answer-quality-reason">{route.review_reason}</p>
+          <div className="answer-quality-route-facts">
+            <span><strong>Approved record:</strong> {formatKnowledgeId(route.knowledge_id)}</span>
+            <span><strong>Company activity:</strong> {route.company_count || 0} compan{route.company_count === 1 ? 'y' : 'ies'} · {route.recent_question_count || 0} retained question{route.recent_question_count === 1 ? '' : 's'}</span>
+            {route.latest_company_name ? <span><strong>Most recent company:</strong> {route.latest_company_name}</span> : null}
+            <span><strong>Confirmation:</strong> {remaining > 0 ? `${route.agreement_count || 0} of ${route.required_agreements}` : 'Requirement met'}</span>
+          </div>
+        </div>
+        <div className="answer-quality-route-actions">
+          <button className="secondary-button" onClick={onToggle} type="button">{expanded ? 'Close review' : 'Review issue'}</button>
+          {route.status !== 'ACTIVE' ? <button className="primary-button" disabled={isUpdating || !route.preview || !route.ready_for_approval} onClick={() => onReview(route.route_key, 'APPROVE')} type="button">{isUpdating ? 'Saving…' : !route.ready_for_approval ? `Needs ${remaining} more` : route.status === 'SUSPENDED' ? 'Reactivate route' : 'Approve route'}</button> : null}
+          {route.status !== 'SUSPENDED' ? <button className="text-button answer-quality-suspend" disabled={isUpdating} onClick={() => onReview(route.route_key, 'SUSPEND')} type="button">Suspend route</button> : null}
+          {latestCompany ? <Link className="answer-quality-company-link" to={`/readyroute/companies/${latestCompany.account_id}/view`}>Open company</Link> : null}
+        </div>
+      </div>
+      {expanded ? (
+        <div className="answer-quality-review-panel">
+          <QuestionPreview preview={route.preview} />
+          <div className="answer-quality-review-context">
+            <section><h4>Company usage · last {route.company_window_days || 90} days</h4><CompanyUsage route={route} /></section>
+            <section><h4>Review evidence</h4><dl className="answer-quality-evidence"><div><dt>Matching confirmations</dt><dd>{route.agreement_count || 0}</dd></div><div><dt>Conflicting interpretations</dt><dd>{route.disagreement_count || 0}</dd></div><div><dt>Audits passed</dt><dd>{route.audit_agreement_count || 0}</dd></div><div><dt>Audit disagreements</dt><dd>{route.audit_disagreement_count || 0}</dd></div><div><dt>Negative feedback</dt><dd>{route.negative_feedback_count || 0}</dd></div><div><dt>AI calls avoided</dt><dd>{route.reuse_count || 0}</dd></div></dl></section>
+            <details className="answer-quality-technical"><summary>Technical details</summary><dl><div><dt>Route ID</dt><dd>{route.route_key}</dd></div><div><dt>Knowledge ID</dt><dd>{route.knowledge_id} · version {route.knowledge_version}</dd></div><div><dt>Last seen</dt><dd>{formatDate(route.last_seen_at)}</dd></div></dl></details>
+          </div>
+        </div>
+      ) : null}
+    </article>
+  );
+}
+
+function SimpleIssueCard({ eyebrow, companyName, question, detail, date, accountId }) {
+  return (
+    <article className="answer-quality-simple-issue">
+      <div><span className="eyebrow">{eyebrow}</span><h3>{question ? `“${question}”` : detail}</h3>{question && detail ? <p>{detail}</p> : null}<span className="answer-quality-muted">{companyName || 'Unknown company'} · {formatDate(date)}</span></div>
+      {accountId ? <Link className="secondary-button" to={`/readyroute/companies/${accountId}/view`}>Open company</Link> : null}
+    </article>
+  );
+}
+
 export default function AnswerMemoryPage() {
   const queryClient = useQueryClient();
+  const [activeTab, setActiveTab] = useState('QUEUE');
   const [statusFilter, setStatusFilter] = useState('ALL');
   const [search, setSearch] = useState('');
+  const [companyFilter, setCompanyFilter] = useState('');
   const [actionError, setActionError] = useState('');
   const [expandedRouteKey, setExpandedRouteKey] = useState(null);
-
-  const memoryQuery = useQuery({
-    queryKey: ['driver-help-answer-memory'],
-    queryFn: async () => {
-      const response = await api.get('/staff/driver-help/answer-memory', { params: { limit: 250 } });
-      return response.data;
-    },
-    refetchInterval: 60000
-  });
-
+  const memoryQuery = useQuery({ queryKey: ['driver-help-answer-memory'], queryFn: async () => (await api.get('/staff/driver-help/answer-memory', { params: { limit: 250 } })).data, refetchInterval: 60000 });
+  const overviewQuery = useQuery({ queryKey: ['global-driver-help-overview'], queryFn: async () => (await api.get('/staff/driver-help/overview', { params: { limit: 150, days: 30 } })).data, refetchInterval: 60000 });
   const reviewMutation = useMutation({
-    mutationFn: async ({ routeKey, action }) => {
-      const response = await api.post(
-        `/staff/driver-help/answer-memory/${encodeURIComponent(routeKey)}/review`,
-        { action }
-      );
-      return response.data;
-    },
+    mutationFn: async ({ routeKey, action }) => (await api.post(`/staff/driver-help/answer-memory/${encodeURIComponent(routeKey)}/review`, { action })).data,
     onMutate: () => setActionError(''),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['driver-help-answer-memory'] }),
-    onError: (error) => setActionError(error.response?.data?.error || 'That memory route could not be updated.')
+    onError: (error) => setActionError(error.response?.data?.error || 'That learned route could not be updated.')
   });
-
   const routes = useMemo(() => memoryQuery.data?.routes || [], [memoryQuery.data?.routes]);
-  const counts = useMemo(() => routes.reduce((result, route) => {
-    result[route.status] = (result[route.status] || 0) + 1;
-    return result;
-  }, {}), [routes]);
-
-  const visibleRoutes = useMemo(() => {
+  const overview = overviewQuery.data || {};
+  const metrics = overview.metrics || {};
+  const recentInteractions = overview.recent_interactions || [];
+  const unansweredQuestions = (overview.unanswered_questions || []).filter((entry) => ['open', 'reviewing'].includes(entry.status));
+  const negativeFeedback = (overview.recent_feedback || []).filter((entry) => entry.rating === 'down');
+  const reviewRoutes = routes.filter((route) => ['REVIEW_REQUIRED', 'SUSPENDED'].includes(route.status));
+  const counts = useMemo(() => routes.reduce((result, route) => { result[route.status] = (result[route.status] || 0) + 1; return result; }, {}), [routes]);
+  const companies = (() => {
+    const byId = new Map();
+    routes.forEach((route) => (route.company_usage || []).forEach((company) => byId.set(company.account_id, company.company_name)));
+    recentInteractions.forEach((entry) => byId.set(entry.account_id, entry.company_name));
+    return Array.from(byId, ([id, name]) => ({ id, name })).sort((left, right) => left.name.localeCompare(right.name));
+  })();
+  const visibleRoutes = routes.filter((route) => (statusFilter === 'ALL' || route.status === statusFilter) && routeMatches(route, search, companyFilter));
+  const visibleReviewRoutes = reviewRoutes.filter((route) => routeMatches(route, search, companyFilter));
+  const issueMatches = (entry) => {
+    if (companyFilter && entry.account_id !== companyFilter) return false;
     const term = search.trim().toLowerCase();
-    return routes.filter((route) => {
-      if (statusFilter !== 'ALL' && route.status !== statusFilter) return false;
-      if (!term) return true;
-      return [route.normalized_question, route.knowledge_id, route.response_mode]
-        .some((value) => String(value || '').toLowerCase().includes(term));
-    });
-  }, [routes, search, statusFilter]);
+    return !term || [entry.question, entry.comment, entry.company_name, entry.status].some((value) => String(value || '').toLowerCase().includes(term));
+  };
+  const visibleUnanswered = unansweredQuestions.filter(issueMatches);
+  const visibleNegativeFeedback = negativeFeedback.filter(issueMatches);
+  const queueCount = reviewRoutes.length + unansweredQuestions.length + negativeFeedback.length;
 
-  if (memoryQuery.isLoading) {
-    return <div className="page-card">Loading Answer Memory...</div>;
-  }
-
-  if (memoryQuery.isError) {
-    return <div className="page-card">Answer Memory could not be loaded.</div>;
-  }
+  if (memoryQuery.isLoading || overviewQuery.isLoading) return <div className="page-card">Loading answer quality…</div>;
+  if (memoryQuery.isError || overviewQuery.isError) return <div className="page-card">Answer quality activity could not be loaded.</div>;
+  const handleReview = (routeKey, action) => reviewMutation.mutate({ routeKey, action });
 
   return (
-    <main className="page answer-memory-page">
-      <div className="page-heading-row">
-        <div>
-          <div className="eyebrow">Ready Route Answers</div>
-          <h1>Answer Memory</h1>
-          <p>Review the question routes RRA has learned so repeated questions can use approved answers without another AI interpretation.</p>
-        </div>
-        <button className="secondary-button" disabled={memoryQuery.isFetching} onClick={() => memoryQuery.refetch()} type="button">
-          {memoryQuery.isFetching ? 'Refreshing…' : 'Refresh'}
-        </button>
+    <main className="page answer-memory-page answer-quality-page">
+      <div className="page-heading-row answer-quality-heading">
+        <div><div className="eyebrow">Ready Route Answers</div><h1>Answer Quality</h1><p>Review questions that need attention, understand which companies are affected, and manage learned answer routes.</p></div>
+        <div className="answer-quality-refresh"><span>Updates automatically every minute</span><button className="secondary-button" disabled={memoryQuery.isFetching || overviewQuery.isFetching} onClick={() => { memoryQuery.refetch(); overviewQuery.refetch(); }} type="button">{memoryQuery.isFetching || overviewQuery.isFetching ? 'Refreshing…' : 'Refresh now'}</button></div>
       </div>
+      <section className="answer-quality-priority-grid" aria-label="Answer quality summary">
+        <button className="answer-quality-priority-card danger" onClick={() => setActiveTab('QUEUE')} type="button"><span>Needs staff attention</span><strong>{queueCount}</strong><small>Open the review queue</small></button>
+        <button className="answer-quality-priority-card warning" onClick={() => { setActiveTab('ROUTES'); setStatusFilter('SUSPENDED'); }} type="button"><span>Suspended routes</span><strong>{counts.SUSPENDED || 0}</strong><small>Not being reused</small></button>
+        <button className="answer-quality-priority-card neutral" onClick={() => { setActiveTab('ROUTES'); setStatusFilter('CANDIDATE'); }} type="button"><span>Still learning</span><strong>{counts.CANDIDATE || 0}</strong><small>Collecting confirmations</small></button>
+        <button className="answer-quality-priority-card ready" onClick={() => { setActiveTab('ROUTES'); setStatusFilter('ACTIVE'); }} type="button"><span>Healthy active routes</span><strong>{counts.ACTIVE || 0}</strong><small>Available for reuse</small></button>
+      </section>
+      <nav className="answer-quality-tabs" aria-label="Answer Quality sections">{TABS.map((tab) => <button className={activeTab === tab.value ? 'active' : ''} key={tab.value} onClick={() => setActiveTab(tab.value)} type="button">{tab.label}{tab.value === 'QUEUE' ? ` (${queueCount})` : ''}</button>)}</nav>
+      {activeTab !== 'PERFORMANCE' ? <section className="answer-quality-toolbar"><label><span>Search</span><input onChange={(event) => setSearch(event.target.value)} placeholder="Question, company, or approved record" type="search" value={search} /></label><label><span>Company</span><select onChange={(event) => setCompanyFilter(event.target.value)} value={companyFilter}><option value="">All companies</option>{companies.map((company) => <option key={company.id} value={company.id}>{company.name}</option>)}</select></label></section> : null}
+      {actionError ? <div className="answer-memory-action-error" role="alert">{actionError}</div> : null}
+      {memoryQuery.data?.setup_required ? <div className="page-card warning-card">Answer Memory still needs to be enabled for this workspace.</div> : null}
 
-      {memoryQuery.data?.setup_required ? (
-        <div className="page-card warning-card">Answer Memory still needs to be enabled for this workspace.</div>
+      {activeTab === 'QUEUE' ? (
+        <div className="answer-quality-section-stack">
+          <section><div className="answer-quality-section-heading"><div><h2>Learned routes needing review</h2><p>These routes are suspended or require an explicit ReadyRoute decision.</p></div><strong>{visibleReviewRoutes.length}</strong></div><div className="answer-quality-route-list">{visibleReviewRoutes.map((route) => <RouteCard expanded={expandedRouteKey === route.route_key} isUpdating={reviewMutation.isPending && reviewMutation.variables?.routeKey === route.route_key} key={route.route_key} onReview={handleReview} onToggle={() => setExpandedRouteKey(expandedRouteKey === route.route_key ? null : route.route_key)} route={route} />)}{!visibleReviewRoutes.length ? <div className="empty-state">No learned routes match this review view.</div> : null}</div></section>
+          <section><div className="answer-quality-section-heading"><div><h2>Unanswered questions</h2><p>These may require a new approved knowledge answer.</p></div><strong>{visibleUnanswered.length}</strong></div><div className="answer-quality-simple-list">{visibleUnanswered.map((entry) => <SimpleIssueCard accountId={entry.account_id} companyName={entry.company_name} date={entry.created_at} detail={`Status: ${entry.status}`} eyebrow="Knowledge gap" key={entry.id} question={entry.question} />)}{!visibleUnanswered.length ? <div className="empty-state">No unanswered questions match this view.</div> : null}</div></section>
+          <section><div className="answer-quality-section-heading"><div><h2>Negative feedback</h2><p>Review the answer and company context before reactivating any affected route.</p></div><strong>{visibleNegativeFeedback.length}</strong></div><div className="answer-quality-simple-list">{visibleNegativeFeedback.map((entry) => <SimpleIssueCard accountId={entry.account_id} companyName={entry.company_name} date={entry.created_at} detail={entry.comment || 'The driver or manager marked this answer as not helpful.'} eyebrow="Answer improvement" key={entry.id} question={entry.question} />)}{!visibleNegativeFeedback.length ? <div className="empty-state">No negative feedback matches this view.</div> : null}</div></section>
+        </div>
       ) : null}
 
-      <section className="summary-grid answer-memory-summary">
-        <div className="summary-card"><span>Remembered questions</span><strong>{routes.length}</strong></div>
-        <div className="summary-card"><span>Active</span><strong>{counts.ACTIVE || 0}</strong></div>
-        <div className="summary-card"><span>Needs review</span><strong>{counts.REVIEW_REQUIRED || 0}</strong></div>
-        <div className="summary-card"><span>Still learning</span><strong>{counts.CANDIDATE || 0}</strong></div>
-        <div className="summary-card"><span>Suspended</span><strong>{counts.SUSPENDED || 0}</strong></div>
-      </section>
+      {activeTab === 'ROUTES' ? <section><div className="answer-memory-filters answer-quality-route-filters" aria-label="Filter learned routes by status">{ROUTE_FILTERS.map((filter) => <button className={`answer-memory-filter${statusFilter === filter.value ? ' active' : ''}`} key={filter.value} onClick={() => setStatusFilter(filter.value)} type="button">{filter.label} ({filter.value === 'ALL' ? routes.length : counts[filter.value] || 0})</button>)}</div><div className="answer-quality-route-list">{visibleRoutes.map((route) => <RouteCard expanded={expandedRouteKey === route.route_key} isUpdating={reviewMutation.isPending && reviewMutation.variables?.routeKey === route.route_key} key={route.route_key} onReview={handleReview} onToggle={() => setExpandedRouteKey(expandedRouteKey === route.route_key ? null : route.route_key)} route={route} />)}{!visibleRoutes.length ? <div className="empty-state">No learned routes match these filters.</div> : null}</div><details className="page-card answer-quality-how-it-works"><summary>How learned routes work</summary><p>Active routes can reuse a published answer for eligible repeated wording. Standard routes require matching AI confirmations; clarifications and high-risk routes require additional confirmation, and high-risk routes require staff approval. A disagreement or negative feedback suspends reuse until staff review it.</p></details></section> : null}
 
-      <section className="page-card answer-memory-guidance">
-        <h2>How it works</h2>
-        <p><strong>Active</strong> routes can bypass AI for that same question. Direct standard answers require three matching AI confirmations. Clarifications and high-risk routes require five; high-risk routes also require manager approval. RRA continues checking about 5% of remembered answers with AI. Any disagreement or negative feedback suspends the route.</p>
-      </section>
-
-      <section className="page-card">
-        <div className="answer-memory-toolbar">
-          <div className="answer-memory-filters" aria-label="Filter Answer Memory by status">
-            {FILTERS.map((filter) => (
-              <button
-                className={`answer-memory-filter${statusFilter === filter.value ? ' active' : ''}`}
-                key={filter.value}
-                onClick={() => setStatusFilter(filter.value)}
-                type="button"
-              >
-                {filter.label}{filter.value === 'ALL' ? ` (${routes.length})` : ` (${counts[filter.value] || 0})`}
-              </button>
-            ))}
-          </div>
-          <label className="answer-memory-search">
-            <span>Find a question</span>
-            <input
-              onChange={(event) => setSearch(event.target.value)}
-              placeholder="Search questions or knowledge records"
-              type="search"
-              value={search}
-            />
-          </label>
+      {activeTab === 'PERFORMANCE' ? (
+        <div className="answer-quality-section-stack">
+          <section className="page-card"><div className="answer-quality-section-heading"><div><h2>Last 30 days</h2><p>Usage, cost, and response speed across ReadyRoute.</p></div></div><div className="summary-grid"><div className="summary-card"><span>Questions</span><strong>{metrics.total_questions || 0}</strong></div><div className="summary-card"><span>Companies</span><strong>{metrics.companies || 0}</strong></div><div className="summary-card"><span>AI calls avoided</span><strong>{metrics.ai_calls_avoided || 0}</strong></div><div className="summary-card"><span>Estimated AI cost</span><strong>{formatMoney(metrics.estimated_ai_cost_usd)}</strong></div></div></section>
+          <section className="page-card"><div className="answer-quality-section-heading"><div><h2>Response speed</h2><p>Learned routes can answer eligible repeated wording without another AI interpretation.</p></div></div><div className="summary-grid"><div className="summary-card"><span>Average response</span><strong>{formatLatency(metrics.average_response_latency_ms)}</strong></div><div className="summary-card"><span>95% answered within</span><strong>{formatLatency(metrics.p95_response_latency_ms)}</strong></div><div className="summary-card"><span>New AI wording</span><strong>{formatLatency(metrics.average_ai_response_latency_ms)}</strong></div><div className="summary-card"><span>Learned wording</span><strong>{formatLatency(metrics.average_learned_response_latency_ms)}</strong></div></div></section>
+          <section className="page-card"><div className="answer-quality-section-heading"><div><h2>Recent question activity</h2><p>Raw wording is limited to authorized ReadyRoute staff and follows the retention policy.</p></div></div>{recentInteractions.length ? <div className="table-wrap"><table><thead><tr><th>Company</th><th>Driver question</th><th>Answer given</th><th>Speed</th><th>Asked</th></tr></thead><tbody>{recentInteractions.map((interaction) => <tr key={interaction.id}><td><Link to={`/readyroute/companies/${interaction.account_id}/view`}>{interaction.company_name}</Link></td><td>{interaction.question}</td><td>{interaction.answer_snapshot || interaction.escalation_message || (interaction.response_mode === 'CLARIFY' ? 'Clarification asked' : '—')}</td><td>{formatLatency(interaction.response_latency_ms)}</td><td>{formatDate(interaction.created_at)}</td></tr>)}</tbody></table></div> : <div className="empty-state">No questions were recorded in this period.</div>}</section>
         </div>
-
-        {actionError ? <div className="answer-memory-action-error" role="alert">{actionError}</div> : null}
-
-        {visibleRoutes.length ? (
-          <div className="table-wrap answer-memory-table-wrap">
-            <table className="answer-memory-table">
-              <thead>
-                <tr><th>Driver question</th><th>Approved answer route</th><th>Status</th><th>Evidence</th><th>Last seen</th><th>Action</th></tr>
-              </thead>
-              <tbody>
-                {visibleRoutes.map((route) => {
-                  const meta = statusMeta(route.status);
-                  const isUpdating = reviewMutation.isPending && reviewMutation.variables?.routeKey === route.route_key;
-                  const isExpanded = expandedRouteKey === route.route_key;
-                  const preview = route.preview;
-                  const previewSteps = preview?.answer_structure?.steps || [];
-                  const previewWatchFor = preview?.answer_structure?.watch_for
-                    || preview?.answer_structure?.prohibited_actions?.[0]
-                    || null;
-                  return (
-                    <Fragment key={route.route_key}>
-                      <tr>
-                        <td><strong>{route.normalized_question}</strong><small>{route.response_mode === 'CLARIFY' ? 'Asks a clarification' : 'Gives an answer'} · {route.risk_tier === 'HIGH' ? 'High-risk topic' : 'Standard topic'}</small></td>
-                        <td><strong>{formatKnowledgeId(route.knowledge_id)}</strong><small>{route.knowledge_id} · version {route.knowledge_version}</small></td>
-                        <td><span className={`answer-memory-status ${meta.tone}`}>{meta.label}</span></td>
-                        <td>
-                          <strong>{route.agreement_count || 0} of {route.required_agreements || (route.response_mode === 'CLARIFY' || route.risk_tier === 'HIGH' ? 5 : 3)} confirmations</strong>
-                          <small>{route.reuse_count || 0} AI calls avoided · {route.audit_agreement_count || 0} audits passed · {route.audit_disagreement_count || 0} audit disagreements</small>
-                          {route.audit_error_count ? <small>{route.audit_error_count} audit provider errors · last audit {formatDate(route.last_audited_at)}</small> : null}
-                        </td>
-                        <td>{formatDate(route.last_seen_at)}</td>
-                        <td>
-                          <div className="answer-memory-actions">
-                            <button
-                              className="secondary-button"
-                              onClick={() => setExpandedRouteKey(isExpanded ? null : route.route_key)}
-                              type="button"
-                            >
-                              {isExpanded ? 'Hide behavior' : 'Preview behavior'}
-                            </button>
-                            {route.status !== 'ACTIVE' ? (
-                              <button
-                                className="primary-button"
-                                disabled={isUpdating || !preview || !route.ready_for_approval}
-                                onClick={() => reviewMutation.mutate({ routeKey: route.route_key, action: 'APPROVE' })}
-                                type="button"
-                              >
-                                {isUpdating
-                                  ? 'Saving…'
-                                  : !route.ready_for_approval
-                                    ? `Needs ${(route.required_agreements || 5) - (route.agreement_count || 0)} more`
-                                    : route.status === 'SUSPENDED' ? 'Reactivate' : 'Approve'}
-                              </button>
-                            ) : null}
-                            {route.status !== 'SUSPENDED' ? (
-                              <button
-                                className="secondary-button"
-                                disabled={isUpdating}
-                                onClick={() => reviewMutation.mutate({ routeKey: route.route_key, action: 'SUSPEND' })}
-                                type="button"
-                              >
-                                Suspend
-                              </button>
-                            ) : null}
-                          </div>
-                        </td>
-                      </tr>
-                      {isExpanded ? (
-                        <tr className="answer-memory-preview-row">
-                          <td colSpan="6">
-                            <div className="answer-memory-preview">
-                              <div className="answer-memory-preview-heading">
-                                <div>
-                                  <span className="eyebrow">What the driver will receive</span>
-                                  <h3>{preview?.response_mode === 'CLARIFY' ? 'Clarification' : 'Published answer'}</h3>
-                                </div>
-                                <span className={`answer-memory-status ${route.risk_tier === 'HIGH' ? 'warning' : 'neutral'}`}>{route.risk_tier === 'HIGH' ? 'Manager approval required' : 'Standard route'}</span>
-                              </div>
-                              {!preview ? <p>Preview unavailable. Do not approve this route until its published behavior can be loaded.</p> : null}
-                              {preview?.clarification_prompt ? <p className="answer-memory-preview-answer">{preview.clarification_prompt}</p> : null}
-                              {preview?.clarification_options?.length ? (
-                                <div>
-                                  <strong>Choices shown to the driver</strong>
-                                  <div className="answer-memory-preview-options">
-                                    {preview.clarification_options.map((option) => <span key={`${option.label}-${option.query}`}>{option.label}</span>)}
-                                  </div>
-                                </div>
-                              ) : null}
-                              {preview?.answer ? <p className="answer-memory-preview-answer">{preview.answer}</p> : null}
-                              {previewSteps.length ? (
-                                <div>
-                                  <strong>Do this</strong>
-                                  <ol>{previewSteps.map((step) => <li key={step}>{step}</li>)}</ol>
-                                </div>
-                              ) : null}
-                              {previewWatchFor ? <p className="answer-memory-preview-watch"><strong>Watch for:</strong> {previewWatchFor}</p> : null}
-                              {preview?.more_info ? <details><summary>More Info</summary><p>{preview.more_info}</p></details> : null}
-                            </div>
-                          </td>
-                        </tr>
-                      ) : null}
-                    </Fragment>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        ) : (
-          <div className="empty-state">No Answer Memory routes match this view yet.</div>
-        )}
-      </section>
+      ) : null}
     </main>
   );
 }
