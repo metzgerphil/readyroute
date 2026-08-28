@@ -8,6 +8,7 @@ import {
   getReadyRouteStaffToken,
   getSelectedCsaId
 } from './auth';
+import { getStaffLoginUrl } from '../utils/portalHost';
 
 const LOCAL_API_URL = import.meta.env.VITE_API_URL_LOCAL || 'http://localhost:3001';
 const PRODUCTION_API_URL = import.meta.env.VITE_API_URL || 'https://api.readyroute.org';
@@ -58,11 +59,8 @@ api.interceptors.response.use(
 
       if (isReadyRouteStaffRequest) {
         clearReadyRouteStaffToken();
-        const staffLoginPath = window.location.pathname.startsWith('/staff')
-          ? '/staff/login'
-          : '/readyroute/login';
-        if (window.location.pathname !== staffLoginPath) {
-          window.location.assign(staffLoginPath);
+        if (window.location.pathname !== '/readyroute/login') {
+          window.location.assign(getStaffLoginUrl(window.location.hostname));
         }
       } else {
         clearManagerToken();

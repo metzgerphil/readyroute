@@ -42,7 +42,7 @@ export default function AnswerMemoryPage() {
   const memoryQuery = useQuery({
     queryKey: ['driver-help-answer-memory'],
     queryFn: async () => {
-      const response = await api.get('/manager/driver-help/answer-memory', { params: { limit: 250 } });
+      const response = await api.get('/staff/driver-help/answer-memory', { params: { limit: 250 } });
       return response.data;
     },
     refetchInterval: 60000
@@ -51,7 +51,7 @@ export default function AnswerMemoryPage() {
   const reviewMutation = useMutation({
     mutationFn: async ({ routeKey, action }) => {
       const response = await api.post(
-        `/manager/driver-help/answer-memory/${encodeURIComponent(routeKey)}/review`,
+        `/staff/driver-help/answer-memory/${encodeURIComponent(routeKey)}/review`,
         { action }
       );
       return response.data;
