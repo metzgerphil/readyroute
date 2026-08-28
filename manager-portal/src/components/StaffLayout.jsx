@@ -6,7 +6,6 @@ import { clearReadyRouteStaffToken, getReadyRouteStaffTokenPayload } from '../se
 const staffNavLinks = [
   { to: '/readyroute/support', label: 'Support' },
   { to: '/readyroute/companies', label: 'Companies' },
-  { to: '/readyroute/knowledge', label: 'Knowledge Activity' },
   { to: '/readyroute/memory', label: 'Answer Quality' },
   { to: '/readyroute/rra-test', label: 'RRA Test Console' },
   { to: '/readyroute/costs', label: 'Costs' },

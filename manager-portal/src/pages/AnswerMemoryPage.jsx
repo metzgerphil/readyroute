@@ -1,13 +1,14 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useMemo, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 
 import api from '../services/api';
 
 const TABS = [
   { value: 'QUEUE', label: 'Review queue' },
   { value: 'ROUTES', label: 'Learned routes' },
-  { value: 'PERFORMANCE', label: 'Activity & performance' }
+  { value: 'PERFORMANCE', label: 'Activity & performance' },
+  { value: 'AUDIT', label: 'Audit trail' }
 ];
 const ROUTE_FILTERS = [
   { value: 'ALL', label: 'All' },
@@ -45,6 +46,19 @@ function formatMoney(value) {
 
 function statusMeta(status) {
   return STATUS_META[status] || { label: status || 'Unknown', tone: 'neutral' };
+}
+
+function auditMethod(interaction) {
+  if (interaction.interpretation_mode === 'LEARNED_ROUTE') return 'LEARNED';
+  if (['GROUNDED_AI', 'AI_SHADOW', 'AI_SHADOW_FALLBACK', 'DETERMINISTIC_FALLBACK'].includes(interaction.interpretation_mode)) return 'AI';
+  return 'DETERMINISTIC';
+}
+
+function auditMethodLabel(interaction) {
+  const method = auditMethod(interaction);
+  if (method === 'LEARNED') return 'Learned route';
+  if (method === 'AI') return 'Grounded AI';
+  return 'Published rule';
 }
 
 function routeMatches(route, search, companyId) {
@@ -137,14 +151,64 @@ function SimpleIssueCard({ eyebrow, companyName, question, detail, date, account
   );
 }
 
+function AuditInteraction({ interaction, feedback }) {
+  const knowledgeIds = interaction.selected_knowledge_ids || [];
+  const versions = interaction.selected_knowledge_versions || [];
+  const occurrenceCount = interaction.occurrence_count || 1;
+  return (
+    <details className="answer-quality-audit-row">
+      <summary>
+        <div className="answer-quality-audit-question">
+          <strong>{interaction.question ? `“${interaction.question}”` : 'Retained question unavailable'}</strong>
+          <span>{interaction.company_name || 'Unknown company'}{occurrenceCount > 1 ? ` · ${occurrenceCount} similar occurrences` : ''}</span>
+        </div>
+        <div className="answer-quality-audit-badges">
+          <span className={`answer-quality-result ${String(interaction.response_mode || '').toLowerCase()}`}>{interaction.response_mode || 'Unknown'}</span>
+          <span>{auditMethodLabel(interaction)}</span>
+          {feedback ? <span className={feedback.rating === 'down' ? 'negative' : 'helpful'}>{feedback.rating === 'down' ? 'Not helpful' : 'Helpful'}</span> : null}
+        </div>
+        <time>{formatDate(interaction.created_at)}</time>
+      </summary>
+      <div className="answer-quality-audit-details">
+        <section>
+          <span className="eyebrow">Answer delivered</span>
+          <p>{interaction.answer_snapshot || interaction.escalation_message || (interaction.response_mode === 'CLARIFY' ? 'ReadyRoute asked the driver for a clarification.' : 'No retained answer snapshot.')}</p>
+          {feedback ? <p className={feedback.rating === 'down' ? 'answer-quality-feedback-negative' : 'answer-quality-feedback-helpful'}><strong>Feedback:</strong> {feedback.comment || (feedback.rating === 'down' ? 'Marked not helpful.' : 'Marked helpful.')}</p> : null}
+        </section>
+        <section>
+          <span className="eyebrow">Approved knowledge</span>
+          {knowledgeIds.length ? <ul>{knowledgeIds.map((id, index) => <li key={id}><strong>{formatKnowledgeId(id)}</strong> · version {versions[index] || 1}</li>)}</ul> : <p>No approved record was selected.</p>}
+          <p className="answer-quality-muted">{interaction.company_name || 'Unknown company'} · {formatLatency(interaction.response_latency_ms)}</p>
+          {interaction.account_id ? <Link to={`/readyroute/companies/${interaction.account_id}/view`}>Open company</Link> : null}
+        </section>
+        <details className="answer-quality-technical">
+          <summary>Technical trace</summary>
+          <dl>
+            <div><dt>Interaction ID</dt><dd>{interaction.id}</dd></div>
+            <div><dt>Interpretation mode</dt><dd>{interaction.interpretation_mode || 'DETERMINISTIC'}</dd></div>
+            <div><dt>Knowledge IDs</dt><dd>{knowledgeIds.join(', ') || 'None'}</dd></div>
+            {interaction.interpretation_result?.confidence != null ? <div><dt>AI confidence</dt><dd>{Math.round(Number(interaction.interpretation_result.confidence) * 100)}%</dd></div> : null}
+          </dl>
+        </details>
+      </div>
+    </details>
+  );
+}
+
 export default function AnswerMemoryPage() {
   const queryClient = useQueryClient();
-  const [activeTab, setActiveTab] = useState('QUEUE');
+  const [searchParams, setSearchParams] = useSearchParams();
+  const requestedTab = String(searchParams.get('tab') || '').toUpperCase();
+  const [activeTab, setActiveTab] = useState(TABS.some((tab) => tab.value === requestedTab) ? requestedTab : 'QUEUE');
   const [statusFilter, setStatusFilter] = useState('ALL');
   const [search, setSearch] = useState('');
   const [companyFilter, setCompanyFilter] = useState('');
   const [actionError, setActionError] = useState('');
   const [expandedRouteKey, setExpandedRouteKey] = useState(null);
+  const [auditOutcome, setAuditOutcome] = useState('ALL');
+  const [auditMethodFilter, setAuditMethodFilter] = useState('ALL');
+  const [auditFeedback, setAuditFeedback] = useState('ALL');
+  const [groupRepeated, setGroupRepeated] = useState(true);
   const memoryQuery = useQuery({ queryKey: ['driver-help-answer-memory'], queryFn: async () => (await api.get('/staff/driver-help/answer-memory', { params: { limit: 250 } })).data, refetchInterval: 60000 });
   const overviewQuery = useQuery({ queryKey: ['global-driver-help-overview'], queryFn: async () => (await api.get('/staff/driver-help/overview', { params: { limit: 150, days: 30 } })).data, refetchInterval: 60000 });
   const reviewMutation = useMutation({
@@ -177,24 +241,54 @@ export default function AnswerMemoryPage() {
   const visibleUnanswered = unansweredQuestions.filter(issueMatches);
   const visibleNegativeFeedback = negativeFeedback.filter(issueMatches);
   const queueCount = reviewRoutes.length + unansweredQuestions.length + negativeFeedback.length;
+  const feedbackByInteraction = new Map((overview.recent_feedback || []).map((entry) => [entry.interaction_id, entry]));
+  const auditInteractions = recentInteractions.filter((entry) => {
+    if (companyFilter && entry.account_id !== companyFilter) return false;
+    if (auditOutcome !== 'ALL' && entry.response_mode !== auditOutcome) return false;
+    if (auditMethodFilter !== 'ALL' && auditMethod(entry) !== auditMethodFilter) return false;
+    const feedback = feedbackByInteraction.get(entry.id);
+    if (auditFeedback === 'NEGATIVE' && feedback?.rating !== 'down') return false;
+    if (auditFeedback === 'HELPFUL' && feedback?.rating !== 'up') return false;
+    if (auditFeedback === 'NONE' && feedback) return false;
+    const term = search.trim().toLowerCase();
+    return !term || [entry.question, entry.company_name, entry.answer_snapshot, ...(entry.selected_knowledge_ids || [])]
+      .some((value) => String(value || '').toLowerCase().includes(term));
+  });
+  const visibleAuditInteractions = groupRepeated
+    ? Array.from(auditInteractions.reduce((grouped, entry) => {
+      const key = [String(entry.question || '').trim().toLowerCase(), entry.response_mode, ...(entry.selected_knowledge_ids || [])].join('|');
+      const existing = grouped.get(key);
+      if (existing) existing.occurrence_count += 1;
+      else grouped.set(key, { ...entry, occurrence_count: 1 });
+      return grouped;
+    }, new Map()).values())
+    : auditInteractions;
+  const groundedAiCount = recentInteractions.filter((entry) => auditMethod(entry) === 'AI').length;
+  const learnedCount = recentInteractions.filter((entry) => auditMethod(entry) === 'LEARNED').length;
+  const auditDisagreements = routes.reduce((sum, route) => sum + Number(route.audit_disagreement_count || 0), 0);
+  const auditErrors = routes.reduce((sum, route) => sum + Number(route.audit_error_count || 0), 0);
 
   if (memoryQuery.isLoading || overviewQuery.isLoading) return <div className="page-card">Loading answer quality…</div>;
   if (memoryQuery.isError || overviewQuery.isError) return <div className="page-card">Answer quality activity could not be loaded.</div>;
   const handleReview = (routeKey, action) => reviewMutation.mutate({ routeKey, action });
+  const selectTab = (value) => {
+    setActiveTab(value);
+    setSearchParams({ tab: value.toLowerCase() }, { replace: true });
+  };
 
   return (
     <main className="page answer-memory-page answer-quality-page">
       <div className="page-heading-row answer-quality-heading">
-        <div><div className="eyebrow">Ready Route Answers</div><h1>Answer Quality</h1><p>Review questions that need attention, understand which companies are affected, and manage learned answer routes.</p></div>
+        <div><div className="eyebrow">Ready Route Answers</div><h1>Answer Quality</h1><p>Review questions needing attention, manage learned routes, measure performance, and inspect the answer audit trail.</p></div>
         <div className="answer-quality-refresh"><span>Updates automatically every minute</span><button className="secondary-button" disabled={memoryQuery.isFetching || overviewQuery.isFetching} onClick={() => { memoryQuery.refetch(); overviewQuery.refetch(); }} type="button">{memoryQuery.isFetching || overviewQuery.isFetching ? 'Refreshing…' : 'Refresh now'}</button></div>
       </div>
       <section className="answer-quality-priority-grid" aria-label="Answer quality summary">
-        <button className="answer-quality-priority-card danger" onClick={() => setActiveTab('QUEUE')} type="button"><span>Needs staff attention</span><strong>{queueCount}</strong><small>Open the review queue</small></button>
-        <button className="answer-quality-priority-card warning" onClick={() => { setActiveTab('ROUTES'); setStatusFilter('SUSPENDED'); }} type="button"><span>Suspended routes</span><strong>{counts.SUSPENDED || 0}</strong><small>Not being reused</small></button>
-        <button className="answer-quality-priority-card neutral" onClick={() => { setActiveTab('ROUTES'); setStatusFilter('CANDIDATE'); }} type="button"><span>Still learning</span><strong>{counts.CANDIDATE || 0}</strong><small>Collecting confirmations</small></button>
-        <button className="answer-quality-priority-card ready" onClick={() => { setActiveTab('ROUTES'); setStatusFilter('ACTIVE'); }} type="button"><span>Healthy active routes</span><strong>{counts.ACTIVE || 0}</strong><small>Available for reuse</small></button>
+        <button className="answer-quality-priority-card danger" onClick={() => selectTab('QUEUE')} type="button"><span>Needs staff attention</span><strong>{queueCount}</strong><small>Open the review queue</small></button>
+        <button className="answer-quality-priority-card warning" onClick={() => { selectTab('ROUTES'); setStatusFilter('SUSPENDED'); }} type="button"><span>Suspended routes</span><strong>{counts.SUSPENDED || 0}</strong><small>Not being reused</small></button>
+        <button className="answer-quality-priority-card neutral" onClick={() => { selectTab('ROUTES'); setStatusFilter('CANDIDATE'); }} type="button"><span>Still learning</span><strong>{counts.CANDIDATE || 0}</strong><small>Collecting confirmations</small></button>
+        <button className="answer-quality-priority-card ready" onClick={() => { selectTab('ROUTES'); setStatusFilter('ACTIVE'); }} type="button"><span>Healthy active routes</span><strong>{counts.ACTIVE || 0}</strong><small>Available for reuse</small></button>
       </section>
-      <nav className="answer-quality-tabs" aria-label="Answer Quality sections">{TABS.map((tab) => <button className={activeTab === tab.value ? 'active' : ''} key={tab.value} onClick={() => setActiveTab(tab.value)} type="button">{tab.label}{tab.value === 'QUEUE' ? ` (${queueCount})` : ''}</button>)}</nav>
+      <nav className="answer-quality-tabs" aria-label="Answer Quality sections">{TABS.map((tab) => <button className={activeTab === tab.value ? 'active' : ''} key={tab.value} onClick={() => selectTab(tab.value)} type="button">{tab.label}{tab.value === 'QUEUE' ? ` (${queueCount})` : ''}</button>)}</nav>
       {activeTab !== 'PERFORMANCE' ? <section className="answer-quality-toolbar"><label><span>Search</span><input onChange={(event) => setSearch(event.target.value)} placeholder="Question, company, or approved record" type="search" value={search} /></label><label><span>Company</span><select onChange={(event) => setCompanyFilter(event.target.value)} value={companyFilter}><option value="">All companies</option>{companies.map((company) => <option key={company.id} value={company.id}>{company.name}</option>)}</select></label></section> : null}
       {actionError ? <div className="answer-memory-action-error" role="alert">{actionError}</div> : null}
       {memoryQuery.data?.setup_required ? <div className="page-card warning-card">Answer Memory still needs to be enabled for this workspace.</div> : null}
@@ -213,7 +307,25 @@ export default function AnswerMemoryPage() {
         <div className="answer-quality-section-stack">
           <section className="page-card"><div className="answer-quality-section-heading"><div><h2>Last 30 days</h2><p>Usage, cost, and response speed across ReadyRoute.</p></div></div><div className="summary-grid"><div className="summary-card"><span>Questions</span><strong>{metrics.total_questions || 0}</strong></div><div className="summary-card"><span>Companies</span><strong>{metrics.companies || 0}</strong></div><div className="summary-card"><span>AI calls avoided</span><strong>{metrics.ai_calls_avoided || 0}</strong></div><div className="summary-card"><span>Estimated AI cost</span><strong>{formatMoney(metrics.estimated_ai_cost_usd)}</strong></div></div></section>
           <section className="page-card"><div className="answer-quality-section-heading"><div><h2>Response speed</h2><p>Learned routes can answer eligible repeated wording without another AI interpretation.</p></div></div><div className="summary-grid"><div className="summary-card"><span>Average response</span><strong>{formatLatency(metrics.average_response_latency_ms)}</strong></div><div className="summary-card"><span>95% answered within</span><strong>{formatLatency(metrics.p95_response_latency_ms)}</strong></div><div className="summary-card"><span>New AI wording</span><strong>{formatLatency(metrics.average_ai_response_latency_ms)}</strong></div><div className="summary-card"><span>Learned wording</span><strong>{formatLatency(metrics.average_learned_response_latency_ms)}</strong></div></div></section>
-          <section className="page-card"><div className="answer-quality-section-heading"><div><h2>Recent question activity</h2><p>Raw wording is limited to authorized ReadyRoute staff and follows the retention policy.</p></div></div>{recentInteractions.length ? <div className="table-wrap"><table><thead><tr><th>Company</th><th>Driver question</th><th>Answer given</th><th>Speed</th><th>Asked</th></tr></thead><tbody>{recentInteractions.map((interaction) => <tr key={interaction.id}><td><Link to={`/readyroute/companies/${interaction.account_id}/view`}>{interaction.company_name}</Link></td><td>{interaction.question}</td><td>{interaction.answer_snapshot || interaction.escalation_message || (interaction.response_mode === 'CLARIFY' ? 'Clarification asked' : '—')}</td><td>{formatLatency(interaction.response_latency_ms)}</td><td>{formatDate(interaction.created_at)}</td></tr>)}</tbody></table></div> : <div className="empty-state">No questions were recorded in this period.</div>}</section>
+        </div>
+      ) : null}
+
+      {activeTab === 'AUDIT' ? (
+        <div className="answer-quality-section-stack">
+          <section className="page-card">
+            <div className="answer-quality-section-heading"><div><h2>Answer delivery overview</h2><p>How recent driver questions were resolved. Detailed system identifiers remain hidden until expanded.</p></div></div>
+            <div className="summary-grid answer-quality-audit-summary"><div className="summary-card"><span>Grounded AI</span><strong>{groundedAiCount}</strong></div><div className="summary-card"><span>Learned routes</span><strong>{learnedCount}</strong></div><div className="summary-card"><span>Escalations</span><strong>{metrics.escalations || 0}</strong></div><div className="summary-card"><span>Audit disagreements</span><strong>{auditDisagreements}</strong></div><div className="summary-card"><span>Audit errors</span><strong>{auditErrors}</strong></div></div>
+          </section>
+          <section>
+            <div className="answer-quality-audit-controls">
+              <label><span>Outcome</span><select onChange={(event) => setAuditOutcome(event.target.value)} value={auditOutcome}><option value="ALL">All outcomes</option><option value="ANSWER">Answered</option><option value="CLARIFY">Clarification</option><option value="ESCALATE">Escalated</option></select></label>
+              <label><span>Answer method</span><select onChange={(event) => setAuditMethodFilter(event.target.value)} value={auditMethodFilter}><option value="ALL">All methods</option><option value="AI">Grounded AI</option><option value="LEARNED">Learned route</option><option value="DETERMINISTIC">Published rule</option></select></label>
+              <label><span>Feedback</span><select onChange={(event) => setAuditFeedback(event.target.value)} value={auditFeedback}><option value="ALL">All feedback</option><option value="NEGATIVE">Not helpful</option><option value="HELPFUL">Helpful</option><option value="NONE">No feedback</option></select></label>
+              <label className="answer-quality-group-toggle"><input checked={groupRepeated} onChange={(event) => setGroupRepeated(event.target.checked)} type="checkbox" /><span>Group repeated questions</span></label>
+            </div>
+            <div className="answer-quality-section-heading"><div><h2>Recent answer trail</h2><p>Open an entry to see the delivered answer, approved knowledge, and technical trace.</p></div><strong>{visibleAuditInteractions.length}</strong></div>
+            <div className="answer-quality-audit-list">{visibleAuditInteractions.map((interaction) => <AuditInteraction feedback={feedbackByInteraction.get(interaction.id)} interaction={interaction} key={interaction.id} />)}{!visibleAuditInteractions.length ? <div className="empty-state">No answer activity matches these filters.</div> : null}</div>
+          </section>
         </div>
       ) : null}
     </main>
