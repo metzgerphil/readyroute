@@ -4,6 +4,11 @@
   "trailingSlash": false,
   "redirects": [
     {
+      "source": "/",
+      "destination": "https://readyroute.org/",
+      "permanent": true
+    },
+    {
       "source": "/:path*",
       "destination": "https://readyroute.org/:path*",
       "permanent": true
