@@ -29,7 +29,7 @@ test('the legacy MVP page cannot submit the incomplete signup form', () => {
   assert.match(mvp, /href="\/signup"/);
 });
 
-test('landing hosting prevents stale signup HTML and redirects legacy entry points', () => {
+test('canonical landing hosting prevents stale signup HTML and redirects legacy entry points', () => {
   const firebase = JSON.parse(fs.readFileSync(path.join(root, 'firebase.json'), 'utf8'));
   const landing = firebase.hosting.find((entry) => entry.target === 'landing');
   assert.ok(landing);
@@ -44,6 +44,9 @@ test('landing hosting prevents stale signup HTML and redirects legacy entry poin
   );
 
   const vercel = JSON.parse(fs.readFileSync(path.join(root, 'landing-page/vercel.json'), 'utf8'));
-  assert.equal(vercel.headers.find((entry) => entry.source === '/signup').headers[0].value, 'no-cache, no-store, must-revalidate');
-  assert.ok(vercel.redirects.some((entry) => entry.source === '/mvp' && entry.destination === '/signup'));
+  assert.ok(
+    vercel.redirects.some(
+      (entry) => entry.source === '/:path*' && entry.destination === 'https://readyroute.org/:path*'
+    )
+  );
 });
