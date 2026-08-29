@@ -131,7 +131,8 @@ const emptyDocumentDraft = {
 
 const emptyManagerInviteForm = {
   full_name: '',
-  email: ''
+  email: '',
+  phone: ''
 };
 
 const emptyLaborForm = {
@@ -624,6 +625,14 @@ function ManagerModal({
             type="email"
             value={form.email}
           />
+          <input
+            className="text-field"
+            inputMode="tel"
+            onChange={(event) => onChange('phone', event.target.value)}
+            placeholder="Manager phone number"
+            type="tel"
+            value={form.phone}
+          />
 
           {result?.message ? <div className="info-banner">{result.message}</div> : null}
           {result?.invite_url ? (
@@ -650,6 +659,7 @@ function ManagerModal({
                 <div>
                   <strong>{managerUser.full_name || managerUser.email}</strong>
                   <div className="driver-meta">{managerUser.email}</div>
+                  {managerUser.phone ? <div className="driver-meta">{managerUser.phone}</div> : null}
                 </div>
                 <div className="manager-access-status-group">
                   <span className={`pin-workflow-chip ${managerUser.status === 'active' ? 'pin-workflow-chip-good' : 'pin-workflow-chip-warning'}`}>
@@ -1473,8 +1483,8 @@ export default function DriversPage() {
     event.preventDefault();
     setManagerInviteError('');
 
-    if (!managerInviteForm.email.trim()) {
-      setManagerInviteError('Manager email is required.');
+    if (!managerInviteForm.full_name.trim() || !managerInviteForm.email.trim() || !managerInviteForm.phone.trim()) {
+      setManagerInviteError('Manager name, email, and phone number are required.');
       return;
     }
 
