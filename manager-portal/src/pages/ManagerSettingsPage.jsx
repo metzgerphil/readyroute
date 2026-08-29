@@ -42,6 +42,8 @@ export default function ManagerSettingsPage() {
   const [operationsTimezone, setOperationsTimezone] = useState('America/New_York');
   const [managers, setManagers] = useState([]);
   const [schedule, setSchedule] = useState({});
+  const [newManager, setNewManager] = useState({ full_name: '', email: '', phone: '' });
+  const [managerAdding, setManagerAdding] = useState(false);
 
   useEffect(() => {
     let isCurrent = true;
@@ -86,6 +88,38 @@ export default function ManagerSettingsPage() {
     )));
   }
 
+  function updateManagerName(managerId, fullName) {
+    setManagers((current) => current.map((manager) => (
+      manager.id === managerId ? { ...manager, full_name: fullName } : manager
+    )));
+  }
+
+  async function handleAddManager() {
+    setScheduleError('');
+    setScheduleMessage('');
+    setManagerAdding(true);
+
+    try {
+      const response = await api.post('/manager/manager-users/invite', newManager);
+      const addedManager = response.data?.manager_user;
+      if (addedManager) {
+        setManagers((current) => [
+          ...current.filter((manager) => manager.id !== addedManager.id),
+          addedManager
+        ].sort((left, right) => String(left.full_name || left.email).localeCompare(String(right.full_name || right.email))));
+      }
+      setNewManager({ full_name: '', email: '', phone: '' });
+      setScheduleMessage(response.data?.message || 'Manager added. You can now assign them to the weekly schedule.');
+      if (response.data?.invite_url) {
+        window.prompt('Email delivery is unavailable. Copy this secure manager invite link:', response.data.invite_url);
+      }
+    } catch (error) {
+      setScheduleError(error.response?.data?.error || 'Could not add this manager.');
+    } finally {
+      setManagerAdding(false);
+    }
+  }
+
   async function handleScheduleSubmit(event) {
     event.preventDefault();
     setScheduleError('');
@@ -95,7 +129,11 @@ export default function ManagerSettingsPage() {
     try {
       await api.put('/manager/account/manager-schedule', {
         operations_timezone: operationsTimezone,
-        managers: managers.map((manager) => ({ id: manager.id, phone: manager.phone || '' })),
+        managers: managers.map((manager) => ({
+          id: manager.id,
+          full_name: manager.full_name || '',
+          phone: manager.phone || ''
+        })),
         schedule: WEEKDAYS.map(([isoWeekday]) => ({
           iso_weekday: isoWeekday,
           manager_user_id: schedule[isoWeekday] || ''
@@ -184,20 +222,53 @@ export default function ManagerSettingsPage() {
             </label>
 
             <div className="rra-schedule-manager-phones">
-              <h3>Manager phone numbers</h3>
-              <div className="rra-company-form-grid">
-                {managers.map((manager) => (
-                  <label key={manager.id}>
-                    {manager.full_name || manager.email}
-                    <input
-                      disabled={!canManageSchedule || scheduleSaving}
-                      inputMode="tel"
-                      onChange={(event) => updateManagerPhone(manager.id, event.target.value)}
-                      placeholder="Manager phone number"
-                      type="tel"
-                      value={manager.phone || ''}
-                    />
+              <h3>Managers drivers can call</h3>
+              <p className="rra-schedule-note">Add each manager once, then choose who is on call for every day below.</p>
+              {canManageSchedule ? (
+                <div className="rra-schedule-add-manager">
+                  <label>
+                    Manager name
+                    <input onChange={(event) => setNewManager((current) => ({ ...current, full_name: event.target.value }))} placeholder="Eugene" type="text" value={newManager.full_name} />
                   </label>
+                  <label>
+                    Email
+                    <input onChange={(event) => setNewManager((current) => ({ ...current, email: event.target.value }))} placeholder="manager@company.com" type="email" value={newManager.email} />
+                  </label>
+                  <label>
+                    Phone number
+                    <input inputMode="tel" onChange={(event) => setNewManager((current) => ({ ...current, phone: event.target.value }))} placeholder="(555) 555-0100" type="tel" value={newManager.phone} />
+                  </label>
+                  <button className="secondary-inline-button" disabled={managerAdding || !newManager.full_name.trim() || !newManager.email.trim() || !newManager.phone.trim()} onClick={handleAddManager} type="button">{managerAdding ? 'Adding…' : 'Add manager'}</button>
+                </div>
+              ) : null}
+              <div className="rra-schedule-manager-list">
+                {managers.map((manager) => (
+                  <div className="rra-schedule-manager-entry" key={manager.id}>
+                    <label>
+                      Manager name
+                      <input
+                        disabled={!canManageSchedule || scheduleSaving}
+                        onChange={(event) => updateManagerName(manager.id, event.target.value)}
+                        placeholder="Manager name"
+                        required
+                        type="text"
+                        value={manager.full_name || ''}
+                      />
+                    </label>
+                    <label>
+                      Phone number
+                      <input
+                        disabled={!canManageSchedule || scheduleSaving}
+                        inputMode="tel"
+                        onChange={(event) => updateManagerPhone(manager.id, event.target.value)}
+                        placeholder="Manager phone number"
+                        required
+                        type="tel"
+                        value={manager.phone || ''}
+                      />
+                    </label>
+                    <span>{manager.email}</span>
+                  </div>
                 ))}
               </div>
             </div>

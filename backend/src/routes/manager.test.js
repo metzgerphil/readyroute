@@ -5079,6 +5079,7 @@ test('GET /manager/manager-users returns manager access status for the account',
 
 test('POST /manager/manager-users/invite returns a self-serve invite link', async () => {
   let insertedManagerUser = null;
+  let managerInsertPayload = null;
   const sentInvites = [];
   const supabase = new MockSupabase((query) => {
     if (query.table === 'accounts' && query.operation === 'select') {
@@ -5100,11 +5101,13 @@ test('POST /manager/manager-users/invite returns a self-serve invite link', asyn
     }
 
     if (query.table === 'manager_users' && query.operation === 'insert') {
+      managerInsertPayload = query.payload;
       insertedManagerUser = {
         id: 'manager-2',
         account_id: 'acct-1',
         email: 'vlad@example.com',
         full_name: 'Vlad Fedoryshyn',
+        phone: '2065550100',
         password_hash: null,
         is_active: true,
         invited_at: '2026-04-17T10:15:00.000Z',
@@ -5138,7 +5141,8 @@ test('POST /manager/manager-users/invite returns a self-serve invite link', asyn
       },
       body: JSON.stringify({
         email: 'vlad@example.com',
-        full_name: 'Vlad Fedoryshyn'
+        full_name: 'Vlad Fedoryshyn',
+        phone: '206-555-0100'
       })
     });
 
@@ -5147,8 +5151,10 @@ test('POST /manager/manager-users/invite returns a self-serve invite link', asyn
     assert.equal(body.email_delivery, 'sent');
     assert.equal(body.invite_url, null);
     assert.equal(body.manager_user.email, 'vlad@example.com');
+    assert.equal(body.manager_user.phone, '2065550100');
     assert.equal(body.manager_user.status, 'pending_invite');
     assert.equal(insertedManagerUser.email, 'vlad@example.com');
+    assert.equal(managerInsertPayload.phone, '2065550100');
     assert.equal(sentInvites.length, 1);
     assert.equal(sentInvites[0].to, 'vlad@example.com');
     assert.match(sentInvites[0].inviteUrl, /\?invite=/);
@@ -6153,7 +6159,13 @@ test('GET /manager/account/manager-schedule returns the company-local weekly sch
 test('PUT /manager/account/manager-schedule saves all seven company-wide assignments', async () => {
   const supabase = new MockSupabase((query) => {
     if (query.table === 'manager_users' && query.operation === 'select') {
-      return { data: [{ id: 'manager-1', phone: null }, { id: 'manager-2', phone: null }], error: null };
+      return {
+        data: [
+          { id: 'manager-1', full_name: 'Old Name', email: 'one@example.com', phone: null },
+          { id: 'manager-2', full_name: 'Second Manager', email: 'two@example.com', phone: null }
+        ],
+        error: null
+      };
     }
     if (query.table === 'accounts' && query.operation === 'update') return { data: null, error: null };
     if (query.table === 'manager_users' && query.operation === 'update') return { data: null, error: null };
@@ -6176,8 +6188,8 @@ test('PUT /manager/account/manager-schedule saves all seven company-wide assignm
       body: JSON.stringify({
         operations_timezone: 'America/Los_Angeles',
         managers: [
-          { id: 'manager-1', phone: '415-555-0100' },
-          { id: 'manager-2', phone: '415-555-0101' }
+          { id: 'manager-1', full_name: 'Eugene', phone: '415-555-0100' },
+          { id: 'manager-2', full_name: 'Second Manager', phone: '415-555-0101' }
         ],
         schedule
       })
@@ -6188,6 +6200,7 @@ test('PUT /manager/account/manager-schedule saves all seven company-wide assignm
     assert.equal(scheduleUpsert.options.onConflict, 'account_id,iso_weekday');
     const managerUpdates = supabase.calls.filter((query) => query.table === 'manager_users' && query.operation === 'update');
     assert.deepEqual(managerUpdates.map((query) => query.payload.phone), ['4155550100', '4155550101']);
+    assert.deepEqual(managerUpdates.map((query) => query.payload.full_name), ['Eugene', 'Second Manager']);
   } finally {
     await server.close();
   }

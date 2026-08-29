@@ -2964,6 +2964,10 @@ function createManagerRouter(options = {}) {
     const operationsTimezone = String(req.body?.operations_timezone || '').trim();
     const submittedManagers = Array.isArray(req.body?.managers) ? req.body.managers : [];
     const submittedSchedule = Array.isArray(req.body?.schedule) ? req.body.schedule : [];
+    const nameByManagerId = new Map(submittedManagers.map((manager) => [
+      String(manager?.id || '').trim(),
+      String(manager?.full_name || '').trim().slice(0, 120)
+    ]));
     const phoneByManagerId = new Map(submittedManagers.map((manager) => [
       String(manager?.id || '').trim(),
       normalizePhone(manager?.phone)
@@ -2981,7 +2985,7 @@ function createManagerRouter(options = {}) {
 
     try {
       const { data: activeManagers, error: managerError } = await supabase.from('manager_users')
-        .select('id, phone')
+        .select('id, full_name, email, phone')
         .eq('account_id', req.account.account_id)
         .eq('is_active', true);
       if (managerError) throw managerError;
@@ -2996,8 +3000,15 @@ function createManagerRouter(options = {}) {
         manager.id,
         phoneByManagerId.get(manager.id) || normalizePhone(manager.phone)
       ]));
+      const normalizedNames = new Map((activeManagers || []).map((manager) => [
+        manager.id,
+        nameByManagerId.get(manager.id) || String(manager.full_name || manager.email || '').trim()
+      ]));
       if (scheduledManagerIds.some((managerId) => !normalizedPhones.get(managerId))) {
         return res.status(400).json({ error: 'Every scheduled manager needs a valid phone number.' });
+      }
+      if (scheduledManagerIds.some((managerId) => !normalizedNames.get(managerId))) {
+        return res.status(400).json({ error: 'Every scheduled manager needs a name.' });
       }
 
       const timestamp = nowProvider().toISOString();
@@ -3011,7 +3022,7 @@ function createManagerRouter(options = {}) {
       const results = await Promise.all([
         supabase.from('accounts').update({ operations_timezone: operationsTimezone }).eq('id', req.account.account_id),
         ...[...normalizedPhones.entries()].filter(([, phone]) => Boolean(phone)).map(([managerId, phone]) => supabase.from('manager_users')
-          .update({ phone })
+          .update({ full_name: normalizedNames.get(managerId), phone })
           .eq('id', managerId)
           .eq('account_id', req.account.account_id)),
         supabase.from('rra_manager_weekly_schedule')
@@ -4266,6 +4277,7 @@ function createManagerRouter(options = {}) {
   router.post('/manager-users/invite', requireManager, async (req, res) => {
     const email = normalizeEmail(req.body?.email);
     const fullName = String(req.body?.full_name || '').trim() || null;
+    const phone = normalizePhone(req.body?.phone);
 
     if (!jwtSecret) {
       return res.status(500).json({ error: 'Missing JWT_SECRET environment variable' });
@@ -4273,6 +4285,9 @@ function createManagerRouter(options = {}) {
 
     if (!isValidEmail(email)) {
       return res.status(400).json({ error: 'A valid email is required' });
+    }
+    if (req.body?.phone != null && !phone) {
+      return res.status(400).json({ error: 'Enter a valid manager phone number' });
     }
 
     try {
@@ -4288,7 +4303,7 @@ function createManagerRouter(options = {}) {
 
       const existingManagerUserQuery = await supabase
         .from('manager_users')
-        .select('id, account_id, email, full_name, password_hash, is_active, invited_at, accepted_at')
+        .select('id, account_id, email, full_name, phone, password_hash, is_active, invited_at, accepted_at')
         .eq('account_id', req.account.account_id)
         .eq('email', email)
         .maybeSingle();
@@ -4331,13 +4346,14 @@ function createManagerRouter(options = {}) {
           .from('manager_users')
           .update({
             full_name: fullName || sharedManagerIdentity?.full_name || managerUser.full_name || null,
+            phone: phone || managerUser.phone || sharedManagerIdentity?.phone || null,
             password_hash: linkedExistingManager ? sharedManagerIdentity.password_hash : managerUser.password_hash || null,
             is_active: true,
             invited_at: invitedAt,
             accepted_at: linkedExistingManager ? invitedAt : null
           })
           .eq('id', managerUser.id)
-          .select('id, account_id, email, full_name, password_hash, is_active, invited_at, accepted_at')
+          .select('id, account_id, email, full_name, phone, password_hash, is_active, invited_at, accepted_at')
           .maybeSingle();
 
         if (updateError) {
@@ -4352,12 +4368,13 @@ function createManagerRouter(options = {}) {
             account_id: req.account.account_id,
             email,
             full_name: fullName || sharedManagerIdentity?.full_name || null,
+            phone: phone || sharedManagerIdentity?.phone || null,
             password_hash: sharedManagerIdentity?.password_hash || null,
             is_active: true,
             invited_at: invitedAt,
             accepted_at: sharedManagerIdentity?.password_hash ? invitedAt : null
           })
-          .select('id, account_id, email, full_name, password_hash, is_active, invited_at, accepted_at')
+          .select('id, account_id, email, full_name, phone, password_hash, is_active, invited_at, accepted_at')
           .maybeSingle();
 
         if (insertError) {
