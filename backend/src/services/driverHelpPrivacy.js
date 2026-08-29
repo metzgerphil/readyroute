@@ -26,6 +26,70 @@ function redactConversationContextForAi(context = {}) {
 }
 
 function createDriverHelpPrivacyService({ supabase, now = () => new Date() } = {}) {
+  function presentCompanyAuthorization(account) {
+    return {
+      company_ai_processing_authorized: account?.rra_ai_processing_authorized === true,
+      policy_version: account?.rra_ai_processing_policy_version || AI_CONSENT_POLICY_VERSION,
+      company_authorized_at: account?.rra_ai_processing_authorized_at || null,
+      company_withdrawn_at: account?.rra_ai_processing_withdrawn_at || null
+    };
+  }
+
+  async function getCompanyAuthorization({ accountId }) {
+    const { data, error } = await supabase
+      .from('accounts')
+      .select('rra_ai_processing_authorized, rra_ai_processing_policy_version, rra_ai_processing_authorized_at, rra_ai_processing_withdrawn_at')
+      .eq('id', accountId)
+      .maybeSingle();
+    if (error) throw error;
+    if (!data) {
+      const notFoundError = new Error('Account not found.');
+      notFoundError.code = 'ACCOUNT_NOT_FOUND';
+      throw notFoundError;
+    }
+    return presentCompanyAuthorization(data);
+  }
+
+  async function setCompanyAuthorization({ accountId, managerUserId, authorized, policyVersion }) {
+    if (policyVersion !== AI_CONSENT_POLICY_VERSION) {
+      const versionError = new Error('The company AI authorization notice has changed. Review the current notice before saving.');
+      versionError.code = 'POLICY_VERSION_MISMATCH';
+      throw versionError;
+    }
+
+    const timestamp = now().toISOString();
+    const update = authorized
+      ? {
+          rra_ai_processing_authorized: true,
+          rra_ai_processing_policy_version: policyVersion,
+          rra_ai_processing_authorized_at: timestamp,
+          rra_ai_processing_authorized_by: managerUserId || null,
+          rra_ai_processing_withdrawn_at: null,
+          rra_ai_processing_withdrawn_by: null
+        }
+      : {
+          rra_ai_processing_authorized: false,
+          rra_ai_processing_policy_version: policyVersion,
+          rra_ai_processing_authorized_at: null,
+          rra_ai_processing_authorized_by: null,
+          rra_ai_processing_withdrawn_at: timestamp,
+          rra_ai_processing_withdrawn_by: managerUserId || null
+        };
+    const { data, error } = await supabase
+      .from('accounts')
+      .update(update)
+      .eq('id', accountId)
+      .select('rra_ai_processing_authorized, rra_ai_processing_policy_version, rra_ai_processing_authorized_at, rra_ai_processing_withdrawn_at')
+      .maybeSingle();
+    if (error) throw error;
+    if (!data) {
+      const notFoundError = new Error('Account not found.');
+      notFoundError.code = 'ACCOUNT_NOT_FOUND';
+      throw notFoundError;
+    }
+    return presentCompanyAuthorization(data);
+  }
+
   async function getPreference({ accountId, actorType, actorId }) {
     const { data, error } = await supabase
       .from('driver_help_ai_consents')
@@ -70,7 +134,7 @@ function createDriverHelpPrivacyService({ supabase, now = () => new Date() } = {
     return data;
   }
 
-  return { getPreference, setPreference };
+  return { getCompanyAuthorization, getPreference, setCompanyAuthorization, setPreference };
 }
 
 module.exports = {

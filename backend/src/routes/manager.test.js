@@ -6156,6 +6156,71 @@ test('GET /manager/account/manager-schedule returns the company-local weekly sch
   }
 });
 
+test('GET /manager/account/ai-authorization returns the account-wide authorization', async () => {
+  const supabase = new MockSupabase((query) => {
+    if (query.table === 'accounts' && query.operation === 'select') {
+      return {
+        data: {
+          rra_ai_processing_authorized: true,
+          rra_ai_processing_policy_version: '2026-08-20',
+          rra_ai_processing_authorized_at: '2026-08-29T04:00:00.000Z',
+          rra_ai_processing_withdrawn_at: null
+        },
+        error: null
+      };
+    }
+    throw new Error(`Unexpected query ${query.table}:${query.operation}`);
+  });
+  const server = await startTestServer({ supabase });
+
+  try {
+    const response = await fetch(`${server.baseUrl}/manager/account/ai-authorization`, {
+      headers: { Authorization: `Bearer ${signManagerToken({ manager_role: 'owner' })}` }
+    });
+    const body = await response.json();
+
+    assert.equal(response.status, 200);
+    assert.equal(body.company_ai_processing_authorized, true);
+    assert.equal(body.company_authorized_at, '2026-08-29T04:00:00.000Z');
+    assert.equal(body.can_manage, true);
+  } finally {
+    await server.close();
+  }
+});
+
+test('PUT /manager/account/ai-authorization saves company authorization', async () => {
+  const supabase = new MockSupabase((query) => {
+    if (query.table === 'accounts' && query.operation === 'update') {
+      return { data: query.payload, error: null };
+    }
+    throw new Error(`Unexpected query ${query.table}:${query.operation}`);
+  });
+  const server = await startTestServer({
+    supabase,
+    now: () => new Date('2026-08-29T04:00:00.000Z')
+  });
+
+  try {
+    const response = await fetch(`${server.baseUrl}/manager/account/ai-authorization`, {
+      method: 'PUT',
+      headers: {
+        Authorization: `Bearer ${signManagerToken({ manager_role: 'owner' })}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({ authorized: true, policy_version: '2026-08-20' })
+    });
+    const body = await response.json();
+
+    assert.equal(response.status, 200);
+    assert.equal(body.company_ai_processing_authorized, true);
+    const update = supabase.calls.find((query) => query.table === 'accounts' && query.operation === 'update');
+    assert.equal(update.payload.rra_ai_processing_authorized_by, 'manager-1');
+    assert.equal(update.payload.rra_ai_processing_authorized_at, '2026-08-29T04:00:00.000Z');
+  } finally {
+    await server.close();
+  }
+});
+
 test('PUT /manager/account/manager-schedule saves all seven company-wide assignments', async () => {
   const supabase = new MockSupabase((query) => {
     if (query.table === 'manager_users' && query.operation === 'select') {

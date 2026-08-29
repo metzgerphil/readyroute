@@ -2775,10 +2775,8 @@ function createManagerRouter(options = {}) {
 
   router.get('/account/ai-authorization', requireManager, async (req, res) => {
     try {
-      const preference = await driverHelpPrivacyService.getPreference({
-        accountId: req.account.account_id,
-        actorType: 'manager',
-        actorId: req.account.manager_user_id || req.account.account_id
+      const preference = await driverHelpPrivacyService.getCompanyAuthorization({
+        accountId: req.account.account_id
       });
       return res.status(200).json({
         company_ai_processing_authorized: preference.company_ai_processing_authorized,
