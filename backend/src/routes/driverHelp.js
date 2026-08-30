@@ -105,7 +105,12 @@ function createDriverHelpRouter(options = {}) {
     try {
       const preference = privacyService
         ? await privacyService.getPreference(getActor(req))
-        : { ai_processing_consent: false, policy_version: AI_CONSENT_POLICY_VERSION };
+        : {
+            ai_processing_consent: false,
+            company_ai_processing_authorized: false,
+            notice_required: false,
+            policy_version: AI_CONSENT_POLICY_VERSION
+          };
       return res.status(200).json({
         ...preference,
         current_policy_version: AI_CONSENT_POLICY_VERSION
@@ -117,13 +122,14 @@ function createDriverHelpRouter(options = {}) {
   });
 
   router.put('/privacy-preferences', async (req, res) => {
-    if (typeof req.body?.ai_processing_consent !== 'boolean') {
-      return res.status(400).json({ error: 'ai_processing_consent must be true or false.' });
+    const acknowledged = req.body?.notice_seen === true
+      || typeof req.body?.ai_processing_consent === 'boolean';
+    if (!acknowledged) {
+      return res.status(400).json({ error: 'The company AI notice must be acknowledged.' });
     }
     try {
-      const preference = await privacyService.setPreference({
+      const preference = await privacyService.acknowledgeNotice({
         ...getActor(req),
-        consent: req.body.ai_processing_consent,
         policyVersion: String(req.body?.policy_version || '')
       });
       return res.status(200).json({
@@ -176,12 +182,12 @@ function createDriverHelpRouter(options = {}) {
       const actor = getActor(req);
       const preference = privacyService
         ? await privacyService.getPreference(actor)
-        : { ai_processing_consent: true, policy_version: AI_CONSENT_POLICY_VERSION };
+        : { company_ai_processing_authorized: true, policy_version: AI_CONSENT_POLICY_VERSION };
       const result = await service.answerQuestion({
         ...actor,
         question,
         sessionId,
-        allowAiProcessing: preference.ai_processing_consent === true
+        allowAiProcessing: preference.company_ai_processing_authorized === true
       });
       return res.status(200).json(result);
     } catch (error) {

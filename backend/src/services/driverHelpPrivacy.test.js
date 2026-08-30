@@ -8,13 +8,13 @@ const {
   redactTextForAi
 } = require('./driverHelpPrivacy');
 
-function createAccountSupabase(initialAccount) {
+function createAccountSupabase(initialAccount, initialNotice = null) {
   let account = initialAccount ? { ...initialAccount } : null;
+  let notice = initialNotice ? { ...initialNotice } : null;
   const calls = [];
   return {
     calls,
     from(table) {
-      assert.equal(table, 'accounts');
       const query = {
         operation: 'select',
         payload: null,
@@ -25,10 +25,27 @@ function createAccountSupabase(initialAccount) {
           return this;
         },
         select() { return this; },
+        upsert(payload) {
+          this.operation = 'upsert';
+          this.payload = payload;
+          calls.push({ operation: 'upsert', payload, table });
+          return this;
+        },
         eq() { return this; },
         async maybeSingle() {
-          if (this.operation === 'update' && account) account = { ...account, ...this.payload };
-          return { data: account, error: null };
+          if (table === 'accounts') {
+            if (this.operation === 'update' && account) account = { ...account, ...this.payload };
+            return { data: account, error: null };
+          }
+          if (table === 'driver_help_ai_notices') return { data: notice, error: null };
+          throw new Error(`Unexpected table ${table}`);
+        },
+        then(resolve, reject) {
+          if (table !== 'driver_help_ai_notices' || this.operation !== 'upsert') {
+            return Promise.reject(new Error(`Unexpected write ${table}:${this.operation}`)).then(resolve, reject);
+          }
+          notice = { ...this.payload };
+          return Promise.resolve({ error: null }).then(resolve, reject);
         }
       };
       return query;
@@ -109,4 +126,71 @@ test('company AI authorization rejects a stale policy version before writing', a
     (error) => error.code === 'POLICY_VERSION_MISMATCH'
   );
   assert.equal(supabase.calls.length, 0);
+});
+
+test('driver preference follows company authorization and requires only notice acknowledgement', async () => {
+  const supabase = createAccountSupabase({
+    rra_ai_processing_authorized: true,
+    rra_ai_processing_policy_version: AI_CONSENT_POLICY_VERSION,
+    rra_ai_processing_authorized_at: '2026-08-29T04:00:00.000Z',
+    rra_ai_processing_withdrawn_at: null
+  });
+  const service = createDriverHelpPrivacyService({ supabase });
+
+  const result = await service.getPreference({
+    accountId: 'account-1',
+    actorType: 'driver',
+    actorId: 'driver-1'
+  });
+
+  assert.equal(result.company_ai_processing_authorized, true);
+  assert.equal(result.ai_processing_consent, true);
+  assert.equal(result.notice_required, true);
+});
+
+test('driver acknowledgement cannot grant or withdraw the company authorization', async () => {
+  const supabase = createAccountSupabase({
+    rra_ai_processing_authorized: true,
+    rra_ai_processing_policy_version: AI_CONSENT_POLICY_VERSION,
+    rra_ai_processing_authorized_at: '2026-08-29T04:00:00.000Z',
+    rra_ai_processing_withdrawn_at: null
+  });
+  const service = createDriverHelpPrivacyService({
+    supabase,
+    now: () => new Date('2026-08-29T05:00:00.000Z')
+  });
+
+  const result = await service.setPreference({
+    accountId: 'account-1',
+    actorType: 'driver',
+    actorId: 'driver-1',
+    consent: false,
+    policyVersion: AI_CONSENT_POLICY_VERSION
+  });
+
+  assert.equal(result.company_ai_processing_authorized, true);
+  assert.equal(result.ai_processing_consent, true);
+  assert.equal(result.notice_required, false);
+  assert.equal(supabase.calls.some((call) => call.table === 'driver_help_ai_notices'), true);
+  assert.equal(supabase.calls.some((call) => call.table === 'accounts' && call.operation === 'update'), false);
+});
+
+test('withdrawn or stale company authorization disables AI for every driver', async () => {
+  const supabase = createAccountSupabase({
+    rra_ai_processing_authorized: true,
+    rra_ai_processing_policy_version: 'older-policy',
+    rra_ai_processing_authorized_at: '2026-08-20T04:00:00.000Z',
+    rra_ai_processing_withdrawn_at: null
+  });
+  const service = createDriverHelpPrivacyService({ supabase });
+
+  const result = await service.getPreference({
+    accountId: 'account-1',
+    actorType: 'driver',
+    actorId: 'driver-1'
+  });
+
+  assert.equal(result.company_ai_processing_authorized, false);
+  assert.equal(result.ai_processing_consent, false);
+  assert.equal(result.notice_required, false);
 });

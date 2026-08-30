@@ -54,6 +54,56 @@ test('POST /driver-help/query passes authenticated account and driver scope to t
   }]);
 });
 
+test('POST /driver-help/query follows company authorization instead of an individual driver choice', async () => {
+  const calls = [];
+  const privacyService = {
+    async getPreference() {
+      return {
+        company_ai_processing_authorized: true,
+        ai_processing_consent: false
+      };
+    }
+  };
+  const app = createTestApp({
+    async answerQuestion(payload) {
+      calls.push(payload);
+      return { response_mode: 'ANSWER', answer: 'Approved answer.' };
+    }
+  }, { privacyService });
+
+  const response = await request(app)
+    .post('/driver-help/query')
+    .send({ question: 'What does WA mean?' });
+
+  assert.equal(response.status, 200);
+  assert.equal(calls[0].allowAiProcessing, true);
+});
+
+test('POST /driver-help/query disables AI when the company owner has not authorized it', async () => {
+  const calls = [];
+  const privacyService = {
+    async getPreference() {
+      return {
+        company_ai_processing_authorized: false,
+        ai_processing_consent: true
+      };
+    }
+  };
+  const app = createTestApp({
+    async answerQuestion(payload) {
+      calls.push(payload);
+      return { response_mode: 'ANSWER', answer: 'Approved answer.' };
+    }
+  }, { privacyService });
+
+  const response = await request(app)
+    .post('/driver-help/query')
+    .send({ question: 'What does WA mean?' });
+
+  assert.equal(response.status, 200);
+  assert.equal(calls[0].allowAiProcessing, false);
+});
+
 test('POST /driver-help/query returns the company CXPC number without AI interpretation', async () => {
   const inserts = [];
   const supabase = {

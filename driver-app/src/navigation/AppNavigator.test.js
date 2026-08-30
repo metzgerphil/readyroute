@@ -72,7 +72,8 @@ jest.mock('../services/api', () => ({
   __esModule: true,
   default: {
     get: jest.fn(),
-    post: jest.fn()
+    post: jest.fn(),
+    put: jest.fn()
   }
 }));
 
