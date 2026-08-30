@@ -45,9 +45,15 @@ module.exports = {
       resizeMode: 'contain',
       backgroundColor: '#ffffff'
     },
+    updates: {
+      url: 'https://u.expo.dev/3de49618-8973-4330-b335-f2901d75ac46'
+    },
     ios: {
       supportsTablet: true,
       bundleIdentifier,
+      runtimeVersion: {
+        policy: 'appVersion'
+      },
       infoPlist: {
         ITSAppUsesNonExemptEncryption: false,
         ...(!driverHelpOnly
