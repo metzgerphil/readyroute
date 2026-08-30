@@ -27,9 +27,12 @@ function redactConversationContextForAi(context = {}) {
 
 function createDriverHelpPrivacyService({ supabase, now = () => new Date() } = {}) {
   function presentCompanyAuthorization(account) {
+    const companyAuthorized = account?.rra_ai_processing_authorized === true
+      && account?.rra_ai_processing_policy_version === AI_CONSENT_POLICY_VERSION
+      && !account?.rra_ai_processing_withdrawn_at;
     return {
-      company_ai_processing_authorized: account?.rra_ai_processing_authorized === true,
-      policy_version: account?.rra_ai_processing_policy_version || AI_CONSENT_POLICY_VERSION,
+      company_ai_processing_authorized: companyAuthorized,
+      policy_version: AI_CONSENT_POLICY_VERSION,
       company_authorized_at: account?.rra_ai_processing_authorized_at || null,
       company_withdrawn_at: account?.rra_ai_processing_withdrawn_at || null
     };
@@ -91,50 +94,78 @@ function createDriverHelpPrivacyService({ supabase, now = () => new Date() } = {
   }
 
   async function getPreference({ accountId, actorType, actorId }) {
-    const { data, error } = await supabase
-      .from('driver_help_ai_consents')
-      .select('ai_processing_consent, policy_version, accepted_at, withdrawn_at, updated_at')
-      .eq('account_id', accountId)
-      .eq('actor_type', actorType)
-      .eq('actor_id', actorId)
-      .maybeSingle();
-    if (error) throw error;
-    return data || {
-      ai_processing_consent: false,
+    const [{ data: account, error: accountError }, { data: notice, error: noticeError }] = await Promise.all([
+      supabase
+        .from('accounts')
+        .select('rra_ai_processing_authorized, rra_ai_processing_policy_version, rra_ai_processing_authorized_at, rra_ai_processing_withdrawn_at')
+        .eq('id', accountId)
+        .maybeSingle(),
+      supabase
+        .from('driver_help_ai_notices')
+        .select('policy_version, seen_at, updated_at')
+        .eq('account_id', accountId)
+        .eq('actor_type', actorType)
+        .eq('actor_id', actorId)
+        .eq('policy_version', AI_CONSENT_POLICY_VERSION)
+        .maybeSingle()
+    ]);
+    if (accountError) throw accountError;
+    if (noticeError) throw noticeError;
+    if (!account) {
+      const notFoundError = new Error('Account not found.');
+      notFoundError.code = 'ACCOUNT_NOT_FOUND';
+      throw notFoundError;
+    }
+
+    const company = presentCompanyAuthorization(account);
+    return {
+      ai_processing_consent: company.company_ai_processing_authorized,
+      company_ai_processing_authorized: company.company_ai_processing_authorized,
       policy_version: AI_CONSENT_POLICY_VERSION,
-      accepted_at: null,
-      withdrawn_at: null,
-      updated_at: null
+      company_authorized_at: company.company_authorized_at,
+      company_withdrawn_at: company.company_withdrawn_at,
+      notice_seen_at: notice?.seen_at || null,
+      notice_required: company.company_ai_processing_authorized && !notice?.seen_at,
+      updated_at: notice?.updated_at || null
     };
   }
 
-  async function setPreference({ accountId, driverId, actorType, actorId, consent, policyVersion }) {
+  async function acknowledgeNotice({ accountId, actorType, actorId, policyVersion }) {
     if (policyVersion !== AI_CONSENT_POLICY_VERSION) {
-      const error = new Error('The privacy notice has changed. Review the current notice before choosing.');
+      const error = new Error('The company AI notice has changed. Review the current notice before continuing.');
       error.code = 'POLICY_VERSION_MISMATCH';
       throw error;
     }
     const timestamp = now().toISOString();
-    const { data, error } = await supabase
-      .from('driver_help_ai_consents')
+    const { error } = await supabase
+      .from('driver_help_ai_notices')
       .upsert({
         account_id: accountId,
-        driver_id: actorType === 'driver' ? driverId : null,
         actor_type: actorType,
         actor_id: actorId,
-        ai_processing_consent: consent,
         policy_version: policyVersion,
-        accepted_at: consent ? timestamp : null,
-        withdrawn_at: consent ? null : timestamp,
+        seen_at: timestamp,
         updated_at: timestamp
-      }, { onConflict: 'account_id,actor_type,actor_id' })
-      .select('ai_processing_consent, policy_version, accepted_at, withdrawn_at, updated_at')
-      .single();
+      }, { onConflict: 'account_id,actor_type,actor_id,policy_version' });
     if (error) throw error;
-    return data;
+    return getPreference({ accountId, actorType, actorId });
   }
 
-  return { getCompanyAuthorization, getPreference, setCompanyAuthorization, setPreference };
+  // Compatibility for app builds released while AI was modeled as an
+  // individual choice. The boolean no longer grants or withdraws permission;
+  // only the company owner can do that. Either legacy choice acknowledges the
+  // company notice so existing installations keep working during OTA rollout.
+  async function setPreference({ accountId, actorType, actorId, policyVersion }) {
+    return acknowledgeNotice({ accountId, actorType, actorId, policyVersion });
+  }
+
+  return {
+    acknowledgeNotice,
+    getCompanyAuthorization,
+    getPreference,
+    setCompanyAuthorization,
+    setPreference
+  };
 }
 
 module.exports = {

@@ -3,7 +3,14 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 const POLICY_VERSION = '2026-08-20';
 
-export default function RraPrivacyModal({ isSaving = false, onChoose, onClose, required = false, visible }) {
+export default function RraPrivacyModal({
+  companyAuthorized = false,
+  isSaving = false,
+  onAcknowledge,
+  onClose,
+  required = false,
+  visible
+}) {
   const insets = useSafeAreaInsets();
 
   return (
@@ -17,16 +24,25 @@ export default function RraPrivacyModal({ isSaving = false, onChoose, onClose, r
             showsVerticalScrollIndicator={false}
             style={styles.scrollArea}
           >
-            <Text accessibilityRole="header" style={styles.title}>Privacy and AI processing</Text>
-            <Text style={styles.body}>
-              Ready Route Answers checks approved ReadyRoute procedures. When needed to understand how you phrased a question, ReadyRoute may send the question and recent conversation context to OpenAI for language processing.
-            </Text>
-            <Text style={styles.body}>
-              OpenAI does not decide the procedure and does not receive your password. ReadyRoute removes common contact, address, link, and package identifiers before AI processing. Please do not enter names, phone numbers, addresses, tracking numbers, or other personal information.
-            </Text>
-            <Text style={styles.body}>
-              If you decline, ReadyRoute will not send your questions to OpenAI. You can still use answers that ReadyRoute can match without new AI processing, and you can change this choice later.
-            </Text>
+            <Text style={styles.eyebrow}>COMPANY AUTHORIZATION</Text>
+            <Text accessibilityRole="header" style={styles.title}>AI language interpretation</Text>
+            {companyAuthorized ? (
+              <>
+                <Text style={styles.body}>
+                  Your company owner has authorized Ready Route Answers to use OpenAI when needed to understand how a driver phrased a question. This company approval applies to every authorized RRA driver.
+                </Text>
+                <Text style={styles.body}>
+                  OpenAI may interpret the wording, but it cannot create or change the approved operational answer. ReadyRoute removes common contact, address, link, and package identifiers before AI processing.
+                </Text>
+                <Text style={styles.body}>
+                  By continuing, you acknowledge your company’s authorization and this notice. You are not being asked to make a separate individual authorization choice.
+                </Text>
+              </>
+            ) : (
+              <View style={styles.statusCard}>
+                <Text style={styles.statusText}>AI language interpretation is currently off for this company. Your company owner controls this setting.</Text>
+              </View>
+            )}
             <View style={styles.links}>
               <Pressable onPress={() => Linking.openURL('https://readyroute.org/privacy.html')}>
                 <Text style={styles.link}>Privacy Policy</Text>
@@ -37,27 +53,19 @@ export default function RraPrivacyModal({ isSaving = false, onChoose, onClose, r
             </View>
           </ScrollView>
           <View style={styles.actions}>
-            <Pressable
-              accessibilityRole="button"
-              accessibilityState={{ busy: isSaving, disabled: isSaving }}
-              disabled={isSaving}
-              onPress={() => onChoose(true, POLICY_VERSION)}
-              style={({ pressed }) => [styles.primaryButton, pressed ? styles.buttonPressed : null, isSaving ? styles.buttonDisabled : null]}
-              testID="allow-ai-processing-button"
-            >
-              {isSaving ? <ActivityIndicator color="#fff" /> : <Text style={styles.primaryButtonText}>Allow AI processing</Text>}
-            </Pressable>
-            <Pressable
-              accessibilityRole="button"
-              accessibilityState={{ disabled: isSaving }}
-              disabled={isSaving}
-              onPress={() => onChoose(false, POLICY_VERSION)}
-              style={({ pressed }) => [styles.secondaryButton, pressed ? styles.buttonPressed : null, isSaving ? styles.buttonDisabled : null]}
-              testID="continue-without-ai-processing-button"
-            >
-              <Text style={styles.secondaryButtonText}>Continue without AI processing</Text>
-            </Pressable>
-            {!required ? (
+            {companyAuthorized ? (
+              <Pressable
+                accessibilityRole="button"
+                accessibilityState={{ busy: isSaving, disabled: isSaving }}
+                disabled={isSaving}
+                onPress={() => onAcknowledge(POLICY_VERSION)}
+                style={({ pressed }) => [styles.primaryButton, pressed ? styles.buttonPressed : null, isSaving ? styles.buttonDisabled : null]}
+                testID="acknowledge-company-ai-button"
+              >
+                {isSaving ? <ActivityIndicator color="#fff" /> : <Text style={styles.primaryButtonText}>I understand</Text>}
+              </Pressable>
+            ) : null}
+            {!required || !companyAuthorized ? (
               <Pressable disabled={isSaving} onPress={onClose} style={styles.closeButton}>
                 <Text style={styles.closeButtonText}>Close</Text>
               </Pressable>
@@ -75,6 +83,7 @@ const styles = StyleSheet.create({
   handle: { alignSelf: 'center', backgroundColor: '#d7e0e8', borderRadius: 3, height: 5, marginBottom: 20, width: 46 },
   scrollArea: { flexShrink: 1 },
   content: { paddingBottom: 4 },
+  eyebrow: { color: '#c84c00', fontSize: 13, fontWeight: '900', letterSpacing: 2.2, marginBottom: 8 },
   title: { color: '#173042', fontSize: 27, fontWeight: '900', marginBottom: 12 },
   body: { color: '#425563', fontSize: 16, lineHeight: 24, marginBottom: 12 },
   links: { flexDirection: 'row', gap: 24, marginBottom: 12, marginTop: 2 },
@@ -82,8 +91,8 @@ const styles = StyleSheet.create({
   actions: { backgroundColor: '#fff', borderTopColor: '#edf1f4', borderTopWidth: 1, paddingTop: 12 },
   primaryButton: { alignItems: 'center', backgroundColor: '#ff6200', borderRadius: 14, minHeight: 50, justifyContent: 'center', marginBottom: 10, padding: 12 },
   primaryButtonText: { color: '#fff', fontSize: 16, fontWeight: '900' },
-  secondaryButton: { alignItems: 'center', borderColor: '#cbd6de', borderRadius: 14, borderWidth: 1, minHeight: 50, justifyContent: 'center', marginBottom: 8, padding: 12 },
-  secondaryButtonText: { color: '#173042', fontSize: 15, fontWeight: '800', textAlign: 'center' },
+  statusCard: { backgroundColor: '#eaf0f4', borderRadius: 14, marginBottom: 12, padding: 16 },
+  statusText: { color: '#173042', fontSize: 16, fontWeight: '800', lineHeight: 22 },
   buttonPressed: { opacity: 0.78 },
   buttonDisabled: { opacity: 0.65 },
   closeButton: { alignItems: 'center', padding: 12 },

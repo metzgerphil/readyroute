@@ -8,39 +8,46 @@ jest.mock('react-native-safe-area-context', () => ({
 }));
 
 describe('RraPrivacyModal', () => {
-  it('keeps the consent actions tappable outside the scrolling notice', () => {
-    const onChoose = jest.fn();
+  it('lets a driver acknowledge the company authorization without making an individual choice', () => {
+    const onAcknowledge = jest.fn();
     let tree;
 
     act(() => {
       tree = renderer.create(
-        <RraPrivacyModal onChoose={onChoose} required visible />
+        <RraPrivacyModal companyAuthorized onAcknowledge={onAcknowledge} required visible />
       );
     });
 
     act(() => {
-      tree.root.findByProps({ testID: 'allow-ai-processing-button' }).props.onPress();
+      tree.root.findByProps({ testID: 'acknowledge-company-ai-button' }).props.onPress();
     });
 
-    expect(onChoose).toHaveBeenCalledWith(true, '2026-08-20');
-
-    act(() => {
-      tree.root.findByProps({ testID: 'continue-without-ai-processing-button' }).props.onPress();
-    });
-
-    expect(onChoose).toHaveBeenCalledWith(false, '2026-08-20');
+    expect(onAcknowledge).toHaveBeenCalledWith('2026-08-20');
+    expect(tree.root.findAllByProps({ testID: 'continue-without-ai-processing-button' })).toHaveLength(0);
   });
 
-  it('disables both actions while the preference is being saved', () => {
+  it('disables acknowledgement while it is being saved', () => {
     let tree;
 
     act(() => {
       tree = renderer.create(
-        <RraPrivacyModal isSaving onChoose={jest.fn()} required visible />
+        <RraPrivacyModal companyAuthorized isSaving onAcknowledge={jest.fn()} required visible />
       );
     });
 
-    expect(tree.root.findByProps({ testID: 'allow-ai-processing-button' }).props.disabled).toBe(true);
-    expect(tree.root.findByProps({ testID: 'continue-without-ai-processing-button' }).props.disabled).toBe(true);
+    expect(tree.root.findByProps({ testID: 'acknowledge-company-ai-button' }).props.disabled).toBe(true);
+  });
+
+  it('shows company-controlled off status without an authorization action', () => {
+    let tree;
+
+    act(() => {
+      tree = renderer.create(
+        <RraPrivacyModal onAcknowledge={jest.fn()} onClose={jest.fn()} visible />
+      );
+    });
+
+    expect(tree.root.findAllByProps({ testID: 'acknowledge-company-ai-button' })).toHaveLength(0);
+    expect(tree.root.findAllByType(require('react-native').Text).map((node) => node.props.children).join(' ')).toContain('currently off for this company');
   });
 });

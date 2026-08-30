@@ -119,6 +119,7 @@ export default function AppNavigator() {
   const [isPasswordOpen, setIsPasswordOpen] = useState(false);
   const [isPrivacyChoiceRequired, setIsPrivacyChoiceRequired] = useState(false);
   const [isSavingPrivacyChoice, setIsSavingPrivacyChoice] = useState(false);
+  const [isCompanyAiAuthorized, setIsCompanyAiAuthorized] = useState(false);
   const [currentRouteName, setCurrentRouteName] = useState(null);
   const [isLoadingManagerCsas, setIsLoadingManagerCsas] = useState(false);
   const [isSwitchingManagerCsa, setIsSwitchingManagerCsa] = useState(false);
@@ -177,15 +178,17 @@ export default function AppNavigator() {
       .then((response) => {
         if (!active) return;
         const preference = response.data || {};
-        const hasCurrentChoice = Boolean(preference.updated_at)
-          && preference.policy_version === preference.current_policy_version;
-        setIsPrivacyChoiceRequired(!hasCurrentChoice);
-        setIsPrivacyOpen(!hasCurrentChoice);
+        const companyAuthorized = preference.company_ai_processing_authorized === true;
+        const noticeRequired = companyAuthorized && preference.notice_required === true;
+        setIsCompanyAiAuthorized(companyAuthorized);
+        setIsPrivacyChoiceRequired(noticeRequired);
+        setIsPrivacyOpen(noticeRequired);
       })
       .catch(() => {
         if (!active) return;
-        setIsPrivacyChoiceRequired(true);
-        setIsPrivacyOpen(true);
+        setIsCompanyAiAuthorized(false);
+        setIsPrivacyChoiceRequired(false);
+        setIsPrivacyOpen(false);
       });
     return () => { active = false; };
   }, [activeMode, hasAnyAccess, needsModeSelection, sessionTokens?.driverToken]);
@@ -241,18 +244,18 @@ export default function AppNavigator() {
     setIsPasswordOpen(true);
   }
 
-  async function handlePrivacyChoice(consent, policyVersion) {
+  async function handlePrivacyAcknowledgement(policyVersion) {
     if (isSavingPrivacyChoice) return;
     setIsSavingPrivacyChoice(true);
     try {
       await api.put('/driver-help/privacy-preferences', {
-        ai_processing_consent: consent,
+        notice_seen: true,
         policy_version: policyVersion
       });
       setIsPrivacyChoiceRequired(false);
       setIsPrivacyOpen(false);
     } catch (_error) {
-      Alert.alert('Could Not Save Preference', 'Check your connection and try again. No question will be sent for AI processing until your choice is saved.');
+      Alert.alert('Could Not Save Acknowledgement', 'Check your connection and try again.');
     } finally {
       setIsSavingPrivacyChoice(false);
     }
@@ -658,8 +661,9 @@ export default function AppNavigator() {
             showModeSwitch={availableModes.length > 1 || (activeMode === 'manager' && Boolean(sessionTokens?.managerToken))}
           />
           <RraPrivacyModal
+            companyAuthorized={isCompanyAiAuthorized}
             isSaving={isSavingPrivacyChoice}
-            onChoose={handlePrivacyChoice}
+            onAcknowledge={handlePrivacyAcknowledgement}
             onClose={() => setIsPrivacyOpen(false)}
             required={isPrivacyChoiceRequired}
             visible={isPrivacyOpen}

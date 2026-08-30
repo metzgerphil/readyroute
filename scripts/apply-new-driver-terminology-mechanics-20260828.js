@@ -287,7 +287,7 @@ const misdeliveryRecord = {
   authoritative_rule: 'After physically recovering a misdelivered package, scan it again in the misdelivery recovery workflow and apply Code 17. Go to the correct address, scan it for delivery, verify and confirm the address when prompted, and process the delivery normally. If the same-day redelivery succeeds, the stop closes as Code 18.',
   required_procedure: [
     { step: 1, action: 'Physically recover the misdelivered package.' },
-    { step: 2, action: 'Scan the package again in the misdelivery recovery workflow and apply Code 17.' },
+    { step: 2, action: 'Scan the package again in the misdelivery recovery workflow and apply Code 17. Code 18 applies only after a successful same-day redelivery.' },
     { step: 3, action: 'Go to the correct address.' },
     { step: 4, action: 'Scan the package again for delivery.' },
     { step: 5, action: 'When the scanner asks you to verify the address, check it and tap Confirm.' },

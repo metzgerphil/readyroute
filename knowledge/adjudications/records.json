@@ -1291,10 +1291,12 @@
     "supporting_source_ids": [
       "SRC-V2-VLAD-CONSOLIDATED-DETAIL-20260818",
       "SRC-V2-VLAD-RESPONSE-20260819",
-      "SRC-V2-OWNER-VLAD-APPROVAL-20260819"
+      "SRC-V2-OWNER-VLAD-APPROVAL-20260819",
+      "SRC-V2-VLAD-NEW-DRIVER-TERMS-MECHANICS-20260828",
+      "SRC-V2-OWNER-NEW-DRIVER-TERMS-MECHANICS-APPROVAL-20260828"
     ],
     "conflicting_or_superseded_source_ids": [],
-    "reasoning": "Phillip Metzger explicitly approved Vlad-provided procedures and operational information as accurate Ready Route knowledge without requiring separate documentary corroboration. This adjudication preserves the exact supplied scope and later branch corrections.",
+    "reasoning": "Phillip Metzger explicitly approved Vlad-provided procedures and operational information as accurate Ready Route knowledge without requiring separate documentary corroboration. This adjudication preserves the exact supplied scope and later branch corrections. The 2026-08-28 owner approval also establishes Vision Label and SID sticker as equivalent driver terminology without changing the procedure.",
     "approved_by": "Phillip Metzger, Ready Route product owner",
     "approval_date": "2026-08-19",
     "effective_date": "2026-08-19",
@@ -1305,7 +1307,7 @@
       "A later Vlad artifact supplies a more specific branch or corrects the summarized intake."
     ],
     "canonical_overrides": {
-      "authoritative_rule": "Call the BC or manager first. If the delivery still cannot be completed, use Code 004 for a non-residential recipient-not-in condition or Code 007 for a residential recipient-not-in condition, complete and leave the door tag, cross the package with the code, date, and work area number, remove the SID sticker, and return the package to the station.",
+      "authoritative_rule": "Call the BC or manager first. If the delivery still cannot be completed, use Code 004 for a non-residential recipient-not-in condition or Code 007 for a residential recipient-not-in condition, complete and leave the door tag, cross the package with the code, date, and work area number, remove the Vision Label (SID sticker), and return the package to the station.",
       "applicability": [
         "FORGE or the package identifies FAD Ground",
         "Delivery cannot be completed"
@@ -1333,7 +1335,7 @@
         },
         {
           "step": 5,
-          "action": "Remove the SID sticker and return the package to the station."
+          "action": "Remove the Vision Label (SID sticker) and return the package to the station."
         }
       ],
       "required_documentation": [
@@ -1353,9 +1355,10 @@
         "Is the stop residential or non-residential?",
         "Has the BC or manager been contacted?"
       ],
-      "concise_driver_answer": "Call your BC or manager first. If the FAD Ground delivery still cannot be completed, use Code 004 for non-residential or 007 for residential, complete the door tag, cross the package with the code, date, and work area, remove the SID, and return it to the station.",
+      "concise_driver_answer": "Call your BC or manager first. If the FAD Ground delivery still cannot be completed, use Code 004 for non-residential or 007 for residential, complete the door tag, cross the package with the code, date, and work area, remove the Vision Label (SID sticker), and return it to the station.",
       "more_info_answer": null
-    }
+    },
+    "terminology_updated_at": "2026-08-28"
   },
   {
     "adjudication_id": "ADJ-20260819-VLAD-PUP-SCAN-CLASSIFICATION-001",
@@ -1561,10 +1564,12 @@
     "supporting_source_ids": [
       "SRC-V2-VLAD-CONSOLIDATED-DETAIL-20260818",
       "SRC-V2-VLAD-RESPONSE-20260819",
-      "SRC-V2-OWNER-VLAD-APPROVAL-20260819"
+      "SRC-V2-OWNER-VLAD-APPROVAL-20260819",
+      "SRC-V2-VLAD-NEW-DRIVER-TERMS-MECHANICS-20260828",
+      "SRC-V2-OWNER-NEW-DRIVER-TERMS-MECHANICS-APPROVAL-20260828"
     ],
     "conflicting_or_superseded_source_ids": [],
-    "reasoning": "Phillip Metzger explicitly approved Vlad-provided procedures and operational information as accurate Ready Route knowledge without requiring separate documentary corroboration. This adjudication preserves the exact supplied scope and later branch corrections.",
+    "reasoning": "Phillip Metzger explicitly approved Vlad-provided procedures and operational information as accurate Ready Route knowledge without requiring separate documentary corroboration. This adjudication preserves the exact supplied scope and later branch corrections. The 2026-08-28 owner approval also establishes Vision Label and SID sticker as equivalent driver terminology without changing the procedure.",
     "approved_by": "Phillip Metzger, Ready Route product owner",
     "approval_date": "2026-08-19",
     "effective_date": "2026-08-19",
@@ -1575,7 +1580,7 @@
       "A later Vlad artifact supplies a more specific branch or corrects the summarized intake."
     ],
     "canonical_overrides": {
-      "authoritative_rule": "Contact CXPC first because it may have another customer contact number. If CXPC cannot establish a delivery path, use Code 007, complete and leave the door tag, cross the package with the code, date, and work area number, remove the SID sticker, and return the package to the station.",
+      "authoritative_rule": "Contact CXPC first because it may have another customer contact number. If CXPC cannot establish a delivery path, use Code 007, complete and leave the door tag, cross the package with the code, date, and work area number, remove the Vision Label (SID sticker), and return the package to the station.",
       "applicability": [
         "Residential perishable delivery",
         "Nobody answers",
@@ -1604,7 +1609,7 @@
         },
         {
           "step": 5,
-          "action": "Remove the SID sticker and return the package to the station."
+          "action": "Remove the Vision Label (SID sticker) and return the package to the station."
         }
       ],
       "required_documentation": [
@@ -1620,9 +1625,10 @@
         "CXPC before the unsuccessful-delivery return branch"
       ],
       "clarification_requirements": [],
-      "concise_driver_answer": "Call CXPC first for another customer contact. If delivery still cannot be completed, use Code 007, complete the door tag, cross the package with the code, date, and work area, remove the SID, and return it to the station.",
+      "concise_driver_answer": "Call CXPC first for another customer contact. If delivery still cannot be completed, use Code 007, complete the door tag, cross the package with the code, date, and work area, remove the Vision Label (SID sticker), and return it to the station.",
       "more_info_answer": null
-    }
+    },
+    "terminology_updated_at": "2026-08-28"
   },
   {
     "adjudication_id": "ADJ-20260819-VLAD-DOC-HANDSHEET-GENERAL-001",
@@ -1989,10 +1995,12 @@
     ],
     "supporting_source_ids": [
       "SRC-V2-VLAD-ROUND3-20260819",
-      "SRC-V2-OWNER-ROUND3-APPROVAL-20260820"
+      "SRC-V2-OWNER-ROUND3-APPROVAL-20260820",
+      "SRC-V2-VLAD-NEW-DRIVER-TERMS-MECHANICS-20260828",
+      "SRC-V2-OWNER-NEW-DRIVER-TERMS-MECHANICS-APPROVAL-20260828"
     ],
     "conflicting_or_superseded_source_ids": [],
-    "reasoning": "Phillip Metzger explicitly approved Vlad's Round 3 operational correction and directed that it control over conflicting approved corpus content.",
+    "reasoning": "Phillip Metzger explicitly approved Vlad's Round 3 operational correction and directed that it control over conflicting approved corpus content. The 2026-08-28 owner approval also establishes Vision Label and SID sticker as equivalent driver terminology without changing the procedure.",
     "approved_by": "Phillip Metzger, Ready Route product owner",
     "approval_date": "2026-08-20",
     "effective_date": "2026-08-20",
@@ -2004,7 +2012,7 @@
       "A later applicable operational update materially conflicts with it."
     ],
     "canonical_overrides": {
-      "authoritative_rule": "For a wrong-route package discovered after dispatch, do not deliver it. Apply Code 012, cross it with Code 012, the date, and work area number, remove the SID sticker, and return it to the station.",
+      "authoritative_rule": "For a wrong-route package discovered after dispatch, do not deliver it. Apply Code 012, cross it with Code 012, the date, and work area number, remove the Vision Label (SID sticker), and return it to the station.",
       "required_procedure": [
         {
           "step": 1,
@@ -2020,7 +2028,7 @@
         },
         {
           "step": 4,
-          "action": "Remove the SID sticker."
+          "action": "Remove the Vision Label (SID sticker)."
         },
         {
           "step": 5,
@@ -2031,8 +2039,9 @@
         "Do not deliver a package that belongs to another route under this after-dispatch condition."
       ],
       "escalation_requirements": [],
-      "concise_driver_answer": "Do not deliver it. Apply Code 012, cross it with Code 012, the date, and your work area number, remove the SID sticker, and return it to the station."
-    }
+      "concise_driver_answer": "Do not deliver it. Apply Code 012, cross it with Code 012, the date, and your work area number, remove the Vision Label (SID sticker), and return it to the station."
+    },
+    "terminology_updated_at": "2026-08-28"
   },
   {
     "adjudication_id": "ADJ-20260820-ROUND3-BUS-CLOSED-001",
@@ -2045,10 +2054,12 @@
     ],
     "supporting_source_ids": [
       "SRC-V2-VLAD-ROUND3-20260819",
-      "SRC-V2-OWNER-ROUND3-APPROVAL-20260820"
+      "SRC-V2-OWNER-ROUND3-APPROVAL-20260820",
+      "SRC-V2-VLAD-NEW-DRIVER-TERMS-MECHANICS-20260828",
+      "SRC-V2-OWNER-NEW-DRIVER-TERMS-MECHANICS-APPROVAL-20260828"
     ],
     "conflicting_or_superseded_source_ids": [],
-    "reasoning": "Phillip Metzger explicitly approved Vlad's Round 3 operational correction and directed that it control over conflicting approved corpus content.",
+    "reasoning": "Phillip Metzger explicitly approved Vlad's Round 3 operational correction and directed that it control over conflicting approved corpus content. The 2026-08-28 owner approval also establishes Vision Label and SID sticker as equivalent driver terminology without changing the procedure.",
     "approved_by": "Phillip Metzger, Ready Route product owner",
     "approval_date": "2026-08-20",
     "effective_date": "2026-08-20",
@@ -2060,7 +2071,7 @@
       "A later applicable operational update materially conflicts with it."
     ],
     "canonical_overrides": {
-      "authoritative_rule": "When a non-residential recipient is unavailable and no authorized release path exists, use Code 011 for an applicable weekend closure or Code 004 otherwise. Complete, scan, and leave the door tag; cross the package; remove the SID sticker; and return it to the station.",
+      "authoritative_rule": "When a non-residential recipient is unavailable and no authorized release path exists, use Code 011 for an applicable weekend closure or Code 004 otherwise. Complete, scan, and leave the door tag; cross the package; remove the Vision Label (SID sticker); and return it to the station.",
       "required_procedure": [
         {
           "step": 1,
@@ -2080,7 +2091,7 @@
         },
         {
           "step": 5,
-          "action": "Remove the SID sticker."
+          "action": "Remove the Vision Label (SID sticker)."
         },
         {
           "step": 6,
@@ -2091,8 +2102,9 @@
         "Do not use Code 004 for a residential stop.",
         "Do not leave the package without an authorized release path."
       ],
-      "concise_driver_answer": "Use Code 011 for an applicable weekend closure or Code 004 otherwise. Complete the door tag, cross the package, remove the SID, and return it to the station."
-    }
+      "concise_driver_answer": "Use Code 011 for an applicable weekend closure or Code 004 otherwise. Complete the door tag, cross the package, remove the Vision Label (SID sticker), and return it to the station."
+    },
+    "terminology_updated_at": "2026-08-28"
   },
   {
     "adjudication_id": "ADJ-20260820-ROUND3-PREDISPATCH-MISLOAD-001",
@@ -2306,10 +2318,12 @@
     ],
     "supporting_source_ids": [
       "SRC-V2-VLAD-ROUND3-20260819",
-      "SRC-V2-OWNER-ROUND3-APPROVAL-20260820"
+      "SRC-V2-OWNER-ROUND3-APPROVAL-20260820",
+      "SRC-V2-VLAD-NEW-DRIVER-TERMS-MECHANICS-20260828",
+      "SRC-V2-OWNER-NEW-DRIVER-TERMS-MECHANICS-APPROVAL-20260828"
     ],
     "conflicting_or_superseded_source_ids": [],
-    "reasoning": "Phillip Metzger explicitly approved Vlad's Round 3 operational correction and directed that it control over conflicting approved corpus content.",
+    "reasoning": "Phillip Metzger explicitly approved Vlad's Round 3 operational correction and directed that it control over conflicting approved corpus content. The 2026-08-28 owner approval also establishes Vision Label and SID sticker as equivalent driver terminology without changing the procedure.",
     "approved_by": "Phillip Metzger, Ready Route product owner",
     "approval_date": "2026-08-20",
     "effective_date": "2026-08-20",
@@ -2319,7 +2333,7 @@
       "A later applicable operational update materially conflicts with it."
     ],
     "canonical_overrides": {
-      "authoritative_rule": "Apply Code 034, cross the package with the work-area number, date, and Code 034, and remove the SID sticker.",
+      "authoritative_rule": "Apply Code 034, cross the package with the work-area number, date, and Code 034, and remove the Vision Label (SID sticker).",
       "required_procedure": [
         {
           "step": 1,
@@ -2331,7 +2345,7 @@
         },
         {
           "step": 3,
-          "action": "Remove the SID sticker."
+          "action": "Remove the Vision Label (SID sticker)."
         }
       ],
       "required_documentation": [
@@ -2341,8 +2355,9 @@
       "prohibited_actions": [
         "Do not substitute another status code for this stated condition."
       ],
-      "concise_driver_answer": "Apply Code 034. Cross the package with your work-area number, the date, and Code 034, then remove the SID sticker."
-    }
+      "concise_driver_answer": "Apply Code 034. Cross the package with your work-area number, the date, and Code 034, then remove the Vision Label (SID sticker)."
+    },
+    "terminology_updated_at": "2026-08-28"
   },
   {
     "adjudication_id": "ADJ-20260820-ROUND3-CSA-001",
@@ -2396,10 +2411,12 @@
     ],
     "supporting_source_ids": [
       "SRC-V2-VLAD-ROUND3-ADDENDUM-20260822",
-      "SRC-V2-OWNER-ROUND3-ADDENDUM-APPROVAL-20260826"
+      "SRC-V2-OWNER-ROUND3-ADDENDUM-APPROVAL-20260826",
+      "SRC-V2-VLAD-NEW-DRIVER-TERMS-MECHANICS-20260828",
+      "SRC-V2-OWNER-NEW-DRIVER-TERMS-MECHANICS-APPROVAL-20260828"
     ],
     "conflicting_or_superseded_source_ids": [],
-    "reasoning": "Phillip Metzger explicitly directed Ready Route to treat the Round 3 Continued Addendum as authoritative and use each supplied answer.",
+    "reasoning": "Phillip Metzger explicitly directed Ready Route to treat the Round 3 Continued Addendum as authoritative and use each supplied answer. The 2026-08-28 owner approval also establishes Vision Label and SID sticker as equivalent driver terminology without changing the procedure.",
     "approved_by": "Phillip Metzger, Ready Route product owner",
     "approval_date": "2026-08-26",
     "effective_date": "2026-08-26",
@@ -2409,7 +2426,7 @@
       "A later applicable operational or regulatory update materially conflicts with it."
     ],
     "canonical_overrides": {
-      "authoritative_rule": "Do not approach a dog that blocks safe access. If the scanner specifically requires front-door delivery, apply Code 007, cross the package, remove the SID sticker, and return it to the station. If the scanner gives no specific delivery-location instruction, leave the package at the gate in a location secure from theft or being run over.",
+      "authoritative_rule": "Do not approach a dog that blocks safe access. If the scanner specifically requires front-door delivery, apply Code 007, cross the package, remove the Vision Label (SID sticker), and return it to the station. If the scanner gives no specific delivery-location instruction, leave the package at the gate in a location secure from theft or being run over.",
       "applicability": [
         "Residential delivery",
         "A dog blocks safe access to the delivery location"
@@ -2435,7 +2452,7 @@
         },
         {
           "step": 4,
-          "action": "For the Code 007 branch, cross the package, remove the SID sticker, and return it to the station."
+          "action": "For the Code 007 branch, cross the package, remove the Vision Label (SID sticker), and return it to the station."
         },
         {
           "step": 5,
@@ -2454,9 +2471,10 @@
       "clarification_requirements": [
         "Does the scanner specifically instruct delivery at the front door?"
       ],
-      "concise_driver_answer": "Do not approach. If the scanner specifically requires the front door, use Code 007, cross the package, remove the SID, and return it to the station. If no specific delivery location is required, leave it securely at the gate.",
+      "concise_driver_answer": "Do not approach. If the scanner specifically requires the front door, use Code 007, cross the package, remove the Vision Label (SID sticker), and return it to the station. If no specific delivery location is required, leave it securely at the gate.",
       "more_info_answer": "Use the scanner location instruction to select the branch, and do not let this procedure override stricter package requirements."
-    }
+    },
+    "terminology_updated_at": "2026-08-28"
   },
   {
     "adjudication_id": "ADJ-20260826-ROUND3-ADDENDUM-VEH-BREAKDOWN-001",
@@ -2603,10 +2621,12 @@
     ],
     "supporting_source_ids": [
       "SRC-V2-VLAD-ROUND3-ADDENDUM-20260822",
-      "SRC-V2-OWNER-ROUND3-ADDENDUM-APPROVAL-20260826"
+      "SRC-V2-OWNER-ROUND3-ADDENDUM-APPROVAL-20260826",
+      "SRC-V2-VLAD-NEW-DRIVER-TERMS-MECHANICS-20260828",
+      "SRC-V2-OWNER-NEW-DRIVER-TERMS-MECHANICS-APPROVAL-20260828"
     ],
     "conflicting_or_superseded_source_ids": [],
-    "reasoning": "Phillip Metzger explicitly directed Ready Route to treat the Round 3 Continued Addendum as authoritative and use each supplied answer.",
+    "reasoning": "Phillip Metzger explicitly directed Ready Route to treat the Round 3 Continued Addendum as authoritative and use each supplied answer. The 2026-08-28 owner approval also establishes Vision Label and SID sticker as equivalent driver terminology without changing the procedure.",
     "approved_by": "Phillip Metzger, Ready Route product owner",
     "approval_date": "2026-08-26",
     "effective_date": "2026-08-26",
@@ -2616,7 +2636,7 @@
       "A later applicable operational or regulatory update materially conflicts with it."
     ],
     "canonical_overrides": {
-      "authoritative_rule": "Use a plastic bag when available and confirm protection; otherwise use a safe covered location. If no good protected spot exists, apply Code 007, add a weather note, cross the package, remove the SID sticker, and return it to the station.",
+      "authoritative_rule": "Use a plastic bag when available and confirm protection; otherwise use a safe covered location. If no good protected spot exists, apply Code 007, add a weather note, cross the package, remove the Vision Label (SID sticker), and return it to the station.",
       "applicability": [
         "Heavy rain or wet conditions threaten the package at delivery"
       ],
@@ -2639,7 +2659,7 @@
         },
         {
           "step": 4,
-          "action": "Cross the package, remove the SID sticker, and return it to the station."
+          "action": "Cross the package, remove the Vision Label (SID sticker), and return it to the station."
         }
       ],
       "required_documentation": [
@@ -2652,9 +2672,10 @@
       ],
       "escalation_requirements": [],
       "clarification_requirements": [],
-      "concise_driver_answer": "Bag the package if bags are available; otherwise use a safe covered spot. If neither protects it, use Code 007, add a weather note, cross the package, remove the SID, and return it to the station.",
+      "concise_driver_answer": "Bag the package if bags are available; otherwise use a safe covered spot. If neither protects it, use Code 007, add a weather note, cross the package, remove the Vision Label (SID sticker), and return it to the station.",
       "more_info_answer": "Confirm the bag or covered location actually protects the package before completing delivery."
-    }
+    },
+    "terminology_updated_at": "2026-08-28"
   },
   {
     "adjudication_id": "ADJ-20260826-ROUND3-ADDENDUM-DEL-DUPLICATE-ADDRESS-001",
@@ -2667,10 +2688,12 @@
     ],
     "supporting_source_ids": [
       "SRC-V2-VLAD-ROUND3-ADDENDUM-20260822",
-      "SRC-V2-OWNER-ROUND3-ADDENDUM-APPROVAL-20260826"
+      "SRC-V2-OWNER-ROUND3-ADDENDUM-APPROVAL-20260826",
+      "SRC-V2-VLAD-NEW-DRIVER-TERMS-MECHANICS-20260828",
+      "SRC-V2-OWNER-NEW-DRIVER-TERMS-MECHANICS-APPROVAL-20260828"
     ],
     "conflicting_or_superseded_source_ids": [],
-    "reasoning": "Phillip Metzger explicitly directed Ready Route to treat the Round 3 Continued Addendum as authoritative and use each supplied answer.",
+    "reasoning": "Phillip Metzger explicitly directed Ready Route to treat the Round 3 Continued Addendum as authoritative and use each supplied answer. The 2026-08-28 owner approval also establishes Vision Label and SID sticker as equivalent driver terminology without changing the procedure.",
     "approved_by": "Phillip Metzger, Ready Route product owner",
     "approval_date": "2026-08-26",
     "effective_date": "2026-08-26",
@@ -2680,7 +2703,7 @@
       "A later applicable operational or regulatory update materially conflicts with it."
     ],
     "canonical_overrides": {
-      "authoritative_rule": "Apply Code 002, add a comment explaining the duplicate-address situation, cross the package, remove the SID sticker, and return it to the station.",
+      "authoritative_rule": "Apply Code 002, add a comment explaining the duplicate-address situation, cross the package, remove the Vision Label (SID sticker), and return it to the station.",
       "applicability": [
         "Two houses have the same address number",
         "The correct delivery destination cannot be reliably identified"
@@ -2698,7 +2721,7 @@
         },
         {
           "step": 3,
-          "action": "Cross the package and remove the SID sticker."
+          "action": "Cross the package and remove the Vision Label (SID sticker)."
         },
         {
           "step": 4,
@@ -2715,37 +2738,43 @@
       ],
       "escalation_requirements": [],
       "clarification_requirements": [],
-      "concise_driver_answer": "Use Code 002, add a comment explaining the duplicate addresses, cross the package, remove the SID, and return it to the station.",
+      "concise_driver_answer": "Use Code 002, add a comment explaining the duplicate addresses, cross the package, remove the Vision Label (SID sticker), and return it to the station.",
       "more_info_answer": "Use this procedure when the duplicated house number prevents reliable identification of the destination."
-    }
+    },
+    "terminology_updated_at": "2026-08-28"
   },
   {
     "adjudication_id": "ADJ-20260826-ROUND3-ADDENDUM-VEH-DOT-INSPECTION-001",
     "knowledge_id": "KNO-VEH-DOT-INSPECTION-001",
     "status": "APPROVED",
-    "issue_reviewed": "The unified vehicle inspection checklist.",
-    "canonical_determination": "Check brakes, tires, lights and signals, mirrors, windshield and wipers, horn, steering, fluid levels, fuel, seatbelt, emergency equipment, cargo securement, and general body condition or leaks. If any item is not working correctly, notify the BC immediately and pull over or park in a safe area.",
+    "issue_reviewed": "The unified vehicle inspection checklist, including minimum tire tread depth and the limited penny-test screen.",
+    "canonical_determination": "Complete the unified vehicle inspection. For tire tread, front/steering tires on a truck require at least 4/32 inch and all other tires require at least 2/32 inch in a major tread groove. Use a tread-depth gauge for the actual threshold. The penny test is only a rough 2/32-inch screen and cannot prove a steering tire meets 4/32 inch. If any tire or other inspected item is unsafe or not working correctly, notify the BC immediately and pull over or park safely.",
     "previous_interpretations": [
       "Ready Route lacked a unified approved pre-trip/post-trip checklist."
     ],
     "supporting_source_ids": [
       "SRC-V2-VLAD-ROUND3-ADDENDUM-20260822",
-      "SRC-V2-OWNER-ROUND3-ADDENDUM-APPROVAL-20260826",
       "SRC-ECFR-49CFR39613-20260824",
-      "SRC-ECFR-49CFR39611-20260824"
+      "SRC-ECFR-49CFR39611-20260824",
+      "SRC-V2-OWNER-ROUND3-ADDENDUM-APPROVAL-20260826",
+      "SRC-V2-VLAD-NEW-DRIVER-TERMS-MECHANICS-20260828",
+      "SRC-V2-OWNER-NEW-DRIVER-TERMS-MECHANICS-APPROVAL-20260828",
+      "SRC-ECFR-49CFR39375-20260828",
+      "SRC-NHTSA-TIREWISE-20260828"
     ],
     "conflicting_or_superseded_source_ids": [],
-    "reasoning": "Phillip Metzger explicitly directed Ready Route to treat the Round 3 Continued Addendum as authoritative and use each supplied answer.",
+    "reasoning": "Phillip Metzger approved Vlad’s tire-tread addendum and directed Ready Route to follow it. 49 CFR 393.75 supports the 4/32-inch front and 2/32-inch other-tire thresholds; NHTSA supports the penny test only as a 2/32-inch screen.",
     "approved_by": "Phillip Metzger, Ready Route product owner",
-    "approval_date": "2026-08-26",
-    "effective_date": "2026-08-26",
+    "approval_date": "2026-08-28",
+    "effective_date": "2026-08-28",
     "supersedes": [],
     "reopen_conditions": [
       "Phillip or Vlad revises the supplied answer.",
-      "A later applicable operational or regulatory update materially conflicts with it."
+      "A later applicable operational or regulatory update materially conflicts with it.",
+      "The applicable tire rule, NHTSA screening guidance, or company out-of-service policy changes."
     ],
     "canonical_overrides": {
-      "authoritative_rule": "Check brakes, tires, lights and signals, mirrors, windshield and wipers, horn, steering, fluid levels, fuel, seatbelt, emergency equipment, cargo securement, and general body condition or leaks. If any item is not working correctly, notify the BC immediately and pull over or park in a safe area.",
+      "authoritative_rule": "Complete the unified vehicle inspection. For tire tread, front/steering tires on a truck require at least 4/32 inch and all other tires require at least 2/32 inch in a major tread groove. Use a tread-depth gauge for the actual threshold. The penny test is only a rough 2/32-inch screen and cannot prove a steering tire meets 4/32 inch. If any tire or other inspected item is unsafe or not working correctly, notify the BC immediately and pull over or park safely.",
       "applicability": [
         "Pre-trip inspection",
         "Post-trip inspection",
@@ -2756,27 +2785,42 @@
       "required_procedure": [
         {
           "step": 1,
-          "action": "Check brakes; tires for tread, pressure, and damage; all lights and signals; mirrors; windshield and wipers; horn; and steering."
+          "action": "Check brakes; all lights and signals; mirrors; windshield and wipers; horn; and steering."
         },
         {
           "step": 2,
-          "action": "Check fluid levels, fuel, seatbelt, emergency equipment including the fire extinguisher and warning triangles, cargo securement, and general body condition or leaks."
+          "action": "Check every tire for tread, pressure, cuts, exposed material, separation, leaks, and other damage."
         },
         {
           "step": 3,
-          "action": "If anything on the checklist is not working correctly, notify your BC immediately and pull over or park in a safe area."
+          "action": "Use a tread-depth gauge in a major tread groove: front/steering tires require at least 4/32 inch and other tires require at least 2/32 inch. Do not measure on tie bars, humps, or fillets."
+        },
+        {
+          "step": 4,
+          "action": "For a rough 2/32-inch screen only, place a penny into the groove with Lincoln’s head upside down. If the top of his head is visible, the tire is at or below the replacement threshold. Do not use this test to approve a steering tire; verify 4/32 inch with a gauge."
+        },
+        {
+          "step": 5,
+          "action": "Check fluid levels, fuel, seatbelt, emergency equipment including the fire extinguisher and warning triangles, cargo securement, and general body condition or leaks."
+        },
+        {
+          "step": 6,
+          "action": "If anything is unsafe or not working correctly, notify your BC immediately and pull over or park in a safe area."
         }
       ],
       "required_documentation": [],
       "prohibited_actions": [
-        "Do not continue without notifying the BC when an inspected item is not working correctly"
+        "Do not continue without notifying the BC when an inspected item is not working correctly",
+        "Do not approve a front/steering tire with less than 4/32 inch in a major tread groove.",
+        "Do not approve another tire with less than 2/32 inch in a major tread groove.",
+        "Do not use the penny test as proof that a front/steering tire meets the 4/32-inch requirement."
       ],
       "escalation_requirements": [
         "Notify the BC immediately for any item that is not working correctly"
       ],
       "clarification_requirements": [],
-      "concise_driver_answer": "Check brakes, tires, lights/signals, mirrors, windshield/wipers, horn, steering, fluids, fuel, seatbelt, emergency equipment, cargo securement, and body condition/leaks. If anything is not working correctly, notify your BC immediately and pull over or park safely.",
-      "more_info_answer": "This is the unified Ready Route answer for pre-trip, post-trip, what-to-check, and DOT-standard inspection questions."
+      "concise_driver_answer": "Use a tread-depth gauge. Front/steering tires require at least 4/32 inch; other tires require at least 2/32 inch in a major groove. The penny test only screens for about 2/32 and cannot approve a steering tire. If a tire is below the applicable limit or damaged, do not continue without notifying your BC and parking safely.",
+      "more_info_answer": "Insert a penny with Lincoln’s head upside down; seeing the top of his head means the tread is at or below about 2/32 inch. Federal truck rules require 4/32 inch on front tires, so use a gauge for that threshold."
     }
   },
   {
@@ -2852,10 +2896,12 @@
     ],
     "supporting_source_ids": [
       "SRC-V2-VLAD-ROUND3-ADDENDUM-20260822",
-      "SRC-V2-OWNER-ROUND3-ADDENDUM-APPROVAL-20260826"
+      "SRC-V2-OWNER-ROUND3-ADDENDUM-APPROVAL-20260826",
+      "SRC-V2-VLAD-NEW-DRIVER-TERMS-MECHANICS-20260828",
+      "SRC-V2-OWNER-NEW-DRIVER-TERMS-MECHANICS-APPROVAL-20260828"
     ],
     "conflicting_or_superseded_source_ids": [],
-    "reasoning": "Phillip Metzger explicitly directed Ready Route to treat the Round 3 Continued Addendum as authoritative and use each supplied answer.",
+    "reasoning": "Phillip Metzger explicitly directed Ready Route to treat the Round 3 Continued Addendum as authoritative and use each supplied answer. The 2026-08-28 owner approval also establishes Vision Label and SID sticker as equivalent driver terminology without changing the procedure.",
     "approved_by": "Phillip Metzger, Ready Route product owner",
     "approval_date": "2026-08-26",
     "effective_date": "2026-08-26",
@@ -2865,7 +2911,7 @@
       "A later applicable operational or regulatory update materially conflicts with it."
     ],
     "canonical_overrides": {
-      "authoritative_rule": "Check the main label addresses on nearby packages for a mix-up or stale SID sticker, search for no more than 5–8 minutes, attempt delivery if the package is found later, and call the BC for advice if returning would be too far out of the way.",
+      "authoritative_rule": "Check the main label addresses on nearby packages for a mix-up or stale Vision Label (SID sticker), search for no more than 5–8 minutes, attempt delivery if the package is found later, and call the BC for advice if returning would be too far out of the way.",
       "applicability": [
         "Driver is at or near the delivery address",
         "The expected package cannot be located on the van"
@@ -2877,7 +2923,7 @@
       "required_procedure": [
         {
           "step": 1,
-          "action": "Check the main-label address on nearby packages; the package may be mixed up, or a SID sticker from a previous day may be causing confusion."
+          "action": "Check the main-label address on nearby packages; the package may be mixed up, or a Vision Label (SID sticker) from a previous day may be causing confusion."
         },
         {
           "step": 2,
@@ -2901,9 +2947,10 @@
         "Call the BC when the later delivery would be too far out of the way"
       ],
       "clarification_requirements": [],
-      "concise_driver_answer": "Check nearby packages’ main-label addresses and look for a stale SID mix-up, but search no more than 5–8 minutes. If found later, attempt delivery; if the address is too far out of the way, call your BC.",
+      "concise_driver_answer": "Check nearby packages’ main-label addresses and look for a stale Vision Label (SID sticker) mix-up, but search no more than 5–8 minutes. If found later, attempt delivery; if the address is too far out of the way, call your BC.",
       "more_info_answer": "This is a package-location problem on the van, not a missing-barcode or Key Enter situation."
-    }
+    },
+    "terminology_updated_at": "2026-08-28"
   },
   {
     "adjudication_id": "ADJ-20260826-ROUND3-ADDENDUM-FORGE-UNMANIFESTED-DELIVERY-001",
@@ -2975,6 +3022,552 @@
       ],
       "concise_driver_answer": "If station/management assigned it and the label establishes the address, add it as a Delivery stop using label-supported details. Otherwise: deliver if close, map it for later if it is ahead, or call your BC if you already passed it.",
       "more_info_answer": "The No branch is selected when station or management did not assign the package or the label does not establish the address."
+    }
+  },
+  {
+    "adjudication_id": "ADJ-20260828-NEW-DRIVER-DEL-MISDELIVERY-RECOVERY-001",
+    "knowledge_id": "KNO-DEL-MISDELIVERY-RECOVERY-001",
+    "status": "APPROVED",
+    "issue_reviewed": "Recovering and redelivering a misdelivered package on the same day",
+    "canonical_determination": "After physically recovering a misdelivered package, scan it again in the misdelivery recovery workflow and apply Code 17. Go to the correct address, scan it for delivery, verify and confirm the address when prompted, and process the delivery normally. If the same-day redelivery succeeds, the stop closes as Code 18.",
+    "previous_interpretations": [
+      "The source-verified record contained the Code 17 and Code 18 result but lacked Vlad’s tap-level screen sequence."
+    ],
+    "supporting_source_ids": [
+      "SRC-V2-FORGE-PD300-20250401",
+      "SRC-V2-VLAD-NEW-DRIVER-TERMS-MECHANICS-20260828",
+      "SRC-V2-OWNER-NEW-DRIVER-TERMS-MECHANICS-APPROVAL-20260828"
+    ],
+    "conflicting_or_superseded_source_ids": [],
+    "reasoning": "Vlad supplied the field mechanics and Phillip Metzger completely approved them as Ready Route owner-verified knowledge within the stated scope. The determination preserves the supplied branch boundaries and does not invent missing company policy or scanner behavior.",
+    "approved_by": "Phillip Metzger, Ready Route product owner",
+    "approval_date": "2026-08-28",
+    "effective_date": "2026-08-28",
+    "supersedes": [],
+    "reopen_conditions": [
+      "Phillip or Vlad revises the supplied answer.",
+      "A later applicable operational, regulatory, company-policy, safety, or scanner-workflow update materially conflicts with it."
+    ],
+    "canonical_overrides": {
+      "authoritative_rule": "After physically recovering a misdelivered package, scan it again in the misdelivery recovery workflow and apply Code 17. Go to the correct address, scan it for delivery, verify and confirm the address when prompted, and process the delivery normally. If the same-day redelivery succeeds, the stop closes as Code 18.",
+      "applicability": [
+        "Package was previously delivered to the wrong location",
+        "Driver is recovering the package",
+        "Same-day redelivery may be attempted"
+      ],
+      "conditions": [
+        "The correct delivery address must be established before redelivery",
+        "A multi-package recovery can result in only some packages being successfully redelivered"
+      ],
+      "exceptions": [],
+      "required_procedure": [
+        {
+          "step": 1,
+          "action": "Physically recover the misdelivered package."
+        },
+        {
+          "step": 2,
+          "action": "Scan the package again in the misdelivery recovery workflow and apply Code 17. Code 18 applies only after a successful same-day redelivery."
+        },
+        {
+          "step": 3,
+          "action": "Go to the correct address."
+        },
+        {
+          "step": 4,
+          "action": "Scan the package again for delivery."
+        },
+        {
+          "step": 5,
+          "action": "When the scanner asks you to verify the address, check it and tap Confirm."
+        },
+        {
+          "step": 6,
+          "action": "Process the delivery as usual."
+        },
+        {
+          "step": 7,
+          "action": "If the same-day redelivery succeeds, confirm the stop closes as Code 18."
+        }
+      ],
+      "required_documentation": [
+        "Code 17 for the recovered package",
+        "Correct delivery address",
+        "Code 18 for a successful same-day redelivery"
+      ],
+      "prohibited_actions": [
+        "Do not redeliver until the correct address is established",
+        "Do not apply Code 18 unless the same-day redelivery succeeds",
+        "Do not give every recovered package the same outcome when their results differ"
+      ],
+      "escalation_requirements": [
+        "Contact station or service-provider management when the correct address or final disposition cannot be established."
+      ],
+      "clarification_requirements": [
+        "Has the package been physically recovered?",
+        "Is the correct address known?",
+        "Can it be redelivered today?",
+        "Were all recovered packages successfully redelivered?"
+      ],
+      "concise_driver_answer": "Recover and scan the package in the misdelivery workflow, then apply Code 17. At the correct address, scan it again, verify the address, tap Confirm, and deliver normally. A successful same-day redelivery closes as Code 18.",
+      "more_info_answer": "Code 18 applies only when the same-day redelivery succeeds. Handle each recovered package by its actual result."
+    }
+  },
+  {
+    "adjudication_id": "ADJ-20260828-NEW-DRIVER-FORGE-WORK-AREA-TERM-001",
+    "knowledge_id": "KNO-FORGE-WORK-AREA-TERM-001",
+    "status": "APPROVED",
+    "issue_reviewed": "A driver asks what WA means or where to find the work-area number",
+    "canonical_determination": "WA means Work Area, another word for the route. The work-area number is the first three or four numbers on the Vision Label (SID sticker).",
+    "previous_interpretations": [
+      "Ready Route did not have a published answer with this exact new-driver terminology or mechanic-level scope."
+    ],
+    "supporting_source_ids": [
+      "SRC-V2-VLAD-NEW-DRIVER-TERMS-MECHANICS-20260828",
+      "SRC-V2-OWNER-NEW-DRIVER-TERMS-MECHANICS-APPROVAL-20260828"
+    ],
+    "conflicting_or_superseded_source_ids": [],
+    "reasoning": "Vlad supplied the field mechanics and Phillip Metzger completely approved them as Ready Route owner-verified knowledge within the stated scope. The determination preserves the supplied branch boundaries and does not invent missing company policy or scanner behavior.",
+    "approved_by": "Phillip Metzger, Ready Route product owner",
+    "approval_date": "2026-08-28",
+    "effective_date": "2026-08-28",
+    "supersedes": [],
+    "reopen_conditions": [
+      "Phillip or Vlad revises the supplied answer.",
+      "A later applicable operational, regulatory, company-policy, safety, or scanner-workflow update materially conflicts with it."
+    ],
+    "canonical_overrides": {
+      "authoritative_rule": "WA means Work Area, another word for the route. The work-area number is the first three or four numbers on the Vision Label (SID sticker).",
+      "applicability": [
+        "A driver asks what WA or Work Area means",
+        "A driver needs to locate the work-area number on a package"
+      ],
+      "conditions": [],
+      "exceptions": [],
+      "required_procedure": [
+        {
+          "step": 1,
+          "action": "Find the Vision Label (SID sticker) on the package."
+        },
+        {
+          "step": 2,
+          "action": "Read the first three or four numbers; that is the Work Area or route number."
+        }
+      ],
+      "required_documentation": [],
+      "prohibited_actions": [
+        "Do not treat Vision Label and Vision Label (SID sticker) as different package labels."
+      ],
+      "escalation_requirements": [],
+      "clarification_requirements": [],
+      "concise_driver_answer": "WA means Work Area—another word for your route. It is the first three or four numbers on the Vision Label (SID sticker).",
+      "more_info_answer": "Vision Label and Vision Label (SID sticker) are two names for the same physical package label."
+    }
+  },
+  {
+    "adjudication_id": "ADJ-20260828-NEW-DRIVER-FORGE-SIGNATURE-CAPTURE-001",
+    "knowledge_id": "KNO-FORGE-SIGNATURE-CAPTURE-001",
+    "status": "APPROVED",
+    "issue_reviewed": "Capturing a customer signature on the delivery screen",
+    "canonical_determination": "After tapping the delivery check mark, the signature box appears automatically when a signature is required or Met Customer is selected. Have the customer sign in the box, then enter the customer’s first initial and full last name.",
+    "previous_interpretations": [
+      "Ready Route did not have a published answer with this exact new-driver terminology or mechanic-level scope."
+    ],
+    "supporting_source_ids": [
+      "SRC-V2-VLAD-NEW-DRIVER-TERMS-MECHANICS-20260828",
+      "SRC-V2-OWNER-NEW-DRIVER-TERMS-MECHANICS-APPROVAL-20260828"
+    ],
+    "conflicting_or_superseded_source_ids": [],
+    "reasoning": "Vlad supplied the field mechanics and Phillip Metzger completely approved them as Ready Route owner-verified knowledge within the stated scope. The determination preserves the supplied branch boundaries and does not invent missing company policy or scanner behavior.",
+    "approved_by": "Phillip Metzger, Ready Route product owner",
+    "approval_date": "2026-08-28",
+    "effective_date": "2026-08-28",
+    "supersedes": [],
+    "reopen_conditions": [
+      "Phillip or Vlad revises the supplied answer.",
+      "A later applicable operational, regulatory, company-policy, safety, or scanner-workflow update materially conflicts with it."
+    ],
+    "canonical_overrides": {
+      "authoritative_rule": "After tapping the delivery check mark, the signature box appears automatically when a signature is required or Met Customer is selected. Have the customer sign in the box, then enter the customer’s first initial and full last name.",
+      "applicability": [
+        "The delivery requires a signature",
+        "The driver selected Met Customer and the signature box appears"
+      ],
+      "conditions": [
+        "The signature-service requirements for the package still control who may sign"
+      ],
+      "exceptions": [],
+      "required_procedure": [
+        {
+          "step": 1,
+          "action": "Complete the delivery selections and tap the check mark."
+        },
+        {
+          "step": 2,
+          "action": "When the signature box appears, have the customer sign inside the box."
+        },
+        {
+          "step": 3,
+          "action": "Enter the customer’s first initial and full last name."
+        }
+      ],
+      "required_documentation": [],
+      "prohibited_actions": [
+        "Do not bypass a required signature.",
+        "Do not use these mechanics to change who is eligible to sign for DSR, ISR, ASR, alcohol, or another restricted service."
+      ],
+      "escalation_requirements": [],
+      "clarification_requirements": [],
+      "concise_driver_answer": "Tap the delivery check mark. When the signature box appears, have the customer sign in it, then enter the customer’s first initial and full last name.",
+      "more_info_answer": "The signature box appears when a signature is required or when Met Customer is selected. Package-specific signer eligibility still controls."
+    }
+  },
+  {
+    "adjudication_id": "ADJ-20260828-NEW-DRIVER-DEL-COD-GENERAL-001",
+    "knowledge_id": "KNO-DEL-COD-GENERAL-001",
+    "status": "APPROVED",
+    "issue_reviewed": "A customer asks to pay cash on delivery",
+    "canonical_determination": "Have the customer call your BC. This record does not establish a fuller cash-on-delivery collection procedure.",
+    "previous_interpretations": [
+      "Ready Route did not have a published answer with this exact new-driver terminology or mechanic-level scope."
+    ],
+    "supporting_source_ids": [
+      "SRC-V2-VLAD-NEW-DRIVER-TERMS-MECHANICS-20260828",
+      "SRC-V2-OWNER-NEW-DRIVER-TERMS-MECHANICS-APPROVAL-20260828"
+    ],
+    "conflicting_or_superseded_source_ids": [],
+    "reasoning": "Vlad supplied the field mechanics and Phillip Metzger completely approved them as Ready Route owner-verified knowledge within the stated scope. The determination preserves the supplied branch boundaries and does not invent missing company policy or scanner behavior.",
+    "approved_by": "Phillip Metzger, Ready Route product owner",
+    "approval_date": "2026-08-28",
+    "effective_date": "2026-08-28",
+    "supersedes": [],
+    "reopen_conditions": [
+      "Phillip or Vlad revises the supplied answer.",
+      "A later applicable operational, regulatory, company-policy, safety, or scanner-workflow update materially conflicts with it."
+    ],
+    "canonical_overrides": {
+      "authoritative_rule": "Have the customer call your BC. This record does not establish a fuller cash-on-delivery collection procedure.",
+      "applicability": [
+        "A customer asks to pay cash on delivery",
+        "The driver does not have an established approved COD procedure for the situation"
+      ],
+      "conditions": [],
+      "exceptions": [
+        "A documented package-specific COD workflow controls when it directly applies"
+      ],
+      "required_procedure": [
+        {
+          "step": 1,
+          "action": "Have the customer call your BC."
+        }
+      ],
+      "required_documentation": [],
+      "prohibited_actions": [
+        "Do not invent a cash-collection procedure.",
+        "Do not accept or process cash based only on this record."
+      ],
+      "escalation_requirements": [
+        "The customer calls the BC for direction"
+      ],
+      "clarification_requirements": [],
+      "concise_driver_answer": "Have the customer call your BC. Ready Route does not have a fuller approved COD procedure for this general situation.",
+      "more_info_answer": "Do not collect or process cash by guessing. A directly applicable documented COD workflow remains controlling."
+    }
+  },
+  {
+    "adjudication_id": "ADJ-20260828-NEW-DRIVER-DEL-SIG-DSR-VS-ISR-001",
+    "knowledge_id": "KNO-DEL-SIG-DSR-VS-ISR-001",
+    "status": "APPROVED",
+    "issue_reviewed": "Explaining the conceptual difference between DSR and ISR",
+    "canonical_determination": "DSR requires an in-person signature from someone at the labeled delivery address, so a neighbor at another address cannot sign. ISR can allow an eligible neighbor’s signature when the required indirect-delivery scan, address, signature, and door-tag documentation are completed.",
+    "previous_interpretations": [
+      "Ready Route did not have a published answer with this exact new-driver terminology or mechanic-level scope."
+    ],
+    "supporting_source_ids": [
+      "SRC-V2-VLAD-NEW-DRIVER-TERMS-MECHANICS-20260828",
+      "SRC-V2-OWNER-NEW-DRIVER-TERMS-MECHANICS-APPROVAL-20260828",
+      "SRC-V2-OP117-20251215"
+    ],
+    "conflicting_or_superseded_source_ids": [],
+    "reasoning": "Vlad supplied the field mechanics and Phillip Metzger completely approved them as Ready Route owner-verified knowledge within the stated scope. The determination preserves the supplied branch boundaries and does not invent missing company policy or scanner behavior.",
+    "approved_by": "Phillip Metzger, Ready Route product owner",
+    "approval_date": "2026-08-28",
+    "effective_date": "2026-08-28",
+    "supersedes": [],
+    "reopen_conditions": [
+      "Phillip or Vlad revises the supplied answer.",
+      "A later applicable operational, regulatory, company-policy, safety, or scanner-workflow update materially conflicts with it."
+    ],
+    "canonical_overrides": {
+      "authoritative_rule": "DSR requires an in-person signature from someone at the labeled delivery address, so a neighbor at another address cannot sign. ISR can allow an eligible neighbor’s signature when the required indirect-delivery scan, address, signature, and door-tag documentation are completed.",
+      "applicability": [
+        "The driver asks what DSR means",
+        "The driver asks how DSR differs from ISR or an ordinary signature"
+      ],
+      "conditions": [],
+      "exceptions": [
+        "ASR, alcohol, controlled-substance, appointment, and other stricter services have separate requirements"
+      ],
+      "required_procedure": [
+        {
+          "step": 1,
+          "action": "For DSR, obtain an in-person signature from someone at the labeled address; do not use a neighbor at another address."
+        },
+        {
+          "step": 2,
+          "action": "For ISR, an eligible neighbor can be used only through the documented indirect-delivery path, including the indirect address, signature, and scanned door tag left at the labeled address."
+        }
+      ],
+      "required_documentation": [],
+      "prohibited_actions": [
+        "Do not treat DSR and ISR as interchangeable.",
+        "Do not tell a driver that any neighbor can sign for ISR without the required indirect-delivery documentation."
+      ],
+      "escalation_requirements": [],
+      "clarification_requirements": [],
+      "concise_driver_answer": "DSR needs an in-person signature at the labeled address; a neighbor at another address cannot sign. ISR can allow an eligible neighbor only through the documented indirect-delivery and door-tag process.",
+      "more_info_answer": "This is the conceptual distinction. For an actual package, follow the specific DSR, ISR, ASR, alcohol, or other service procedure shown in FORGE."
+    }
+  },
+  {
+    "adjudication_id": "ADJ-20260828-NEW-DRIVER-DEL-LABEL-TORN-BARCODE-SCANS-001",
+    "knowledge_id": "KNO-DEL-LABEL-TORN-BARCODE-SCANS-001",
+    "status": "APPROVED",
+    "issue_reviewed": "A package label is torn but the barcode still scans",
+    "canonical_determination": "If the barcode still scans and the package itself is not damaged, deliver it normally. Check the package condition first. If the package is damaged, use the damaged-package procedure instead.",
+    "previous_interpretations": [
+      "Ready Route did not have a published answer with this exact new-driver terminology or mechanic-level scope."
+    ],
+    "supporting_source_ids": [
+      "SRC-V2-VLAD-NEW-DRIVER-TERMS-MECHANICS-20260828",
+      "SRC-V2-OWNER-NEW-DRIVER-TERMS-MECHANICS-APPROVAL-20260828"
+    ],
+    "conflicting_or_superseded_source_ids": [],
+    "reasoning": "Vlad supplied the field mechanics and Phillip Metzger completely approved them as Ready Route owner-verified knowledge within the stated scope. The determination preserves the supplied branch boundaries and does not invent missing company policy or scanner behavior.",
+    "approved_by": "Phillip Metzger, Ready Route product owner",
+    "approval_date": "2026-08-28",
+    "effective_date": "2026-08-28",
+    "supersedes": [],
+    "reopen_conditions": [
+      "Phillip or Vlad revises the supplied answer.",
+      "A later applicable operational, regulatory, company-policy, safety, or scanner-workflow update materially conflicts with it."
+    ],
+    "canonical_overrides": {
+      "authoritative_rule": "If the barcode still scans and the package itself is not damaged, deliver it normally. Check the package condition first. If the package is damaged, use the damaged-package procedure instead.",
+      "applicability": [
+        "The package label is torn or partly missing",
+        "The barcode still scans"
+      ],
+      "conditions": [
+        "The package itself is not damaged"
+      ],
+      "exceptions": [
+        "Damage, leakage, hazmat, unreadable delivery information, or another package-specific restriction requires its own procedure"
+      ],
+      "required_procedure": [
+        {
+          "step": 1,
+          "action": "Check the package itself for damage."
+        },
+        {
+          "step": 2,
+          "action": "If the package is undamaged and the barcode scans, deliver it normally."
+        },
+        {
+          "step": 3,
+          "action": "If the package is damaged, stop the normal-delivery path and use the damaged-package procedure."
+        }
+      ],
+      "required_documentation": [],
+      "prohibited_actions": [
+        "Do not treat a damaged or leaking package as an ordinary delivery merely because its barcode scans."
+      ],
+      "escalation_requirements": [],
+      "clarification_requirements": [],
+      "concise_driver_answer": "Check the package condition first. If the package is undamaged and the barcode scans, deliver it normally. If the package is damaged or leaking, use the applicable damaged-package procedure.",
+      "more_info_answer": "A working barcode does not override package damage, leakage, hazmat, or another stricter requirement."
+    }
+  },
+  {
+    "adjudication_id": "ADJ-20260828-NEW-DRIVER-POLICY-LUNCH-BREAK-001",
+    "knowledge_id": "KNO-POLICY-LUNCH-BREAK-001",
+    "status": "APPROVED",
+    "issue_reviewed": "A driver asks about an informal lunch break or how to log lunch",
+    "canonical_determination": "Ask your BC because lunch-break policy and the practical logging process can vary by company. This record does not answer a federal HOS break-limit question.",
+    "previous_interpretations": [
+      "Ready Route did not have a published answer with this exact new-driver terminology or mechanic-level scope."
+    ],
+    "supporting_source_ids": [
+      "SRC-V2-VLAD-NEW-DRIVER-TERMS-MECHANICS-20260828",
+      "SRC-V2-OWNER-NEW-DRIVER-TERMS-MECHANICS-APPROVAL-20260828"
+    ],
+    "conflicting_or_superseded_source_ids": [],
+    "reasoning": "Vlad supplied the field mechanics and Phillip Metzger completely approved them as Ready Route owner-verified knowledge within the stated scope. The determination preserves the supplied branch boundaries and does not invent missing company policy or scanner behavior.",
+    "approved_by": "Phillip Metzger, Ready Route product owner",
+    "approval_date": "2026-08-28",
+    "effective_date": "2026-08-28",
+    "supersedes": [],
+    "reopen_conditions": [
+      "Phillip or Vlad revises the supplied answer.",
+      "A later applicable operational, regulatory, company-policy, safety, or scanner-workflow update materially conflicts with it."
+    ],
+    "canonical_overrides": {
+      "authoritative_rule": "Ask your BC because lunch-break policy and the practical logging process can vary by company. This record does not answer a federal HOS break-limit question.",
+      "applicability": [
+        "The driver asks whether they get lunch",
+        "The driver asks how to log an ordinary lunch break"
+      ],
+      "conditions": [],
+      "exceptions": [
+        "A question specifically about the federal hours-of-service break requirement belongs to the HOS record and current compliance guidance"
+      ],
+      "required_procedure": [
+        {
+          "step": 1,
+          "action": "Ask your BC for the company lunch-break policy and the correct logging process."
+        }
+      ],
+      "required_documentation": [],
+      "prohibited_actions": [
+        "Do not assume all companies use the same lunch policy or logging steps.",
+        "Do not substitute the federal HOS record for an informal company lunch-policy question."
+      ],
+      "escalation_requirements": [
+        "Ask the BC for company policy and logging mechanics"
+      ],
+      "clarification_requirements": [],
+      "concise_driver_answer": "Ask your BC. Lunch policy and the way your company logs it can vary.",
+      "more_info_answer": "If you are specifically asking about a federal HOS break limit, use the HOS/compliance answer instead."
+    }
+  },
+  {
+    "adjudication_id": "ADJ-20260828-NEW-DRIVER-HAZ-PACKAGE-LABEL-001",
+    "knowledge_id": "KNO-HAZ-PACKAGE-LABEL-001",
+    "status": "APPROVED",
+    "issue_reviewed": "A driver asks what a diamond-shaped hazmat label on a package means",
+    "canonical_determination": "Drivers may call it a hazmat placard, but on an individual package it is generally a hazardous-material label or marking. The diamond communicates the hazard class or type, such as flammable, corrosive, or toxic, and some markings include an identification number. Treat the package as hazmat: verify the applicable manifest and package paperwork, including SF-136 when required, and follow the relevant hazmat procedure rather than ordinary-package handling.",
+    "previous_interpretations": [
+      "Ready Route did not have a published answer with this exact new-driver terminology or mechanic-level scope."
+    ],
+    "supporting_source_ids": [
+      "SRC-V2-VLAD-NEW-DRIVER-TERMS-MECHANICS-20260828",
+      "SRC-V2-OWNER-NEW-DRIVER-TERMS-MECHANICS-APPROVAL-20260828",
+      "SRC-PHMSA-CHART17-20220315"
+    ],
+    "conflicting_or_superseded_source_ids": [],
+    "reasoning": "Vlad supplied the field mechanics and Phillip Metzger completely approved them as Ready Route owner-verified knowledge within the stated scope. The determination preserves the supplied branch boundaries and does not invent missing company policy or scanner behavior.",
+    "approved_by": "Phillip Metzger, Ready Route product owner",
+    "approval_date": "2026-08-28",
+    "effective_date": "2026-08-28",
+    "supersedes": [],
+    "reopen_conditions": [
+      "Phillip or Vlad revises the supplied answer.",
+      "A later applicable operational, regulatory, company-policy, safety, or scanner-workflow update materially conflicts with it."
+    ],
+    "canonical_overrides": {
+      "authoritative_rule": "Drivers may call it a hazmat placard, but on an individual package it is generally a hazardous-material label or marking. The diamond communicates the hazard class or type, such as flammable, corrosive, or toxic, and some markings include an identification number. Treat the package as hazmat: verify the applicable manifest and package paperwork, including SF-136 when required, and follow the relevant hazmat procedure rather than ordinary-package handling.",
+      "applicability": [
+        "A diamond-shaped hazardous-material label or marking appears on an individual package",
+        "The driver calls the package symbol a hazmat placard"
+      ],
+      "conditions": [
+        "The exact paperwork and procedure depend on the package and hazard class"
+      ],
+      "exceptions": [
+        "This definition alone does not establish acceptance, loading, delivery, leakage, incompatibility, placarding-weight, or emergency procedure"
+      ],
+      "required_procedure": [
+        {
+          "step": 1,
+          "action": "Recognize the diamond as a hazardous-material package label or marking and identify the displayed hazard class or type."
+        },
+        {
+          "step": 2,
+          "action": "Verify that the applicable manifest and package paperwork match, including SF-136 when required."
+        },
+        {
+          "step": 3,
+          "action": "Use the relevant hazmat procedure for the package; do not treat it as an ordinary package."
+        }
+      ],
+      "required_documentation": [
+        "Applicable hazmat manifest",
+        "Applicable package paperwork, including SF-136 when required"
+      ],
+      "prohibited_actions": [
+        "Do not ignore the diamond label or marking.",
+        "Do not infer a complete hazmat procedure from the symbol alone.",
+        "Do not treat package labels and vehicle placards as technically identical."
+      ],
+      "escalation_requirements": [
+        "Use a FedEx Safety/Hazmat specialist or station compliance owner when the label, paperwork, or applicable procedure is uncertain"
+      ],
+      "clarification_requirements": [],
+      "concise_driver_answer": "On an individual package, the diamond is generally a hazmat label or marking—not a vehicle placard. It identifies the hazard class or type. Verify the applicable manifest and package paperwork, including SF-136 when required, and follow the matching hazmat procedure.",
+      "more_info_answer": "Placards are generally used on vehicles, freight containers, and bulk packaging. The symbol alone does not supply the complete acceptance, loading, delivery, damage, or emergency procedure."
+    }
+  },
+  {
+    "adjudication_id": "ADJ-20260828-NEW-DRIVER-FORGE-CANCEL-DELIVERED-SCAN-001",
+    "knowledge_id": "KNO-FORGE-CANCEL-DELIVERED-SCAN-001",
+    "status": "APPROVED",
+    "issue_reviewed": "Canceling an accidental delivered scan before it finalizes",
+    "canonical_determination": "If you catch the accidental delivered scan immediately before it finalizes, tap Cancel, return to the main menu, and scan the correct package. This is separate from Delete Scan for a wrong scan already committed to Stop Details and from recovery after a completed misdelivery.",
+    "previous_interpretations": [
+      "Ready Route did not have a published answer with this exact new-driver terminology or mechanic-level scope."
+    ],
+    "supporting_source_ids": [
+      "SRC-V2-VLAD-NEW-DRIVER-TERMS-MECHANICS-20260828",
+      "SRC-V2-OWNER-NEW-DRIVER-TERMS-MECHANICS-APPROVAL-20260828"
+    ],
+    "conflicting_or_superseded_source_ids": [],
+    "reasoning": "Vlad supplied the field mechanics and Phillip Metzger completely approved them as Ready Route owner-verified knowledge within the stated scope. The determination preserves the supplied branch boundaries and does not invent missing company policy or scanner behavior.",
+    "approved_by": "Phillip Metzger, Ready Route product owner",
+    "approval_date": "2026-08-28",
+    "effective_date": "2026-08-28",
+    "supersedes": [],
+    "reopen_conditions": [
+      "Phillip or Vlad revises the supplied answer.",
+      "A later applicable operational, regulatory, company-policy, safety, or scanner-workflow update materially conflicts with it."
+    ],
+    "canonical_overrides": {
+      "authoritative_rule": "If you catch the accidental delivered scan immediately before it finalizes, tap Cancel, return to the main menu, and scan the correct package. This is separate from Delete Scan for a wrong scan already committed to Stop Details and from recovery after a completed misdelivery.",
+      "applicability": [
+        "The driver accidentally starts a delivered scan",
+        "The scan has not finalized or committed"
+      ],
+      "conditions": [
+        "The Cancel option is still available before finalization"
+      ],
+      "exceptions": [
+        "Use Delete Scan when the wrong package scan is already committed to Stop Details but delivery is not completed",
+        "Use misdelivery recovery when the wrong delivery has already completed"
+      ],
+      "required_procedure": [
+        {
+          "step": 1,
+          "action": "Tap Cancel before the accidental delivered scan finalizes."
+        },
+        {
+          "step": 2,
+          "action": "Return to the main menu."
+        },
+        {
+          "step": 3,
+          "action": "Scan the correct package."
+        }
+      ],
+      "required_documentation": [],
+      "prohibited_actions": [
+        "Do not use this pre-finalization branch for an already-committed scan or completed delivery.",
+        "Do not continue finalizing the wrong delivered scan."
+      ],
+      "escalation_requirements": [],
+      "clarification_requirements": [
+        "Is Cancel still available, is the scan committed to Stop Details, or is the delivery already completed?"
+      ],
+      "concise_driver_answer": "If it has not finalized, tap Cancel, return to the main menu, and scan the correct package. If the scan already committed, use Delete Scan; if the wrong delivery completed, use misdelivery recovery.",
+      "more_info_answer": "These are three different moments: cancel before finalization, Delete Scan after the scan commits but before delivery, and misdelivery recovery after a completed wrong delivery."
     }
   }
 ]
