@@ -3569,5 +3569,198 @@
       "concise_driver_answer": "If it has not finalized, tap Cancel, return to the main menu, and scan the correct package. If the scan already committed, use Delete Scan; if the wrong delivery completed, use misdelivery recovery.",
       "more_info_answer": "These are three different moments: cancel before finalization, Delete Scan after the scan commits but before delivery, and misdelivery recovery after a completed wrong delivery."
     }
+  },
+  {
+    "adjudication_id": "ADJ-20260901-EXTENDED-CX-GENERAL-COMPLAINT-001",
+    "knowledge_id": "KNO-CX-GENERAL-COMPLAINT-001",
+    "status": "APPROVED",
+    "issue_reviewed": "A customer wants to make a general complaint",
+    "canonical_determination": "Give the customer your BC’s phone contact. Then call your BC yourself and explain what is happening.",
+    "previous_interpretations": [
+      "No published Ready Route record previously covered a generic customer complaint without treating it as a Pickup Research Request."
+    ],
+    "supporting_source_ids": [
+      "SRC-V2-VLAD-EXTENDED-TESTING-20260901",
+      "SRC-V2-OWNER-EXTENDED-TESTING-APPROVAL-20260901"
+    ],
+    "conflicting_or_superseded_source_ids": [],
+    "reasoning": "Vlad supplied the field procedure and Phillip Metzger explicitly approved it as owner-verified Ready Route knowledge. This determination preserves the exact supplied scope and does not invent unresolved device, complaint, pickup-transfer, or duplicate-package branches.",
+    "approved_by": "Phillip Metzger, Ready Route product owner",
+    "approval_date": "2026-09-01",
+    "effective_date": "2026-09-01",
+    "supersedes": [],
+    "reopen_conditions": [
+      "Phillip or Vlad revises the supplied procedure.",
+      "A later applicable operational, company-policy, scanner-workflow, safety, or regulatory update materially conflicts with it.",
+      "A more specific scenario establishes a different approved procedure."
+    ],
+    "canonical_overrides": {
+      "authoritative_rule": "Give the customer your BC’s phone contact. Then call your BC yourself and explain what is happening.",
+      "applicability": [
+        "A customer wants to make a general complaint",
+        "No more specific approved complaint procedure is established by the known facts"
+      ],
+      "conditions": [],
+      "exceptions": [
+        "If the facts establish a more specific approved complaint or emergency procedure, use that procedure",
+        "A CXPC Pickup Research Request applies only when CXPC actually sent a request about a reported missed pickup"
+      ],
+      "required_procedure": [
+        {
+          "step": 1,
+          "action": "Give the customer your BC’s phone contact."
+        },
+        {
+          "step": 2,
+          "action": "Call your BC yourself and explain what is happening."
+        }
+      ],
+      "required_documentation": [],
+      "prohibited_actions": [
+        "Do not treat a generic customer complaint as a CXPC Pickup Research Request unless the facts establish that CXPC sent one.",
+        "Do not invent a complaint outcome or resolution."
+      ],
+      "escalation_requirements": [
+        "Driver calls the BC and explains the situation"
+      ],
+      "clarification_requirements": [],
+      "concise_driver_answer": "Give the customer your BC’s phone contact. Then call your BC yourself and explain what is happening.",
+      "more_info_answer": "This is the general-complaint path. Use a more specific approved procedure when the facts establish one; do not treat the complaint as a Pickup Research Request unless CXPC actually sent one."
+    }
+  },
+  {
+    "adjudication_id": "ADJ-20260901-EXTENDED-FORGE-SCANNER-LOW-BATTERY-001",
+    "knowledge_id": "KNO-FORGE-SCANNER-LOW-BATTERY-001",
+    "status": "APPROVED",
+    "issue_reviewed": "The scanner battery is low or dying during the route",
+    "canonical_determination": "If an extra battery is available, swap it; FORGE will not log you out during the battery swap. If there is no extra battery, call the BC. If the driver is far from another driver and no nearby spare battery is available, use a hand sheet (blue sheet) to record deliveries and turn it in at the check-in office.",
+    "previous_interpretations": [
+      "Existing records covered a fully unavailable device or pickup scanning failure, not a scanner that was still working but losing battery power."
+    ],
+    "supporting_source_ids": [
+      "SRC-V2-VLAD-EXTENDED-TESTING-20260901",
+      "SRC-V2-OWNER-EXTENDED-TESTING-APPROVAL-20260901"
+    ],
+    "conflicting_or_superseded_source_ids": [],
+    "reasoning": "Vlad supplied the field procedure and Phillip Metzger explicitly approved it as owner-verified Ready Route knowledge. This determination preserves the exact supplied scope and does not invent unresolved device, complaint, pickup-transfer, or duplicate-package branches.",
+    "approved_by": "Phillip Metzger, Ready Route product owner",
+    "approval_date": "2026-09-01",
+    "effective_date": "2026-09-01",
+    "supersedes": [],
+    "reopen_conditions": [
+      "Phillip or Vlad revises the supplied procedure.",
+      "A later applicable operational, company-policy, scanner-workflow, safety, or regulatory update materially conflicts with it.",
+      "A more specific scenario establishes a different approved procedure."
+    ],
+    "canonical_overrides": {
+      "authoritative_rule": "If an extra battery is available, swap it; FORGE will not log you out during the battery swap. If there is no extra battery, call the BC. If the driver is far from another driver and no nearby spare battery is available, use a hand sheet (blue sheet) to record deliveries and turn it in at the check-in office.",
+      "applicability": [
+        "The scanner is still operating but its battery is low or dying"
+      ],
+      "conditions": [
+        "Use the current station-issued hand sheet when the hand-sheet branch is required"
+      ],
+      "exceptions": [
+        "A frozen scanner, app crash, fully unavailable scanner, or pickup scanning failure follows its separately approved procedure"
+      ],
+      "required_procedure": [
+        {
+          "step": 1,
+          "action": "If you have an extra battery, swap it. FORGE will not log you out during the battery swap."
+        },
+        {
+          "step": 2,
+          "action": "If you do not have an extra battery, call your BC."
+        },
+        {
+          "step": 3,
+          "action": "If you are far from another driver and no nearby driver can provide a spare battery, use a hand sheet (blue sheet) to record deliveries."
+        },
+        {
+          "step": 4,
+          "action": "Turn in the hand sheet at the check-in office."
+        }
+      ],
+      "required_documentation": [
+        "Current station-issued hand sheet when that branch is used",
+        "Delivery information required by the applicable hand-sheet procedure"
+      ],
+      "prohibited_actions": [
+        "Do not silently treat low battery as the procedure for a frozen scanner, app crash, fully unavailable scanner, or pickup scanning-technology failure.",
+        "Do not omit turning in a used hand sheet at the check-in office."
+      ],
+      "escalation_requirements": [
+        "Call the BC when no extra battery is available"
+      ],
+      "clarification_requirements": [],
+      "concise_driver_answer": "If you have an extra battery, swap it—FORGE will not log you out. If you do not, call your BC. If no nearby driver can provide a spare battery, use a hand sheet to record deliveries and turn it in at the check-in office.",
+      "more_info_answer": "This applies to a low or dying battery while the scanner still operates. A frozen scanner, app crash, fully unavailable scanner, or pickup scan failure follows its separate procedure."
+    }
+  },
+  {
+    "adjudication_id": "ADJ-20260901-EXTENDED-PUP-WINDOW-RISK-001",
+    "knowledge_id": "KNO-PUP-WINDOW-RISK-001",
+    "status": "APPROVED",
+    "issue_reviewed": "A pickup cannot be completed within the customer's pickup window",
+    "canonical_determination": "The pickup window is the timeframe in which the customer requested the package be picked up. If the driver may not complete the pickup within that window, check the current ready and close times, contact CXPC so the customer can be alerted, and contact the BC to see whether the pickup can be transferred to another Work Area.",
+    "previous_interpretations": [
+      "The source-verified record required checking the current pickup window and contacting CXPC but did not include Vlad’s BC transfer inquiry."
+    ],
+    "supporting_source_ids": [
+      "SRC-V2-OP117-20251215",
+      "SRC-V2-VLAD-EXTENDED-TESTING-20260901",
+      "SRC-V2-OWNER-EXTENDED-TESTING-APPROVAL-20260901"
+    ],
+    "conflicting_or_superseded_source_ids": [],
+    "reasoning": "Vlad supplied the field procedure and Phillip Metzger explicitly approved it as owner-verified Ready Route knowledge. This determination preserves the exact supplied scope and does not invent unresolved device, complaint, pickup-transfer, or duplicate-package branches.",
+    "approved_by": "Phillip Metzger, Ready Route product owner",
+    "approval_date": "2026-09-01",
+    "effective_date": "2026-09-01",
+    "supersedes": [],
+    "reopen_conditions": [
+      "Phillip or Vlad revises the supplied procedure.",
+      "A later applicable operational, company-policy, scanner-workflow, safety, or regulatory update materially conflicts with it.",
+      "A more specific scenario establishes a different approved procedure."
+    ],
+    "canonical_overrides": {
+      "authoritative_rule": "The pickup window is the timeframe in which the customer requested the package be picked up. If the driver may not complete the pickup within that window, check the current ready and close times, contact CXPC so the customer can be alerted, and contact the BC to see whether the pickup can be transferred to another Work Area.",
+      "applicability": [
+        "A customer pickup cannot be completed within its current pickup window"
+      ],
+      "conditions": [
+        "The current pickup details or update message establish the applicable ready time, close time, or comments"
+      ],
+      "exceptions": [],
+      "required_procedure": [
+        {
+          "step": 1,
+          "action": "Check the current pickup ready time, close time, and update details."
+        },
+        {
+          "step": 2,
+          "action": "Contact CXPC through the approved channel so the customer can be alerted."
+        },
+        {
+          "step": 3,
+          "action": "Contact your BC to see whether the pickup can be transferred to another Work Area."
+        }
+      ],
+      "required_documentation": [
+        "Applicable pickup and pickup window",
+        "CXPC contact"
+      ],
+      "prohibited_actions": [
+        "Do not treat an old ready or close time as current without checking pickup updates",
+        "Do not assume the pickup has been transferred merely because the BC was contacted.",
+        "Do not omit the CXPC customer-alert step when the pickup window cannot be met."
+      ],
+      "escalation_requirements": [
+        "Contact CXPC when the pickup cannot be completed within the window",
+        "Contact the BC to see whether the pickup can be transferred to another Work Area"
+      ],
+      "clarification_requirements": [],
+      "concise_driver_answer": "Check the current ready and close times. If you may miss the pickup window, contact CXPC so the customer can be alerted and contact your BC to see whether the pickup can be transferred to another Work Area.",
+      "more_info_answer": "A pickup update can change the ready time, close time, or comments, so review the complete current details. Contacting the BC does not guarantee a transfer."
+    }
   }
 ]

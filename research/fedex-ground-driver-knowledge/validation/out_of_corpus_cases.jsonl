@@ -16,3 +16,8 @@
 {"case_id":"OOC-020","utterance":"A customer wants me to accept cash for shipping charges","expected_mode":"ESCALATE"}
 {"case_id":"OOC-021","utterance":"Can I take a package home overnight and deliver it tomorrow?","expected_mode":"ESCALATE"}
 {"case_id":"OOC-022","utterance":"Who is allowed to hire and terminate drivers?","expected_mode":"ESCALATE"}
+{"case_id":"OOC-EXTENDED-DNA-001","utterance":"What does DNA mean in delivery status?","expected_mode":"ESCALATE"}
+{"case_id":"OOC-EXTENDED-OP201-001","utterance":"What does OP-201 mean?","expected_mode":"ESCALATE"}
+{"case_id":"OOC-EXTENDED-LOCKED-KEYS-001","utterance":"I locked my keys in the van, what do I do?","expected_mode":"ESCALATE"}
+{"case_id":"OOC-EXTENDED-RECORDING-001","utterance":"Customer recording me on camera, what do I do?","expected_mode":"ESCALATE"}
+{"case_id":"OOC-EXTENDED-DUPLICATE-TRACKING-001","utterance":"Two packages, same tracking number, what do I do?","expected_mode":"ESCALATE"}

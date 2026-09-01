@@ -126,6 +126,28 @@ function normalizeDriverUtterance(value) {
   return correctCommonFollowUpTypos(extractDriverUtterance(value));
 }
 
+function isGlossaryQuestion(value) {
+  const normalized = normalizeDriverQuestion(value);
+  return Boolean(
+    /^(?:what (?:is|are)|define|meaning of)\b/.test(normalized)
+    || /^what (?:does|do)\b.+\b(?:mean|stand for)$/.test(normalized)
+  );
+}
+
+function buildAiFacingQuestion(value, context = {}) {
+  const question = normalizeDriverUtterance(value);
+  const normalized = normalizeDriverQuestion(question);
+  if (
+    !normalized
+    || context.pending_clarification_prompt
+    || /[?]$/.test(question)
+    || /^(?:what|when|where|why|how|who|which|can|could|should|would|do|does|did|is|are|am|was|were|has|have|will)\b/.test(normalized)
+    || tokenize(question).length < 2
+  ) return question;
+
+  return `${question.replace(/[.!]+$/, '')}. What should I do?`;
+}
+
 function resolveClarificationSelection(question, context = {}) {
   const normalized = normalizeDriverQuestion(question);
   const options = Array.isArray(context.pending_clarification_options)
@@ -728,6 +750,18 @@ function buildInterpretationResult({
   };
 }
 
+function buildAiFailClosedDecision(baseDecision) {
+  return {
+    response_mode: 'ESCALATE',
+    confidence: 0,
+    candidates: (baseDecision?.candidates || []).slice(0, 5),
+    selected_records: [],
+    clarification_options: [],
+    escalation_message: 'Ready Route Answers does not have a verified answer for this question yet. Contact your manager or station for the current procedure.',
+    escalation_details: []
+  };
+}
+
 function findEligibleOperationalRecord(records, knowledgeId) {
   return selectCanonicalRecordVersions(records).find((record) => (
     record.knowledge_id === knowledgeId
@@ -791,6 +825,22 @@ function buildProtectedRuntimeDecision(question, records, context = {}) {
       selected_records: [],
       clarification_options: [],
       escalation_message: 'Ready Route Answers does not have a verified answer for this question yet. Contact your manager or station for the current procedure.'
+    }, context);
+  }
+
+  const unsupportedReportedScenario = (
+    /\b(?:two|2|duplicate) packages?\b.*\bsame tracking number\b|\bsame tracking number\b.*\b(?:two|2|duplicate) packages?\b/.test(normalized)
+    || /\b(?:locked|left)\b.*\bkeys?\b.*\b(?:van|truck|vehicle)\b|\bkeys?\b.*\blocked\b.*\b(?:van|truck|vehicle)\b/.test(normalized)
+    || /\b(?:customer|recipient|person)\b.*\b(?:recording|filming)\b.*\b(?:me|camera|video)\b/.test(normalized)
+  );
+  if (unsupportedReportedScenario) {
+    return buildLockedRuntimeDecision(question, {
+      response_mode: 'ESCALATE',
+      confidence: 1,
+      candidates: [],
+      selected_records: [],
+      clarification_options: [],
+      escalation_message: 'Ready Route Answers does not have a verified answer for this situation yet. Contact your manager or station for the current procedure.'
     }, context);
   }
 
@@ -1498,7 +1548,10 @@ function createDriverHelpService({
     let interpretationConfidence = null;
     let interpretationResult = {};
     let validatedAiInterpretation = null;
-    const activeMemory = !workflowDecision && !lockedDecision && !selectedClarificationRecord && !referenceDecision
+    const aiFacingQuestion = buildAiFacingQuestion(resolvedQuestion, decisionContext);
+    const requestIntent = isGlossaryQuestion(resolvedQuestion) ? 'DEFINITION' : 'OPERATIONAL_GUIDANCE';
+    const activeMemory = effectiveAiInterpretationMode !== 'ACTIVE'
+      && !workflowDecision && !lockedDecision && !selectedClarificationRecord && !referenceDecision
       ? await loadActiveAnswerMemory(question, records, sessionState.context)
       : null;
     let memoryRouteAccepted = Boolean(activeMemory);
@@ -1543,6 +1596,14 @@ function createDriverHelpService({
         ...(decisionContext.knowledge_ids || [])
       ]
     });
+    const requiresGroundedAi = Boolean(
+      effectiveAiInterpretationMode === 'ACTIVE'
+      && !selectedClarificationRecord
+      && !referenceDecision
+      && !workflowDecision
+      && !lockedDecision
+      && !isProtectedInterpretationRequest(resolvedQuestion)
+    );
     const shouldAuditMemory = Boolean(
       activeMemory
       && interpretedDecision
@@ -1558,15 +1619,18 @@ function createDriverHelpService({
       try {
         const rawAudit = await aiInterpreter({
           safety_identifier: buildAiSafetyIdentifier(accountId, actorType, actorId),
-          driver_question: redactTextForAi(resolvedQuestion),
-          conversation_context: redactConversationContextForAi({
-            original_situation: decisionContext.situation_question || null,
-            clarification_history: decisionContext.clarification_history || [],
-            previous_question: decisionContext.last_question || null,
-            pending_clarification_prompt: decisionContext.pending_clarification_prompt || null,
-            previous_knowledge_ids: decisionContext.knowledge_ids || [],
-            interpreted_facts: decisionContext.interpretation_facts || null
-          }),
+          driver_question: redactTextForAi(aiFacingQuestion),
+          conversation_context: {
+            ...redactConversationContextForAi({
+              original_situation: decisionContext.situation_question || null,
+              clarification_history: decisionContext.clarification_history || [],
+              previous_question: decisionContext.last_question || null,
+              pending_clarification_prompt: decisionContext.pending_clarification_prompt || null,
+              previous_knowledge_ids: decisionContext.knowledge_ids || [],
+              interpreted_facts: decisionContext.interpretation_facts || null
+            }),
+            request_intent: requestIntent
+          },
           candidate_records: aiCandidates
         });
         const auditInterpretation = validateInterpretation(
@@ -1654,15 +1718,18 @@ function createDriverHelpService({
       try {
         const rawInterpretation = await aiInterpreter({
           safety_identifier: buildAiSafetyIdentifier(accountId, actorType, actorId),
-          driver_question: redactTextForAi(resolvedQuestion),
-          conversation_context: redactConversationContextForAi({
-            original_situation: decisionContext.situation_question || null,
-            clarification_history: decisionContext.clarification_history || [],
-            previous_question: decisionContext.last_question || null,
-            pending_clarification_prompt: decisionContext.pending_clarification_prompt || null,
-            previous_knowledge_ids: decisionContext.knowledge_ids || [],
-            interpreted_facts: decisionContext.interpretation_facts || null
-          }),
+          driver_question: redactTextForAi(aiFacingQuestion),
+          conversation_context: {
+            ...redactConversationContextForAi({
+              original_situation: decisionContext.situation_question || null,
+              clarification_history: decisionContext.clarification_history || [],
+              previous_question: decisionContext.last_question || null,
+              pending_clarification_prompt: decisionContext.pending_clarification_prompt || null,
+              previous_knowledge_ids: decisionContext.knowledge_ids || [],
+              interpreted_facts: decisionContext.interpretation_facts || null
+            }),
+            request_intent: requestIntent
+          },
           candidate_records: aiCandidates
         });
         const interpretation = validateInterpretation(
@@ -1732,8 +1799,14 @@ function createDriverHelpService({
       ? buildControlledInterpretationFallback(resolvedQuestion, records, baseDecision)
       : null;
     if (controlledFallbackDecision) interpretationMode = 'CONTROLLED_FALLBACK';
+    const aiFailClosedDecision = requiresGroundedAi
+      && !interpretedDecision
+      && !controlledFallbackDecision
+      ? buildAiFailClosedDecision(baseDecision)
+      : null;
+    if (aiFailClosedDecision) interpretationMode = 'AI_FAIL_CLOSED';
     const interpretedOrBaseDecision = !workflowDecision && !lockedDecision && effectiveAiInterpretationMode === 'ACTIVE'
-      ? (interpretedDecision || controlledFallbackDecision || baseDecision)
+      ? (interpretedDecision || controlledFallbackDecision || aiFailClosedDecision || baseDecision)
       : baseDecision;
     const actionableBaseDecision = {
       ...interpretedOrBaseDecision,
@@ -1943,6 +2016,8 @@ module.exports = {
   answerMemoryInterpretationAgrees,
   applyAiInterpretation,
   applyClarificationAnswerToContext,
+  buildAiFacingQuestion,
+  buildAiFailClosedDecision,
   buildAiCandidateRecords,
   buildContextualQuestion,
   buildDeterministicRuntimeDecision,
@@ -1954,6 +2029,7 @@ module.exports = {
   createDriverHelpService,
   filterActionableClarificationOptions,
   isMissingTableError,
+  isGlossaryQuestion,
   isClarificationAnswerSufficient,
   isAnswerMemoryEligibleQuestion,
   isRepeatedClarification,
