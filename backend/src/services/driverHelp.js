@@ -732,22 +732,6 @@ function buildProtectedRuntimeDecision(question, records, context = {}) {
     }, context);
   }
 
-  const unsupportedReportedScenario = (
-    /\b(?:two|2|duplicate) packages?\b.*\bsame tracking number\b|\bsame tracking number\b.*\b(?:two|2|duplicate) packages?\b/.test(normalized)
-    || /\b(?:locked|left)\b.*\bkeys?\b.*\b(?:van|truck|vehicle)\b|\bkeys?\b.*\blocked\b.*\b(?:van|truck|vehicle)\b/.test(normalized)
-    || /\b(?:customer|recipient|person)\b.*\b(?:recording|filming)\b.*\b(?:me|camera|video)\b/.test(normalized)
-  );
-  if (unsupportedReportedScenario) {
-    return buildLockedRuntimeDecision(question, {
-      response_mode: 'ESCALATE',
-      confidence: 1,
-      candidates: [],
-      selected_records: [],
-      clarification_options: [],
-      escalation_message: 'Ready Route Answers does not have a verified answer for this situation yet. Contact your manager or station for the current procedure.'
-    }, context);
-  }
-
   if (/\bcode 0*30\b/.test(normalized)) {
     const referenceDecision = buildDriverHelpReferenceDecision(question, records);
     if (referenceDecision) {
@@ -939,6 +923,28 @@ function buildProtectedRuntimeDecision(question, records, context = {}) {
               'If the correct recipient address has already been established through an approved source, follow the FORGE Edit Address procedure.'
             ],
             watch_for: 'Do not invent or guess a different recipient address. If the correct address has not already been established, obtain current station or management direction.'
+          }
+        }
+      );
+    }
+    const approvedCustomerRequestRecord = findEligibleOperationalRecord(
+      records,
+      'KNO-DEL-CUSTOMER-ADDRESS-CHANGE-001'
+    );
+    if (approvedCustomerRequestRecord) {
+      return buildLockedRecordRuntimeDecision(
+        question,
+        context,
+        approvedCustomerRequestRecord,
+        {
+          answerOverride: {
+            direct_answer: 'Use the shipping-label address. The customer must call FedEx to change it.',
+            steps: [
+              'Do not change the delivery address based on the customer’s direct call or text.',
+              'Continue to use the shipping-label address.',
+              'Tell the customer they must contact FedEx for an address change.'
+            ],
+            watch_for: 'Do not self-authorize an address change from a direct customer request.'
           }
         }
       );

@@ -1906,7 +1906,7 @@
   {
     "adjudication_id": "ADJ-20260819-OWNER-INAPP-VEHICLE-BARCODE-001",
     "knowledge_id": "KNO-FORGE-VEHICLE-BARCODE-WORKAROUND-001",
-    "status": "APPROVED",
+    "status": "SUPERSEDED",
     "issue_reviewed": "Whether the approved vehicle Code 128 workaround should be generated and displayed directly inside Ready Route.",
     "canonical_determination": "Ready Route asks exactly “What is the vehicle number?”, treats the next message in that authenticated conversation as the vehicle number, prefixes it with uppercase V, and displays an in-app Code 128 barcode encoding the complete value with the value beneath it.",
     "previous_interpretations": [
@@ -1982,7 +1982,10 @@
       ],
       "concise_driver_answer": "Ready Route generates the vehicle barcode in app. Supply the vehicle number; Ready Route prefixes it with uppercase V and displays a Code 128 barcode with the encoded value beneath it.",
       "more_info_answer": "The barcode always uses Code 128 and encodes the complete uppercase V-prefixed vehicle value."
-    }
+    },
+    "superseded_by": [
+      "ADJ-20260901-VLAD-FINAL-FORGE-VEHICLE-BARCODE-WORKAROUND-001"
+    ]
   },
   {
     "adjudication_id": "ADJ-20260820-ROUND3-MISLOAD-AFTERDISPATCH-001",
@@ -2479,7 +2482,7 @@
   {
     "adjudication_id": "ADJ-20260826-ROUND3-ADDENDUM-VEH-BREAKDOWN-001",
     "knowledge_id": "KNO-VEH-BREAKDOWN-001",
-    "status": "APPROVED",
+    "status": "SUPERSEDED",
     "issue_reviewed": "The immediate procedure for a vehicle breakdown.",
     "canonical_determination": "Turn on the hazard lights, place warning triangles within 10 minutes using the applicable 49 CFR 392.22 layout, and call the BC.",
     "previous_interpretations": [
@@ -2545,7 +2548,10 @@
       ],
       "concise_driver_answer": "Turn on the hazard lights, place the warning triangles within 10 minutes using the layout for the road and visibility conditions, then call your BC.",
       "more_info_answer": "On a two-way road, the supplied layout is about 10 feet behind, 100 feet behind, and 100 feet ahead. One-way/divided roads and hills or curves require adjusted placement."
-    }
+    },
+    "superseded_by": [
+      "ADJ-20260901-VLAD-FINAL-VEH-BREAKDOWN-001"
+    ]
   },
   {
     "adjudication_id": "ADJ-20260826-ROUND3-ADDENDUM-INCIDENT-DOG-BITE-001",
@@ -3761,6 +3767,1290 @@
       "clarification_requirements": [],
       "concise_driver_answer": "Check the current ready and close times. If you may miss the pickup window, contact CXPC so the customer can be alerted and contact your BC to see whether the pickup can be transferred to another Work Area.",
       "more_info_answer": "A pickup update can change the ready time, close time, or comments, so review the complete current details. Contacting the BC does not guarantee a transfer."
+    }
+  },
+  {
+    "adjudication_id": "ADJ-20260901-VLAD-FINAL-VEH-SMOKE-001",
+    "knowledge_id": "KNO-VEH-SMOKE-001",
+    "status": "APPROVED",
+    "issue_reviewed": "Smoke is coming from the delivery vehicle",
+    "canonical_determination": "If the situation feels dangerous, call 911 first. Either way, call the BC and explain what happened.",
+    "previous_interpretations": [
+      "The previous active record did not include this newly verified branch or no-reask behavior."
+    ],
+    "supporting_source_ids": [
+      "SRC-V2-VLAD-FINAL-ANSWERS-20260901",
+      "SRC-V2-OWNER-VLAD-FINAL-APPROVAL-20260901"
+    ],
+    "conflicting_or_superseded_source_ids": [],
+    "reasoning": "Vlad supplied the field-verified procedure or definition and Phillip Metzger directed Ready Route to process and deploy the completed answers. The determination preserves the supplied conditions, exceptions, and unresolved boundaries without model inference.",
+    "approved_by": "Phillip Metzger, Ready Route product owner",
+    "approval_date": "2026-09-01",
+    "effective_date": "2026-09-01",
+    "supersedes": [],
+    "reopen_conditions": [
+      "Phillip or Vlad revises the supplied procedure or definition.",
+      "Later applicable operational, company-policy, scanner-workflow, safety, or regulatory guidance materially conflicts with it.",
+      "A more specific scenario establishes a different approved procedure."
+    ],
+    "canonical_overrides": {
+      "authoritative_rule": "If the situation feels dangerous, call 911 first. Either way, call the BC and explain what happened.",
+      "applicability": [
+        "Smoke is noticed coming from the delivery vehicle, regardless of the apparent source"
+      ],
+      "conditions": [],
+      "exceptions": [],
+      "required_procedure": [
+        {
+          "step": 1,
+          "action": "Assess whether the smoke situation feels dangerous."
+        },
+        {
+          "step": 2,
+          "action": "If it feels dangerous, call 911 first."
+        },
+        {
+          "step": 3,
+          "action": "Call your BC and explain what happened in every case."
+        }
+      ],
+      "required_documentation": [],
+      "prohibited_actions": [
+        "Do not omit the BC notification.",
+        "Do not delay calling 911 when the situation feels dangerous."
+      ],
+      "escalation_requirements": [
+        "Call 911 first when the situation feels dangerous",
+        "Call the BC in every case"
+      ],
+      "clarification_requirements": [],
+      "concise_driver_answer": "If it feels dangerous, call 911 first. Either way, call your BC and explain what happened.",
+      "more_info_answer": "This answer applies whenever smoke is noticed, regardless of the apparent source."
+    }
+  },
+  {
+    "adjudication_id": "ADJ-20260901-VLAD-FINAL-INCIDENT-DRIVER-SICK-DIZZY-001",
+    "knowledge_id": "KNO-INCIDENT-DRIVER-SICK-DIZZY-001",
+    "status": "APPROVED",
+    "issue_reviewed": "The driver feels sick or dizzy while driving",
+    "canonical_determination": "Stop in a safe location, then call the BC.",
+    "previous_interpretations": [
+      "The previous active record did not include this newly verified branch or no-reask behavior."
+    ],
+    "supporting_source_ids": [
+      "SRC-V2-VLAD-FINAL-ANSWERS-20260901",
+      "SRC-V2-OWNER-VLAD-FINAL-APPROVAL-20260901"
+    ],
+    "conflicting_or_superseded_source_ids": [],
+    "reasoning": "Vlad supplied the field-verified procedure or definition and Phillip Metzger directed Ready Route to process and deploy the completed answers. The determination preserves the supplied conditions, exceptions, and unresolved boundaries without model inference.",
+    "approved_by": "Phillip Metzger, Ready Route product owner",
+    "approval_date": "2026-09-01",
+    "effective_date": "2026-09-01",
+    "supersedes": [],
+    "reopen_conditions": [
+      "Phillip or Vlad revises the supplied procedure or definition.",
+      "Later applicable operational, company-policy, scanner-workflow, safety, or regulatory guidance materially conflicts with it.",
+      "A more specific scenario establishes a different approved procedure."
+    ],
+    "canonical_overrides": {
+      "authoritative_rule": "Stop in a safe location, then call the BC.",
+      "applicability": [
+        "The driver feels unsafe to continue driving because of illness or dizziness"
+      ],
+      "conditions": [],
+      "exceptions": [],
+      "required_procedure": [
+        {
+          "step": 1,
+          "action": "Pull over and stop in a safe location."
+        },
+        {
+          "step": 2,
+          "action": "Call your BC."
+        }
+      ],
+      "required_documentation": [],
+      "prohibited_actions": [
+        "Do not continue driving when illness or dizziness makes it feel unsafe."
+      ],
+      "escalation_requirements": [
+        "Call the BC after stopping safely"
+      ],
+      "clarification_requirements": [],
+      "concise_driver_answer": "Pull over and stop in a safe location, then call your BC.",
+      "more_info_answer": null
+    }
+  },
+  {
+    "adjudication_id": "ADJ-20260901-VLAD-FINAL-DEL-POWER-LINES-001",
+    "knowledge_id": "KNO-DEL-POWER-LINES-001",
+    "status": "APPROVED",
+    "issue_reviewed": "Downed power lines are found near a delivery",
+    "canonical_determination": "Find and notify the customer, then call the BC, explain what happened, and provide the customer’s contact information.",
+    "previous_interpretations": [
+      "The previous active record did not include this newly verified branch or no-reask behavior."
+    ],
+    "supporting_source_ids": [
+      "SRC-V2-VLAD-FINAL-ANSWERS-20260901",
+      "SRC-V2-OWNER-VLAD-FINAL-APPROVAL-20260901"
+    ],
+    "conflicting_or_superseded_source_ids": [],
+    "reasoning": "Vlad supplied the field-verified procedure or definition and Phillip Metzger directed Ready Route to process and deploy the completed answers. The determination preserves the supplied conditions, exceptions, and unresolved boundaries without model inference.",
+    "approved_by": "Phillip Metzger, Ready Route product owner",
+    "approval_date": "2026-09-01",
+    "effective_date": "2026-09-01",
+    "supersedes": [],
+    "reopen_conditions": [
+      "Phillip or Vlad revises the supplied procedure or definition.",
+      "Later applicable operational, company-policy, scanner-workflow, safety, or regulatory guidance materially conflicts with it.",
+      "A more specific scenario establishes a different approved procedure."
+    ],
+    "canonical_overrides": {
+      "authoritative_rule": "Find and notify the customer, then call the BC, explain what happened, and provide the customer’s contact information.",
+      "applicability": [
+        "Downed power lines are found near a delivery location"
+      ],
+      "conditions": [],
+      "exceptions": [
+        "This procedure does not determine whether the delivery is completed."
+      ],
+      "required_procedure": [
+        {
+          "step": 1,
+          "action": "Locate the customer and tell them about the downed power lines."
+        },
+        {
+          "step": 2,
+          "action": "Call your BC and explain what happened."
+        },
+        {
+          "step": 3,
+          "action": "Provide the customer’s contact information to the BC."
+        }
+      ],
+      "required_documentation": [
+        "Customer contact information provided to the BC"
+      ],
+      "prohibited_actions": [
+        "Do not infer from this record whether the delivery should be completed."
+      ],
+      "escalation_requirements": [
+        "Notify the customer, then call the BC"
+      ],
+      "clarification_requirements": [],
+      "concise_driver_answer": "Notify the customer, then call your BC, explain what happened, and provide the customer’s contact information.",
+      "more_info_answer": "This record does not decide whether the delivery is completed."
+    }
+  },
+  {
+    "adjudication_id": "ADJ-20260901-VLAD-FINAL-VEH-KEYS-LOCKED-001",
+    "knowledge_id": "KNO-VEH-KEYS-LOCKED-001",
+    "status": "APPROVED",
+    "issue_reviewed": "The driver locked the keys inside the van",
+    "canonical_determination": "Call the BC; the BC may know where a spare key is. Do not force entry.",
+    "previous_interpretations": [
+      "The previous active record did not include this newly verified branch or no-reask behavior."
+    ],
+    "supporting_source_ids": [
+      "SRC-V2-VLAD-FINAL-ANSWERS-20260901",
+      "SRC-V2-OWNER-VLAD-FINAL-APPROVAL-20260901"
+    ],
+    "conflicting_or_superseded_source_ids": [],
+    "reasoning": "Vlad supplied the field-verified procedure or definition and Phillip Metzger directed Ready Route to process and deploy the completed answers. The determination preserves the supplied conditions, exceptions, and unresolved boundaries without model inference.",
+    "approved_by": "Phillip Metzger, Ready Route product owner",
+    "approval_date": "2026-09-01",
+    "effective_date": "2026-09-01",
+    "supersedes": [],
+    "reopen_conditions": [
+      "Phillip or Vlad revises the supplied procedure or definition.",
+      "Later applicable operational, company-policy, scanner-workflow, safety, or regulatory guidance materially conflicts with it.",
+      "A more specific scenario establishes a different approved procedure."
+    ],
+    "canonical_overrides": {
+      "authoritative_rule": "Call the BC; the BC may know where a spare key is. Do not force entry.",
+      "applicability": [
+        "The driver is locked out of the van because the keys are inside"
+      ],
+      "conditions": [],
+      "exceptions": [
+        "No self-help entry method is approved by this record."
+      ],
+      "required_procedure": [
+        {
+          "step": 1,
+          "action": "Call your BC."
+        }
+      ],
+      "required_documentation": [],
+      "prohibited_actions": [
+        "Do not attempt to force entry into the vehicle."
+      ],
+      "escalation_requirements": [
+        "Call the BC"
+      ],
+      "clarification_requirements": [],
+      "concise_driver_answer": "Call your BC—they may know where a spare key is. Do not force entry.",
+      "more_info_answer": null
+    }
+  },
+  {
+    "adjudication_id": "ADJ-20260901-VLAD-FINAL-FORGE-SCANNER-FROZEN-001",
+    "knowledge_id": "KNO-FORGE-SCANNER-FROZEN-001",
+    "status": "APPROVED",
+    "issue_reviewed": "The scanner is powered on but frozen",
+    "canonical_determination": "Restart the scanner. If that fails, remove and reinsert the battery. If it still does not work, notify the BC for a replacement scanner and use hand sheets (blue sheets) while waiting.",
+    "previous_interpretations": [
+      "The previous active record did not include this newly verified branch or no-reask behavior."
+    ],
+    "supporting_source_ids": [
+      "SRC-V2-VLAD-FINAL-ANSWERS-20260901",
+      "SRC-V2-OWNER-VLAD-FINAL-APPROVAL-20260901"
+    ],
+    "conflicting_or_superseded_source_ids": [],
+    "reasoning": "Vlad supplied the field-verified procedure or definition and Phillip Metzger directed Ready Route to process and deploy the completed answers. The determination preserves the supplied conditions, exceptions, and unresolved boundaries without model inference.",
+    "approved_by": "Phillip Metzger, Ready Route product owner",
+    "approval_date": "2026-09-01",
+    "effective_date": "2026-09-01",
+    "supersedes": [],
+    "reopen_conditions": [
+      "Phillip or Vlad revises the supplied procedure or definition.",
+      "Later applicable operational, company-policy, scanner-workflow, safety, or regulatory guidance materially conflicts with it.",
+      "A more specific scenario establishes a different approved procedure."
+    ],
+    "canonical_overrides": {
+      "authoritative_rule": "Restart the scanner. If that fails, remove and reinsert the battery. If it still does not work, notify the BC for a replacement scanner and use hand sheets (blue sheets) while waiting.",
+      "applicability": [
+        "The scanner is powered on but unresponsive"
+      ],
+      "conditions": [],
+      "exceptions": [
+        "Low battery and a completely unavailable scanner use their separate procedures"
+      ],
+      "required_procedure": [
+        {
+          "step": 1,
+          "action": "Restart the scanner."
+        },
+        {
+          "step": 2,
+          "action": "If it is still frozen, remove and reinsert the battery."
+        },
+        {
+          "step": 3,
+          "action": "If it still does not work, notify the BC so a replacement scanner can be brought."
+        },
+        {
+          "step": 4,
+          "action": "Use hand sheets (blue sheets) to record deliveries while waiting."
+        }
+      ],
+      "required_documentation": [
+        "Hand sheet (blue sheet) delivery records when the replacement branch is used"
+      ],
+      "prohibited_actions": [
+        "Do not treat a frozen scanner as the low-battery procedure.",
+        "Do not omit delivery documentation while waiting for a replacement."
+      ],
+      "escalation_requirements": [
+        "Call the BC if restarting and reseating the battery do not resolve the freeze"
+      ],
+      "clarification_requirements": [],
+      "concise_driver_answer": "Restart the scanner. If that fails, remove and reinsert the battery. If it still does not work, call your BC for a replacement and use hand sheets while waiting.",
+      "more_info_answer": "This is for a powered-on but frozen scanner, not low battery or a completely unavailable device."
+    }
+  },
+  {
+    "adjudication_id": "ADJ-20260901-VLAD-FINAL-FORGE-APP-CRASH-001",
+    "knowledge_id": "KNO-FORGE-APP-CRASH-001",
+    "status": "APPROVED",
+    "issue_reviewed": "The FORGE app crashes during a delivery",
+    "canonical_determination": "Restart the scanner. If that does not help, call the BC because maintenance may be underway. Continue deliveries with hand sheets (blue sheets) and turn them in at the station office at the end of the day.",
+    "previous_interpretations": [
+      "The previous active record did not include this newly verified branch or no-reask behavior."
+    ],
+    "supporting_source_ids": [
+      "SRC-V2-VLAD-FINAL-ANSWERS-20260901",
+      "SRC-V2-OWNER-VLAD-FINAL-APPROVAL-20260901"
+    ],
+    "conflicting_or_superseded_source_ids": [],
+    "reasoning": "Vlad supplied the field-verified procedure or definition and Phillip Metzger directed Ready Route to process and deploy the completed answers. The determination preserves the supplied conditions, exceptions, and unresolved boundaries without model inference.",
+    "approved_by": "Phillip Metzger, Ready Route product owner",
+    "approval_date": "2026-09-01",
+    "effective_date": "2026-09-01",
+    "supersedes": [],
+    "reopen_conditions": [
+      "Phillip or Vlad revises the supplied procedure or definition.",
+      "Later applicable operational, company-policy, scanner-workflow, safety, or regulatory guidance materially conflicts with it.",
+      "A more specific scenario establishes a different approved procedure."
+    ],
+    "canonical_overrides": {
+      "authoritative_rule": "Restart the scanner. If that does not help, call the BC because maintenance may be underway. Continue deliveries with hand sheets (blue sheets) and turn them in at the station office at the end of the day.",
+      "applicability": [
+        "The FORGE app crashes or becomes unusable during a delivery"
+      ],
+      "conditions": [],
+      "exceptions": [],
+      "required_procedure": [
+        {
+          "step": 1,
+          "action": "Restart the scanner."
+        },
+        {
+          "step": 2,
+          "action": "If that does not resolve it, contact your BC; maintenance may be underway."
+        },
+        {
+          "step": 3,
+          "action": "Continue deliveries using hand sheets (blue sheets)."
+        },
+        {
+          "step": 4,
+          "action": "Turn the hand sheets in at the station office at the end of the day."
+        }
+      ],
+      "required_documentation": [
+        "Hand sheet (blue sheet) delivery records",
+        "Hand sheets turned in at the station office"
+      ],
+      "prohibited_actions": [
+        "Do not leave hand-sheet deliveries undocumented.",
+        "Do not omit turning in used hand sheets."
+      ],
+      "escalation_requirements": [
+        "Contact the BC if restarting the scanner does not restore FORGE"
+      ],
+      "clarification_requirements": [],
+      "concise_driver_answer": "Restart the scanner. If FORGE still does not work, call your BC, keep delivering with hand sheets, and turn the hand sheets in at the station office at day’s end.",
+      "more_info_answer": null
+    }
+  },
+  {
+    "adjudication_id": "ADJ-20260901-VLAD-FINAL-DEL-MINOR-AT-DOOR-001",
+    "knowledge_id": "KNO-DEL-MINOR-AT-DOOR-001",
+    "status": "APPROVED",
+    "issue_reviewed": "Only a minor answers the door and no adult is present",
+    "canonical_determination": "A minor cannot sign for a signature-required package. If no signature is required, the package may be driver-released and documented with a PPOD photo. If a signature is required, use the standard no-eligible-signer outcome for that signature type.",
+    "previous_interpretations": [
+      "The previous active record did not include this newly verified branch or no-reask behavior."
+    ],
+    "supporting_source_ids": [
+      "SRC-V2-VLAD-FINAL-ANSWERS-20260901",
+      "SRC-V2-OWNER-VLAD-FINAL-APPROVAL-20260901"
+    ],
+    "conflicting_or_superseded_source_ids": [],
+    "reasoning": "Vlad supplied the field-verified procedure or definition and Phillip Metzger directed Ready Route to process and deploy the completed answers. The determination preserves the supplied conditions, exceptions, and unresolved boundaries without model inference.",
+    "approved_by": "Phillip Metzger, Ready Route product owner",
+    "approval_date": "2026-09-01",
+    "effective_date": "2026-09-01",
+    "supersedes": [],
+    "reopen_conditions": [
+      "Phillip or Vlad revises the supplied procedure or definition.",
+      "Later applicable operational, company-policy, scanner-workflow, safety, or regulatory guidance materially conflicts with it.",
+      "A more specific scenario establishes a different approved procedure."
+    ],
+    "canonical_overrides": {
+      "authoritative_rule": "A minor cannot sign for a signature-required package. If no signature is required, the package may be driver-released and documented with a PPOD photo. If a signature is required, use the standard no-eligible-signer outcome for that signature type.",
+      "applicability": [
+        "Only a person under 18 is present and no adult is available"
+      ],
+      "conditions": [
+        "The package’s signature type controls the unsuccessful-attempt branch"
+      ],
+      "exceptions": [
+        "No special handling is added beyond the standard no-eligible-signer procedure for the applicable signature type"
+      ],
+      "required_procedure": [
+        {
+          "step": 1,
+          "action": "Confirm whether the package requires a signature and which signature type applies."
+        },
+        {
+          "step": 2,
+          "action": "If a signature is required, do not accept the minor’s signature; use the standard no-eligible-signer outcome for that signature type."
+        },
+        {
+          "step": 3,
+          "action": "If no signature is required, driver-release the package and take the required PPOD photo."
+        }
+      ],
+      "required_documentation": [
+        "Applicable unsuccessful-attempt documentation for a signature-required package",
+        "PPOD photo for an eligible driver release"
+      ],
+      "prohibited_actions": [
+        "Do not accept a minor’s signature for a signature-required package."
+      ],
+      "escalation_requirements": [],
+      "clarification_requirements": [
+        "Does the package require a signature, and if so, which type?"
+      ],
+      "concise_driver_answer": "A minor cannot sign for a signature-required package. If no signature is required, driver-release it and take the PPOD photo. If a signature is required, use the no-eligible-signer procedure for that signature type.",
+      "more_info_answer": null
+    }
+  },
+  {
+    "adjudication_id": "ADJ-20260901-VLAD-FINAL-DEL-CUSTOMER-NOT-RECEIVED-001",
+    "knowledge_id": "KNO-DEL-CUSTOMER-NOT-RECEIVED-001",
+    "status": "APPROVED",
+    "issue_reviewed": "A customer disputes a completed delivery",
+    "canonical_determination": "Notify the BC; the BC can track the package using internal systems. Do not independently investigate or return to the address without direction.",
+    "previous_interpretations": [
+      "The previous active record did not include this newly verified branch or no-reask behavior."
+    ],
+    "supporting_source_ids": [
+      "SRC-V2-VLAD-FINAL-ANSWERS-20260901",
+      "SRC-V2-OWNER-VLAD-FINAL-APPROVAL-20260901"
+    ],
+    "conflicting_or_superseded_source_ids": [],
+    "reasoning": "Vlad supplied the field-verified procedure or definition and Phillip Metzger directed Ready Route to process and deploy the completed answers. The determination preserves the supplied conditions, exceptions, and unresolved boundaries without model inference.",
+    "approved_by": "Phillip Metzger, Ready Route product owner",
+    "approval_date": "2026-09-01",
+    "effective_date": "2026-09-01",
+    "supersedes": [],
+    "reopen_conditions": [
+      "Phillip or Vlad revises the supplied procedure or definition.",
+      "Later applicable operational, company-policy, scanner-workflow, safety, or regulatory guidance materially conflicts with it.",
+      "A more specific scenario establishes a different approved procedure."
+    ],
+    "canonical_overrides": {
+      "authoritative_rule": "Notify the BC; the BC can track the package using internal systems. Do not independently investigate or return to the address without direction.",
+      "applicability": [
+        "The customer says a package marked delivered was not received"
+      ],
+      "conditions": [],
+      "exceptions": [],
+      "required_procedure": [
+        {
+          "step": 1,
+          "action": "Contact your BC and explain the delivery dispute."
+        }
+      ],
+      "required_documentation": [],
+      "prohibited_actions": [
+        "Do not independently investigate the dispute.",
+        "Do not return to the address without direction."
+      ],
+      "escalation_requirements": [
+        "Contact the BC"
+      ],
+      "clarification_requirements": [],
+      "concise_driver_answer": "Notify your BC. Do not independently investigate or return to the address without direction.",
+      "more_info_answer": null
+    }
+  },
+  {
+    "adjudication_id": "ADJ-20260901-VLAD-FINAL-DEL-NEIGHBOR-PERMISSION-001",
+    "knowledge_id": "KNO-DEL-NEIGHBOR-PERMISSION-001",
+    "status": "APPROVED",
+    "issue_reviewed": "A customer asks the driver to leave a package with a nearby person",
+    "canonical_determination": "Release is permitted only when the person is a genuine neighbor and the customer confirms permission by phone. Otherwise apply Code 007, complete the service cross, remove the Vision Label (SID sticker), and return the package to the station.",
+    "previous_interpretations": [
+      "The previous active record did not include this newly verified branch or no-reask behavior."
+    ],
+    "supporting_source_ids": [
+      "SRC-V2-VLAD-FINAL-ANSWERS-20260901",
+      "SRC-V2-OWNER-VLAD-FINAL-APPROVAL-20260901"
+    ],
+    "conflicting_or_superseded_source_ids": [],
+    "reasoning": "Vlad supplied the field-verified procedure or definition and Phillip Metzger directed Ready Route to process and deploy the completed answers. The determination preserves the supplied conditions, exceptions, and unresolved boundaries without model inference.",
+    "approved_by": "Phillip Metzger, Ready Route product owner",
+    "approval_date": "2026-09-01",
+    "effective_date": "2026-09-01",
+    "supersedes": [],
+    "reopen_conditions": [
+      "Phillip or Vlad revises the supplied procedure or definition.",
+      "Later applicable operational, company-policy, scanner-workflow, safety, or regulatory guidance materially conflicts with it.",
+      "A more specific scenario establishes a different approved procedure."
+    ],
+    "canonical_overrides": {
+      "authoritative_rule": "Release is permitted only when the person is a genuine neighbor and the customer confirms permission by phone. Otherwise apply Code 007, complete the service cross, remove the Vision Label (SID sticker), and return the package to the station.",
+      "applicability": [
+        "A customer asks the driver to leave a package with another nearby person"
+      ],
+      "conditions": [
+        "The person must be a genuine neighbor",
+        "The customer must confirm permission by phone"
+      ],
+      "exceptions": [
+        "A stranger with no relationship to the customer is never eligible",
+        "Existing stricter signature-service rules remain controlling"
+      ],
+      "required_procedure": [
+        {
+          "step": 1,
+          "action": "Confirm whether the requested person is a genuine neighbor."
+        },
+        {
+          "step": 2,
+          "action": "Call the customer and confirm permission."
+        },
+        {
+          "step": 3,
+          "action": "If both conditions are met and no stricter signature rule prevents it, complete the indirect delivery."
+        },
+        {
+          "step": 4,
+          "action": "If either condition is not met, apply Code 007, complete the service cross, remove the Vision Label (SID sticker), and return the package to the station."
+        }
+      ],
+      "required_documentation": [
+        "Confirmed customer permission for the eligible-neighbor branch",
+        "Code 007 and service cross for the non-delivery branch"
+      ],
+      "prohibited_actions": [
+        "Do not release to a stranger.",
+        "Do not treat proximity alone as proof that the person is a neighbor."
+      ],
+      "escalation_requirements": [],
+      "clarification_requirements": [
+        "Is the requested person a genuine neighbor, and did the customer confirm permission by phone?"
+      ],
+      "concise_driver_answer": "Only release it to a genuine neighbor after the customer confirms permission by phone. Otherwise use Code 007, complete the service cross, remove the Vision Label (SID sticker), and return the package.",
+      "more_info_answer": null
+    }
+  },
+  {
+    "adjudication_id": "ADJ-20260901-VLAD-FINAL-CX-CUSTOMER-RECORDING-001",
+    "knowledge_id": "KNO-CX-CUSTOMER-RECORDING-001",
+    "status": "APPROVED",
+    "issue_reviewed": "A customer records the driver on camera",
+    "canonical_determination": "Ordinary recording requires no action; it is the customer’s property and right. If it becomes confrontation or harassment, protect yourself, do not escalate, leave if needed, and report it to the BC.",
+    "previous_interpretations": [
+      "The previous active record did not include this newly verified branch or no-reask behavior."
+    ],
+    "supporting_source_ids": [
+      "SRC-V2-VLAD-FINAL-ANSWERS-20260901",
+      "SRC-V2-OWNER-VLAD-FINAL-APPROVAL-20260901"
+    ],
+    "conflicting_or_superseded_source_ids": [],
+    "reasoning": "Vlad supplied the field-verified procedure or definition and Phillip Metzger directed Ready Route to process and deploy the completed answers. The determination preserves the supplied conditions, exceptions, and unresolved boundaries without model inference.",
+    "approved_by": "Phillip Metzger, Ready Route product owner",
+    "approval_date": "2026-09-01",
+    "effective_date": "2026-09-01",
+    "supersedes": [],
+    "reopen_conditions": [
+      "Phillip or Vlad revises the supplied procedure or definition.",
+      "Later applicable operational, company-policy, scanner-workflow, safety, or regulatory guidance materially conflicts with it.",
+      "A more specific scenario establishes a different approved procedure."
+    ],
+    "canonical_overrides": {
+      "authoritative_rule": "Ordinary recording requires no action; it is the customer’s property and right. If it becomes confrontation or harassment, protect yourself, do not escalate, leave if needed, and report it to the BC.",
+      "applicability": [
+        "A customer or customer-owned camera records the driver"
+      ],
+      "conditions": [
+        "The hostile-customer branch applies only when recording escalates into confrontation or harassment"
+      ],
+      "exceptions": [],
+      "required_procedure": [
+        {
+          "step": 1,
+          "action": "If it is ordinary recording, take no special action."
+        },
+        {
+          "step": 2,
+          "action": "If it becomes confrontation or harassment, protect yourself, do not escalate, and leave if needed."
+        },
+        {
+          "step": 3,
+          "action": "Report the escalated situation to your BC."
+        }
+      ],
+      "required_documentation": [],
+      "prohibited_actions": [
+        "Do not treat ordinary recording as an accident or injury.",
+        "Do not escalate a confrontation."
+      ],
+      "escalation_requirements": [
+        "Call the BC only if the situation becomes confrontational or harassing"
+      ],
+      "clarification_requirements": [],
+      "concise_driver_answer": "Ordinary recording is fine and needs no action. If it becomes confrontation or harassment, do not escalate, leave if needed, and report it to your BC.",
+      "more_info_answer": null
+    }
+  },
+  {
+    "adjudication_id": "ADJ-20260901-VLAD-FINAL-DEL-CUSTOMER-ADDRESS-CHANGE-001",
+    "knowledge_id": "KNO-DEL-CUSTOMER-ADDRESS-CHANGE-001",
+    "status": "APPROVED",
+    "issue_reviewed": "A customer calls or texts the driver to change the delivery address",
+    "canonical_determination": "Follow the shipping label. A customer cannot authorize an address change by contacting the driver directly and must call FedEx. If the customer says they moved from the label address, apply Code 002.",
+    "previous_interpretations": [
+      "The previous active record did not include this newly verified branch or no-reask behavior."
+    ],
+    "supporting_source_ids": [
+      "SRC-V2-VLAD-FINAL-ANSWERS-20260901",
+      "SRC-V2-OWNER-VLAD-FINAL-APPROVAL-20260901"
+    ],
+    "conflicting_or_superseded_source_ids": [],
+    "reasoning": "Vlad supplied the field-verified procedure or definition and Phillip Metzger directed Ready Route to process and deploy the completed answers. The determination preserves the supplied conditions, exceptions, and unresolved boundaries without model inference.",
+    "approved_by": "Phillip Metzger, Ready Route product owner",
+    "approval_date": "2026-09-01",
+    "effective_date": "2026-09-01",
+    "supersedes": [],
+    "reopen_conditions": [
+      "Phillip or Vlad revises the supplied procedure or definition.",
+      "Later applicable operational, company-policy, scanner-workflow, safety, or regulatory guidance materially conflicts with it.",
+      "A more specific scenario establishes a different approved procedure."
+    ],
+    "canonical_overrides": {
+      "authoritative_rule": "Follow the shipping label. A customer cannot authorize an address change by contacting the driver directly and must call FedEx. If the customer says they moved from the label address, apply Code 002.",
+      "applicability": [
+        "The customer directly calls or texts the driver asking for a different delivery address"
+      ],
+      "conditions": [],
+      "exceptions": [
+        "This record does not replace an authorized FedEx address-correction workflow"
+      ],
+      "required_procedure": [
+        {
+          "step": 1,
+          "action": "Do not change the delivery address based on the customer’s direct call or text."
+        },
+        {
+          "step": 2,
+          "action": "Continue to use the shipping-label address."
+        },
+        {
+          "step": 3,
+          "action": "Tell the customer they must contact FedEx for an address change."
+        },
+        {
+          "step": 4,
+          "action": "If the customer states that they moved from the label address, apply Code 002."
+        }
+      ],
+      "required_documentation": [
+        "Code 002 when the customer states they moved"
+      ],
+      "prohibited_actions": [
+        "Do not self-authorize an address change from a direct customer request."
+      ],
+      "escalation_requirements": [],
+      "clarification_requirements": [
+        "Has the customer moved, or are they only requesting delivery somewhere else?"
+      ],
+      "concise_driver_answer": "Use the shipping-label address. The customer must call FedEx to change it. If the customer says they moved from that address, apply Code 002.",
+      "more_info_answer": null
+    }
+  },
+  {
+    "adjudication_id": "ADJ-20260901-VLAD-FINAL-DEL-DUPLICATE-TRACKING-001",
+    "knowledge_id": "KNO-DEL-DUPLICATE-TRACKING-001",
+    "status": "APPROVED",
+    "issue_reviewed": "Two physical packages have the same tracking number",
+    "canonical_determination": "Confirm that the tracking numbers are identical, scan one package, deliver all physical duplicate packages, and add a comment stating how many duplicate packages were delivered under that tracking number.",
+    "previous_interpretations": [
+      "The previous active record did not include this newly verified branch or no-reask behavior."
+    ],
+    "supporting_source_ids": [
+      "SRC-V2-VLAD-FINAL-ANSWERS-20260901",
+      "SRC-V2-OWNER-VLAD-FINAL-APPROVAL-20260901"
+    ],
+    "conflicting_or_superseded_source_ids": [],
+    "reasoning": "Vlad supplied the field-verified procedure or definition and Phillip Metzger directed Ready Route to process and deploy the completed answers. The determination preserves the supplied conditions, exceptions, and unresolved boundaries without model inference.",
+    "approved_by": "Phillip Metzger, Ready Route product owner",
+    "approval_date": "2026-09-01",
+    "effective_date": "2026-09-01",
+    "supersedes": [],
+    "reopen_conditions": [
+      "Phillip or Vlad revises the supplied procedure or definition.",
+      "Later applicable operational, company-policy, scanner-workflow, safety, or regulatory guidance materially conflicts with it.",
+      "A more specific scenario establishes a different approved procedure."
+    ],
+    "canonical_overrides": {
+      "authoritative_rule": "Confirm that the tracking numbers are identical, scan one package, deliver all physical duplicate packages, and add a comment stating how many duplicate packages were delivered under that tracking number.",
+      "applicability": [
+        "Two or more physical packages share the identical tracking number and barcode"
+      ],
+      "conditions": [
+        "The tracking numbers must be confirmed identical"
+      ],
+      "exceptions": [
+        "Packages with different tracking numbers are separate orders and are delivered normally"
+      ],
+      "required_procedure": [
+        {
+          "step": 1,
+          "action": "Confirm the physical packages have the identical tracking number and barcode."
+        },
+        {
+          "step": 2,
+          "action": "Scan one package; the shared barcode allows only one scan."
+        },
+        {
+          "step": 3,
+          "action": "Deliver all physical duplicate packages."
+        },
+        {
+          "step": 4,
+          "action": "Add a comment stating that two or more duplicate packages were delivered under that tracking number."
+        }
+      ],
+      "required_documentation": [
+        "Comment recording the number of duplicate physical packages delivered"
+      ],
+      "prohibited_actions": [
+        "Do not use this procedure for packages with different tracking numbers."
+      ],
+      "escalation_requirements": [],
+      "clarification_requirements": [
+        "Do the physical packages have the identical tracking number?"
+      ],
+      "concise_driver_answer": "If the tracking numbers are identical, scan one, deliver both physical packages, and add a comment that duplicate packages were delivered. Different tracking numbers are delivered normally.",
+      "more_info_answer": null
+    }
+  },
+  {
+    "adjudication_id": "ADJ-20260901-VLAD-FINAL-GLOSSARY-DNA-001",
+    "knowledge_id": "KNO-GLOSSARY-DNA-001",
+    "status": "APPROVED",
+    "issue_reviewed": "A driver asks what DNA means in delivery status",
+    "canonical_determination": "DNA means Did Not Attempt and corresponds to Code 027, Package Not Delivered - No Attempt. It is a system status label and is not an action trigger by itself.",
+    "previous_interpretations": [
+      "The previous active record did not include this newly verified branch or no-reask behavior."
+    ],
+    "supporting_source_ids": [
+      "SRC-V2-VLAD-FINAL-ANSWERS-20260901",
+      "SRC-V2-OWNER-VLAD-FINAL-APPROVAL-20260901",
+      "SRC-V2-OP117-20251215"
+    ],
+    "conflicting_or_superseded_source_ids": [],
+    "reasoning": "Vlad supplied the field-verified procedure or definition and Phillip Metzger directed Ready Route to process and deploy the completed answers. The determination preserves the supplied conditions, exceptions, and unresolved boundaries without model inference.",
+    "approved_by": "Phillip Metzger, Ready Route product owner",
+    "approval_date": "2026-09-01",
+    "effective_date": "2026-09-01",
+    "supersedes": [],
+    "reopen_conditions": [
+      "Phillip or Vlad revises the supplied procedure or definition.",
+      "Later applicable operational, company-policy, scanner-workflow, safety, or regulatory guidance materially conflicts with it.",
+      "A more specific scenario establishes a different approved procedure."
+    ],
+    "canonical_overrides": {
+      "authoritative_rule": "DNA means Did Not Attempt and corresponds to Code 027, Package Not Delivered - No Attempt. It is a system status label and is not an action trigger by itself.",
+      "applicability": [
+        "The driver asks for the meaning of DNA in a delivery-status context"
+      ],
+      "conditions": [],
+      "exceptions": [
+        "The definition does not authorize skipping a delivery attempt"
+      ],
+      "required_procedure": [],
+      "required_documentation": [],
+      "prohibited_actions": [
+        "Do not treat the definition as authorization to skip an attempt."
+      ],
+      "escalation_requirements": [],
+      "clarification_requirements": [],
+      "concise_driver_answer": "DNA means Did Not Attempt and corresponds to Code 027, Package Not Delivered - No Attempt. It is a status label, not an action instruction by itself.",
+      "more_info_answer": null
+    }
+  },
+  {
+    "adjudication_id": "ADJ-20260901-VLAD-FINAL-DEL-OP201-DEFINITION-001",
+    "knowledge_id": "KNO-DEL-OP201-DEFINITION-001",
+    "status": "APPROVED",
+    "issue_reviewed": "A driver asks what OP-201 means",
+    "canonical_determination": "OP-201 is a signed authorization on file at a business that allows driver release of non-signature-required packages without a new signature each time. Even with OP-201 on file, confirm with the customer and call CXPC before releasing; it is not automatic.",
+    "previous_interpretations": [
+      "The previous active record did not include this newly verified branch or no-reask behavior."
+    ],
+    "supporting_source_ids": [
+      "SRC-V2-VLAD-FINAL-ANSWERS-20260901",
+      "SRC-V2-OWNER-VLAD-FINAL-APPROVAL-20260901"
+    ],
+    "conflicting_or_superseded_source_ids": [],
+    "reasoning": "Vlad supplied the field-verified procedure or definition and Phillip Metzger directed Ready Route to process and deploy the completed answers. The determination preserves the supplied conditions, exceptions, and unresolved boundaries without model inference.",
+    "approved_by": "Phillip Metzger, Ready Route product owner",
+    "approval_date": "2026-09-01",
+    "effective_date": "2026-09-01",
+    "supersedes": [],
+    "reopen_conditions": [
+      "Phillip or Vlad revises the supplied procedure or definition.",
+      "Later applicable operational, company-policy, scanner-workflow, safety, or regulatory guidance materially conflicts with it.",
+      "A more specific scenario establishes a different approved procedure."
+    ],
+    "canonical_overrides": {
+      "authoritative_rule": "OP-201 is a signed authorization on file at a business that allows driver release of non-signature-required packages without a new signature each time. Even with OP-201 on file, confirm with the customer and call CXPC before releasing; it is not automatic.",
+      "applicability": [
+        "The driver asks what OP-201 means or encounters an OP-201 business-release authorization"
+      ],
+      "conditions": [
+        "The package must not require a signature",
+        "Customer confirmation and a CXPC call are still required"
+      ],
+      "exceptions": [
+        "OP-201 does not override a signature-required package"
+      ],
+      "required_procedure": [
+        {
+          "step": 1,
+          "action": "Confirm the package does not require a signature."
+        },
+        {
+          "step": 2,
+          "action": "Confirm with the customer."
+        },
+        {
+          "step": 3,
+          "action": "Call CXPC before releasing the package."
+        }
+      ],
+      "required_documentation": [],
+      "prohibited_actions": [
+        "Do not treat OP-201 as automatic release.",
+        "Do not use OP-201 to override a signature-required package."
+      ],
+      "escalation_requirements": [
+        "Call CXPC before release"
+      ],
+      "clarification_requirements": [],
+      "concise_driver_answer": "OP-201 is a signed business authorization for release of non-signature-required packages. It is not automatic: confirm with the customer and call CXPC before releasing.",
+      "more_info_answer": null
+    }
+  },
+  {
+    "adjudication_id": "ADJ-20260901-VLAD-FINAL-PUP-CALLTAG-DEFINITION-001",
+    "knowledge_id": "KNO-PUP-CALLTAG-DEFINITION-001",
+    "status": "APPROVED",
+    "issue_reviewed": "A driver asks what a call tag is",
+    "canonical_determination": "A call tag is a pickup request for a package the customer is returning. At pickup, place the call-tag label on the package, scan it, and follow the call-tag picked-up procedure.",
+    "previous_interpretations": [
+      "The previous active record did not include this newly verified branch or no-reask behavior."
+    ],
+    "supporting_source_ids": [
+      "SRC-V2-VLAD-FINAL-ANSWERS-20260901",
+      "SRC-V2-OWNER-VLAD-FINAL-APPROVAL-20260901",
+      "SRC-V2-OP117-20251215"
+    ],
+    "conflicting_or_superseded_source_ids": [],
+    "reasoning": "Vlad supplied the field-verified procedure or definition and Phillip Metzger directed Ready Route to process and deploy the completed answers. The determination preserves the supplied conditions, exceptions, and unresolved boundaries without model inference.",
+    "approved_by": "Phillip Metzger, Ready Route product owner",
+    "approval_date": "2026-09-01",
+    "effective_date": "2026-09-01",
+    "supersedes": [],
+    "reopen_conditions": [
+      "Phillip or Vlad revises the supplied procedure or definition.",
+      "Later applicable operational, company-policy, scanner-workflow, safety, or regulatory guidance materially conflicts with it.",
+      "A more specific scenario establishes a different approved procedure."
+    ],
+    "canonical_overrides": {
+      "authoritative_rule": "A call tag is a pickup request for a package the customer is returning. At pickup, place the call-tag label on the package, scan it, and follow the call-tag picked-up procedure.",
+      "applicability": [
+        "The driver asks what a call tag means"
+      ],
+      "conditions": [
+        "The package must meet the applicable call-tag pickup requirements"
+      ],
+      "exceptions": [
+        "Not-ready, not-home, refusal, restricted, and hazmat call tags use their separate procedures"
+      ],
+      "required_procedure": [
+        {
+          "step": 1,
+          "action": "Place the call-tag label on the returned package."
+        },
+        {
+          "step": 2,
+          "action": "Scan the package."
+        },
+        {
+          "step": 3,
+          "action": "Follow the approved call-tag picked-up procedure."
+        }
+      ],
+      "required_documentation": [],
+      "prohibited_actions": [],
+      "escalation_requirements": [],
+      "clarification_requirements": [],
+      "concise_driver_answer": "A call tag is a pickup request for a package the customer is returning. Put the call-tag label on the package, scan it, and follow the call-tag picked-up procedure.",
+      "more_info_answer": null
+    }
+  },
+  {
+    "adjudication_id": "ADJ-20260901-VLAD-FINAL-GLOSSARY-BC-001",
+    "knowledge_id": "KNO-GLOSSARY-BC-001",
+    "status": "APPROVED",
+    "issue_reviewed": "A driver asks what BC means",
+    "canonical_determination": "BC means Business Contact: the driver’s manager or operational contact for reporting issues, getting direction, and escalating field situations.",
+    "previous_interpretations": [
+      "The previous active record did not include this newly verified branch or no-reask behavior."
+    ],
+    "supporting_source_ids": [
+      "SRC-V2-VLAD-FINAL-ANSWERS-20260901",
+      "SRC-V2-OWNER-VLAD-FINAL-APPROVAL-20260901"
+    ],
+    "conflicting_or_superseded_source_ids": [],
+    "reasoning": "Vlad supplied the field-verified procedure or definition and Phillip Metzger directed Ready Route to process and deploy the completed answers. The determination preserves the supplied conditions, exceptions, and unresolved boundaries without model inference.",
+    "approved_by": "Phillip Metzger, Ready Route product owner",
+    "approval_date": "2026-09-01",
+    "effective_date": "2026-09-01",
+    "supersedes": [],
+    "reopen_conditions": [
+      "Phillip or Vlad revises the supplied procedure or definition.",
+      "Later applicable operational, company-policy, scanner-workflow, safety, or regulatory guidance materially conflicts with it.",
+      "A more specific scenario establishes a different approved procedure."
+    ],
+    "canonical_overrides": {
+      "authoritative_rule": "BC means Business Contact: the driver’s manager or operational contact for reporting issues, getting direction, and escalating field situations.",
+      "applicability": [
+        "The driver asks what BC means or stands for"
+      ],
+      "conditions": [],
+      "exceptions": [],
+      "required_procedure": [],
+      "required_documentation": [],
+      "prohibited_actions": [],
+      "escalation_requirements": [],
+      "clarification_requirements": [],
+      "concise_driver_answer": "BC means Business Contact—your manager or operational contact for reporting issues, getting direction, and escalating field situations.",
+      "more_info_answer": null
+    }
+  },
+  {
+    "adjudication_id": "ADJ-20260901-VLAD-FINAL-GLOSSARY-FORGE-001",
+    "knowledge_id": "KNO-GLOSSARY-FORGE-001",
+    "status": "APPROVED",
+    "issue_reviewed": "A driver asks what FORGE is",
+    "canonical_determination": "FORGE is FedEx’s internal delivery and pickup system. It runs on the scanner and drives the day-to-day route workflow.",
+    "previous_interpretations": [
+      "The previous active record did not include this newly verified branch or no-reask behavior."
+    ],
+    "supporting_source_ids": [
+      "SRC-V2-VLAD-FINAL-ANSWERS-20260901",
+      "SRC-V2-OWNER-VLAD-FINAL-APPROVAL-20260901"
+    ],
+    "conflicting_or_superseded_source_ids": [],
+    "reasoning": "Vlad supplied the field-verified procedure or definition and Phillip Metzger directed Ready Route to process and deploy the completed answers. The determination preserves the supplied conditions, exceptions, and unresolved boundaries without model inference.",
+    "approved_by": "Phillip Metzger, Ready Route product owner",
+    "approval_date": "2026-09-01",
+    "effective_date": "2026-09-01",
+    "supersedes": [],
+    "reopen_conditions": [
+      "Phillip or Vlad revises the supplied procedure or definition.",
+      "Later applicable operational, company-policy, scanner-workflow, safety, or regulatory guidance materially conflicts with it.",
+      "A more specific scenario establishes a different approved procedure."
+    ],
+    "canonical_overrides": {
+      "authoritative_rule": "FORGE is FedEx’s internal delivery and pickup system. It runs on the scanner and drives the day-to-day route workflow.",
+      "applicability": [
+        "The driver asks what FORGE means or what it does"
+      ],
+      "conditions": [],
+      "exceptions": [],
+      "required_procedure": [],
+      "required_documentation": [],
+      "prohibited_actions": [],
+      "escalation_requirements": [],
+      "clarification_requirements": [],
+      "concise_driver_answer": "FORGE is FedEx’s internal delivery and pickup system. It runs on the scanner and drives the day-to-day route workflow.",
+      "more_info_answer": null
+    }
+  },
+  {
+    "adjudication_id": "ADJ-20260901-VLAD-FINAL-GLOSSARY-SERVICE-CROSS-001",
+    "knowledge_id": "KNO-GLOSSARY-SERVICE-CROSS-001",
+    "status": "APPROVED",
+    "issue_reviewed": "A driver asks what a service cross is",
+    "canonical_determination": "A service cross is written directly on an undelivered package: top-left is the status code with name or initial, top-right is the time, bottom-left is the date, and bottom-right is the Work Area number.",
+    "previous_interpretations": [
+      "The previous active record did not include this newly verified branch or no-reask behavior."
+    ],
+    "supporting_source_ids": [
+      "SRC-V2-VLAD-FINAL-ANSWERS-20260901",
+      "SRC-V2-OWNER-VLAD-FINAL-APPROVAL-20260901"
+    ],
+    "conflicting_or_superseded_source_ids": [],
+    "reasoning": "Vlad supplied the field-verified procedure or definition and Phillip Metzger directed Ready Route to process and deploy the completed answers. The determination preserves the supplied conditions, exceptions, and unresolved boundaries without model inference.",
+    "approved_by": "Phillip Metzger, Ready Route product owner",
+    "approval_date": "2026-09-01",
+    "effective_date": "2026-09-01",
+    "supersedes": [],
+    "reopen_conditions": [
+      "Phillip or Vlad revises the supplied procedure or definition.",
+      "Later applicable operational, company-policy, scanner-workflow, safety, or regulatory guidance materially conflicts with it.",
+      "A more specific scenario establishes a different approved procedure."
+    ],
+    "canonical_overrides": {
+      "authoritative_rule": "A service cross is written directly on an undelivered package: top-left is the status code with name or initial, top-right is the time, bottom-left is the date, and bottom-right is the Work Area number.",
+      "applicability": [
+        "The driver asks what a service cross is or how its quadrants are arranged"
+      ],
+      "conditions": [],
+      "exceptions": [],
+      "required_procedure": [
+        {
+          "step": 1,
+          "action": "Write the status code with name or initial in the top-left quadrant."
+        },
+        {
+          "step": 2,
+          "action": "Write the time in the top-right quadrant."
+        },
+        {
+          "step": 3,
+          "action": "Write the date in the bottom-left quadrant."
+        },
+        {
+          "step": 4,
+          "action": "Write the Work Area number in the bottom-right quadrant."
+        }
+      ],
+      "required_documentation": [
+        "Complete service cross written directly on the undelivered package"
+      ],
+      "prohibited_actions": [],
+      "escalation_requirements": [],
+      "clarification_requirements": [],
+      "concise_driver_answer": "A service cross is the cross-shaped notation on an undelivered package: code and initial top-left, time top-right, date bottom-left, and Work Area number bottom-right.",
+      "more_info_answer": null
+    }
+  },
+  {
+    "adjudication_id": "ADJ-20260901-VLAD-FINAL-GLOSSARY-MANIFEST-001",
+    "knowledge_id": "KNO-GLOSSARY-MANIFEST-001",
+    "status": "APPROVED",
+    "issue_reviewed": "A driver asks what a manifest is",
+    "canonical_determination": "A manifest is the digital list of packages assigned to the driver’s route in FORGE. It may not match the physical van because a package can be scanned to the wrong Work Area.",
+    "previous_interpretations": [
+      "The previous active record did not include this newly verified branch or no-reask behavior."
+    ],
+    "supporting_source_ids": [
+      "SRC-V2-VLAD-FINAL-ANSWERS-20260901",
+      "SRC-V2-OWNER-VLAD-FINAL-APPROVAL-20260901"
+    ],
+    "conflicting_or_superseded_source_ids": [],
+    "reasoning": "Vlad supplied the field-verified procedure or definition and Phillip Metzger directed Ready Route to process and deploy the completed answers. The determination preserves the supplied conditions, exceptions, and unresolved boundaries without model inference.",
+    "approved_by": "Phillip Metzger, Ready Route product owner",
+    "approval_date": "2026-09-01",
+    "effective_date": "2026-09-01",
+    "supersedes": [],
+    "reopen_conditions": [
+      "Phillip or Vlad revises the supplied procedure or definition.",
+      "Later applicable operational, company-policy, scanner-workflow, safety, or regulatory guidance materially conflicts with it.",
+      "A more specific scenario establishes a different approved procedure."
+    ],
+    "canonical_overrides": {
+      "authoritative_rule": "A manifest is the digital list of packages assigned to the driver’s route in FORGE. It may not match the physical van because a package can be scanned to the wrong Work Area.",
+      "applicability": [
+        "The driver asks what a manifest means"
+      ],
+      "conditions": [],
+      "exceptions": [
+        "A manifest/physical mismatch uses its own separate approved procedure"
+      ],
+      "required_procedure": [],
+      "required_documentation": [],
+      "prohibited_actions": [],
+      "escalation_requirements": [],
+      "clarification_requirements": [],
+      "concise_driver_answer": "A manifest is the digital list of packages assigned to your route in FORGE. It can differ from the physical van if a package was scanned to the wrong Work Area.",
+      "more_info_answer": "A package may appear on the manifest but not be physically present, or be physically present without appearing on that manifest. A mismatch uses its separate procedure."
+    }
+  },
+  {
+    "adjudication_id": "ADJ-20260901-VLAD-FINAL-GLOSSARY-CXPC-001",
+    "knowledge_id": "KNO-GLOSSARY-CXPC-001",
+    "status": "APPROVED",
+    "issue_reviewed": "A driver asks what CXPC is or when to call it",
+    "canonical_determination": "CXPC is the customer-facing coordination contact. Use CXPC when the customer cannot be reached for a delivery, when an incomplete or missing address needs customer coordination, or for pickup issues such as transfer, reaching a business customer, or extending a pickup window. The exact letter-by-letter expansion is not verified.",
+    "previous_interpretations": [
+      "The previous active record did not include this newly verified branch or no-reask behavior."
+    ],
+    "supporting_source_ids": [
+      "SRC-V2-VLAD-FINAL-ANSWERS-20260901",
+      "SRC-V2-OWNER-VLAD-FINAL-APPROVAL-20260901"
+    ],
+    "conflicting_or_superseded_source_ids": [],
+    "reasoning": "Vlad supplied the field-verified procedure or definition and Phillip Metzger directed Ready Route to process and deploy the completed answers. The determination preserves the supplied conditions, exceptions, and unresolved boundaries without model inference.",
+    "approved_by": "Phillip Metzger, Ready Route product owner",
+    "approval_date": "2026-09-01",
+    "effective_date": "2026-09-01",
+    "supersedes": [],
+    "reopen_conditions": [
+      "Phillip or Vlad revises the supplied procedure or definition.",
+      "Later applicable operational, company-policy, scanner-workflow, safety, or regulatory guidance materially conflicts with it.",
+      "A more specific scenario establishes a different approved procedure."
+    ],
+    "canonical_overrides": {
+      "authoritative_rule": "CXPC is the customer-facing coordination contact. Use CXPC when the customer cannot be reached for a delivery, when an incomplete or missing address needs customer coordination, or for pickup issues such as transfer, reaching a business customer, or extending a pickup window. The exact letter-by-letter expansion is not verified.",
+      "applicability": [
+        "The driver asks what CXPC is or when it is used"
+      ],
+      "conditions": [
+        "Use the specific approved procedure for the driver’s situation"
+      ],
+      "exceptions": [
+        "BC remains the internal or operational management contact",
+        "This record does not verify a letter-by-letter expansion of CXPC"
+      ],
+      "required_procedure": [],
+      "required_documentation": [],
+      "prohibited_actions": [
+        "Do not invent the letter-by-letter expansion of CXPC.",
+        "Do not replace a situation-specific approved procedure with this general definition."
+      ],
+      "escalation_requirements": [],
+      "clarification_requirements": [],
+      "concise_driver_answer": "CXPC is the customer-facing coordination contact; BC is your internal operational contact. Call CXPC when an approved procedure requires customer coordination, especially for delivery contact/address help or pickup issues.",
+      "more_info_answer": "The exact letter-by-letter expansion of CXPC is not verified. Use the situation-specific approved procedure for the actual call."
+    }
+  },
+  {
+    "adjudication_id": "ADJ-20260901-VLAD-FINAL-VEH-BREAKDOWN-001",
+    "knowledge_id": "KNO-VEH-BREAKDOWN-001",
+    "status": "APPROVED",
+    "issue_reviewed": "The delivery vehicle will not start or breaks down on the road",
+    "canonical_determination": "Turn on the hazard lights, place warning triangles within 10 minutes using the applicable 49 CFR 392.22 layout, and call the BC.",
+    "previous_interpretations": [
+      "The previous active record did not include this newly verified branch or no-reask behavior."
+    ],
+    "supporting_source_ids": [
+      "SRC-V2-VLAD-ROUND3-ADDENDUM-20260822",
+      "SRC-ECFR-49CFR39222-20260824",
+      "SRC-V2-OWNER-ROUND3-ADDENDUM-APPROVAL-20260826",
+      "SRC-V2-VLAD-FINAL-ANSWERS-20260901",
+      "SRC-V2-OWNER-VLAD-FINAL-APPROVAL-20260901"
+    ],
+    "conflicting_or_superseded_source_ids": [],
+    "reasoning": "Vlad supplied the field-verified procedure or definition and Phillip Metzger directed Ready Route to process and deploy the completed answers. The determination preserves the supplied conditions, exceptions, and unresolved boundaries without model inference.",
+    "approved_by": "Phillip Metzger, Ready Route product owner",
+    "approval_date": "2026-09-01",
+    "effective_date": "2026-09-01",
+    "supersedes": [],
+    "reopen_conditions": [
+      "Phillip or Vlad revises the supplied procedure or definition.",
+      "Later applicable operational, company-policy, scanner-workflow, safety, or regulatory guidance materially conflicts with it.",
+      "A more specific scenario establishes a different approved procedure."
+    ],
+    "canonical_overrides": {
+      "authoritative_rule": "Turn on the hazard lights, place warning triangles within 10 minutes using the applicable 49 CFR 392.22 layout, and call the BC.",
+      "applicability": [
+        "Vehicle will not start or breaks down",
+        "Vehicle is stopped on or beside a roadway",
+        "A flat tire disables the vehicle on route"
+      ],
+      "conditions": [
+        "Triangle placement must be adjusted for the actual road type and visibility obstruction"
+      ],
+      "exceptions": [
+        "Use the one-way/divided-road adjustment when applicable",
+        "On a hill, curve, or other blocked-visibility location, place the warning device farther out toward the obstruction as required"
+      ],
+      "required_procedure": [
+        {
+          "step": 1,
+          "action": "Turn on the emergency hazard lights."
+        },
+        {
+          "step": 2,
+          "action": "Within 10 minutes of stopping, place warning triangles: approximately 10 feet behind the vehicle, 100 feet behind, and 100 feet ahead on a two-way road."
+        },
+        {
+          "step": 3,
+          "action": "Adjust triangle placement for a one-way or divided road, and move the warning device farther out toward a hill, curve, or other blocked-visibility obstruction."
+        },
+        {
+          "step": 4,
+          "action": "Call your BC."
+        }
+      ],
+      "required_documentation": [],
+      "prohibited_actions": [
+        "Do not omit the immediate hazard lights",
+        "Do not delay warning-device placement beyond 10 minutes"
+      ],
+      "escalation_requirements": [
+        "Call the BC after securing the warning setup"
+      ],
+      "clarification_requirements": [
+        "Is the vehicle on a two-way, one-way, or divided road?",
+        "Is visibility blocked by a hill, curve, or other obstruction?"
+      ],
+      "concise_driver_answer": "Turn on the hazard lights, place the warning triangles within 10 minutes using the layout for the road and visibility conditions, then call your BC.",
+      "more_info_answer": "On a two-way road, the supplied layout is about 10 feet behind, 100 feet behind, and 100 feet ahead. One-way/divided roads and hills or curves require adjusted placement."
+    }
+  },
+  {
+    "adjudication_id": "ADJ-20260901-VLAD-FINAL-FORGE-VEHICLE-BARCODE-WORKAROUND-001",
+    "knowledge_id": "KNO-FORGE-VEHICLE-BARCODE-WORKAROUND-001",
+    "status": "APPROVED",
+    "issue_reviewed": "The vehicle barcode is missing or cannot be scanned at login",
+    "canonical_determination": "If the driver already supplied the vehicle number in the current request, do not ask for it again: prefix the supplied value with uppercase V and immediately display the in-app Code 128 barcode. If the vehicle number was not supplied, ask exactly “What is the vehicle number?”, then generate the in-app Code 128 barcode from the response.",
+    "previous_interpretations": [
+      "The previous active record did not include this newly verified branch or no-reask behavior."
+    ],
+    "supporting_source_ids": [
+      "SRC-V2-PARTNER-REPORT-20260814",
+      "SRC-V2-OWNER-INAPP-VEHICLE-BARCODE-20260819",
+      "SRC-V2-VLAD-FINAL-ANSWERS-20260901",
+      "SRC-V2-OWNER-VLAD-FINAL-APPROVAL-20260901"
+    ],
+    "conflicting_or_superseded_source_ids": [],
+    "reasoning": "Vlad supplied the field-verified procedure or definition and Phillip Metzger directed Ready Route to process and deploy the completed answers. The determination preserves the supplied conditions, exceptions, and unresolved boundaries without model inference.",
+    "approved_by": "Phillip Metzger, Ready Route product owner",
+    "approval_date": "2026-09-01",
+    "effective_date": "2026-09-01",
+    "supersedes": [],
+    "reopen_conditions": [
+      "Phillip or Vlad revises the supplied procedure or definition.",
+      "Later applicable operational, company-policy, scanner-workflow, safety, or regulatory guidance materially conflicts with it.",
+      "A more specific scenario establishes a different approved procedure."
+    ],
+    "canonical_overrides": {
+      "authoritative_rule": "If the driver already supplied the vehicle number in the current request, do not ask for it again: prefix the supplied value with uppercase V and immediately display the in-app Code 128 barcode. If the vehicle number was not supplied, ask exactly “What is the vehicle number?”, then generate the in-app Code 128 barcode from the response.",
+      "applicability": [
+        "The driver asks about Code 128",
+        "The required vehicle-scan barcode is missing or unscannable",
+        "The driver asks Ready Route to create, make, or generate a barcode",
+        "The driver supplies the vehicle number in the same request as the vehicle-barcode request"
+      ],
+      "conditions": [
+        "Use Code 128",
+        "Prefix the supplied vehicle number immediately with uppercase V",
+        "Keep the pending vehicle-number step scoped to the authenticated conversation"
+      ],
+      "exceptions": [
+        "Ordinary package, pickup, delivery, SRA, and tracking-barcode questions retain their separate procedures unless the driver explicitly asks Ready Route to create or generate a barcode"
+      ],
+      "required_procedure": [
+        {
+          "step": 1,
+          "action": "Check whether the current request already supplies the actual vehicle number."
+        },
+        {
+          "step": 2,
+          "action": "If it is supplied, do not ask again; prefix it immediately with uppercase V."
+        },
+        {
+          "step": 3,
+          "action": "If it is not supplied, ask exactly: “What is the vehicle number?” and prefix the response with uppercase V."
+        },
+        {
+          "step": 4,
+          "action": "Generate and display an in-app Code 128 barcode for the complete V-prefixed value."
+        },
+        {
+          "step": 5,
+          "action": "Display the encoded value beneath the barcode so the driver can verify and scan it."
+        }
+      ],
+      "required_documentation": [
+        "The V-prefixed encoded vehicle value displayed beneath the barcode"
+      ],
+      "prohibited_actions": [
+        "Do not omit the uppercase V prefix",
+        "Do not use a barcode format other than Code 128",
+        "Do not redirect the driver to an external barcode generator",
+        "Do not add a Code 128 confirmation or unnecessary vehicle-number confirmation step",
+        "Do not re-ask for a vehicle number already supplied in the current request."
+      ],
+      "escalation_requirements": [],
+      "clarification_requirements": [
+        "What is the vehicle number? — only when it was not already supplied in the current request"
+      ],
+      "concise_driver_answer": "If you already supplied the vehicle number, Ready Route uses it immediately, prefixes uppercase V, and displays the in-app Code 128 barcode. Otherwise it asks only for the vehicle number.",
+      "more_info_answer": "The barcode always uses Code 128 and encodes the complete uppercase V-prefixed vehicle value."
     }
   }
 ]

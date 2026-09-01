@@ -110,11 +110,22 @@ function validateAnswerContract(decision, metadata) {
   const failures = [];
   if (decision.response_mode !== 'ANSWER') return failures;
   const structure = decision.answer_structure || {};
+  const selectedRecord = decision.selected_records?.[0] || null;
+  const requiresProcedureSteps = (selectedRecord?.required_procedure || []).length > 0;
   if (!String(structure.direct_answer || '').trim()) {
     failures.push(failure({ ...metadata, category: 'ANSWER_FORMAT', expected: 'direct answer', actual: null }));
   }
-  if (!Array.isArray(structure.steps) || structure.steps.length < 1 || structure.steps.length > 4) {
-    failures.push(failure({ ...metadata, category: 'ANSWER_FORMAT', expected: '1-4 steps', actual: structure.steps?.length ?? null }));
+  if (
+    !Array.isArray(structure.steps)
+    || structure.steps.length > 4
+    || (requiresProcedureSteps && structure.steps.length < 1)
+  ) {
+    failures.push(failure({
+      ...metadata,
+      category: 'ANSWER_FORMAT',
+      expected: requiresProcedureSteps ? '1-4 steps' : '0-4 steps',
+      actual: structure.steps?.length ?? null
+    }));
   }
   const driverFacingText = [structure.direct_answer, ...(structure.steps || []), structure.watch_for]
     .filter(Boolean).join(' ');

@@ -22,21 +22,20 @@ const {
   resolveClarificationSelection
 } = require('./driverHelp');
 
-test('known unresolved Vlad questions are forced to fail closed before AI selection', () => {
+test('only Vlad questions still marked unresolved are forced to fail closed before AI selection', () => {
   for (const question of [
-    'Smoke is coming from the van. What do I do?',
-    'I feel sick and dizzy while driving.',
-    'Power lines are down near the delivery.',
-    'My scanner froze during the route.',
-    'The customer wants me to leave the package with a stranger nearby.',
-    'Customer recording me on camera, what do I do?',
     'A customer wants me to accept cash for shipping charges.',
-    'What does OP-201 mean?',
-    'What is a service cross?'
+    'What does OSA mean?',
+    "Can I open a customer's package to inspect what is inside?"
   ]) assert.equal(matchesKnownUnapprovedQuestion(question), true, question);
 
-  assert.equal(matchesKnownUnapprovedQuestion('What does WA mean?'), false);
-  assert.equal(matchesKnownUnapprovedQuestion('My scanner battery is low.'), false);
+  for (const question of [
+    'Smoke is coming from the van. What do I do?',
+    'My scanner froze during the route.',
+    'What does DNA mean?',
+    'What does OP-201 mean?',
+    'What is a service cross?'
+  ]) assert.equal(matchesKnownUnapprovedQuestion(question), false, question);
 });
 
 test('reply framing is removed before a short follow-up is interpreted', () => {
@@ -423,8 +422,8 @@ test('an active AI refusal fails closed instead of serving an unrelated fuzzy re
   });
 
   for (const question of [
-    'What does DNA mean in delivery status?',
-    'What does OP-201 mean?'
+    'What does release gamma mean in delivery status?',
+    'What does OP-999 mean?'
   ]) {
     const response = await service.answerQuestion({
       accountId: '00000000-0000-0000-0000-000000000001',
@@ -441,38 +440,27 @@ test('an active AI refusal fails closed instead of serving an unrelated fuzzy re
     assert.deepEqual(response.trace, [], question);
   }
 
-  const duplicateTracking = await service.answerQuestion({
-    accountId: '00000000-0000-0000-0000-000000000001',
-    driverId: null,
-    actorType: 'manager',
-    actorId: '00000000-0000-0000-0000-000000000002',
-    question: 'Two packages have the same tracking number. What do I do?',
-    includeDiagnostics: true
-  });
-  assert.equal(duplicateTracking.response_mode, 'ESCALATE');
-  assert.equal(duplicateTracking.answer, null);
-  assert.deepEqual(duplicateTracking.trace, []);
 });
 
-test('known unresolved Vlad questions bypass adjacent AI candidates and fail closed', async () => {
-  const mediaRecord = knowledgeRecord({
-    knowledge_id: 'KNO-COMMS-MEDIA-001',
-    canonical_situation: 'Recording on FedEx premises',
-    normalized_description: 'Unauthorized recording on FedEx property.',
-    driver_question_variants: ['Can I record at the station?'],
-    clarification_requirements: ['Is the recording on FedEx premises?']
+test('the remaining unresolved cash boundary bypasses adjacent AI candidates and fails closed', async () => {
+  const codRecord = knowledgeRecord({
+    knowledge_id: 'KNO-DEL-COD-MULTI-001',
+    canonical_situation: 'Multiple COD packages at one stop',
+    normalized_description: 'Collect on Delivery payment for established COD packages.',
+    driver_question_variants: ['Customer pays an established COD package'],
+    clarification_requirements: []
   });
   let aiCalls = 0;
   const service = createDriverHelpService({
-    supabase: fakeSupabase([mediaRecord]),
+    supabase: fakeSupabase([codRecord]),
     aiInterpretationMode: 'ACTIVE',
     aiInterpreter: async () => {
       aiCalls += 1;
       return {
         selection: 'SELECT',
-        knowledge_id: mediaRecord.knowledge_id,
+        knowledge_id: codRecord.knowledge_id,
         decision: 'CLARIFY',
-        clarification_requirement: mediaRecord.clarification_requirements[0],
+        clarification_requirement: null,
         confidence: 0.99
       };
     }
@@ -481,7 +469,7 @@ test('known unresolved Vlad questions bypass adjacent AI candidates and fail clo
   const response = await service.answerQuestion({
     accountId: '00000000-0000-0000-0000-000000000001',
     driverId: '00000000-0000-0000-0000-000000000002',
-    question: 'Customer recording me on camera, what do I do?',
+    question: 'A customer wants me to accept cash for shipping charges',
     includeDiagnostics: true
   });
 
@@ -723,7 +711,7 @@ test('live-test regression phrases route to the complete approved procedure', ()
   );
 });
 
-test('unknown misdelivery address and moved-recipient changes stay grounded', () => {
+test('unknown misdelivery address and customer-directed address changes stay grounded', () => {
   const misdelivery = knowledgeRecord({
     knowledge_id: 'KNO-DEL-MISDELIVERY-RECOVERY-001',
     prohibited_actions: ['Do not redeliver until the correct address is established'],
@@ -738,22 +726,33 @@ test('unknown misdelivery address and moved-recipient changes stay grounded', ()
   assert.match(unknown.decision.answer, /Do not redeliver/i);
   assert.match(unknown.decision.answer, /station or management/i);
 
+  const customerAddressChange = knowledgeRecord({
+    knowledge_id: 'KNO-DEL-CUSTOMER-ADDRESS-CHANGE-001',
+    concise_answer: 'Use the shipping-label address. The customer must call FedEx to change it. If the customer says they moved from that address, apply Code 002.'
+  });
   const directedChange = buildDeterministicRuntimeDecision(
     'The customer moved and texted me a new address. Can I deliver there?',
-    [knowledgeRecord({ knowledge_id: 'KNO-FORGE-EDIT-ADDRESS-001' })],
+    [customerAddressChange, knowledgeRecord({ knowledge_id: 'KNO-FORGE-EDIT-ADDRESS-001' })],
     {}
   );
   assert.equal(directedChange.decision.response_mode, 'ANSWER');
   assert.equal(directedChange.decision.selected_records[0].knowledge_id, 'KNO-FORGE-EDIT-ADDRESS-001');
-  assert.equal(directedChange.decision.answer, 'No. Use Code 002 and return the package to the station.');
+  assert.equal(
+    directedChange.decision.answer_structure.direct_answer,
+    'No. Use Code 002 and return the package to the station.'
+  );
 
-  const unsupportedChange = buildDeterministicRuntimeDecision(
+  const directRequest = buildDeterministicRuntimeDecision(
     'The customer called and told me to change the delivery address myself.',
-    [knowledgeRecord({ knowledge_id: 'KNO-FORGE-EDIT-ADDRESS-001' })],
+    [customerAddressChange],
     {}
   );
-  assert.equal(unsupportedChange.decision.response_mode, 'ESCALATE');
-  assert.deepEqual(unsupportedChange.decision.selected_records, []);
+  assert.equal(directRequest.decision.response_mode, 'ANSWER');
+  assert.equal(directRequest.decision.selected_records[0].knowledge_id, 'KNO-DEL-CUSTOMER-ADDRESS-CHANGE-001');
+  assert.equal(
+    directRequest.decision.answer_structure.direct_answer,
+    'Use the shipping-label address. The customer must call FedEx to change it.'
+  );
 });
 
 test('empty corpus returns and records a fail-closed escalation', async () => {

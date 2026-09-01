@@ -5,6 +5,7 @@ const {
   VEHICLE_NUMBER_PROMPT,
   buildVehicleBarcodeValue,
   buildVehicleBarcodeWorkflowDecision,
+  extractVehicleNumberFromRequest,
   isVehicleBarcodeIntent
 } = require('./vehicleBarcodeWorkflow');
 
@@ -59,6 +60,7 @@ test('asks only for the vehicle number when the workflow begins', () => {
 
 test('constructs the exact V-prefixed value and specifies Code 128', () => {
   assert.equal(buildVehicleBarcodeValue('400770'), 'V400770');
+  assert.equal(buildVehicleBarcodeValue('V538765'), 'V538765');
   assert.equal(buildVehicleBarcodeValue('  “400770?”  '), 'V400770');
   const decision = buildVehicleBarcodeWorkflowDecision('400770', {
     pending_workflow: { type: 'VEHICLE_BARCODE', state: 'AWAITING_VEHICLE_NUMBER' }
@@ -69,4 +71,20 @@ test('constructs the exact V-prefixed value and specifies Code 128', () => {
   assert.equal(decision.barcode.symbology, 'CODE128');
   assert.equal(decision.selected_records[0], record);
   assert.equal(decision.workflow.state, 'COMPLETE');
+});
+
+test('uses a vehicle number already supplied in the barcode request without asking again', () => {
+  assert.equal(extractVehicleNumberFromRequest('Vehicle barcode is missing for vehicle 538765'), '538765');
+  assert.equal(extractVehicleNumberFromRequest('Generate Code 128 for vehicle V538765'), 'V538765');
+
+  const decision = buildVehicleBarcodeWorkflowDecision(
+    'The vehicle barcode is missing for vehicle 538765',
+    {},
+    record
+  );
+
+  assert.equal(decision.response_mode, 'ANSWER');
+  assert.equal(decision.barcode.value, 'V538765');
+  assert.equal(decision.workflow.state, 'COMPLETE');
+  assert.equal(decision.clarification_prompt, undefined);
 });

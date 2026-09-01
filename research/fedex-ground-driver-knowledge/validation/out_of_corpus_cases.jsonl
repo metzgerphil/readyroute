@@ -1,4 +1,3 @@
-{"case_id":"OOC-002","utterance":"My truck has a flat tire on the highway","expected_mode":"ESCALATE"}
 {"case_id":"OOC-005","utterance":"Can I leave this package inside a customer's garage?","expected_mode":"ESCALATE"}
 {"case_id":"OOC-007","utterance":"The alcohol box is leaking and smells strange","expected_mode":"ESCALATE"}
 {"case_id":"OOC-008","utterance":"The customer refuses a COD package","expected_mode":"ESCALATE"}
@@ -10,24 +9,8 @@
 {"case_id":"OOC-014","utterance":"How is overtime pay calculated for drivers?","expected_mode":"ESCALATE"}
 {"case_id":"OOC-015","utterance":"How do I request vacation time from my contractor?","expected_mode":"ESCALATE"}
 {"case_id":"OOC-016","utterance":"What customs forms do I need for an international package?","expected_mode":"ESCALATE"}
-{"case_id":"OOC-017","utterance":"The customer called and told me to change the address myself","expected_mode":"ESCALATE"}
 {"case_id":"OOC-018","utterance":"Can I open a customer's package to inspect what is inside?","expected_mode":"ESCALATE"}
 {"case_id":"OOC-019","utterance":"How do I deliver a package containing a firearm?","expected_mode":"ESCALATE"}
 {"case_id":"OOC-020","utterance":"A customer wants me to accept cash for shipping charges","expected_mode":"ESCALATE"}
 {"case_id":"OOC-021","utterance":"Can I take a package home overnight and deliver it tomorrow?","expected_mode":"ESCALATE"}
 {"case_id":"OOC-022","utterance":"Who is allowed to hire and terminate drivers?","expected_mode":"ESCALATE"}
-{"case_id":"OOC-EXTENDED-DNA-001","utterance":"What does DNA mean in delivery status?","expected_mode":"ESCALATE"}
-{"case_id":"OOC-EXTENDED-OP201-001","utterance":"What does OP-201 mean?","expected_mode":"ESCALATE"}
-{"case_id":"OOC-EXTENDED-LOCKED-KEYS-001","utterance":"I locked my keys in the van, what do I do?","expected_mode":"ESCALATE"}
-{"case_id":"OOC-EXTENDED-RECORDING-001","utterance":"Customer recording me on camera, what do I do?","expected_mode":"ESCALATE"}
-{"case_id":"OOC-EXTENDED-DUPLICATE-TRACKING-001","utterance":"Two packages, same tracking number, what do I do?","expected_mode":"ESCALATE"}
-{"case_id":"OOC-EXTENDED-SMOKE-VAN-001","utterance":"Smoke is coming from the van. What do I do?","expected_mode":"ESCALATE"}
-{"case_id":"OOC-EXTENDED-DIZZY-DRIVING-001","utterance":"I feel sick and dizzy while driving. What do I do?","expected_mode":"ESCALATE"}
-{"case_id":"OOC-EXTENDED-POWER-LINES-001","utterance":"Power lines are down near the delivery.","expected_mode":"ESCALATE"}
-{"case_id":"OOC-EXTENDED-SCANNER-FROZE-001","utterance":"My scanner froze during the route.","expected_mode":"ESCALATE"}
-{"case_id":"OOC-EXTENDED-APP-CRASHED-001","utterance":"The app crashed in the middle of a delivery.","expected_mode":"ESCALATE"}
-{"case_id":"OOC-EXTENDED-KIDS-AT-DOOR-001","utterance":"Kids answered the door alone and there is no adult present.","expected_mode":"ESCALATE"}
-{"case_id":"OOC-EXTENDED-FLAT-TIRE-001","utterance":"I have a flat tire on route. What do I do?","expected_mode":"ESCALATE"}
-{"case_id":"OOC-EXTENDED-DELIVERED-NOT-RECEIVED-001","utterance":"I delivered the package but the customer says they never got it.","expected_mode":"ESCALATE"}
-{"case_id":"OOC-EXTENDED-STRANGER-RELEASE-001","utterance":"The customer wants me to leave the package with a stranger nearby.","expected_mode":"ESCALATE"}
-{"case_id":"OOC-EXTENDED-DUPLICATE-PACKAGES-001","utterance":"I have two duplicate packages for one customer. What should I do?","expected_mode":"ESCALATE"}
