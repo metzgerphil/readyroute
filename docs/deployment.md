@@ -49,6 +49,27 @@ Runtime secrets/config stay in Google Cloud, not in GitHub:
 - `RESEND_FROM_EMAIL`
 - Stripe, Google, FedEx, and map provider secrets as needed
 
+## RRA quality-first answer policy
+
+Production backend releases enforce `READYROUTE_DRIVER_HELP_AI_INTERPRETATION_MODE=ACTIVE`
+and use `gpt-5.6-luna` with medium reasoning effort to interpret every non-exact
+free-form driver question. Luna may select only a locally shortlisted,
+publication-ready record and an approved branch. Local validation rejects any
+selection outside that bounded schema. A no-match or invalid response fails
+closed; a provider failure receives one retry and then fails closed.
+
+The approved canonical answer is rendered directly after selection. RRA does
+not make a second AI call to compose answer prose, so the model cannot add or
+change an operational step, code, warning, restriction, or escalation.
+
+Answer Memory is analytics-only. It may collect repeated-wording and feedback
+signals, but it cannot select, serve, or reuse an answer. The database reuse RPCs
+raise an error if legacy code attempts to call them.
+
+`scripts/release-backend.sh` blocks deployment unless unit tests, the canonical
+knowledge release validator, the record-by-record gold gate, and the repeated
+closed-loop stability gate all pass.
+
 ReadyRoute staff accounts are provisioned by an authenticated staff owner or admin.
 The original `/staff/bootstrap` endpoint is retired and no bootstrap secret should be
 configured in Cloud Run.

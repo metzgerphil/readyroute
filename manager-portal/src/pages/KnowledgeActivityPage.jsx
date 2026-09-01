@@ -115,7 +115,7 @@ export default function KnowledgeActivityPage() {
                     <td>{(row.selected_knowledge_ids || []).map((id, index) => `${id} v${row.selected_knowledge_versions?.[index] || 1}`).join(', ') || '—'}</td>
                     <td>{row.interpretation_mode === 'AI_SHADOW'
                       ? `${row.interpretation_result?.proposed_knowledge_id || 'No selection'} · ${row.interpretation_result?.record_agreement ? 'Match' : 'Different'}`
-                      : row.interpretation_mode === 'AI_SHADOW_FALLBACK' ? 'No valid result' : '—'}</td>
+                      : ['AI_SHADOW_FALLBACK', 'AI_FAIL_CLOSED'].includes(row.interpretation_mode) ? 'No grounded result' : '—'}</td>
                     <td>{formatDate(row.created_at)}</td>
                   </tr>
                 ))}

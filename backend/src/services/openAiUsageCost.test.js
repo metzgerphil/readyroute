@@ -19,9 +19,18 @@ test('estimates uncached, cached, and output cost while preserving token counts'
     uncached_input_tokens: 750_000,
     estimated_cost_usd: 0.275,
     pricing: { input: 0.2, cached_input: 0.02, output: 1.2 },
-    pricing_as_of: '2026-08-15',
+    pricing_as_of: '2026-09-01',
     pricing_source: 'https://developers.openai.com/api/docs/models'
   });
+});
+
+test('prices the quality-first Sol primary model', () => {
+  const result = estimateUsageCost('gpt-5.6-sol', {
+    input_tokens: 1_000_000,
+    output_tokens: 100_000
+  });
+  assert.equal(result.estimated_cost_usd, 6);
+  assert.deepEqual(result.pricing, { input: 4, cached_input: 0.4, output: 20 });
 });
 
 test('keeps usage auditable when the model has no configured price', () => {

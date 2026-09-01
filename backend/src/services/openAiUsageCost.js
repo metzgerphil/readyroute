@@ -1,9 +1,14 @@
-const PRICING_AS_OF = '2026-08-15';
+const PRICING_AS_OF = '2026-09-01';
 const PRICING_SOURCE = 'https://developers.openai.com/api/docs/models';
 
 // USD per one million text tokens. Keep the raw token counts in every report
 // so historical runs can be recalculated if provider pricing changes.
 const MODEL_PRICING = Object.freeze({
+  'gpt-5.6-sol': Object.freeze({
+    input: 4,
+    cached_input: 0.4,
+    output: 20
+  }),
   'gpt-5.6-terra': Object.freeze({
     input: 2,
     cached_input: 0.2,

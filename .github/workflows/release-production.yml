@@ -88,8 +88,7 @@ jobs:
           GOOGLE_CLOUD_PROJECT: ready-route-project
         run: npm run verify:schema && npm run check:launch && npm run test:unit
 
-      - name: Run Ready Route Answers stability gate
-        if: needs.changes.outputs.knowledge == 'true' || (github.event_name == 'workflow_dispatch' && inputs.run_knowledge_checks == true)
+      - name: Run mandatory Ready Route Answers stability gate
         working-directory: .
         env:
           SUPABASE_URL: https://example.supabase.co
@@ -244,9 +243,10 @@ jobs:
             RRA_IOS_APP_URL=https://apps.apple.com/us/app/ready-route/id6762488881
             STRIPE_PORTAL_RETURN_URL=https://readyroute.org/portal?view=billing
             READYROUTE_DRIVER_HELP_AI_INTERPRETATION_MODE=ACTIVE
-            READYROUTE_DRIVER_HELP_ANSWER_MEMORY_AUDIT_RATE=0.05
-            READYROUTE_DRIVER_HELP_AI_ENABLED=true
+            READYROUTE_DRIVER_HELP_AI_ENABLED=false
             READYROUTE_DRIVER_HELP_MODEL=gpt-5.6-luna
+            READYROUTE_DRIVER_HELP_AI_REASONING_EFFORT=medium
+            READYROUTE_DRIVER_HELP_AI_TIMEOUT_MS=20000
             READYROUTE_LIVE_BILLING_APPROVED=${{ vars.READYROUTE_LIVE_BILLING_APPROVED || 'false' }}
             STRIPE_TAX_ENABLED=${{ vars.STRIPE_TAX_ENABLED || 'false' }}
             STRIPE_TAX_REGISTRATIONS_CONFIRMED=${{ vars.STRIPE_TAX_REGISTRATIONS_CONFIRMED || 'false' }}
@@ -260,13 +260,13 @@ jobs:
         run: |
           for attempt in {1..30}; do
             body="$(curl --fail --silent --show-error "$HEALTH_URL" || true)"
-            if [[ "$body" == *"$EXPECTED_COMMIT"* && "$body" == *'"compatible":true'* ]]; then
-              echo "Production is serving $EXPECTED_COMMIT with a compatible database schema"
+            if [[ "$body" == *"$EXPECTED_COMMIT"* && "$body" == *'"compatible":true'* && "$body" == *'"rra_answer_policy":"quality_first"'* && "$body" == *'"driver_help_ai_interpretation":true'* ]]; then
+              echo "Production is serving $EXPECTED_COMMIT with a compatible schema and quality-first RRA interpretation"
               exit 0
             fi
             sleep 10
           done
-          echo "Production health did not report $EXPECTED_COMMIT with a compatible schema" >&2
+          echo "Production health did not report $EXPECTED_COMMIT with a compatible schema and quality-first RRA interpretation" >&2
           exit 1
 
       - name: Install production smoke dependencies

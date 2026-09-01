@@ -13,6 +13,7 @@ test('launch readiness keeps FCC paused and billing shadowed by default', () => 
   assert.equal(readiness.ready, true);
   assert.equal(readiness.modes.billing, 'shadow');
   assert.equal(readiness.modes.fcc, 'paused');
+  assert.equal(readiness.modes.rra_answer_policy, 'quality_first');
 });
 
 test('launch readiness fails closed when live systems are enabled without approval', () => {
@@ -34,17 +35,14 @@ test('launch readiness reports AI answer capabilities only when fully configured
     GOOGLE_CLOUD_PROJECT: 'ready-route-project',
     OPENAI_API_KEY: 'openai-key',
     READYROUTE_DRIVER_HELP_MODEL: 'readyroute-model',
-    READYROUTE_DRIVER_HELP_AI_INTERPRETATION_MODE: 'ACTIVE',
-    READYROUTE_DRIVER_HELP_AI_ENABLED: 'true'
+    READYROUTE_DRIVER_HELP_AI_INTERPRETATION_MODE: 'ACTIVE'
   });
   const missingKey = getLaunchReadiness({
     READYROUTE_DRIVER_HELP_MODEL: 'readyroute-model',
-    READYROUTE_DRIVER_HELP_AI_INTERPRETATION_MODE: 'ACTIVE',
-    READYROUTE_DRIVER_HELP_AI_ENABLED: 'true'
+    READYROUTE_DRIVER_HELP_AI_INTERPRETATION_MODE: 'ACTIVE'
   });
 
   assert.equal(active.capabilities.driver_help_ai_interpretation, true);
-  assert.equal(active.capabilities.driver_help_ai_composition, true);
   assert.equal(missingKey.capabilities.driver_help_ai_interpretation, false);
-  assert.equal(missingKey.capabilities.driver_help_ai_composition, false);
+  assert.equal(active.capabilities.driver_help_ai_composition, undefined);
 });

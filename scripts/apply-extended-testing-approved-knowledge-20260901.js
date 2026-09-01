@@ -242,7 +242,7 @@ if (pickupIndex < 0) throw new Error('Missing KNO-PUP-WINDOW-RISK-001');
 const previousPickup = records[pickupIndex];
 const pickupWindowRecord = {
   ...previousPickup,
-  version: Math.max(Number(previousPickup.version || 1) + 1, 2),
+  version: 2,
   authoritative_rule: 'The pickup window is the timeframe in which the customer requested the package be picked up. If the driver may not complete the pickup within that window, check the current ready and close times, contact CXPC so the customer can be alerted, and contact the BC to see whether the pickup can be transferred to another Work Area.',
   required_procedure: [
     { step: 1, action: 'Check the current pickup ready time, close time, and update details.' },
@@ -255,7 +255,10 @@ const pickupWindowRecord = {
   concise_ready_route_answer: 'Check the current ready and close times. If you may miss the pickup window, contact CXPC so the customer can be alerted and contact your BC to see whether the pickup can be transferred to another Work Area.',
   more_info_answer: 'A pickup update can change the ready time, close time, or comments, so review the complete current details. Contacting the BC does not guarantee a transfer.',
   evidence: appendEvidence(previousPickup.evidence, evidence('Owner-approved operational additions — Pickup-window risk', 'Vlad added the BC transfer inquiry to the existing source-verified current-window and CXPC customer-alert procedure.')),
-  source_date_or_version: `${previousPickup.source_date_or_version}; owner-approved field addition 2026-09-01`,
+  source_date_or_version: unique([
+    ...String(previousPickup.source_date_or_version || '').split('; ').filter(Boolean),
+    'owner-approved field addition 2026-09-01'
+  ]).join('; '),
   knowledge_status: 'HUMAN_REVIEW_REQUIRED',
   review_notes: 'Version 2 retains the source-verified current-window and CXPC steps and adds only the owner-approved direction to ask the BC whether another Work Area can take the pickup. Published through the scoped 2026-09-01 adjudication.',
   updated_at: REVIEW_DATE
@@ -309,6 +312,28 @@ for (const item of [
     case_type: 'EXTENDED_TESTING_OWNER_APPROVED',
     information_sufficiency: 'SUFFICIENT',
     response_mode: 'DIRECT_SOURCE_GROUNDED_ANSWER'
+  },
+  {
+    case_id: 'EXTENDED-BARE-DOG-BITE-001',
+    utterance: 'Dog bit me',
+    semantic_variations: ['dog just bit me', 'got bit by a dog'],
+    expected_knowledge_ids: ['KNO-INCIDENT-DOG-BITE-001'],
+    must_clarify: [],
+    must_not_do: ['require the driver to add what should I do', 'route to the dog-at-door procedure'],
+    case_type: 'EXTENDED_TESTING_APPROVED_BARE_STATEMENT',
+    information_sufficiency: 'SUFFICIENT',
+    response_mode: 'DIRECT_SOURCE_GROUNDED_ANSWER'
+  },
+  {
+    case_id: 'EXTENDED-MISDELIVERY-TYPO-001',
+    utterance: 'I did missdelivery what is my next step',
+    semantic_variations: ['i did a missdelivery whats next', 'misdelivery what is my next step'],
+    expected_knowledge_ids: ['KNO-DEL-MISDELIVERY-RECOVERY-001'],
+    must_clarify: [],
+    must_not_do: ['reject the approved scenario because of the spelling error', 'select an unrelated record'],
+    case_type: 'EXTENDED_TESTING_APPROVED_PHRASING',
+    information_sufficiency: 'SUFFICIENT',
+    response_mode: 'DIRECT_SOURCE_GROUNDED_ANSWER'
   }
 ]) upsert(evaluations, 'case_id', item);
 writeJsonLines(CASES_PATH, evaluations);
@@ -319,7 +344,17 @@ for (const item of [
   { case_id: 'OOC-EXTENDED-OP201-001', utterance: 'What does OP-201 mean?', expected_mode: 'ESCALATE' },
   { case_id: 'OOC-EXTENDED-LOCKED-KEYS-001', utterance: 'I locked my keys in the van, what do I do?', expected_mode: 'ESCALATE' },
   { case_id: 'OOC-EXTENDED-RECORDING-001', utterance: 'Customer recording me on camera, what do I do?', expected_mode: 'ESCALATE' },
-  { case_id: 'OOC-EXTENDED-DUPLICATE-TRACKING-001', utterance: 'Two packages, same tracking number, what do I do?', expected_mode: 'ESCALATE' }
+  { case_id: 'OOC-EXTENDED-DUPLICATE-TRACKING-001', utterance: 'Two packages, same tracking number, what do I do?', expected_mode: 'ESCALATE' },
+  { case_id: 'OOC-EXTENDED-SMOKE-VAN-001', utterance: 'Smoke is coming from the van. What do I do?', expected_mode: 'ESCALATE' },
+  { case_id: 'OOC-EXTENDED-DIZZY-DRIVING-001', utterance: 'I feel sick and dizzy while driving. What do I do?', expected_mode: 'ESCALATE' },
+  { case_id: 'OOC-EXTENDED-POWER-LINES-001', utterance: 'Power lines are down near the delivery.', expected_mode: 'ESCALATE' },
+  { case_id: 'OOC-EXTENDED-SCANNER-FROZE-001', utterance: 'My scanner froze during the route.', expected_mode: 'ESCALATE' },
+  { case_id: 'OOC-EXTENDED-APP-CRASHED-001', utterance: 'The app crashed in the middle of a delivery.', expected_mode: 'ESCALATE' },
+  { case_id: 'OOC-EXTENDED-KIDS-AT-DOOR-001', utterance: 'Kids answered the door alone and there is no adult present.', expected_mode: 'ESCALATE' },
+  { case_id: 'OOC-EXTENDED-FLAT-TIRE-001', utterance: 'I have a flat tire on route. What do I do?', expected_mode: 'ESCALATE' },
+  { case_id: 'OOC-EXTENDED-DELIVERED-NOT-RECEIVED-001', utterance: 'I delivered the package but the customer says they never got it.', expected_mode: 'ESCALATE' },
+  { case_id: 'OOC-EXTENDED-STRANGER-RELEASE-001', utterance: 'The customer wants me to leave the package with a stranger nearby.', expected_mode: 'ESCALATE' },
+  { case_id: 'OOC-EXTENDED-DUPLICATE-PACKAGES-001', utterance: 'I have two duplicate packages for one customer. What should I do?', expected_mode: 'ESCALATE' }
 ]) upsert(outOfCorpus, 'case_id', item);
 writeJsonLines(OUT_OF_CORPUS_PATH, outOfCorpus);
 
@@ -395,6 +430,6 @@ console.log(JSON.stringify({
   records_added: 2,
   records_upgraded: 1,
   approvals_added_or_updated: approvals.length,
-  evaluation_cases_added_or_updated: 3,
-  fail_closed_cases_added_or_updated: 5
+  evaluation_cases_added_or_updated: 5,
+  fail_closed_cases_added_or_updated: 15
 }, null, 2));

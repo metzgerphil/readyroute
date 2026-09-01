@@ -14,6 +14,10 @@ cd "$BACKEND_DIR"
 npm run verify:schema
 npm run test:unit
 
+echo "==> Running release-blocking RRA knowledge and stability gates"
+cd "$ROOT_DIR"
+npm run knowledge:gate
+
 echo "==> Applying pending Supabase migrations"
 cd "$ROOT_DIR"
 supabase db push --linked --dry-run
@@ -26,7 +30,7 @@ gcloud run deploy "$CLOUD_RUN_SERVICE" \
   --region "$CLOUD_RUN_REGION" \
   --allow-unauthenticated \
   --port 8080 \
-  --update-env-vars "SOURCE_COMMIT=$SOURCE_COMMIT,NODE_ENV=production"
+  --update-env-vars "SOURCE_COMMIT=$SOURCE_COMMIT,NODE_ENV=production,READYROUTE_DRIVER_HELP_AI_INTERPRETATION_MODE=ACTIVE,READYROUTE_DRIVER_HELP_AI_ENABLED=false,READYROUTE_DRIVER_HELP_MODEL=gpt-5.6-luna,READYROUTE_DRIVER_HELP_AI_REASONING_EFFORT=medium,READYROUTE_DRIVER_HELP_AI_TIMEOUT_MS=20000"
 
 gcloud run services update-traffic "$CLOUD_RUN_SERVICE" \
   --project "$CLOUD_RUN_PROJECT" \
@@ -36,8 +40,8 @@ gcloud run services update-traffic "$CLOUD_RUN_SERVICE" \
 echo "==> Verifying backend health"
 HEALTH_BODY="$(curl --fail --silent --show-error "$BACKEND_HEALTH_URL")"
 echo "$HEALTH_BODY"
-if [[ "$HEALTH_BODY" != *"$SOURCE_COMMIT"* || "$HEALTH_BODY" != *'"compatible":true'* ]]; then
-  echo "Production health does not report source commit $SOURCE_COMMIT with a compatible schema" >&2
+if [[ "$HEALTH_BODY" != *"$SOURCE_COMMIT"* || "$HEALTH_BODY" != *'"compatible":true'* || "$HEALTH_BODY" != *'"rra_answer_policy":"quality_first"'* || "$HEALTH_BODY" != *'"driver_help_ai_interpretation":true'* ]]; then
+  echo "Production health does not report source commit $SOURCE_COMMIT with a compatible schema and quality-first RRA interpretation" >&2
   exit 1
 fi
 echo

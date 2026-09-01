@@ -6,22 +6,22 @@ import api from '../services/api';
 
 const TABS = [
   { value: 'QUEUE', label: 'Review queue' },
-  { value: 'ROUTES', label: 'Learned routes' },
+  { value: 'ROUTES', label: 'Question patterns' },
   { value: 'PERFORMANCE', label: 'Activity & performance' },
   { value: 'AUDIT', label: 'Audit trail' }
 ];
 const ROUTE_FILTERS = [
   { value: 'ALL', label: 'All' },
   { value: 'REVIEW_REQUIRED', label: 'Needs review' },
-  { value: 'ACTIVE', label: 'Active' },
+  { value: 'ACTIVE', label: 'Confirmed' },
   { value: 'CANDIDATE', label: 'Learning' },
-  { value: 'SUSPENDED', label: 'Suspended' }
+  { value: 'SUSPENDED', label: 'Flagged' }
 ];
 const STATUS_META = {
-  ACTIVE: { label: 'Active', tone: 'ready' },
+  ACTIVE: { label: 'Confirmed', tone: 'ready' },
   CANDIDATE: { label: 'Learning', tone: 'neutral' },
   REVIEW_REQUIRED: { label: 'Needs review', tone: 'warning' },
-  SUSPENDED: { label: 'Suspended', tone: 'danger' }
+  SUSPENDED: { label: 'Flagged', tone: 'danger' }
 };
 
 function formatDate(value) {
@@ -50,13 +50,14 @@ function statusMeta(status) {
 
 function auditMethod(interaction) {
   if (interaction.interpretation_mode === 'LEARNED_ROUTE') return 'LEARNED';
-  if (['GROUNDED_AI', 'AI_SHADOW', 'AI_SHADOW_FALLBACK', 'DETERMINISTIC_FALLBACK'].includes(interaction.interpretation_mode)) return 'AI';
+  if (['VERIFIED_GROUNDED_AI', 'GROUNDED_AI', 'AI_SHADOW', 'AI_SHADOW_FALLBACK', 'DETERMINISTIC_FALLBACK', 'AI_FAIL_CLOSED'].includes(interaction.interpretation_mode)) return 'AI';
   return 'DETERMINISTIC';
 }
 
 function auditMethodLabel(interaction) {
+  if (interaction.interpretation_mode === 'AI_FAIL_CLOSED') return 'AI failed closed';
   const method = auditMethod(interaction);
-  if (method === 'LEARNED') return 'Learned route';
+  if (method === 'LEARNED') return 'Legacy learned route';
   if (method === 'AI') return 'Grounded AI';
   return 'Published rule';
 }
@@ -123,8 +124,8 @@ function RouteCard({ route, expanded, isUpdating, onToggle, onReview }) {
         </div>
         <div className="answer-quality-route-actions">
           <button className="secondary-button" onClick={onToggle} type="button">{expanded ? 'Close review' : 'Review issue'}</button>
-          {route.status !== 'ACTIVE' ? <button className="primary-button" disabled={isUpdating || !route.preview || !route.ready_for_approval} onClick={() => onReview(route.route_key, 'APPROVE')} type="button">{isUpdating ? 'Saving…' : !route.ready_for_approval ? `Needs ${remaining} more` : route.status === 'SUSPENDED' ? 'Reactivate route' : 'Approve route'}</button> : null}
-          {route.status !== 'SUSPENDED' ? <button className="text-button answer-quality-suspend" disabled={isUpdating} onClick={() => onReview(route.route_key, 'SUSPEND')} type="button">Suspend route</button> : null}
+          {route.status !== 'ACTIVE' ? <button className="primary-button" disabled={isUpdating || !route.preview || !route.ready_for_approval} onClick={() => onReview(route.route_key, 'APPROVE')} type="button">{isUpdating ? 'Saving…' : !route.ready_for_approval ? `Needs ${remaining} more` : 'Mark pattern confirmed'}</button> : null}
+          {route.status !== 'SUSPENDED' ? <button className="text-button answer-quality-suspend" disabled={isUpdating} onClick={() => onReview(route.route_key, 'SUSPEND')} type="button">Flag pattern</button> : null}
           {latestCompany ? <Link className="answer-quality-company-link" to={`/readyroute/companies/${latestCompany.account_id}/view`}>Open company</Link> : null}
         </div>
       </div>
@@ -186,6 +187,8 @@ function AuditInteraction({ interaction, feedback }) {
           <dl>
             <div><dt>Interaction ID</dt><dd>{interaction.id}</dd></div>
             <div><dt>Interpretation mode</dt><dd>{interaction.interpretation_mode || 'DETERMINISTIC'}</dd></div>
+            {interaction.interpretation_result?.verification ? <div><dt>Independent verification</dt><dd>{interaction.interpretation_result.verification.status} · {interaction.interpretation_result.verification.call_count || 0} AI calls{interaction.interpretation_result.verification.retried ? ' · retried' : ''}</dd></div> : null}
+            {interaction.interpretation_result?.ai ? <div><dt>AI interpretation</dt><dd>{interaction.interpretation_result.ai.status} · {interaction.interpretation_result.ai.call_count || 0} AI call{interaction.interpretation_result.ai.call_count === 1 ? '' : 's'}{interaction.interpretation_result.ai.retried ? ' · provider retry' : ''}</dd></div> : null}
             <div><dt>Knowledge IDs</dt><dd>{knowledgeIds.join(', ') || 'None'}</dd></div>
             {interaction.interpretation_result?.confidence != null ? <div><dt>AI confidence</dt><dd>{Math.round(Number(interaction.interpretation_result.confidence) * 100)}%</dd></div> : null}
           </dl>
@@ -279,14 +282,14 @@ export default function AnswerMemoryPage() {
   return (
     <main className="page answer-memory-page answer-quality-page">
       <div className="page-heading-row answer-quality-heading">
-        <div><div className="eyebrow">Ready Route Answers</div><h1>Answer Quality</h1><p>Review questions needing attention, manage learned routes, measure performance, and inspect the answer audit trail.</p></div>
+        <div><div className="eyebrow">Ready Route Answers</div><h1>Answer Quality</h1><p>Review questions needing attention, inspect analytics-only wording patterns, and monitor grounded AI interpretation.</p></div>
         <div className="answer-quality-refresh"><span>Updates automatically every minute</span><button className="secondary-button" disabled={memoryQuery.isFetching || overviewQuery.isFetching} onClick={() => { memoryQuery.refetch(); overviewQuery.refetch(); }} type="button">{memoryQuery.isFetching || overviewQuery.isFetching ? 'Refreshing…' : 'Refresh now'}</button></div>
       </div>
       <section className="answer-quality-priority-grid" aria-label="Answer quality summary">
         <button className="answer-quality-priority-card danger" onClick={() => selectTab('QUEUE')} type="button"><span>Needs staff attention</span><strong>{queueCount}</strong><small>Open the review queue</small></button>
-        <button className="answer-quality-priority-card warning" onClick={() => { selectTab('ROUTES'); setStatusFilter('SUSPENDED'); }} type="button"><span>Suspended routes</span><strong>{counts.SUSPENDED || 0}</strong><small>Not being reused</small></button>
+        <button className="answer-quality-priority-card warning" onClick={() => { selectTab('ROUTES'); setStatusFilter('SUSPENDED'); }} type="button"><span>Flagged patterns</span><strong>{counts.SUSPENDED || 0}</strong><small>Review for answer-quality issues</small></button>
         <button className="answer-quality-priority-card neutral" onClick={() => { selectTab('ROUTES'); setStatusFilter('CANDIDATE'); }} type="button"><span>Still learning</span><strong>{counts.CANDIDATE || 0}</strong><small>Collecting confirmations</small></button>
-        <button className="answer-quality-priority-card ready" onClick={() => { selectTab('ROUTES'); setStatusFilter('ACTIVE'); }} type="button"><span>Healthy active routes</span><strong>{counts.ACTIVE || 0}</strong><small>Available for reuse</small></button>
+        <button className="answer-quality-priority-card ready" onClick={() => { selectTab('ROUTES'); setStatusFilter('ACTIVE'); }} type="button"><span>Confirmed patterns</span><strong>{counts.ACTIVE || 0}</strong><small>Analytics only · never reused</small></button>
       </section>
       <nav className="answer-quality-tabs" aria-label="Answer Quality sections">{TABS.map((tab) => <button className={activeTab === tab.value ? 'active' : ''} key={tab.value} onClick={() => selectTab(tab.value)} type="button">{tab.label}{tab.value === 'QUEUE' ? ` (${queueCount})` : ''}</button>)}</nav>
       {activeTab !== 'PERFORMANCE' ? <section className="answer-quality-toolbar"><label><span>Search</span><input onChange={(event) => setSearch(event.target.value)} placeholder="Question, company, or approved record" type="search" value={search} /></label><label><span>Company</span><select onChange={(event) => setCompanyFilter(event.target.value)} value={companyFilter}><option value="">All companies</option>{companies.map((company) => <option key={company.id} value={company.id}>{company.name}</option>)}</select></label></section> : null}
@@ -295,18 +298,19 @@ export default function AnswerMemoryPage() {
 
       {activeTab === 'QUEUE' ? (
         <div className="answer-quality-section-stack">
-          <section><div className="answer-quality-section-heading"><div><h2>Learned routes needing review</h2><p>These routes are suspended or require an explicit ReadyRoute decision.</p></div><strong>{visibleReviewRoutes.length}</strong></div><div className="answer-quality-route-list">{visibleReviewRoutes.map((route) => <RouteCard expanded={expandedRouteKey === route.route_key} isUpdating={reviewMutation.isPending && reviewMutation.variables?.routeKey === route.route_key} key={route.route_key} onReview={handleReview} onToggle={() => setExpandedRouteKey(expandedRouteKey === route.route_key ? null : route.route_key)} route={route} />)}{!visibleReviewRoutes.length ? <div className="empty-state">No learned routes match this review view.</div> : null}</div></section>
+          <section><div className="answer-quality-section-heading"><div><h2>Question patterns needing review</h2><p>These analytics patterns are flagged or require an explicit ReadyRoute decision. They never answer driver questions.</p></div><strong>{visibleReviewRoutes.length}</strong></div><div className="answer-quality-route-list">{visibleReviewRoutes.map((route) => <RouteCard expanded={expandedRouteKey === route.route_key} isUpdating={reviewMutation.isPending && reviewMutation.variables?.routeKey === route.route_key} key={route.route_key} onReview={handleReview} onToggle={() => setExpandedRouteKey(expandedRouteKey === route.route_key ? null : route.route_key)} route={route} />)}{!visibleReviewRoutes.length ? <div className="empty-state">No question patterns match this review view.</div> : null}</div></section>
           <section><div className="answer-quality-section-heading"><div><h2>Unanswered questions</h2><p>These may require a new approved knowledge answer.</p></div><strong>{visibleUnanswered.length}</strong></div><div className="answer-quality-simple-list">{visibleUnanswered.map((entry) => <SimpleIssueCard accountId={entry.account_id} companyName={entry.company_name} date={entry.created_at} detail={`Status: ${entry.status}`} eyebrow="Knowledge gap" key={entry.id} question={entry.question} />)}{!visibleUnanswered.length ? <div className="empty-state">No unanswered questions match this view.</div> : null}</div></section>
           <section><div className="answer-quality-section-heading"><div><h2>Negative feedback</h2><p>Review the answer and company context before reactivating any affected route.</p></div><strong>{visibleNegativeFeedback.length}</strong></div><div className="answer-quality-simple-list">{visibleNegativeFeedback.map((entry) => <SimpleIssueCard accountId={entry.account_id} companyName={entry.company_name} date={entry.created_at} detail={entry.comment || 'The driver or manager marked this answer as not helpful.'} eyebrow="Answer improvement" key={entry.id} question={entry.question} />)}{!visibleNegativeFeedback.length ? <div className="empty-state">No negative feedback matches this view.</div> : null}</div></section>
         </div>
       ) : null}
 
-      {activeTab === 'ROUTES' ? <section><div className="answer-memory-filters answer-quality-route-filters" aria-label="Filter learned routes by status">{ROUTE_FILTERS.map((filter) => <button className={`answer-memory-filter${statusFilter === filter.value ? ' active' : ''}`} key={filter.value} onClick={() => setStatusFilter(filter.value)} type="button">{filter.label} ({filter.value === 'ALL' ? routes.length : counts[filter.value] || 0})</button>)}</div><div className="answer-quality-route-list">{visibleRoutes.map((route) => <RouteCard expanded={expandedRouteKey === route.route_key} isUpdating={reviewMutation.isPending && reviewMutation.variables?.routeKey === route.route_key} key={route.route_key} onReview={handleReview} onToggle={() => setExpandedRouteKey(expandedRouteKey === route.route_key ? null : route.route_key)} route={route} />)}{!visibleRoutes.length ? <div className="empty-state">No learned routes match these filters.</div> : null}</div><details className="page-card answer-quality-how-it-works"><summary>How learned routes work</summary><p>Active routes can reuse a published answer for eligible repeated wording. Standard routes require matching AI confirmations; clarifications and high-risk routes require additional confirmation, and high-risk routes require staff approval. A disagreement or negative feedback suspends reuse until staff review it.</p></details></section> : null}
+      {activeTab === 'ROUTES' ? <section><div className="answer-memory-filters answer-quality-route-filters" aria-label="Filter question patterns by status">{ROUTE_FILTERS.map((filter) => <button className={`answer-memory-filter${statusFilter === filter.value ? ' active' : ''}`} key={filter.value} onClick={() => setStatusFilter(filter.value)} type="button">{filter.label} ({filter.value === 'ALL' ? routes.length : counts[filter.value] || 0})</button>)}</div><div className="answer-quality-route-list">{visibleRoutes.map((route) => <RouteCard expanded={expandedRouteKey === route.route_key} isUpdating={reviewMutation.isPending && reviewMutation.variables?.routeKey === route.route_key} key={route.route_key} onReview={handleReview} onToggle={() => setExpandedRouteKey(expandedRouteKey === route.route_key ? null : route.route_key)} route={route} />)}{!visibleRoutes.length ? <div className="empty-state">No question patterns match these filters.</div> : null}</div><details className="page-card answer-quality-how-it-works"><summary>How quality-first answering works</summary><p>Answer Memory is analytics-only and never serves an answer. Luna interprets every non-exact free-form question, but it may select only a locally shortlisted approved record and branch. A no-match or invalid selection fails closed. A provider error receives one retry and then escalates.</p></details></section> : null}
 
       {activeTab === 'PERFORMANCE' ? (
         <div className="answer-quality-section-stack">
-          <section className="page-card"><div className="answer-quality-section-heading"><div><h2>Last 30 days</h2><p>Usage, cost, and response speed across ReadyRoute.</p></div></div><div className="summary-grid"><div className="summary-card"><span>Questions</span><strong>{metrics.total_questions || 0}</strong></div><div className="summary-card"><span>Companies</span><strong>{metrics.companies || 0}</strong></div><div className="summary-card"><span>AI calls avoided</span><strong>{metrics.ai_calls_avoided || 0}</strong></div><div className="summary-card"><span>Estimated AI cost</span><strong>{formatMoney(metrics.estimated_ai_cost_usd)}</strong></div></div></section>
-          <section className="page-card"><div className="answer-quality-section-heading"><div><h2>Response speed</h2><p>Learned routes can answer eligible repeated wording without another AI interpretation.</p></div></div><div className="summary-grid"><div className="summary-card"><span>Average response</span><strong>{formatLatency(metrics.average_response_latency_ms)}</strong></div><div className="summary-card"><span>95% answered within</span><strong>{formatLatency(metrics.p95_response_latency_ms)}</strong></div><div className="summary-card"><span>New AI wording</span><strong>{formatLatency(metrics.average_ai_response_latency_ms)}</strong></div><div className="summary-card"><span>Learned wording</span><strong>{formatLatency(metrics.average_learned_response_latency_ms)}</strong></div></div></section>
+          <section className="page-card"><div className="answer-quality-section-heading"><div><h2>Last 30 days</h2><p>Usage, cost, and grounded AI interpretation across ReadyRoute.</p></div></div><div className="summary-grid"><div className="summary-card"><span>Questions</span><strong>{metrics.total_questions || 0}</strong></div><div className="summary-card"><span>Companies</span><strong>{metrics.companies || 0}</strong></div><div className="summary-card"><span>AI calls</span><strong>{metrics.ai_interpretation_calls || 0}</strong></div><div className="summary-card"><span>Estimated AI cost</span><strong>{formatMoney(metrics.estimated_ai_cost_usd)}</strong></div></div></section>
+          <section className="page-card"><div className="answer-quality-section-heading"><div><h2>AI interpretation health</h2><p>Luna may select only a locally validated approved record and branch.</p></div></div><div className="summary-grid"><div className="summary-card"><span>Grounded selections</span><strong>{metrics.ai_interpretation_grounded || 0}</strong></div><div className="summary-card"><span>Success rate</span><strong>{metrics.ai_interpretation_success_rate == null ? '—' : `${Math.round(metrics.ai_interpretation_success_rate * 100)}%`}</strong></div><div className="summary-card"><span>Failed closed</span><strong>{metrics.ai_interpretation_failures || 0}</strong></div><div className="summary-card"><span>Provider retries</span><strong>{metrics.ai_interpretation_retries || 0}</strong></div></div></section>
+          <section className="page-card"><div className="answer-quality-section-heading"><div><h2>Response speed</h2><p>Free-form questions use AI interpretation but never fall back to Answer Memory.</p></div></div><div className="summary-grid"><div className="summary-card"><span>Average response</span><strong>{formatLatency(metrics.average_response_latency_ms)}</strong></div><div className="summary-card"><span>95% answered within</span><strong>{formatLatency(metrics.p95_response_latency_ms)}</strong></div><div className="summary-card"><span>Grounded AI response</span><strong>{formatLatency(metrics.average_ai_response_latency_ms)}</strong></div></div></section>
         </div>
       ) : null}
 
@@ -314,12 +318,12 @@ export default function AnswerMemoryPage() {
         <div className="answer-quality-section-stack">
           <section className="page-card">
             <div className="answer-quality-section-heading"><div><h2>Answer delivery overview</h2><p>How recent driver questions were resolved. Detailed system identifiers remain hidden until expanded.</p></div></div>
-            <div className="summary-grid answer-quality-audit-summary"><div className="summary-card"><span>Grounded AI</span><strong>{groundedAiCount}</strong></div><div className="summary-card"><span>Learned routes</span><strong>{learnedCount}</strong></div><div className="summary-card"><span>Escalations</span><strong>{metrics.escalations || 0}</strong></div><div className="summary-card"><span>Audit disagreements</span><strong>{auditDisagreements}</strong></div><div className="summary-card"><span>Audit errors</span><strong>{auditErrors}</strong></div></div>
+            <div className="summary-grid answer-quality-audit-summary"><div className="summary-card"><span>Grounded AI</span><strong>{groundedAiCount}</strong></div><div className="summary-card"><span>AI failures</span><strong>{metrics.ai_interpretation_failures || 0}</strong></div><div className="summary-card"><span>Provider retries</span><strong>{metrics.ai_interpretation_retries || 0}</strong></div><div className="summary-card"><span>Escalations</span><strong>{metrics.escalations || 0}</strong></div><div className="summary-card"><span>Legacy learned routes</span><strong>{learnedCount}</strong></div><div className="summary-card"><span>Historical audit issues</span><strong>{auditDisagreements + auditErrors}</strong></div></div>
           </section>
           <section>
             <div className="answer-quality-audit-controls">
               <label><span>Outcome</span><select onChange={(event) => setAuditOutcome(event.target.value)} value={auditOutcome}><option value="ALL">All outcomes</option><option value="ANSWER">Answered</option><option value="CLARIFY">Clarification</option><option value="ESCALATE">Escalated</option></select></label>
-              <label><span>Answer method</span><select onChange={(event) => setAuditMethodFilter(event.target.value)} value={auditMethodFilter}><option value="ALL">All methods</option><option value="AI">Grounded AI</option><option value="LEARNED">Learned route</option><option value="DETERMINISTIC">Published rule</option></select></label>
+              <label><span>Answer method</span><select onChange={(event) => setAuditMethodFilter(event.target.value)} value={auditMethodFilter}><option value="ALL">All methods</option><option value="AI">Grounded AI</option><option value="LEARNED">Legacy learned route</option><option value="DETERMINISTIC">Exact published rule</option></select></label>
               <label><span>Feedback</span><select onChange={(event) => setAuditFeedback(event.target.value)} value={auditFeedback}><option value="ALL">All feedback</option><option value="NEGATIVE">Not helpful</option><option value="HELPFUL">Helpful</option><option value="NONE">No feedback</option></select></label>
               <label className="answer-quality-group-toggle"><input checked={groupRepeated} onChange={(event) => setGroupRepeated(event.target.checked)} type="checkbox" /><span>Group repeated questions</span></label>
             </div>

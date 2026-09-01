@@ -10,6 +10,7 @@ const {
   formatDriverCodeTerminology,
   getMatchingQuestionPattern,
   isProductionEligibleRecord,
+  matchesUnsupportedBoundaryQuestion: matchesKnownUnapprovedQuestion,
   normalizeDriverQuestion,
   rankKnowledgeRecords,
   requirementMatches,
@@ -25,8 +26,7 @@ const {
   resolveDriverHelpAiInterpretationMode,
   validateInterpretation
 } = require('./driverHelpAiInterpreter');
-const { createDriverHelpAiComposer } = require('./driverHelpAiComposer');
-const { composeGroundedDecision } = require('./driverHelpGroundedComposition');
+const { runGuardedInterpretation } = require('./driverHelpAiGuard');
 const {
   createSignedStorageUrl,
   getSignedUrlTtlSeconds
@@ -71,20 +71,6 @@ function answerMemoryRouteKey(question) {
 
 function answerMemoryRiskTier(knowledgeId) {
   return HIGH_RISK_MEMORY_KNOWLEDGE_IDS.has(String(knowledgeId || '')) ? 'HIGH' : 'STANDARD';
-}
-
-function resolveAnswerMemoryAuditRate(env = process.env) {
-  const configured = Number(env.READYROUTE_DRIVER_HELP_ANSWER_MEMORY_AUDIT_RATE);
-  if (!Number.isFinite(configured)) return 0;
-  return Math.min(Math.max(configured, 0), 1);
-}
-
-function answerMemoryInterpretationAgrees(memory, interpretation) {
-  return Boolean(memory && interpretation
-    && memory.knowledge_id === interpretation.knowledge_id
-    && memory.response_mode === interpretation.decision
-    && String(memory.answer_pattern_id || '') === String(interpretation.answer_pattern_id || '')
-    && String(memory.clarification_requirement || '') === String(interpretation.clarification_requirement || ''));
 }
 
 function isAnswerMemoryEligibleQuestion(question, context = {}) {
@@ -625,91 +611,6 @@ function applyAiInterpretation(interpretation, question, records, baseDecision) 
   };
 }
 
-function buildControlledInterpretationFallback(question, records, baseDecision) {
-  const normalized = normalizeDriverQuestion(question);
-  const verbalReleaseClaimOnSignaturePackage = (
-    /\bsignature required\b|\b(?:asr|dsr|isr)\b/.test(normalized)
-    && /\b(?:customer|recipient)\b/.test(normalized)
-    && /\bshipper\b/.test(normalized)
-    && /\b(?:leave|release|no signature|without signature)\b/.test(normalized)
-  );
-  if (verbalReleaseClaimOnSignaturePackage) {
-    const record = selectCanonicalRecordVersions(records).find((item) => (
-      item.knowledge_id === 'KNO-DEL-SHIPPER-RELEASE-001'
-    ));
-    const patternIndex = (record?.driver_question_patterns || []).findIndex((pattern) => (
-      /customer statement is not shipper-release authorization/i.test(
-        pattern?.answer_override?.direct_answer || ''
-      )
-    ));
-    return applyAiInterpretation({
-      knowledge_id: 'KNO-DEL-SHIPPER-RELEASE-001',
-      decision: 'ANSWER',
-      answer_pattern_id: patternIndex >= 0
-        ? `KNO-DEL-SHIPPER-RELEASE-001::${patternIndex}`
-        : null,
-      clarification_requirement: null,
-      confidence: 1
-    }, question, records, baseDecision);
-  }
-
-  const genericSignature = (
-    (
-      /\bsignature (?:required )?(?:package|pkg)\b|\bsig (?:package|pkg)\b/.test(normalized)
-      || /\b(?:package|pkg)\b.*\bsignature\b/.test(normalized)
-    )
-    && !/\b(?:asr|dsr|isr)\b/.test(normalized)
-  );
-  if (genericSignature) {
-    return applyAiInterpretation({
-      knowledge_id: 'KNO-DEL-SIG-DSR-001',
-      decision: 'CLARIFY',
-      answer_pattern_id: null,
-      clarification_requirement: 'What signature service does FORGE show?',
-      confidence: 1
-    }, question, records, baseDecision);
-  }
-
-  const deliveryPhoto = (
-    /\b(?:photo|picture)\b/.test(normalized)
-    && /\bdeliver(?:y|ed)?\b/.test(normalized)
-    && !/\b(?:record|recording|video|film|filming|surveillance)\b/.test(normalized)
-  );
-  if (deliveryPhoto) {
-    return applyAiInterpretation({
-      knowledge_id: 'KNO-DEL-PPOD-001',
-      decision: 'CLARIFY',
-      answer_pattern_id: null,
-      clarification_requirement: 'Is this a completed delivery photo or an unsuccessful-attempt photo?',
-      confidence: 1
-    }, question, records, baseDecision);
-  }
-
-  const closedPickupWithZeroPackages = (
-    /\bpickup\b/.test(normalized)
-    && /\b(?:closed|locked)\b/.test(normalized)
-    && /\b(?:zero|no|nothing) packages?\b/.test(normalized)
-  );
-  if (closedPickupWithZeroPackages) {
-    const record = selectCanonicalRecordVersions(records).find((item) => (
-      item.knowledge_id === 'KNO-PUP-CANCELED-001'
-    ));
-    const patternIndex = (record?.driver_question_patterns || []).findIndex((pattern) => (
-      pattern?.answer_override?.direct_answer
-      && /Use Code 11 because you attempted the pickup/i.test(pattern.answer_override.direct_answer)
-    ));
-    return applyAiInterpretation({
-      knowledge_id: 'KNO-PUP-CANCELED-001',
-      decision: 'ANSWER',
-      answer_pattern_id: patternIndex >= 0 ? `KNO-PUP-CANCELED-001::${patternIndex}` : null,
-      clarification_requirement: null,
-      confidence: 1
-    }, question, records, baseDecision);
-  }
-
-  return null;
-}
-
 function buildInterpretationResult({
   status,
   baseDecision,
@@ -721,8 +622,11 @@ function buildInterpretationResult({
   const deterministicKnowledgeId = baseDecision.selected_records?.[0]?.knowledge_id
     || baseDecision.candidates?.[0]?.knowledge_id
     || null;
+  const providerModel = providerMetadata?.provider_model
+    || process.env.READYROUTE_DRIVER_HELP_MODEL
+    || null;
   const providerUsage = providerMetadata?.usage
-    ? estimateUsageCost(process.env.READYROUTE_DRIVER_HELP_MODEL, providerMetadata.usage)
+    ? estimateUsageCost(providerModel, providerMetadata.usage)
     : null;
   return {
     status,
@@ -743,7 +647,7 @@ function buildInterpretationResult({
     latency_ms: Number.isFinite(latencyMs) ? Math.max(0, latencyMs) : null,
     candidate_count: candidateRecords.length,
     candidate_knowledge_ids: candidateRecords.map((record) => record.knowledge_id),
-    provider_model: providerUsage ? process.env.READYROUTE_DRIVER_HELP_MODEL : null,
+    provider_model: providerUsage ? providerModel : null,
     provider_response_id: providerMetadata?.response_id || null,
     provider_request_id: providerMetadata?.request_id || null,
     usage: providerUsage
@@ -1223,50 +1127,8 @@ function createDriverHelpService({
   supabase = defaultSupabase,
   now = () => new Date(),
   aiInterpreter = createDriverHelpAiInterpreter(),
-  aiComposer = createDriverHelpAiComposer(),
-  aiInterpretationMode = resolveDriverHelpAiInterpretationMode(),
-  answerMemoryAuditRate = resolveAnswerMemoryAuditRate(),
-  random = Math.random
+  aiInterpretationMode = resolveDriverHelpAiInterpretationMode()
 } = {}) {
-  async function loadActiveAnswerMemory(question, records, context = {}) {
-    if (!isAnswerMemoryEligibleQuestion(question, context)) return null;
-    const table = supabase.from('driver_help_answer_memory');
-    if (!table || typeof table.select !== 'function') return null;
-
-    const routeKey = answerMemoryRouteKey(question);
-    const { data, error } = await table
-      .select('route_key, knowledge_id, knowledge_version, response_mode, answer_pattern_id, clarification_requirement, interpreted_facts, risk_tier, status, agreement_count')
-      .eq('route_key', routeKey)
-      .eq('status', 'ACTIVE')
-      .maybeSingle();
-    if (error) {
-      if (isMissingTableError(error)) return null;
-      throw error;
-    }
-    if (!data) return null;
-
-    const currentRecord = selectCanonicalRecordVersions(records).find((record) => (
-      record.knowledge_id === data.knowledge_id
-      && record.version === data.knowledge_version
-      && isProductionEligibleRecord(record)
-      && !isReferenceRecord(record)
-    ));
-    if (!currentRecord) return null;
-
-    return {
-      ...data,
-      route_key: routeKey,
-      interpretation: {
-        knowledge_id: data.knowledge_id,
-        decision: data.response_mode,
-        answer_pattern_id: data.answer_pattern_id || null,
-        clarification_requirement: data.clarification_requirement || null,
-        facts: data.interpreted_facts || {},
-        confidence: 1
-      }
-    };
-  }
-
   async function observeAnswerMemory({ question, context, interpretation }) {
     if (!interpretation || !isAnswerMemoryEligibleQuestion(question, context)) return null;
     if (!['ANSWER', 'CLARIFY'].includes(interpretation.decision)) return null;
@@ -1291,23 +1153,6 @@ function createDriverHelpService({
       throw error;
     }
     return data || null;
-  }
-
-  async function recordAnswerMemoryReuse(routeKey) {
-    if (!routeKey || !supabase || typeof supabase.rpc !== 'function') return;
-    const { error } = await supabase.rpc('record_driver_help_answer_memory_reuse', {
-      p_route_key: routeKey
-    });
-    if (error && !isMissingTableError(error)) throw error;
-  }
-
-  async function recordAnswerMemoryAudit(routeKey, outcome) {
-    if (!routeKey || !supabase || typeof supabase.rpc !== 'function') return;
-    const { error } = await supabase.rpc('record_driver_help_answer_memory_audit', {
-      p_route_key: routeKey,
-      p_outcome: outcome
-    });
-    if (error && !isMissingTableError(error)) throw error;
   }
 
   async function loadKnowledgeRecords() {
@@ -1550,44 +1395,7 @@ function createDriverHelpService({
     let validatedAiInterpretation = null;
     const aiFacingQuestion = buildAiFacingQuestion(resolvedQuestion, decisionContext);
     const requestIntent = isGlossaryQuestion(resolvedQuestion) ? 'DEFINITION' : 'OPERATIONAL_GUIDANCE';
-    const activeMemory = effectiveAiInterpretationMode !== 'ACTIVE'
-      && !workflowDecision && !lockedDecision && !selectedClarificationRecord && !referenceDecision
-      ? await loadActiveAnswerMemory(question, records, sessionState.context)
-      : null;
-    let memoryRouteAccepted = Boolean(activeMemory);
-    if (activeMemory) {
-      interpretedDecision = applyAiInterpretation(
-        activeMemory.interpretation,
-        resolvedQuestion,
-        records,
-        baseDecision
-      );
-      if (interpretedDecision) {
-        interpretationMode = 'LEARNED_ROUTE';
-        interpretationConfidence = 1;
-        interpretationResult = {
-          status: 'VALID',
-          proposed_knowledge_id: activeMemory.knowledge_id,
-          proposed_response_mode: activeMemory.response_mode,
-          proposed_answer_pattern_id: activeMemory.answer_pattern_id || null,
-          proposed_clarification_requirement: activeMemory.clarification_requirement || null,
-          facts: activeMemory.interpreted_facts || {},
-          confidence: 1,
-          memory_route_key: activeMemory.route_key,
-          memory_agreement_count: activeMemory.agreement_count,
-          memory_risk_tier: activeMemory.risk_tier,
-          ai_bypassed: true,
-          usage: {
-            input_tokens: 0,
-            cached_input_tokens: 0,
-            output_tokens: 0,
-            reasoning_tokens: 0,
-            total_tokens: 0,
-            estimated_cost_usd: 0
-          }
-        };
-      }
-    }
+    const knownUnapprovedBoundary = matchesKnownUnapprovedQuestion(resolvedQuestion);
     const aiCandidates = buildAiCandidateRecords(records, {
       driverQuestion: resolvedQuestion,
       context: decisionContext,
@@ -1597,126 +1405,42 @@ function createDriverHelpService({
       ]
     });
     const requiresGroundedAi = Boolean(
-      effectiveAiInterpretationMode === 'ACTIVE'
-      && !selectedClarificationRecord
-      && !referenceDecision
-      && !workflowDecision
-      && !lockedDecision
-      && !isProtectedInterpretationRequest(resolvedQuestion)
+      knownUnapprovedBoundary
+      || (
+        !selectedClarificationRecord
+        && !referenceDecision
+        && !workflowDecision
+        && !lockedDecision
+        && !isProtectedInterpretationRequest(resolvedQuestion)
+      )
     );
-    const shouldAuditMemory = Boolean(
-      activeMemory
-      && interpretedDecision
-      && aiInterpreter
-      && effectiveAiInterpretationMode === 'ACTIVE'
-      && aiCandidates.length
-      && Number(answerMemoryAuditRate) > 0
-      && persist
-      && random() < Number(answerMemoryAuditRate)
-    );
-    if (shouldAuditMemory) {
-      const auditStartedAt = Date.now();
-      try {
-        const rawAudit = await aiInterpreter({
-          safety_identifier: buildAiSafetyIdentifier(accountId, actorType, actorId),
-          driver_question: redactTextForAi(aiFacingQuestion),
-          conversation_context: {
-            ...redactConversationContextForAi({
-              original_situation: decisionContext.situation_question || null,
-              clarification_history: decisionContext.clarification_history || [],
-              previous_question: decisionContext.last_question || null,
-              pending_clarification_prompt: decisionContext.pending_clarification_prompt || null,
-              previous_knowledge_ids: decisionContext.knowledge_ids || [],
-              interpreted_facts: decisionContext.interpretation_facts || null
-            }),
-            request_intent: requestIntent
-          },
-          candidate_records: aiCandidates
-        });
-        const auditInterpretation = validateInterpretation(
-          rawAudit,
-          aiCandidates,
-          undefined,
-          resolvedQuestion
-        );
-        if (!auditInterpretation) {
-          await recordAnswerMemoryAudit(activeMemory.route_key, 'ERROR');
-          interpretationResult = {
-            ...interpretationResult,
-            ai_bypassed: false,
-            memory_audit: { outcome: 'ERROR', latency_ms: Date.now() - auditStartedAt }
-          };
-        } else if (answerMemoryInterpretationAgrees(activeMemory, auditInterpretation)) {
-          await recordAnswerMemoryAudit(activeMemory.route_key, 'AGREE');
-          interpretationResult = {
-            ...interpretationResult,
-            ai_bypassed: false,
-            memory_audit: {
-              outcome: 'AGREE',
-              latency_ms: Date.now() - auditStartedAt,
-              provider_model: rawAudit?.provider_metadata?.provider_model || null
-            },
-            usage: rawAudit?.provider_metadata?.usage || interpretationResult.usage
-          };
-        } else {
-          await recordAnswerMemoryAudit(activeMemory.route_key, 'DISAGREE');
-          memoryRouteAccepted = false;
-          const selectedCandidate = aiCandidates.find((candidate) => (
-            candidate.knowledge_id === auditInterpretation.knowledge_id
-          ));
-          validatedAiInterpretation = {
-            ...auditInterpretation,
-            knowledge_version: selectedCandidate?.version || null
-          };
-          interpretedDecision = applyAiInterpretation(
-            auditInterpretation,
-            resolvedQuestion,
-            records,
-            baseDecision
-          );
-          interpretationMode = interpretedDecision ? 'GROUNDED_AI' : 'DETERMINISTIC_FALLBACK';
-          interpretationConfidence = interpretedDecision ? auditInterpretation.confidence : null;
-          interpretationResult = {
-            ...buildInterpretationResult({
-              status: interpretedDecision ? 'VALID' : 'REJECTED',
-              baseDecision,
-              interpretation: interpretedDecision ? auditInterpretation : null,
-              latencyMs: Date.now() - auditStartedAt,
-              providerMetadata: rawAudit?.provider_metadata || null,
-              candidateRecords: aiCandidates
-            }),
-            memory_audit: {
-              outcome: 'DISAGREE',
-              suspended_route_key: activeMemory.route_key,
-              remembered_knowledge_id: activeMemory.knowledge_id
-            }
-          };
-        }
-      } catch (_error) {
-        await recordAnswerMemoryAudit(activeMemory.route_key, 'ERROR');
-        interpretationResult = {
-          ...interpretationResult,
-          ai_bypassed: false,
-          memory_audit: { outcome: 'ERROR', latency_ms: Date.now() - auditStartedAt }
-        };
-      }
-    }
     const shouldInterpret = Boolean(
       aiInterpreter
-      && ['SHADOW', 'ACTIVE'].includes(effectiveAiInterpretationMode)
-      && !selectedClarificationRecord
-      && !referenceDecision
-      && !workflowDecision
-      && !lockedDecision
-      && !interpretedDecision
-      && !shouldAuditMemory
-      && !isProtectedInterpretationRequest(resolvedQuestion)
+      && effectiveAiInterpretationMode === 'ACTIVE'
+      && requiresGroundedAi
+      && !knownUnapprovedBoundary
       && aiCandidates.length
     );
-    if (shouldInterpret) {
+    if (knownUnapprovedBoundary) {
+      interpretationMode = 'AI_FAIL_CLOSED';
+      interpretationResult = {
+        ...buildInterpretationResult({
+          status: 'KNOWN_UNAPPROVED',
+          baseDecision,
+          candidateRecords: aiCandidates
+        }),
+        ai: {
+          status: 'KNOWN_UNAPPROVED',
+          attempt_count: 0,
+          call_count: 0,
+          retried: false,
+          attempts: []
+        }
+      };
+    } else if (shouldInterpret) {
       const interpretationStartedAt = Date.now();
       try {
-        const rawInterpretation = await aiInterpreter({
+        const interpretationRequest = {
           safety_identifier: buildAiSafetyIdentifier(accountId, actorType, actorId),
           driver_question: redactTextForAi(aiFacingQuestion),
           conversation_context: {
@@ -1731,13 +1455,20 @@ function createDriverHelpService({
             request_intent: requestIntent
           },
           candidate_records: aiCandidates
+        };
+        const guarded = await runGuardedInterpretation({
+          interpreter: aiInterpreter,
+          request: interpretationRequest,
+          validate: (raw) => validateInterpretation(
+            raw,
+            aiCandidates,
+            undefined,
+            resolvedQuestion
+          ),
+          maximumAttempts: 2,
+          defaultModel: process.env.READYROUTE_DRIVER_HELP_MODEL || null
         });
-        const interpretation = validateInterpretation(
-          rawInterpretation,
-          aiCandidates,
-          undefined,
-          resolvedQuestion
-        );
+        const interpretation = guarded.interpretation;
         if (interpretation) {
           const selectedCandidate = aiCandidates.find((candidate) => (
             candidate.knowledge_id === interpretation.knowledge_id
@@ -1752,62 +1483,90 @@ function createDriverHelpService({
             records,
             baseDecision
           );
-          interpretationMode = interpretedDecision
-            ? (effectiveAiInterpretationMode === 'SHADOW' ? 'AI_SHADOW' : 'GROUNDED_AI')
-            : (effectiveAiInterpretationMode === 'SHADOW' ? 'AI_SHADOW_FALLBACK' : 'DETERMINISTIC_FALLBACK');
+          interpretationMode = interpretedDecision ? 'GROUNDED_AI' : 'AI_FAIL_CLOSED';
           interpretationConfidence = interpretedDecision ? interpretation.confidence : null;
-          interpretationResult = buildInterpretationResult({
-            status: interpretedDecision ? 'VALID' : 'REJECTED',
-            baseDecision,
-            interpretation: interpretedDecision ? interpretation : null,
-            latencyMs: Date.now() - interpretationStartedAt,
-            providerMetadata: rawInterpretation?.provider_metadata || null,
-            candidateRecords: aiCandidates
-          });
+          interpretationResult = {
+            ...buildInterpretationResult({
+              status: interpretedDecision ? 'VALID' : 'REJECTED',
+              baseDecision,
+              interpretation: interpretedDecision ? interpretation : null,
+              latencyMs: Date.now() - interpretationStartedAt,
+              providerMetadata: guarded.accepted_provider_metadata,
+              candidateRecords: aiCandidates
+            }),
+            usage: guarded.usage,
+            ai: {
+              status: interpretedDecision ? 'GROUNDED' : 'REJECTED',
+              attempt_count: guarded.attempts.length,
+              call_count: guarded.call_count,
+              retried: guarded.attempts.length > 1,
+              attempts: guarded.attempts
+            }
+          };
         } else {
-          interpretationMode = effectiveAiInterpretationMode === 'SHADOW'
-            ? 'AI_SHADOW_FALLBACK'
-            : 'DETERMINISTIC_FALLBACK';
-          interpretationResult = buildInterpretationResult({
-            status: 'DECLINED_OR_REJECTED',
-            baseDecision,
-            latencyMs: Date.now() - interpretationStartedAt,
-            providerMetadata: rawInterpretation?.provider_metadata || null,
-            candidateRecords: aiCandidates
-          });
+          interpretationMode = 'AI_FAIL_CLOSED';
+          interpretationResult = {
+            ...buildInterpretationResult({
+              status: guarded.status,
+              baseDecision,
+              latencyMs: Date.now() - interpretationStartedAt,
+              candidateRecords: aiCandidates
+            }),
+            usage: guarded.usage,
+            ai: {
+              status: guarded.status,
+              attempt_count: guarded.attempts.length,
+              call_count: guarded.call_count,
+              retried: guarded.attempts.length > 1,
+              attempts: guarded.attempts
+            }
+          };
         }
       } catch (_error) {
-        interpretationMode = effectiveAiInterpretationMode === 'SHADOW'
-          ? 'AI_SHADOW_FALLBACK'
-          : 'DETERMINISTIC_FALLBACK';
-        interpretationResult = buildInterpretationResult({
-          status: 'ERROR',
-          baseDecision,
-          latencyMs: Date.now() - interpretationStartedAt,
-          candidateRecords: aiCandidates
-        });
+        interpretationMode = 'AI_FAIL_CLOSED';
+        interpretationResult = {
+          ...buildInterpretationResult({
+            status: 'ERROR',
+            baseDecision,
+            latencyMs: Date.now() - interpretationStartedAt,
+            candidateRecords: aiCandidates
+          }),
+          ai: {
+            status: 'ERROR',
+            attempt_count: 0,
+            call_count: 0,
+            retried: false,
+            attempts: []
+          }
+        };
       }
+    } else if (requiresGroundedAi) {
+      const unavailableStatus = aiCandidates.length ? 'UNAVAILABLE' : 'NO_CANDIDATES';
+      interpretationMode = 'AI_FAIL_CLOSED';
+      interpretationResult = {
+        ...buildInterpretationResult({
+          status: unavailableStatus,
+          baseDecision,
+          candidateRecords: aiCandidates
+        }),
+        ai: {
+          status: unavailableStatus,
+          attempt_count: 0,
+          call_count: 0,
+          retried: false,
+          attempts: []
+        }
+      };
     }
 
-    // AI may select a published record and tailor its concise presentation.
-    // Published record content remains the sole authority for every answer,
-    // step, code, warning, restriction, and escalation.
-    const controlledFallbackDecision = !workflowDecision
-      && !lockedDecision
-      && effectiveAiInterpretationMode === 'ACTIVE'
-      && !interpretedDecision
-      ? buildControlledInterpretationFallback(resolvedQuestion, records, baseDecision)
-      : null;
-    if (controlledFallbackDecision) interpretationMode = 'CONTROLLED_FALLBACK';
+    // AI may select a published record. The response is rendered only from
+    // that canonical record; AI never authors or expands operational content.
     const aiFailClosedDecision = requiresGroundedAi
       && !interpretedDecision
-      && !controlledFallbackDecision
       ? buildAiFailClosedDecision(baseDecision)
       : null;
     if (aiFailClosedDecision) interpretationMode = 'AI_FAIL_CLOSED';
-    const interpretedOrBaseDecision = !workflowDecision && !lockedDecision && effectiveAiInterpretationMode === 'ACTIVE'
-      ? (interpretedDecision || controlledFallbackDecision || aiFailClosedDecision || baseDecision)
-      : baseDecision;
+    const interpretedOrBaseDecision = interpretedDecision || aiFailClosedDecision || baseDecision;
     const actionableBaseDecision = {
       ...interpretedOrBaseDecision,
       clarification_options: interpretedOrBaseDecision.response_mode === 'CLARIFY'
@@ -1835,59 +1594,9 @@ function createDriverHelpService({
       interpretation_result: interpretationResult
     };
 
-    const shouldCompose = Boolean(
-      allowAiProcessing
-      && aiComposer
-      && effectiveAiInterpretationMode === 'ACTIVE'
-      && !lockedDecision
-      && !workflowDecision
-      && !referenceDecision
-      && !selectedClarificationRecord
-      && decision.response_mode === 'ANSWER'
-      && decision.selected_records?.length
-      && ['GROUNDED_AI', 'LEARNED_ROUTE'].includes(interpretationMode)
-    );
-    if (shouldCompose) {
-      decision = await composeGroundedDecision(decision, aiComposer, {
-        safetyIdentifier: buildAiSafetyIdentifier(accountId, actorType, actorId),
-        driverQuestion: redactTextForAi(resolvedQuestion),
-        conversationContext: redactConversationContextForAi({
-          original_situation: decisionContext.situation_question || null,
-          clarification_history: decisionContext.clarification_history || [],
-          previous_question: decisionContext.last_question || null,
-          pending_clarification_prompt: decisionContext.pending_clarification_prompt || null,
-          previous_knowledge_ids: decisionContext.knowledge_ids || [],
-          interpreted_facts: decisionContext.interpretation_facts || null
-        })
-      });
-      const compositionProvider = decision.composition_validation?.provider_metadata || null;
-      if (compositionProvider) {
-        const { provider_metadata: _providerMetadata, ...compositionValidation } = decision.composition_validation;
-        const compositionUsage = compositionProvider.usage
-          ? estimateUsageCost(process.env.READYROUTE_DRIVER_HELP_MODEL, compositionProvider.usage)
-          : null;
-        decision = {
-          ...decision,
-          interpretation_result: {
-            ...(decision.interpretation_result || {}),
-            composition_usage: compositionUsage
-          },
-          composition_validation: {
-            ...compositionValidation,
-            provider_model: compositionUsage ? process.env.READYROUTE_DRIVER_HELP_MODEL : null,
-            provider_response_id: compositionProvider.response_id || null,
-            provider_request_id: compositionProvider.request_id || null,
-            usage: compositionUsage
-          }
-        };
-      }
-    }
-    if (persist && activeMemory && memoryRouteAccepted && interpretedDecision && decision.response_mode !== 'ESCALATE') {
-      await recordAnswerMemoryReuse(activeMemory.route_key);
-    } else if (
+    if (
       persist
       && validatedAiInterpretation
-      && !activeMemory
       && interpretationMode === 'GROUNDED_AI'
       && decision.response_mode !== 'ESCALATE'
       && !sessionState.context.pending_clarification_prompt
@@ -2013,7 +1722,6 @@ function createDriverHelpService({
 module.exports = {
   answerMemoryRiskTier,
   answerMemoryRouteKey,
-  answerMemoryInterpretationAgrees,
   applyAiInterpretation,
   applyClarificationAnswerToContext,
   buildAiFacingQuestion,
@@ -2030,10 +1738,10 @@ module.exports = {
   filterActionableClarificationOptions,
   isMissingTableError,
   isGlossaryQuestion,
+  matchesKnownUnapprovedQuestion,
   isClarificationAnswerSufficient,
   isAnswerMemoryEligibleQuestion,
   isRepeatedClarification,
   resolveClarificationFollowUp,
-  resolveAnswerMemoryAuditRate,
   resolveClarificationSelection
 };
