@@ -255,7 +255,7 @@ function createDriverHelpAiInterpreter(options = {}) {
   if (resolveDriverHelpAiInterpretationMode(env) === 'OFF') return null;
 
   const apiKey = String(env.OPENAI_API_KEY || '').trim();
-  const model = String(env.READYROUTE_DRIVER_HELP_MODEL || '').trim();
+  const model = String(options.model || env.READYROUTE_DRIVER_HELP_MODEL || '').trim();
   if (!apiKey || !model) return null;
 
   const fetchImpl = options.fetchImpl || global.fetch;
@@ -266,6 +266,12 @@ function createDriverHelpAiInterpreter(options = {}) {
   const timeoutMs = Number.isFinite(configuredTimeout) && configuredTimeout > 0
     ? configuredTimeout
     : DEFAULT_TIMEOUT_MS;
+  const configuredReasoningEffort = String(
+    env.READYROUTE_DRIVER_HELP_AI_REASONING_EFFORT || 'low'
+  ).trim().toLowerCase();
+  const reasoningEffort = ['none', 'low', 'medium', 'high', 'xhigh', 'max'].includes(
+    configuredReasoningEffort
+  ) ? configuredReasoningEffort : 'low';
 
   return async function interpretDriverQuestion(request) {
     const candidates = Array.isArray(request?.candidate_records) ? request.candidate_records : [];
@@ -293,7 +299,7 @@ function createDriverHelpAiInterpreter(options = {}) {
           model,
           ...(safetyIdentifier ? { safety_identifier: safetyIdentifier } : {}),
           reasoning: {
-            effort: 'low',
+            effort: reasoningEffort,
             context: 'current_turn'
           },
           input: [
@@ -349,6 +355,7 @@ function createDriverHelpAiInterpreter(options = {}) {
       if (!text) throw new Error('Driver-help interpretation returned no structured output');
       const payload = JSON.parse(text);
       payload.provider_metadata = {
+        provider_model: model,
         response_id: body.id || null,
         request_id: response.headers?.get?.('x-request-id') || null,
         usage: body.usage || null

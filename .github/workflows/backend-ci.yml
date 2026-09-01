@@ -86,8 +86,7 @@ jobs:
           JWT_SECRET: test-secret
         run: npm run test:unit
 
-      - name: Run Ready Route Answers stability gate
-        if: needs.changes.outputs.knowledge == 'true'
+      - name: Run mandatory Ready Route Answers stability gate
         working-directory: .
         env:
           SUPABASE_URL: https://example.supabase.co

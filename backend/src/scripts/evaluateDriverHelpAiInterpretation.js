@@ -92,6 +92,20 @@ async function main() {
   let evaluationCases = Number.isInteger(configuredMaxCases) && configuredMaxCases > 0
     ? filteredEvaluationCases.slice(0, configuredMaxCases)
     : filteredEvaluationCases;
+  const includeSemanticVariations = String(
+    process.env.READYROUTE_AI_EVALUATION_INCLUDE_VARIATIONS || ''
+  ).trim().toLowerCase() === 'true';
+  if (includeSemanticVariations) {
+    evaluationCases = evaluationCases.flatMap((testCase) => [
+      testCase,
+      ...(testCase.semantic_variations || []).map((utterance, index) => ({
+        ...testCase,
+        case_id: `${testCase.case_id}:SEM-${index + 1}`,
+        parent_case_id: testCase.case_id,
+        utterance
+      }))
+    ]);
+  }
   const retryReportPath = String(process.env.READYROUTE_AI_EVALUATION_RETRY_REPORT || '').trim();
   if (retryReportPath) {
     const previousReport = JSON.parse(fs.readFileSync(path.resolve(root, retryReportPath), 'utf8'));
@@ -243,6 +257,7 @@ async function main() {
     balance_before_usd: Number(process.env.READYROUTE_AI_BALANCE_BEFORE_USD) || null,
     retry_of_report: retryReportPath || null,
     case_id_filter: configuredCaseIds,
+    semantic_variations_included: includeSemanticVariations,
     minimum_request_interval_ms: minimumIntervalMs,
     total_cases: results.length,
     successful_api_responses: completedUsage.length,

@@ -3,6 +3,9 @@ const assert = require('node:assert/strict');
 const express = require('express');
 const request = require('supertest');
 
+process.env.SUPABASE_URL = process.env.SUPABASE_URL || 'https://example.supabase.co';
+process.env.SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_KEY || 'test-service-role-key';
+
 const { createManagerDriverHelpRouter } = require('./managerDriverHelp');
 
 class QueryBuilder {
@@ -25,7 +28,8 @@ test('GET /manager/driver-help/overview returns scoped operational-help metrics'
     driver_help_interactions: [
       { id: '1', response_mode: 'ANSWER', selected_knowledge_ids: ['KNO-1'], response_latency_ms: 100, canonical_trace: [{ category_paths: ['TAX-DELIVERY'] }], interpretation_mode: 'AI_SHADOW', interpretation_result: { status: 'VALID', record_agreement: true, response_mode_agreement: true, usage: { input_tokens: 100, cached_input_tokens: 20, output_tokens: 10, reasoning_tokens: 5, total_tokens: 110, estimated_cost_usd: 0.001 } } },
       { id: '2', response_mode: 'ESCALATE', selected_knowledge_ids: [], response_latency_ms: 200, interpretation_mode: 'AI_SHADOW', interpretation_result: { status: 'VALID', record_agreement: false, response_mode_agreement: false, usage: { input_tokens: 200, cached_input_tokens: 40, output_tokens: 20, reasoning_tokens: 10, total_tokens: 220, estimated_cost_usd: 0.002 } } },
-      { id: '3', response_mode: 'CLARIFY', selected_knowledge_ids: [], response_latency_ms: 300, interpretation_mode: 'AI_SHADOW_FALLBACK', interpretation_result: { status: 'ERROR' } }
+      { id: '3', response_mode: 'CLARIFY', selected_knowledge_ids: [], response_latency_ms: 300, interpretation_mode: 'AI_SHADOW_FALLBACK', interpretation_result: { status: 'ERROR' } },
+      { id: '4', response_mode: 'ANSWER', selected_knowledge_ids: ['KNO-2'], response_latency_ms: 400, canonical_trace: [{ category_paths: ['TAX-PICKUP'] }], interpretation_mode: 'GROUNDED_AI', interpretation_result: { status: 'VALID', ai: { status: 'GROUNDED', retried: true, call_count: 2 } } }
     ],
     driver_help_unanswered_questions: [{ id: 'u1', status: 'open' }],
     driver_help_feedback: [{ id: 'f1', rating: 'down' }, { id: 'f2', rating: 'up' }],
@@ -42,21 +46,28 @@ test('GET /manager/driver-help/overview returns scoped operational-help metrics'
   const response = await request(app).get('/manager/driver-help/overview');
   assert.equal(response.status, 200);
   assert.deepEqual(response.body.metrics, {
-    total_questions: 3,
+    total_questions: 4,
     active_drivers: 2,
-    questions_per_active_driver: 1.5,
-    approved_answers: 1,
+    questions_per_active_driver: 2,
+    approved_answers: 2,
     clarifications: 1,
     escalations: 1,
     feedback_count: 2,
     helpful_feedback: 1,
     negative_feedback: 1,
-    feedback_response_rate: 2 / 3,
+    feedback_response_rate: 1 / 2,
     helpful_rate: 1 / 2,
-    canonical_match_rate: 1 / 3,
-    no_verified_answer_rate: 1 / 3,
-    average_response_latency_ms: 200,
+    canonical_match_rate: 1 / 2,
+    no_verified_answer_rate: 1 / 4,
+    average_response_latency_ms: 250,
+    p95_response_latency_ms: 400,
     retrieval_failures: 1,
+    ai_interpretation_runs: 1,
+    ai_interpretation_grounded: 1,
+    ai_interpretation_failures: 0,
+    ai_interpretation_retries: 1,
+    ai_interpretation_calls: 2,
+    ai_interpretation_success_rate: 1,
     ai_shadow_runs: 3,
     ai_shadow_valid_results: 2,
     ai_shadow_errors: 1,
@@ -70,7 +81,7 @@ test('GET /manager/driver-help/overview returns scoped operational-help metrics'
     },
     ai_shadow_record_agreement_rate: 1 / 2,
     ai_shadow_response_mode_agreement_rate: 1 / 2,
-    questions_by_category: { 'TAX-DELIVERY': 1, UNMATCHED: 2 }
+    questions_by_category: { 'TAX-DELIVERY': 1, UNMATCHED: 2, 'TAX-PICKUP': 1 }
   });
   assert.equal(response.body.unanswered_questions.length, 1);
 });

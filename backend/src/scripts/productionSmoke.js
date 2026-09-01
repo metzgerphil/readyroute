@@ -271,7 +271,10 @@ async function main() {
   console.log(`Smoke target backend: ${backendUrl}`);
   console.log(`Smoke target portal: ${portalUrl}`);
 
-  await requestJson(`${backendUrl}/health`);
+  const health = await requestJson(`${backendUrl}/health`);
+  assert(health?.schema?.compatible === true, 'Backend schema is not compatible');
+  assert(health?.launch?.modes?.rra_answer_policy === 'quality_first', 'RRA quality-first policy is not active');
+  assert(health?.launch?.capabilities?.driver_help_ai_interpretation === true, 'RRA grounded AI interpretation is not active');
   console.log('ok backend health');
 
   await requestOk(`${portalUrl}/login`, { method: 'HEAD' });
@@ -301,6 +304,36 @@ async function main() {
   assert(login?.token, 'Manager login did not return a token');
   const authHeaders = { Authorization: `Bearer ${login.token}` };
   console.log('ok manager login');
+
+  const rraVerification = await requestJson(`${backendUrl}/manager/driver-help/query`, {
+    method: 'POST',
+    headers: authHeaders,
+    body: JSON.stringify({
+      question: 'My scanner battery is almost empty while I am still delivering. How should I handle it?'
+    })
+  });
+  assert(rraVerification?.response_mode === 'ANSWER', 'RRA quality smoke did not return the approved answer');
+  assert(rraVerification?.interpretation_mode === 'GROUNDED_AI', 'RRA quality smoke was not grounded through AI interpretation');
+  assert(rraVerification?.interpretation_result?.ai?.status === 'GROUNDED', 'RRA quality smoke did not report guarded grounding');
+  assert(
+    (rraVerification?.trace || []).some((entry) => entry.knowledge_id === 'KNO-FORGE-SCANNER-LOW-BATTERY-001'),
+    'RRA quality smoke selected the wrong canonical record'
+  );
+  console.log('ok RRA Luna interpretation and canonical grounding');
+
+  const rraFailClosedBoundary = await requestJson(`${backendUrl}/manager/driver-help/query`, {
+    method: 'POST',
+    headers: authHeaders,
+    body: JSON.stringify({
+      question: 'Customer recording me on camera, what do I do?'
+    })
+  });
+  assert(rraFailClosedBoundary?.response_mode === 'ESCALATE', 'RRA unresolved boundary did not escalate');
+  assert(rraFailClosedBoundary?.answer == null, 'RRA unresolved boundary returned an operational answer');
+  assert(rraFailClosedBoundary?.interpretation_mode === 'AI_FAIL_CLOSED', 'RRA unresolved boundary did not fail closed');
+  assert(rraFailClosedBoundary?.interpretation_result?.ai?.status === 'KNOWN_UNAPPROVED', 'RRA unresolved boundary was not recognized');
+  assert((rraFailClosedBoundary?.trace || []).length === 0, 'RRA unresolved boundary leaked an adjacent knowledge record');
+  console.log('ok RRA known-unapproved boundary fails closed without adjacent fallback');
 
   await requestJson(`${backendUrl}/manager/driver-access`, {
     headers: authHeaders

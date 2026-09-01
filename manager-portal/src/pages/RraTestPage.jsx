@@ -253,9 +253,9 @@ export default function RraTestPage({ apiBase = '/manager/driver-help', allowFee
           <section className="page-card rra-shadow-card">
             <div className="rra-card-kicker purple">Internal test only</div>
             <h2>Grounded AI interpretation</h2>
-            {['AI_SHADOW', 'GROUNDED_AI'].includes(result.interpretation_mode) ? (
+            {['AI_SHADOW', 'GROUNDED_AI', 'VERIFIED_GROUNDED_AI'].includes(result.interpretation_mode) ? (
               <dl className="rra-shadow-details">
-                <div><dt>Mode</dt><dd>{result.interpretation_mode === 'GROUNDED_AI' ? 'Active in test console' : 'Shadow only'}</dd></div>
+                <div><dt>Mode</dt><dd>{result.interpretation_mode === 'VERIFIED_GROUNDED_AI' ? 'Historical independent verification' : result.interpretation_mode === 'GROUNDED_AI' ? 'Luna selected an approved record' : 'Shadow only'}</dd></div>
                 <div><dt>Proposed record</dt><dd>{shadow.proposed_knowledge_id || 'None'}</dd></div>
                 <div><dt>Proposed result</dt><dd>{shadow.proposed_response_mode || 'None'}</dd></div>
                 <div><dt>Confidence</dt><dd>{percent(shadow.confidence)}</dd></div>
@@ -263,8 +263,8 @@ export default function RraTestPage({ apiBase = '/manager/driver-help', allowFee
                 <div><dt>Answer/clarify agreement</dt><dd className={shadow.response_mode_agreement ? 'match' : 'different'}>{shadow.response_mode_agreement ? 'Match' : 'Different'}</dd></div>
                 <div><dt>AI response time</dt><dd>{Number.isFinite(shadow.latency_ms) ? `${shadow.latency_ms} ms` : '—'}</dd></div>
               </dl>
-            ) : ['AI_SHADOW_FALLBACK', 'DETERMINISTIC_FALLBACK'].includes(result.interpretation_mode) ? (
-              <div className="rra-shadow-status warning">AI did not produce an active grounded selection. Ready Route used only a narrow deterministic rule where one was explicitly available.</div>
+            ) : ['AI_SHADOW_FALLBACK', 'DETERMINISTIC_FALLBACK', 'AI_FAIL_CLOSED'].includes(result.interpretation_mode) ? (
+              <div className="rra-shadow-status warning">AI did not produce a locally validated grounded selection. Ready Route failed closed instead of serving a weaker answer.</div>
             ) : (
               <div className="rra-shadow-status">This question matched an exact data-authored rule, so AI interpretation was not needed.</div>
             )}

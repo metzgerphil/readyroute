@@ -16,10 +16,28 @@ const {
   createDriverHelpService,
   filterActionableClarificationOptions,
   isGlossaryQuestion,
+  matchesKnownUnapprovedQuestion,
   isRepeatedClarification,
   resolveClarificationFollowUp,
   resolveClarificationSelection
 } = require('./driverHelp');
+
+test('known unresolved Vlad questions are forced to fail closed before AI selection', () => {
+  for (const question of [
+    'Smoke is coming from the van. What do I do?',
+    'I feel sick and dizzy while driving.',
+    'Power lines are down near the delivery.',
+    'My scanner froze during the route.',
+    'The customer wants me to leave the package with a stranger nearby.',
+    'Customer recording me on camera, what do I do?',
+    'A customer wants me to accept cash for shipping charges.',
+    'What does OP-201 mean?',
+    'What is a service cross?'
+  ]) assert.equal(matchesKnownUnapprovedQuestion(question), true, question);
+
+  assert.equal(matchesKnownUnapprovedQuestion('What does WA mean?'), false);
+  assert.equal(matchesKnownUnapprovedQuestion('My scanner battery is low.'), false);
+});
 
 test('reply framing is removed before a short follow-up is interpreted', () => {
   assert.equal(extractDriverUtterance('My answer is: Yes'), 'Yes');
@@ -259,6 +277,7 @@ function fakeSupabase(records = []) {
 
 function memorySupabase(records, memoryRoute) {
   const base = fakeSupabase(records);
+  base.memoryReads = 0;
   const originalFrom = base.from.bind(base);
   base.rpc = async (name, args) => {
     base.writes.push({ table: 'rpc', name, args });
@@ -268,6 +287,7 @@ function memorySupabase(records, memoryRoute) {
     if (table === 'driver_help_answer_memory') {
       return {
         select() {
+          base.memoryReads += 1;
           return filterChain({ data: memoryRoute, error: null });
         }
       };
@@ -364,8 +384,11 @@ test('active AI ignores answer memory and requires a fresh grounded interpretati
   assert.equal(aiCalls, 1);
   assert.match(aiQuestion, /What should I do\?/);
   assert.equal(response.interpretation_mode, 'GROUNDED_AI');
+  assert.equal(response.interpretation_result.ai.status, 'GROUNDED');
+  assert.equal(response.interpretation_result.ai.call_count, 1);
   assert.equal(response.trace[0].knowledge_id, record.knowledge_id);
   assert.match(response.answer, /Code 004/);
+  assert.equal(supabase.memoryReads, 0);
   assert.equal(supabase.writes.some((write) => write.name === 'record_driver_help_answer_memory_reuse'), false);
 });
 
@@ -429,6 +452,44 @@ test('an active AI refusal fails closed instead of serving an unrelated fuzzy re
   assert.equal(duplicateTracking.response_mode, 'ESCALATE');
   assert.equal(duplicateTracking.answer, null);
   assert.deepEqual(duplicateTracking.trace, []);
+});
+
+test('known unresolved Vlad questions bypass adjacent AI candidates and fail closed', async () => {
+  const mediaRecord = knowledgeRecord({
+    knowledge_id: 'KNO-COMMS-MEDIA-001',
+    canonical_situation: 'Recording on FedEx premises',
+    normalized_description: 'Unauthorized recording on FedEx property.',
+    driver_question_variants: ['Can I record at the station?'],
+    clarification_requirements: ['Is the recording on FedEx premises?']
+  });
+  let aiCalls = 0;
+  const service = createDriverHelpService({
+    supabase: fakeSupabase([mediaRecord]),
+    aiInterpretationMode: 'ACTIVE',
+    aiInterpreter: async () => {
+      aiCalls += 1;
+      return {
+        selection: 'SELECT',
+        knowledge_id: mediaRecord.knowledge_id,
+        decision: 'CLARIFY',
+        clarification_requirement: mediaRecord.clarification_requirements[0],
+        confidence: 0.99
+      };
+    }
+  });
+
+  const response = await service.answerQuestion({
+    accountId: '00000000-0000-0000-0000-000000000001',
+    driverId: '00000000-0000-0000-0000-000000000002',
+    question: 'Customer recording me on camera, what do I do?',
+    includeDiagnostics: true
+  });
+
+  assert.equal(aiCalls, 0);
+  assert.equal(response.response_mode, 'ESCALATE');
+  assert.equal(response.interpretation_mode, 'AI_FAIL_CLOSED');
+  assert.equal(response.interpretation_result.ai.status, 'KNOWN_UNAPPROVED');
+  assert.deepEqual(response.trace, []);
 });
 
 function referenceRecord(knowledgeId, conciseAnswer, canonicalSituation) {
@@ -826,7 +887,7 @@ test('grounded AI interpretation may select a record but the answer remains cano
   assert.equal(response.trace[0].interpretation_mode, 'GROUNDED_AI');
 });
 
-test('grounded AI composition tailors the direct response but preserves verified steps', async () => {
+test('grounded AI selection renders canonical content without a second AI composition call', async () => {
   const record = knowledgeRecord({
     clarification_requirements: [],
     required_procedure: [
@@ -835,36 +896,21 @@ test('grounded AI composition tailors the direct response but preserves verified
     ]
   });
   const supabase = fakeSupabase([record]);
-  let compositionRequest = null;
+  let interpretationCalls = 0;
   const service = createDriverHelpService({
     supabase,
     now: () => new Date(0),
     aiInterpretationMode: 'ACTIVE',
-    aiInterpreter: async () => ({
-      selection: 'SELECT',
-      knowledge_id: record.knowledge_id,
-      decision: 'ANSWER',
-      answer_pattern_id: null,
-      clarification_requirement: null,
-      facts: {},
-      confidence: 0.96
-    }),
-    aiComposer: async (request) => {
-      compositionRequest = request;
+    aiInterpreter: async () => {
+      interpretationCalls += 1;
       return {
-        selection: 'COMPOSED',
-        answer: 'Since you did not attempt the pickup, use Code 24.',
-        more_info: null,
-        answer_structure: null,
-        grounding: [{
-          output_path: 'answer',
-          knowledge_id: record.knowledge_id,
-          source_paths: ['concise_answer', 'required_procedure']
-        }],
-        provider_metadata: {
-          response_id: 'resp-composer-1',
-          usage: { input_tokens: 100, output_tokens: 20, total_tokens: 120 }
-        }
+        selection: 'SELECT',
+        knowledge_id: record.knowledge_id,
+        decision: 'ANSWER',
+        answer_pattern_id: null,
+        clarification_requirement: null,
+        facts: {},
+        confidence: 0.96
       };
     }
   });
@@ -876,22 +922,18 @@ test('grounded AI composition tailors the direct response but preserves verified
     includeDiagnostics: true
   });
 
-  assert.equal(response.composition_mode, 'GROUNDED_AI');
-  assert.equal(response.answer, 'Since you did not attempt the pickup, use Code 24.');
-  assert.equal(response.answer_structure.direct_answer, response.answer);
+  assert.equal(interpretationCalls, 1);
+  assert.equal(response.composition_mode, 'DETERMINISTIC');
+  assert.equal(response.answer, record.concise_answer);
+  assert.equal(response.answer_structure.direct_answer, record.concise_answer);
   assert.deepEqual(response.answer_structure.steps, [
     'Confirm no pickup attempt occurred.',
     'Apply Code 24.'
   ]);
-  assert.equal(compositionRequest.driver_question, 'The shipper canceled before I headed to the pickup');
-  assert.match(compositionRequest.safety_identifier, /^rr_[a-f0-9]+$/);
-  assert.equal(response.composition_validation.valid, true);
-  assert.equal(response.composition_validation.provider_response_id, 'resp-composer-1');
-  assert.equal(response.composition_validation.usage.total_tokens, 120);
-  assert.equal(response.interpretation_result.composition_usage.total_tokens, 120);
+  assert.equal(response.composition_validation, null);
 });
 
-test('exact approved answer patterns remain locked and bypass AI composition', async () => {
+test('exact approved answer patterns remain locked and bypass AI interpretation', async () => {
   const record = knowledgeRecord({
     driver_question_patterns: [{
       utterance: 'Pickup canceled before attempt',
@@ -901,17 +943,12 @@ test('exact approved answer patterns remain locked and bypass AI composition', a
     }]
   });
   const supabase = fakeSupabase([record]);
-  let composerCalls = 0;
   const service = createDriverHelpService({
     supabase,
     now: () => new Date(0),
     aiInterpretationMode: 'ACTIVE',
     aiInterpreter: async () => {
       throw new Error('Locked answer should not call the interpreter');
-    },
-    aiComposer: async () => {
-      composerCalls += 1;
-      throw new Error('Locked answer should not call the composer');
     }
   });
 
@@ -921,7 +958,6 @@ test('exact approved answer patterns remain locked and bypass AI composition', a
     question: 'Pickup canceled before attempt'
   });
 
-  assert.equal(composerCalls, 0);
   assert.equal(response.answer_structure.direct_answer, 'Use Code 24.');
   assert.equal(response.composition_mode, 'DETERMINISTIC');
 });
@@ -1047,7 +1083,7 @@ test('AI-selected clarification options retain the selected record identity', as
   );
 });
 
-test('generic package-with-signature wording asks for ASR DSR or ISR instead of defaulting to ASR', async () => {
+test('generic package-with-signature wording asks for ASR DSR or ISR after grounded interpretation', async () => {
   const signatureRequirement = 'What signature service does FORGE show?';
   const records = [
     ['KNO-DEL-SIG-ASR-001', 'Adult Signature Required'],
@@ -1064,7 +1100,14 @@ test('generic package-with-signature wording asks for ASR DSR or ISR instead of 
     supabase,
     now: () => new Date(0),
     aiInterpretationMode: 'ACTIVE',
-    aiInterpreter: async () => 'NONE'
+    aiInterpreter: async () => ({
+      selection: 'SELECT',
+      knowledge_id: 'KNO-DEL-SIG-ASR-001',
+      decision: 'CLARIFY',
+      clarification_requirement: signatureRequirement,
+      confidence: 0.99,
+      facts: {}
+    })
   });
 
   const response = await service.answerQuestion({
@@ -1076,6 +1119,7 @@ test('generic package-with-signature wording asks for ASR DSR or ISR instead of 
   assert.equal(response.response_mode, 'CLARIFY');
   assert.match(response.clarification_prompt, /What signature service/);
   assert.deepEqual(response.clarification_options.map((option) => option.query), ['ASR', 'DSR', 'ISR']);
+  assert.equal(response.interpretation_mode, 'GROUNDED_AI');
 });
 
 test('grounded AI receives a relevant bounded shortlist instead of the full corpus', async () => {
@@ -1179,7 +1223,7 @@ test('completed-photo clarification maps to the approved completed-delivery bran
   ]);
 });
 
-test('invalid or unavailable AI interpretation fails closed unless a narrow controlled rule applies', async () => {
+test('invalid or unavailable AI interpretation always fails closed', async () => {
   const record = knowledgeRecord({ clarification_requirements: [] });
   const supabase = fakeSupabase([record]);
   const service = createDriverHelpService({
@@ -1200,7 +1244,7 @@ test('invalid or unavailable AI interpretation fails closed unless a narrow cont
   assert.equal(response.interpretation_mode, 'AI_FAIL_CLOSED');
 });
 
-test('provider timeout cannot turn a signature-required package into shipper release', async () => {
+test('provider timeout escalates instead of using a controlled shipper-release fallback', async () => {
   const record = knowledgeRecord({
     knowledge_id: 'KNO-DEL-SHIPPER-RELEASE-001',
     canonical_situation: 'Shipper-authorized release shown in FORGE',
@@ -1233,12 +1277,12 @@ test('provider timeout cannot turn a signature-required package into shipper rel
     question: 'The package says signature required, but the customer says the shipper told me to leave it.'
   });
 
-  assert.equal(response.response_mode, 'ANSWER');
-  assert.equal(response.answer_structure.direct_answer, 'No. A customer statement is not shipper-release authorization.');
-  assert.equal(response.interpretation_mode, 'CONTROLLED_FALLBACK');
+  assert.equal(response.response_mode, 'ESCALATE');
+  assert.equal(response.answer, null);
+  assert.equal(response.interpretation_mode, 'AI_FAIL_CLOSED');
 });
 
-test('controlled delivery-photo clarification survives an AI provider failure', async () => {
+test('delivery-photo wording escalates when AI interpretation is unavailable', async () => {
   const photoRecord = knowledgeRecord({
     knowledge_id: 'KNO-DEL-PPOD-001',
     canonical_situation: 'Taking a delivery photo',
@@ -1264,10 +1308,11 @@ test('controlled delivery-photo clarification survives an AI provider failure', 
     includeDiagnostics: true
   });
 
-  assert.equal(response.response_mode, 'CLARIFY');
-  assert.match(response.clarification_prompt, /completed delivery photo/i);
-  assert.equal(response.interpretation_mode, 'CONTROLLED_FALLBACK');
-  assert.equal(response.interpretation_result.status, 'ERROR');
+  assert.equal(response.response_mode, 'ESCALATE');
+  assert.equal(response.answer, null);
+  assert.equal(response.interpretation_mode, 'AI_FAIL_CLOSED');
+  assert.equal(response.interpretation_result.ai.status, 'ERROR');
+  assert.equal(response.interpretation_result.ai.call_count, 2);
 });
 
 test('active AI interprets exact data-authored wording instead of accepting a keyword match blindly', async () => {
@@ -1301,7 +1346,7 @@ test('active AI interprets exact data-authored wording instead of accepting a ke
   assert.equal(calls, 1);
 });
 
-test('shadow mode records the AI proposal without changing the deterministic driver answer', async () => {
+test('shadow mode cannot serve a free-form deterministic fallback', async () => {
   const deterministicRecord = knowledgeRecord({
     knowledge_id: 'KNO-PUP-CANCELED-001',
     clarification_requirements: [],
@@ -1341,16 +1386,11 @@ test('shadow mode records the AI proposal without changing the deterministic dri
   });
   const interaction = supabase.writes.find((write) => write.table === 'driver_help_interactions').row;
 
-  assert.equal(response.answer, deterministicRecord.concise_answer);
-  assert.equal(response.trace[0].knowledge_id, deterministicRecord.knowledge_id);
-  assert.equal(response.interpretation_mode, 'AI_SHADOW');
-  assert.equal(interaction.interpretation_mode, 'AI_SHADOW');
-  assert.equal(interaction.interpretation_result.status, 'VALID');
-  assert.equal(interaction.interpretation_result.proposed_knowledge_id, proposedRecord.knowledge_id);
-  assert.equal(interaction.interpretation_result.deterministic_knowledge_id, deterministicRecord.knowledge_id);
-  assert.equal(interaction.interpretation_result.record_agreement, false);
-  assert.equal(interaction.interpretation_result.provider_response_id, 'resp_shadow_test');
-  assert.equal(interaction.interpretation_result.usage.input_tokens, 100);
+  assert.equal(response.response_mode, 'ESCALATE');
+  assert.equal(response.answer, null);
+  assert.deepEqual(response.trace, []);
+  assert.equal(response.interpretation_mode, 'AI_FAIL_CLOSED');
+  assert.equal(interaction.interpretation_mode, 'AI_FAIL_CLOSED');
 });
 
 test('manager test console may activate grounded interpretation without changing the service default', async () => {

@@ -63,15 +63,29 @@ const WITHHELD_STATUSES = new Set([
 // them narrow: their only purpose is to prevent a neighboring verified record
 // from answering a question for which Ready Route has no approved procedure.
 const UNSUPPORTED_BOUNDARY_PATTERNS = [
-  /\bcustomer\b.*\b(?:called|told)\b.*\bchange\b.*\baddress\b/,
+  /\b(?:smoke|smoking)\b.*\b(?:van|truck|vehicle)\b|\b(?:van|truck|vehicle)\b.*\b(?:smoke|smoking)\b/,
+  /\b(?:sick|dizzy|lightheaded)\b.*\b(?:drive|driving|route)\b/,
+  /\b(?:downed|fallen)\b.*\bpower lines?\b|\bpower lines?\b.*\b(?:down|fallen)\b/,
+  /\bflat tire\b/,
+  /\b(?:locked?|left)\b.*\bkeys?\b.*\b(?:van|truck|vehicle)\b|\bkeys?\b.*\blocked\b.*\b(?:van|truck|vehicle)\b/,
+  /\bscanner\b.*\b(?:froze|frozen|freezing)\b/,
+  /\b(?:app|forge|readyroute|ready route)\b.*\b(?:crash|crashed|crashing)\b/,
+  /\b(?:kids?|children?|child)\b.*\b(?:door|answered)\b.*\bno adult\b/,
+  /\bdelivered\b.*\bcustomer\b.*\b(?:never|did not|didn t)\b.*\b(?:got|receive|received)\b/,
+  /\bleave\b.*\bpackage\b.*\bstranger\b|\bstranger\b.*\bpackage\b/,
+  /\b(?:customer|recipient|person)\b.*\b(?:recording|filming|camera)\b/,
+  /\bcustomer\b.*\b(?:called|texted|told)\b.*\b(?:change|different|new)\b.*\baddress\b/,
   /\bopen\b.*\b(?:customer|recipient)(?: s)?\b.*\bpackage\b.*\binspect\b|\binspect\b.*\binside\b.*\bpackage\b/,
   /\baccept\b.*\bcash\b.*\bshipping charges?\b|\bcash\b.*\bshipping charges?\b/,
-  /\bwhat does dna mean(?: in delivery status)?\b/,
-  /\bwhat does op 201 mean\b/,
-  /\b(?:locked?|left)\b.*\bkeys?\b.*\b(?:van|truck|vehicle)\b|\bkeys?\b.*\blocked\b.*\b(?:van|truck|vehicle)\b/,
-  /\b(?:customer|recipient|person)\b.*\b(?:recording|filming|camera)\b/,
-  /\b(?:two|2|duplicate)\b.*\bpackages?\b.*\bsame\b.*\btracking(?: number)?\b/
+  /\b(?:two|2|duplicate)\b.*\bpackages?\b.*\b(?:same|duplicate)\b.*\btracking(?: number)?\b/,
+  /\bduplicate packages?\b.*\b(?:customer|recipient)\b/,
+  /^(?:what (?:is|does)|define|meaning of)\s+(?:a\s+)?(?:dna|op 201|call tag|osa|bc|forge|service cross|manifest|cxpc)\b/
 ];
+
+function matchesUnsupportedBoundaryQuestion(question) {
+  const normalized = normalizeDriverQuestion(question);
+  return UNSUPPORTED_BOUNDARY_PATTERNS.some((pattern) => pattern.test(normalized));
+}
 
 function normalizeDriverQuestion(value) {
   return String(value || '')
@@ -726,7 +740,7 @@ function buildDriverHelpDecision(question, records, context = {}) {
     !normalizedQuestion
     || bypassRequest
     || protectedRequest
-    || UNSUPPORTED_BOUNDARY_PATTERNS.some((pattern) => pattern.test(normalizedQuestion))
+    || matchesUnsupportedBoundaryQuestion(normalizedQuestion)
   ) return escalation();
   if (/^(?:what is )?code \d{1,3}$/.test(normalizedQuestion)) return escalation();
   if (context.clarification_plan_active === true) {
@@ -962,6 +976,7 @@ module.exports = {
   getMatchingQuestionPattern,
   getPatternRuntimeMode,
   isProductionEligibleRecord,
+  matchesUnsupportedBoundaryQuestion,
   normalizeDriverQuestion,
   rankKnowledgeRecords,
   requirementMatches,

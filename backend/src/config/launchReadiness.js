@@ -33,9 +33,6 @@ function getLaunchReadiness(env = process.env) {
     driverHelpAiInterpretationMode === 'ACTIVE' ||
     isEnabled(env.READYROUTE_DRIVER_HELP_AI_INTERPRETATION_ENABLED)
   ) && driverHelpModelConfigured && openAiConfigured;
-  const driverHelpAiCompositionEnabled = isEnabled(
-    env.READYROUTE_DRIVER_HELP_AI_ENABLED
-  ) && driverHelpModelConfigured && openAiConfigured;
   const errors = [];
   const warnings = [];
 
@@ -74,7 +71,8 @@ function getLaunchReadiness(env = process.env) {
     ready: errors.length === 0,
     modes: {
       billing: billingMode,
-      fcc: fccAutomationEnabled ? 'enabled' : 'paused'
+      fcc: fccAutomationEnabled ? 'enabled' : 'paused',
+      rra_answer_policy: 'quality_first'
     },
     capabilities: {
       maps_geocoding: mapsConfigured,
@@ -83,8 +81,7 @@ function getLaunchReadiness(env = process.env) {
       stripe_webhooks: stripeWebhookConfigured,
       stripe_signup: stripeSignupEnabled && stripeConfigured && stripePublishableConfigured,
       stripe_tax: stripeTaxEnabled && stripeTaxRegistrationsConfirmed,
-      driver_help_ai_interpretation: driverHelpAiInterpretationEnabled,
-      driver_help_ai_composition: driverHelpAiCompositionEnabled
+      driver_help_ai_interpretation: driverHelpAiInterpretationEnabled
     },
     errors,
     warnings

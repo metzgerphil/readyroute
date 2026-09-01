@@ -62,7 +62,7 @@ jobs:
           current_version="$(jq -r '.[0].version // "0"' <<<"$state_response")"
           echo "Staging schema starts at $current_version"
 
-          for migration in supabase/migrations/202608*.sql; do
+          for migration in supabase/migrations/*.sql; do
             version="$(basename "$migration" | cut -d_ -f1)"
             if [[ "$version" > "$current_version" ]]; then
               echo "Applying staging migration $version"
@@ -76,7 +76,7 @@ jobs:
               current_version="$version"
             fi
           done
-          test "$current_version" = "20260816230000"
+          test "$current_version" = "20260901140000"
 
       - name: Import canonical knowledge into staging
         env:
@@ -165,8 +165,10 @@ jobs:
             SOURCE_COMMIT=${{ github.sha }}
             NODE_ENV=production
             READYROUTE_DRIVER_HELP_AI_INTERPRETATION_MODE=ACTIVE
-            READYROUTE_DRIVER_HELP_ANSWER_MEMORY_AUDIT_RATE=0.05
             READYROUTE_DRIVER_HELP_AI_ENABLED=false
+            READYROUTE_DRIVER_HELP_MODEL=gpt-5.6-luna
+            READYROUTE_DRIVER_HELP_AI_REASONING_EFFORT=medium
+            READYROUTE_DRIVER_HELP_AI_TIMEOUT_MS=20000
             MANAGER_PORTAL_URL=https://ready-route-project--rra-test-mlshz0rb.web.app
           env_vars_update_strategy: merge
 
@@ -177,7 +179,7 @@ jobs:
         run: |
           for attempt in {1..30}; do
             body="$(curl --fail --silent --show-error "$STAGING_BACKEND_URL/health" || true)"
-            if [[ "$body" == *"$EXPECTED_COMMIT"* && "$body" == *'"current":"20260816230000"'* && "$body" == *'"compatible":true'* ]]; then
+            if [[ "$body" == *"$EXPECTED_COMMIT"* && "$body" == *'"current":"20260901140000"'* && "$body" == *'"compatible":true'* ]]; then
               echo "Staging is serving $EXPECTED_COMMIT with current canonical knowledge schema"
               exit 0
             fi

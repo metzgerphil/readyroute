@@ -38,9 +38,9 @@ function getAnswerMemoryReviewReason(route) {
     const remaining = Math.max(required - agreements, 0);
     return remaining
       ? `Still learning. Waiting for ${remaining} more matching AI confirmation${remaining === 1 ? '' : 's'}.`
-      : 'Confirmation requirement is met and the route is waiting to activate.';
+      : 'Confirmation requirement is met. This wording pattern remains analytics-only.';
   }
-  return 'Active and available for eligible repeated questions.';
+  return 'Confirmed wording pattern. It is analytics-only and never bypasses AI interpretation.';
 }
 
 function createManagerDriverHelpRouter(options = {}) {
@@ -329,7 +329,14 @@ function createManagerDriverHelpRouter(options = {}) {
               canonical_match_rate: 0,
               no_verified_answer_rate: 0,
               average_response_latency_ms: null,
+              p95_response_latency_ms: null,
               retrieval_failures: 0,
+              ai_interpretation_runs: 0,
+              ai_interpretation_grounded: 0,
+              ai_interpretation_failures: 0,
+              ai_interpretation_retries: 0,
+              ai_interpretation_calls: 0,
+              ai_interpretation_success_rate: null,
               ai_shadow_runs: 0,
               ai_shadow_valid_results: 0,
               ai_shadow_errors: 0,
@@ -383,6 +390,14 @@ function createManagerDriverHelpRouter(options = {}) {
       const measuredLatencies = interactions
         .map((row) => Number(row.response_latency_ms))
         .filter((value) => Number.isFinite(value) && value >= 0);
+      const sortedLatencies = [...measuredLatencies].sort((left, right) => left - right);
+      const interpretationRuns = interactions.filter((row) => row.interpretation_result?.ai);
+      const groundedRuns = interpretationRuns.filter((row) => (
+        row.interpretation_result.ai.status === 'GROUNDED'
+      ));
+      const interpretationFailures = interpretationRuns.filter((row) => (
+        row.interpretation_result.ai.status !== 'GROUNDED'
+      ));
       const shadowRuns = interactions.filter((row) => (
         ['AI_SHADOW', 'AI_SHADOW_FALLBACK'].includes(row.interpretation_mode)
       ));
@@ -425,7 +440,10 @@ function createManagerDriverHelpRouter(options = {}) {
               return values.length ? Math.round(values.reduce((sum, value) => sum + value, 0) / values.length) : null;
             })(),
             ai_calls_avoided: interactions.filter((row) => row.interpretation_mode === 'LEARNED_ROUTE' && row.interpretation_result?.ai_bypassed === true).length,
-            estimated_ai_cost_usd: Number(interactions.reduce((sum, row) => sum + Number(row.interpretation_result?.usage?.estimated_cost_usd || 0), 0).toFixed(6))
+            estimated_ai_cost_usd: Number(interactions.reduce((sum, row) => (
+              sum
+              + Number(row.interpretation_result?.usage?.estimated_cost_usd || 0)
+            ), 0).toFixed(6))
           } : {}),
           active_drivers: activeDriverCount,
           questions_per_active_driver: activeDriverCount
@@ -448,9 +466,24 @@ function createManagerDriverHelpRouter(options = {}) {
           average_response_latency_ms: measuredLatencies.length
             ? Math.round(measuredLatencies.reduce((sum, value) => sum + value, 0) / measuredLatencies.length)
             : null,
+          p95_response_latency_ms: sortedLatencies.length
+            ? sortedLatencies[Math.max(0, Math.ceil(sortedLatencies.length * 0.95) - 1)]
+            : null,
           retrieval_failures: interactions.filter((row) => (
             row.response_mode === 'ESCALATE' && !(row.selected_knowledge_ids || []).length
           )).length,
+          ai_interpretation_runs: interpretationRuns.length,
+          ai_interpretation_grounded: groundedRuns.length,
+          ai_interpretation_failures: interpretationFailures.length,
+          ai_interpretation_retries: interpretationRuns.filter((row) => (
+            row.interpretation_result.ai.retried === true
+          )).length,
+          ai_interpretation_calls: interpretationRuns.reduce((sum, row) => (
+            sum + Number(row.interpretation_result.ai.call_count || 0)
+          ), 0),
+          ai_interpretation_success_rate: interpretationRuns.length
+            ? groundedRuns.length / interpretationRuns.length
+            : null,
           ai_shadow_runs: shadowRuns.length,
           ai_shadow_valid_results: validShadowResults.length,
           ai_shadow_errors: shadowRuns.filter((row) => row.interpretation_result?.status === 'ERROR').length,

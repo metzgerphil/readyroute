@@ -106,8 +106,75 @@ test('AI interpretation sends only constrained routing fields with a strict sche
   assert.deepEqual(requestBody.text.format.schema, responseSchema(candidates));
   assert.equal(result.decision, 'CLARIFY');
   assert.equal(result.facts.operational_area, 'PICKUP');
+  assert.equal(result.provider_metadata.provider_model, 'test-model');
   assert.equal(result.provider_metadata.response_id, 'resp_test_123');
   assert.equal(result.provider_metadata.usage.input_tokens, 120);
+});
+
+test('an explicit model override does not change the shared environment', async () => {
+  let requestedModel = null;
+  const interpreter = createDriverHelpAiInterpreter({
+    env: configuredEnv,
+    model: 'override-model',
+    fetchImpl: async (_url, options) => {
+      requestedModel = JSON.parse(options.body).model;
+      return {
+        ok: true,
+        async json() {
+          return {
+            id: 'resp_override',
+            output_text: JSON.stringify({
+              selection: 'NONE',
+              knowledge_id: null,
+              decision: 'NONE',
+              answer_pattern_id: null,
+              clarification_requirement: null,
+              facts: emptyFacts(),
+              confidence: 0.99
+            })
+          };
+        }
+      };
+    }
+  });
+
+  const result = await interpreter({ driver_question: 'unknown', candidate_records: candidates });
+  assert.equal(requestedModel, 'override-model');
+  assert.equal(result.provider_metadata.provider_model, 'override-model');
+});
+
+test('reasoning effort can be raised for quality-first production selection', async () => {
+  let requestedEffort = null;
+  const interpreter = createDriverHelpAiInterpreter({
+    env: {
+      OPENAI_API_KEY: 'test-key',
+      READYROUTE_DRIVER_HELP_MODEL: 'test-model',
+      READYROUTE_DRIVER_HELP_AI_INTERPRETATION_MODE: 'ACTIVE',
+      READYROUTE_DRIVER_HELP_AI_REASONING_EFFORT: 'medium'
+    },
+    fetchImpl: async (_url, options) => {
+      requestedEffort = JSON.parse(options.body).reasoning.effort;
+      return {
+        ok: true,
+        headers: { get: () => null },
+        json: async () => ({
+          id: 'resp_reasoning',
+          output_text: JSON.stringify({
+            selection: 'NONE',
+            knowledge_id: null,
+            decision: 'NONE',
+            answer_pattern_id: null,
+            clarification_requirement: null,
+            facts: emptyFacts(),
+            confidence: 0.99
+          })
+        })
+      };
+    }
+  });
+
+  await interpreter({ driver_question: 'unknown', candidate_records: candidates });
+  assert.equal(requestedEffort, 'medium');
 });
 
 test('interpretation validation accepts only eligible candidates and exact clarification requirements', () => {
