@@ -264,7 +264,7 @@ export default function RraTestPage({ apiBase = '/manager/driver-help', allowFee
                 <div><dt>AI response time</dt><dd>{Number.isFinite(shadow.latency_ms) ? `${shadow.latency_ms} ms` : '—'}</dd></div>
               </dl>
             ) : ['AI_SHADOW_FALLBACK', 'DETERMINISTIC_FALLBACK'].includes(result.interpretation_mode) ? (
-              <div className="rra-shadow-status warning">AI found no safe matching record, so Ready Route used its fail-closed deterministic result.</div>
+              <div className="rra-shadow-status warning">AI did not produce an active grounded selection. Ready Route used only a narrow deterministic rule where one was explicitly available.</div>
             ) : (
               <div className="rra-shadow-status">This question matched an exact data-authored rule, so AI interpretation was not needed.</div>
             )}
@@ -293,6 +293,9 @@ export default function RraTestPage({ apiBase = '/manager/driver-help', allowFee
         <section className="page-card warning-card">
           <h2>No approved answer</h2>
           <p>{result.escalation_message}</p>
+          {result.interpretation_mode === 'AI_FAIL_CLOSED' ? (
+            <p><strong>Safety check:</strong> Grounded AI found no safe matching record, so Ready Route did not display a fuzzy fallback answer.</p>
+          ) : null}
         </section>
       ) : null}
 

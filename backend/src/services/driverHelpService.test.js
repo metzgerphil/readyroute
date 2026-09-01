@@ -7,6 +7,7 @@ process.env.SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_KEY || 'test-ser
 const {
   answerMemoryRiskTier,
   answerMemoryRouteKey,
+  buildAiFacingQuestion,
   buildContextualQuestion,
   buildDeterministicRuntimeDecision,
   buildNextSessionContext,
@@ -14,6 +15,7 @@ const {
   isClarificationAnswerSufficient,
   createDriverHelpService,
   filterActionableClarificationOptions,
+  isGlossaryQuestion,
   isRepeatedClarification,
   resolveClarificationFollowUp,
   resolveClarificationSelection
@@ -54,6 +56,16 @@ test('answer memory normalizes equivalent repeated wording and protects high-ris
   assert.equal(answerMemoryRiskTier('KNO-DEL-BUS-CLOSED-001'), 'STANDARD');
   assert.equal(answerMemoryRiskTier('KNO-DEL-SIG-ASR-001'), 'HIGH');
   assert.equal(answerMemoryRiskTier('KNO-SEC-ROUTE-001'), 'HIGH');
+});
+
+test('AI-facing wording treats a terse incident as an implicit request but preserves follow-up answers', () => {
+  assert.equal(buildAiFacingQuestion('Dog bit me'), 'Dog bit me. What should I do?');
+  assert.equal(buildAiFacingQuestion('What does WA mean?'), 'What does WA mean?');
+  assert.equal(buildAiFacingQuestion('Yes', {
+    pending_clarification_prompt: 'Was the package recovered?'
+  }), 'Yes');
+  assert.equal(isGlossaryQuestion('What does DNA mean?'), true);
+  assert.equal(isGlossaryQuestion('What should I do with this package?'), false);
 });
 
 test('clarification answer validation recognizes common fact types', () => {
@@ -303,7 +315,7 @@ function knowledgeRecord(overrides = {}) {
   };
 }
 
-test('an active exact answer-memory route bypasses AI and still renders published record content', async () => {
+test('active AI ignores answer memory and requires a fresh grounded interpretation', async () => {
   const record = knowledgeRecord({
     knowledge_id: 'KNO-DEL-BUS-CLOSED-001',
     canonical_situation: 'A business is closed and no recipient is available',
@@ -323,10 +335,21 @@ test('an active exact answer-memory route bypasses AI and still renders publishe
     agreement_count: 2
   });
   let aiCalls = 0;
+  let aiQuestion = null;
   const service = createDriverHelpService({
     supabase,
     aiInterpretationMode: 'ACTIVE',
-    aiInterpreter: async () => { aiCalls += 1; return null; }
+    aiInterpreter: async (request) => {
+      aiCalls += 1;
+      aiQuestion = request.driver_question;
+      return {
+        selection: 'SELECT',
+        knowledge_id: record.knowledge_id,
+        decision: 'ANSWER',
+        clarification_requirement: null,
+        confidence: 0.99
+      };
+    }
   });
 
   const response = await service.answerQuestion({
@@ -338,131 +361,74 @@ test('an active exact answer-memory route bypasses AI and still renders publishe
     includeDiagnostics: true
   });
 
-  assert.equal(aiCalls, 0);
-  assert.equal(response.interpretation_mode, 'LEARNED_ROUTE');
-  assert.equal(response.interpretation_result.ai_bypassed, true);
-  assert.equal(response.interpretation_result.usage.estimated_cost_usd, 0);
+  assert.equal(aiCalls, 1);
+  assert.match(aiQuestion, /What should I do\?/);
+  assert.equal(response.interpretation_mode, 'GROUNDED_AI');
   assert.equal(response.trace[0].knowledge_id, record.knowledge_id);
   assert.match(response.answer, /Code 004/);
-  assert.ok(supabase.writes.some((write) => (
-    write.name === 'record_driver_help_answer_memory_reuse'
-  )));
+  assert.equal(supabase.writes.some((write) => write.name === 'record_driver_help_answer_memory_reuse'), false);
 });
 
-test('a sampled answer-memory audit keeps an agreeing route active and records the audit', async () => {
-  const record = knowledgeRecord({
-    knowledge_id: 'KNO-DEL-BUS-CLOSED-001',
-    canonical_situation: 'A business is closed and no recipient is available',
-    driver_question_variants: ['The business is locked and nobody is there'],
+test('an active AI refusal fails closed instead of serving an unrelated fuzzy record', async () => {
+  const shipperRelease = knowledgeRecord({
+    knowledge_id: 'KNO-DEL-SHIPPER-RELEASE-001',
+    canonical_situation: 'FORGE explicitly identifies shipper-authorized release without an OP-201',
+    normalized_description: 'A shipper-authorized release appears in FORGE.',
+    driver_question_variants: ['FORGE says no OP-201 is required for shipper release'],
     clarification_requirements: [],
-    concise_answer: 'Use Code 004 when the closed business has no authorized release path.'
+    concise_answer: 'Use the shipper-authorized release path only when FORGE explicitly authorizes it.'
   });
-  const question = 'The business is locked and nobody is there';
-  const supabase = memorySupabase([record], {
-    route_key: answerMemoryRouteKey(question),
-    knowledge_id: record.knowledge_id,
-    knowledge_version: record.version,
-    response_mode: 'ANSWER',
-    answer_pattern_id: null,
-    clarification_requirement: null,
-    interpreted_facts: {},
-    risk_tier: 'STANDARD',
-    status: 'ACTIVE',
-    agreement_count: 3
+  const duplicateAddress = knowledgeRecord({
+    knowledge_id: 'KNO-DEL-DUPLICATE-ADDRESS-001',
+    canonical_situation: 'Two houses display the same address number',
+    normalized_description: 'The correct delivery address cannot be identified between two houses.',
+    driver_question_variants: ['Two houses have the same address number'],
+    clarification_requirements: [],
+    concise_answer: 'Use Code 002 for the unresolved duplicate-address condition.'
   });
   const service = createDriverHelpService({
-    supabase,
+    supabase: fakeSupabase([shipperRelease, duplicateAddress]),
     aiInterpretationMode: 'ACTIVE',
-    answerMemoryAuditRate: 0.05,
-    random: () => 0,
     aiInterpreter: async () => ({
-      selection: 'SELECT',
-      knowledge_id: record.knowledge_id,
-      decision: 'ANSWER',
+      selection: 'NONE',
+      knowledge_id: null,
+      decision: 'NONE',
+      answer_pattern_id: null,
       clarification_requirement: null,
       confidence: 0.99
     })
   });
 
-  const response = await service.answerQuestion({
+  for (const question of [
+    'What does DNA mean in delivery status?',
+    'What does OP-201 mean?'
+  ]) {
+    const response = await service.answerQuestion({
+      accountId: '00000000-0000-0000-0000-000000000001',
+      driverId: null,
+      actorType: 'manager',
+      actorId: '00000000-0000-0000-0000-000000000002',
+      question,
+      includeDiagnostics: true
+    });
+
+    assert.equal(response.response_mode, 'ESCALATE', question);
+    assert.equal(response.answer, null, question);
+    assert.equal(response.interpretation_mode, 'AI_FAIL_CLOSED', question);
+    assert.deepEqual(response.trace, [], question);
+  }
+
+  const duplicateTracking = await service.answerQuestion({
     accountId: '00000000-0000-0000-0000-000000000001',
     driverId: null,
     actorType: 'manager',
     actorId: '00000000-0000-0000-0000-000000000002',
-    question,
+    question: 'Two packages have the same tracking number. What do I do?',
     includeDiagnostics: true
   });
-
-  assert.equal(response.interpretation_mode, 'LEARNED_ROUTE');
-  assert.equal(response.interpretation_result.ai_bypassed, false);
-  assert.equal(response.interpretation_result.memory_audit.outcome, 'AGREE');
-  assert.ok(supabase.writes.some((write) => (
-    write.name === 'record_driver_help_answer_memory_audit'
-    && write.args.p_outcome === 'AGREE'
-  )));
-  assert.ok(supabase.writes.some((write) => write.name === 'record_driver_help_answer_memory_reuse'));
-});
-
-test('a sampled answer-memory disagreement suspends memory and serves the AI-selected published record', async () => {
-  const rememberedRecord = knowledgeRecord({
-    knowledge_id: 'KNO-DEL-BUS-CLOSED-001',
-    canonical_situation: 'A business is closed and no recipient is available',
-    driver_question_variants: ['The stop is closed'],
-    clarification_requirements: [],
-    concise_answer: 'Use Code 004.'
-  });
-  const correctedRecord = knowledgeRecord({
-    knowledge_id: 'KNO-PUP-CANCELED-001',
-    canonical_situation: 'A pickup was canceled before an attempt',
-    driver_question_variants: ['The stop is closed'],
-    clarification_requirements: [],
-    concise_answer: 'Use Code 24.'
-  });
-  const question = 'The stop is closed';
-  const supabase = memorySupabase([rememberedRecord, correctedRecord], {
-    route_key: answerMemoryRouteKey(question),
-    knowledge_id: rememberedRecord.knowledge_id,
-    knowledge_version: rememberedRecord.version,
-    response_mode: 'ANSWER',
-    answer_pattern_id: null,
-    clarification_requirement: null,
-    interpreted_facts: {},
-    risk_tier: 'STANDARD',
-    status: 'ACTIVE',
-    agreement_count: 3
-  });
-  const service = createDriverHelpService({
-    supabase,
-    aiInterpretationMode: 'ACTIVE',
-    answerMemoryAuditRate: 0.05,
-    random: () => 0,
-    aiInterpreter: async () => ({
-      selection: 'SELECT',
-      knowledge_id: correctedRecord.knowledge_id,
-      decision: 'ANSWER',
-      clarification_requirement: null,
-      confidence: 0.97
-    })
-  });
-
-  const response = await service.answerQuestion({
-    accountId: '00000000-0000-0000-0000-000000000001',
-    driverId: null,
-    actorType: 'manager',
-    actorId: '00000000-0000-0000-0000-000000000002',
-    question,
-    includeDiagnostics: true
-  });
-
-  assert.equal(response.interpretation_mode, 'GROUNDED_AI');
-  assert.equal(response.trace[0].knowledge_id, correctedRecord.knowledge_id);
-  assert.equal(response.interpretation_result.memory_audit.outcome, 'DISAGREE');
-  assert.ok(supabase.writes.some((write) => (
-    write.name === 'record_driver_help_answer_memory_audit'
-    && write.args.p_outcome === 'DISAGREE'
-  )));
-  assert.equal(supabase.writes.some((write) => write.name === 'record_driver_help_answer_memory_reuse'), false);
-  assert.equal(supabase.writes.some((write) => write.name === 'observe_driver_help_answer_memory'), false);
+  assert.equal(duplicateTracking.response_mode, 'ESCALATE');
+  assert.equal(duplicateTracking.answer, null);
+  assert.deepEqual(duplicateTracking.trace, []);
 });
 
 function referenceRecord(knowledgeId, conciseAnswer, canonicalSituation) {
@@ -1213,7 +1179,7 @@ test('completed-photo clarification maps to the approved completed-delivery bran
   ]);
 });
 
-test('invalid or unavailable AI interpretation falls back to deterministic retrieval', async () => {
+test('invalid or unavailable AI interpretation fails closed unless a narrow controlled rule applies', async () => {
   const record = knowledgeRecord({ clarification_requirements: [] });
   const supabase = fakeSupabase([record]);
   const service = createDriverHelpService({
@@ -1229,9 +1195,9 @@ test('invalid or unavailable AI interpretation falls back to deterministic retri
     question: 'cancelled before i went to the pickup'
   });
 
-  assert.equal(response.response_mode, 'ANSWER');
-  assert.equal(response.answer, record.concise_answer);
-  assert.equal(response.interpretation_mode, 'DETERMINISTIC_FALLBACK');
+  assert.equal(response.response_mode, 'ESCALATE');
+  assert.equal(response.answer, null);
+  assert.equal(response.interpretation_mode, 'AI_FAIL_CLOSED');
 });
 
 test('provider timeout cannot turn a signature-required package into shipper release', async () => {

@@ -114,7 +114,12 @@ test('reviewed unsupported boundaries fail closed instead of using neighboring p
   const questions = [
     "The customer called and told me to change the address myself",
     "Can I open a customer's package to inspect what is inside?",
-    'A customer wants me to accept cash for shipping charges'
+    'A customer wants me to accept cash for shipping charges',
+    'What does DNA mean in delivery status?',
+    'What does OP-201 mean?',
+    'I locked my keys in the van, what do I do?',
+    'Customer recording me on camera, what do I do?',
+    'Two packages, same tracking number, what do I do?'
   ];
 
   for (const question of questions) {

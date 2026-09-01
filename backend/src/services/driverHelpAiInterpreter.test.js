@@ -98,6 +98,8 @@ test('AI interpretation sends only constrained routing fields with a strict sche
   assert.match(requestBody.input[0].content[0].text, /Return NONE when the stated subject is not covered/i);
   assert.match(requestBody.input[0].content[0].text, /reserve NONE for questions whose situation does not safely match/i);
   assert.match(requestBody.input[0].content[0].text, /do not return NONE merely because the subtype is not yet known/i);
+  assert.match(requestBody.input[0].content[0].text, /terse statement describing an incident/i);
+  assert.match(requestBody.input[0].content[0].text, /request_intent is DEFINITION/i);
   assert.deepEqual(requestBody.reasoning, { effort: 'low', context: 'current_turn' });
   assert.equal(requestBody.text.verbosity, 'low');
   assert.equal(requestBody.text.format.strict, true);

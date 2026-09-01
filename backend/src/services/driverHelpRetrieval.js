@@ -65,7 +65,12 @@ const WITHHELD_STATUSES = new Set([
 const UNSUPPORTED_BOUNDARY_PATTERNS = [
   /\bcustomer\b.*\b(?:called|told)\b.*\bchange\b.*\baddress\b/,
   /\bopen\b.*\b(?:customer|recipient)(?: s)?\b.*\bpackage\b.*\binspect\b|\binspect\b.*\binside\b.*\bpackage\b/,
-  /\baccept\b.*\bcash\b.*\bshipping charges?\b|\bcash\b.*\bshipping charges?\b/
+  /\baccept\b.*\bcash\b.*\bshipping charges?\b|\bcash\b.*\bshipping charges?\b/,
+  /\bwhat does dna mean(?: in delivery status)?\b/,
+  /\bwhat does op 201 mean\b/,
+  /\b(?:locked?|left)\b.*\bkeys?\b.*\b(?:van|truck|vehicle)\b|\bkeys?\b.*\blocked\b.*\b(?:van|truck|vehicle)\b/,
+  /\b(?:customer|recipient|person)\b.*\b(?:recording|filming|camera)\b/,
+  /\b(?:two|2|duplicate)\b.*\bpackages?\b.*\bsame\b.*\btracking(?: number)?\b/
 ];
 
 function normalizeDriverQuestion(value) {
