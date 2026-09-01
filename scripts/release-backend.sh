@@ -23,6 +23,10 @@ cd "$ROOT_DIR"
 supabase db push --linked --dry-run
 supabase db push --linked --yes
 
+echo "==> Importing verified RRA knowledge"
+cd "$BACKEND_DIR"
+npm run knowledge:import
+
 echo "==> Deploying backend to Google Cloud Run"
 gcloud run deploy "$CLOUD_RUN_SERVICE" \
   --source "$BACKEND_DIR" \

@@ -38,8 +38,22 @@ function buildVehicleBarcodeValue(vehicleNumber) {
   const suppliedValue = String(vehicleNumber || '')
     .trim()
     .replace(/^[“"']+|[”"'?!.,;:]+$/g, '')
+    .replace(/^v(?=\d)/i, '')
     .trim();
   return `V${suppliedValue}`;
+}
+
+function extractVehicleNumberFromRequest(value) {
+  const text = String(value || '').trim();
+  const patterns = [
+    /\b(?:vehicle|truck|van)\s*(?:number|no\.?|#)?\s*(?:is|=|:)?\s*(v?\d{1,12})\b/i,
+    /\b(?:for|using)\s+(v?\d{1,12})\b/i
+  ];
+  for (const pattern of patterns) {
+    const match = text.match(pattern);
+    if (match) return match[1];
+  }
+  return null;
 }
 
 function recordCandidate(record) {
@@ -51,46 +65,55 @@ function recordCandidate(record) {
   };
 }
 
+function buildCompletedVehicleBarcodeDecision(vehicleNumber, record) {
+  const value = buildVehicleBarcodeValue(vehicleNumber);
+  return {
+    response_mode: 'ANSWER',
+    answer_type: VEHICLE_BARCODE_WORKFLOW_TYPE,
+    confidence: 1,
+    candidates: [recordCandidate(record)],
+    selected_records: [record],
+    answer: 'Scan this vehicle barcode.',
+    more_info: null,
+    answer_structure: {
+      direct_answer: 'Scan this vehicle barcode.',
+      steps: ['Scan the Code 128 barcode shown above.'],
+      watch_for: 'Confirm the encoded value matches the actual vehicle number before scanning.',
+      options: [],
+      procedure_steps: [],
+      documentation: [],
+      prohibited_actions: [
+        'Do not omit the uppercase V prefix.',
+        'Do not use a barcode format other than Code 128.'
+      ],
+      escalation_requirements: []
+    },
+    barcode: {
+      symbology: 'CODE128',
+      value
+    },
+    workflow: {
+      type: VEHICLE_BARCODE_WORKFLOW_TYPE,
+      state: 'COMPLETE'
+    }
+  };
+}
+
 function buildVehicleBarcodeWorkflowDecision(question, context = {}, record = null) {
   if (!record) return null;
 
   const pendingWorkflow = context.pending_workflow;
   if (pendingWorkflow?.type === VEHICLE_BARCODE_WORKFLOW_TYPE
     && pendingWorkflow?.state === 'AWAITING_VEHICLE_NUMBER') {
-    const value = buildVehicleBarcodeValue(question);
-    return {
-      response_mode: 'ANSWER',
-      answer_type: VEHICLE_BARCODE_WORKFLOW_TYPE,
-      confidence: 1,
-      candidates: [recordCandidate(record)],
-      selected_records: [record],
-      answer: 'Scan this vehicle barcode.',
-      more_info: null,
-      answer_structure: {
-        direct_answer: 'Scan this vehicle barcode.',
-        steps: ['Scan the Code 128 barcode shown above.'],
-        watch_for: 'Confirm the encoded value matches the actual vehicle number before scanning.',
-        options: [],
-        procedure_steps: [],
-        documentation: [],
-        prohibited_actions: [
-          'Do not omit the uppercase V prefix.',
-          'Do not use a barcode format other than Code 128.'
-        ],
-        escalation_requirements: []
-      },
-      barcode: {
-        symbology: 'CODE128',
-        value
-      },
-      workflow: {
-        type: VEHICLE_BARCODE_WORKFLOW_TYPE,
-        state: 'COMPLETE'
-      }
-    };
+    return buildCompletedVehicleBarcodeDecision(question, record);
   }
 
   if (!isVehicleBarcodeIntent(question)) return null;
+
+  const suppliedVehicleNumber = extractVehicleNumberFromRequest(question);
+  if (suppliedVehicleNumber) {
+    return buildCompletedVehicleBarcodeDecision(suppliedVehicleNumber, record);
+  }
 
   return {
     response_mode: 'CLARIFY',
@@ -115,6 +138,7 @@ module.exports = {
   VEHICLE_NUMBER_PROMPT,
   buildVehicleBarcodeValue,
   buildVehicleBarcodeWorkflowDecision,
+  extractVehicleNumberFromRequest,
   isVehicleBarcodeIntent,
   normalizeIntentText
 };

@@ -63,23 +63,9 @@ const WITHHELD_STATUSES = new Set([
 // them narrow: their only purpose is to prevent a neighboring verified record
 // from answering a question for which Ready Route has no approved procedure.
 const UNSUPPORTED_BOUNDARY_PATTERNS = [
-  /\b(?:smoke|smoking)\b.*\b(?:van|truck|vehicle)\b|\b(?:van|truck|vehicle)\b.*\b(?:smoke|smoking)\b/,
-  /\b(?:sick|dizzy|lightheaded)\b.*\b(?:drive|driving|route)\b/,
-  /\b(?:downed|fallen)\b.*\bpower lines?\b|\bpower lines?\b.*\b(?:down|fallen)\b/,
-  /\bflat tire\b/,
-  /\b(?:locked?|left)\b.*\bkeys?\b.*\b(?:van|truck|vehicle)\b|\bkeys?\b.*\blocked\b.*\b(?:van|truck|vehicle)\b/,
-  /\bscanner\b.*\b(?:froze|frozen|freezing)\b/,
-  /\b(?:app|forge|readyroute|ready route)\b.*\b(?:crash|crashed|crashing)\b/,
-  /\b(?:kids?|children?|child)\b.*\b(?:door|answered)\b.*\bno adult\b/,
-  /\bdelivered\b.*\bcustomer\b.*\b(?:never|did not|didn t)\b.*\b(?:got|receive|received)\b/,
-  /\bleave\b.*\bpackage\b.*\bstranger\b|\bstranger\b.*\bpackage\b/,
-  /\b(?:customer|recipient|person)\b.*\b(?:recording|filming|camera)\b/,
-  /\bcustomer\b.*\b(?:called|texted|told)\b.*\b(?:change|different|new)\b.*\baddress\b/,
   /\bopen\b.*\b(?:customer|recipient)(?: s)?\b.*\bpackage\b.*\binspect\b|\binspect\b.*\binside\b.*\bpackage\b/,
   /\baccept\b.*\bcash\b.*\bshipping charges?\b|\bcash\b.*\bshipping charges?\b/,
-  /\b(?:two|2|duplicate)\b.*\bpackages?\b.*\b(?:same|duplicate)\b.*\btracking(?: number)?\b/,
-  /\bduplicate packages?\b.*\b(?:customer|recipient)\b/,
-  /^(?:what (?:is|does)|define|meaning of)\s+(?:a\s+)?(?:dna|op 201|call tag|osa|bc|forge|service cross|manifest|cxpc)\b/
+  /^(?:what (?:is|does)|define|meaning of)\s+(?:a\s+)?osa\b/
 ];
 
 function matchesUnsupportedBoundaryQuestion(question) {
@@ -662,6 +648,13 @@ function questionSatisfiesClarificationRequirement(requirement, question) {
   if (/sra form have a barcode/.test(normalizedRequirement)) {
     return /\b(?:has|have|with|without|no|not) (?:a )?barcode\b/.test(normalizedQuestion);
   }
+  if (/which manifest currently holds the package/.test(normalizedRequirement)) {
+    const tokens = tokenize(normalizedQuestion);
+    const hasManifest = tokens.some((token) => tokenMatchScore(token, 'manifest') > 0);
+    const hasOwnership = /\b(?:my|mine|your|yours|their|theirs|his|her|hers|other|another)\b/
+      .test(normalizedQuestion);
+    return hasManifest && hasOwnership;
+  }
   if (/physically recovered/.test(normalizedRequirement)) {
     return /\b(?:recover|recovered|retrieved|picked up)\b/.test(normalizedQuestion);
   }
@@ -810,9 +803,14 @@ function buildDriverHelpDecision(question, records, context = {}) {
     const replacementNamesExplicitSubject = explicitSubjects.some((subject) => (
       replacementSurface.includes(subject)
     ));
+    const answersPendingRequirement = questionSatisfiesClarificationRequirement(
+      context.pending_clarification_requirement || context.pending_clarification_prompt,
+      newestAnswer
+    );
     const shouldSwitchRecord = plannedRecord
       && replacement
       && replacement.record.knowledge_id !== plannedRecord.knowledge_id
+      && !answersPendingRequirement
       && (recordsAreRelated || replacementNamesExplicitSubject)
       && (
         (context.remaining_clarification_requirements || []).length > 0

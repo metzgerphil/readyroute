@@ -539,6 +539,18 @@ test('recognizes an explicitly stated Evening service before asking a premium-se
   );
 });
 
+test('recognizes manifest ownership as an answer instead of a topic switch', () => {
+  for (const answer of ['my manifest', 'my manfiest']) {
+    assert.equal(
+      questionSatisfiesClarificationRequirement(
+        'Which manifest currently holds the package?',
+        answer
+      ),
+      true
+    );
+  }
+});
+
 test('promotes a single applicable status code into the direct answer', () => {
   const structure = buildAnswerStructure(record({
     concise_answer: 'Do not deliver it. Code it 012 and return it to the station.',
@@ -553,7 +565,7 @@ test('promotes a single applicable status code into the direct answer', () => {
   assert.equal(structure.direct_answer, 'Apply Code 012.');
 });
 
-test('all controlled records satisfy the compact initial-answer contract', () => {
+test('all publishable records satisfy the compact initial-answer contract', () => {
   const recordsPath = path.resolve(__dirname, '../../../knowledge/operations/records.jsonl');
   const manifestPath = path.resolve(__dirname, '../../../knowledge/manifest.json');
   const records = fs.readFileSync(recordsPath, 'utf8')
@@ -564,13 +576,24 @@ test('all controlled records satisfy the compact initial-answer contract', () =>
 
   assert.equal(records.length, manifest.counts.total_records);
   for (const canonical of records) {
+    if (!['SOURCE_VERIFIED', 'READY_ROUTE_APPROVED'].includes(canonical.knowledge_status)) {
+      continue;
+    }
     const structure = buildAnswerStructure({
       ...canonical,
       concise_answer: canonical.concise_driver_answer,
       taxonomy_paths: canonical.category_paths
     });
     assert.ok(structure.direct_answer, `${canonical.knowledge_id} needs a direct answer`);
-    assert.ok(structure.steps.length > 0, `${canonical.knowledge_id} needs action steps`);
+    if ((canonical.required_procedure || []).length > 0) {
+      assert.ok(structure.steps.length > 0, `${canonical.knowledge_id} needs action steps`);
+    } else {
+      assert.deepEqual(
+        structure.steps,
+        [],
+        `${canonical.knowledge_id} is definition-only and should not invent action steps`
+      );
+    }
     assert.ok(structure.steps.length <= 4, `${canonical.knowledge_id} exceeds four initial steps`);
     assert.ok(
       !structure.watch_for || typeof structure.watch_for === 'string',
