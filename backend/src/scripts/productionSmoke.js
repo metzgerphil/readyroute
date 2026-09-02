@@ -325,7 +325,7 @@ async function main() {
     method: 'POST',
     headers: authHeaders,
     body: JSON.stringify({
-      question: 'Customer recording me on camera, what do I do?'
+      question: 'A customer wants me to accept cash for shipping charges.'
     })
   });
   assert(rraFailClosedBoundary?.response_mode === 'ESCALATE', 'RRA unresolved boundary did not escalate');
