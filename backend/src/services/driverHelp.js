@@ -47,6 +47,20 @@ const MISSED_DELIVERY_MEANING_REQUIREMENT =
   'Did you deliver the package to the wrong address, or were you unable to complete the delivery?';
 const MISSED_DELIVERY_REASON_REQUIREMENT =
   'What prevented the delivery from being completed?';
+const SIGNATURE_SERVICE_REQUIREMENT =
+  'What signature service does FORGE show: ASR, DSR, or ISR?';
+
+const PROTECTED_GLOSSARY_ROUTES = Object.freeze([
+  { term: 'cxpc', knowledgeId: 'KNO-GLOSSARY-CXPC-001' },
+  { term: 'dna', knowledgeId: 'KNO-GLOSSARY-DNA-001' },
+  { term: 'op 201', knowledgeId: 'KNO-DEL-OP201-DEFINITION-001' },
+  { term: 'call tag', knowledgeId: 'KNO-PUP-CALLTAG-DEFINITION-001' },
+  { term: 'service cross', knowledgeId: 'KNO-GLOSSARY-SERVICE-CROSS-001' },
+  { term: 'manifest', knowledgeId: 'KNO-GLOSSARY-MANIFEST-001' },
+  { term: 'forge', knowledgeId: 'KNO-GLOSSARY-FORGE-001' },
+  { term: 'bc', knowledgeId: 'KNO-GLOSSARY-BC-001' },
+  { term: 'wa', knowledgeId: 'KNO-FORGE-WORK-AREA-TERM-001' }
+]);
 
 const HIGH_RISK_MEMORY_KNOWLEDGE_IDS = new Set([
   'KNO-DEL-ALCOHOL-001',
@@ -716,6 +730,102 @@ function buildLockedRecordRuntimeDecision(question, context, record, options = {
   }, context, record);
 }
 
+function asksForTermDefinition(normalized, term) {
+  const subject = `(?:a |an |the |my |our )?(?:${term})`;
+  return new RegExp(`\\bwhat (?:is|are) ${subject}$`).test(normalized)
+    || new RegExp(`\\bwhat (?:does|do) ${subject} (?:mean|stand for)(?:\\b.*)?$`).test(normalized)
+    || new RegExp(`\\b(?:define|meaning of) ${subject}(?: for me)?$`).test(normalized)
+    || new RegExp(`\\b${term}(?: code)? (?:definition|meaning)$`).test(normalized)
+    || new RegExp(`\\bexplain what ${subject} is$`).test(normalized);
+}
+
+function findProtectedGlossaryRecord(question, records) {
+  const normalized = normalizeDriverQuestion(question);
+  const visionSidQuestion = (
+    /\bvision label\b/.test(normalized)
+    && /\bsid sticker\b/.test(normalized)
+    && /\b(?:same|difference|versus|vs|mean)\b/.test(normalized)
+  );
+  if (visionSidQuestion) {
+    return {
+      record: findEligibleOperationalRecord(records, 'KNO-GLOSSARY-VISION-LABEL-SID-001'),
+      answerOverride: {
+        direct_answer: 'Yes. Vision Label and SID sticker refer to the same physical label on a package. Ready Route treats the terms as interchangeable.',
+        steps: ['Treat either term as referring to that same physical package label.'],
+        watch_for: 'This definition does not change any approved procedure for scanning, removing, replacing, or correcting the label.'
+      }
+    };
+  }
+  const comparisonRoute = /\bdifference between\b/.test(normalized)
+    && /\bcxpc\b/.test(normalized)
+    && /\bbc\b/.test(normalized)
+    ? PROTECTED_GLOSSARY_ROUTES[0]
+    : null;
+  const route = comparisonRoute || PROTECTED_GLOSSARY_ROUTES.find((item) => (
+    asksForTermDefinition(normalized, item.term)
+  ));
+  return route ? {
+    record: findEligibleOperationalRecord(records, route.knowledgeId),
+    answerOverride: null
+  } : null;
+}
+
+function buildSignatureServiceRuntimeDecision(question, records, context = {}) {
+  const normalized = normalizeDriverQuestion(question);
+  const namesSpecificService = /\b(?:asr|dsr|isr|adult signature|required direct signature|direct signature|required indirect signature|indirect signature)\b/.test(normalized);
+  const genericSignatureSituation = (
+    /\bsignature\b/.test(normalized)
+    && !namesSpecificService
+    && (
+      /\bsigned door tag\b/.test(normalized)
+      || /\b(?:nobody|no one|no person)\b.*\b(?:home|there|available)\b/.test(normalized)
+      || /\b(?:not|isn t|isnt) home\b/.test(normalized)
+    )
+  );
+  if (!genericSignatureSituation) return null;
+
+  const signatureIds = [
+    'KNO-DEL-SIG-ASR-001',
+    'KNO-DEL-SIG-DSR-001',
+    'KNO-DEL-SIG-ISR-001'
+  ];
+  const ranked = signatureIds
+    .map((knowledgeId) => findEligibleOperationalRecord(records, knowledgeId))
+    .filter(Boolean)
+    .map((record) => ({ record, score: 100 }));
+  if (!ranked.length) return null;
+
+  return buildLockedRuntimeDecision(question, {
+    response_mode: 'CLARIFY',
+    confidence: 1,
+    candidates: ranked.map(({ record }) => ({
+      knowledge_id: record.knowledge_id,
+      version: record.version,
+      canonical_situation: record.canonical_situation,
+      score: 100
+    })),
+    selected_records: [],
+    clarification_prompt: buildClarificationPrompt(SIGNATURE_SERVICE_REQUIREMENT),
+    clarification_requirement: SIGNATURE_SERVICE_REQUIREMENT,
+    clarification_plan: [SIGNATURE_SERVICE_REQUIREMENT],
+    clarification_options: clarificationOptionsForRequirement(SIGNATURE_SERVICE_REQUIREMENT, ranked)
+  }, context, ranked[0].record);
+}
+
+function findHazmatPackageLabelRecord(question, records) {
+  const normalized = normalizeDriverQuestion(question);
+  const mentionsPackage = /\b(?:package|box)\b/.test(normalized);
+  const mentionsHazmatLabel = (
+    /\bhazmat (?:placard|label|sticker)\b/.test(normalized)
+    || /\bdiamond(?: shaped)?(?: label| sticker)?\b/.test(normalized)
+    || /\b(?:flammable|corrosive|toxic) (?:label|diamond|sticker)\b/.test(normalized)
+    || /\bun (?:identification )?number\b/.test(normalized)
+  );
+  const asksForDifferentOperation = /\b(?:deliver|delivery|leak|leaking|spill|damag|load|unload|pickup|release|return|refus|signature)\b/.test(normalized);
+  if (!mentionsPackage || !mentionsHazmatLabel || asksForDifferentOperation) return null;
+  return findEligibleOperationalRecord(records, 'KNO-HAZ-PACKAGE-LABEL-001');
+}
+
 function buildMissedDeliveryRuntimeDecision(question, records, context = {}) {
   const normalized = normalizeDriverQuestion(question);
   const pendingRequirement = normalizeDriverQuestion(
@@ -774,16 +884,21 @@ function buildMissedDeliveryRuntimeDecision(question, records, context = {}) {
     return null;
   }
 
-  const saysMissedDelivery = /\bmissed delivery\b/.test(normalized);
+  const saysMissedDelivery = /\bmissed (?:a |the )?delivery\b/.test(normalized);
   const suppliesSpecificMeaning = meansWrongAddress
     || meansIncompleteAttempt
-    || /\b(?:because|since|due to|customer|recipient|nobody|no one|business|location|closed|locked|dog|animal|signature|identification|hazmat|damaged|weather|access|gate|apartment)\b/.test(normalized);
+    || /\b(?:because|since|due to|customer|recipient|nobody|no one|business|location|closed|locked|dog|animal|signature|identification|hazmat|damaged|weather|access|gate|apartment|window|commit|time)\b/.test(normalized);
   if (!saysMissedDelivery || suppliesSpecificMeaning) return null;
 
   return buildLockedRuntimeDecision(question, {
     response_mode: 'CLARIFY',
     confidence: 1,
-    candidates: [],
+    candidates: misdeliveryRecord ? [{
+      knowledge_id: misdeliveryRecord.knowledge_id,
+      version: misdeliveryRecord.version,
+      canonical_situation: misdeliveryRecord.canonical_situation,
+      score: 100
+    }] : [],
     selected_records: [],
     clarification_prompt: buildClarificationPrompt(MISSED_DELIVERY_MEANING_REQUIREMENT),
     clarification_requirement: MISSED_DELIVERY_MEANING_REQUIREMENT,
@@ -813,6 +928,21 @@ function buildProtectedRuntimeDecision(question, records, context = {}) {
 
   const missedDeliveryDecision = buildMissedDeliveryRuntimeDecision(question, records, context);
   if (missedDeliveryDecision) return missedDeliveryDecision;
+
+  const glossaryRoute = findProtectedGlossaryRecord(question, records);
+  if (glossaryRoute?.record) {
+    return buildLockedRecordRuntimeDecision(question, context, glossaryRoute.record, {
+      answerOverride: glossaryRoute.answerOverride
+    });
+  }
+
+  const hazmatPackageLabelRecord = findHazmatPackageLabelRecord(question, records);
+  if (hazmatPackageLabelRecord) {
+    return buildLockedRecordRuntimeDecision(question, context, hazmatPackageLabelRecord);
+  }
+
+  const signatureServiceDecision = buildSignatureServiceRuntimeDecision(question, records, context);
+  if (signatureServiceDecision) return signatureServiceDecision;
 
   const employmentQuestion = (
     /\b(?:vacation|time off|pto|overtime|paycheck|payroll|wages?|benefits?)\b/.test(normalized)
