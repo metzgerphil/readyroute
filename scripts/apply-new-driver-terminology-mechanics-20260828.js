@@ -314,6 +314,30 @@ const misdeliveryRecord = {
 
 const additions = [
   newRecord({
+    knowledge_id: 'KNO-GLOSSARY-VISION-LABEL-SID-001',
+    canonical_situation: 'A driver asks whether a Vision Label and SID sticker are the same thing',
+    normalized_description: 'The driver needs a direct definition of the two interchangeable names for the same physical package label.',
+    authoritative_rule: 'Yes. Vision Label and SID sticker refer to the same physical label on a package. Ready Route treats the terms as interchangeable.',
+    applicability: ['A driver asks what a Vision Label or SID sticker is', 'A driver asks whether Vision Label and SID sticker refer to the same label'],
+    exceptions: ['This definition does not by itself supply a procedure for scanning, removing, replacing, or correcting the label'],
+    required_procedure: [],
+    prohibited_actions: ['Do not treat Vision Label and SID sticker as different physical package labels.', 'Do not infer an unstated label-handling procedure from this definition alone.'],
+    related_knowledge_ids: ['KNO-FORGE-WORK-AREA-TERM-001'],
+    taxonomy_paths: ['TAX-FORGE', 'TAX-DELIVERY'],
+    driver_question_variants: [
+      'Is a Vision Label the same thing as an SID sticker',
+      'Are a Vision Label and SID sticker the same',
+      'Is the SID sticker the Vision Label',
+      'What is a Vision Label',
+      'What is an SID sticker',
+      'Vision Label versus SID sticker'
+    ],
+    concise_ready_route_answer: 'Yes. Vision Label and SID sticker refer to the same physical label on a package. Ready Route treats the terms as interchangeable.',
+    more_info_answer: 'This definition does not by itself change the approved procedure for scanning, removing, replacing, or correcting the label.',
+    locator: 'Standing principle — Terminology note',
+    evidence_summary: 'Explicitly states that Vision Label and SID sticker refer to the same physical label and are used interchangeably by drivers.'
+  }),
+  newRecord({
     knowledge_id: 'KNO-FORGE-WORK-AREA-TERM-001',
     canonical_situation: 'A driver asks what WA means or where to find the work-area number',
     normalized_description: 'The driver needs the meaning and package-label location of the WA route identifier.',
@@ -492,6 +516,9 @@ const targetIds = new Set(targetRecords.map((item) => item.knowledge_id));
 const aliasChangedIds = new Set();
 for (let index = 0; index < records.length; index += 1) {
   const before = records[index];
+  // This standalone definition intentionally names both terms separately.
+  // Rewriting "SID sticker" inside it would make the definition circular.
+  if (before.knowledge_id === 'KNO-GLOSSARY-VISION-LABEL-SID-001') continue;
   const after = applyDriverFacingTerminology(before);
   if (JSON.stringify(before) !== JSON.stringify(after)) {
     aliasChangedIds.add(after.knowledge_id);
@@ -575,6 +602,27 @@ const cases = [
   information_sufficiency: 'SUFFICIENT',
   response_mode: 'DIRECT_SOURCE_GROUNDED_ANSWER'
 }));
+
+cases.push({
+  case_id: 'NEWDRV-VISION-LABEL-SID-EQUIVALENCE-001',
+  utterance: 'Is a vision label the same thing as an SID sticker',
+  semantic_variations: [
+    'Are a Vision Label and SID sticker the same',
+    'Is the SID sticker the Vision Label',
+    'Vision Label versus SID sticker'
+  ],
+  expected_knowledge_ids: ['KNO-GLOSSARY-VISION-LABEL-SID-001'],
+  must_clarify: [],
+  must_not_do: ['say the terms identify different labels', 'offer an unrelated operational procedure', 'say no verified answer exists'],
+  case_type: 'NEW_DRIVER_TERMINOLOGY_MECHANICS_OWNER_APPROVED',
+  information_sufficiency: 'SUFFICIENT',
+  response_mode: 'DIRECT_SOURCE_GROUNDED_ANSWER',
+  answer_override: {
+    direct_answer: 'Yes. Vision Label and SID sticker refer to the same physical label on a package. Ready Route treats the terms as interchangeable.',
+    steps: ['Treat either term as referring to that same physical package label.'],
+    watch_for: 'This definition does not change any approved procedure for scanning, removing, replacing, or correcting the label.'
+  }
+});
 
 const evaluations = readJsonLines(CASES_PATH);
 for (const item of cases) upsert(evaluations, 'case_id', item);

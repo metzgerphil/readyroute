@@ -5052,5 +5052,50 @@
       "concise_driver_answer": "If you already supplied the vehicle number, Ready Route uses it immediately, prefixes uppercase V, and displays the in-app Code 128 barcode. Otherwise it asks only for the vehicle number.",
       "more_info_answer": "The barcode always uses Code 128 and encodes the complete uppercase V-prefixed vehicle value."
     }
+  },
+  {
+    "adjudication_id": "ADJ-20260828-NEW-DRIVER-GLOSSARY-VISION-LABEL-SID-001",
+    "knowledge_id": "KNO-GLOSSARY-VISION-LABEL-SID-001",
+    "status": "APPROVED",
+    "issue_reviewed": "A driver asks whether a Vision Label and SID sticker are the same thing",
+    "canonical_determination": "Yes. Vision Label and SID sticker refer to the same physical label on a package. Ready Route treats the terms as interchangeable.",
+    "previous_interpretations": [
+      "Ready Route did not have a published answer with this exact new-driver terminology or mechanic-level scope."
+    ],
+    "supporting_source_ids": [
+      "SRC-V2-VLAD-NEW-DRIVER-TERMS-MECHANICS-20260828",
+      "SRC-V2-OWNER-NEW-DRIVER-TERMS-MECHANICS-APPROVAL-20260828"
+    ],
+    "conflicting_or_superseded_source_ids": [],
+    "reasoning": "Vlad supplied the field mechanics and Phillip Metzger completely approved them as Ready Route owner-verified knowledge within the stated scope. The determination preserves the supplied branch boundaries and does not invent missing company policy or scanner behavior.",
+    "approved_by": "Phillip Metzger, Ready Route product owner",
+    "approval_date": "2026-08-28",
+    "effective_date": "2026-08-28",
+    "supersedes": [],
+    "reopen_conditions": [
+      "Phillip or Vlad revises the supplied answer.",
+      "A later applicable operational, regulatory, company-policy, safety, or scanner-workflow update materially conflicts with it."
+    ],
+    "canonical_overrides": {
+      "authoritative_rule": "Yes. Vision Label and SID sticker refer to the same physical label on a package. Ready Route treats the terms as interchangeable.",
+      "applicability": [
+        "A driver asks what a Vision Label or SID sticker is",
+        "A driver asks whether Vision Label and SID sticker refer to the same label"
+      ],
+      "conditions": [],
+      "exceptions": [
+        "This definition does not by itself supply a procedure for scanning, removing, replacing, or correcting the label"
+      ],
+      "required_procedure": [],
+      "required_documentation": [],
+      "prohibited_actions": [
+        "Do not treat Vision Label and SID sticker as different physical package labels.",
+        "Do not infer an unstated label-handling procedure from this definition alone."
+      ],
+      "escalation_requirements": [],
+      "clarification_requirements": [],
+      "concise_driver_answer": "Yes. Vision Label and SID sticker refer to the same physical label on a package. Ready Route treats the terms as interchangeable.",
+      "more_info_answer": "This definition does not by itself change the approved procedure for scanning, removing, replacing, or correcting the label."
+    }
   }
 ]
