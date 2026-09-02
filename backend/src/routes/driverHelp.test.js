@@ -159,6 +159,29 @@ test('POST /driver-help/query returns the company CXPC number without AI interpr
   assert.equal(inserts[0].response_mode, 'ANSWER');
 });
 
+test('POST /driver-help/query routes complaint questions through approved knowledge instead of contact lookup', async () => {
+  const calls = [];
+  const app = createTestApp({
+    async answerQuestion(payload) {
+      calls.push(payload);
+      return {
+        response_mode: 'ANSWER',
+        answer: 'Give the customer your BC contact, then call your BC yourself.',
+        trace: [{ knowledge_id: 'KNO-CX-GENERAL-COMPLAINT-001' }]
+      };
+    }
+  });
+
+  const response = await request(app)
+    .post('/driver-help/query')
+    .send({ question: 'Customer is asking for my manager number to complain.' });
+
+  assert.equal(response.status, 200);
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].question, 'Customer is asking for my manager number to complain.');
+  assert.equal(response.body.trace[0].knowledge_id, 'KNO-CX-GENERAL-COMPLAINT-001');
+});
+
 test('GET /driver-help/quick-actions returns the authenticated company contacts', async () => {
   const supabase = {
     from(table) {

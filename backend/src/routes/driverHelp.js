@@ -29,6 +29,10 @@ function createDriverHelpRouter(options = {}) {
 
   function requestedCompanyContact(question) {
     const normalized = question.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+    // A complaint is an operational situation with an owner-approved procedure,
+    // even when the driver mentions the manager's phone number. Let the grounded
+    // knowledge service answer it instead of turning it into a contact lookup.
+    if (/\bcomplain(?:t|ed|ing|s)?\b/.test(normalized)) return null;
     const asksForContact = /\b(call|contact|number|phone|reach|get ahold|talk to)\b/.test(normalized);
     if (!asksForContact) return null;
     if (/\bcxpc\b|customer service pickup coordinator/.test(normalized)) return 'cxpc';

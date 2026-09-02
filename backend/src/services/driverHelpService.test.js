@@ -601,6 +601,136 @@ test('missed delivery wording asks whether the driver means a misdelivery or an 
   assert.match(incomplete.decision.clarification_prompt, /what prevented/i);
 });
 
+test('missed-delivery disambiguation tolerates articles but leaves pickup-window wording alone', () => {
+  for (const question of ['I missed the delivery, what now?', 'I missed a delivery, what now?']) {
+    const result = buildDeterministicRuntimeDecision(question, [], {});
+    assert.equal(result.decision.response_mode, 'CLARIFY', question);
+    assert.match(result.decision.clarification_prompt, /wrong address.*unable to complete/i);
+  }
+
+  const pickupWindow = buildDeterministicRuntimeDecision(
+    'I missed the delivery window',
+    [knowledgeRecord({
+      knowledge_id: 'KNO-PUP-WINDOW-RISK-001',
+      canonical_situation: 'A pickup cannot be completed within the pickup window',
+      clarification_requirements: []
+    })],
+    {}
+  );
+  assert.equal(pickupWindow.lockedDecision, false);
+});
+
+test('protected glossary definitions tolerate natural filler without hijacking operational questions', () => {
+  const forge = knowledgeRecord({
+    knowledge_id: 'KNO-GLOSSARY-FORGE-001',
+    canonical_situation: 'A driver asks what FORGE is',
+    concise_answer: 'FORGE is the internal delivery and pickup system.',
+    clarification_requirements: []
+  });
+  const manifest = knowledgeRecord({
+    knowledge_id: 'KNO-GLOSSARY-MANIFEST-001',
+    canonical_situation: 'A driver asks what a manifest is',
+    concise_answer: 'A manifest is the shipment list.',
+    clarification_requirements: []
+  });
+
+  const definition = buildDeterministicRuntimeDecision(
+    'New driver here, what is FORGE?',
+    [forge, manifest],
+    {}
+  );
+  assert.equal(definition.lockedDecision, true);
+  assert.equal(definition.decision.response_mode, 'ANSWER');
+  assert.equal(definition.decision.selected_records[0].knowledge_id, forge.knowledge_id);
+
+  const operational = buildDeterministicRuntimeDecision(
+    'What is listed on my manifest for this package?',
+    [forge, manifest],
+    {}
+  );
+  assert.equal(operational.lockedDecision, false);
+
+  const forgePrompt = buildDeterministicRuntimeDecision(
+    'What is FORGE asking me to do on this screen?',
+    [forge, manifest],
+    {}
+  );
+  assert.equal(forgePrompt.lockedDecision, false);
+
+  const blueSheet = buildDeterministicRuntimeDecision(
+    'What is the Blue Sheet used for when FORGE is down?',
+    [forge, manifest],
+    {}
+  );
+  assert.equal(blueSheet.lockedDecision, false);
+});
+
+test('Vision Label and SID equivalence keeps the complete owner-approved explanation', () => {
+  const record = knowledgeRecord({
+    knowledge_id: 'KNO-GLOSSARY-VISION-LABEL-SID-001',
+    canonical_situation: 'A driver asks whether Vision Label and SID sticker are the same',
+    concise_answer: 'Yes.',
+    clarification_requirements: []
+  });
+  const result = buildDeterministicRuntimeDecision(
+    'Please help — Are a Vision Label and SID sticker the same?',
+    [record],
+    {}
+  );
+
+  assert.equal(result.lockedDecision, true);
+  assert.equal(
+    result.decision.answer_structure.direct_answer,
+    'Yes. Vision Label and SID sticker refer to the same physical label on a package. Ready Route treats the terms as interchangeable.'
+  );
+});
+
+test('approved hazmat package-label phrasing resolves directly while operational hazmat questions remain open', () => {
+  const label = knowledgeRecord({
+    knowledge_id: 'KNO-HAZ-PACKAGE-LABEL-001',
+    canonical_situation: 'A driver asks what a hazmat label means',
+    concise_answer: 'The diamond identifies a hazardous-material class.',
+    clarification_requirements: []
+  });
+
+  const definition = buildDeterministicRuntimeDecision(
+    'Flammable label and UN number on package',
+    [label],
+    {}
+  );
+  assert.equal(definition.lockedDecision, true);
+  assert.equal(definition.decision.selected_records[0].knowledge_id, label.knowledge_id);
+
+  const operational = buildDeterministicRuntimeDecision(
+    'Can I deliver this package with a flammable label?',
+    [label],
+    {}
+  );
+  assert.equal(operational.lockedDecision, false);
+});
+
+test('generic signed-door-tag question asks only for the signature service', () => {
+  const records = [
+    ['KNO-DEL-SIG-ASR-001', 'Adult Signature Required'],
+    ['KNO-DEL-SIG-DSR-001', 'Direct Signature Required'],
+    ['KNO-DEL-SIG-ISR-001', 'Indirect Signature Required']
+  ].map(([knowledgeId, canonicalSituation]) => knowledgeRecord({
+    knowledge_id: knowledgeId,
+    canonical_situation: canonicalSituation,
+    clarification_requirements: ['What signature service does FORGE show?']
+  }));
+
+  const result = buildDeterministicRuntimeDecision(
+    'I have a package with the signature, but there is a signed door tag. What should I do?',
+    records,
+    {}
+  );
+  assert.equal(result.lockedDecision, true);
+  assert.equal(result.decision.response_mode, 'CLARIFY');
+  assert.match(result.decision.clarification_prompt, /ASR, DSR, or ISR/i);
+  assert.deepEqual(result.decision.clarification_options.map((option) => option.query), ['ASR', 'DSR', 'ISR']);
+});
+
 test('active AI does not override the missed delivery disambiguation', async () => {
   const misdelivery = knowledgeRecord({
     knowledge_id: 'KNO-DEL-MISDELIVERY-RECOVERY-001',
@@ -1156,7 +1286,7 @@ test('AI-selected clarification options retain the selected record identity', as
   );
 });
 
-test('generic package-with-signature wording asks for ASR DSR or ISR after grounded interpretation', async () => {
+test('generic package-with-signature wording asks for ASR DSR or ISR without relying on AI', async () => {
   const signatureRequirement = 'What signature service does FORGE show?';
   const records = [
     ['KNO-DEL-SIG-ASR-001', 'Adult Signature Required'],
@@ -1192,7 +1322,7 @@ test('generic package-with-signature wording asks for ASR DSR or ISR after groun
   assert.equal(response.response_mode, 'CLARIFY');
   assert.match(response.clarification_prompt, /What signature service/);
   assert.deepEqual(response.clarification_options.map((option) => option.query), ['ASR', 'DSR', 'ISR']);
-  assert.equal(response.interpretation_mode, 'GROUNDED_AI');
+  assert.equal(response.interpretation_mode, 'DETERMINISTIC');
 });
 
 test('grounded AI receives a relevant bounded shortlist instead of the full corpus', async () => {
