@@ -555,6 +555,80 @@ test('natural yes and no clarification replies select the authored branch', () =
   assert.deepEqual(resolveClarificationSelection('No, I have not scanned anything.', context), no);
 });
 
+test('missed delivery wording asks whether the driver means a misdelivery or an incomplete attempt', () => {
+  const misdelivery = knowledgeRecord({
+    knowledge_id: 'KNO-DEL-MISDELIVERY-RECOVERY-001',
+    canonical_situation: 'Recovering and redelivering a misdelivered package on the same day',
+    clarification_requirements: [
+      'Has the package been physically recovered?',
+      'Is the correct address known?',
+      'Can it be redelivered today?'
+    ],
+    concise_answer: 'Recover and scan the package, then apply Code 17.'
+  });
+  const initialQuestion = "I did a missed delivery what's my next step";
+  const initial = buildDeterministicRuntimeDecision(initialQuestion, [misdelivery], {});
+
+  assert.equal(initial.decision.response_mode, 'CLARIFY');
+  assert.equal(initial.lockedDecision, true);
+  assert.match(initial.decision.clarification_prompt, /wrong address.*unable to complete/i);
+  assert.deepEqual(
+    initial.decision.clarification_options.map((option) => option.label),
+    ['Delivered to wrong address', 'Could not complete delivery']
+  );
+
+  const context = buildNextSessionContext({}, initialQuestion, initial.decision);
+  const wrongAddress = buildDeterministicRuntimeDecision(
+    'Delivered to wrong address',
+    [misdelivery],
+    context
+  );
+  assert.equal(wrongAddress.decision.response_mode, 'CLARIFY');
+  assert.equal(wrongAddress.lockedDecision, true);
+  assert.match(wrongAddress.decision.clarification_prompt, /physically recovered/i);
+  assert.equal(
+    wrongAddress.decision.candidates[0].knowledge_id,
+    'KNO-DEL-MISDELIVERY-RECOVERY-001'
+  );
+
+  const incomplete = buildDeterministicRuntimeDecision(
+    'Could not complete delivery',
+    [misdelivery],
+    context
+  );
+  assert.equal(incomplete.decision.response_mode, 'CLARIFY');
+  assert.equal(incomplete.lockedDecision, true);
+  assert.match(incomplete.decision.clarification_prompt, /what prevented/i);
+});
+
+test('active AI does not override the missed delivery disambiguation', async () => {
+  const misdelivery = knowledgeRecord({
+    knowledge_id: 'KNO-DEL-MISDELIVERY-RECOVERY-001',
+    canonical_situation: 'Recovering and redelivering a misdelivered package on the same day',
+    clarification_requirements: ['Has the package been physically recovered?']
+  });
+  let aiCalls = 0;
+  const service = createDriverHelpService({
+    supabase: fakeSupabase([misdelivery]),
+    aiInterpretationMode: 'ACTIVE',
+    aiInterpreter: async () => {
+      aiCalls += 1;
+      throw new Error('AI should not be called for this protected clarification');
+    }
+  });
+
+  const response = await service.answerQuestion({
+    accountId: '00000000-0000-0000-0000-000000000001',
+    driverId: '00000000-0000-0000-0000-000000000002',
+    question: "I did a missed delivery what's my next step"
+  });
+
+  assert.equal(response.response_mode, 'CLARIFY');
+  assert.match(response.clarification_prompt, /wrong address.*unable to complete/i);
+  assert.equal(response.interpretation_mode, 'DETERMINISTIC');
+  assert.equal(aiCalls, 0);
+});
+
 test('protected runtime branches fail closed and preserve high-risk distinctions', () => {
   const damageRecord = knowledgeRecord({
     knowledge_id: 'KNO-DEL-DAMAGE-INSPECTION-001',

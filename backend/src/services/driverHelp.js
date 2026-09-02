@@ -43,6 +43,11 @@ const {
 
 const MISSING_TABLE_CODES = new Set(['42P01', 'PGRST106', 'PGRST204', 'PGRST205']);
 
+const MISSED_DELIVERY_MEANING_REQUIREMENT =
+  'Did you deliver the package to the wrong address, or were you unable to complete the delivery?';
+const MISSED_DELIVERY_REASON_REQUIREMENT =
+  'What prevented the delivery from being completed?';
+
 const HIGH_RISK_MEMORY_KNOWLEDGE_IDS = new Set([
   'KNO-DEL-ALCOHOL-001',
   'KNO-DEL-ANIMAL-HAZARD-001',
@@ -711,11 +716,103 @@ function buildLockedRecordRuntimeDecision(question, context, record, options = {
   }, context, record);
 }
 
+function buildMissedDeliveryRuntimeDecision(question, records, context = {}) {
+  const normalized = normalizeDriverQuestion(question);
+  const pendingRequirement = normalizeDriverQuestion(
+    context.pending_clarification_requirement || context.pending_clarification_prompt
+  );
+  const meaningRequirement = normalizeDriverQuestion(MISSED_DELIVERY_MEANING_REQUIREMENT);
+  const misdeliveryRecord = findEligibleOperationalRecord(
+    records,
+    'KNO-DEL-MISDELIVERY-RECOVERY-001'
+  );
+  const meansWrongAddress = (
+    /\bmisdeliver(?:y|ed)?\b/.test(normalized)
+    || /\b(?:delivered|left|dropped)\b.*\bwrong (?:address|house|location|door)\b/.test(normalized)
+    || /\bwrong (?:address|house|location|door)\b/.test(normalized)
+  );
+  const meansIncompleteAttempt = (
+    /\b(?:could not|couldn t|couldnt|unable to|did not|didn t|didnt|failed to)\b.*\b(?:complete|finish|make|deliver)\b/.test(normalized)
+    || /\bdelivery (?:could not|couldn t|couldnt|was not|wasn t|wasnt) (?:be )?completed\b/.test(normalized)
+  );
+
+  if (pendingRequirement === meaningRequirement) {
+    if (meansWrongAddress && misdeliveryRecord) {
+      const requirement = misdeliveryRecord.clarification_requirements?.[0]
+        || 'Has the package been physically recovered?';
+      const ranked = [{ record: misdeliveryRecord, score: 100 }];
+      return buildLockedRuntimeDecision(question, {
+        response_mode: 'CLARIFY',
+        confidence: 1,
+        candidates: [{
+          knowledge_id: misdeliveryRecord.knowledge_id,
+          version: misdeliveryRecord.version,
+          canonical_situation: misdeliveryRecord.canonical_situation,
+          score: 100
+        }],
+        selected_records: [],
+        clarification_prompt: buildClarificationPrompt(requirement),
+        clarification_requirement: requirement,
+        clarification_plan: misdeliveryRecord.clarification_requirements || [requirement],
+        clarification_options: clarificationOptionsForRequirement(requirement, ranked)
+      }, context, misdeliveryRecord);
+    }
+
+    if (meansIncompleteAttempt) {
+      return buildLockedRuntimeDecision(question, {
+        response_mode: 'CLARIFY',
+        confidence: 1,
+        candidates: [],
+        selected_records: [],
+        clarification_prompt: buildClarificationPrompt(MISSED_DELIVERY_REASON_REQUIREMENT),
+        clarification_requirement: MISSED_DELIVERY_REASON_REQUIREMENT,
+        clarification_plan: [MISSED_DELIVERY_REASON_REQUIREMENT],
+        clarification_options: []
+      }, context);
+    }
+
+    return null;
+  }
+
+  const saysMissedDelivery = /\bmissed delivery\b/.test(normalized);
+  const suppliesSpecificMeaning = meansWrongAddress
+    || meansIncompleteAttempt
+    || /\b(?:because|since|due to|customer|recipient|nobody|no one|business|location|closed|locked|dog|animal|signature|identification|hazmat|damaged|weather|access|gate|apartment)\b/.test(normalized);
+  if (!saysMissedDelivery || suppliesSpecificMeaning) return null;
+
+  return buildLockedRuntimeDecision(question, {
+    response_mode: 'CLARIFY',
+    confidence: 1,
+    candidates: [],
+    selected_records: [],
+    clarification_prompt: buildClarificationPrompt(MISSED_DELIVERY_MEANING_REQUIREMENT),
+    clarification_requirement: MISSED_DELIVERY_MEANING_REQUIREMENT,
+    clarification_plan: [MISSED_DELIVERY_MEANING_REQUIREMENT],
+    clarification_options: [
+      {
+        knowledge_id: 'FLOW:MISSED_DELIVERY_WRONG_ADDRESS',
+        version: 1,
+        label: 'Delivered to wrong address',
+        query: 'I delivered the package to the wrong address'
+      },
+      {
+        knowledge_id: 'FLOW:MISSED_DELIVERY_NOT_COMPLETED',
+        version: 1,
+        label: 'Could not complete delivery',
+        query: 'I could not complete the delivery'
+      }
+    ]
+  }, context);
+}
+
 function buildProtectedRuntimeDecision(question, records, context = {}) {
   const normalized = normalizeDriverQuestion(question);
   const pendingRequirement = normalizeDriverQuestion(
     context.pending_clarification_requirement || context.pending_clarification_prompt
   );
+
+  const missedDeliveryDecision = buildMissedDeliveryRuntimeDecision(question, records, context);
+  if (missedDeliveryDecision) return missedDeliveryDecision;
 
   const employmentQuestion = (
     /\b(?:vacation|time off|pto|overtime|paycheck|payroll|wages?|benefits?)\b/.test(normalized)
