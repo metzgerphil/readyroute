@@ -65,7 +65,9 @@ const WITHHELD_STATUSES = new Set([
 const UNSUPPORTED_BOUNDARY_PATTERNS = [
   /\bopen\b.*\b(?:customer|recipient)(?: s)?\b.*\bpackage\b.*\binspect\b|\binspect\b.*\binside\b.*\bpackage\b/,
   /\baccept\b.*\bcash\b.*\bshipping charges?\b|\bcash\b.*\bshipping charges?\b/,
-  /^(?:what (?:is|does)|define|meaning of)\s+(?:a\s+)?osa\b/
+  /^(?:what (?:is|does)|define|meaning of)\s+(?:a\s+)?osa\b/,
+  /^(?!.*\b(?:00|20 digit)\b).*(?:\b(?:key enter|manually enter|manual entry)\b.*\b(?:barcode|tracking(?: number)?|number)\b|\b(?:barcode|tracking(?: number)?)\b.*\b(?:key enter|manually enter|manual entry)\b)/,
+  /\bop\s*207(?:res)?\b/
 ];
 
 function matchesUnsupportedBoundaryQuestion(question) {
@@ -590,8 +592,7 @@ function escalation(candidates = [], confidence = 0, message = null) {
     confidence,
     candidates,
     selected_records: [],
-    escalation_message: message
-      || 'Ready Route Answers does not have a verified answer for this question yet. Contact your manager or station for the current procedure.',
+    escalation_message: message || 'Call your BC.',
     escalation_details: []
   };
 }
@@ -892,8 +893,7 @@ function buildDriverHelpDecision(question, records, context = {}) {
   if (!isProductionEligibleRecord(top.record)) {
     return escalation(
       candidates,
-      confidence,
-      `Ready Route Answers found material about “${top.record.canonical_situation},” but it is not approved for a definitive answer. Contact your manager or station for the current procedure.`
+      confidence
     );
   }
 

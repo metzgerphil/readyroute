@@ -4,7 +4,10 @@ const assert = require('node:assert/strict');
 process.env.SUPABASE_URL = process.env.SUPABASE_URL || 'https://example.supabase.co';
 process.env.SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_KEY || 'test-service-role-key';
 
-const { buildDeterministicRuntimeDecision } = require('./driverHelp');
+const {
+  buildDeterministicRuntimeDecision,
+  buildNextSessionContext
+} = require('./driverHelp');
 const { loadIndexedRecords } = require('../scripts/runDriverHelpStability');
 
 const records = loadIndexedRecords().filter((record) => record.is_published);
@@ -114,12 +117,85 @@ test('reviewed unsupported boundaries fail closed instead of using neighboring p
   const questions = [
     "Can I open a customer's package to inspect what is inside?",
     'A customer wants me to accept cash for shipping charges',
-    'What does OSA mean?'
+    'What does OSA mean?',
+    'How do I manually enter the visible tracking number?',
+    'How do I fill out OP-207?'
   ];
 
   for (const question of questions) {
     const decision = decide(question);
     assert.equal(decision.response_mode, 'ESCALATE', question);
     assert.equal(selectedId(decision), null, question);
+    assert.equal(decision.escalation_message, 'Call your BC.', question);
   }
+});
+
+test('post-update field findings use only the approved operational record', () => {
+  const cases = [
+    ['This wooden bridge feels unsecured and I cannot safely drive across it', 'KNO-DEL-UNSAFE-ACCESS-001', /Code 001/i],
+    ['GroundCloud shows a different route than I expected', 'KNO-GROUNDCLOUD-ROUTE-MISMATCH-001', /Call your BC/i],
+    ['I do not think I can finish my whole route today', 'KNO-ROUTE-NOT-COMPLETE-001', /Call your BC/i],
+    ['One package is leaking but the other packages for the same address are fine', 'KNO-DEL-LEAK-SAME-ADDRESS-001', /Deliver the packages that look fine/i],
+    ['The leaking package is hazardous', 'KNO-HAZ-LEAK-001', /Call your BC/i],
+    ['The leaking package is not hazardous', 'KNO-DEL-LEAK-NONHAZ-001', /Code 010/i],
+    ['How do I fill out a hand sheet?', 'KNO-DOC-HANDSHEET-GENERAL-001', /four digits per cell/i],
+    ['How do I do crossing?', 'KNO-DEL-NOTATION-001', /top-left/i]
+  ];
+
+  for (const [question, expected, expectedText] of cases) {
+    const runtime = buildDeterministicRuntimeDecision(question, records, {});
+    const decision = runtime.decision;
+    const visibleText = [
+      decision.answer_structure?.direct_answer,
+      ...(decision.answer_structure?.procedure_steps || [])
+    ].filter(Boolean).join(' ');
+    assert.equal(runtime.lockedDecision, true, question);
+    assert.equal(decision.response_mode, 'ANSWER', question);
+    assert.equal(decision.selected_records[0].knowledge_id, expected, question);
+    assert.match(visibleText, expectedText, question);
+  }
+});
+
+test('a generic leak asks only whether it is hazardous and follows the selected branch', () => {
+  const question = 'A package is leaking. What do I do?';
+  const initial = buildDeterministicRuntimeDecision(question, records, {});
+  assert.equal(initial.lockedDecision, true);
+  assert.equal(initial.decision.response_mode, 'CLARIFY');
+  assert.match(initial.decision.clarification_prompt, /leaking package hazardous/i);
+  assert.deepEqual(
+    initial.decision.clarification_options.map((option) => option.label),
+    ['Hazardous', 'Not hazardous']
+  );
+
+  const uncertain = buildDeterministicRuntimeDecision(
+    'The package is leaking and I do not know if it is hazardous',
+    records,
+    {}
+  );
+  assert.equal(uncertain.decision.response_mode, 'CLARIFY');
+  assert.match(uncertain.decision.clarification_prompt, /leaking package hazardous/i);
+
+  const context = buildNextSessionContext({}, question, initial.decision);
+  const nonHazardous = buildDeterministicRuntimeDecision(
+    'No, the leaking package is not hazardous',
+    records,
+    context
+  );
+  assert.equal(nonHazardous.decision.response_mode, 'ANSWER');
+  assert.equal(
+    nonHazardous.decision.selected_records[0].knowledge_id,
+    'KNO-DEL-LEAK-NONHAZ-001'
+  );
+});
+
+test('unknown questions use the owner-approved short fallback', () => {
+  const decision = decide('How do I bake sourdough bread?');
+  assert.equal(decision.response_mode, 'ESCALATE');
+  assert.equal(decision.escalation_message, 'Call your BC.');
+});
+
+test('crossing mechanics do not absorb a question about crossing an unsafe bridge', () => {
+  const decision = decide('How do I cross this unsafe bridge to reach the delivery?');
+  assert.equal(decision.response_mode, 'ANSWER');
+  assert.equal(selectedId(decision), 'KNO-DEL-UNSAFE-ACCESS-001');
 });

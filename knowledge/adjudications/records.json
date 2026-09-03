@@ -556,7 +556,7 @@
   {
     "adjudication_id": "ADJ-20260810-DOC-HANDSHEET-001",
     "knowledge_id": "KNO-DOC-HANDSHEET-001",
-    "status": "APPROVED",
+    "status": "REOPENED",
     "issue_reviewed": "What official documents the informal term Blue Sheet refers to in the confirmed HAL outage context.",
     "canonical_determination": "The official forms are Delivery Record OP-207 and Delivery Manifest Record OP-207Res. OP-117 confirms their use for HAL packages when FORGE or scanning devices are inoperable; examples appear on the outside flaps of OP-207 tablets. Blue Sheet is not an official OP-117 term.",
     "previous_interpretations": [
@@ -565,8 +565,10 @@
     "supporting_source_ids": [
       "SRC-V2-OP117-20251215"
     ],
-    "conflicting_or_superseded_source_ids": [],
-    "reasoning": "Human review confirmed the exact official form names, the HAL outage scope, and that Blue Sheet is informal terminology. The complete field-entry and non-HAL outage procedures remain unapproved.",
+    "conflicting_or_superseded_source_ids": [
+      "SRC-V2-VLAD-POST-UPDATE-FINDINGS-20260903"
+    ],
+    "reasoning": "Human review confirmed the exact official form names, the HAL outage scope, and that Blue Sheet is informal terminology. The complete field-entry and non-HAL outage procedures remain unapproved. Reopened 2026-09-03 because Vlad's current field verification disputes the driver-facing form identity.",
     "approved_by": "Ready Route human review relayed by project owner",
     "approval_date": "2026-08-10",
     "effective_date": "2026-08-10",
@@ -1633,7 +1635,7 @@
   {
     "adjudication_id": "ADJ-20260819-VLAD-DOC-HANDSHEET-GENERAL-001",
     "knowledge_id": "KNO-DOC-HANDSHEET-GENERAL-001",
-    "status": "APPROVED",
+    "status": "SUPERSEDED",
     "issue_reviewed": "Whether Vlad's supplied procedure may be published as Ready Route operational knowledge: FORGE or the scanner is completely unavailable for a non-HAL delivery",
     "canonical_determination": "Use the current station-issued hand sheet. Identify the tracking number from the applicable 96, EPIC, LMO, or Ground Economy barcode, record the tracking number in the required format, use military time and the four-letter street abbreviation, circle the correct status code, obtain the CSA number from the manager, include the FedEx ID, and turn in the completed sheet at check-in or check-out.",
     "previous_interpretations": [
@@ -1644,8 +1646,10 @@
       "SRC-V2-VLAD-RESPONSE-20260819",
       "SRC-V2-OWNER-VLAD-APPROVAL-20260819"
     ],
-    "conflicting_or_superseded_source_ids": [],
-    "reasoning": "Phillip Metzger explicitly approved Vlad-provided procedures and operational information as accurate Ready Route knowledge without requiring separate documentary corroboration. This adjudication preserves the exact supplied scope and later branch corrections.",
+    "conflicting_or_superseded_source_ids": [
+      "SRC-V2-VLAD-POST-UPDATE-FINDINGS-20260903"
+    ],
+    "reasoning": "Phillip Metzger explicitly approved Vlad-provided procedures and operational information as accurate Ready Route knowledge without requiring separate documentary corroboration. This adjudication preserves the exact supplied scope and later branch corrections. Superseded by the 2026-09-03 post-update determination.",
     "approved_by": "Phillip Metzger, Ready Route product owner",
     "approval_date": "2026-08-19",
     "effective_date": "2026-08-19",
@@ -1773,7 +1777,7 @@
   {
     "adjudication_id": "ADJ-20260819-VLAD-WEATHER-QUESTIONABLE-001",
     "knowledge_id": "KNO-WEATHER-QUESTIONABLE-001",
-    "status": "APPROVED",
+    "status": "SUPERSEDED",
     "issue_reviewed": "Whether Vlad's supplied procedure may be published as Ready Route operational knowledge: Weather conditions appear unsafe and the driver is considering a weather exception",
     "canonical_determination": "Explain the unsafe driving conditions to the BC or manager and confirm that the applicable weather code is approved before using it. Do not compromise safety while waiting for direction.",
     "previous_interpretations": [
@@ -1784,8 +1788,10 @@
       "SRC-V2-VLAD-RESPONSE-20260819",
       "SRC-V2-OWNER-VLAD-APPROVAL-20260819"
     ],
-    "conflicting_or_superseded_source_ids": [],
-    "reasoning": "Phillip Metzger explicitly approved Vlad-provided procedures and operational information as accurate Ready Route knowledge without requiring separate documentary corroboration. This adjudication preserves the exact supplied scope and later branch corrections.",
+    "conflicting_or_superseded_source_ids": [
+      "SRC-V2-VLAD-POST-UPDATE-FINDINGS-20260903"
+    ],
+    "reasoning": "Phillip Metzger explicitly approved Vlad-provided procedures and operational information as accurate Ready Route knowledge without requiring separate documentary corroboration. This adjudication preserves the exact supplied scope and later branch corrections. Superseded by the 2026-09-03 post-update determination.",
     "approved_by": "Phillip Metzger, Ready Route product owner",
     "approval_date": "2026-08-19",
     "effective_date": "2026-08-19",
@@ -5096,6 +5102,522 @@
       "clarification_requirements": [],
       "concise_driver_answer": "Yes. Vision Label and SID sticker refer to the same physical label on a package. Ready Route treats the terms as interchangeable.",
       "more_info_answer": "This definition does not by itself change the approved procedure for scanning, removing, replacing, or correcting the label."
+    }
+  },
+  {
+    "adjudication_id": "ADJ-20260903-POST-UPDATE-DEL-UNSAFE-ACCESS-001",
+    "knowledge_id": "KNO-DEL-UNSAFE-ACCESS-001",
+    "status": "APPROVED",
+    "issue_reviewed": "Road or structure conditions make driving to the delivery location unsafe",
+    "canonical_determination": "Do not drive into the unsafe access condition. Apply Code 001 and add a comment stating the specific reason the location could not be reached safely.",
+    "previous_interpretations": [
+      "Prior version 1: Do not drive into the unsafe access condition. Apply Code 001 and add a comment stating the specific reason the location could not be reached safely."
+    ],
+    "supporting_source_ids": [
+      "SRC-V2-VLAD-POST-UPDATE-FINDINGS-20260903",
+      "SRC-V2-OWNER-VLAD-POST-UPDATE-APPROVAL-20260903"
+    ],
+    "conflicting_or_superseded_source_ids": [],
+    "reasoning": "Vlad supplied the current field procedure and Phillip Metzger’s standing owner direction authorizes Vlad’s field-verified mechanics within the exact supplied scope. Conflicting older records remain preserved and are explicitly reopened or superseded rather than silently deleted.",
+    "approved_by": "Phillip Metzger, Ready Route product owner",
+    "approval_date": "2026-09-03",
+    "effective_date": "2026-09-03",
+    "supersedes": [],
+    "reopen_conditions": [
+      "Phillip or Vlad revises the supplied procedure.",
+      "A current FORGE screen or later applicable operational, company-policy, safety, or regulatory update materially conflicts with it.",
+      "A more specific scenario establishes a different approved procedure."
+    ],
+    "canonical_overrides": {
+      "authoritative_rule": "Do not drive into the unsafe access condition. Apply Code 001 and add a comment stating the specific reason the location could not be reached safely.",
+      "applicability": [
+        "Driving to the delivery location would be unsafe because of the road, structure, access path, obstruction, clearance, animal, or turnaround condition"
+      ],
+      "conditions": [
+        "The driver is unable to reach the delivery location safely"
+      ],
+      "exceptions": [
+        "This owner-approved operational use does not change the preserved source-reference definition for Code 001"
+      ],
+      "required_procedure": [
+        {
+          "step": 1,
+          "action": "Do not drive into or across the unsafe condition."
+        },
+        {
+          "step": 2,
+          "action": "Apply Code 001."
+        },
+        {
+          "step": 3,
+          "action": "Add a comment explaining the specific unsafe condition so the station knows what happened."
+        }
+      ],
+      "required_documentation": [
+        "Code 001",
+        "Comment stating the specific unsafe-access reason"
+      ],
+      "prohibited_actions": [
+        "Do not drive into an unsafe road or structure condition to complete the delivery.",
+        "Do not omit the comment explaining the reason."
+      ],
+      "escalation_requirements": [],
+      "clarification_requirements": [],
+      "concise_driver_answer": "Do not drive into the unsafe condition. Apply Code 001 and add a comment explaining the specific reason.",
+      "more_info_answer": "Examples include unsafe bridges, flooding, ice or snow, severe road damage, steep or unsuitable driveways, debris or construction, loose animals blocking the only path, low clearance, or no safe turnaround."
+    }
+  },
+  {
+    "adjudication_id": "ADJ-20260903-POST-UPDATE-GROUNDCLOUD-ROUTE-MISMATCH-001",
+    "knowledge_id": "KNO-GROUNDCLOUD-ROUTE-MISMATCH-001",
+    "status": "APPROVED",
+    "issue_reviewed": "GroundCloud shows a different route than the driver expected",
+    "canonical_determination": "Call your BC.",
+    "previous_interpretations": [
+      "Prior version 1: Call your BC."
+    ],
+    "supporting_source_ids": [
+      "SRC-V2-VLAD-POST-UPDATE-FINDINGS-20260903",
+      "SRC-V2-OWNER-VLAD-POST-UPDATE-APPROVAL-20260903"
+    ],
+    "conflicting_or_superseded_source_ids": [],
+    "reasoning": "Vlad supplied the current field procedure and Phillip Metzger’s standing owner direction authorizes Vlad’s field-verified mechanics within the exact supplied scope. Conflicting older records remain preserved and are explicitly reopened or superseded rather than silently deleted.",
+    "approved_by": "Phillip Metzger, Ready Route product owner",
+    "approval_date": "2026-09-03",
+    "effective_date": "2026-09-03",
+    "supersedes": [],
+    "reopen_conditions": [
+      "Phillip or Vlad revises the supplied procedure.",
+      "A current FORGE screen or later applicable operational, company-policy, safety, or regulatory update materially conflicts with it.",
+      "A more specific scenario establishes a different approved procedure."
+    ],
+    "canonical_overrides": {
+      "authoritative_rule": "Call your BC.",
+      "applicability": [
+        "GroundCloud displays an unexpected or different route"
+      ],
+      "conditions": [],
+      "exceptions": [],
+      "required_procedure": [
+        {
+          "step": 1,
+          "action": "Call your BC."
+        }
+      ],
+      "required_documentation": [],
+      "prohibited_actions": [
+        "Do not guess which route should be followed."
+      ],
+      "escalation_requirements": [
+        "Call the BC"
+      ],
+      "clarification_requirements": [],
+      "concise_driver_answer": "Call your BC.",
+      "more_info_answer": null
+    }
+  },
+  {
+    "adjudication_id": "ADJ-20260903-POST-UPDATE-ROUTE-NOT-COMPLETE-001",
+    "knowledge_id": "KNO-ROUTE-NOT-COMPLETE-001",
+    "status": "APPROVED",
+    "issue_reviewed": "The driver believes the whole route cannot be completed",
+    "canonical_determination": "Call your BC.",
+    "previous_interpretations": [
+      "Prior version 1: Call your BC."
+    ],
+    "supporting_source_ids": [
+      "SRC-V2-VLAD-POST-UPDATE-FINDINGS-20260903",
+      "SRC-V2-OWNER-VLAD-POST-UPDATE-APPROVAL-20260903"
+    ],
+    "conflicting_or_superseded_source_ids": [],
+    "reasoning": "Vlad supplied the current field procedure and Phillip Metzger’s standing owner direction authorizes Vlad’s field-verified mechanics within the exact supplied scope. Conflicting older records remain preserved and are explicitly reopened or superseded rather than silently deleted.",
+    "approved_by": "Phillip Metzger, Ready Route product owner",
+    "approval_date": "2026-09-03",
+    "effective_date": "2026-09-03",
+    "supersedes": [],
+    "reopen_conditions": [
+      "Phillip or Vlad revises the supplied procedure.",
+      "A current FORGE screen or later applicable operational, company-policy, safety, or regulatory update materially conflicts with it.",
+      "A more specific scenario establishes a different approved procedure."
+    ],
+    "canonical_overrides": {
+      "authoritative_rule": "Call your BC.",
+      "applicability": [
+        "The driver believes the whole route cannot be completed"
+      ],
+      "conditions": [],
+      "exceptions": [
+        "A question about one pickup window follows the pickup-window procedure",
+        "A request to calculate a regulatory driving limit follows the hours-of-service record"
+      ],
+      "required_procedure": [
+        {
+          "step": 1,
+          "action": "Call your BC."
+        }
+      ],
+      "required_documentation": [],
+      "prohibited_actions": [
+        "Do not route this statement into an hours-of-service calculation unless the driver actually asks about driving-hour limits."
+      ],
+      "escalation_requirements": [
+        "Call the BC"
+      ],
+      "clarification_requirements": [],
+      "concise_driver_answer": "Call your BC.",
+      "more_info_answer": null
+    }
+  },
+  {
+    "adjudication_id": "ADJ-20260903-POST-UPDATE-DEL-LEAK-NONHAZ-001",
+    "knowledge_id": "KNO-DEL-LEAK-NONHAZ-001",
+    "status": "APPROVED",
+    "issue_reviewed": "A leaking package is confirmed not to be hazardous material",
+    "canonical_determination": "Apply Code 010, cross the package, remove the Vision Label/SID sticker, and bring the package back to the station.",
+    "previous_interpretations": [
+      "Prior version 1: Apply Code 010, cross the package, remove the Vision Label/SID sticker, and bring the package back to the station."
+    ],
+    "supporting_source_ids": [
+      "SRC-V2-VLAD-POST-UPDATE-FINDINGS-20260903",
+      "SRC-V2-OWNER-VLAD-POST-UPDATE-APPROVAL-20260903"
+    ],
+    "conflicting_or_superseded_source_ids": [],
+    "reasoning": "Vlad supplied the current field procedure and Phillip Metzger’s standing owner direction authorizes Vlad’s field-verified mechanics within the exact supplied scope. Conflicting older records remain preserved and are explicitly reopened or superseded rather than silently deleted.",
+    "approved_by": "Phillip Metzger, Ready Route product owner",
+    "approval_date": "2026-09-03",
+    "effective_date": "2026-09-03",
+    "supersedes": [],
+    "reopen_conditions": [
+      "Phillip or Vlad revises the supplied procedure.",
+      "A current FORGE screen or later applicable operational, company-policy, safety, or regulatory update materially conflicts with it.",
+      "A more specific scenario establishes a different approved procedure."
+    ],
+    "canonical_overrides": {
+      "authoritative_rule": "Apply Code 010, cross the package, remove the Vision Label/SID sticker, and bring the package back to the station.",
+      "applicability": [
+        "The package is leaking",
+        "The package is confirmed not hazardous"
+      ],
+      "conditions": [
+        "Hazardous status is known to be negative"
+      ],
+      "exceptions": [
+        "A hazardous leaking package follows the hazardous-leak BC procedure"
+      ],
+      "required_procedure": [
+        {
+          "step": 1,
+          "action": "Apply Code 010."
+        },
+        {
+          "step": 2,
+          "action": "Cross the package."
+        },
+        {
+          "step": 3,
+          "action": "Remove the Vision Label/SID sticker."
+        },
+        {
+          "step": 4,
+          "action": "Bring the package back to the station."
+        }
+      ],
+      "required_documentation": [
+        "Code 010",
+        "Package service cross"
+      ],
+      "prohibited_actions": [
+        "Do not use this branch for a hazardous leaking package.",
+        "Do not deliver the leaking package."
+      ],
+      "escalation_requirements": [],
+      "clarification_requirements": [],
+      "concise_driver_answer": "Apply Code 010, cross the package, remove the Vision Label/SID sticker, and bring it back to the station.",
+      "more_info_answer": null
+    }
+  },
+  {
+    "adjudication_id": "ADJ-20260903-POST-UPDATE-DEL-LEAK-SAME-ADDRESS-001",
+    "knowledge_id": "KNO-DEL-LEAK-SAME-ADDRESS-001",
+    "status": "APPROVED",
+    "issue_reviewed": "One package is leaking but other packages for the same address look fine",
+    "canonical_determination": "Deliver every package that looks fine. Apply the applicable hazardous or non-hazardous leak branch only to the leaking package.",
+    "previous_interpretations": [
+      "Prior version 1: Deliver every package that looks fine. Apply the applicable hazardous or non-hazardous leak branch only to the leaking package."
+    ],
+    "supporting_source_ids": [
+      "SRC-V2-VLAD-POST-UPDATE-FINDINGS-20260903",
+      "SRC-V2-OWNER-VLAD-POST-UPDATE-APPROVAL-20260903"
+    ],
+    "conflicting_or_superseded_source_ids": [],
+    "reasoning": "Vlad supplied the current field procedure and Phillip Metzger’s standing owner direction authorizes Vlad’s field-verified mechanics within the exact supplied scope. Conflicting older records remain preserved and are explicitly reopened or superseded rather than silently deleted.",
+    "approved_by": "Phillip Metzger, Ready Route product owner",
+    "approval_date": "2026-09-03",
+    "effective_date": "2026-09-03",
+    "supersedes": [],
+    "reopen_conditions": [
+      "Phillip or Vlad revises the supplied procedure.",
+      "A current FORGE screen or later applicable operational, company-policy, safety, or regulatory update materially conflicts with it.",
+      "A more specific scenario establishes a different approved procedure."
+    ],
+    "canonical_overrides": {
+      "authoritative_rule": "Deliver every package that looks fine. Apply the applicable hazardous or non-hazardous leak branch only to the leaking package.",
+      "applicability": [
+        "Multiple packages are for the same address",
+        "One package is leaking",
+        "The other packages look fine"
+      ],
+      "conditions": [
+        "Each package that is delivered appears unaffected"
+      ],
+      "exceptions": [],
+      "required_procedure": [
+        {
+          "step": 1,
+          "action": "Separate the leaking package from the packages that look fine."
+        },
+        {
+          "step": 2,
+          "action": "Deliver the packages that look fine as usual."
+        },
+        {
+          "step": 3,
+          "action": "If the leaking package is hazardous, park safely and call your BC."
+        },
+        {
+          "step": 4,
+          "action": "If the leaking package is confirmed not hazardous, apply Code 010, cross it, remove the Vision Label/SID sticker, and bring it back to the station."
+        }
+      ],
+      "required_documentation": [],
+      "prohibited_actions": [
+        "Do not apply the leaking-package disposition to unaffected packages.",
+        "Do not use the non-hazardous branch for a hazardous leak."
+      ],
+      "escalation_requirements": [],
+      "clarification_requirements": [],
+      "concise_driver_answer": "Deliver the packages that look fine. For the leaking package, park safely and call your BC if it is hazardous; if it is confirmed not hazardous, use Code 010, cross it, remove the SID sticker, and return it to the station.",
+      "more_info_answer": null
+    }
+  },
+  {
+    "adjudication_id": "ADJ-20260903-POST-UPDATE-HAZ-LEAK-001",
+    "knowledge_id": "KNO-HAZ-LEAK-001",
+    "status": "APPROVED",
+    "issue_reviewed": "A leaking package is hazardous material",
+    "canonical_determination": "Park in a safe place and call your BC.",
+    "previous_interpretations": [
+      "Prior version 1 told the driver not to handle or deliver the package, not to continue the route, to contact the local FedEx station representative, and to wait for the cleanup response."
+    ],
+    "supporting_source_ids": [
+      "SRC-V2-OP117-20251215",
+      "SRC-V2-VLAD-POST-UPDATE-FINDINGS-20260903",
+      "SRC-V2-OWNER-VLAD-POST-UPDATE-APPROVAL-20260903"
+    ],
+    "conflicting_or_superseded_source_ids": [
+      "SRC-V2-OP117-20251215"
+    ],
+    "reasoning": "Vlad supplied the current field procedure and Phillip Metzger’s standing owner direction authorizes Vlad’s field-verified mechanics within the exact supplied scope. Conflicting older records remain preserved and are explicitly reopened or superseded rather than silently deleted.",
+    "approved_by": "Phillip Metzger, Ready Route product owner",
+    "approval_date": "2026-09-03",
+    "effective_date": "2026-09-03",
+    "supersedes": [],
+    "reopen_conditions": [
+      "Phillip or Vlad revises the supplied procedure.",
+      "A current FORGE screen or later applicable operational, company-policy, safety, or regulatory update materially conflicts with it.",
+      "A more specific scenario establishes a different approved procedure."
+    ],
+    "canonical_overrides": {
+      "authoritative_rule": "Park in a safe place and call your BC.",
+      "applicability": [
+        "The package is leaking",
+        "The package is hazardous material or dangerous goods"
+      ],
+      "conditions": [
+        "Park only when and where it is safe to do so"
+      ],
+      "exceptions": [
+        "A leaking package confirmed not hazardous follows the separate Code 010 return procedure"
+      ],
+      "required_procedure": [
+        {
+          "step": 1,
+          "action": "Park in a safe place."
+        },
+        {
+          "step": 2,
+          "action": "Call your BC."
+        }
+      ],
+      "required_documentation": [],
+      "prohibited_actions": [
+        "Do not substitute the non-hazardous Code 010 branch for a hazardous leak."
+      ],
+      "escalation_requirements": [
+        "Call the BC"
+      ],
+      "clarification_requirements": [],
+      "concise_driver_answer": "Park in a safe place and call your BC.",
+      "more_info_answer": "This is the hazardous-leak branch. A package confirmed not hazardous follows the separate Code 010 return procedure."
+    }
+  },
+  {
+    "adjudication_id": "ADJ-20260903-POST-UPDATE-DOC-HANDSHEET-GENERAL-001",
+    "knowledge_id": "KNO-DOC-HANDSHEET-GENERAL-001",
+    "status": "APPROVED",
+    "issue_reviewed": "The driver needs to complete a station-issued hand sheet",
+    "canonical_determination": "Record the delivery date, write the tracking number four digits per cell, write the first four letters of the street name, use military time, use Code 14 for a residential delivery with no signature, and for a signature-required delivery obtain the customer signature and write the customer’s first initial plus full last name.",
+    "previous_interpretations": [
+      "Prior version 2: Record the delivery date, write the tracking number four digits per cell, write the first four letters of the street name, use military time, use Code 14 for a residential delivery with no signature, and for a signature-required delivery obtain the customer signature and write the customer’s first initial plus full last name."
+    ],
+    "supporting_source_ids": [
+      "SRC-V2-VLAD-CONSOLIDATED-DETAIL-20260818",
+      "SRC-V2-OWNER-VLAD-APPROVAL-20260819",
+      "SRC-V2-VLAD-POST-UPDATE-FINDINGS-20260903",
+      "SRC-V2-OWNER-VLAD-POST-UPDATE-APPROVAL-20260903"
+    ],
+    "conflicting_or_superseded_source_ids": [],
+    "reasoning": "Vlad supplied the current field procedure and Phillip Metzger’s standing owner direction authorizes Vlad’s field-verified mechanics within the exact supplied scope. Conflicting older records remain preserved and are explicitly reopened or superseded rather than silently deleted.",
+    "approved_by": "Phillip Metzger, Ready Route product owner",
+    "approval_date": "2026-09-03",
+    "effective_date": "2026-09-03",
+    "supersedes": [],
+    "reopen_conditions": [
+      "Phillip or Vlad revises the supplied procedure.",
+      "A current FORGE screen or later applicable operational, company-policy, safety, or regulatory update materially conflicts with it.",
+      "A more specific scenario establishes a different approved procedure."
+    ],
+    "canonical_overrides": {
+      "authoritative_rule": "Record the delivery date, write the tracking number four digits per cell, write the first four letters of the street name, use military time, use Code 14 for a residential delivery with no signature, and for a signature-required delivery obtain the customer signature and write the customer’s first initial plus full last name.",
+      "applicability": [
+        "The driver is completing the current station-issued delivery hand sheet"
+      ],
+      "conditions": [
+        "Use the actual delivery information",
+        "Use the signature branch only when a signature is required"
+      ],
+      "exceptions": [],
+      "required_procedure": [
+        {
+          "step": 1,
+          "action": "For Date, enter the day the delivery actually happened."
+        },
+        {
+          "step": 2,
+          "action": "For Tracking Number, write four digits per cell."
+        },
+        {
+          "step": 3,
+          "action": "For Street, write the first four letters of the street name."
+        },
+        {
+          "step": 4,
+          "action": "For Time, use military time; for example, 1:00 p.m. is 13:00."
+        },
+        {
+          "step": 5,
+          "action": "Use Code 14 for a residential delivery with no signature."
+        },
+        {
+          "step": 6,
+          "action": "If a signature is required, have the customer sign and write the customer’s first initial plus full last name."
+        }
+      ],
+      "required_documentation": [
+        "Actual delivery date",
+        "Tracking number in four-digit groups",
+        "First four street-name letters",
+        "Military time",
+        "Applicable Code 14 or signature information"
+      ],
+      "prohibited_actions": [
+        "Do not invent tracking digits.",
+        "Do not use Code 14 when a signature is required."
+      ],
+      "escalation_requirements": [],
+      "clarification_requirements": [],
+      "concise_driver_answer": "Enter the actual delivery date, tracking number four digits per cell, first four street-name letters, and military time. Use Code 14 for a residential delivery without a signature. If a signature is required, have the customer sign and write their first initial plus full last name.",
+      "more_info_answer": null
+    }
+  },
+  {
+    "adjudication_id": "ADJ-20260903-POST-UPDATE-DEL-NOTATION-001",
+    "knowledge_id": "KNO-DEL-NOTATION-001",
+    "status": "APPROVED",
+    "issue_reviewed": "An undelivered package requires a physical delivery notation",
+    "canonical_determination": "Cross an undelivered package in four quadrants: top-left is the status code plus driver name or initials; top-right is the time; bottom-left is the date; bottom-right is the Work Area number. The written status must match the electronic status.",
+    "previous_interpretations": [
+      "Prior version 2: Cross an undelivered package in four quadrants: top-left is the status code plus driver name or initials; top-right is the time; bottom-left is the date; bottom-right is the Work Area number. The written status must match the electronic status."
+    ],
+    "supporting_source_ids": [
+      "SRC-V2-OP117-20251215",
+      "SRC-V2-VLAD-POST-UPDATE-FINDINGS-20260903",
+      "SRC-V2-OWNER-VLAD-POST-UPDATE-APPROVAL-20260903"
+    ],
+    "conflicting_or_superseded_source_ids": [],
+    "reasoning": "Vlad supplied the current field procedure and Phillip Metzger’s standing owner direction authorizes Vlad’s field-verified mechanics within the exact supplied scope. Conflicting older records remain preserved and are explicitly reopened or superseded rather than silently deleted.",
+    "approved_by": "Phillip Metzger, Ready Route product owner",
+    "approval_date": "2026-09-03",
+    "effective_date": "2026-09-03",
+    "supersedes": [],
+    "reopen_conditions": [
+      "Phillip or Vlad revises the supplied procedure.",
+      "A current FORGE screen or later applicable operational, company-policy, safety, or regulatory update materially conflicts with it.",
+      "A more specific scenario establishes a different approved procedure."
+    ],
+    "canonical_overrides": {
+      "authoritative_rule": "Cross an undelivered package in four quadrants: top-left is the status code plus driver name or initials; top-right is the time; bottom-left is the date; bottom-right is the Work Area number. The written status must match the electronic status.",
+      "applicability": [
+        "A package cannot be delivered and an unsuccessful status was recorded",
+        "A FORGE on-road intercept cancels delivery after dispatch"
+      ],
+      "conditions": [
+        "The physical notation must match the electronic scan"
+      ],
+      "exceptions": [
+        "The Code 100 branch applies only to the source-defined on-road intercept after dispatch"
+      ],
+      "required_procedure": [
+        {
+          "step": 1,
+          "action": "Draw or use the four-quadrant service cross on the package."
+        },
+        {
+          "step": 2,
+          "action": "In the top-left, write the status code plus your name or initials."
+        },
+        {
+          "step": 3,
+          "action": "In the top-right, write the time."
+        },
+        {
+          "step": 4,
+          "action": "In the bottom-left, write the date."
+        },
+        {
+          "step": 5,
+          "action": "In the bottom-right, write the Work Area number."
+        },
+        {
+          "step": 6,
+          "action": "Confirm the written status code matches the electronic status."
+        }
+      ],
+      "required_documentation": [
+        "Top-left: status code plus name or initials",
+        "Top-right: time",
+        "Bottom-left: date",
+        "Bottom-right: Work Area number"
+      ],
+      "prohibited_actions": [
+        "Do not write a code that differs from the package's electronic scan",
+        "Do not apply Code 100 outside the on-road-intercept condition",
+        "Do not place the service-cross fields in different quadrants."
+      ],
+      "escalation_requirements": [],
+      "clarification_requirements": [],
+      "concise_driver_answer": "Top-left: status code plus your name or initials. Top-right: time. Bottom-left: date. Bottom-right: Work Area number. Make sure the code matches the electronic status.",
+      "more_info_answer": "This is the physical service-cross layout for an undelivered package."
     }
   }
 ]

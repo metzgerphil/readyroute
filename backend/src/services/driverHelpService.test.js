@@ -26,7 +26,9 @@ test('only Vlad questions still marked unresolved are forced to fail closed befo
   for (const question of [
     'A customer wants me to accept cash for shipping charges.',
     'What does OSA mean?',
-    "Can I open a customer's package to inspect what is inside?"
+    "Can I open a customer's package to inspect what is inside?",
+    'How do I manually enter a visible tracking number?',
+    'How do I fill out OP-207?'
   ]) assert.equal(matchesKnownUnapprovedQuestion(question), true, question);
 
   for (const question of [
@@ -34,7 +36,10 @@ test('only Vlad questions still marked unresolved are forced to fail closed befo
     'My scanner froze during the route.',
     'What does DNA mean?',
     'What does OP-201 mean?',
-    'What is a service cross?'
+    'What is a service cross?',
+    'How do I fill out a hand sheet?',
+    'How do I do crossing?',
+    'How do I manually enter the 20-digit 00 number?'
   ]) assert.equal(matchesKnownUnapprovedQuestion(question), false, question);
 });
 
@@ -802,7 +807,7 @@ test('protected runtime branches fail closed and preserve high-risk distinctions
     {}
   );
   assert.equal(codRefusal.decision.response_mode, 'ESCALATE');
-  assert.match(codRefusal.decision.escalation_message, /verified COD-refusal/i);
+  assert.equal(codRefusal.decision.escalation_message, 'Call your BC.');
 
   const codRecord = knowledgeRecord({
     knowledge_id: 'KNO-DEL-REFUSED-001',
@@ -969,7 +974,7 @@ test('empty corpus returns and records a fail-closed escalation', async () => {
   });
   assert.equal(response.response_mode, 'ESCALATE');
   assert.deepEqual(response.trace, []);
-  assert.match(response.escalation_message, /does not have a verified answer/i);
+  assert.equal(response.escalation_message, 'Call your BC.');
   assert.ok(supabase.writes.some((write) => write.table === 'driver_help_unanswered_questions'));
 });
 
