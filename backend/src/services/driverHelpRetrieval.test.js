@@ -39,7 +39,7 @@ test('empty corpus always fails closed', () => {
   const decision = buildDriverHelpDecision('What should I do?', []);
   assert.equal(decision.response_mode, 'ESCALATE');
   assert.deepEqual(decision.selected_records, []);
-  assert.match(decision.escalation_message, /does not have a verified answer/i);
+  assert.equal(decision.escalation_message, 'Call your BC.');
 });
 
 test('branch-specific answer overrides cannot leak a conflicting base procedure or reason wording', () => {
@@ -74,7 +74,7 @@ test('unmatched distinctive terms fail closed instead of matching generic packag
 
   assert.equal(decision.response_mode, 'ESCALATE');
   assert.deepEqual(decision.selected_records, []);
-  assert.match(decision.escalation_message, /does not have a verified answer/i);
+  assert.equal(decision.escalation_message, 'Call your BC.');
 });
 
 test('a canceled pickup with no attempt resolves to Code 24 without an irrelevant second question', () => {

@@ -14,3 +14,9 @@
 {"case_id":"OOC-020","utterance":"A customer wants me to accept cash for shipping charges","expected_mode":"ESCALATE"}
 {"case_id":"OOC-021","utterance":"Can I take a package home overnight and deliver it tomorrow?","expected_mode":"ESCALATE"}
 {"case_id":"OOC-022","utterance":"Who is allowed to hire and terminate drivers?","expected_mode":"ESCALATE"}
+{"case_id":"OOC-POST-UPDATE-DISPUTED-V2-FORGE-001-1","utterance":"scanner won't read it but the tracking number is visible","expected_mode":"ESCALATE"}
+{"case_id":"OOC-POST-UPDATE-DISPUTED-V2-NL-007-1","utterance":"scanner wont read the epic number but all the digits are visible","expected_mode":"ESCALATE"}
+{"case_id":"OOC-POST-UPDATE-DISPUTED-B13-042-1","utterance":"Can you give me every field for completing OP-207","expected_mode":"ESCALATE"}
+{"case_id":"OOC-POST-UPDATE-KEY-ENTER-001","utterance":"How do I use Key Enter Tracking for a visible barcode?","expected_mode":"ESCALATE"}
+{"case_id":"OOC-POST-UPDATE-KEY-ENTER-002","utterance":"The scanner will not read the long tracking number. How do I key it in?","expected_mode":"ESCALATE"}
+{"case_id":"OOC-POST-UPDATE-UNKNOWN-001","utterance":"My delivery problem is not covered here. What should I do?","expected_mode":"ESCALATE"}

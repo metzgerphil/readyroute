@@ -49,6 +49,8 @@ const MISSED_DELIVERY_REASON_REQUIREMENT =
   'What prevented the delivery from being completed?';
 const SIGNATURE_SERVICE_REQUIREMENT =
   'What signature service does FORGE show: ASR, DSR, or ISR?';
+const LEAK_HAZARD_REQUIREMENT = 'Is the leaking package hazardous?';
+const DEFAULT_ESCALATION_MESSAGE = 'Call your BC.';
 
 const PROTECTED_GLOSSARY_ROUTES = Object.freeze([
   { term: 'cxpc', knowledgeId: 'KNO-GLOSSARY-CXPC-001' },
@@ -123,6 +125,8 @@ function correctCommonFollowUpTypos(value) {
     .replace(/\bdeatils\b/gi, 'details')
     .replace(/\bestalbishes\b/gi, 'establishes')
     .replace(/\bordniary\b/gi, 'ordinary')
+    .replace(/\bhazradous\b/gi, 'hazardous')
+    .replace(/\bpacakges\b/gi, 'packages')
     .replace(/\bxfer\b/gi, 'transfer')
     .replace(/\bpkgs\b/gi, 'packages');
 }
@@ -680,7 +684,7 @@ function buildAiFailClosedDecision(baseDecision) {
     candidates: (baseDecision?.candidates || []).slice(0, 5),
     selected_records: [],
     clarification_options: [],
-    escalation_message: 'Ready Route Answers does not have a verified answer for this question yet. Contact your manager or station for the current procedure.',
+    escalation_message: DEFAULT_ESCALATION_MESSAGE,
     escalation_details: []
   };
 }
@@ -826,6 +830,148 @@ function findHazmatPackageLabelRecord(question, records) {
   return findEligibleOperationalRecord(records, 'KNO-HAZ-PACKAGE-LABEL-001');
 }
 
+function buildPostUpdateRuntimeDecision(question, records, context = {}) {
+  const normalized = normalizeDriverQuestion(question);
+  const pendingRequirement = normalizeDriverQuestion(
+    context.pending_clarification_requirement || context.pending_clarification_prompt
+  );
+  const lockedRecord = (knowledgeId, directAnswer = null) => buildLockedRecordRuntimeDecision(
+    question,
+    context,
+    findEligibleOperationalRecord(records, knowledgeId),
+    directAnswer ? { answerOverride: { direct_answer: directAnswer } } : {}
+  );
+
+  const asksForHandSheetDefinition = (
+    /\bwhat is (?:the |a )?(?:hand sheet|blue sheet)\b/.test(normalized)
+    || /\bwhat does (?:hand sheet|blue sheet) mean\b/.test(normalized)
+    || /\bwhich form is called (?:the )?blue sheet\b/.test(normalized)
+  );
+  const asksHowToCompleteHandSheet = (
+    /\b(?:hand sheet|blue sheet)\b/.test(normalized)
+    && (asksForHandSheetDefinition || /\b(?:how|fill|complete|write|record|fields?|what goes)\b/.test(normalized))
+    && !/\bop\s*207(?:res)?\b/.test(normalized)
+  );
+  if (asksHowToCompleteHandSheet) {
+    return lockedRecord(
+      'KNO-DOC-HANDSHEET-GENERAL-001',
+      asksForHandSheetDefinition
+        ? 'Use the current station-issued hand sheet and complete it using the verified field rules below.'
+        : 'Fill each hand-sheet field using the verified field rules below.'
+    );
+  }
+
+  const asksHowToCrossPackage = (
+    /\bhow\b.*\bcrossing\b/.test(normalized)
+    || /\bhow\b.*\bcross\b.*\b(?:package|box)\b/.test(normalized)
+    || /\bcrossing\b.*\b(?:package|box|do it|mechanics|procedure)\b/.test(normalized)
+    || /\bwhere\b.*\b(?:field|item|information)\b.*\bservice cross\b/.test(normalized)
+  );
+  if (asksHowToCrossPackage) {
+    return lockedRecord(
+      'KNO-DEL-NOTATION-001',
+      'Use the four-quadrant layout below, and make sure the code matches the electronic status.'
+    );
+  }
+
+  const groundCloudRouteMismatch = (
+    /\bgroundcloud\b/.test(normalized)
+    && /\broute\b/.test(normalized)
+    && /\b(?:different|wrong|unexpected|isn t mine|isnt mine|not mine|not my expected)\b/.test(normalized)
+  );
+  if (groundCloudRouteMismatch) {
+    return lockedRecord('KNO-GROUNDCLOUD-ROUTE-MISMATCH-001');
+  }
+
+  const cannotCompleteWholeRoute = (
+    (/\broute\b/.test(normalized) || /\bfinish\b.*\ball my stops\b/.test(normalized))
+    && !/\b(?:pickup|window|groundcloud|different route|wrong route)\b/.test(normalized)
+    && (
+      /\b(?:can t|cant|cannot|won t|wont|will not|unable to|not able to|don t think i can|dont think i can|do not think i can)\b.*\b(?:complete|finish|do)\b.*\b(?:whole|entire|all|my)?\s*route\b/.test(normalized)
+      || /\b(?:complete|finish|do)\b.*\b(?:whole|entire|all|my)?\s*route\b.*\b(?:can t|cant|cannot|won t|wont|unable|not able)\b/.test(normalized)
+      || /\bno way\b.*\bfinish\b.*\ball my stops\b/.test(normalized)
+    )
+  );
+  if (cannotCompleteWholeRoute) {
+    return lockedRecord('KNO-ROUTE-NOT-COMPLETE-001');
+  }
+
+  const unsafeAccessSubject = /\b(?:road|bridge|driveway|path|access|clearance|turn around|turnaround|flood|ice|snow|pothole|debris|fallen tree|construction)\b/.test(normalized)
+    || /\bturn\b.*\baround\b/.test(normalized)
+    || /\b(?:livestock|animals?)\b.*\b(?:block|blocks|blocking)\b.*\b(?:only )?(?:path|road|access)\b/.test(normalized);
+  const unsafeAccessCondition = /\b(?:unsafe|unsecured|washed out|flooded|impassable|blocked|too steep|low clearance|can t fit|cant fit|no safe|dangerous)\b/.test(normalized);
+  if (unsafeAccessSubject && unsafeAccessCondition) {
+    return lockedRecord(
+      'KNO-DEL-UNSAFE-ACCESS-001',
+      'Do not drive into the unsafe condition. Apply Code 001 and add a comment explaining the specific reason.'
+    );
+  }
+
+  const mentionsLeak = /\b(?:package|box|shipment|hazmat|hazardous material|dangerous goods)\b.*\b(?:leak|leaks|leaking|spill|spills|spilling)\b|\b(?:leak|leaks|leaking|spill|spills|spilling)\b.*\b(?:package|box|shipment|hazmat|hazardous material|dangerous goods)\b/.test(normalized);
+  if (!mentionsLeak) return null;
+  if (/\b(?:not|isn t|isnt|no)\s+(?:leaking|spilling)\b/.test(normalized)) return null;
+
+  const otherPackagesUnaffected = (
+    /\b(?:other|rest|remaining)\b.*\b(?:packages?|boxes)\b.*\b(?:fine|okay|ok|good|unaffected|not leaking|aren t leaking|arent leaking)\b/.test(normalized)
+    || /\b(?:fine|okay|ok|good|unaffected|not leaking)\b.*\b(?:other|rest|remaining)\b.*\b(?:packages?|boxes)\b/.test(normalized)
+    || /\bunaffected (?:packages?|pkg|pkgs)\b/.test(normalized)
+  );
+  if (otherPackagesUnaffected) {
+    return lockedRecord('KNO-DEL-LEAK-SAME-ADDRESS-001');
+  }
+
+  const answeringLeakClarifier = /\bleaking package hazardous\b/.test(pendingRequirement)
+    || /\bpackage leaking or hazardous\b/.test(pendingRequirement);
+  const hazardIsUnknown = !answeringLeakClarifier
+    && /\b(?:not sure|unsure|don t know|dont know|do not know|might|maybe|could be)\b.*\b(?:hazardous|hazmat)\b/.test(normalized);
+  const saysNonHazardous = (
+    answeringLeakClarifier && /^(?:no|not hazardous|nonhazardous|non hazardous|non hazmat|not hazmat)\b/.test(normalized)
+  ) || /\b(?:not hazardous|nonhazardous|non hazardous|non hazmat|not hazmat)\b/.test(normalized);
+  if (!hazardIsUnknown && saysNonHazardous) {
+    return lockedRecord('KNO-DEL-LEAK-NONHAZ-001');
+  }
+
+  const saysHazardous = (
+    answeringLeakClarifier && /^(?:yes|hazardous|hazmat|dangerous goods)\b/.test(normalized)
+  ) || /\b(?:hazardous|hazmat|dangerous goods|hazard(?: sticker| label| labeled| marked))\b/.test(normalized);
+  if (!hazardIsUnknown && saysHazardous) {
+    return lockedRecord('KNO-HAZ-LEAK-001');
+  }
+
+  const leakRecords = [
+    findEligibleOperationalRecord(records, 'KNO-HAZ-LEAK-001'),
+    findEligibleOperationalRecord(records, 'KNO-DEL-LEAK-NONHAZ-001')
+  ].filter(Boolean);
+  return buildLockedRuntimeDecision(question, {
+    response_mode: 'CLARIFY',
+    confidence: 1,
+    candidates: leakRecords.map((record) => ({
+      knowledge_id: record.knowledge_id,
+      version: record.version,
+      canonical_situation: record.canonical_situation,
+      score: 100
+    })),
+    selected_records: [],
+    clarification_prompt: buildClarificationPrompt(LEAK_HAZARD_REQUIREMENT),
+    clarification_requirement: LEAK_HAZARD_REQUIREMENT,
+    clarification_plan: [LEAK_HAZARD_REQUIREMENT],
+    clarification_options: [
+      {
+        knowledge_id: 'KNO-HAZ-LEAK-001',
+        version: findEligibleOperationalRecord(records, 'KNO-HAZ-LEAK-001')?.version || 1,
+        label: 'Hazardous',
+        query: 'Yes, the leaking package is hazardous'
+      },
+      {
+        knowledge_id: 'KNO-DEL-LEAK-NONHAZ-001',
+        version: findEligibleOperationalRecord(records, 'KNO-DEL-LEAK-NONHAZ-001')?.version || 1,
+        label: 'Not hazardous',
+        query: 'No, the leaking package is not hazardous'
+      }
+    ].filter((option) => leakRecords.some((record) => record.knowledge_id === option.knowledge_id))
+  }, context, leakRecords[0] || null);
+}
+
 function buildMissedDeliveryRuntimeDecision(question, records, context = {}) {
   const normalized = normalizeDriverQuestion(question);
   const pendingRequirement = normalizeDriverQuestion(
@@ -936,6 +1082,9 @@ function buildProtectedRuntimeDecision(question, records, context = {}) {
     });
   }
 
+  const postUpdateDecision = buildPostUpdateRuntimeDecision(question, records, context);
+  if (postUpdateDecision) return postUpdateDecision;
+
   const hazmatPackageLabelRecord = findHazmatPackageLabelRecord(question, records);
   if (hazmatPackageLabelRecord) {
     return buildLockedRecordRuntimeDecision(question, context, hazmatPackageLabelRecord);
@@ -955,7 +1104,7 @@ function buildProtectedRuntimeDecision(question, records, context = {}) {
       candidates: [],
       selected_records: [],
       clarification_options: [],
-      escalation_message: 'Ready Route Answers does not have a verified answer for this question yet. Contact your manager or station for the current procedure.'
+      escalation_message: DEFAULT_ESCALATION_MESSAGE
     }, context);
   }
 
@@ -1003,7 +1152,7 @@ function buildProtectedRuntimeDecision(question, records, context = {}) {
       candidates: [],
       selected_records: [],
       clarification_options: [],
-      escalation_message: 'Ready Route Answers does not have a verified COD-refusal code or procedure yet. Contact your manager or station for the current procedure.'
+      escalation_message: DEFAULT_ESCALATION_MESSAGE
     }, context);
   }
 
@@ -1182,7 +1331,7 @@ function buildProtectedRuntimeDecision(question, records, context = {}) {
       candidates: [],
       selected_records: [],
       clarification_options: [],
-      escalation_message: 'Ready Route Answers does not have a verified answer for changing an address from a customer call or message. Contact your manager or station for the current procedure.'
+      escalation_message: DEFAULT_ESCALATION_MESSAGE
     }, context);
   }
 
@@ -1818,7 +1967,7 @@ function createDriverHelpService({
         candidates: actionableBaseDecision.candidates || [],
         selected_records: [],
         clarification_options: [],
-        escalation_message: 'Ready Route cannot resolve that required detail from the answer provided. Contact your manager or station for the current direction instead of repeating the same question.'
+        escalation_message: DEFAULT_ESCALATION_MESSAGE
       } : actionableBaseDecision),
       composition_mode: 'DETERMINISTIC',
       composition_grounding: [],

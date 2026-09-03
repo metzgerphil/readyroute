@@ -46,7 +46,7 @@ function expectedApiMode(value) {
   return 'ANSWER';
 }
 
-const selectedType = /^(VLAD_PRIORITY_51|VLAD_APPROVED|OWNER_APPROVED_IN_APP|ROUND3|NEW_DRIVER|EXTENDED_TESTING|VLAD_FINAL)/;
+const selectedType = /^(VLAD_PRIORITY_51|VLAD_APPROVED|OWNER_APPROVED_IN_APP|ROUND3|NEW_DRIVER|EXTENDED_TESTING|VLAD_FINAL|POST_UPDATE)/;
 const sourceCases = readJsonLines(CASES_PATH).filter((item) => selectedType.test(item.case_type || ''));
 const records = new Map(readJsonLines(RECORDS_PATH).map((item) => [item.knowledge_id, item]));
 
@@ -80,7 +80,17 @@ const novelCases = [
   ['NOVEL-CALLTAG-001', 'Driver question: what exactly is a call tag', 'ANSWER', ['KNO-PUP-CALLTAG-DEFINITION-001']],
   ['NOVEL-FORGE-001', 'New driver here, what is FORGE', 'ANSWER', ['KNO-GLOSSARY-FORGE-001']],
   ['NOVEL-SERVICE-CROSS-001', 'Can you explain what the service cross is', 'ANSWER', ['KNO-GLOSSARY-SERVICE-CROSS-001']],
-  ['NOVEL-MANIFEST-001', 'In plain English what is my manifest', 'ANSWER', ['KNO-GLOSSARY-MANIFEST-001']]
+  ['NOVEL-MANIFEST-001', 'In plain English what is my manifest', 'ANSWER', ['KNO-GLOSSARY-MANIFEST-001']],
+  ['NOVEL-UNSAFE-BRIDGE-001', 'The bridge to this stop looks unstable and unsafe', 'ANSWER', ['KNO-DEL-UNSAFE-ACCESS-001']],
+  ['NOVEL-GROUNDCLOUD-WRONG-ROUTE-001', 'GroundCloud loaded the wrong route for me', 'ANSWER', ['KNO-GROUNDCLOUD-ROUTE-MISMATCH-001']],
+  ['NOVEL-WHOLE-ROUTE-001', "I can't finish my entire route", 'ANSWER', ['KNO-ROUTE-NOT-COMPLETE-001']],
+  ['NOVEL-MIXED-LEAK-001', 'One box is leaking and the remaining boxes for this stop look good', 'ANSWER', ['KNO-DEL-LEAK-SAME-ADDRESS-001']],
+  ['NOVEL-NONHAZ-LEAK-001', 'This box is leaking but it is not hazardous', 'ANSWER', ['KNO-DEL-LEAK-NONHAZ-001']],
+  ['NOVEL-HANDSHEET-MECHANICS-001', 'Show me what goes in every hand sheet field', 'ANSWER', ['KNO-DOC-HANDSHEET-GENERAL-001']],
+  ['NOVEL-CROSSING-MECHANICS-001', 'Where do I write each item when crossing a package', 'ANSWER', ['KNO-DEL-NOTATION-001']],
+  ['NOVEL-KEY-ENTER-WITHHELD-001', 'How do I manually enter a visible tracking number', 'ESCALATE', []],
+  ['NOVEL-OP207-WITHHELD-001', 'How do I fill out OP-207', 'ESCALATE', []],
+  ['NOVEL-UNKNOWN-FALLBACK-001', 'I have a delivery problem that is not listed here', 'ESCALATE', []]
 ].map(([case_id, question, mode, expected_knowledge_ids]) => ({
   case_id,
   question,
