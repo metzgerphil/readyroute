@@ -96,12 +96,17 @@ function main() {
       Array.isArray(plugin) ? plugin[0] === 'expo-location' : plugin === 'expo-location'
     ));
 
+    const androidPermissions = appConfig?.android?.permissions || [];
+
     if (driverHelpOnly) {
       if (backgroundModes.includes('location') || infoPlist.NSLocationAlwaysAndWhenInUseUsageDescription || locationPlugin) {
-        errors.push('Help-only TestFlight configuration must not request route-location access.');
+        errors.push('Help-only store configuration must not request route-location access.');
       }
       if (infoPlist.NSPhotoLibraryUsageDescription) {
-        errors.push('Help-only TestFlight configuration must not request photo-library access.');
+        errors.push('Help-only store configuration must not request photo-library access.');
+      }
+      if (androidPermissions.some((permission) => /LOCATION/i.test(permission))) {
+        errors.push('Help-only Android configuration must not request location access.');
       }
     } else {
       if (!backgroundModes.includes('location')) {
@@ -118,7 +123,10 @@ function main() {
       }
     }
 
-    if (['testflight', 'production'].includes(profileName)) {
+    const iosStoreProfile = ['testflight', 'production'].includes(profileName);
+    const androidStoreProfile = profileName === 'android-play-internal';
+
+    if (iosStoreProfile || androidStoreProfile) {
       const easConfig = JSON.parse(fs.readFileSync(easJsonPath, 'utf8'));
       const profile = easConfig?.build?.[profileName];
       const submitProfile = easConfig?.submit?.[profileName];
@@ -128,23 +136,44 @@ function main() {
       if (!profile?.autoIncrement) {
         errors.push(`${profileName} profile must auto-increment the build number.`);
       }
-      if (!submitProfile?.ios?.ascAppId) {
-        errors.push(`${profileName} submit profile is missing ascAppId.`);
-      }
       if (!driverHelpOnly) {
         errors.push(`${profileName} profile must set EXPO_PUBLIC_DRIVER_HELP_ONLY=true.`);
       }
       if (apiUrl !== 'https://api.readyroute.org') {
         errors.push(`${profileName} profile must use the production ReadyRoute API.`);
       }
-      if (appConfig?.ios?.bundleIdentifier !== 'com.readyroute.driverapp') {
-        errors.push(`${profileName} profile must use the production iOS bundle identifier.`);
-      }
       if (!appConfig?.extra?.eas?.projectId) {
         errors.push('Expo projectId is missing.');
       }
-      if (apiUrl !== 'https://api.readyroute.org') {
-        errors.push(`${profileName} profile must use the production ReadyRoute API.`);
+      if (appConfig?.updates?.url !== 'https://u.expo.dev/3de49618-8973-4330-b335-f2901d75ac46') {
+        errors.push(`${profileName} profile must use the ReadyRoute EAS Update project.`);
+      }
+      if (appConfig?.runtimeVersion?.policy !== 'appVersion') {
+        errors.push(`${profileName} profile must use the app-version runtime policy.`);
+      }
+
+      if (iosStoreProfile) {
+        if (!submitProfile?.ios?.ascAppId) {
+          errors.push(`${profileName} submit profile is missing ascAppId.`);
+        }
+        if (appConfig?.ios?.bundleIdentifier !== 'com.readyroute.driverapp') {
+          errors.push(`${profileName} profile must use the production iOS bundle identifier.`);
+        }
+      }
+
+      if (androidStoreProfile) {
+        if (profile?.channel !== 'staging') {
+          errors.push(`${profileName} profile must use the staging update channel during internal testing.`);
+        }
+        if (profile?.android?.buildType !== 'app-bundle') {
+          errors.push(`${profileName} profile must produce an Android App Bundle.`);
+        }
+        if (submitProfile?.android?.track !== 'internal') {
+          errors.push(`${profileName} submit profile must target the Play internal track.`);
+        }
+        if (appConfig?.android?.package !== 'readyroute.org') {
+          errors.push(`${profileName} profile must use the permanent Google Play package readyroute.org.`);
+        }
       }
     }
   }

@@ -11,13 +11,16 @@
     "check": "HOME=/tmp/readyroute-expo-home expo config --json > /dev/null",
     "check:release": "node ./scripts/check-release-env.js --production",
     "check:testflight": "node ./scripts/check-release-env.js --production --profile testflight",
+    "check:android-play": "node ./scripts/check-release-env.js --production --profile android-play-internal",
     "check:appstore": "node ./scripts/check-release-env.js --production --profile production",
     "build:native": "HOME=/tmp/readyroute-expo-home expo export --platform ios --output-dir dist-native",
     "build:native:production": "NODE_ENV=production HOME=/tmp/readyroute-expo-home expo export --platform ios --output-dir dist-native-production",
+    "build:native:android": "node ./scripts/export-android-play.js",
     "build:web": "npm run build:native",
     "test": "jest --runInBand --forceExit",
     "release:prep": "npm run release:prep:testflight",
-    "release:prep:testflight": "npm --prefix .. run knowledge:gate && npm run check:testflight && node ./scripts/export-testflight.js && npm run test"
+    "release:prep:testflight": "npm --prefix .. run knowledge:gate && npm run check:testflight && node ./scripts/export-testflight.js && npm run test",
+    "release:prep:android-play": "npm --prefix .. run knowledge:gate && npm run check:android-play && npm run build:native:android && npm run test"
   },
   "dependencies": {
     "@bwip-js/react-native": "^4.11.2",
@@ -25,13 +28,13 @@
     "@react-navigation/native": "^7.2.2",
     "@react-navigation/stack": "^7.8.9",
     "axios": "^1.18.1",
-    "expo": "~54.0.36",
+    "expo": "~54.0.37",
     "expo-camera": "~17.0.10",
     "expo-clipboard": "~8.0.8",
-    "expo-constants": "~18.0.13",
+    "expo-constants": "~18.0.14",
     "expo-crypto": "~15.0.9",
     "expo-document-picker": "~14.0.8",
-    "expo-file-system": "~19.0.23",
+    "expo-file-system": "~19.0.24",
     "expo-image-picker": "~17.0.11",
     "expo-location": "~19.0.8",
     "expo-notifications": "~0.32.17",
@@ -40,7 +43,7 @@
     "expo-status-bar": "~3.0.9",
     "expo-task-manager": "~14.0.9",
     "expo-updates": "~29.0.20",
-    "jest-expo": "~54.0.17",
+    "jest-expo": "~54.0.18",
     "react": "19.1.0",
     "react-dom": "19.1.0",
     "react-native": "0.81.5",
@@ -63,6 +66,8 @@
     "preset": "jest-expo"
   },
   "overrides": {
+    "@xmldom/xmldom": "0.9.12",
+    "decode-uri-component": "0.5.0",
     "postcss": "^8.5.17",
     "uuid": "^11.1.1"
   }

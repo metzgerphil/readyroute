@@ -54,3 +54,6 @@ jobs:
           EXPO_PUBLIC_API_URL: https://api.readyroute.org
           EXPO_PUBLIC_USE_LOCAL_API: 'false'
         run: npm run build:native:production
+
+      - name: Export Play internal Android bundle
+        run: npm run build:native:android
