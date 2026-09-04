@@ -6,10 +6,12 @@
   "build": {
     "development": {
       "developmentClient": true,
-      "distribution": "internal"
+      "distribution": "internal",
+      "channel": "development"
     },
     "preview": {
       "distribution": "internal",
+      "channel": "preview",
       "environment": "preview",
       "env": {
         "EXPO_PUBLIC_APP_VARIANT": "staging",
@@ -17,9 +19,25 @@
         "EXPO_PUBLIC_USE_LOCAL_API": "false"
       }
     },
+    "android-internal": {
+      "distribution": "internal",
+      "channel": "staging",
+      "environment": "production",
+      "autoIncrement": true,
+      "android": {
+        "buildType": "apk"
+      },
+      "env": {
+        "EXPO_PUBLIC_APP_VARIANT": "production",
+        "EXPO_PUBLIC_API_URL": "https://api.readyroute.org",
+        "EXPO_PUBLIC_DRIVER_HELP_ONLY": "true",
+        "EXPO_PUBLIC_USE_LOCAL_API": "false"
+      }
+    },
     "testflight": {
       "distribution": "store",
-      "environment": "preview",
+      "channel": "staging",
+      "environment": "production",
       "autoIncrement": true,
       "ios": {
         "image": "macos-sequoia-15.6-xcode-26.0"
@@ -31,8 +49,24 @@
         "EXPO_PUBLIC_USE_LOCAL_API": "false"
       }
     },
+    "android-play-internal": {
+      "distribution": "store",
+      "channel": "staging",
+      "environment": "production",
+      "autoIncrement": true,
+      "android": {
+        "buildType": "app-bundle"
+      },
+      "env": {
+        "EXPO_PUBLIC_APP_VARIANT": "production",
+        "EXPO_PUBLIC_API_URL": "https://api.readyroute.org",
+        "EXPO_PUBLIC_DRIVER_HELP_ONLY": "true",
+        "EXPO_PUBLIC_USE_LOCAL_API": "false"
+      }
+    },
     "production": {
       "distribution": "store",
+      "channel": "production",
       "environment": "production",
       "ios": {
         "image": "macos-sequoia-15.6-xcode-26.0"
@@ -47,6 +81,11 @@
     }
   },
   "submit": {
+    "android-play-internal": {
+      "android": {
+        "track": "internal"
+      }
+    },
     "testflight": {
       "ios": {
         "ascAppId": "6762488881"

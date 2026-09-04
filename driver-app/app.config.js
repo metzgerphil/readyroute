@@ -7,6 +7,9 @@ const isStagingBuild = appVariant
 const bundleIdentifier = isStagingBuild
   ? 'com.readyroute.driverapp.staging'
   : 'com.readyroute.driverapp';
+const androidPackage = isStagingBuild
+  ? 'readyroute.org.staging'
+  : 'readyroute.org';
 
 if (process.env.EAS_BUILD === 'true' && !driverHelpOnly && !googleMapsApiKey) {
   throw new Error('Missing EXPO_PUBLIC_GOOGLE_MAPS_API_KEY for EAS build. Add it to the EAS build environment before creating Android builds.');
@@ -35,7 +38,11 @@ module.exports = {
   expo: {
     name: isStagingBuild ? 'ReadyRoute Solutions' : 'ReadyRoute',
     slug: 'driver-app',
+    platforms: ['ios', 'android'],
     version: '1.0.3',
+    runtimeVersion: {
+      policy: 'appVersion'
+    },
     orientation: 'portrait',
     icon: './assets/readyroute-app-icon.png',
     userInterfaceStyle: 'light',
@@ -46,14 +53,13 @@ module.exports = {
       backgroundColor: '#ffffff'
     },
     updates: {
-      url: 'https://u.expo.dev/3de49618-8973-4330-b335-f2901d75ac46'
+      url: 'https://u.expo.dev/3de49618-8973-4330-b335-f2901d75ac46',
+      checkAutomatically: 'ON_LOAD',
+      fallbackToCacheTimeout: 0
     },
     ios: {
       supportsTablet: true,
       bundleIdentifier,
-      runtimeVersion: {
-        policy: 'appVersion'
-      },
       infoPlist: {
         ITSAppUsesNonExemptEncryption: false,
         ...(!driverHelpOnly
@@ -74,7 +80,7 @@ module.exports = {
       }
     },
     android: {
-      package: bundleIdentifier,
+      package: androidPackage,
       adaptiveIcon: {
         foregroundImage: './assets/readyroute-adaptive-icon.png',
         backgroundColor: '#ffffff'
