@@ -494,8 +494,7 @@ function buildImport(
   };
 }
 
-async function upsertInBatches(table, rows, options = {}) {
-  const supabase = require('../lib/supabase');
+async function upsertInBatches(supabase, table, rows, options = {}) {
   for (let index = 0; index < rows.length; index += 50) {
     const { error } = await supabase.from(table).upsert(rows.slice(index, index + 50), options);
     if (error) throw error;
@@ -510,14 +509,60 @@ function findStalePublishedRecords(existingRows, currentRows) {
   ));
 }
 
-async function reconcilePublishedKnowledge(supabase, currentRows) {
-  const { data, error } = await supabase
-    .from('driver_help_knowledge_records')
-    .select('knowledge_id, version, is_published')
-    .eq('is_published', true);
-  if (error) throw error;
+function assertReleasePreservesPublishedKnowledge(existingRows, currentRows) {
+  const incoming = new Map();
+  for (const row of currentRows) {
+    if (!row.knowledge_id || !Number.isInteger(row.version) || row.version < 1) {
+      throw new Error('Knowledge import requires a valid knowledge_id and positive integer version.');
+    }
+    if (incoming.has(row.knowledge_id)) {
+      throw new Error(`Knowledge import has multiple current versions for ${row.knowledge_id}.`);
+    }
+    incoming.set(row.knowledge_id, row);
+  }
+  const missing = [];
+  const downgrades = [];
+  for (const row of existingRows) {
+    const next = incoming.get(row.knowledge_id);
+    if (!next && row.is_published === true) missing.push(`${row.knowledge_id}@${row.version}`);
+    else if (next && next.version < row.version) {
+      downgrades.push(`${row.knowledge_id}@${row.version} -> ${next.version}`);
+    }
+  }
+  if (missing.length || downgrades.length) {
+    throw new Error([
+      'Knowledge import blocked: the incoming release would omit published knowledge or roll back a stored version.',
+      missing.length ? `Missing topics: ${missing.join(', ')}.` : '',
+      downgrades.length ? `Older versions: ${downgrades.join(', ')}.` : '',
+      'Restore omitted topics to the canonical release. For an intentional withdrawal, retain an explicit ineligible canonical record and its review history; do not delete the topic from the release.'
+    ].filter(Boolean).join(' '));
+  }
+}
 
-  const staleRows = findStalePublishedRecords(data || [], currentRows);
+async function readKnowledgeRows(supabase, columns, publishedOnly = false) {
+  const rows = [];
+  const pageSize = 1000;
+  for (let offset = 0; ; offset += pageSize) {
+    let query = supabase
+      .from('driver_help_knowledge_records')
+      .select(columns);
+    if (publishedOnly) query = query.eq('is_published', true);
+    const { data, error } = await query
+      .order('knowledge_id', { ascending: true })
+      .order('version', { ascending: true })
+      .range(offset, offset + pageSize - 1);
+    if (error) throw error;
+    if (!Array.isArray(data)) throw new Error('Knowledge import could not read the existing knowledge rows.');
+    rows.push(...data);
+    if (data.length < pageSize) return rows;
+  }
+}
+
+async function reconcilePublishedKnowledge(supabase, currentRows) {
+  const existingRows = await readKnowledgeRows(supabase, 'knowledge_id, version, is_published', true);
+  // Recheck after upserts as well, before changing any older publication flags.
+  assertReleasePreservesPublishedKnowledge(existingRows, currentRows);
+  const staleRows = findStalePublishedRecords(existingRows, currentRows);
   for (const row of staleRows) {
     const { error: updateError } = await supabase
       .from('driver_help_knowledge_records')
@@ -530,10 +575,8 @@ async function reconcilePublishedKnowledge(supabase, currentRows) {
 }
 
 async function verifyImportedKnowledge(supabase, currentRows) {
-  const { data, error } = await supabase
-    .from('driver_help_knowledge_records')
-    .select('knowledge_id, version, record_checksum, is_published');
-  if (error) throw error;
+  const data = await readKnowledgeRows(supabase, 'knowledge_id, version, record_checksum, is_published');
+  assertReleasePreservesPublishedKnowledge(data, currentRows);
 
   const actual = new Map((data || []).map((row) => (
     [`${row.knowledge_id}\u0000${row.version}`, row]
@@ -563,6 +606,23 @@ async function uploadAnswerImages(supabase, assets) {
     });
     if (error) throw error;
   }
+}
+
+async function executeKnowledgeImport(supabase, payload, assets = []) {
+  const existingRows = await readKnowledgeRows(supabase, 'knowledge_id, version, is_published');
+  // This must run before image uploads, source upserts, and record upserts.
+  assertReleasePreservesPublishedKnowledge(existingRows, payload.knowledgeRows);
+  await uploadAnswerImages(supabase, assets);
+  await upsertInBatches(supabase, 'driver_help_knowledge_sources', payload.sourceRows, { onConflict: 'source_id' });
+  await upsertInBatches(supabase, 'driver_help_knowledge_records', payload.knowledgeRows, { onConflict: 'knowledge_id,version' });
+  const unpublished = await reconcilePublishedKnowledge(supabase, payload.knowledgeRows);
+  await upsertInBatches(supabase, 'driver_help_knowledge_record_sources', payload.evidenceRows, {
+    onConflict: 'knowledge_id,knowledge_version,source_id,locator'
+  });
+  return {
+    superseded_records_unpublished: unpublished,
+    verified_imported_records: await verifyImportedKnowledge(supabase, payload.knowledgeRows)
+  };
 }
 
 async function main() {
@@ -617,14 +677,7 @@ async function main() {
 
   if (!args.dryRun) {
     const supabase = require('../lib/supabase');
-    await uploadAnswerImages(supabase, answerImages.assets);
-    await upsertInBatches('driver_help_knowledge_sources', payload.sourceRows, { onConflict: 'source_id' });
-    await upsertInBatches('driver_help_knowledge_records', payload.knowledgeRows, { onConflict: 'knowledge_id,version' });
-    summary.superseded_records_unpublished = await reconcilePublishedKnowledge(supabase, payload.knowledgeRows);
-    await upsertInBatches('driver_help_knowledge_record_sources', payload.evidenceRows, {
-      onConflict: 'knowledge_id,knowledge_version,source_id,locator'
-    });
-    summary.verified_imported_records = await verifyImportedKnowledge(supabase, payload.knowledgeRows);
+    Object.assign(summary, await executeKnowledgeImport(supabase, payload, answerImages.assets));
   }
 
   process.stdout.write(`${JSON.stringify(summary, null, 2)}\n`);
@@ -638,16 +691,19 @@ if (require.main === module) {
 }
 
 module.exports = {
+  assertReleasePreservesPublishedKnowledge,
   buildImport,
   buildPublicationGateIndex,
   buildPatternIndex,
   buildVariantIndex,
+  executeKnowledgeImport,
   findStalePublishedRecords,
   mapReferenceStatus,
   parseArguments,
   parseCsv,
   readAnswerImageIndex,
   readJsonLines,
+  readKnowledgeRows,
   readPngDimensions,
   readSourceInventory,
   reconcilePublishedKnowledge,

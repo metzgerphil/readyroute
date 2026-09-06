@@ -88,6 +88,12 @@ login or public-form limits to `/routes/position`.
 
 ## Release Flow
 
+Canonical knowledge imports reject omitted published topics and incoming versions older
+than stored history before writing knowledge data. For an intentional withdrawal, keep
+an explicit ineligible canonical record and its review history. A local import dry run
+does not perform this live comparison. See
+[the knowledge restoration and import guard](ready-route-knowledge-restoration-2026-09-06.md).
+
 1. Open a pull request.
 2. Backend CI, Portal CI, and Mobile CI must pass.
 3. Merge to `main`.
