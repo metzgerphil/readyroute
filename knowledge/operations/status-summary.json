@@ -1,19 +1,19 @@
 {
   "schema_version": "1.0.0",
-  "generated_at": "2026-09-03T16:42:56.632Z",
-  "total_records": 156,
+  "generated_at": "2026-09-06T20:08:29.570Z",
+  "total_records": 162,
   "by_status": {
     "SOURCE_VERIFIED": 69,
-    "READY_ROUTE_APPROVED": 82,
+    "READY_ROUTE_APPROVED": 88,
     "PENDING_REVIEW": 2,
     "POTENTIALLY_OUTDATED": 3,
     "INSUFFICIENT_EVIDENCE": 0
   },
-  "status_eligible_records": 151,
-  "publication_ready_records": 151,
+  "status_eligible_records": 157,
+  "publication_ready_records": 157,
   "status_eligible_but_evidence_gated": 0,
-  "source_records": 32,
-  "driver_language_cases": 488,
+  "source_records": 34,
+  "driver_language_cases": 495,
   "reference_language_cases": 12,
   "conversation_scenarios": 61,
   "out_of_corpus_cases": 22,
@@ -22,5 +22,5 @@
   "vlad_priority_cases": 51,
   "delivery_status_references": 50,
   "pickup_reason_references": 13,
-  "active_adjudications": 82
+  "active_adjudications": 88
 }

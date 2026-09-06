@@ -5,14 +5,17 @@ const os = require('node:os');
 const path = require('node:path');
 
 const {
+  assertReleasePreservesPublishedKnowledge,
   buildImport,
   buildPublicationGateIndex,
+  executeKnowledgeImport,
   findStalePublishedRecords,
   mapReferenceStatus,
   parseCsv,
   readAnswerImageIndex,
   readJsonLines,
   readPngDimensions,
+  reconcilePublishedKnowledge,
   toCanonicalReferenceRecord,
   validateReferenceRecord,
   validateProductionEligibleRecord
@@ -48,7 +51,7 @@ function canonicalRecord(overrides = {}) {
   };
 }
 
-test('release reconciliation preserves history but unpublishes superseded and removed records', () => {
+test('stale-version classification identifies superseded versions and omitted topics for guarded reconciliation', () => {
   const existing = [
     { knowledge_id: 'KNO-TEST-001', version: 2, is_published: true },
     { knowledge_id: 'KNO-TEST-001', version: 3, is_published: true },
@@ -61,6 +64,126 @@ test('release reconciliation preserves history but unpublishes superseded and re
     { knowledge_id: 'KNO-TEST-001', version: 2, is_published: true },
     { knowledge_id: 'KNO-REMOVED-001', version: 1, is_published: true }
   ]);
+});
+
+test('release preflight rejects omitted published topics instead of treating omission as withdrawal', () => {
+  assert.throws(() => assertReleasePreservesPublishedKnowledge([
+    { knowledge_id: 'KNO-SAFETY-HEAVY-LIFT-001', version: 1, is_published: true }
+  ], []), /Missing topics: KNO-SAFETY-HEAVY-LIFT-001@1/);
+});
+
+test('release preflight rejects rollback of a stored version even when the newer version is withheld', () => {
+  for (const is_published of [true, false]) {
+    assert.throws(() => assertReleasePreservesPublishedKnowledge([
+      { knowledge_id: 'KNO-TEST-001', version: 3, is_published }
+    ], [{ knowledge_id: 'KNO-TEST-001', version: 2, is_published: true }]), /Older versions: KNO-TEST-001@3 -> 2/);
+  }
+});
+
+test('release preflight permits explicit retained withdrawals, newer replacements and absent inactive history', () => {
+  assert.doesNotThrow(() => assertReleasePreservesPublishedKnowledge([
+    { knowledge_id: 'KNO-TEST-001', version: 2, is_published: true },
+    { knowledge_id: 'KNO-WITHDRAWN-001', version: 1, is_published: true },
+    { knowledge_id: 'KNO-OLD-001', version: 1, is_published: false }
+  ], [
+    { knowledge_id: 'KNO-TEST-001', version: 3, is_published: true },
+    { knowledge_id: 'KNO-WITHDRAWN-001', version: 2, status: 'POTENTIALLY_OUTDATED', is_published: false }
+  ]));
+});
+
+test('release preflight rejects ambiguous incoming current versions', () => {
+  assert.throws(() => assertReleasePreservesPublishedKnowledge([], [
+    { knowledge_id: 'KNO-TEST-001', version: 1 },
+    { knowledge_id: 'KNO-TEST-001', version: 2 }
+  ]), /multiple current versions/);
+});
+
+function knowledgeClient(initialRows) {
+  const rows = initialRows.map((row) => ({ ...row }));
+  const writes = [];
+  const pages = [];
+  return {
+    rows, writes, pages,
+    storage: { from: () => ({ upload: async () => { writes.push('image'); return { error: null }; } }) },
+    from(table) {
+      return {
+        select() {
+          const filters = [];
+          return {
+            eq(field, value) { filters.push([field, value]); return this; },
+            order() { return this; },
+            async range(start, end) {
+              pages.push([start, end]);
+              return { data: rows.filter((row) => filters.every(([f,v]) => row[f] === v))
+                .sort((a,b) => a.knowledge_id.localeCompare(b.knowledge_id) || a.version-b.version)
+                .slice(start, end+1).map((row) => ({ ...row })), error: null };
+            }
+          };
+        },
+        async upsert(values) {
+          writes.push(table);
+          if (table === 'driver_help_knowledge_records') {
+            for (const row of values) {
+              const old = rows.find((r) => r.knowledge_id === row.knowledge_id && r.version === row.version);
+              if (old) Object.assign(old, row);
+              else rows.push({ ...row });
+            }
+          }
+          return { error: null };
+        },
+        update(values) {
+          const filters = [];
+          return {
+            eq(field, value) { filters.push([field,value]); return this; },
+            then(resolve, reject) {
+              writes.push('publication');
+              rows.filter((row) => filters.every(([f,v]) => row[f] === v)).forEach((row) => Object.assign(row, values));
+              return Promise.resolve({ error: null }).then(resolve, reject);
+            }
+          };
+        }
+      };
+    }
+  };
+}
+
+test('an incomplete import fails before image, source, evidence, or record writes', async () => {
+  const client = knowledgeClient([{ knowledge_id: 'KNO-RESTORED-001', version: 1, is_published: true }]);
+  await assert.rejects(executeKnowledgeImport(client, {
+    knowledgeRows: [], sourceRows: [{ source_id: 'SRC-NEW' }], evidenceRows: [{}]
+  }, [{ storagePath: 'new.png', bytes: Buffer.from('image') }]), /Missing topics/);
+  assert.deepEqual(client.writes, []);
+  assert.equal(client.rows[0].is_published, true);
+});
+
+test('preflight checks beyond the default database page before allowing any write', async () => {
+  const rows = Array.from({ length: 1001 }, (_, i) => ({
+    knowledge_id: `KNO-${String(i).padStart(4, '0')}`, version: 1, is_published: true
+  }));
+  const client = knowledgeClient(rows);
+  await assert.rejects(executeKnowledgeImport(client, {
+    knowledgeRows: rows.slice(0,1000), sourceRows: [], evidenceRows: []
+  }), /Missing topics: KNO-1000@1/);
+  assert.deepEqual(client.pages, [[0,999],[1000,1999]]);
+  assert.deepEqual(client.writes, []);
+});
+
+test('reconciliation repeats the omission check before changing any publication flags', async () => {
+  const client = knowledgeClient([{ knowledge_id: 'KNO-CONCURRENT-001', version: 1, is_published: true }]);
+  await assert.rejects(reconcilePublishedKnowledge(client, []), /Missing topics/);
+  assert.deepEqual(client.writes, []);
+});
+
+test('a complete import supersedes older versions without deleting history', async () => {
+  const client = knowledgeClient([{ knowledge_id: 'KNO-TEST-001', version: 1, is_published: true, record_checksum: 'old' }]);
+  const result = await executeKnowledgeImport(client, {
+    knowledgeRows: [{ knowledge_id: 'KNO-TEST-001', version: 2, is_published: true, record_checksum: 'new' }],
+    sourceRows: [], evidenceRows: []
+  });
+  assert.deepEqual(result, { superseded_records_unpublished: 1, verified_imported_records: 1 });
+  assert.equal(client.rows.length, 2);
+  assert.equal(client.rows.find((row) => row.version === 1).is_published, false);
+  assert.equal(client.rows.find((row) => row.version === 2).is_published, true);
 });
 
 test('production validation requires canonical evidence and a driver-language surface', () => {
