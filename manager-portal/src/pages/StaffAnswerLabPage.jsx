@@ -48,7 +48,9 @@ function LiveTest({ staff, refresh, readOnly }) {
     try {
       const answer = await call('/query', request); setResult(answer); setSession(answer.session_id); savePending(null); setQuestion('');
       if (['BUDGET_BLOCKED', 'TRAFFIC_BUSY', 'PROVIDER_QUOTA_EXHAUSTED'].includes(answer.verification_status)) setMessage('Live AI is paused or busy. No verified answer was produced for this request. Saved reviews remain available.');
-      await Promise.all([loadHistory(), refresh()]);
+      // The answer is already saved. Refreshing side panels must not hold the form
+      // or turn a history/network failure into an apparent failed answer/retry.
+      void Promise.all([loadHistory(), refresh()]).catch(() => setMessage('Your answer is saved. History or usage could not refresh; use Refresh or reload to try again.'));
     } catch (err) { setMessage(err.message + ' Use Retry to keep the same request and avoid repeating a completed AI check.'); }
     finally { setBusy(false); }
   }
@@ -61,7 +63,7 @@ function LiveTest({ staff, refresh, readOnly }) {
     <form onSubmit={ask}><label>{session ? 'Follow-up for this situation' : 'Driver question'}<textarea required minLength={1} maxLength={500} value={question} disabled={busy || !!pending || readOnly} onChange={e => setQuestion(e.target.value)} /></label><div className="lab-actions"><button disabled={busy || readOnly || (!question.trim() && !pending)}>{busy ? 'Checking…' : pending ? 'Retry saved request' : session ? 'Send follow-up' : 'Ask 2.0'}</button><button disabled={busy} type="button" onClick={newQuestion}>Start a new situation</button></div></form>
     {pending && !busy && <p>A request is saved for retry. Starting a new situation discards this retry link; an unfinished check may already have used AI.</p>}
     {message && <p role="alert" className="lab-notice">{message}</p>}
-    {result && <><p>{result.staff_test?.elapsed_ms ? `Response received in ${(result.staff_test.elapsed_ms / 1000).toFixed(1)} seconds.` : 'Saved answer.'}{mayContinue(result) ? ' Continue above to resolve the remaining details.' : ''}</p><StaffAnswerResult result={result} />{!readOnly && <SaveReview key={result.interaction_id} kind="live" caseId={result.interaction_id} />}</>}
+    {result && <><p>{result.staff_test?.browser_received_ms ? `Response received in ${(result.staff_test.browser_received_ms / 1000).toFixed(1)} seconds.` : result.staff_test?.server_ms ? `Server processing: ${(result.staff_test.server_ms / 1000).toFixed(1)} seconds.` : 'Saved answer.'}{mayContinue(result) ? ' Continue above to resolve the remaining details.' : ''}</p><StaffAnswerResult result={result} />{!readOnly && <SaveReview key={result.interaction_id} kind="live" caseId={result.interaction_id} />}</>}
     <details><summary>Saved 2.0 history ({history.length} loaded)</summary><p>All completed answers remain saved. Select one to inspect or resume it; conversations expire for follow-up after 30 minutes.</p>{history.map(h => <button className="lab-history" key={h.request_id} onClick={() => { if (pending || busy) { setMessage('Finish or discard the pending request before opening another conversation.'); return; } setResult(h.response); setSession(h.session_id); setQuestion(''); }}>{new Date(h.created_at).toLocaleString()} · {h.question || h.response?.answer?.slice(0,100) || h.response?.clarification_prompt || 'Saved situation'}</button>)}{olderAvailable && <button onClick={older}>Load older answers</button>}</details>
   </section>;
 }
