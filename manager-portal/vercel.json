@@ -30,6 +30,10 @@
   ],
   "rewrites": [
     {
+      "source": "/readyroute/answers-lab/api/:path*",
+      "destination": "https://readyroute-staff-answers-201632321692.us-west1.run.app/staff-lab/:path*"
+    },
+    {
       "source": "/(.*)",
       "destination": "/index.html"
     }
