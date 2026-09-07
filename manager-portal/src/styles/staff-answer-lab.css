@@ -1,0 +1,26 @@
+.staff-answer-lab { max-width: 1200px; margin: auto; color: #172b3a; }
+.staff-answer-lab [hidden] { display: none !important; }
+.staff-answer-lab h1 { margin-bottom: .35rem; }
+.staff-answer-lab h2 { margin-top: 1.5rem; }
+.staff-answer-lab p, .staff-answer-lab li { line-height: 1.6; }
+.staff-answer-lab button, .staff-answer-lab select { min-height: 44px; padding: .65rem 1rem; cursor: pointer; }
+.staff-answer-lab button { border: 1px solid #bdcbd5; border-radius: 8px; background: #fff; color: #173b52; font-weight: 600; }
+.staff-answer-lab button:disabled { opacity: .55; cursor: default; }
+.staff-answer-lab button:focus-visible, .staff-answer-lab summary:focus-visible { outline: 3px solid #277ea2; outline-offset: 3px; }
+.lab-tabs, .lab-actions { display: flex; flex-wrap: wrap; gap: .65rem; margin: 1rem 0; }
+.lab-tabs button[aria-pressed=true] { background: #173f57; color: #fff; border-color: #173f57; }
+.lab-budget { padding: 1rem; background: #edf3f6; border-radius: 10px; line-height: 1.7; }
+.staff-answer-lab label { display: grid; gap: .45rem; margin: 1rem 0; font-weight: 600; }
+.staff-answer-lab textarea, .staff-answer-lab input:not([type=checkbox]), .staff-answer-lab select { width: 100%; box-sizing: border-box; border: 1px solid #a8bac7; border-radius: 7px; background: white; color: #172b3a; padding: .75rem; font: inherit; }
+.staff-answer-lab textarea { min-height: 105px; resize: vertical; }
+.staff-answer-lab .lab-check { display: flex; align-items: flex-start; font-weight: 400; }
+.staff-answer-lab fieldset { margin: 1rem 0; border: 1px solid #bdcbd5; border-radius: 8px; padding: 1rem; }
+.staff-answer-lab details { margin: 1rem 0; padding: .75rem 0; }
+.staff-answer-lab summary { cursor: pointer; font-weight: 600; }
+.lab-comparison { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 1rem; }
+.lab-answer { border: 1px solid #d5dfe5; padding: 1rem; margin: .8rem 0; border-radius: 10px; background: white; overflow-wrap: anywhere; }
+.lab-notice { background: #fff5dc; border-left: 4px solid #c38c17; padding: .8rem 1rem; }
+.lab-preserve { white-space: pre-wrap; }
+.lab-raw { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 500px; overflow: auto; background: #f2f5f7; padding: 1rem; font-size: .85rem; }
+.lab-history { display: block; width: 100%; text-align: left; margin: .45rem 0; }
+@media (max-width: 760px) { .lab-comparison { grid-template-columns: 1fr; } .lab-tabs button { flex: 1; } .lab-budget { font-size: .9rem; } }

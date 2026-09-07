@@ -24,7 +24,7 @@ const ManifestPage = lazy(() => import('./pages/ManifestPage'));
 const ManagerSettingsPage = lazy(() => import('./pages/ManagerSettingsPage'));
 const NotificationsPage = lazy(() => import('./pages/NotificationsPage'));
 const RecordsPage = lazy(() => import('./pages/RecordsPage'));
-const RraTestPage = lazy(() => import('./pages/RraTestPage'));
+const StaffAnswerLabPage = lazy(() => import('./pages/StaffAnswerLabPage'));
 const ResetPasswordPage = lazy(() => import('./pages/ResetPasswordPage'));
 const RoutePage = lazy(() => import('./pages/RoutePage'));
 const RoutesPage = lazy(() => import('./pages/RoutesPage'));
@@ -148,7 +148,7 @@ function ReadyRouteStaffApp() {
             <Route element={<StaffCompanySupportViewPage />} path="companies/:accountId/view" />
             <Route element={<Navigate replace to="/readyroute/memory?tab=audit" />} path="knowledge" />
             <Route element={<AnswerMemoryPage />} path="memory" />
-            <Route element={<RraTestPage allowFeedback={false} apiBase="/staff/driver-help" />} path="rra-test" />
+            <Route element={<StaffAnswerLabPage />} path="rra-test" />
             <Route element={<StaffOperatingCostsPage />} path="costs" />
             <Route element={<StaffUsersPage />} path="staff" />
             <Route element={<StaffSettingsPage />} path="settings" />
