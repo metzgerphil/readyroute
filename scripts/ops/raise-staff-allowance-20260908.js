@@ -27,7 +27,7 @@ FROM changed;
     signal: AbortSignal.timeout(30000),
     redirect: 'error'
   });
-  assert.equal(response.status, 200, 'Staging allowance update failed');
+  assert.ok(response.ok, 'Staging allowance update failed with HTTP ' + response.status);
   const rows = await response.json();
   assert.equal(rows.length, 1, 'Unexpected allowance state; no matching scope was updated');
   const { before, after, preserved_call_count } = rows[0];
