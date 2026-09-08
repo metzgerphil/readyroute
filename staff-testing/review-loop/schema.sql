@@ -22,6 +22,7 @@ BEGIN
   RETURN coalesce((SELECT jsonb_agg(to_jsonb(x) ORDER BY created_at DESC,id DESC) FROM (
    SELECT r.*,i.record->>'question' AS question,i.record AS interaction,
     (SELECT q.response FROM rr_staff_answers.requests q WHERE q.actor_id=r.staff_id AND q.response->>'interaction_id'=r.case_id LIMIT 1) AS response,
+    coalesce((SELECT jsonb_agg(jsonb_build_object('question',h.record->>'question','created_at',h.created_at) ORDER BY h.created_at,h.id) FROM rr_staff_answers.interactions h WHERE h.session_id=i.session_id AND h.actor_id=r.staff_id AND h.created_at<=i.created_at),'[]'::jsonb) AS conversation,
     coalesce((SELECT jsonb_agg(to_jsonb(e) ORDER BY e.created_at,e.id) FROM rr_staff_answers.review_events e WHERE e.review_id=r.id),'[]'::jsonb) AS events
    FROM rr_staff_answers.reviews r LEFT JOIN rr_staff_answers.interactions i ON i.id::text=r.case_id AND i.actor_id=r.staff_id AND r.kind='live'
    WHERE (r.staff_id=p->>'staff_id' OR p->>'staff_role' IN ('owner','admin','review_operator'))
