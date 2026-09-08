@@ -3,18 +3,17 @@ on:
   workflow_dispatch:
     inputs:
       mode:
-        description: Initialize once or verify the existing staging speed storage
+        description: Owner-authorized increase of the shared staff AI allowance to five dollars total
         type: choice
-        options: [verify, initialize]
-        default: verify
+        options: [raise-to-five]
         required: true
 permissions:
   contents: read
 concurrency:
-  group: private-staff-answer-speed-storage
+  group: readyroute-private-staff-storage
   cancel-in-progress: false
 jobs:
-  storage:
+  allowance:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -22,13 +21,13 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      - name: Verify or initialize staging speed storage
-        run: node staff-testing/speed/deploy-storage.js
+      - name: Apply the approved staff allowance without resetting usage
+        run: node scripts/ops/raise-staff-allowance-20260908.js
         env:
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
-          STAFF_SPEED_STORAGE_MODE: ${{ inputs.mode }}
+          STAFF_ALLOWANCE_ACTION: ${{ inputs.mode }}
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: staff-speed-storage-evidence
-          path: staff-testing/speed/evidence/*.json
+          name: staff-allowance-evidence
+          path: staff-allowance-evidence/result.json
