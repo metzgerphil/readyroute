@@ -80,8 +80,9 @@ function ReviewQueue({ staff, version, readOnly, onRetest }) {
       <p>Reviewer: {r.payload.identity?.staff_name || r.payload.identity?.name || r.payload.identity?.full_name || 'Staff reviewer'}</p>
       {Object.entries(r.payload.ratings || {}).map(([key, v]) => <p key={key}><strong>{key}: {v.verdict}</strong><br />{v.notes}</p>)}<p><strong>Authority:</strong> {r.payload.authority}</p>{r.payload.amendment && <p><strong>Correction:</strong> {r.payload.amendment}</p>}
       {r.events.map(e => <div key={e.id}><p><strong>{reviewStatuses[e.status]}</strong> · {new Date(e.created_at).toLocaleString()} · {e.actor.name}</p><p className="lab-preserve">{e.note}</p>{e.evidence && <p>Verification: {e.evidence}</p>}{e.release && <p>Tested version: {e.release}</p>}</div>)}
+      {r.conversation?.length > 1 && <div><strong>Original conversation, in order</strong><ol>{r.conversation.map((turn, i) => <li key={i}>{turn.question}</li>)}</ol><p>For a follow-up issue, repeat the conversation in order rather than testing only the final reply.</p></div>}
       {r.response && <details><summary>Original saved answer</summary><StaffAnswerResult result={r.response} frozen /></details>}
-      {r.kind === 'live' && r.question && <button onClick={() => onRetest(r.question)}>Put this question in a new test</button>}
+      {r.kind === 'live' && r.question && <button onClick={() => onRetest(r.conversation?.[0]?.question || r.question)}>{r.conversation?.length > 1 ? 'Start a new test from the opening question' : 'Put this question in a new test'}</button>}
       {r.kind === 'live' && r.staff_id === staff.staff_user_id && !readOnly && <details><summary>Add clarification or correct this review</summary><SaveReview kind="live" caseId={r.case_id} onSaved={load} /></details>}
     </details>; })}{more && <button disabled={busy} onClick={older}>Load older reviews</button>}
   </section>;
