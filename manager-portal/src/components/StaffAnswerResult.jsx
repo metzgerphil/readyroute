@@ -12,7 +12,7 @@ function Lines({ title, values, ordered = false }) {
   const List = ordered ? 'ol' : 'ul';
   return <div><strong>{title}</strong><List>{items.map((v, i) => <li key={i}>{content(v)}</li>)}</List></div>;
 }
-export default function StaffAnswerResult({ result = {}, frozen = false }) {
+export default function StaffAnswerResult({ result = {}, frozen = false, onClarification, disabled = false }) {
   return <article className="lab-answer">
     {result.partial_answer && <p className="lab-notice"><strong>Partial answer.</strong> Some parts of this situation still need clarification or verification.</p>}
     {answerSections(result).map((s, i) => <section key={i}>
@@ -34,7 +34,7 @@ export default function StaffAnswerResult({ result = {}, frozen = false }) {
     <Lines title="Answer options" values={result.answer_structure?.options} />
     {result.answer_structure?.code_instruction && <p className="lab-notice">{content(result.answer_structure.code_instruction)}</p>}
     {result.clarification_prompt && <p className="lab-notice"><strong>Clarification needed:</strong> {result.clarification_prompt}</p>}
-    <Lines title="Clarification options" values={result.clarification_options} />
+    {onClarification && result.clarification_options?.length ? <div className="lab-actions">{result.clarification_options.map((v, i) => <button key={i} disabled={disabled} onClick={() => onClarification(typeof v === 'string' ? v : v.query || v.value || v.label)}>{content(v)}</button>)}</div> : <Lines title="Clarification options" values={result.clarification_options} />}
     <Lines title="Still unresolved" values={result.unresolved_parts} />
     {result.escalation_message && <p className="lab-notice">{result.escalation_message}</p>}
     {result.more_info && <details><summary>More information</summary><p className="lab-preserve">{result.more_info}</p></details>}
