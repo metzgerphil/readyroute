@@ -1,4 +1,4 @@
-name: ReadyRoute Content Transition Storage
+name: ReadyRoute Offline Transition Storage
 on:
   workflow_dispatch:
 permissions:
@@ -7,7 +7,7 @@ concurrency:
   group: readyroute-private-staff-storage
   cancel-in-progress: false
 jobs:
-  install-transition:
+  install-offline-transition:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -15,11 +15,12 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      - name: Install service-only transition without changing source records
-        run: node scripts/content-transition/install.js
+      - name: Install exact restricted function without source publication
+        run: node scripts/offline-transition/install.js
         env:
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          RR_OFFLINE_TRANSITION_SQL: ${{ secrets.RR_OFFLINE_TRANSITION_SQL }}
       - uses: actions/upload-artifact@v4
         with:
-          name: content-install-evidence
-          path: content-install-evidence/result.json
+          name: offline-install-evidence
+          path: offline-install-evidence/result.json
