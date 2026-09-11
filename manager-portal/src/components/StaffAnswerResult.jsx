@@ -1,9 +1,10 @@
 import { lazy, Suspense } from 'react';
+import { staffPresentation } from '../utils/staffPresentation';
 import { answerSections } from '../utils/staffAnswerLab';
 const WebVehicleBarcode = lazy(() => import('./WebVehicleBarcode'));
 
 function content(value) {
-  if (typeof value === 'string') return value;
+  if (typeof value === 'string') return value.replace(/\[OUT_OF_CORPUS\]/g,'Not covered by this answer:');
   return value?.action || value?.label || value?.text || value?.question_excerpt || JSON.stringify(value);
 }
 function Lines({ title, values, ordered = false }) {
@@ -12,13 +13,10 @@ function Lines({ title, values, ordered = false }) {
   const List = ordered ? 'ol' : 'ul';
   return <div><strong>{title}</strong><List>{items.map((v, i) => <li key={i}>{content(v)}</li>)}</List></div>;
 }
-export default function StaffAnswerResult({ result = {}, frozen = false, onClarification, disabled = false }) {
-  return <article className="lab-answer">
-    {result.partial_answer && <p className="lab-notice"><strong>Partial answer.</strong> Some parts of this situation still need clarification or verification.</p>}
-    {answerSections(result).map((s, i) => <section key={i}>
-      {s.title && <h4>{s.title}</h4>}
+function FullSection({ section: s }) {
+  return <>
       {s.conditional_default && <p className="lab-notice">Conditional guidance: check the stated conditions before applying these instructions.</p>}
-      {s.direct_answer && <p className="lab-preserve">{s.direct_answer}</p>}
+      {s.direct_answer && <p className="lab-preserve">{content(s.direct_answer)}</p>}
       <Lines title="Steps" values={s.steps} ordered />
       <Lines title="Procedure" values={s.procedure_steps} ordered />
       <Lines title="Watch for" values={s.watch_for} />
@@ -29,7 +27,29 @@ export default function StaffAnswerResult({ result = {}, frozen = false, onClari
       <Lines title="Conditions" values={s.supporting_context?.conditions} />
       <Lines title="Exceptions" values={s.supporting_context?.exceptions} />
       <Lines title="Additional documentation" values={s.supporting_context?.documentation} />
-      {s.supporting_context?.complete_rule && <details><summary>Complete supporting rule</summary><p>{s.supporting_context.complete_rule}</p></details>}
+      {s.supporting_context?.complete_rule && <details><summary>Complete supporting rule</summary><p>{content(s.supporting_context.complete_rule)}</p></details>}
+  </>;
+}
+function DriverPresentation({ presentation: p }) {
+  const StepList = p.listStyle === 'bullets' ? 'ul' : 'ol';
+  return <div className="lab-driver-presentation">
+    {p.codes.map(c => <p key={c.namespace + c.code}>{c.namespace === 'PICKUP_REASON' ? 'Pickup reason' : 'Code'} {c.code} · {c.label}</p>)}
+    {p.lead && <p className="lab-preserve">{p.lead}</p>}
+    {!!p.steps.length && <StepList>{p.steps.map((line, i) => <li key={i}>{line}</li>)}</StepList>}
+    {p.notices.map((line, i) => <p key={i}>{line}</p>)}
+    {!!p.details.length && <details><summary>More details</summary>{p.details.map((line, i) => <p key={i}>{line}</p>)}</details>}
+  </div>;
+}
+export default function StaffAnswerResult({ result = {}, frozen = false, onClarification, disabled = false }) {
+  return <article className="lab-answer">
+    {result.partial_answer && <p className="lab-notice"><strong>Partial answer.</strong> Some parts of this situation still need clarification or verification.</p>}
+    {answerSections(result).map((s, i) => <section key={i}>
+      {s.title && <h4>{s.title}</h4>}
+      {staffPresentation(result, s) ? <>
+        <DriverPresentation presentation={staffPresentation(result, s)} />
+        <details><summary>Full approved procedure and conditions</summary><FullSection section={s} /></details>
+      </> : <FullSection section={s} />}
+
     </section>)}
     <Lines title="Answer options" values={result.answer_structure?.options} />
     {result.answer_structure?.code_instruction && <p className="lab-notice">{content(result.answer_structure.code_instruction)}</p>}
