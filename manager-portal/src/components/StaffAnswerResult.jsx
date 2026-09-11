@@ -1,5 +1,5 @@
 import { lazy, Suspense } from 'react';
-import { staffPresentation } from '../utils/staffPresentation';
+import { staffPresentation, uniformStaffAnswer } from '../utils/staffPresentation';
 import { answerSections } from '../utils/staffAnswerLab';
 const WebVehicleBarcode = lazy(() => import('./WebVehicleBarcode'));
 
@@ -41,6 +41,14 @@ function DriverPresentation({ presentation: p }) {
   </div>;
 }
 export default function StaffAnswerResult({ result = {}, frozen = false, onClarification, disabled = false }) {
+  const uniform=uniformStaffAnswer(result);
+  if(uniform)return <article className="lab-answer">
+    {!!uniform.items.length && <ul className="lab-driver-presentation">{uniform.items.map((line,i)=><li key={i}>{line}</li>)}</ul>}
+    {uniform.question && <p className="lab-notice">{uniform.question}</p>}
+    {!!uniform.choices.length && (onClarification ? <div className="lab-actions">{uniform.choices.map((choice,i)=><button key={i} disabled={disabled} onClick={()=>onClarification(choice.query)}>{choice.label}</button>)}</div> : <ul>{uniform.choices.map((choice,i)=><li key={i}>{choice.label}</li>)}</ul>)}
+    {result.barcode && <Suspense fallback={<p>Loading barcode…</p>}><WebVehicleBarcode barcode={result.barcode} /></Suspense>}
+    <details><summary>Staff review details</summary>{answerSections(result).map((s,i)=><section key={i}><FullSection section={s}/></section>)}<pre className="lab-raw">{JSON.stringify(result,null,2)}</pre></details>
+  </article>;
   return <article className="lab-answer">
     {result.partial_answer && <p className="lab-notice"><strong>Partial answer.</strong> Some parts of this situation still need clarification or verification.</p>}
     {answerSections(result).map((s, i) => <section key={i}>

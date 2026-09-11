@@ -9,3 +9,12 @@ export function staffPresentation(result, section) {
   const numbered = p.contract === 'NUMBERED_16_PRIVATE_V1' || (p.contract === 'ADAPTIVE_26_PRIVATE_V1' && p.format === 'steps');
   return { listStyle: p.list_style || 'numbered', lead: numbered ? null : displayText(p.lead), steps: numbered ? p.steps.map(displayText) : [], notices: (p.notices || []).map(displayText), codes: p.codes || [], details: (p.details || []).map(displayText) };
 }
+
+// Only the new server-owned envelope opts in. Historical answer formats remain intact.
+export function uniformStaffAnswer(result) {
+  const a=result?.driver_answer;
+  if(result?.answering_version!=='2.5'||a?.version!==1||a.format!=='bullets'||!Array.isArray(a.items)||a.items.some(x=>typeof x!=='string'||!x.trim()))return null;
+  if(a.question!==null&&typeof a.question!=='string')return null;
+  if(!Array.isArray(a.choices)||a.choices.some(x=>typeof x?.label!=='string'||typeof x?.query!=='string'))return null;
+  return a;
+}
