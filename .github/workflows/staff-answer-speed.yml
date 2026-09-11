@@ -1,13 +1,13 @@
-name: ReadyRoute Offline Transition Storage
+name: Authorized driver AI allowance 7 dollars
 on:
   workflow_dispatch:
 permissions:
   contents: read
 concurrency:
-  group: readyroute-private-staff-storage
+  group: readyroute-authorized-driver-allowance
   cancel-in-progress: false
 jobs:
-  install-offline-transition:
+  limit:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -15,12 +15,10 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      - name: Install exact restricted function without source publication
-        run: node scripts/offline-transition/install.js
+      - run: node scripts/driver-allowance7.js
         env:
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
-          RR_OFFLINE_TRANSITION_SQL: ${{ secrets.RR_OFFLINE_TRANSITION_SQL }}
       - uses: actions/upload-artifact@v4
         with:
-          name: offline-install-evidence
-          path: offline-install-evidence/result.json
+          name: driver-allowance7-evidence
+          path: allowance-evidence/result.json
