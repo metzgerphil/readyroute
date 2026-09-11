@@ -1,6 +1,14 @@
-import test from 'node:test';import assert from 'node:assert/strict';import {staffPresentation} from './staffPresentation.js';
+import test from 'node:test';import assert from 'node:assert/strict';import {staffPresentation,uniformStaffAnswer} from './staffPresentation.js';
 const section={driver_presentation:{contract:'ADAPTIVE_26_PRIVATE_V1',format:'steps',lead:'First.',steps:['First.','Second.'],notices:['Restriction.'],codes:[{namespace:'PICKUP_REASON',code:'24',label:'reason'}]}};
 test('staff displays the phone procedure without duplicating the first step',()=>{const p=staffPresentation({response_mode:'ANSWER'},section);assert.equal(p.lead,null);assert.deepEqual(p.steps,['First.','Second.']);assert.deepEqual(p.notices,['Restriction.']);assert.equal(p.codes[0].namespace,'PICKUP_REASON');});
 test('clarification and unknown presentation retain the original source display',()=>{assert.equal(staffPresentation({response_mode:'CLARIFY'},section),null);assert.equal(staffPresentation({response_mode:'ANSWER'},{driver_presentation:{contract:'UNKNOWN'}}),null);});
 test('partial behavior matches the phone and preserves format distinction',()=>{assert.ok(staffPresentation({response_mode:'ANSWER',partial_answer:true},section));assert.equal(staffPresentation({response_mode:'ANSWER',partial_answer:true},{driver_presentation:{contract:'NUMBERED_16_PRIVATE_V1'}}),null);const p=staffPresentation({response_mode:'ANSWER'},{driver_presentation:{contract:'ADAPTIVE_26_PRIVATE_V1',format:'direct',lead:'One sentence.',steps:['unused'],notices:[]}});assert.equal(p.lead,'One sentence.');assert.deepEqual(p.steps,[]);});
 test('2.5 verified section is concise during clarification without changing unresolved questions',()=>{const result={response_mode:'CLARIFY',partial_answer:true,clarification_prompt:'Which situation?',clarification_options:[{label:'Pickup',value:'PICKUP'}],unresolved_parts:[{question_excerpt:'Other issue'}]};const original=structuredClone(result);const s={driver_presentation:{...section.driver_presentation,card_id:'rr25:test',coverage:'VERIFIED_SECTION_ONLY',list_style:'bullets'}};assert.equal(staffPresentation(result,s).listStyle,'bullets');assert.deepEqual(result,original);assert.equal(staffPresentation(result,{driver_presentation:{...s.driver_presentation,coverage:undefined}}),null);});
+
+test('uniform 2.5 envelope validates bullets and clickable choices without rewriting saved answers',()=>{
+ const r={answering_version:'2.5',driver_answer:{version:1,format:'bullets',items:['Action.','Code 007.'],question:'Which location?',choices:[{label:'Front door',query:'Front door required.'}],partial:true}};
+ const before=structuredClone(r);assert.deepEqual(uniformStaffAnswer(r),r.driver_answer);assert.deepEqual(r,before);
+ assert.equal(uniformStaffAnswer({...r,answering_version:'2.0'}),null);
+ assert.equal(uniformStaffAnswer({...r,driver_answer:{...r.driver_answer,items:[{}]}}),null);
+ assert.equal(uniformStaffAnswer({...r,driver_answer:{...r.driver_answer,choices:[{label:'Yes'}]}}),null);
+});
