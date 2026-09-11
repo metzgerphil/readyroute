@@ -1,18 +1,13 @@
-name: Private Staff Answer Speed Storage
+name: Driver 2.5 history compatibility
 on:
   workflow_dispatch:
     inputs:
       mode:
-        description: Initialize once or verify the existing staging speed storage
         type: choice
         options: [verify, initialize]
-        default: verify
-        required: true
+        default: initialize
 permissions:
   contents: read
-concurrency:
-  group: private-staff-answer-speed-storage
-  cancel-in-progress: false
 jobs:
   storage:
     runs-on: ubuntu-latest
@@ -22,13 +17,11 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      - name: Verify or initialize staging speed storage
-        run: node staff-testing/speed/deploy-storage.js
+      - run: node phone25/migrate-history.js
         env:
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
-          STAFF_SPEED_STORAGE_MODE: ${{ inputs.mode }}
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: staff-speed-storage-evidence
-          path: staff-testing/speed/evidence/*.json
+          name: phone25-history-evidence
+          path: phone25/evidence/*
